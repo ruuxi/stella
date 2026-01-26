@@ -180,6 +180,37 @@
   gap: 12px;
 }
 
+.event-list {
+  display: grid;
+  gap: 10px;
+}
+
+.event-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(28, 23, 18, 0.08);
+  display: grid;
+  gap: 4px;
+}
+
+.event-type {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #70675c;
+}
+
+.event-body {
+  font-size: 13px;
+  color: #2b241f;
+}
+
+.event-empty {
+  font-size: 12px;
+  color: #7a6f63;
+}
+
 .panel-hint {
   font-size: 13px;
   color: #6f6457;

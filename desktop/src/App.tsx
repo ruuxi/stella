@@ -1,6 +1,7 @@
 import './App.css'
 import { useUiState } from './app/state/ui-state'
 import { getElectronApi } from './services/electron'
+import { AppBootstrap } from './app/AppBootstrap'
 import { FullShell } from './screens/FullShell'
 import { MiniShell } from './screens/MiniShell'
 
@@ -18,6 +19,7 @@ function App() {
 
   return (
     <div className={`app window-${windowType}`}>
+      <AppBootstrap />
       {windowType === 'mini' ? <MiniShell /> : <FullShell />}
     </div>
   )
