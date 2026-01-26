@@ -1,0 +1,16 @@
+{
+  "name": "stellar-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy"
+  },
+  "dependencies": {
+    "ai": "^6.0.49",
+    "convex": "^1.31.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  }
+}
