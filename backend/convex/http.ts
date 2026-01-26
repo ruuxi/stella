@@ -103,7 +103,7 @@ http.route({
       },
     });
 
-    return result.toTextStreamResponse();
+    return result.toUIMessageStreamResponse();
   }),
 });
 
