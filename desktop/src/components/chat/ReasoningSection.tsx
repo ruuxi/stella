@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { Markdown } from "./Markdown";
 
 interface ReasoningSectionProps {
   content: string;
@@ -13,7 +14,33 @@ export function ReasoningSection({
   isStreaming = false,
   className,
 }: ReasoningSectionProps) {
-  const [expanded, setExpanded] = useState(isStreaming);
+  // Track if user has manually collapsed - if not, auto-expand when streaming
+  const [userCollapsed, setUserCollapsed] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const wasStreamingRef = useRef(false);
+
+  // Determine if expanded: streaming always shows, or user hasn't collapsed
+  const expanded = isStreaming || !userCollapsed;
+
+  // Reset userCollapsed when streaming starts (after it was stopped)
+  useEffect(() => {
+    if (isStreaming && !wasStreamingRef.current) {
+      // Streaming just started - reset collapsed state
+      setUserCollapsed(false);
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  // Auto-scroll to bottom when content updates during streaming
+  useEffect(() => {
+    if (isStreaming && contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+    }
+  }, [content, isStreaming]);
+
+  const handleToggle = useCallback(() => {
+    setUserCollapsed((prev) => !prev);
+  }, []);
 
   if (!content && !isStreaming) return null;
 
@@ -23,23 +50,30 @@ export function ReasoningSection({
       data-streaming={isStreaming}
       data-expanded={expanded}
     >
-      <button
-        type="button"
-        className="reasoning-trigger"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <span>Reasoning</span>
-        {expanded ? (
-          <ChevronUp className="h-4 w-4" />
-        ) : (
-          <ChevronDown className="h-4 w-4" />
-        )}
-      </button>
+      {/* Only show trigger button when not streaming (Aura behavior) */}
+      {!isStreaming && (
+        <button
+          type="button"
+          className="reasoning-trigger"
+          onClick={handleToggle}
+        >
+          <span>Reasoning</span>
+          {expanded ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+        </button>
+      )}
 
-      {expanded && (
+      {(isStreaming || expanded) && (
         <div className="reasoning-body">
-          <div className="reasoning-content">
-            {content || "Thinking..."}
+          <div ref={contentRef} className="reasoning-content">
+            {content ? (
+              <Markdown text={content} />
+            ) : (
+              "Thinking..."
+            )}
           </div>
         </div>
       )}

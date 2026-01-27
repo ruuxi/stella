@@ -1,5 +1,6 @@
 import type { EventRecord } from "../hooks/use-conversation-events";
 import { WorkingIndicator } from "../components/chat/WorkingIndicator";
+import { Markdown } from "../components/chat/Markdown";
 
 type Props = {
   events: EventRecord[];
@@ -77,6 +78,7 @@ export const ConversationEvents = ({
 }: Props) => {
   const visible = maxItems ? events.slice(-maxItems) : events;
   const showStreaming = Boolean(isStreaming || streamingText);
+  const hasStreamingContent = Boolean(streamingText && streamingText.trim().length > 0);
 
   // Filter to only show user and assistant messages for cleaner UI
   const messageEvents = visible.filter(
@@ -96,18 +98,20 @@ export const ConversationEvents = ({
 
             return (
               <div key={event._id} className="session-turn">
-                {/* User message header */}
-                {isUser && text && (
-                  <div className="session-turn-header">
-                    <div className="session-turn-title">{text.length > 60 ? `${text.slice(0, 60)}...` : text}</div>
-                  </div>
-                )}
-
                 {/* Message content */}
                 <div className={`event-item ${isUser ? "user" : "assistant"}`}>
-                  <div className="event-body">
-                    {text || formatFallback(event)}
-                  </div>
+                  {isUser ? (
+                    // User messages: plain text with pre-wrap
+                    <div className="event-body">
+                      {text || formatFallback(event)}
+                    </div>
+                  ) : (
+                    // Assistant messages: render with Markdown
+                    <Markdown 
+                      text={text || formatFallback(event)} 
+                      cacheKey={event._id}
+                    />
+                  )}
                   {attachments.length > 0 && (
                     <div className="event-attachments">
                       {attachments.map((attachment, index) => {
@@ -154,10 +158,11 @@ export const ConversationEvents = ({
             <div className="session-turn">
               <div className="event-item assistant streaming">
                 <WorkingIndicator
-                  status={streamingText && streamingText.trim().length > 0 ? "Responding" : "Thinking"}
+                  isResponding={hasStreamingContent}
+                  isReasoning={!hasStreamingContent}
                 />
-                {streamingText && streamingText.trim().length > 0 && (
-                  <div className="event-body">{streamingText}</div>
+                {hasStreamingContent && streamingText && (
+                  <Markdown text={streamingText} />
                 )}
               </div>
             </div>
