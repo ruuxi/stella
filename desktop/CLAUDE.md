@@ -2,32 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
-
-Stellar is an Electron desktop application built with React 19, TypeScript, and Vite. It uses bun as the package manager.
-
-## Commands
-
-```bash
-# Install dependencies
-bun install
-
-# Development - Vite only (web browser)
-bun run dev
-
-# Development - Electron app with hot reload
-bun run electron:dev
-
-# Build for production
-bun run electron:build
-
-# Preview production build in Electron
-bun run electron:preview
-
-# Lint
-bun run lint
-```
-
 ## Architecture
 
 ### Two-Process Model
@@ -37,14 +11,44 @@ bun run lint
 
 ### IPC Communication
 
-The preload script (`electron/preload.ts`) uses `contextBridge` to safely expose APIs to the renderer. Access exposed APIs via `window.electronAPI` in React components.
+The preload script (`electron/preload.ts`) uses `contextBridge` to safely expose APIs to the renderer. Access exposed APIs via `window.electronAPI` in React components (typed in `src/types/electron.d.ts`).
 
-### TypeScript Configuration
+Note: The preload script uses CommonJS (`tsconfig.preload.json`) while main process uses ESM (`tsconfig.electron.json`).
 
-- `tsconfig.json`: References app and node configs
-- `tsconfig.app.json`: React/renderer code
-- `tsconfig.node.json`: Vite config
-- `tsconfig.electron.json`: Electron main/preload (outputs ESM to `dist-electron/`)
+### Multi-Window Architecture
+
+The app has three window types, determined by `?window=` query parameter:
+- **Full** (`FullShell.tsx`): Main application window with full chat interface
+- **Mini** (`MiniShell.tsx`): Spotlight-style overlay for quick interactions (frameless, always-on-top, hides on blur)
+- **Radial** (`RadialShell.tsx`): Transparent overlay for the radial menu
+
+UI state (`UiState`) with `mode` (ask/chat/voice) and `window` (full/mini) is synchronized across windows via IPC broadcast.
+
+### Backend Integration
+
+- **Convex**: Real-time backend via `convex` package. Client configured in `src/services/convex-client.ts`. Requires `VITE_CONVEX_URL` environment variable.
+- **Model Gateway**: SSE streaming chat endpoint at `/api/chat` on the Convex HTTP site (`src/services/model-gateway.ts`).
+- **AI SDK**: Uses `@ai-sdk/react` and `ai` packages for chat interactions.
+
+### Local Host System
+
+The main process runs a "local host" (`electron/local-host/`) that:
+- Generates a persistent device ID (`device.ts`)
+- Polls Convex for tool requests targeted at this device (`runner.ts`)
+- Executes tools locally and sends results back (`tools.ts`)
+- Syncs skills, agents, and plugins from `~/.stellar/` to Convex (`skills.ts`, `agents.ts`, `plugins.ts`)
+
+### Theming
+
+Custom theme system in `src/theme/`:
+- `ThemeProvider` manages theme, color mode (light/dark/system), and gradient settings
+- Themes define light/dark color palettes
+- Colors are applied as CSS custom properties on `:root`
+- Uses OKLCH color space for gradient generation (`color.ts`)
+
+### UI Components
+
+Components in `src/components/` are built on Radix UI primitives with custom styling. Component index at `src/components/index.ts`.
 
 ### Build Output
 
