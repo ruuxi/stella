@@ -63,33 +63,6 @@ const migrateDirectoryFiles = async (fromDir: string, toDir: string) => {
   return migratedCount;
 };
 
-const seedBundledSkills = async (app: App, skillsPath: string) => {
-  const bundledSkillsPath = path.join(app.getAppPath(), "skills");
-  let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
-  try {
-    entries = await fs.readdir(bundledSkillsPath, { withFileTypes: true });
-  } catch {
-    return;
-  }
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const fromPath = path.join(bundledSkillsPath, entry.name);
-    const toPath = path.join(skillsPath, entry.name);
-    try {
-      await fs.access(toPath);
-      continue;
-    } catch {
-      // Skill not present; seed it.
-    }
-
-    try {
-      await fs.cp(fromPath, toPath, { recursive: true });
-    } catch {
-      // Best-effort only.
-    }
-  }
-};
 
 const migrateFromUserData = async (userDataPath: string, stellarHomePath: string) => {
   const markerPath = path.join(stellarHomePath, MIGRATION_MARKER);
@@ -166,7 +139,6 @@ export const resolveStellarHome = async (
 
   // One-time best-effort migration from Electron userData.
   await migrateFromUserData(userDataPath, homePath);
-  await seedBundledSkills(app, skillsPath);
 
   return {
     homePath,
