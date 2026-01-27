@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
 const uiState = {
-    mode: 'ask',
+    mode: 'chat',
     window: 'full',
     conversationId: null,
 };
@@ -136,6 +136,7 @@ const showWindow = (target) => {
         miniWindow?.show();
         miniWindow?.focus();
         fullWindow?.hide();
+        updateUiState({ window: target });
     }
     else {
         if (!fullWindow) {
@@ -144,26 +145,31 @@ const showWindow = (target) => {
         fullWindow?.show();
         fullWindow?.focus();
         miniWindow?.hide();
+        // Full view is always chat mode
+        updateUiState({ window: target, mode: 'chat' });
     }
-    updateUiState({ window: target });
 };
 // Handle radial wedge selection
 const handleRadialSelection = (wedge) => {
     switch (wedge) {
         case 'ask':
+            // Ask mode: mini window with screenshot capability
             updateUiState({ mode: 'ask' });
             showWindow('mini');
             break;
         case 'chat':
+            // Chat mode: mini window for general chat
             updateUiState({ mode: 'chat' });
             showWindow('mini');
             break;
         case 'voice':
+            // Voice mode: mini window with voice input (stubbed)
             updateUiState({ mode: 'voice' });
             showWindow('mini');
             break;
         case 'full':
-            showWindow('full');
+            // Full always uses chat mode
+            showWindow('full'); // This already sets mode to 'chat'
             break;
         case 'menu':
             // Menu just closes the radial - native menu passthrough is handled separately
