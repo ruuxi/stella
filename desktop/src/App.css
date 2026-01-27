@@ -635,7 +635,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface-overlay);
+  background: oklch(0.21 0.006 285.885);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-radius: var(--radius-lg);
@@ -682,7 +682,7 @@
 .spotlight-conversation {
   flex: 1;
   min-height: 0;
-  background: var(--surface-overlay);
+  background: oklch(0.21 0.006 285.885);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-radius: var(--radius-lg);
