@@ -13,6 +13,7 @@ import type * as conversations from "../conversations.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as prompts from "../prompts.js";
+import type * as tools from "../tools.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   http: typeof http;
   prompts: typeof prompts;
+  tools: typeof tools;
 }>;
 
 /**

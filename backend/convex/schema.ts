@@ -21,6 +21,8 @@ export default defineSchema({
     payload: v.any(),
   })
     .index("by_conversation", ["conversationId", "timestamp"])
+    .index("by_conversation_type", ["conversationId", "type", "timestamp"])
+    .index("by_target_device", ["targetDeviceId", "timestamp"])
     .index("by_request", ["requestId"]),
   attachments: defineTable({
     conversationId: v.id("conversations"),

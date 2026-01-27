@@ -7,6 +7,7 @@ import {
   GENERAL_AGENT_SYSTEM_PROMPT,
   SELF_MOD_AGENT_SYSTEM_PROMPT,
 } from "./prompts";
+import { createDeviceTools } from "./tools";
 
 type ChatRequest = {
   conversationId: string;
@@ -95,6 +96,14 @@ http.route({
       return withCors(new Response("Conversation mismatch", { status: 400 }), origin);
     }
 
+    const targetDeviceId = userEvent.deviceId;
+    if (!targetDeviceId) {
+      return withCors(
+        new Response("User message is missing deviceId", { status: 400 }),
+        origin,
+      );
+    }
+
     const userText =
       userEvent.payload && typeof userEvent.payload === "object"
         ? (userEvent.payload as { text?: string }).text ?? ""
@@ -166,6 +175,12 @@ http.route({
     const result = await streamText({
       model,
       system: systemPrompt,
+      tools: createDeviceTools(ctx, {
+        conversationId,
+        userMessageId,
+        targetDeviceId,
+        sourceDeviceId: userEvent.deviceId,
+      }),
       messages: [
         {
           role: "user",
