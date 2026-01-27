@@ -19,6 +19,10 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // Aura-style pill variants
+        pill: "rounded-full bg-primary text-primary-foreground uppercase tracking-wider text-xs shadow-lg hover:-translate-y-0.5 transition-transform",
+        "pill-ghost": "rounded-full bg-white/70 dark:bg-white/10 text-foreground border border-black/10 dark:border-white/10 uppercase tracking-wider text-xs hover:-translate-y-0.5 transition-transform",
+        "pill-secondary": "rounded-full bg-secondary/80 text-secondary-foreground uppercase tracking-wider text-xs hover:-translate-y-0.5 transition-transform",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
@@ -29,6 +33,10 @@ const buttonVariants = cva(
         "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-8",
         "icon-lg": "size-10",
+        // Aura-style pill sizes
+        "pill-sm": "h-[22px] px-3 text-[11px]",
+        "pill-md": "h-6 px-4 text-xs",
+        "pill-lg": "h-8 px-5 text-xs",
       },
     },
     defaultVariants: {

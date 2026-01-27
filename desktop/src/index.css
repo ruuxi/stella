@@ -1,17 +1,20 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
+  /* Aura-style smaller border radii */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-3xl: 16px;
+  --radius-4xl: 20px;
+  --radius-full: 9999px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -46,7 +49,49 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  /* Base radius - Aura-style smaller */
+  --radius: 0.375rem;
+
+  /* Font feature settings for Inter */
+  --font-feature-settings: "ss03" 1;
+
+  /* Gradient controls */
+  --gradient-saturation: 100;
+  --gradient-brightness: 100;
+  --gradient-blur: 120px;
+  --gradient-noise: 0.08;
+
+  /* Spinner colors */
+  --spinner-color-1: oklch(0.6 0.15 250);
+  --spinner-color-2: oklch(0.65 0.18 145);
+  --spinner-color-3: oklch(0.7 0.16 85);
+  --spinner-color-4: oklch(0.65 0.15 280);
+
+  /* Layered shadows */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.16);
+
+  /* Aura-style surface colors - semi-transparent to show gradient */
+  --surface-inset: color-mix(in srgb, var(--card) 12%, transparent);
+  --surface-raised: color-mix(in srgb, var(--card) 65%, transparent);
+  --surface-raised-hover: color-mix(in srgb, var(--card) 80%, transparent);
+  --surface-overlay: color-mix(in srgb, var(--card) 85%, transparent);
+
+  /* Text hierarchy */
+  --text-strong: var(--foreground);
+  --text-base: color-mix(in srgb, var(--foreground) 85%, transparent);
+  --text-weak: color-mix(in srgb, var(--foreground) 60%, transparent);
+  --text-weaker: color-mix(in srgb, var(--foreground) 40%, transparent);
+
+  /* Border tokens */
+  --border-strong: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --border-base: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --border-weak: color-mix(in srgb, var(--foreground) 5%, transparent);
+
+  /* Semantic colors */
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
@@ -81,6 +126,29 @@
 }
 
 .dark {
+  /* Dark mode gradient controls */
+  --gradient-blur: 140px;
+  --gradient-noise: 0.12;
+
+  /* Dark mode spinner colors */
+  --spinner-color-1: oklch(0.7 0.18 250);
+  --spinner-color-2: oklch(0.72 0.2 145);
+  --spinner-color-3: oklch(0.75 0.18 85);
+  --spinner-color-4: oklch(0.7 0.18 280);
+
+  /* Dark mode shadows */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.5);
+
+  /* Dark mode surface colors */
+  --surface-inset: color-mix(in srgb, var(--card) 15%, transparent);
+  --surface-raised: color-mix(in srgb, var(--card) 50%, transparent);
+  --surface-raised-hover: color-mix(in srgb, var(--card) 65%, transparent);
+  --surface-overlay: color-mix(in srgb, var(--card) 75%, transparent);
+
   --background: oklch(0.141 0.005 285.823);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.21 0.006 285.885);
@@ -122,6 +190,14 @@
     @apply bg-background text-foreground;
     margin: 0;
   }
+}
+
+/* Transparent backgrounds for gradient to show through */
+html:has(.window-shell),
+html:has(.window-shell) body,
+html:has(.window-shell) #root,
+html:has(.window-shell) .app {
+  background: transparent !important;
 }
 
 /* Transparent windows - radial and mini (Spotlight) */
