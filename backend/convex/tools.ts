@@ -6,6 +6,7 @@ import type { ActionCtx } from "./_generated/server";
 import {
   createCoreDeviceTools,
   executeDeviceTool,
+  sanitizeToolName,
   type DeviceToolContext,
 } from "./device_tools";
 import { jsonSchemaToZod } from "./plugins";
@@ -22,18 +23,18 @@ export const BASE_TOOL_NAMES = [
   "WebSearch",
   "TodoWrite",
   "TestWrite",
-  "validation.run",
-  "changeset.finish",
-  "changeset.rollback",
-  "changeset.status",
-  "pack.publish",
-  "pack.install",
-  "pack.uninstall",
-  "update.check",
-  "update.apply",
-  "screen.invoke",
-  "screen.list",
-  "agent.invoke",
+  "validation_run",
+  "changeset_finish",
+  "changeset_rollback",
+  "changeset_status",
+  "pack_publish",
+  "pack_install",
+  "pack_uninstall",
+  "update_check",
+  "update_apply",
+  "screen_invoke",
+  "screen_list",
+  "AgentInvoke",
   "Task",
   "TaskOutput",
   "AskUserQuestion",
@@ -99,11 +100,14 @@ export const createTools = (
   const coreTools = createCoreDeviceTools(ctx, context);
 
   const pluginToolEntries = options.pluginTools.map((descriptor) => {
+    // Sanitize tool name for AI provider compatibility (no dots allowed)
+    const sanitizedName = sanitizeToolName(descriptor.name);
     return [
-      descriptor.name,
+      sanitizedName,
       tool({
         description: descriptor.description,
         inputSchema: jsonSchemaToZod(descriptor.inputSchema),
+        // Use original name for device dispatch
         execute: (args) => executeDeviceTool(ctx, context, descriptor.name, args),
       }),
     ] as const;
@@ -200,11 +204,12 @@ export const createTools = (
   const allowlist = options.toolsAllowlist
     ? Array.from(
         new Set([
-          ...options.toolsAllowlist,
+          // Sanitize allowlist entries and always include Task/TaskOutput/AgentInvoke
+          ...options.toolsAllowlist.map(sanitizeToolName),
           "Task",
           "TaskOutput",
-          "agent.invoke",
-          ...options.pluginTools.map((toolDef) => toolDef.name),
+          "AgentInvoke",
+          ...options.pluginTools.map((toolDef) => sanitizeToolName(toolDef.name)),
         ]),
       )
     : undefined;
