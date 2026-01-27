@@ -21,21 +21,57 @@ type ChatRequest = {
 
 const http = httpRouter();
 
+const getCorsHeaders = (origin: string | null) => {
+  return {
+    "Access-Control-Allow-Origin": origin ?? "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  } as Record<string, string>;
+};
+
+const withCors = (response: Response, origin: string | null) => {
+  const headers = new Headers(response.headers);
+  const cors = getCorsHeaders(origin);
+  for (const [key, value] of Object.entries(cors)) {
+    headers.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
+
+http.route({
+  path: "/api/chat",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
 http.route({
   path: "/api/chat",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("origin");
     let body: ChatRequest | null = null;
     try {
       body = (await request.json()) as ChatRequest;
     } catch {
-      return new Response("Invalid JSON body", { status: 400 });
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
     }
 
     if (!body?.conversationId || !body?.userMessageId) {
-      return new Response("conversationId and userMessageId are required", {
-        status: 400,
-      });
+      return withCors(
+        new Response("conversationId and userMessageId are required", {
+          status: 400,
+        }),
+        origin,
+      );
     }
 
     const conversationId = body.conversationId as Id<"conversations">;
@@ -45,18 +81,18 @@ http.route({
       id: conversationId,
     });
     if (!conversation) {
-      return new Response("Conversation not found", { status: 404 });
+      return withCors(new Response("Conversation not found", { status: 404 }), origin);
     }
 
     const userEvent = await ctx.runQuery(internal.events.getById, {
       id: userMessageId,
     });
     if (!userEvent || userEvent.type !== "user_message") {
-      return new Response("User message not found", { status: 404 });
+      return withCors(new Response("User message not found", { status: 404 }), origin);
     }
 
     if (userEvent.conversationId !== conversationId) {
-      return new Response("Conversation mismatch", { status: 400 });
+      return withCors(new Response("Conversation mismatch", { status: 400 }), origin);
     }
 
     const userText =
@@ -82,7 +118,10 @@ http.route({
 
     const model = process.env.AI_GATEWAY_MODEL;
     if (!model) {
-      return new Response("AI gateway model not configured", { status: 500 });
+      return withCors(
+        new Response("AI gateway model not configured", { status: 500 }),
+        origin,
+      );
     }
 
     const result = await streamText({
@@ -103,7 +142,8 @@ http.route({
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    const response = result.toUIMessageStreamResponse();
+    return withCors(response, origin);
   }),
 });
 
