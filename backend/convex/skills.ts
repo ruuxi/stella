@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 
 type SkillRecord = {
@@ -74,7 +74,7 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
   };
 };
 
-const upsertSkill = async (ctx: any, skill: SkillRecord) => {
+const upsertSkill = async (ctx: MutationCtx, skill: SkillRecord) => {
   const existing = await ctx.db
     .query("skills")
     .withIndex("by_skill_key", (q) => q.eq("id", skill.id))
@@ -104,7 +104,7 @@ export const upsertMany = mutation({
     for (const item of items) {
       const skill = normalizeSkill(item);
       if (!skill) continue;
-      await upsertSkill(ctx as any, skill);
+      await upsertSkill(ctx, skill);
       upserted += 1;
     }
     return { upserted };

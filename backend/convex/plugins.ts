@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { z } from "zod";
 
@@ -73,7 +73,7 @@ const normalizeTool = (value: unknown): ToolDescriptor | null => {
   };
 };
 
-const upsertPlugin = async (ctx: any, plugin: PluginRecord) => {
+const upsertPlugin = async (ctx: MutationCtx, plugin: PluginRecord) => {
   const existing = await ctx.db
     .query("plugins")
     .withIndex("by_plugin_key", (q) => q.eq("id", plugin.id))
@@ -93,7 +93,7 @@ const upsertPlugin = async (ctx: any, plugin: PluginRecord) => {
   });
 };
 
-const upsertPluginTool = async (ctx: any, tool: ToolDescriptor) => {
+const upsertPluginTool = async (ctx: MutationCtx, tool: ToolDescriptor) => {
   const id = `${tool.pluginId}:${tool.name}`;
   const existing = await ctx.db
     .query("plugin_tools")
@@ -131,7 +131,7 @@ export const upsertMany = mutation({
     for (const item of pluginItems) {
       const plugin = normalizePlugin(item);
       if (!plugin) continue;
-      await upsertPlugin(ctx as any, plugin);
+      await upsertPlugin(ctx, plugin);
       pluginsUpserted += 1;
     }
 
@@ -139,7 +139,7 @@ export const upsertMany = mutation({
     for (const item of toolItems) {
       const tool = normalizeTool(item);
       if (!tool) continue;
-      await upsertPluginTool(ctx as any, tool);
+      await upsertPluginTool(ctx, tool);
       toolsUpserted += 1;
     }
 

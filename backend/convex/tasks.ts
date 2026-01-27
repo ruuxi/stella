@@ -1,6 +1,6 @@
-import { action, mutation, query } from "./_generated/server";
+import { action, mutation, query, ActionCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { streamText, tool } from "ai";
+import { streamText, tool, ToolSet } from "ai";
 import { z } from "zod";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -47,7 +47,7 @@ const formatTaskResult = (task: {
 };
 
 const appendTaskEvent = async (
-  ctx: any,
+  ctx: ActionCtx,
   args: {
     conversationId: Id<"conversations">;
     type: string;
@@ -55,7 +55,7 @@ const appendTaskEvent = async (
     payload: Record<string, unknown>;
     targetDeviceId: string;
   },
-) => {
+): Promise<void> => {
   await ctx.runMutation(api.events.appendEvent, {
     conversationId: args.conversationId,
     type: args.type,
@@ -66,7 +66,7 @@ const appendTaskEvent = async (
 };
 
 const createTaskTools = (
-  ctx: any,
+  ctx: ActionCtx,
   context: DeviceToolContext,
   options: {
     currentTaskId: Id<"tasks">;
@@ -74,7 +74,7 @@ const createTaskTools = (
     maxTaskDepth: number;
     pluginTools: PluginToolDescriptor[];
   },
-) => {
+): ToolSet => {
   const coreTools = createCoreDeviceTools(ctx, context);
 
   const pluginToolEntries = options.pluginTools.map((descriptor) => {
@@ -143,7 +143,7 @@ const createTaskTools = (
     ...pluginTools,
     Task,
     TaskOutput,
-  } as Record<string, ReturnType<typeof tool>>;
+  };
 };
 
 export const createTaskRecord = mutation({
@@ -262,20 +262,21 @@ export const runSubagent = action({
 
     const promptBuild = await buildSystemPrompt(ctx, args.subagentType);
 
-    const created = await ctx.runMutation(api.tasks.createTaskRecord, {
-      conversationId: args.conversationId,
-      userMessageId: args.userMessageId,
-      targetDeviceId: args.targetDeviceId,
-      description: args.description,
-      prompt: args.prompt,
-      agentType: args.subagentType,
-      parentTaskId: args.parentTaskId,
-      model: args.model,
-      maxTaskDepth: promptBuild.maxTaskDepth,
-    });
+    const created: { taskId: Id<"tasks">; taskDepth: number; maxTaskDepth: number } =
+      await ctx.runMutation(api.tasks.createTaskRecord, {
+        conversationId: args.conversationId,
+        userMessageId: args.userMessageId,
+        targetDeviceId: args.targetDeviceId,
+        description: args.description,
+        prompt: args.prompt,
+        agentType: args.subagentType,
+        parentTaskId: args.parentTaskId,
+        model: args.model,
+        maxTaskDepth: promptBuild.maxTaskDepth,
+      });
 
-    const taskId = created.taskId as Id<"tasks">;
-    const taskDepth = created.taskDepth;
+    const taskId: Id<"tasks"> = created.taskId;
+    const taskDepth: number = created.taskDepth;
 
     await appendTaskEvent(ctx, {
       conversationId: args.conversationId,
@@ -342,7 +343,7 @@ export const runSubagent = action({
         ],
       });
 
-      const text = await result.text;
+      const text: string = await result.text;
 
       await ctx.runMutation(api.tasks.completeTaskRecord, {
         taskId,

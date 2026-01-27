@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import {
   GENERAL_AGENT_SYSTEM_PROMPT,
@@ -148,7 +148,7 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
   };
 };
 
-const upsertAgent = async (ctx: any, agent: AgentRecord) => {
+const upsertAgent = async (ctx: MutationCtx, agent: AgentRecord) => {
   const existing = await ctx.db
     .query("agents")
     .withIndex("by_agent_key", (q) => q.eq("id", agent.id))
@@ -172,7 +172,7 @@ export const ensureBuiltins = mutation({
   args: {},
   handler: async (ctx) => {
     for (const builtin of BUILTIN_AGENT_DEFS) {
-      await upsertAgent(ctx as any, {
+      await upsertAgent(ctx, {
         ...builtin,
         updatedAt: Date.now(),
       });
@@ -191,7 +191,7 @@ export const upsertMany = mutation({
     for (const item of items) {
       const agent = normalizeAgent(item);
       if (!agent) continue;
-      await upsertAgent(ctx as any, agent);
+      await upsertAgent(ctx, agent);
       upserted += 1;
     }
     return { upserted };

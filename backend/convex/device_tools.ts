@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 
 export const CORE_DEVICE_TOOL_NAMES = [
@@ -67,7 +67,7 @@ const waitForToolResult = async (
   requestId: string,
   deviceId: string,
   timeoutMs: number,
-) => {
+): Promise<Doc<"events"> | null> => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const event = await ctx.runQuery(internal.events.getToolResultByRequestId, {

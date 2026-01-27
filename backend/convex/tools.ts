@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -46,15 +46,15 @@ type ToolOptions = {
 };
 
 const filterTools = (
-  tools: Record<string, ReturnType<typeof tool>>,
+  tools: ToolSet,
   allowlist?: string[],
-) => {
+): ToolSet => {
   if (!allowlist || allowlist.length === 0) {
     return tools;
   }
   const allowed = new Set(allowlist);
   const filteredEntries = Object.entries(tools).filter(([name]) => allowed.has(name));
-  return Object.fromEntries(filteredEntries) as Record<string, ReturnType<typeof tool>>;
+  return Object.fromEntries(filteredEntries) as ToolSet;
 };
 
 const formatTaskResult = (task: {
@@ -146,12 +146,12 @@ export const createTools = (
     },
   });
 
-  const allTools = {
+  const allTools: ToolSet = {
     ...coreTools,
     ...pluginTools,
     Task,
     TaskOutput,
-  } as Record<string, ReturnType<typeof tool>>;
+  };
 
   const allowlist = options.toolsAllowlist
     ? Array.from(
