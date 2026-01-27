@@ -1,9 +1,12 @@
 import { ConvexHttpClient } from "convex/browser";
 import { createToolHost } from "./tools.js";
+import { loadSkillsFromHome } from "./skills.js";
+import { loadAgentsFromHome } from "./agents.js";
+import path from "path";
 
 type HostRunnerOptions = {
   deviceId: string;
-  userDataPath: string;
+  stellarHome: string;
 };
 
 type ToolRequestEvent = {
@@ -27,14 +30,66 @@ type PaginatedResult<T> = {
 
 const POLL_INTERVAL_MS = 1500;
 
-export const createLocalHostRunner = ({ deviceId, userDataPath }: HostRunnerOptions) => {
-  const toolHost = createToolHost({ userDataPath });
+export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptions) => {
+  const toolHost = createToolHost({ stellarHome });
   let client: ConvexHttpClient | null = null;
   let convexUrl: string | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   const processed = new Set<string>();
   const inFlight = new Set<string>();
   let queue = Promise.resolve();
+  let syncPromise: Promise<void> | null = null;
+  let lastSyncAt = 0;
+
+  const skillsPath = path.join(stellarHome, "skills");
+  const agentsPath = path.join(stellarHome, "agents");
+  const SYNC_MIN_INTERVAL_MS = 15_000;
+
+  const callMutation = (name: string, args: Record<string, unknown>) => {
+    if (!client) return Promise.resolve(null);
+    return client.mutation(name as never, args as never);
+  };
+
+  const callQuery = (name: string, args: Record<string, unknown>) => {
+    if (!client) return Promise.resolve(null);
+    return client.query(name as never, args as never);
+  };
+
+  const syncManifests = async () => {
+    if (!client) return;
+    const now = Date.now();
+    if (syncPromise) return syncPromise;
+    if (now - lastSyncAt < SYNC_MIN_INTERVAL_MS) return;
+
+    syncPromise = (async () => {
+      try {
+        await callMutation("agents.ensureBuiltins", {});
+
+        const pluginPayload = await toolHost.loadPlugins();
+        const skills = await loadSkillsFromHome(skillsPath, pluginPayload.skills);
+        const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
+
+        await callMutation("skills.upsertMany", {
+          skills,
+        });
+        await callMutation("agents.upsertMany", {
+          agents,
+        });
+        await callMutation("plugins.upsertMany", {
+          plugins: pluginPayload.plugins,
+          tools: pluginPayload.tools,
+        });
+
+        lastSyncAt = Date.now();
+      } catch {
+        // Best-effort sync; ignore failures and retry later.
+      } finally {
+        syncPromise = null;
+      }
+    })();
+
+    return syncPromise;
+  };
 
   const setConvexUrl = (url: string) => {
     if (convexUrl === url && client) {
@@ -42,6 +97,7 @@ export const createLocalHostRunner = ({ deviceId, userDataPath }: HostRunnerOpti
     }
     convexUrl = url;
     client = new ConvexHttpClient(url, { logger: false });
+    void syncManifests();
   };
 
   const appendToolResult = async (
@@ -49,7 +105,7 @@ export const createLocalHostRunner = ({ deviceId, userDataPath }: HostRunnerOpti
     result: { result?: unknown; error?: string },
   ) => {
     if (!client || !request.requestId) return;
-    await client.mutation("events.appendEvent" as any, {
+    await callMutation("events.appendEvent", {
       conversationId: request.conversationId,
       type: "tool_result",
       deviceId,
@@ -75,7 +131,7 @@ export const createLocalHostRunner = ({ deviceId, userDataPath }: HostRunnerOpti
     inFlight.add(request.requestId);
 
     try {
-      const existing = await client.query("events.getToolResult" as any, {
+      const existing = await callQuery("events.getToolResult", {
         requestId: request.requestId,
         deviceId,
       });
@@ -112,10 +168,16 @@ export const createLocalHostRunner = ({ deviceId, userDataPath }: HostRunnerOpti
 
   const pollOnce = async () => {
     if (!client) return;
-    const result = (await client.query("events.listToolRequestsForDevice" as any, {
+    const response = await callQuery("events.listToolRequestsForDevice", {
       deviceId,
       paginationOpts: { cursor: null, numItems: 20 },
-    })) as PaginatedResult<ToolRequestEvent>;
+    });
+
+    if (!response || typeof response !== "object" || !("page" in response)) {
+      return;
+    }
+
+    const result = response as PaginatedResult<ToolRequestEvent>;
 
     for (const request of result.page) {
       queue = queue.then(() => handleToolRequest(request)).catch(() => undefined);
@@ -124,8 +186,10 @@ export const createLocalHostRunner = ({ deviceId, userDataPath }: HostRunnerOpti
 
   const start = () => {
     if (pollTimer) return;
+    void syncManifests();
     pollTimer = setInterval(() => {
       void pollOnce();
+      void syncManifests();
     }, POLL_INTERVAL_MS);
   };
 

@@ -1,25 +1,79 @@
 import { ConvexHttpClient } from "convex/browser";
 import { createToolHost } from "./tools.js";
+import { loadSkillsFromHome } from "./skills.js";
+import { loadAgentsFromHome } from "./agents.js";
+import path from "path";
 const POLL_INTERVAL_MS = 1500;
-export const createLocalHostRunner = ({ deviceId, userDataPath }) => {
-    const toolHost = createToolHost({ userDataPath });
+export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
+    const toolHost = createToolHost({ stellarHome });
     let client = null;
     let convexUrl = null;
     let pollTimer = null;
     const processed = new Set();
     const inFlight = new Set();
     let queue = Promise.resolve();
+    let syncPromise = null;
+    let lastSyncAt = 0;
+    const skillsPath = path.join(stellarHome, "skills");
+    const agentsPath = path.join(stellarHome, "agents");
+    const SYNC_MIN_INTERVAL_MS = 15000;
+    const callMutation = (name, args) => {
+        if (!client)
+            return Promise.resolve(null);
+        return client.mutation(name, args);
+    };
+    const callQuery = (name, args) => {
+        if (!client)
+            return Promise.resolve(null);
+        return client.query(name, args);
+    };
+    const syncManifests = async () => {
+        if (!client)
+            return;
+        const now = Date.now();
+        if (syncPromise)
+            return syncPromise;
+        if (now - lastSyncAt < SYNC_MIN_INTERVAL_MS)
+            return;
+        syncPromise = (async () => {
+            try {
+                await callMutation("agents.ensureBuiltins", {});
+                const pluginPayload = await toolHost.loadPlugins();
+                const skills = await loadSkillsFromHome(skillsPath, pluginPayload.skills);
+                const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
+                await callMutation("skills.upsertMany", {
+                    skills,
+                });
+                await callMutation("agents.upsertMany", {
+                    agents,
+                });
+                await callMutation("plugins.upsertMany", {
+                    plugins: pluginPayload.plugins,
+                    tools: pluginPayload.tools,
+                });
+                lastSyncAt = Date.now();
+            }
+            catch {
+                // Best-effort sync; ignore failures and retry later.
+            }
+            finally {
+                syncPromise = null;
+            }
+        })();
+        return syncPromise;
+    };
     const setConvexUrl = (url) => {
         if (convexUrl === url && client) {
             return;
         }
         convexUrl = url;
         client = new ConvexHttpClient(url, { logger: false });
+        void syncManifests();
     };
     const appendToolResult = async (request, result) => {
         if (!client || !request.requestId)
             return;
-        await client.mutation("events.appendEvent", {
+        await callMutation("events.appendEvent", {
             conversationId: request.conversationId,
             type: "tool_result",
             deviceId,
@@ -43,7 +97,7 @@ export const createLocalHostRunner = ({ deviceId, userDataPath }) => {
         }
         inFlight.add(request.requestId);
         try {
-            const existing = await client.query("events.getToolResult", {
+            const existing = await callQuery("events.getToolResult", {
                 requestId: request.requestId,
                 deviceId,
             });
@@ -79,10 +133,14 @@ export const createLocalHostRunner = ({ deviceId, userDataPath }) => {
     const pollOnce = async () => {
         if (!client)
             return;
-        const result = (await client.query("events.listToolRequestsForDevice", {
+        const response = await callQuery("events.listToolRequestsForDevice", {
             deviceId,
             paginationOpts: { cursor: null, numItems: 20 },
-        }));
+        });
+        if (!response || typeof response !== "object" || !("page" in response)) {
+            return;
+        }
+        const result = response;
         for (const request of result.page) {
             queue = queue.then(() => handleToolRequest(request)).catch(() => undefined);
         }
@@ -90,8 +148,10 @@ export const createLocalHostRunner = ({ deviceId, userDataPath }) => {
     const start = () => {
         if (pollTimer)
             return;
+        void syncManifests();
         pollTimer = setInterval(() => {
             void pollOnce();
+            void syncManifests();
         }, POLL_INTERVAL_MS);
     };
     const stop = () => {

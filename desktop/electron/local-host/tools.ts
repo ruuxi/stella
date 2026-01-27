@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import type { Dirent } from "fs";
 import path from "path";
 import { spawn } from "child_process";
+import { loadPluginsFromHome } from "./plugins.js";
 
 type ToolContext = {
   conversationId: string;
@@ -37,7 +38,50 @@ type TaskRecord = {
 };
 
 type ToolHostOptions = {
-  userDataPath: string;
+  stellarHome: string;
+};
+
+export type PluginSyncPayload = {
+  plugins: Array<{
+    id: string;
+    name: string;
+    version: string;
+    description?: string;
+    source: string;
+  }>;
+  tools: Array<{
+    pluginId: string;
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+    source: string;
+  }>;
+  skills: Array<{
+    id: string;
+    name: string;
+    description: string;
+    markdown: string;
+    agentTypes: string[];
+    toolsAllowlist?: string[];
+    tags?: string[];
+    version: number;
+    source: string;
+    filePath: string;
+  }>;
+  agents: Array<{
+    id: string;
+    name: string;
+    description: string;
+    systemPrompt: string;
+    agentTypes: string[];
+    toolsAllowlist?: string[];
+    defaultSkills?: string[];
+    model?: string;
+    maxTaskDepth?: number;
+    version: number;
+    source: string;
+    filePath: string;
+  }>;
 };
 
 const MAX_OUTPUT = 30_000;
@@ -165,8 +209,8 @@ const stripHtml = (html: string) => {
     .trim();
 };
 
-const getStatePath = (userDataPath: string, kind: string, id: string) =>
-  path.join(userDataPath, kind, `${id}.json`);
+const getStatePath = (stateRoot: string, kind: string, id: string) =>
+  path.join(stateRoot, kind, `${id}.json`);
 
 const loadJson = async <T>(filePath: string, fallback: T) => {
   try {
@@ -182,9 +226,46 @@ const saveJson = async (filePath: string, value: unknown) => {
   await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf-8");
 };
 
-export const createToolHost = ({ userDataPath }: ToolHostOptions) => {
+export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
   const shells = new Map<string, ShellRecord>();
   const tasks = new Map<string, TaskRecord>();
+
+  const stateRoot = path.join(stellarHome, "state");
+  const pluginsRoot = path.join(stellarHome, "plugins");
+
+  const pluginHandlers = new Map<
+    string,
+    (args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>
+  >();
+  let pluginSyncPayload: PluginSyncPayload = {
+    plugins: [],
+    tools: [],
+    skills: [],
+    agents: [],
+  };
+
+  const loadPlugins = async (): Promise<PluginSyncPayload> => {
+    const loaded = await loadPluginsFromHome(pluginsRoot);
+    pluginHandlers.clear();
+    for (const [name, handler] of loaded.handlers.entries()) {
+      pluginHandlers.set(name, handler);
+    }
+
+    pluginSyncPayload = {
+      plugins: loaded.plugins,
+      tools: loaded.tools.map((tool) => ({
+        pluginId: tool.pluginId,
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema as Record<string, unknown>,
+        source: tool.source,
+      })),
+      skills: loaded.skills,
+      agents: loaded.agents,
+    };
+
+    return pluginSyncPayload;
+  };
 
   const startShell = (command: string, cwd: string) => {
     const id = crypto.randomUUID();
@@ -657,7 +738,7 @@ export const createToolHost = ({ userDataPath }: ToolHostOptions) => {
       return { error: "Only one todo can be in_progress at a time." };
     }
 
-    const filePath = getStatePath(userDataPath, "todos", context.conversationId);
+    const filePath = getStatePath(stateRoot, "todos", context.conversationId);
     await saveJson(filePath, todos);
 
     const completed = todos.filter(
@@ -683,7 +764,7 @@ export const createToolHost = ({ userDataPath }: ToolHostOptions) => {
     context: ToolContext,
   ): Promise<ToolResult> => {
     const action = String(args.action ?? "");
-    const filePath = getStatePath(userDataPath, "tests", context.conversationId);
+    const filePath = getStatePath(stateRoot, "tests", context.conversationId);
     const current = await loadJson<
       Array<{
         id: string;
@@ -750,7 +831,8 @@ export const createToolHost = ({ userDataPath }: ToolHostOptions) => {
       id,
       description,
       status: "completed",
-      result: `Task delegation is not implemented yet.\n\nDescription: ${description}\nPrompt: ${prompt}`,
+      result:
+        "Task delegation is handled server-side. This device should not receive Task requests.",
       startedAt: Date.now(),
       completedAt: Date.now(),
     };
@@ -846,7 +928,7 @@ export const createToolHost = ({ userDataPath }: ToolHostOptions) => {
     toolArgs: Record<string, unknown>,
     context: ToolContext,
   ) => {
-    const handler = handlers[toolName];
+    const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
     if (!handler) {
       return { error: `Unknown tool: ${toolName}` } satisfies ToolResult;
     }
@@ -860,6 +942,8 @@ export const createToolHost = ({ userDataPath }: ToolHostOptions) => {
   return {
     executeTool,
     getShells: () => Array.from(shells.values()),
+    loadPlugins,
+    getPluginSyncPayload: () => pluginSyncPayload,
   };
 };
 
