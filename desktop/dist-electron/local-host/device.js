@@ -1,9 +1,9 @@
 import { promises as fs } from "fs";
 import path from "path";
 const DEVICE_FILE = "device.json";
-export const getDeviceRecordPath = (userDataPath) => path.join(userDataPath, DEVICE_FILE);
-export const getOrCreateDeviceId = async (userDataPath) => {
-    const recordPath = getDeviceRecordPath(userDataPath);
+export const getDeviceRecordPath = (statePath) => path.join(statePath, DEVICE_FILE);
+export const getOrCreateDeviceId = async (statePath) => {
+    const recordPath = getDeviceRecordPath(statePath);
     try {
         const raw = await fs.readFile(recordPath, "utf-8");
         const parsed = JSON.parse(raw);

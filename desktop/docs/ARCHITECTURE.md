@@ -46,3 +46,8 @@ Switching windows is handled by the main process. The renderer requests the wind
 - General Agent handles user tasks using tools and screens.
 - Self-Modification Agent edits the platform itself with tracked changes.
 - Both are invoked from the renderer via the Model Gateway (server-side only).
+
+## Agent System Notes
+- Stellar uses a single default home directory at `~/.stellar`.
+- The local host scans `~/.stellar/{agents,skills,plugins}` and syncs manifests to the backend.
+- Task delegation (`Task`, `TaskOutput`) is handled server-side, while device and plugin tools run on the local host.

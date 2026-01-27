@@ -12,9 +12,16 @@ type Props = {
   }) => void;
 };
 
-const getMessageText = (event: EventRecord) => {
+const getEventText = (event: EventRecord) => {
   if (event.payload && typeof event.payload === "object") {
-    return (event.payload as { text?: string }).text ?? "";
+    const payload = event.payload as {
+      text?: string;
+      result?: string;
+      error?: string;
+    };
+    if (payload.text) return payload.text;
+    if (event.type === "task_completed" && payload.result) return payload.result;
+    if (event.type === "task_failed" && payload.error) return payload.error;
   }
   return "";
 };
@@ -31,6 +38,23 @@ const getAttachments = (event: EventRecord) => {
 };
 
 const formatFallback = (event: EventRecord) => {
+  if (event.payload && typeof event.payload === "object") {
+    const payload = event.payload as {
+      taskId?: string;
+      description?: string;
+      agentType?: string;
+      error?: string;
+    };
+    if (event.type === "task_started") {
+      return `Task started: ${payload.description ?? payload.taskId ?? "task"}`;
+    }
+    if (event.type === "task_completed") {
+      return `Task completed: ${payload.taskId ?? "task"}`;
+    }
+    if (event.type === "task_failed") {
+      return `Task failed: ${payload.error ?? payload.taskId ?? "task"}`;
+    }
+  }
   if (event.type === "tool_request") {
     return `Tool request -> ${event.targetDeviceId ?? "unknown device"}`;
   }
@@ -60,7 +84,7 @@ export const ConversationEvents = ({
       ) : (
         <>
           {visible.map((event) => {
-            const text = getMessageText(event);
+            const text = getEventText(event);
             const attachments = getAttachments(event);
             const role =
               event.type === "user_message"

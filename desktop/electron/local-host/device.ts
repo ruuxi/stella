@@ -7,11 +7,11 @@ type DeviceRecord = {
 
 const DEVICE_FILE = "device.json";
 
-export const getDeviceRecordPath = (userDataPath: string) =>
-  path.join(userDataPath, DEVICE_FILE);
+export const getDeviceRecordPath = (statePath: string) =>
+  path.join(statePath, DEVICE_FILE);
 
-export const getOrCreateDeviceId = async (userDataPath: string) => {
-  const recordPath = getDeviceRecordPath(userDataPath);
+export const getOrCreateDeviceId = async (statePath: string) => {
+  const recordPath = getDeviceRecordPath(statePath);
   try {
     const raw = await fs.readFile(recordPath, "utf-8");
     const parsed = JSON.parse(raw) as DeviceRecord;

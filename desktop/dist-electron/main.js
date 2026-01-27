@@ -5,6 +5,7 @@ import { MouseHookManager } from './mouse-hook.js';
 import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCursor, getRadialWindow, calculateSelectedWedge, } from './radial-window.js';
 import { getOrCreateDeviceId } from './local-host/device.js';
 import { createLocalHostRunner } from './local-host/runner.js';
+import { resolveStellarHome } from './local-host/stellar-home.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -233,8 +234,9 @@ const configureLocalHost = (convexUrl) => {
 };
 app.whenReady().then(async () => {
     const userDataPath = app.getPath('userData');
-    deviceId = await getOrCreateDeviceId(userDataPath);
-    localHostRunner = createLocalHostRunner({ deviceId, userDataPath });
+    const stellarHome = await resolveStellarHome(app, userDataPath);
+    deviceId = await getOrCreateDeviceId(stellarHome.statePath);
+    localHostRunner = createLocalHostRunner({ deviceId, stellarHome: stellarHome.homePath });
     if (pendingConvexUrl) {
         localHostRunner.setConvexUrl(pendingConvexUrl);
     }

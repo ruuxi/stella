@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { spawn } from "child_process";
+import { loadPluginsFromHome } from "./plugins.js";
 const MAX_OUTPUT = 30000;
 const MAX_FILE_BYTES = 1000000;
 const ensureAbsolutePath = (filePath) => {
@@ -111,7 +112,7 @@ const stripHtml = (html) => {
         .replace(/\s+/g, " ")
         .trim();
 };
-const getStatePath = (userDataPath, kind, id) => path.join(userDataPath, kind, `${id}.json`);
+const getStatePath = (stateRoot, kind, id) => path.join(stateRoot, kind, `${id}.json`);
 const loadJson = async (filePath, fallback) => {
     try {
         const raw = await fs.readFile(filePath, "utf-8");
@@ -125,9 +126,38 @@ const saveJson = async (filePath, value) => {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf-8");
 };
-export const createToolHost = ({ userDataPath }) => {
+export const createToolHost = ({ stellarHome }) => {
     const shells = new Map();
     const tasks = new Map();
+    const stateRoot = path.join(stellarHome, "state");
+    const pluginsRoot = path.join(stellarHome, "plugins");
+    const pluginHandlers = new Map();
+    let pluginSyncPayload = {
+        plugins: [],
+        tools: [],
+        skills: [],
+        agents: [],
+    };
+    const loadPlugins = async () => {
+        const loaded = await loadPluginsFromHome(pluginsRoot);
+        pluginHandlers.clear();
+        for (const [name, handler] of loaded.handlers.entries()) {
+            pluginHandlers.set(name, handler);
+        }
+        pluginSyncPayload = {
+            plugins: loaded.plugins,
+            tools: loaded.tools.map((tool) => ({
+                pluginId: tool.pluginId,
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+                source: tool.source,
+            })),
+            skills: loaded.skills,
+            agents: loaded.agents,
+        };
+        return pluginSyncPayload;
+    };
     const startShell = (command, cwd) => {
         const id = crypto.randomUUID();
         const shell = process.platform === "win32" ? "cmd.exe" : "bash";
@@ -558,7 +588,7 @@ export const createToolHost = ({ userDataPath }) => {
         if (inProgress.length > 1) {
             return { error: "Only one todo can be in_progress at a time." };
         }
-        const filePath = getStatePath(userDataPath, "todos", context.conversationId);
+        const filePath = getStatePath(stateRoot, "todos", context.conversationId);
         await saveJson(filePath, todos);
         const completed = todos.filter((item) => typeof item === "object" && item.status === "completed").length;
         const formatted = todos
@@ -576,7 +606,7 @@ export const createToolHost = ({ userDataPath }) => {
     };
     const handleTestWrite = async (args, context) => {
         const action = String(args.action ?? "");
-        const filePath = getStatePath(userDataPath, "tests", context.conversationId);
+        const filePath = getStatePath(stateRoot, "tests", context.conversationId);
         const current = await loadJson(filePath, []);
         if (action === "add") {
             const tests = Array.isArray(args.tests) ? args.tests : [];
@@ -625,7 +655,7 @@ export const createToolHost = ({ userDataPath }) => {
             id,
             description,
             status: "completed",
-            result: `Task delegation is not implemented yet.\n\nDescription: ${description}\nPrompt: ${prompt}`,
+            result: "Task delegation is handled server-side. This device should not receive Task requests.",
             startedAt: Date.now(),
             completedAt: Date.now(),
         };
@@ -703,7 +733,7 @@ export const createToolHost = ({ userDataPath }) => {
         VideoGenerate: async () => notConfigured("VideoGenerate"),
     };
     const executeTool = async (toolName, toolArgs, context) => {
-        const handler = handlers[toolName];
+        const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
         if (!handler) {
             return { error: `Unknown tool: ${toolName}` };
         }
@@ -717,5 +747,7 @@ export const createToolHost = ({ userDataPath }) => {
     return {
         executeTool,
         getShells: () => Array.from(shells.values()),
+        loadPlugins,
+        getPluginSyncPayload: () => pluginSyncPayload,
     };
 };
