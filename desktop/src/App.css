@@ -194,6 +194,30 @@
   gap: 4px;
 }
 
+.event-item.user,
+.event-item.assistant {
+  max-width: 85%;
+}
+
+.event-item.user {
+  align-self: flex-end;
+  background: rgba(28, 23, 18, 0.08);
+}
+
+.event-item.assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.event-item.system {
+  align-self: center;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.event-item.streaming {
+  border-style: dashed;
+}
+
 .event-type {
   font-size: 11px;
   letter-spacing: 0.12em;

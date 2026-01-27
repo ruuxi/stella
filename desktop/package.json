@@ -9,9 +9,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"tsc -p tsconfig.electron.json && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
-    "electron:build": "tsc -b && vite build && tsc -p tsconfig.electron.json && electron-builder",
-    "electron:preview": "tsc -p tsconfig.electron.json && electron ."
+    "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron-builder",
+    "electron:preview": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron ."
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.51",

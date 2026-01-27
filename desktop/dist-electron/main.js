@@ -11,6 +11,10 @@ const uiState = {
 };
 let fullWindow = null;
 let miniWindow = null;
+const miniSize = {
+    width: 520,
+    height: 280,
+};
 const broadcastUiState = () => {
     for (const window of BrowserWindow.getAllWindows()) {
         window.webContents.send('ui:state', uiState);
@@ -63,16 +67,26 @@ const createFullWindow = () => {
         fullWindow = null;
     });
 };
+const positionMiniWindow = () => {
+    if (!miniWindow) {
+        return;
+    }
+    const anchor = fullWindow ?? miniWindow;
+    const display = anchor ? screen.getDisplayMatching(anchor.getBounds()) : screen.getPrimaryDisplay();
+    const { x, y, width, height } = display.workArea;
+    const targetX = Math.round(x + width - miniSize.width - 24);
+    const targetY = Math.round(y + 48);
+    miniWindow.setBounds({
+        x: targetX,
+        y: targetY,
+        width: miniSize.width,
+        height: miniSize.height,
+    });
+};
 const createMiniWindow = () => {
-    const display = screen.getPrimaryDisplay();
-    const { width: screenWidth } = display.workAreaSize;
-    const miniWidth = 520;
-    const miniHeight = 280;
     miniWindow = new BrowserWindow({
-        width: miniWidth,
-        height: miniHeight,
-        x: Math.round(screenWidth - miniWidth - 24),
-        y: 48,
+        width: miniSize.width,
+        height: miniSize.height,
         resizable: false,
         maximizable: false,
         minimizable: false,
@@ -87,6 +101,7 @@ const createMiniWindow = () => {
     miniWindow.on('closed', () => {
         miniWindow = null;
     });
+    positionMiniWindow();
     miniWindow.hide();
 };
 const showWindow = (target) => {
@@ -94,6 +109,7 @@ const showWindow = (target) => {
         if (!miniWindow) {
             createMiniWindow();
         }
+        positionMiniWindow();
         miniWindow?.show();
         miniWindow?.focus();
         fullWindow?.hide();
