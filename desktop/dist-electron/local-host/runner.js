@@ -4,8 +4,13 @@ import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import path from "path";
 const POLL_INTERVAL_MS = 1500;
-export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
-    const toolHost = createToolHost({ stellarHome });
+export const createLocalHostRunner = ({ deviceId, stellarHome, projectRoot, screenBridge, }) => {
+    const toolHost = createToolHost({
+        stellarHome,
+        projectRoot,
+        deviceId,
+        screenBridge: screenBridge ?? null,
+    });
     let client = null;
     let convexUrl = null;
     let pollTimer = null;
@@ -14,6 +19,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
     let queue = Promise.resolve();
     let syncPromise = null;
     let lastSyncAt = 0;
+    let startupChecked = false;
     const skillsPath = path.join(stellarHome, "skills");
     const agentsPath = path.join(stellarHome, "agents");
     const SYNC_MIN_INTERVAL_MS = 15000;
@@ -35,6 +41,21 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
             return Promise.resolve(null);
         const convexName = toConvexName(name);
         return client.query(convexName, args);
+    };
+    const callAction = (name, args) => {
+        if (!client)
+            return Promise.resolve(null);
+        const convexName = toConvexName(name);
+        return client.action(convexName, args);
+    };
+    const updateConvexBridge = () => {
+        toolHost.setConvexBridge(client
+            ? {
+                callMutation,
+                callQuery,
+                callAction,
+            }
+            : null);
     };
     const syncManifests = async () => {
         if (!client)
@@ -77,6 +98,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
         }
         convexUrl = url;
         client = new ConvexHttpClient(url, { logger: false });
+        updateConvexBridge();
         void syncManifests();
     };
     const appendToolResult = async (request, result) => {
@@ -116,6 +138,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
             }
             const toolName = request.payload?.toolName;
             const toolArgs = request.payload?.args ?? {};
+            const agentType = request.payload?.agentType;
             if (!toolName) {
                 await appendToolResult(request, { error: "toolName missing on request." });
                 processed.add(request.requestId);
@@ -125,6 +148,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
                 conversationId: request.conversationId,
                 deviceId,
                 requestId: request.requestId,
+                agentType,
             });
             await appendToolResult(request, toolResult);
             processed.add(request.requestId);
@@ -163,6 +187,10 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
         if (pollTimer)
             return;
         void syncManifests();
+        if (!startupChecked) {
+            startupChecked = true;
+            void toolHost.runStartupChecks();
+        }
         pollTimer = setInterval(() => {
             void pollOnce();
             void syncManifests();
