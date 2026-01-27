@@ -101,15 +101,32 @@ http.route({
         : "";
 
     const attachments = body.attachments ?? [];
-    const attachmentSummary =
-      attachments.length > 0
-        ? `\n\nAttachments:\n${attachments
-            .map((attachment) => {
-              const label = attachment.url ?? attachment.id ?? "attachment";
-              return `- ${label}`;
-            })
-            .join("\n")}`
-        : "";
+    const resolvedImages: Array<{ url: string; mimeType?: string }> = [];
+    for (const attachment of attachments) {
+      if (attachment.id) {
+        const record = await ctx.runQuery(internal.attachments.getById, {
+          id: attachment.id as Id<"attachments">,
+        });
+        if (record) {
+          const storageUrl =
+            record.url ??
+            (await ctx.storage.getUrl(record.storageKey as Id<"_storage">));
+          if (storageUrl) {
+            resolvedImages.push({
+              url: storageUrl,
+              mimeType: record.mimeType ?? undefined,
+            });
+          }
+        }
+        continue;
+      }
+      if (attachment.url) {
+        resolvedImages.push({
+          url: attachment.url,
+          mimeType: attachment.mimeType,
+        });
+      }
+    }
 
     const systemPrompt =
       body.agent === "self_mod"
@@ -124,13 +141,35 @@ http.route({
       );
     }
 
+    const contentParts: Array<
+      { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }
+    > = [];
+    const trimmedText = userText.trim();
+    if (trimmedText.length > 0) {
+      contentParts.push({ type: "text", text: trimmedText });
+    }
+    for (const image of resolvedImages) {
+      try {
+        contentParts.push({
+          type: "image",
+          image: new URL(image.url),
+          mediaType: image.mimeType,
+        });
+      } catch {
+        // Ignore invalid URLs.
+      }
+    }
+    if (contentParts.length === 0) {
+      contentParts.push({ type: "text", text: " " });
+    }
+
     const result = await streamText({
       model,
       system: systemPrompt,
       messages: [
         {
           role: "user",
-          content: `${userText}${attachmentSummary}`.trim(),
+          content: contentParts,
         },
       ],
       onFinish: async ({ text }) => {
