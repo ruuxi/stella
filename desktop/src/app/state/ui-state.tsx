@@ -12,7 +12,7 @@ type UiStateContextValue = {
 }
 
 const defaultState: UiState = {
-  mode: 'ask',
+  mode: 'chat',
   window: 'full',
   conversationId: null,
 }
@@ -70,7 +70,12 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
 
   const setWindow = useCallback(
     (windowMode: WindowMode) => {
-      updateState({ window: windowMode })
+      // Full view always uses chat mode
+      if (windowMode === 'full') {
+        updateState({ window: windowMode, mode: 'chat' })
+      } else {
+        updateState({ window: windowMode })
+      }
       const api = getElectronApi()
       if (api) {
         api.showWindow(windowMode)

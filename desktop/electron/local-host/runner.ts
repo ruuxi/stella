@@ -45,14 +45,23 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
   const agentsPath = path.join(stellarHome, "agents");
   const SYNC_MIN_INTERVAL_MS = 15_000;
 
+  const toConvexName = (name: string) => {
+    // Convex expects "module:function" identifiers, not dot-separated paths.
+    const firstDot = name.indexOf(".");
+    if (firstDot === -1) return name;
+    return `${name.slice(0, firstDot)}:${name.slice(firstDot + 1)}`;
+  };
+
   const callMutation = (name: string, args: Record<string, unknown>) => {
     if (!client) return Promise.resolve(null);
-    return client.mutation(name as never, args as never);
+    const convexName = toConvexName(name);
+    return client.mutation(convexName as never, args as never);
   };
 
   const callQuery = (name: string, args: Record<string, unknown>) => {
     if (!client) return Promise.resolve(null);
-    return client.query(name as never, args as never);
+    const convexName = toConvexName(name);
+    return client.query(convexName as never, args as never);
   };
 
   const syncManifests = async () => {
@@ -168,19 +177,23 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
 
   const pollOnce = async () => {
     if (!client) return;
-    const response = await callQuery("events.listToolRequestsForDevice", {
-      deviceId,
-      paginationOpts: { cursor: null, numItems: 20 },
-    });
+    try {
+      const response = await callQuery("events.listToolRequestsForDevice", {
+        deviceId,
+        paginationOpts: { cursor: null, numItems: 20 },
+      });
 
-    if (!response || typeof response !== "object" || !("page" in response)) {
-      return;
-    }
+      if (!response || typeof response !== "object" || !("page" in response)) {
+        return;
+      }
 
-    const result = response as PaginatedResult<ToolRequestEvent>;
+      const result = response as PaginatedResult<ToolRequestEvent>;
 
-    for (const request of result.page) {
-      queue = queue.then(() => handleToolRequest(request)).catch(() => undefined);
+      for (const request of result.page) {
+        queue = queue.then(() => handleToolRequest(request)).catch(() => undefined);
+      }
+    } catch {
+      // Swallow polling errors; they will be retried on the next interval.
     }
   };
 
