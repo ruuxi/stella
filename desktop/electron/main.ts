@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -175,6 +175,38 @@ app.whenReady().then(() => {
       return
     }
     showWindow(target)
+  })
+
+  ipcMain.handle('screenshot:capture', async () => {
+    const display = screen.getPrimaryDisplay()
+    const scaleFactor = display.scaleFactor ?? 1
+    const thumbnailSize = {
+      width: Math.floor(display.size.width * scaleFactor),
+      height: Math.floor(display.size.height * scaleFactor),
+    }
+
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize,
+    })
+
+    const preferred = sources.find(
+      (source) => source.display_id === String(display.id),
+    )
+    const source = preferred ?? sources[0]
+    if (!source) {
+      return null
+    }
+
+    const image = source.thumbnail
+    const png = image.toPNG()
+    const size = image.getSize()
+
+    return {
+      dataUrl: `data:image/png;base64,${png.toString('base64')}`,
+      width: size.width,
+      height: size.height,
+    }
   })
 
   app.on('activate', () => {

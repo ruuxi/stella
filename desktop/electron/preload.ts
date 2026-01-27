@@ -15,4 +15,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   showWindow: (target: 'mini' | 'full') => ipcRenderer.send('window:show', target),
+  captureScreenshot: () => ipcRenderer.invoke('screenshot:capture'),
 })

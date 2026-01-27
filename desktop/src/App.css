@@ -230,6 +230,27 @@
   color: #2b241f;
 }
 
+.event-attachments {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.event-attachment {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(28, 23, 18, 0.12);
+  object-fit: cover;
+}
+
+.event-attachment-fallback {
+  font-size: 11px;
+  color: #6b6257;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(27, 23, 18, 0.06);
+}
+
 .event-empty {
   font-size: 12px;
   color: #7a6f63;

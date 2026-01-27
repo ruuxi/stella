@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
@@ -8,6 +8,7 @@ import { getOrCreateDeviceId } from "../services/device";
 import { getOwnerId } from "../services/identity";
 import { streamChat } from "../services/model-gateway";
 import { getElectronApi } from "../services/electron";
+import { captureScreenshot } from "../services/screenshot";
 import type { UiMode } from "../types/ui";
 
 const modes: UiMode[] = ["ask", "chat", "voice"];
@@ -24,9 +25,12 @@ export const MiniShell = () => {
     null,
   );
   const appendEvent = useMutation(api.events.appendEvent);
+  const createAttachment = useAction(api.attachments.createFromDataUrl);
   const createConversation = useMutation(api.conversations.createConversation);
   const events = useConversationEvents(state.conversationId ?? undefined);
   const isChatMode = state.mode === "chat";
+  const isAskMode = state.mode === "ask";
+  const canSend = isChatMode || isAskMode;
 
   useEffect(() => {
     if (!pendingUserMessageId) {
@@ -52,45 +56,76 @@ export const MiniShell = () => {
     }
   }, [events, pendingUserMessageId]);
 
-  const sendMessage = () => {
-    if (!isChatMode || !state.conversationId || !message.trim()) {
+  const sendMessage = async () => {
+    if (!canSend || !state.conversationId || !message.trim()) {
       return;
     }
     const deviceId = getOrCreateDeviceId();
-    void appendEvent({
+    const text = message.trim();
+    setMessage("");
+
+    let attachments: Array<{ id?: string; url?: string; mimeType?: string }> = [];
+
+    if (isAskMode) {
+      try {
+        const screenshot = await captureScreenshot();
+        if (!screenshot?.dataUrl) {
+          throw new Error("Screenshot capture failed.");
+        }
+        const attachment = await createAttachment({
+          conversationId: state.conversationId,
+          deviceId,
+          dataUrl: screenshot.dataUrl,
+        });
+        if (attachment?._id) {
+          attachments = [
+            {
+              id: attachment._id as string,
+              url: attachment.url,
+              mimeType: attachment.mimeType,
+            },
+          ];
+        }
+      } catch (error) {
+        console.error("Screenshot capture failed", error);
+        return;
+      }
+    }
+
+    const event = await appendEvent({
       conversationId: state.conversationId,
       type: "user_message",
       deviceId,
-      payload: { text: message.trim() },
-    }).then((event: { _id?: string } | null) => {
-      if (event?._id) {
-        setStreamingText("");
-        setIsStreaming(true);
-        setPendingUserMessageId(event._id);
-        void streamChat(
-          {
-            conversationId: state.conversationId!,
-            userMessageId: event._id,
-          },
-          {
-            onTextDelta: (delta) => {
-              setStreamingText((prev) => prev + delta);
-            },
-            onDone: () => {
-              setIsStreaming(false);
-            },
-            onError: (error) => {
-              console.error("Model gateway error", error);
-              setIsStreaming(false);
-            },
-          },
-        ).catch((error) => {
-          console.error("Model gateway error", error);
-          setIsStreaming(false);
-        });
-      }
+      payload: { text, attachments },
     });
-    setMessage("");
+
+    if (event?._id) {
+      setStreamingText("");
+      setIsStreaming(true);
+      setPendingUserMessageId(event._id);
+      void streamChat(
+        {
+          conversationId: state.conversationId!,
+          userMessageId: event._id,
+          attachments,
+        },
+        {
+          onTextDelta: (delta) => {
+            setStreamingText((prev) => prev + delta);
+          },
+          onDone: () => {
+            setIsStreaming(false);
+          },
+          onError: (error) => {
+            console.error("Model gateway error", error);
+            setIsStreaming(false);
+          },
+        },
+      ).catch((error) => {
+        console.error("Model gateway error", error);
+        setIsStreaming(false);
+      });
+    }
   };
 
   const onNewConversation = () => {
@@ -140,16 +175,16 @@ export const MiniShell = () => {
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
-              sendMessage();
+              void sendMessage();
             }
           }}
-          disabled={!state.conversationId || !isChatMode}
+          disabled={!state.conversationId || !canSend}
         />
         <button
           className="ghost-button"
           type="button"
-          onClick={sendMessage}
-          disabled={!state.conversationId || !isChatMode}
+          onClick={() => void sendMessage()}
+          disabled={!state.conversationId || !canSend}
         >
           Send
         </button>
@@ -167,8 +202,8 @@ export const MiniShell = () => {
             <ConversationEvents
               events={events}
               maxItems={4}
-              streamingText={isChatMode ? streamingText : undefined}
-              isStreaming={isChatMode ? isStreaming : false}
+              streamingText={canSend ? streamingText : undefined}
+              isStreaming={canSend ? isStreaming : false}
             />
           ) : (
             <div className="event-empty">Loading conversation...</div>
