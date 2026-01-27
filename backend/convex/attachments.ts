@@ -9,7 +9,12 @@ const parseDataUrl = (dataUrl: string) => {
     throw new Error("Invalid data URL");
   }
   const [, mimeType, base64] = match;
-  const bytes = Buffer.from(base64, "base64");
+  // Use atob + Uint8Array instead of Buffer (not available in Convex runtime)
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
   return { mimeType, bytes };
 };
 
