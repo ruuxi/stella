@@ -56,7 +56,6 @@ export default defineSchema({
     name: v.string(),
     description: v.string(),
     markdown: v.string(),
-    filePath: v.optional(v.string()),
     agentTypes: v.array(v.string()),
     toolsAllowlist: v.optional(v.array(v.string())),
     tags: v.optional(v.array(v.string())),
