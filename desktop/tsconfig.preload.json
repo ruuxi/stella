@@ -6,7 +6,8 @@
     "outDir": "dist-electron",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["electron/preload.ts"]
 }

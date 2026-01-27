@@ -13,6 +13,8 @@ export type ElectronApi = {
     width: number
     height: number
   } | null>
+  getDeviceId: () => Promise<string | null>
+  configureHost: (config: { convexUrl?: string }) => Promise<{ deviceId: string | null }>
   // Radial dial events
   onRadialShow: (callback: (event: unknown, data: { centerX: number; centerY: number }) => void) => () => void
   onRadialHide: (callback: () => void) => () => void

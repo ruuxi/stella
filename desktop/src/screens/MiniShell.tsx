@@ -67,7 +67,7 @@ export const MiniShell = () => {
     if (!state.conversationId || !message.trim()) {
       return;
     }
-    const deviceId = getOrCreateDeviceId();
+    const deviceId = await getOrCreateDeviceId();
     const text = message.trim();
     setMessage("");
 

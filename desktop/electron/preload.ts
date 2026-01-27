@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   showWindow: (target: 'mini' | 'full') => ipcRenderer.send('window:show', target),
   captureScreenshot: () => ipcRenderer.invoke('screenshot:capture'),
+  getDeviceId: () => ipcRenderer.invoke('device:getId'),
+  configureHost: (config: { convexUrl?: string }) => ipcRenderer.invoke('host:configure', config),
 
   // Radial dial events
   onRadialShow: (callback: (event: IpcRendererEvent, data: { centerX: number; centerY: number }) => void) => {

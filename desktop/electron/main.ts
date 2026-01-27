@@ -11,6 +11,8 @@ import {
   calculateSelectedWedge,
   type RadialWedge,
 } from './radial-window.js'
+import { getOrCreateDeviceId } from './local-host/device.js'
+import { createLocalHostRunner } from './local-host/runner.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -35,6 +37,9 @@ const uiState: UiState = {
 let fullWindow: BrowserWindow | null = null
 let miniWindow: BrowserWindow | null = null
 let mouseHook: MouseHookManager | null = null
+let localHostRunner: ReturnType<typeof createLocalHostRunner> | null = null
+let deviceId: string | null = null
+let pendingConvexUrl: string | null = null
 
 const miniSize = {
   width: 680,
@@ -274,7 +279,22 @@ const initMouseHook = () => {
   mouseHook.start()
 }
 
-app.whenReady().then(() => {
+const configureLocalHost = (convexUrl: string) => {
+  pendingConvexUrl = convexUrl
+  if (localHostRunner) {
+    localHostRunner.setConvexUrl(convexUrl)
+  }
+}
+
+app.whenReady().then(async () => {
+  const userDataPath = app.getPath('userData')
+  deviceId = await getOrCreateDeviceId(userDataPath)
+  localHostRunner = createLocalHostRunner({ deviceId, userDataPath })
+  if (pendingConvexUrl) {
+    localHostRunner.setConvexUrl(pendingConvexUrl)
+  }
+  localHostRunner.start()
+
   createFullWindow()
   createMiniWindow()
   createRadialWindow() // Pre-create radial window for faster display
@@ -282,6 +302,14 @@ app.whenReady().then(() => {
 
   // Initialize mouse hook for global right-click detection
   initMouseHook()
+
+  ipcMain.handle('device:getId', () => deviceId)
+  ipcMain.handle('host:configure', (_event, config: { convexUrl?: string }) => {
+    if (config?.convexUrl) {
+      configureLocalHost(config.convexUrl)
+    }
+    return { deviceId }
+  })
 
   ipcMain.handle('ui:getState', () => uiState)
   ipcMain.handle('ui:setState', (_event, partial: Partial<UiState>) => {
@@ -359,5 +387,9 @@ app.on('will-quit', () => {
   if (mouseHook) {
     mouseHook.stop()
     mouseHook = null
+  }
+  if (localHostRunner) {
+    localHostRunner.stop()
+    localHostRunner = null
   }
 })
