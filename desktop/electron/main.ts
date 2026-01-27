@@ -1,6 +1,16 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { MouseHookManager } from './mouse-hook.js'
+import {
+  createRadialWindow,
+  showRadialWindow,
+  hideRadialWindow,
+  updateRadialCursor,
+  getRadialWindow,
+  calculateSelectedWedge,
+  type RadialWedge,
+} from './radial-window.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -24,11 +34,14 @@ const uiState: UiState = {
 
 let fullWindow: BrowserWindow | null = null
 let miniWindow: BrowserWindow | null = null
+let mouseHook: MouseHookManager | null = null
 
 const miniSize = {
-  width: 520,
-  height: 280,
+  width: 680,
+  height: 420,
 }
+
+const RADIAL_SIZE = 280
 
 const broadcastUiState = () => {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -97,9 +110,12 @@ const positionMiniWindow = () => {
   }
   const anchor = fullWindow ?? miniWindow
   const display = anchor ? screen.getDisplayMatching(anchor.getBounds()) : screen.getPrimaryDisplay()
-  const { x, y, width, height } = display.workArea
-  const targetX = Math.round(x + width - miniSize.width - 24)
-  const targetY = Math.round(y + 48)
+  const { x, y, width } = display.workArea
+
+  // Center horizontally, position in upper third of screen (like Spotlight)
+  const targetX = Math.round(x + (width - miniSize.width) / 2)
+  const targetY = Math.round(y + 120)
+
   miniWindow.setBounds({
     x: targetX,
     y: targetY,
@@ -116,6 +132,12 @@ const createMiniWindow = () => {
     maximizable: false,
     minimizable: false,
     alwaysOnTop: true,
+    frame: false,
+    transparent: true,
+    hasShadow: true,
+    vibrancy: 'under-window',
+    visualEffectState: 'active',
+    skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -127,6 +149,13 @@ const createMiniWindow = () => {
 
   miniWindow.on('closed', () => {
     miniWindow = null
+  })
+
+  // Blur event hides mini window (like Spotlight)
+  miniWindow.on('blur', () => {
+    if (miniWindow && miniWindow.isVisible()) {
+      miniWindow.hide()
+    }
   })
 
   positionMiniWindow()
@@ -154,10 +183,105 @@ const showWindow = (target: WindowMode) => {
   updateUiState({ window: target })
 }
 
+// Handle radial wedge selection
+const handleRadialSelection = (wedge: RadialWedge) => {
+  switch (wedge) {
+    case 'ask':
+      updateUiState({ mode: 'ask' })
+      showWindow('mini')
+      break
+    case 'chat':
+      updateUiState({ mode: 'chat' })
+      showWindow('mini')
+      break
+    case 'voice':
+      updateUiState({ mode: 'voice' })
+      showWindow('mini')
+      break
+    case 'full':
+      showWindow('full')
+      break
+    case 'menu':
+      // Menu just closes the radial - native menu passthrough is handled separately
+      break
+  }
+}
+
+// Trigger native context menu (platform-specific)
+const triggerNativeContextMenu = async (_x: number, _y: number) => {
+  // On most platforms, we simply don't block the right-click
+  // The uiohook captures the event but doesn't prevent it from reaching the system
+  // However, if needed, we could use platform-specific approaches:
+  // - Windows: Could use PowerShell or nircmd
+  // - macOS: Could use AppleScript
+  // - Linux: xdotool
+  // For now, we just do nothing and let the system handle it normally
+  // since uiohook doesn't actually block events, just observes them
+}
+
+// Initialize mouse hook
+const initMouseHook = () => {
+  mouseHook = new MouseHookManager({
+    onRadialShow: (x: number, y: number) => {
+      showRadialWindow(x, y)
+    },
+    onRadialHide: () => {
+      hideRadialWindow()
+    },
+    onMouseMove: (x: number, y: number) => {
+      updateRadialCursor(x, y)
+    },
+    onMouseUp: (x: number, y: number) => {
+      const display = screen.getDisplayNearestPoint({ x, y })
+      const scaleFactor = display.scaleFactor ?? 1
+      const cursorX = x / scaleFactor
+      const cursorY = y / scaleFactor
+
+      // Get radial window bounds to calculate relative position
+      const radialWin = getRadialWindow()
+      if (radialWin) {
+        const bounds = radialWin.getBounds()
+        const relativeX = cursorX - bounds.x
+        const relativeY = cursorY - bounds.y
+
+        const wedge = calculateSelectedWedge(
+          relativeX,
+          relativeY,
+          RADIAL_SIZE / 2,
+          RADIAL_SIZE / 2
+        )
+
+        if (wedge) {
+          handleRadialSelection(wedge)
+        } else {
+          // No wedge selected - focus radial briefly to try to suppress native menu
+          // This is a workaround since uiohook is passive and can't block events
+          radialWin.focus()
+          setTimeout(() => {
+            hideRadialWindow()
+          }, 10)
+        }
+
+        // Send mouse up event to radial window
+        radialWin.webContents.send('radial:mouseup', { wedge })
+      }
+    },
+    onNativeMenuRequest: (x: number, y: number) => {
+      triggerNativeContextMenu(x, y)
+    },
+  })
+
+  mouseHook.start()
+}
+
 app.whenReady().then(() => {
   createFullWindow()
   createMiniWindow()
+  createRadialWindow() // Pre-create radial window for faster display
   showWindow('full')
+
+  // Initialize mouse hook for global right-click detection
+  initMouseHook()
 
   ipcMain.handle('ui:getState', () => uiState)
   ipcMain.handle('ui:setState', (_event, partial: Partial<UiState>) => {
@@ -175,6 +299,12 @@ app.whenReady().then(() => {
       return
     }
     showWindow(target)
+  })
+
+  // Handle radial wedge selection from renderer
+  ipcMain.on('radial:select', (_event, wedge: RadialWedge) => {
+    handleRadialSelection(wedge)
+    hideRadialWindow()
   })
 
   ipcMain.handle('screenshot:capture', async () => {
@@ -221,5 +351,13 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+app.on('will-quit', () => {
+  // Stop mouse hook before quitting
+  if (mouseHook) {
+    mouseHook.stop()
+    mouseHook = null
   }
 })
