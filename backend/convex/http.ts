@@ -181,6 +181,7 @@ http.route({
           conversationId,
           userMessageId,
           targetDeviceId,
+          agentType,
           sourceDeviceId: userEvent.deviceId,
         },
         {

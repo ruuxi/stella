@@ -40,6 +40,7 @@ export const enqueueToolRequest = internalMutation({
     toolArgs: v.any(),
     sourceDeviceId: v.optional(v.string()),
     userMessageId: v.optional(v.id("events")),
+    agentType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const timestamp = Date.now();
@@ -56,6 +57,7 @@ export const enqueueToolRequest = internalMutation({
         targetDeviceId: args.targetDeviceId,
         sourceDeviceId: args.sourceDeviceId,
         userMessageId: args.userMessageId,
+        agentType: args.agentType,
       },
     });
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });

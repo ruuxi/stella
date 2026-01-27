@@ -22,6 +22,18 @@ export const BASE_TOOL_NAMES = [
   "WebSearch",
   "TodoWrite",
   "TestWrite",
+  "validation.run",
+  "changeset.finish",
+  "changeset.rollback",
+  "changeset.status",
+  "pack.publish",
+  "pack.install",
+  "pack.uninstall",
+  "update.check",
+  "update.apply",
+  "screen.invoke",
+  "screen.list",
+  "agent.invoke",
   "Task",
   "TaskOutput",
   "AskUserQuestion",
@@ -104,7 +116,6 @@ export const createTools = (
       description: z.string().min(1),
       prompt: z.string().min(1),
       subagent_type: z.string().min(1),
-      model: z.string().optional(),
       run_in_background: z.boolean().optional(),
       resume: z.string().optional(),
     }),
@@ -117,7 +128,6 @@ export const createTools = (
         prompt: args.prompt,
         subagentType: args.subagent_type,
         parentTaskId: options.currentTaskId,
-        model: args.model,
       });
 
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
@@ -146,11 +156,45 @@ export const createTools = (
     },
   });
 
+  const AgentInvoke = tool({
+    description:
+      "Invoke a bounded subagent-like tool call and return structured results.",
+    inputSchema: z.object({
+      agent_type: z.string().min(1),
+      mode: z.string().optional(),
+      prompt: z.string().optional(),
+      input: z.any().optional(),
+      result_schema: z.any().optional(),
+      max_steps: z.number().int().positive().max(8).optional(),
+      target_device_id: z.string().optional(),
+    }),
+    execute: async (args) => {
+      if (args.target_device_id && args.target_device_id !== context.targetDeviceId) {
+        return "agent.invoke must target the current device.";
+      }
+
+      const result = await ctx.runAction(api.agent.invoke, {
+        agentType: args.agent_type,
+        mode: args.mode,
+        prompt: args.prompt,
+        input: args.input,
+        resultSchema: args.result_schema,
+        maxSteps: args.max_steps,
+        conversationId: context.conversationId,
+        userMessageId: context.userMessageId,
+        targetDeviceId: context.targetDeviceId,
+      });
+
+      return typeof result === "string" ? result : JSON.stringify(result, null, 2);
+    },
+  });
+
   const allTools: ToolSet = {
     ...coreTools,
     ...pluginTools,
     Task,
     TaskOutput,
+    AgentInvoke,
   };
 
   const allowlist = options.toolsAllowlist
@@ -159,6 +203,7 @@ export const createTools = (
           ...options.toolsAllowlist,
           "Task",
           "TaskOutput",
+          "agent.invoke",
           ...options.pluginTools.map((toolDef) => toolDef.name),
         ]),
       )

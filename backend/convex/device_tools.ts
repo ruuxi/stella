@@ -16,6 +16,17 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "WebSearch",
   "TodoWrite",
   "TestWrite",
+  "validation.run",
+  "changeset.finish",
+  "changeset.rollback",
+  "changeset.status",
+  "pack.publish",
+  "pack.install",
+  "pack.uninstall",
+  "update.check",
+  "update.apply",
+  "screen.invoke",
+  "screen.list",
   "AskUserQuestion",
   "ImageGenerate",
   "ImageEdit",
@@ -28,6 +39,7 @@ export type DeviceToolContext = {
   conversationId: Id<"conversations">;
   userMessageId: Id<"events">;
   targetDeviceId: string;
+  agentType: string;
   sourceDeviceId?: string;
   currentTaskId?: Id<"tasks">;
 };
@@ -96,6 +108,7 @@ export const executeDeviceTool = async (
     targetDeviceId: context.targetDeviceId,
     toolName,
     toolArgs,
+    agentType: context.agentType,
     sourceDeviceId: context.sourceDeviceId,
     userMessageId: context.userMessageId,
   });
@@ -126,6 +139,13 @@ const testItemSchema = z.object({
   filePath: z.string().optional(),
   status: z.enum(["planned", "written", "passing", "failing"]),
   acceptanceCriteria: z.string().optional(),
+});
+
+const validationCheckSchema = z.object({
+  name: z.string().min(1),
+  command: z.string().min(1),
+  timeoutMs: z.number().positive().optional(),
+  required: z.boolean().optional(),
 });
 
 export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext) => {
@@ -232,6 +252,101 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         newFilePath: z.string().optional(),
       }),
       execute: (args) => call("TestWrite", args),
+    }),
+    "validation.run": tool({
+      description: "Run deterministic validation checks on the local project.",
+      inputSchema: z.object({
+        include_default: z.boolean().optional(),
+        checks: z.array(validationCheckSchema).optional(),
+      }),
+      execute: (args) => call("validation.run", args),
+    }),
+    "changeset.finish": tool({
+      description:
+        "Complete the active ChangeSet with a title, summary, and optional validations.",
+      inputSchema: z.object({
+        title: z.string().min(1),
+        summary: z.string().min(1),
+        validations: z.array(validationCheckSchema).optional(),
+        skip_default_validations: z.boolean().optional(),
+        user_confirmed: z.boolean().optional(),
+        override_guard: z.boolean().optional(),
+      }),
+      execute: (args) => call("changeset.finish", args),
+    }),
+    "changeset.rollback": tool({
+      description: "Rollback a ChangeSet or revert to the last known good baseline.",
+      inputSchema: z.object({
+        change_set_id: z.string().optional(),
+        reason: z.string().optional(),
+      }),
+      execute: (args) => call("changeset.rollback", args),
+    }),
+    "changeset.status": tool({
+      description: "Inspect the current ChangeSet, baseline, safe mode trigger, and packs.",
+      inputSchema: z.object({}),
+      execute: (args) => call("changeset.status", args),
+    }),
+    "pack.publish": tool({
+      description: "Publish one or more ChangeSets as a signed pack bundle.",
+      inputSchema: z.object({
+        pack_id: z.string().optional(),
+        name: z.string().min(1),
+        description: z.string().min(1),
+        version: z.string().min(1),
+        change_set_ids: z.array(z.string()).min(1),
+        compatibility_notes: z.array(z.string()).optional(),
+        user_confirmed: z.boolean().optional(),
+      }),
+      execute: (args) => call("pack.publish", args),
+    }),
+    "pack.install": tool({
+      description: "Install a pack version on the local device with rollback safety.",
+      inputSchema: z.object({
+        pack_id: z.string().min(1),
+        version: z.string().min(1),
+        user_confirmed: z.boolean().optional(),
+      }),
+      execute: (args) => call("pack.install", args),
+    }),
+    "pack.uninstall": tool({
+      description: "Uninstall a previously installed pack on the local device.",
+      inputSchema: z.object({
+        pack_id: z.string().min(1),
+        version: z.string().optional(),
+        user_confirmed: z.boolean().optional(),
+      }),
+      execute: (args) => call("pack.uninstall", args),
+    }),
+    "update.check": tool({
+      description: "Check for upstream platform updates on a channel.",
+      inputSchema: z.object({
+        channel_id: z.string().min(1),
+      }),
+      execute: (args) => call("update.check", args),
+    }),
+    "update.apply": tool({
+      description: "Apply an upstream platform update with merge safeguards.",
+      inputSchema: z.object({
+        channel_id: z.string().min(1),
+        release_id: z.string().optional(),
+        user_confirmed: z.boolean().optional(),
+      }),
+      execute: (args) => call("update.apply", args),
+    }),
+    "screen.invoke": tool({
+      description: "Invoke a command on a right-panel screen.",
+      inputSchema: z.object({
+        screen_id: z.string().min(1),
+        command: z.string().min(1),
+        args: z.record(z.string(), z.any()).optional(),
+      }),
+      execute: (args) => call("screen.invoke", args),
+    }),
+    "screen.list": tool({
+      description: "List screens registered on the current device.",
+      inputSchema: z.object({}),
+      execute: (args) => call("screen.list", args),
     }),
     AskUserQuestion: tool({
       description: "Ask the user to choose between options.",
