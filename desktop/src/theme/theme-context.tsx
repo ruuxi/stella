@@ -55,6 +55,10 @@ function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
   // Apply color mode class
   root.classList.toggle("dark", isDark);
 
+  // Set color scheme and text blend mode (Aura-style)
+  root.style.setProperty("color-scheme", isDark ? "dark" : "light");
+  root.style.setProperty("--text-mix-blend-mode", isDark ? "plus-lighter" : "multiply");
+
   // Apply theme colors as CSS custom properties
   root.style.setProperty("--background", colors.background);
   root.style.setProperty("--foreground", colors.foreground);
