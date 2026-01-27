@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAction, useMutation } from "convex/react";
+import { Maximize2 } from "lucide-react";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
@@ -7,17 +8,10 @@ import { useConversationEvents } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { getOwnerId } from "../services/identity";
 import { streamChat } from "../services/model-gateway";
-import { getElectronApi } from "../services/electron";
 import { captureScreenshot } from "../services/screenshot";
-import type { UiMode } from "../types/ui";
-
-const modes: UiMode[] = ["ask", "chat", "voice"];
 
 export const MiniShell = () => {
-  const { state, setMode, setConversationId, setWindow } = useUiState();
-  const hostStatus = getElectronApi()
-    ? "Local Host connected"
-    : "Local Host disconnected";
+  const { state, setConversationId, setWindow } = useUiState();
   const [message, setMessage] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -28,9 +22,22 @@ export const MiniShell = () => {
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const createConversation = useMutation(api.conversations.createConversation);
   const events = useConversationEvents(state.conversationId ?? undefined);
-  const isChatMode = state.mode === "chat";
+
+  // Mode is set by the radial menu selection
   const isAskMode = state.mode === "ask";
-  const canSend = isChatMode || isAskMode;
+
+  // Auto-create conversation if none exists
+  useEffect(() => {
+    if (!state.conversationId) {
+      void createConversation({ ownerId: getOwnerId() }).then(
+        (conversation: { _id?: string } | null) => {
+          if (conversation?._id) {
+            setConversationId(conversation._id);
+          }
+        },
+      );
+    }
+  }, [state.conversationId, createConversation, setConversationId]);
 
   useEffect(() => {
     if (!pendingUserMessageId) {
@@ -57,7 +64,7 @@ export const MiniShell = () => {
   }, [events, pendingUserMessageId]);
 
   const sendMessage = async () => {
-    if (!canSend || !state.conversationId || !message.trim()) {
+    if (!state.conversationId || !message.trim()) {
       return;
     }
     const deviceId = getOrCreateDeviceId();
@@ -66,6 +73,7 @@ export const MiniShell = () => {
 
     let attachments: Array<{ id?: string; url?: string; mimeType?: string }> = [];
 
+    // In Ask mode, capture screenshot automatically
     if (isAskMode) {
       try {
         const screenshot = await captureScreenshot();
@@ -128,90 +136,48 @@ export const MiniShell = () => {
     }
   };
 
-  const onNewConversation = () => {
-    void createConversation({ ownerId: getOwnerId() }).then(
-      (conversation: { _id?: string } | null) => {
-        if (conversation?._id) {
-          setConversationId(conversation._id);
-        }
-      },
-    );
-  };
+  const hasConversation = events.length > 0 || streamingText;
 
   return (
-    <div className="window-shell mini">
-      <div className="mini-top">
-        <div className="header-title">
-          <span className="app-badge">Stellar</span>
-          <span className="header-subtitle">Mini prompt</span>
-          <span className="host-status">{hostStatus}</span>
+    <div className="spotlight-shell">
+      {/* Conversation appears above the input */}
+      {hasConversation && (
+        <div className="spotlight-conversation">
+          <ConversationEvents
+            events={events}
+            maxItems={5}
+            streamingText={streamingText}
+            isStreaming={isStreaming}
+          />
         </div>
-        <div className="mode-toggle compact" role="tablist" aria-label="Assistant mode">
-          {modes.map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              data-active={state.mode === mode}
-              onClick={() => setMode(mode)}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
-        <button
-          className="primary-button"
-          type="button"
-          onClick={() => setWindow("full")}
-        >
-          Expand
-        </button>
-      </div>
+      )}
 
-      <div className="mini-input">
+      {/* Spotlight-style input bar */}
+      <div className="spotlight-bar">
         <input
-          className="composer-input"
-          placeholder="Ask Stellar, search, or run a command..."
+          className="spotlight-input"
+          placeholder={isAskMode ? "Ask about your screen..." : "Ask Stellar anything..."}
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
               void sendMessage();
             }
+            if (event.key === "Escape") {
+              // Could hide window on escape
+            }
           }}
-          disabled={!state.conversationId || !canSend}
+          autoFocus
         />
         <button
-          className="ghost-button"
+          className="spotlight-expand"
           type="button"
-          onClick={() => void sendMessage()}
-          disabled={!state.conversationId || !canSend}
+          onClick={() => setWindow("full")}
+          title="Expand to full view"
         >
-          Send
+          <Maximize2 className="w-4 h-4" />
         </button>
-      </div>
-
-      <div className="mini-thread">
-        <div className="panel-header">
-          <div className="panel-title">Thread</div>
-          <div className="panel-meta">
-            {state.conversationId ?? "No conversation yet"}
-          </div>
-        </div>
-        <div className="panel-content compact">
-          {state.conversationId ? (
-            <ConversationEvents
-              events={events}
-              maxItems={4}
-              streamingText={canSend ? streamingText : undefined}
-              isStreaming={canSend ? isStreaming : false}
-            />
-          ) : (
-            <div className="event-empty">Loading conversation...</div>
-          )}
-          <button className="ghost-button" type="button" onClick={onNewConversation}>
-            New thread
-          </button>
-        </div>
       </div>
     </div>
   );

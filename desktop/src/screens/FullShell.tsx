@@ -14,17 +14,7 @@ import { useConversationEvents } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { getOwnerId } from "../services/identity";
 import { streamChat } from "../services/model-gateway";
-import { getElectronApi } from "../services/electron";
 import { captureScreenshot } from "../services/screenshot";
-import type { UiMode } from "../types/ui";
-
-const modes: UiMode[] = ["ask", "chat", "voice"];
-
-const modeCopy: Record<UiMode, string> = {
-  ask: "Ask includes a screenshot (no OCR).",
-  chat: "Chat is text-only.",
-  voice: "Voice uses speech-to-text.",
-};
 
 type AttachmentRef = {
   id?: string;
@@ -33,10 +23,7 @@ type AttachmentRef = {
 };
 
 export const FullShell = () => {
-  const { state, setMode, setConversationId, setWindow } = useUiState();
-  const hostStatus = getElectronApi()
-    ? "Local Host connected"
-    : "Local Host disconnected";
+  const { state, setConversationId, setWindow } = useUiState();
   const [message, setMessage] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -47,9 +34,9 @@ export const FullShell = () => {
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const createConversation = useMutation(api.conversations.createConversation);
   const events = useConversationEvents(state.conversationId ?? undefined);
-  const isChatMode = state.mode === "chat";
+
+  // Full view is always chat mode (no screenshot)
   const isAskMode = state.mode === "ask";
-  const canSend = isChatMode || isAskMode;
 
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelFocused, setPanelFocused] = useState(false);
@@ -141,7 +128,7 @@ export const FullShell = () => {
   };
 
   const sendMessage = async () => {
-    if (!canSend || !state.conversationId || !message.trim()) {
+    if (!state.conversationId || !message.trim()) {
       return;
     }
     const deviceId = getOrCreateDeviceId();
@@ -150,6 +137,7 @@ export const FullShell = () => {
 
     let attachments: AttachmentRef[] = [];
 
+    // In Ask mode, capture screenshot
     if (isAskMode) {
       try {
         const screenshot = await captureScreenshot();
@@ -237,34 +225,20 @@ export const FullShell = () => {
       <header className="window-header">
         <div className="header-title">
           <span className="app-badge">Stellar</span>
-          <div className="header-subtitle">Full workspace</div>
-          <div className="host-status">{hostStatus}</div>
         </div>
         <div className="header-actions">
-          <div className="mode-toggle" role="tablist" aria-label="Assistant mode">
-            {modes.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                data-active={state.mode === mode}
-                onClick={() => setMode(mode)}
-              >
-                {mode.toUpperCase()}
-              </button>
-            ))}
-          </div>
           <button className="ghost-button" type="button" onClick={togglePanel}>
-            {panelOpen ? "Hide Screens" : "Show Screens"}
+            {panelOpen ? "Hide Media" : "Show Media"}
           </button>
           <button className="ghost-button" type="button" onClick={onNewConversation}>
-            New thread
+            New conversation
           </button>
           <button
             className="primary-button"
             type="button"
             onClick={() => setWindow("mini")}
           >
-            Collapse to Mini
+            Minimize
           </button>
         </div>
       </header>
@@ -278,31 +252,21 @@ export const FullShell = () => {
         }
       >
         <section className="panel chat-panel">
-          <div className="panel-header">
-            <div className="panel-title">Chat workspace</div>
-            <div className="panel-meta">
-              {state.conversationId ?? "No conversation selected"}
-            </div>
-          </div>
           <div className="panel-content">
-            <p className="panel-hint">
-              {modeCopy[state.mode]}
-              {!canSend ? " Voice is coming soon." : ""}
-            </p>
             {state.conversationId ? (
               <ConversationEvents
                 events={events}
-                streamingText={canSend ? streamingText : undefined}
-                isStreaming={canSend ? isStreaming : false}
+                streamingText={streamingText}
+                isStreaming={isStreaming}
                 onOpenAttachment={openAttachment}
               />
             ) : (
-              <div className="event-empty">Loading conversation...</div>
+              <div className="event-empty">Starting conversation...</div>
             )}
             <div className="composer">
               <input
                 className="composer-input"
-                placeholder="Compose a message or command..."
+                placeholder="Type a message..."
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 onKeyDown={(event) => {
@@ -310,13 +274,13 @@ export const FullShell = () => {
                     void sendMessage();
                   }
                 }}
-                disabled={!state.conversationId || !canSend}
+                disabled={!state.conversationId}
               />
               <button
                 className="primary-button"
                 type="button"
                 onClick={() => void sendMessage()}
-                disabled={!state.conversationId || !canSend}
+                disabled={!state.conversationId}
               >
                 Send
               </button>
@@ -328,10 +292,7 @@ export const FullShell = () => {
           <aside className="panel side-panel">
             <div className="panel-resize-handle" onMouseDown={onResizeStart} />
             <div className="panel-header">
-              <div>
-                <div className="panel-title">Screens Host</div>
-                <div className="panel-meta">Media Viewer</div>
-              </div>
+              <div className="panel-title">Media</div>
               <div className="panel-actions">
                 <button
                   className="ghost-button"

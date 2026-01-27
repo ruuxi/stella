@@ -123,3 +123,14 @@
     margin: 0;
   }
 }
+
+/* Transparent windows - radial and mini (Spotlight) */
+html:has(.window-radial),
+html:has(.window-radial) body,
+html:has(.window-radial) #root,
+html:has(.window-mini),
+html:has(.window-mini) body,
+html:has(.window-mini) #root {
+  background: transparent !important;
+  min-height: 100vh;
+}
