@@ -14,6 +14,7 @@ import {
 import { getOrCreateDeviceId } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
 import { resolveStellarHome } from './local-host/stellar-home.js'
+import { createScreenBridge } from './local-host/screen-bridge.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -21,10 +22,23 @@ const __dirname = path.dirname(__filename)
 type UiMode = 'ask' | 'chat' | 'voice'
 type WindowMode = 'full' | 'mini'
 
+type UiPanelState = {
+  isOpen: boolean
+  width: number
+  focused: boolean
+  activeScreenId: string
+  chatDrawerOpen: boolean
+}
+
 type UiState = {
   mode: UiMode
   window: WindowMode
   conversationId: string | null
+  panel: UiPanelState
+}
+
+type UiStateUpdate = Partial<Omit<UiState, 'panel'>> & {
+  panel?: Partial<UiPanelState>
 }
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -33,6 +47,13 @@ const uiState: UiState = {
   mode: 'chat',
   window: 'full',
   conversationId: null,
+  panel: {
+    isOpen: true,
+    width: 420,
+    focused: false,
+    activeScreenId: 'media_viewer',
+    chatDrawerOpen: false,
+  },
 }
 
 let fullWindow: BrowserWindow | null = null
@@ -41,6 +62,7 @@ let mouseHook: MouseHookManager | null = null
 let localHostRunner: ReturnType<typeof createLocalHostRunner> | null = null
 let deviceId: string | null = null
 let pendingConvexUrl: string | null = null
+let screenBridge: ReturnType<typeof createScreenBridge> | null = null
 
 const miniSize = {
   width: 680,
@@ -55,7 +77,7 @@ const broadcastUiState = () => {
   }
 }
 
-const updateUiState = (partial: Partial<UiState>) => {
+const updateUiState = (partial: UiStateUpdate) => {
   if (partial.mode) {
     uiState.mode = partial.mode
   }
@@ -64,6 +86,12 @@ const updateUiState = (partial: Partial<UiState>) => {
   }
   if (partial.conversationId !== undefined) {
     uiState.conversationId = partial.conversationId
+  }
+  if (partial.panel) {
+    uiState.panel = {
+      ...uiState.panel,
+      ...partial.panel,
+    }
   }
   broadcastUiState()
 }
@@ -219,7 +247,7 @@ const handleRadialSelection = (wedge: RadialWedge) => {
 }
 
 // Trigger native context menu (platform-specific)
-const triggerNativeContextMenu = async (_x: number, _y: number) => {
+const triggerNativeContextMenu = async () => {
   // On most platforms, we simply don't block the right-click
   // The uiohook captures the event but doesn't prevent it from reaching the system
   // However, if needed, we could use platform-specific approaches:
@@ -295,8 +323,17 @@ const configureLocalHost = (convexUrl: string) => {
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData')
   const stellarHome = await resolveStellarHome(app, userDataPath)
+  const projectRoot = path.resolve(__dirname, '..')
   deviceId = await getOrCreateDeviceId(stellarHome.statePath)
-  localHostRunner = createLocalHostRunner({ deviceId, stellarHome: stellarHome.homePath })
+  screenBridge = createScreenBridge({
+    getTargetWindow: () => fullWindow,
+  })
+  localHostRunner = createLocalHostRunner({
+    deviceId,
+    stellarHome: stellarHome.homePath,
+    projectRoot,
+    screenBridge,
+  })
   if (pendingConvexUrl) {
     localHostRunner.setConvexUrl(pendingConvexUrl)
   }
@@ -319,11 +356,12 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('ui:getState', () => uiState)
-  ipcMain.handle('ui:setState', (_event, partial: Partial<UiState>) => {
+  ipcMain.handle('ui:setState', (_event, partial: UiStateUpdate) => {
     if (partial.window) {
       showWindow(partial.window)
     }
-    const { window: _window, ...rest } = partial
+    const { window, ...rest } = partial
+    void window
     if (Object.keys(rest).length > 0) {
       updateUiState(rest)
     }

@@ -1,11 +1,17 @@
-import type { UiState, WindowMode } from './ui'
+import type { UiState, UiStateUpdate, WindowMode } from './ui'
+import type {
+  ScreenInvokeRequest,
+  ScreenInvokeResult,
+  ScreenListRequest,
+  ScreenListResult,
+} from '../screens/host/screen-types'
 
 export type RadialWedge = 'ask' | 'chat' | 'voice' | 'full' | 'menu'
 
 export type ElectronApi = {
   platform: string
   getUiState: () => Promise<UiState>
-  setUiState: (partial: Partial<UiState>) => Promise<UiState>
+  setUiState: (partial: UiStateUpdate) => Promise<UiState>
   onUiState: (callback: (state: UiState) => void) => () => void
   showWindow: (target: WindowMode) => void
   captureScreenshot: () => Promise<{
@@ -15,6 +21,10 @@ export type ElectronApi = {
   } | null>
   getDeviceId: () => Promise<string | null>
   configureHost: (config: { convexUrl?: string }) => Promise<{ deviceId: string | null }>
+  onScreenInvoke: (callback: (request: ScreenInvokeRequest) => void) => () => void
+  respondScreenInvoke: (result: ScreenInvokeResult) => void
+  onScreenListRequest: (callback: (request: ScreenListRequest) => void) => (() => void) | void
+  respondScreenList: (result: ScreenListResult) => void
   // Radial dial events
   onRadialShow: (callback: (event: unknown, data: { centerX: number; centerY: number }) => void) => () => void
   onRadialHide: (callback: () => void) => () => void

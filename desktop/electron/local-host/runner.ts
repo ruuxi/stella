@@ -7,6 +7,21 @@ import path from "path";
 type HostRunnerOptions = {
   deviceId: string;
   stellarHome: string;
+  projectRoot: string;
+  screenBridge?: {
+    invokeScreenCommand: (input: {
+      screenId: string;
+      command: string;
+      args?: Record<string, unknown>;
+      requestId?: string;
+      conversationId: string;
+      deviceId: string;
+    }) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
+    listScreens?: (input: {
+      conversationId: string;
+      deviceId: string;
+    }) => Promise<{ ok: boolean; screens?: unknown[]; error?: string }>;
+  } | null;
 };
 
 type ToolRequestEvent = {
@@ -19,6 +34,7 @@ type ToolRequestEvent = {
     toolName?: string;
     args?: Record<string, unknown>;
     targetDeviceId?: string;
+    agentType?: string;
   };
 };
 
@@ -30,8 +46,18 @@ type PaginatedResult<T> = {
 
 const POLL_INTERVAL_MS = 1500;
 
-export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptions) => {
-  const toolHost = createToolHost({ stellarHome });
+export const createLocalHostRunner = ({
+  deviceId,
+  stellarHome,
+  projectRoot,
+  screenBridge,
+}: HostRunnerOptions) => {
+  const toolHost = createToolHost({
+    stellarHome,
+    projectRoot,
+    deviceId,
+    screenBridge: screenBridge ?? null,
+  });
   let client: ConvexHttpClient | null = null;
   let convexUrl: string | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -40,6 +66,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
   let queue = Promise.resolve();
   let syncPromise: Promise<void> | null = null;
   let lastSyncAt = 0;
+  let startupChecked = false;
 
   const skillsPath = path.join(stellarHome, "skills");
   const agentsPath = path.join(stellarHome, "agents");
@@ -62,6 +89,24 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
     if (!client) return Promise.resolve(null);
     const convexName = toConvexName(name);
     return client.query(convexName as never, args as never);
+  };
+
+  const callAction = (name: string, args: Record<string, unknown>) => {
+    if (!client) return Promise.resolve(null);
+    const convexName = toConvexName(name);
+    return client.action(convexName as never, args as never);
+  };
+
+  const updateConvexBridge = () => {
+    toolHost.setConvexBridge(
+      client
+        ? {
+            callMutation,
+            callQuery,
+            callAction,
+          }
+        : null,
+    );
   };
 
   const syncManifests = async () => {
@@ -106,6 +151,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
     }
     convexUrl = url;
     client = new ConvexHttpClient(url, { logger: false });
+    updateConvexBridge();
     void syncManifests();
   };
 
@@ -151,6 +197,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
 
       const toolName = request.payload?.toolName;
       const toolArgs = request.payload?.args ?? {};
+      const agentType = request.payload?.agentType;
       if (!toolName) {
         await appendToolResult(request, { error: "toolName missing on request." });
         processed.add(request.requestId);
@@ -161,6 +208,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
         conversationId: request.conversationId,
         deviceId,
         requestId: request.requestId,
+        agentType,
       });
 
       await appendToolResult(request, toolResult);
@@ -200,6 +248,10 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
   const start = () => {
     if (pollTimer) return;
     void syncManifests();
+    if (!startupChecked) {
+      startupChecked = true;
+      void toolHost.runStartupChecks();
+    }
     pollTimer = setInterval(() => {
       void pollOnce();
       void syncManifests();
