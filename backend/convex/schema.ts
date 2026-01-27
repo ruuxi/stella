@@ -107,4 +107,141 @@ export default defineSchema({
     .index("by_conversation", ["conversationId", "createdAt"])
     .index("by_status", ["status", "updatedAt"])
     .index("by_parent", ["parentTaskId", "createdAt"]),
+  changesets: defineTable({
+    changeSetId: v.string(),
+    scope: v.string(),
+    agentType: v.string(),
+    status: v.string(),
+    reason: v.optional(v.string()),
+    title: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    baselineId: v.optional(v.string()),
+    gitHeadAtStart: v.optional(v.string()),
+    gitHeadAtEnd: v.optional(v.string()),
+    diffPatch: v.optional(v.string()),
+    diffPatchTruncated: v.optional(v.boolean()),
+    changedFiles: v.any(),
+    instructionInvariants: v.any(),
+    instructionNotes: v.any(),
+    blockReasons: v.any(),
+    guardFailures: v.any(),
+    validations: v.any(),
+    validationSummary: v.any(),
+    rollbackApplied: v.optional(v.boolean()),
+    rollbackReason: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    conversationId: v.optional(v.id("conversations")),
+    deviceId: v.optional(v.string()),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_change_set", ["changeSetId"])
+    .index("by_updated", ["updatedAt"])
+    .index("by_conversation", ["conversationId", "updatedAt"]),
+  safe_mode_events: defineTable({
+    bootId: v.string(),
+    status: v.string(),
+    safeModeApplied: v.boolean(),
+    smokePassed: v.boolean(),
+    reason: v.optional(v.string()),
+    smokeFailures: v.optional(v.array(v.string())),
+    deviceId: v.optional(v.string()),
+    checkedAt: v.number(),
+  })
+    .index("by_boot", ["bootId"])
+    .index("by_checked", ["checkedAt"]),
+  packs: defineTable({
+    packId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    authorPublicKey: v.string(),
+    latestVersion: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    source: v.string(),
+  })
+    .index("by_pack", ["packId"])
+    .index("by_updated", ["updatedAt"]),
+  pack_versions: defineTable({
+    packId: v.string(),
+    version: v.string(),
+    manifest: v.any(),
+    bundleStorageKey: v.id("_storage"),
+    bundleHash: v.string(),
+    signature: v.string(),
+    authorPublicKey: v.string(),
+    securityReview: v.any(),
+    changedPaths: v.array(v.string()),
+    zones: v.array(v.string()),
+    compatibilityNotes: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    source: v.string(),
+  })
+    .index("by_pack_version", ["packId", "version"])
+    .index("by_pack_created", ["packId", "createdAt"])
+    .index("by_updated", ["updatedAt"]),
+  pack_installations: defineTable({
+    installId: v.string(),
+    packId: v.string(),
+    version: v.string(),
+    status: v.string(),
+    deviceId: v.string(),
+    changeSetId: v.optional(v.string()),
+    bundleHash: v.optional(v.string()),
+    signature: v.optional(v.string()),
+    authorPublicKey: v.optional(v.string()),
+    changedPaths: v.optional(v.array(v.string())),
+    zones: v.optional(v.array(v.string())),
+    conversationId: v.optional(v.id("conversations")),
+    installedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_install", ["installId"])
+    .index("by_pack_device", ["packId", "deviceId", "updatedAt"])
+    .index("by_device", ["deviceId", "updatedAt"]),
+  update_channels: defineTable({
+    channelId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    latestReleaseId: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_updated", ["updatedAt"]),
+  update_releases: defineTable({
+    releaseId: v.string(),
+    channelId: v.string(),
+    version: v.string(),
+    baseGitHead: v.optional(v.string()),
+    bundleStorageKey: v.id("_storage"),
+    bundleHash: v.string(),
+    signature: v.string(),
+    authorPublicKey: v.string(),
+    notes: v.optional(v.string()),
+    manifest: v.any(),
+    changedPaths: v.optional(v.array(v.string())),
+    zones: v.optional(v.array(v.string())),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    source: v.string(),
+  })
+    .index("by_release", ["releaseId"])
+    .index("by_channel_created", ["channelId", "createdAt"])
+    .index("by_channel_version", ["channelId", "version"]),
+  update_applied: defineTable({
+    releaseId: v.string(),
+    channelId: v.string(),
+    version: v.string(),
+    deviceId: v.string(),
+    changeSetId: v.optional(v.string()),
+    conversationId: v.optional(v.id("conversations")),
+    conflicts: v.optional(v.number()),
+    status: v.string(),
+    appliedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_release_device", ["releaseId", "deviceId"])
+    .index("by_device_updated", ["deviceId", "updatedAt"]),
 });

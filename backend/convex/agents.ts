@@ -14,7 +14,6 @@ type AgentRecord = {
   agentTypes: string[];
   toolsAllowlist?: string[];
   defaultSkills?: string[];
-  model?: string;
   maxTaskDepth?: number;
   version: number;
   source: string;
@@ -40,6 +39,12 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "WebSearch",
       "TodoWrite",
       "TestWrite",
+      "validation.run",
+      "changeset.status",
+      "update.check",
+      "screen.invoke",
+      "screen.list",
+      "agent.invoke",
       "Task",
       "TaskOutput",
       "AskUserQuestion",
@@ -48,7 +53,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "VideoGenerate",
     ],
     defaultSkills: [],
-    model: undefined,
     maxTaskDepth: 2,
     version: 1,
     source: "builtin",
@@ -72,12 +76,23 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "WebSearch",
       "TodoWrite",
       "TestWrite",
+      "validation.run",
+      "changeset.finish",
+      "changeset.rollback",
+      "changeset.status",
+      "pack.publish",
+      "pack.install",
+      "pack.uninstall",
+      "update.check",
+      "update.apply",
+      "screen.invoke",
+      "screen.list",
+      "agent.invoke",
       "Task",
       "TaskOutput",
       "AskUserQuestion",
     ],
     defaultSkills: [],
-    model: undefined,
     maxTaskDepth: 2,
     version: 1,
     source: "builtin",
@@ -92,7 +107,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     agentTypes: ["explore"],
     toolsAllowlist: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
     defaultSkills: [],
-    model: undefined,
     maxTaskDepth: 0,
     version: 1,
     source: "builtin",
@@ -156,12 +170,19 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
     agentTypes,
     toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
     defaultSkills: defaultSkills.length > 0 ? defaultSkills : undefined,
-    model: typeof record.model === "string" ? record.model : undefined,
     maxTaskDepth,
     version,
     source: typeof record.source === "string" ? record.source : "local",
     updatedAt: Date.now(),
   };
+};
+
+const sanitizeAgentForClient = <T extends Record<string, unknown> | null | undefined>(
+  agent: T,
+) => {
+  if (!agent) return agent;
+  const { model: _model, ...rest } = agent;
+  return rest;
 };
 
 const upsertAgent = async (ctx: MutationCtx, agent: AgentRecord) => {
@@ -170,16 +191,18 @@ const upsertAgent = async (ctx: MutationCtx, agent: AgentRecord) => {
     .withIndex("by_agent_key", (q) => q.eq("id", agent.id))
     .take(1);
 
+  const { model: _model, ...safeAgent } = agent as AgentRecord & { model?: string };
+
   if (existing[0]) {
     await ctx.db.patch(existing[0]._id, {
-      ...agent,
+      ...safeAgent,
       updatedAt: Date.now(),
     });
     return existing[0]._id;
   }
 
   return await ctx.db.insert("agents", {
-    ...agent,
+    ...safeAgent,
     updatedAt: Date.now(),
   });
 };
@@ -225,18 +248,18 @@ export const getAgentConfig = query({
       .take(1);
 
     if (record[0]) {
-      return record[0];
+      return sanitizeAgentForClient(record[0]);
     }
 
     const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
     if (builtin) {
-      return {
+      return sanitizeAgentForClient({
         ...builtin,
         updatedAt: Date.now(),
-      };
+      });
     }
 
-    return {
+    return sanitizeAgentForClient({
       id: args.agentType,
       name: args.agentType,
       description: "Agent instructions.",
@@ -244,18 +267,22 @@ export const getAgentConfig = query({
       agentTypes: [args.agentType],
       toolsAllowlist: undefined,
       defaultSkills: [],
-      model: undefined,
       maxTaskDepth: 2,
       version: 1,
       source: "fallback",
       updatedAt: Date.now(),
-    };
+    });
   },
 });
 
 export const listAgents = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("agents").withIndex("by_updated").order("desc").take(200);
+    const records = await ctx.db
+      .query("agents")
+      .withIndex("by_updated")
+      .order("desc")
+      .take(200);
+    return records.map((record) => sanitizeAgentForClient(record));
   },
 });

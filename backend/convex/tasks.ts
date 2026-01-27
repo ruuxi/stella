@@ -46,6 +46,12 @@ const formatTaskResult = (task: {
   return `Task running.\nTask ID: ${task._id}\nElapsed: ${duration}ms`;
 };
 
+const sanitizeTaskForClient = <T extends { model?: string } | null | undefined>(task: T) => {
+  if (!task) return task;
+  const { model: _model, ...rest } = task as { model?: string } & Record<string, unknown>;
+  return rest;
+};
+
 const appendTaskEvent = async (
   ctx: ActionCtx,
   args: {
@@ -96,7 +102,6 @@ const createTaskTools = (
       description: z.string().min(1),
       prompt: z.string().min(1),
       subagent_type: z.string().min(1),
-      model: z.string().optional(),
     }),
     execute: async (args) => {
       if (options.taskDepth >= options.maxTaskDepth) {
@@ -111,7 +116,6 @@ const createTaskTools = (
         prompt: args.prompt,
         subagentType: args.subagent_type,
         parentTaskId: options.currentTaskId,
-        model: args.model,
       });
 
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
@@ -138,11 +142,45 @@ const createTaskTools = (
     },
   });
 
+  const AgentInvoke = tool({
+    description:
+      "Invoke a bounded tool-like subagent call and return structured results.",
+    inputSchema: z.object({
+      agent_type: z.string().min(1),
+      mode: z.string().optional(),
+      prompt: z.string().optional(),
+      input: z.any().optional(),
+      result_schema: z.any().optional(),
+      max_steps: z.number().int().positive().max(6).optional(),
+      target_device_id: z.string().optional(),
+    }),
+    execute: async (args) => {
+      if (args.target_device_id && args.target_device_id !== context.targetDeviceId) {
+        return "agent.invoke must target the current device.";
+      }
+
+      const result = await ctx.runAction(api.agent.invoke, {
+        agentType: args.agent_type,
+        mode: args.mode,
+        prompt: args.prompt,
+        input: args.input,
+        resultSchema: args.result_schema,
+        maxSteps: args.max_steps,
+        conversationId: context.conversationId,
+        userMessageId: context.userMessageId,
+        targetDeviceId: context.targetDeviceId,
+      });
+
+      return typeof result === "string" ? result : JSON.stringify(result, null, 2);
+    },
+  });
+
   return {
     ...coreTools,
     ...pluginTools,
     Task,
     TaskOutput,
+    AgentInvoke,
   };
 };
 
@@ -155,7 +193,6 @@ export const createTaskRecord = mutation({
     prompt: v.string(),
     agentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
-    model: v.optional(v.string()),
     maxTaskDepth: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -181,7 +218,6 @@ export const createTaskRecord = mutation({
       agentType: args.agentType,
       status: "running" satisfies TaskStatus,
       taskDepth,
-      model: args.model,
       createdAt: now,
       updatedAt: now,
       completedAt: undefined,
@@ -207,7 +243,8 @@ export const completeTaskRecord = mutation({
       updatedAt: now,
       completedAt: now,
     });
-    return await ctx.db.get(args.taskId);
+    const record = await ctx.db.get(args.taskId);
+    return sanitizeTaskForClient(record);
   },
 });
 
@@ -216,7 +253,8 @@ export const getById = query({
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.taskId);
+    const record = await ctx.db.get(args.taskId);
+    return sanitizeTaskForClient(record);
   },
 });
 
@@ -226,7 +264,8 @@ export const getOutputByExternalId = query({
   },
   handler: async (ctx, args) => {
     try {
-      return await ctx.db.get(args.taskId as Id<"tasks">);
+      const record = await ctx.db.get(args.taskId as Id<"tasks">);
+      return sanitizeTaskForClient(record);
     } catch {
       return null;
     }
@@ -238,11 +277,12 @@ export const listByConversation = query({
     conversationId: v.id("conversations"),
   },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const records = await ctx.db
       .query("tasks")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
       .order("desc")
       .take(200);
+    return records.map((record) => sanitizeTaskForClient(record));
   },
 });
 
@@ -255,7 +295,6 @@ export const runSubagent = action({
     prompt: v.string(),
     subagentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
-    model: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await ctx.runMutation(api.agents.ensureBuiltins, {});
@@ -271,7 +310,6 @@ export const runSubagent = action({
         prompt: args.prompt,
         agentType: args.subagentType,
         parentTaskId: args.parentTaskId,
-        model: args.model,
         maxTaskDepth: promptBuild.maxTaskDepth,
       });
 
@@ -321,6 +359,7 @@ export const runSubagent = action({
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
       targetDeviceId: args.targetDeviceId,
+      agentType: args.subagentType,
       sourceDeviceId: args.targetDeviceId,
       currentTaskId: taskId,
     };
