@@ -3,6 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { MouseHookManager } from './mouse-hook.js';
 import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCursor, getRadialWindow, calculateSelectedWedge, } from './radial-window.js';
+import { getOrCreateDeviceId } from './local-host/device.js';
+import { createLocalHostRunner } from './local-host/runner.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -14,6 +16,9 @@ const uiState = {
 let fullWindow = null;
 let miniWindow = null;
 let mouseHook = null;
+let localHostRunner = null;
+let deviceId = null;
+let pendingConvexUrl = null;
 const miniSize = {
     width: 680,
     height: 420,
@@ -220,13 +225,33 @@ const initMouseHook = () => {
     });
     mouseHook.start();
 };
-app.whenReady().then(() => {
+const configureLocalHost = (convexUrl) => {
+    pendingConvexUrl = convexUrl;
+    if (localHostRunner) {
+        localHostRunner.setConvexUrl(convexUrl);
+    }
+};
+app.whenReady().then(async () => {
+    const userDataPath = app.getPath('userData');
+    deviceId = await getOrCreateDeviceId(userDataPath);
+    localHostRunner = createLocalHostRunner({ deviceId, userDataPath });
+    if (pendingConvexUrl) {
+        localHostRunner.setConvexUrl(pendingConvexUrl);
+    }
+    localHostRunner.start();
     createFullWindow();
     createMiniWindow();
     createRadialWindow(); // Pre-create radial window for faster display
     showWindow('full');
     // Initialize mouse hook for global right-click detection
     initMouseHook();
+    ipcMain.handle('device:getId', () => deviceId);
+    ipcMain.handle('host:configure', (_event, config) => {
+        if (config?.convexUrl) {
+            configureLocalHost(config.convexUrl);
+        }
+        return { deviceId };
+    });
     ipcMain.handle('ui:getState', () => uiState);
     ipcMain.handle('ui:setState', (_event, partial) => {
         if (partial.window) {
@@ -292,5 +317,9 @@ app.on('will-quit', () => {
     if (mouseHook) {
         mouseHook.stop();
         mouseHook = null;
+    }
+    if (localHostRunner) {
+        localHostRunner.stop();
+        localHostRunner = null;
     }
 });

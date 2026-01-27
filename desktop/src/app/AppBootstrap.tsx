@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useMutation } from "convex/react";
 import { useUiState } from "./state/ui-state";
 import { api } from "../convex/api";
-import { getOrCreateDeviceId } from "../services/device";
+import { configureLocalHost, getOrCreateDeviceId } from "../services/device";
 import { getOwnerId } from "../services/identity";
 
 export const AppBootstrap = () => {
@@ -12,14 +12,21 @@ export const AppBootstrap = () => {
   );
 
   useEffect(() => {
-    getOrCreateDeviceId();
-    void getOrCreateDefaultConversation({ ownerId: getOwnerId() }).then(
-      (conversation: { _id?: string } | null) => {
-        if (conversation?._id) {
-          setConversationId(conversation._id);
-        }
-      },
-    );
+    let cancelled = false;
+    const run = async () => {
+      await configureLocalHost();
+      await getOrCreateDeviceId();
+      const conversation = await getOrCreateDefaultConversation({
+        ownerId: getOwnerId(),
+      });
+      if (!cancelled && conversation?._id) {
+        setConversationId(conversation._id);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [getOrCreateDefaultConversation, setConversationId]);
 
   return null;
