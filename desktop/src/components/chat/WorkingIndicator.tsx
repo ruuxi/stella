@@ -1,4 +1,4 @@
-import { Spinner } from "../ui/spinner";
+import { Spinner } from "../spinner";
 import { cn } from "@/lib/utils";
 import { computeStatus } from "./status-utils";
 
