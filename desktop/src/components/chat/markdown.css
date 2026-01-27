@@ -48,7 +48,7 @@
 
 /* Links */
 .markdown a {
-  color: var(--primary);
+  color: var(--text-interactive-base, var(--primary));
   text-decoration: none;
   font-weight: inherit;
 }
