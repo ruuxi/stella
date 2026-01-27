@@ -247,7 +247,7 @@ const handleRadialSelection = (wedge: RadialWedge) => {
 }
 
 // Trigger native context menu (platform-specific)
-const triggerNativeContextMenu = async () => {
+const triggerNativeContextMenu = async (x: number, y: number) => {
   // On most platforms, we simply don't block the right-click
   // The uiohook captures the event but doesn't prevent it from reaching the system
   // However, if needed, we could use platform-specific approaches:
