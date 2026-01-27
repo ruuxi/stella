@@ -1,13 +1,11 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { streamText } from "ai";
-import {
-  GENERAL_AGENT_SYSTEM_PROMPT,
-  SELF_MOD_AGENT_SYSTEM_PROMPT,
-} from "./prompts";
-import { createDeviceTools } from "./tools";
+import { buildSystemPrompt } from "./prompt_builder";
+import { createTools } from "./tools";
 
 type ChatRequest = {
   conversationId: string;
@@ -137,10 +135,12 @@ http.route({
       }
     }
 
-    const systemPrompt =
-      body.agent === "self_mod"
-        ? SELF_MOD_AGENT_SYSTEM_PROMPT
-        : GENERAL_AGENT_SYSTEM_PROMPT;
+    await ctx.runMutation(api.agents.ensureBuiltins, {});
+
+    const agentType = body.agent === "self_mod" ? "self_mod" : "general";
+    const promptBuild = await buildSystemPrompt(ctx, agentType);
+
+    const pluginTools = await ctx.runQuery(api.plugins.listToolDescriptors, {});
 
     const model = process.env.AI_GATEWAY_MODEL;
     if (!model) {
@@ -174,13 +174,27 @@ http.route({
 
     const result = await streamText({
       model,
-      system: systemPrompt,
-      tools: createDeviceTools(ctx, {
-        conversationId,
-        userMessageId,
-        targetDeviceId,
-        sourceDeviceId: userEvent.deviceId,
-      }),
+      system: promptBuild.systemPrompt,
+      tools: createTools(
+        ctx,
+        {
+          conversationId,
+          userMessageId,
+          targetDeviceId,
+          sourceDeviceId: userEvent.deviceId,
+        },
+        {
+          agentType,
+          toolsAllowlist: promptBuild.toolsAllowlist,
+          maxTaskDepth: promptBuild.maxTaskDepth,
+          pluginTools: pluginTools as Array<{
+            pluginId: string;
+            name: string;
+            description: string;
+            inputSchema: Record<string, unknown>;
+          }>,
+        },
+      ),
       messages: [
         {
           role: "user",
