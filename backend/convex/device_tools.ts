@@ -4,6 +4,14 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 
+/**
+ * Sanitize tool names to comply with AI provider constraints.
+ * Pattern required: [a-zA-Z0-9_-]+
+ * Replaces dots with underscores.
+ */
+export const sanitizeToolName = (name: string): string =>
+  name.replace(/\./g, "_");
+
 export const CORE_DEVICE_TOOL_NAMES = [
   "Read",
   "Write",
@@ -16,17 +24,17 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "WebSearch",
   "TodoWrite",
   "TestWrite",
-  "validation.run",
-  "changeset.finish",
-  "changeset.rollback",
-  "changeset.status",
-  "pack.publish",
-  "pack.install",
-  "pack.uninstall",
-  "update.check",
-  "update.apply",
-  "screen.invoke",
-  "screen.list",
+  "validation_run",
+  "changeset_finish",
+  "changeset_rollback",
+  "changeset_status",
+  "pack_publish",
+  "pack_install",
+  "pack_uninstall",
+  "update_check",
+  "update_apply",
+  "screen_invoke",
+  "screen_list",
   "AskUserQuestion",
   "ImageGenerate",
   "ImageEdit",
@@ -253,7 +261,8 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("TestWrite", args),
     }),
-    "validation.run": tool({
+    // Tool names use underscores for AI provider compatibility, but call() uses original names for device dispatch
+    validation_run: tool({
       description: "Run deterministic validation checks on the local project.",
       inputSchema: z.object({
         include_default: z.boolean().optional(),
@@ -261,7 +270,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("validation.run", args),
     }),
-    "changeset.finish": tool({
+    changeset_finish: tool({
       description:
         "Complete the active ChangeSet with a title, summary, and optional validations.",
       inputSchema: z.object({
@@ -274,7 +283,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("changeset.finish", args),
     }),
-    "changeset.rollback": tool({
+    changeset_rollback: tool({
       description: "Rollback a ChangeSet or revert to the last known good baseline.",
       inputSchema: z.object({
         change_set_id: z.string().optional(),
@@ -282,12 +291,12 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("changeset.rollback", args),
     }),
-    "changeset.status": tool({
+    changeset_status: tool({
       description: "Inspect the current ChangeSet, baseline, safe mode trigger, and packs.",
       inputSchema: z.object({}),
       execute: (args) => call("changeset.status", args),
     }),
-    "pack.publish": tool({
+    pack_publish: tool({
       description: "Publish one or more ChangeSets as a signed pack bundle.",
       inputSchema: z.object({
         pack_id: z.string().optional(),
@@ -300,7 +309,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("pack.publish", args),
     }),
-    "pack.install": tool({
+    pack_install: tool({
       description: "Install a pack version on the local device with rollback safety.",
       inputSchema: z.object({
         pack_id: z.string().min(1),
@@ -309,7 +318,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("pack.install", args),
     }),
-    "pack.uninstall": tool({
+    pack_uninstall: tool({
       description: "Uninstall a previously installed pack on the local device.",
       inputSchema: z.object({
         pack_id: z.string().min(1),
@@ -318,14 +327,14 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("pack.uninstall", args),
     }),
-    "update.check": tool({
+    update_check: tool({
       description: "Check for upstream platform updates on a channel.",
       inputSchema: z.object({
         channel_id: z.string().min(1),
       }),
       execute: (args) => call("update.check", args),
     }),
-    "update.apply": tool({
+    update_apply: tool({
       description: "Apply an upstream platform update with merge safeguards.",
       inputSchema: z.object({
         channel_id: z.string().min(1),
@@ -334,7 +343,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("update.apply", args),
     }),
-    "screen.invoke": tool({
+    screen_invoke: tool({
       description: "Invoke a command on a right-panel screen.",
       inputSchema: z.object({
         screen_id: z.string().min(1),
@@ -343,7 +352,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("screen.invoke", args),
     }),
-    "screen.list": tool({
+    screen_list: tool({
       description: "List screens registered on the current device.",
       inputSchema: z.object({}),
       execute: (args) => call("screen.list", args),

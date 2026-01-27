@@ -1,6 +1,6 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { streamText } from "ai";
+import { streamText, stepCountIs } from "ai";
 import { api, internal } from "./_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "./tools";
@@ -297,7 +297,7 @@ export const invoke = action({
       "Return a single JSON object that matches the schema.",
     ].filter((block): block is string => Boolean(block));
 
-    const maxSteps = Math.min(Math.max(Math.floor(args.maxSteps ?? 4), 1), 8);
+    const maxSteps = Math.min(Math.max(Math.floor(args.maxSteps ?? 20), 1), 20);
 
     let rawText = "";
     try {
@@ -305,7 +305,7 @@ export const invoke = action({
         model,
         system: `${promptBuild.systemPrompt}\n\n${invocationInstructions}`.trim(),
         tools,
-        maxSteps,
+        stopWhen: stepCountIs(maxSteps),
         messages: [
           {
             role: "user",
