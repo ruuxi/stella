@@ -4,6 +4,7 @@ import {
   GENERAL_AGENT_SYSTEM_PROMPT,
   SELF_MOD_AGENT_SYSTEM_PROMPT,
   EXPLORE_AGENT_SYSTEM_PROMPT,
+  BROWSER_AGENT_SYSTEM_PROMPT,
 } from "./prompts";
 
 type AgentRecord = {
@@ -107,6 +108,23 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     agentTypes: ["explore"],
     toolsAllowlist: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
     defaultSkills: [],
+    maxTaskDepth: 0,
+    version: 1,
+    source: "builtin",
+    updatedAt: 0,
+  },
+  {
+    id: "browser",
+    name: "Browser Agent",
+    description:
+      "Web browsing and browser automation specialist. Use for navigating websites, interacting with web applications, taking screenshots, filling forms, and extracting information from web pages via Playwright.",
+    systemPrompt: BROWSER_AGENT_SYSTEM_PROMPT,
+    agentTypes: ["browser"],
+    toolsAllowlist: [
+      "hera-browser_execute",
+      "hera-browser_reset",
+    ],
+    defaultSkills: ["hera-browser"],
     maxTaskDepth: 0,
     version: 1,
     source: "builtin",
