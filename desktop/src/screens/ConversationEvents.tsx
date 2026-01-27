@@ -5,6 +5,11 @@ type Props = {
   maxItems?: number;
   streamingText?: string;
   isStreaming?: boolean;
+  onOpenAttachment?: (attachment: {
+    id?: string;
+    url?: string;
+    mimeType?: string;
+  }) => void;
 };
 
 const getMessageText = (event: EventRecord) => {
@@ -43,6 +48,7 @@ export const ConversationEvents = ({
   maxItems,
   streamingText,
   isStreaming,
+  onOpenAttachment,
 }: Props) => {
   const visible = maxItems ? events.slice(-maxItems) : events;
   const showStreaming = Boolean(isStreaming || streamingText);
@@ -77,6 +83,18 @@ export const ConversationEvents = ({
                               src={attachment.url}
                               alt="Attachment"
                               className="event-attachment"
+                              onClick={() => onOpenAttachment?.(attachment)}
+                              role={onOpenAttachment ? "button" : undefined}
+                              tabIndex={onOpenAttachment ? 0 : undefined}
+                              onKeyDown={(eventKey) => {
+                                if (
+                                  onOpenAttachment &&
+                                  (eventKey.key === "Enter" ||
+                                    eventKey.key === " ")
+                                ) {
+                                  onOpenAttachment(attachment);
+                                }
+                              }}
                             />
                           );
                         }
@@ -89,6 +107,17 @@ export const ConversationEvents = ({
                           </div>
                         );
                       })}
+                      {event.type === "assistant_message" && onOpenAttachment ? (
+                        <div className="event-actions">
+                          <button
+                            className="ghost-button"
+                            type="button"
+                            onClick={() => onOpenAttachment(attachments[0])}
+                          >
+                            Open in Media Viewer
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

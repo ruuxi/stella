@@ -1,7 +1,14 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useAction, useMutation } from "convex/react";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
+import { MediaViewer, type MediaItem } from "./MediaViewer";
 import { api } from "../convex/api";
 import { useConversationEvents } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
@@ -17,6 +24,12 @@ const modeCopy: Record<UiMode, string> = {
   ask: "Ask includes a screenshot (no OCR).",
   chat: "Chat is text-only.",
   voice: "Voice uses speech-to-text.",
+};
+
+type AttachmentRef = {
+  id?: string;
+  url?: string;
+  mimeType?: string;
 };
 
 export const FullShell = () => {
@@ -37,6 +50,13 @@ export const FullShell = () => {
   const isChatMode = state.mode === "chat";
   const isAskMode = state.mode === "ask";
   const canSend = isChatMode || isAskMode;
+
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelFocused, setPanelFocused] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(360);
+  const [activeMedia, setActiveMedia] = useState<MediaItem | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeState = useRef({ startX: 0, startWidth: 360, active: false });
 
   useEffect(() => {
     if (!pendingUserMessageId) {
@@ -62,6 +82,64 @@ export const FullShell = () => {
     }
   }, [events, pendingUserMessageId]);
 
+  useEffect(() => {
+    if (!isResizing) {
+      return;
+    }
+    const handleMove = (event: MouseEvent) => {
+      const delta = event.clientX - resizeState.current.startX;
+      const nextWidth = Math.min(
+        720,
+        Math.max(260, resizeState.current.startWidth - delta),
+      );
+      setPanelWidth(nextWidth);
+    };
+
+    const handleUp = () => {
+      resizeState.current.active = false;
+      setIsResizing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isResizing]);
+
+  const onResizeStart = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!panelOpen || panelFocused) {
+      return;
+    }
+    resizeState.current = {
+      startX: event.clientX,
+      startWidth: panelWidth,
+      active: true,
+    };
+    setIsResizing(true);
+  };
+
+  const openAttachment = (attachment: AttachmentRef) => {
+    if (!attachment.url) {
+      return;
+    }
+    setActiveMedia({
+      id: attachment.id,
+      url: attachment.url,
+      mimeType: attachment.mimeType,
+      label: attachment.id ? `Attachment ${attachment.id}` : "Attachment",
+    });
+    setPanelOpen(true);
+  };
+
   const sendMessage = async () => {
     if (!canSend || !state.conversationId || !message.trim()) {
       return;
@@ -70,7 +148,7 @@ export const FullShell = () => {
     const text = message.trim();
     setMessage("");
 
-    let attachments: Array<{ id?: string; url?: string; mimeType?: string }> = [];
+    let attachments: AttachmentRef[] = [];
 
     if (isAskMode) {
       try {
@@ -144,6 +222,16 @@ export const FullShell = () => {
     );
   };
 
+  const togglePanel = () => {
+    setPanelOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        setPanelFocused(false);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="window-shell full">
       <header className="window-header">
@@ -165,6 +253,9 @@ export const FullShell = () => {
               </button>
             ))}
           </div>
+          <button className="ghost-button" type="button" onClick={togglePanel}>
+            {panelOpen ? "Hide Screens" : "Show Screens"}
+          </button>
           <button className="ghost-button" type="button" onClick={onNewConversation}>
             New thread
           </button>
@@ -178,7 +269,14 @@ export const FullShell = () => {
         </div>
       </header>
 
-      <div className="full-body">
+      <div
+        className={`full-body${panelFocused ? " focused" : ""}`}
+        style={
+          panelOpen
+            ? ({ "--panel-width": `${panelWidth}px` } as CSSProperties)
+            : undefined
+        }
+      >
         <section className="panel chat-panel">
           <div className="panel-header">
             <div className="panel-title">Chat workspace</div>
@@ -196,6 +294,7 @@ export const FullShell = () => {
                 events={events}
                 streamingText={canSend ? streamingText : undefined}
                 isStreaming={canSend ? isStreaming : false}
+                onOpenAttachment={openAttachment}
               />
             ) : (
               <div className="event-empty">Loading conversation...</div>
@@ -225,26 +324,32 @@ export const FullShell = () => {
           </div>
         </section>
 
-        <aside className="panel side-panel">
-          <div className="panel-header">
-            <div className="panel-title">Screens & context</div>
-            <div className="panel-meta">Right panel</div>
-          </div>
-          <div className="panel-content">
-            <div className="screen-card">
-              <div className="screen-title">Active screen feed</div>
-              <div className="screen-placeholder">
-                Screens, captures, and tools land here.
+        {panelOpen ? (
+          <aside className="panel side-panel">
+            <div className="panel-resize-handle" onMouseDown={onResizeStart} />
+            <div className="panel-header">
+              <div>
+                <div className="panel-title">Screens Host</div>
+                <div className="panel-meta">Media Viewer</div>
+              </div>
+              <div className="panel-actions">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => setPanelFocused((prev) => !prev)}
+                >
+                  {panelFocused ? "Unfocus" : "Focus"}
+                </button>
+                <button className="ghost-button" type="button" onClick={togglePanel}>
+                  Close
+                </button>
               </div>
             </div>
-            <div className="screen-card">
-              <div className="screen-title">Agent status</div>
-              <div className="screen-placeholder">
-                General & Self-Modification agent queues.
-              </div>
+            <div className="panel-content">
+              <MediaViewer item={activeMedia} onClear={() => setActiveMedia(null)} />
             </div>
-          </div>
-        </aside>
+          </aside>
+        ) : null}
       </div>
     </div>
   );
