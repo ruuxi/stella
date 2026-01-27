@@ -30,7 +30,7 @@ type UiState = {
 const isDev = process.env.NODE_ENV === 'development'
 
 const uiState: UiState = {
-  mode: 'ask',
+  mode: 'chat',
   window: 'full',
   conversationId: null,
 }
@@ -177,6 +177,7 @@ const showWindow = (target: WindowMode) => {
     miniWindow?.show()
     miniWindow?.focus()
     fullWindow?.hide()
+    updateUiState({ window: target })
   } else {
     if (!fullWindow) {
       createFullWindow()
@@ -184,28 +185,32 @@ const showWindow = (target: WindowMode) => {
     fullWindow?.show()
     fullWindow?.focus()
     miniWindow?.hide()
+    // Full view is always chat mode
+    updateUiState({ window: target, mode: 'chat' })
   }
-
-  updateUiState({ window: target })
 }
 
 // Handle radial wedge selection
 const handleRadialSelection = (wedge: RadialWedge) => {
   switch (wedge) {
     case 'ask':
+      // Ask mode: mini window with screenshot capability
       updateUiState({ mode: 'ask' })
       showWindow('mini')
       break
     case 'chat':
+      // Chat mode: mini window for general chat
       updateUiState({ mode: 'chat' })
       showWindow('mini')
       break
     case 'voice':
+      // Voice mode: mini window with voice input (stubbed)
       updateUiState({ mode: 'voice' })
       showWindow('mini')
       break
     case 'full':
-      showWindow('full')
+      // Full always uses chat mode
+      showWindow('full') // This already sets mode to 'chat'
       break
     case 'menu':
       // Menu just closes the radial - native menu passthrough is handled separately
