@@ -6,6 +6,7 @@ type SkillRecord = {
   name: string;
   description: string;
   markdown: string;
+  filePath?: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
   tags?: string[];
@@ -49,6 +50,10 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
     typeof record.markdown === "string" && record.markdown.trim()
       ? record.markdown
       : "";
+  const filePath =
+    typeof record.filePath === "string" && record.filePath.trim()
+      ? record.filePath.trim()
+      : undefined;
 
   const agentTypes = coerceStringArray(record.agentTypes);
   const toolsAllowlist = coerceStringArray(record.toolsAllowlist);
@@ -64,6 +69,7 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
     name,
     description,
     markdown,
+    filePath,
     agentTypes,
     toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
     tags: tags.length > 0 ? tags : undefined,
