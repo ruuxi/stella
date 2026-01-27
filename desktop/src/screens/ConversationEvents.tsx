@@ -1,4 +1,5 @@
 import type { EventRecord } from "../hooks/use-conversation-events";
+import { WorkingIndicator } from "../components/chat/WorkingIndicator";
 
 type Props = {
   events: EventRecord[];
@@ -77,27 +78,37 @@ export const ConversationEvents = ({
   const visible = maxItems ? events.slice(-maxItems) : events;
   const showStreaming = Boolean(isStreaming || streamingText);
 
+  // Filter to only show user and assistant messages for cleaner UI
+  const messageEvents = visible.filter(
+    (e) => e.type === "user_message" || e.type === "assistant_message"
+  );
+
   return (
     <div className="event-list">
-      {visible.length === 0 && !showStreaming ? (
-        <div className="event-empty">No events yet.</div>
+      {messageEvents.length === 0 && !showStreaming ? (
+        <div className="event-empty">Start a conversation</div>
       ) : (
         <>
-          {visible.map((event) => {
+          {messageEvents.map((event) => {
             const text = getEventText(event);
             const attachments = getAttachments(event);
-            const role =
-              event.type === "user_message"
-                ? "user"
-                : event.type === "assistant_message"
-                  ? "assistant"
-                  : "system";
+            const isUser = event.type === "user_message";
+
             return (
-              <div key={event._id} className={`event-item ${role}`}>
-                <div className="event-type">{event.type.replace("_", " ")}</div>
-                <div className="event-body">
-                  {text ? text : formatFallback(event)}
-                  {attachments.length > 0 ? (
+              <div key={event._id} className="session-turn">
+                {/* User message header */}
+                {isUser && text && (
+                  <div className="session-turn-header">
+                    <div className="session-turn-title">{text.length > 60 ? `${text.slice(0, 60)}...` : text}</div>
+                  </div>
+                )}
+
+                {/* Message content */}
+                <div className={`event-item ${isUser ? "user" : "assistant"}`}>
+                  <div className="event-body">
+                    {text || formatFallback(event)}
+                  </div>
+                  {attachments.length > 0 && (
                     <div className="event-attachments">
                       {attachments.map((attachment, index) => {
                         if (attachment.url) {
@@ -131,33 +142,26 @@ export const ConversationEvents = ({
                           </div>
                         );
                       })}
-                      {event.type === "assistant_message" && onOpenAttachment ? (
-                        <div className="event-actions">
-                          <button
-                            className="ghost-button"
-                            type="button"
-                            onClick={() => onOpenAttachment(attachments[0])}
-                          >
-                            Open in Media Viewer
-                          </button>
-                        </div>
-                      ) : null}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </div>
             );
           })}
-          {showStreaming ? (
-            <div className="event-item assistant streaming">
-              <div className="event-type">assistant (streaming)</div>
-              <div className="event-body">
-                {streamingText && streamingText.trim().length > 0
-                  ? streamingText
-                  : "Thinking..."}
+
+          {/* Streaming indicator */}
+          {showStreaming && (
+            <div className="session-turn">
+              <div className="event-item assistant streaming">
+                <WorkingIndicator
+                  status={streamingText && streamingText.trim().length > 0 ? "Responding" : "Thinking"}
+                />
+                {streamingText && streamingText.trim().length > 0 && (
+                  <div className="event-body">{streamingText}</div>
+                )}
               </div>
             </div>
-          ) : null}
+          )}
         </>
       )}
     </div>

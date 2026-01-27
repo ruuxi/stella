@@ -1,9 +1,6 @@
 import {
   useEffect,
-  useRef,
   useState,
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useAction, useMutation } from "convex/react";
 import { useUiState } from "../app/state/ui-state";
@@ -15,6 +12,9 @@ import { getOrCreateDeviceId } from "../services/device";
 import { getOwnerId } from "../services/identity";
 import { streamChat } from "../services/model-gateway";
 import { captureScreenshot } from "../services/screenshot";
+import { ShiftingGradient } from "../components/background/ShiftingGradient";
+import { ThemePicker } from "../components/ThemePicker";
+import { useTheme } from "../theme/theme-context";
 
 type AttachmentRef = {
   id?: string;
@@ -24,6 +24,7 @@ type AttachmentRef = {
 
 export const FullShell = () => {
   const { state, setConversationId, setWindow } = useUiState();
+  const { gradientMode, gradientColor } = useTheme();
   const [message, setMessage] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -38,12 +39,8 @@ export const FullShell = () => {
   // Full view is always chat mode (no screenshot)
   const isAskMode = state.mode === "ask";
 
-  const [panelOpen, setPanelOpen] = useState(true);
-  const [panelFocused, setPanelFocused] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(360);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [activeMedia, setActiveMedia] = useState<MediaItem | null>(null);
-  const [isResizing, setIsResizing] = useState(false);
-  const resizeState = useRef({ startX: 0, startWidth: 360, active: false });
 
   useEffect(() => {
     if (!pendingUserMessageId) {
@@ -68,51 +65,6 @@ export const FullShell = () => {
       setPendingUserMessageId(null);
     }
   }, [events, pendingUserMessageId]);
-
-  useEffect(() => {
-    if (!isResizing) {
-      return;
-    }
-    const handleMove = (event: MouseEvent) => {
-      const delta = event.clientX - resizeState.current.startX;
-      const nextWidth = Math.min(
-        720,
-        Math.max(260, resizeState.current.startWidth - delta),
-      );
-      setPanelWidth(nextWidth);
-    };
-
-    const handleUp = () => {
-      resizeState.current.active = false;
-      setIsResizing(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-  }, [isResizing]);
-
-  const onResizeStart = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!panelOpen || panelFocused) {
-      return;
-    }
-    resizeState.current = {
-      startX: event.clientX,
-      startWidth: panelWidth,
-      active: true,
-    };
-    setIsResizing(true);
-  };
 
   const openAttachment = (attachment: AttachmentRef) => {
     if (!attachment.url) {
@@ -211,107 +163,102 @@ export const FullShell = () => {
   };
 
   const togglePanel = () => {
-    setPanelOpen((prev) => {
-      const next = !prev;
-      if (!next) {
-        setPanelFocused(false);
-      }
-      return next;
-    });
+    setPanelOpen((prev) => !prev);
   };
+
+  const hasMessages = events.length > 0 || isStreaming;
 
   return (
     <div className="window-shell full">
+      <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
+
+      {/* Header - minimal, floating */}
       <header className="window-header">
         <div className="header-title">
           <span className="app-badge">Stellar</span>
         </div>
         <div className="header-actions">
-          <button className="ghost-button" type="button" onClick={togglePanel}>
-            {panelOpen ? "Hide Media" : "Show Media"}
-          </button>
-          <button className="ghost-button" type="button" onClick={onNewConversation}>
-            New conversation
+          <ThemePicker />
+          <button className="ghost-button small" type="button" onClick={togglePanel}>
+            {panelOpen ? "Close" : "Media"}
           </button>
           <button
-            className="primary-button"
+            className="ghost-button small"
             type="button"
             onClick={() => setWindow("mini")}
           >
-            Minimize
+            Mini
           </button>
         </div>
       </header>
 
-      <div
-        className={`full-body${panelFocused ? " focused" : ""}`}
-        style={
-          panelOpen
-            ? ({ "--panel-width": `${panelWidth}px` } as CSSProperties)
-            : undefined
-        }
-      >
-        <section className="panel chat-panel">
-          <div className="panel-content">
-            {state.conversationId ? (
+      {/* Main content area - full screen with gradient visible */}
+      <div className="full-body">
+        <div className="session-content">
+          {hasMessages ? (
+            <div className="session-messages">
               <ConversationEvents
                 events={events}
                 streamingText={streamingText}
                 isStreaming={isStreaming}
                 onOpenAttachment={openAttachment}
               />
-            ) : (
-              <div className="event-empty">Starting conversation...</div>
-            )}
-            <div className="composer">
-              <input
-                className="composer-input"
-                placeholder="Type a message..."
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void sendMessage();
-                  }
-                }}
-                disabled={!state.conversationId}
-              />
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => void sendMessage()}
-                disabled={!state.conversationId}
-              >
-                Send
-              </button>
             </div>
-          </div>
-        </section>
-
-        {panelOpen ? (
-          <aside className="panel side-panel">
-            <div className="panel-resize-handle" onMouseDown={onResizeStart} />
-            <div className="panel-header">
-              <div className="panel-title">Media</div>
-              <div className="panel-actions">
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => setPanelFocused((prev) => !prev)}
-                >
-                  {panelFocused ? "Unfocus" : "Focus"}
-                </button>
-                <button className="ghost-button" type="button" onClick={togglePanel}>
-                  Close
-                </button>
+          ) : (
+            <div className="new-session-view">
+              <div className="new-session-title">New session</div>
+              <div className="new-session-directory">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>Ready to start</span>
               </div>
             </div>
-            <div className="panel-content">
-              <MediaViewer item={activeMedia} onClear={() => setActiveMedia(null)} />
-            </div>
-          </aside>
-        ) : null}
+          )}
+        </div>
+
+        {/* Composer - fixed at bottom */}
+        <div className="composer">
+          <div className="composer-wrapper">
+            <input
+              className="composer-input"
+              placeholder="Type a message..."
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              disabled={!state.conversationId}
+            />
+            <button
+              className="primary-button composer-send"
+              type="button"
+              onClick={() => void sendMessage()}
+              disabled={!state.conversationId || !message.trim()}
+            >
+              Send
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Media panel - overlay style */}
+      <aside className={`side-panel${panelOpen ? " open" : ""}`} style={{ transform: panelOpen ? "translateX(0)" : "translateX(100%)" }}>
+        <div className="panel-header">
+          <div className="panel-title">Media</div>
+          <div className="panel-actions">
+            <button className="ghost-button small" type="button" onClick={togglePanel}>
+              Close
+            </button>
+          </div>
+        </div>
+        <div className="panel-content">
+          <MediaViewer item={activeMedia} onClear={() => setActiveMedia(null)} />
+        </div>
+      </aside>
     </div>
   );
 };
