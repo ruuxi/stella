@@ -15,4 +15,5 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
     showWindow: (target) => electron_1.ipcRenderer.send('window:show', target),
+    captureScreenshot: () => electron_1.ipcRenderer.invoke('screenshot:capture'),
 });
