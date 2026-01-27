@@ -1,27 +1,22 @@
-import { useQuery } from "convex/react";
-import { api } from "../services/convex-api";
-
-type EventRecord = {
-  _id: string;
-  timestamp: number;
-  type: string;
-  deviceId?: string;
-  requestId?: string;
-  targetDeviceId?: string;
-  payload?: Record<string, unknown>;
-};
+import type { EventRecord } from "../hooks/use-conversation-events";
 
 type Props = {
-  conversationId: string;
+  events: EventRecord[];
   maxItems?: number;
+  streamingText?: string;
+  isStreaming?: boolean;
 };
 
-const formatPayloadSummary = (event: EventRecord) => {
-  if (event.type === "user_message" || event.type === "assistant_message") {
-    return (event.payload?.text as string) ?? "Message";
+const getMessageText = (event: EventRecord) => {
+  if (event.payload && typeof event.payload === "object") {
+    return (event.payload as { text?: string }).text ?? "";
   }
+  return "";
+};
+
+const formatFallback = (event: EventRecord) => {
   if (event.type === "tool_request") {
-    return `Tool request → ${event.targetDeviceId ?? "unknown device"}`;
+    return `Tool request -> ${event.targetDeviceId ?? "unknown device"}`;
   }
   if (event.type === "tool_result") {
     return `Tool result · ${event.requestId ?? "request"}`;
@@ -29,30 +24,52 @@ const formatPayloadSummary = (event: EventRecord) => {
   if (event.type === "screen_event") {
     return "Screen event";
   }
-  return "Event";
+  return event.type.replace("_", " ");
 };
 
-export const ConversationEvents = ({ conversationId, maxItems }: Props) => {
-  const result = useQuery(api.events.listEvents, {
-    conversationId,
-    paginationOpts: { numItems: 40 },
-  }) as { page: EventRecord[] } | undefined;
-
-  const events = result?.page ?? [];
-  const ordered = [...events].reverse();
-  const visible = maxItems ? ordered.slice(-maxItems) : ordered;
+export const ConversationEvents = ({
+  events,
+  maxItems,
+  streamingText,
+  isStreaming,
+}: Props) => {
+  const visible = maxItems ? events.slice(-maxItems) : events;
+  const showStreaming = Boolean(isStreaming || streamingText);
 
   return (
     <div className="event-list">
-      {visible.length === 0 ? (
+      {visible.length === 0 && !showStreaming ? (
         <div className="event-empty">No events yet.</div>
       ) : (
-        visible.map((event) => (
-          <div key={event._id} className="event-item">
-            <div className="event-type">{event.type.replace("_", " ")}</div>
-            <div className="event-body">{formatPayloadSummary(event)}</div>
-          </div>
-        ))
+        <>
+          {visible.map((event) => {
+            const text = getMessageText(event);
+            const role =
+              event.type === "user_message"
+                ? "user"
+                : event.type === "assistant_message"
+                  ? "assistant"
+                  : "system";
+            return (
+              <div key={event._id} className={`event-item ${role}`}>
+                <div className="event-type">{event.type.replace("_", " ")}</div>
+                <div className="event-body">
+                  {text ? text : formatFallback(event)}
+                </div>
+              </div>
+            );
+          })}
+          {showStreaming ? (
+            <div className="event-item assistant streaming">
+              <div className="event-type">assistant (streaming)</div>
+              <div className="event-body">
+                {streamingText && streamingText.trim().length > 0
+                  ? streamingText
+                  : "Thinking..."}
+              </div>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

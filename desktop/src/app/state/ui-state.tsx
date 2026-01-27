@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UiMode, UiState, WindowMode } from '../../types/ui'
 import { getElectronApi } from '../../services/electron'
@@ -46,31 +46,49 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [])
 
-  const updateState = (partial: Partial<UiState>) => {
+  const updateState = useCallback((partial: Partial<UiState>) => {
     setState((prev) => ({ ...prev, ...partial }))
     const api = getElectronApi()
     if (api) {
       void api.setUiState(partial)
     }
-  }
+  }, [])
 
-  const value = useMemo<UiStateContextValue>(() => {
-    const setWindow = (windowMode: WindowMode) => {
+  const setMode = useCallback(
+    (mode: UiMode) => {
+      updateState({ mode })
+    },
+    [updateState],
+  )
+
+  const setConversationId = useCallback(
+    (conversationId: string | null) => {
+      updateState({ conversationId })
+    },
+    [updateState],
+  )
+
+  const setWindow = useCallback(
+    (windowMode: WindowMode) => {
       updateState({ window: windowMode })
       const api = getElectronApi()
       if (api) {
         api.showWindow(windowMode)
       }
-    }
+    },
+    [updateState],
+  )
 
-    return {
+  const value = useMemo<UiStateContextValue>(
+    () => ({
       state,
-      setMode: (mode) => updateState({ mode }),
-      setConversationId: (conversationId) => updateState({ conversationId }),
+      setMode,
+      setConversationId,
       setWindow,
       updateState,
-    }
-  }, [state, updateState])
+    }),
+    [state, setMode, setConversationId, setWindow, updateState],
+  )
 
   return <UiStateContext.Provider value={value}>{children}</UiStateContext.Provider>
 }

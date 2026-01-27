@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
-import { api } from "../services/convex-api";
+import { api } from "../convex/api";
+import { useConversationEvents } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { getOwnerId } from "../services/identity";
+import { streamChat } from "../services/model-gateway";
 import { getElectronApi } from "../services/electron";
 import type { UiMode } from "../types/ui";
 
-const modes: UiMode[] = ['ask', 'chat', 'voice']
+const modes: UiMode[] = ["ask", "chat", "voice"];
 
 export const MiniShell = () => {
   const { state, setMode, setConversationId, setWindow } = useUiState();
@@ -16,11 +18,42 @@ export const MiniShell = () => {
     ? "Local Host connected"
     : "Local Host disconnected";
   const [message, setMessage] = useState("");
+  const [streamingText, setStreamingText] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
+    null,
+  );
   const appendEvent = useMutation(api.events.appendEvent);
   const createConversation = useMutation(api.conversations.createConversation);
+  const events = useConversationEvents(state.conversationId ?? undefined);
+  const isChatMode = state.mode === "chat";
+
+  useEffect(() => {
+    if (!pendingUserMessageId) {
+      return;
+    }
+    const hasAssistantReply = events.some((event) => {
+      if (event.type !== "assistant_message") {
+        return false;
+      }
+      if (event.payload && typeof event.payload === "object") {
+        return (
+          (event.payload as { userMessageId?: string }).userMessageId ===
+          pendingUserMessageId
+        );
+      }
+      return false;
+    });
+
+    if (hasAssistantReply) {
+      setStreamingText("");
+      setIsStreaming(false);
+      setPendingUserMessageId(null);
+    }
+  }, [events, pendingUserMessageId]);
 
   const sendMessage = () => {
-    if (!state.conversationId || !message.trim()) {
+    if (!isChatMode || !state.conversationId || !message.trim()) {
       return;
     }
     const deviceId = getOrCreateDeviceId();
@@ -29,6 +62,33 @@ export const MiniShell = () => {
       type: "user_message",
       deviceId,
       payload: { text: message.trim() },
+    }).then((event: { _id?: string } | null) => {
+      if (event?._id) {
+        setStreamingText("");
+        setIsStreaming(true);
+        setPendingUserMessageId(event._id);
+        void streamChat(
+          {
+            conversationId: state.conversationId!,
+            userMessageId: event._id,
+          },
+          {
+            onTextDelta: (delta) => {
+              setStreamingText((prev) => prev + delta);
+            },
+            onDone: () => {
+              setIsStreaming(false);
+            },
+            onError: (error) => {
+              console.error("Model gateway error", error);
+              setIsStreaming(false);
+            },
+          },
+        ).catch((error) => {
+          console.error("Model gateway error", error);
+          setIsStreaming(false);
+        });
+      }
     });
     setMessage("");
   };
@@ -83,13 +143,13 @@ export const MiniShell = () => {
               sendMessage();
             }
           }}
-          disabled={!state.conversationId}
+          disabled={!state.conversationId || !isChatMode}
         />
         <button
           className="ghost-button"
           type="button"
           onClick={sendMessage}
-          disabled={!state.conversationId}
+          disabled={!state.conversationId || !isChatMode}
         >
           Send
         </button>
@@ -98,13 +158,20 @@ export const MiniShell = () => {
       <div className="mini-thread">
         <div className="panel-header">
           <div className="panel-title">Thread</div>
-          <div className="panel-meta">{state.conversationId ?? 'No conversation yet'}</div>
+          <div className="panel-meta">
+            {state.conversationId ?? "No conversation yet"}
+          </div>
         </div>
         <div className="panel-content compact">
           {state.conversationId ? (
-            <ConversationEvents conversationId={state.conversationId} maxItems={4} />
+            <ConversationEvents
+              events={events}
+              maxItems={4}
+              streamingText={isChatMode ? streamingText : undefined}
+              isStreaming={isChatMode ? isStreaming : false}
+            />
           ) : (
-            <div className="event-empty">Loading conversation…</div>
+            <div className="event-empty">Loading conversation...</div>
           )}
           <button className="ghost-button" type="button" onClick={onNewConversation}>
             New thread
@@ -112,5 +179,5 @@ export const MiniShell = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};

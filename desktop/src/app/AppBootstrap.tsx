@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation } from "convex/react";
 import { useUiState } from "./state/ui-state";
-import { api } from "../services/convex-api";
+import { api } from "../convex/api";
 import { getOrCreateDeviceId } from "../services/device";
 import { getOwnerId } from "../services/identity";
 
