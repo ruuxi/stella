@@ -1,0 +1,110 @@
+[data-component="button"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-style: solid;
+  border-width: 1px;
+  border-radius: var(--radius-md, 6px);
+  text-decoration: none;
+  user-select: none;
+  cursor: default;
+  outline: none;
+  white-space: nowrap;
+  font-family: var(--font-family-sans, "Inter", sans-serif);
+}
+
+[data-component="button"][data-variant="primary"] {
+  background-color: var(--primary);
+  border-color: var(--border);
+  color: var(--primary-foreground);
+}
+
+[data-component="button"][data-variant="primary"]:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+[data-component="button"][data-variant="primary"]:active:not(:disabled) {
+  opacity: 0.8;
+}
+
+[data-component="button"][data-variant="primary"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-component="button"][data-variant="ghost"] {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--foreground);
+}
+
+[data-component="button"][data-variant="ghost"]:hover:not(:disabled) {
+  background-color: var(--surface-raised, color-mix(in srgb, var(--card) 65%, transparent));
+}
+
+[data-component="button"][data-variant="ghost"]:active:not(:disabled) {
+  background-color: var(--surface-raised-hover, color-mix(in srgb, var(--card) 80%, transparent));
+}
+
+[data-component="button"][data-variant="ghost"]:disabled {
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+[data-component="button"][data-variant="secondary"] {
+  border: transparent;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-component="button"][data-variant="secondary"]:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--secondary) 90%, var(--foreground) 10%);
+}
+
+[data-component="button"][data-variant="secondary"]:active:not(:disabled) {
+  transform: scale(0.99);
+  transition: all 150ms ease-out;
+}
+
+[data-component="button"][data-variant="secondary"]:disabled {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+}
+
+[data-component="button"][data-size="small"] {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.67;
+  gap: 4px;
+}
+
+[data-component="button"][data-size="normal"] {
+  height: 24px;
+  line-height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 6px;
+}
+
+[data-component="button"][data-size="large"] {
+  height: 32px;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.43;
+  gap: 8px;
+}
+
+[data-component="button"]:focus {
+  outline: none;
+}
+
+[data-component="button"]:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}

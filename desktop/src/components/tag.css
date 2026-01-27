@@ -1,0 +1,50 @@
+[data-component="tag"] {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+[data-component="tag"][data-size="small"] {
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+[data-component="tag"][data-size="normal"] {
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+[data-component="tag"][data-variant="default"] {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+[data-component="tag"][data-variant="primary"] {
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+}
+
+[data-component="tag"][data-variant="success"] {
+  background: color-mix(in srgb, #10b981 15%, transparent);
+  color: #10b981;
+}
+
+[data-component="tag"][data-variant="warning"] {
+  background: color-mix(in srgb, #f59e0b 15%, transparent);
+  color: #f59e0b;
+}
+
+[data-component="tag"][data-variant="error"] {
+  background: color-mix(in srgb, var(--destructive) 15%, transparent);
+  color: var(--destructive);
+}
+
+[data-component="tag"][data-variant="info"] {
+  background: color-mix(in srgb, #3b82f6 15%, transparent);
+  color: #3b82f6;
+}

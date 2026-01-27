@@ -1,0 +1,96 @@
+[data-component="popover-content"] {
+  z-index: 50;
+  min-width: 200px;
+  max-width: 320px;
+  border-radius: var(--radius-md, 6px);
+  background-color: var(--popover);
+  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  background-clip: padding-box;
+  box-shadow: var(--shadow-md);
+}
+
+[data-component="popover-content"]:focus-within {
+  outline: none;
+}
+
+[data-component="popover-content"][data-state="open"] {
+  animation: popover-open 0.15s ease-out;
+}
+
+[data-component="popover-content"][data-state="closed"] {
+  animation: popover-close 0.15s ease-out;
+}
+
+[data-component="popover-content"] [data-slot="popover-header"] {
+  display: flex;
+  padding: 12px;
+  padding-bottom: 0;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-component="popover-content"] [data-slot="popover-title"] {
+  flex: 1;
+  color: var(--foreground);
+  margin: 0;
+  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.43;
+}
+
+[data-component="popover-content"] [data-slot="popover-close-button"] {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: default;
+}
+
+[data-component="popover-content"] [data-slot="popover-close-button"]:hover {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+[data-component="popover-content"] [data-slot="popover-description"] {
+  padding: 0 12px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.67;
+}
+
+[data-component="popover-content"] [data-slot="popover-body"] {
+  padding: 12px;
+}
+
+@keyframes popover-open {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes popover-close {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}

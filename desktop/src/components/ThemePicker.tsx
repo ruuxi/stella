@@ -8,8 +8,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-} from "./ui/dropdown-menu";
-import { Button } from "./ui/button";
+} from "./dropdown-menu";
+import { Button } from "./button";
 import { Palette, Sun, Moon, Monitor } from "lucide-react";
 
 export function ThemePicker() {
