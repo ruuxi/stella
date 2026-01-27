@@ -346,7 +346,7 @@
 .event-item {
   padding: 12px;
   border-radius: var(--radius-md);
-  background: var(--surface-inset);
+  background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
   border: 1px solid var(--border-strong);
   display: flex;
   flex-direction: column;
@@ -355,15 +355,18 @@
 }
 
 .event-item.user {
-  background: var(--surface-inset);
+  background: color-mix(in srgb, var(--surface-inset) 30%, transparent);
+  margin-left: auto;
+  max-width: 85%;
+  width: fit-content;
 }
 
 .event-item.assistant {
-  background: var(--surface-inset);
+  background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
 }
 
 .event-item.system {
-  background: var(--surface-inset);
+  background: color-mix(in srgb, var(--surface-inset) 10%, transparent);
   opacity: 0.8;
 }
 
@@ -935,7 +938,7 @@
   gap: 8px;
   padding: 6px 12px;
   border-radius: var(--radius-md);
-  background: var(--surface-inset);
+  background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
   border: 1px solid var(--border-strong);
   font-size: 12px;
   color: var(--text-base);
@@ -1030,7 +1033,7 @@
   flex-direction: column;
   gap: 12px;
   padding: 12px;
-  background: var(--surface-inset);
+  background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
 }
