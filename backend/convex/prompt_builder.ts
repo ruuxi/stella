@@ -10,20 +10,31 @@ export type PromptBuildResult = {
 };
 
 const buildSkillsSection = (
-  skills: Array<{ id: string; name: string; markdown: string }>,
+  skills: Array<{ id: string; name: string; description: string; filePath?: string }>,
 ) => {
   if (skills.length === 0) return "";
 
-  const blocks = skills
-    .map((skill) => {
-      const header = `## Skill: ${skill.name} (${skill.id})`;
-      return `${header}\n${skill.markdown}`.trim();
-    })
-    .filter((block) => block.length > 0);
+  const entries = skills.map((skill) => {
+    const location = skill.filePath?.trim() || "unknown";
+    const description = skill.description?.trim() || "Skill instructions.";
+    return [
+      `  <skill id="${skill.id}" name="${skill.name}" location="${location}">`,
+      `    <description>${description}</description>`,
+      "  </skill>",
+    ].join("\n");
+  });
 
-  if (blocks.length === 0) return "";
-
-  return ["# Skills", ...blocks].join("\n\n");
+  return [
+    "## Skills (mandatory)",
+    "Before replying: scan <available_skills> <description> entries.",
+    "- If exactly one skill clearly applies: read its SKILL.md at <location> with `Read`, then follow it.",
+    "- If multiple could apply: choose the most specific one, then read/follow it.",
+    "- If none clearly apply: do not read any SKILL.md.",
+    "Constraints: never read more than one skill up front; only read after selecting.",
+    "<available_skills>",
+    ...entries,
+    "</available_skills>",
+  ].join("\n");
 };
 
 export const buildSystemPrompt = async (
@@ -39,7 +50,12 @@ export const buildSystemPrompt = async (
   });
 
   const skillsSection = buildSkillsSection(
-    skills.map((skill) => ({ id: skill.id, name: skill.name, markdown: skill.markdown })),
+    skills.map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      filePath: skill.filePath,
+    })),
   );
 
   const systemParts = [agent.systemPrompt];
