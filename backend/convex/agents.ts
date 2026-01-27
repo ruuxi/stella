@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import {
   GENERAL_AGENT_SYSTEM_PROMPT,
   SELF_MOD_AGENT_SYSTEM_PROMPT,
+  EXPLORE_AGENT_SYSTEM_PROMPT,
 } from "./prompts";
 
 type AgentRecord = {
@@ -78,6 +79,21 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     defaultSkills: [],
     model: undefined,
     maxTaskDepth: 2,
+    version: 1,
+    source: "builtin",
+    updatedAt: 0,
+  },
+  {
+    id: "explore",
+    name: "Explore Agent",
+    description:
+      "Primary investigator for codebase exploration and web research. Use liberally for file discovery, pattern searching, documentation lookup, and understanding code structure.",
+    systemPrompt: EXPLORE_AGENT_SYSTEM_PROMPT,
+    agentTypes: ["explore"],
+    toolsAllowlist: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
+    defaultSkills: [],
+    model: undefined,
+    maxTaskDepth: 0,
     version: 1,
     source: "builtin",
     updatedAt: 0,
