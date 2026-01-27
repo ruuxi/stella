@@ -6,6 +6,11 @@ export type ElectronApi = {
   setUiState: (partial: Partial<UiState>) => Promise<UiState>
   onUiState: (callback: (state: UiState) => void) => () => void
   showWindow: (target: WindowMode) => void
+  captureScreenshot: () => Promise<{
+    dataUrl: string
+    width: number
+    height: number
+  } | null>
 }
 
 declare global {

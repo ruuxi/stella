@@ -14,12 +14,23 @@ const getMessageText = (event: EventRecord) => {
   return "";
 };
 
+const getAttachments = (event: EventRecord) => {
+  if (event.payload && typeof event.payload === "object") {
+    return (
+      (event.payload as {
+        attachments?: Array<{ id?: string; url?: string; mimeType?: string }>;
+      }).attachments ?? []
+    );
+  }
+  return [];
+};
+
 const formatFallback = (event: EventRecord) => {
   if (event.type === "tool_request") {
     return `Tool request -> ${event.targetDeviceId ?? "unknown device"}`;
   }
   if (event.type === "tool_result") {
-    return `Tool result · ${event.requestId ?? "request"}`;
+    return `Tool result - ${event.requestId ?? "request"}`;
   }
   if (event.type === "screen_event") {
     return "Screen event";
@@ -44,6 +55,7 @@ export const ConversationEvents = ({
         <>
           {visible.map((event) => {
             const text = getMessageText(event);
+            const attachments = getAttachments(event);
             const role =
               event.type === "user_message"
                 ? "user"
@@ -55,6 +67,30 @@ export const ConversationEvents = ({
                 <div className="event-type">{event.type.replace("_", " ")}</div>
                 <div className="event-body">
                   {text ? text : formatFallback(event)}
+                  {attachments.length > 0 ? (
+                    <div className="event-attachments">
+                      {attachments.map((attachment, index) => {
+                        if (attachment.url) {
+                          return (
+                            <img
+                              key={attachment.id ?? `${index}`}
+                              src={attachment.url}
+                              alt="Attachment"
+                              className="event-attachment"
+                            />
+                          );
+                        }
+                        return (
+                          <div
+                            key={attachment.id ?? `${index}`}
+                            className="event-attachment-fallback"
+                          >
+                            Attachment {index + 1}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
