@@ -7,6 +7,9 @@ export type StellarHome = {
   agentsPath: string;
   skillsPath: string;
   pluginsPath: string;
+  packsPath: string;
+  workspacePath: string;
+  userPath: string;
   statePath: string;
   logsPath: string;
   migrationMarkerPath: string;
@@ -116,6 +119,9 @@ export const resolveStellarHome = async (
   const agentsPath = path.join(homePath, "agents");
   const skillsPath = path.join(homePath, "skills");
   const pluginsPath = path.join(homePath, "plugins");
+  const packsPath = path.join(homePath, "packs");
+  const workspacePath = path.join(homePath, "workspace");
+  const userPath = path.join(homePath, "user");
   const statePath = path.join(homePath, "state");
   const logsPath = path.join(homePath, "logs");
   const migrationMarkerPath = path.join(homePath, MIGRATION_MARKER);
@@ -124,6 +130,9 @@ export const resolveStellarHome = async (
   await ensureDir(agentsPath);
   await ensureDir(skillsPath);
   await ensureDir(pluginsPath);
+  await ensureDir(packsPath);
+  await ensureDir(workspacePath);
+  await ensureDir(userPath);
   await ensureDir(statePath);
   await ensureDir(logsPath);
 
@@ -135,6 +144,9 @@ export const resolveStellarHome = async (
     agentsPath,
     skillsPath,
     pluginsPath,
+    packsPath,
+    workspacePath,
+    userPath,
     statePath,
     logsPath,
     migrationMarkerPath,

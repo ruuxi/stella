@@ -1,6 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { UiMode, UiState, WindowMode } from '../../types/ui'
+import type {
+  UiMode,
+  UiPanelState,
+  UiState,
+  UiStateUpdate,
+  WindowMode,
+} from '../../types/ui'
 import { getElectronApi } from '../../services/electron'
 
 type UiStateContextValue = {
@@ -8,19 +14,40 @@ type UiStateContextValue = {
   setMode: (mode: UiMode) => void
   setConversationId: (id: string | null) => void
   setWindow: (windowMode: WindowMode) => void
-  updateState: (partial: Partial<UiState>) => void
+  updateState: (partial: UiStateUpdate) => void
+}
+
+const defaultPanelState: UiPanelState = {
+  isOpen: true,
+  width: 420,
+  focused: false,
+  activeScreenId: 'media_viewer',
+  chatDrawerOpen: false,
 }
 
 const defaultState: UiState = {
   mode: 'chat',
   window: 'full',
   conversationId: null,
+  panel: { ...defaultPanelState },
 }
 
 const UiStateContext = createContext<UiStateContextValue | null>(null)
 
 export const UiStateProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<UiState>(defaultState)
+
+  const normalizeState = useCallback((incoming: Partial<UiState> | null | undefined): UiState => {
+    const panel: UiPanelState = {
+      ...defaultPanelState,
+      ...(incoming?.panel ?? {}),
+    }
+    return {
+      ...defaultState,
+      ...(incoming ?? {}),
+      panel,
+    }
+  }, [])
 
   useEffect(() => {
     const api = getElectronApi()
@@ -31,26 +58,36 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
     api
       .getUiState()
       .then((nextState) => {
-        setState(nextState)
+        setState(normalizeState(nextState))
       })
       .catch(() => {
         setState(defaultState)
       })
 
     const unsubscribe = api.onUiState((nextState) => {
-      setState(nextState)
+      setState(normalizeState(nextState))
     })
 
     return () => {
       unsubscribe()
     }
-  }, [])
+  }, [normalizeState])
 
-  const updateState = useCallback((partial: Partial<UiState>) => {
-    setState((prev) => ({ ...prev, ...partial }))
+  const updateState = useCallback((partial: UiStateUpdate) => {
+    let outbound: UiStateUpdate = partial
+    setState((prev) => {
+      const nextPanel = partial.panel ? { ...prev.panel, ...partial.panel } : prev.panel
+      const next: UiState = {
+        ...prev,
+        ...partial,
+        panel: nextPanel,
+      }
+      outbound = partial.panel ? { ...partial, panel: nextPanel } : partial
+      return next
+    })
     const api = getElectronApi()
     if (api) {
-      void api.setUiState(partial)
+      void api.setUiState(outbound)
     }
   }, [])
 
