@@ -98,7 +98,8 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "skills/**/*"
     ],
     "win": {
       "target": "nsis"
