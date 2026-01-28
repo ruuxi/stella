@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import type { Dirent } from "fs";
 import path from "path";
+import os from "os";
 import { spawn } from "child_process";
 import { loadPluginsFromHome } from "./plugins.js";
 
@@ -16,6 +17,25 @@ type ToolContext = {
 type ToolResult = {
   result?: unknown;
   error?: string;
+};
+
+type SecretMountSpec = {
+  provider: string;
+  label?: string;
+  description?: string;
+  placeholder?: string;
+};
+
+type SecretMounts = {
+  env?: Record<string, SecretMountSpec>;
+  files?: Record<string, SecretMountSpec>;
+};
+
+type ResolvedSecret = {
+  secretId: string;
+  provider: string;
+  label: string;
+  plaintext: string;
 };
 
 type ShellRecord = {
@@ -48,6 +68,10 @@ type ToolHostOptions = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
+  resolveSecret?: (payload: {
+    provider: string;
+    secretId?: string;
+  }) => Promise<ResolvedSecret | null>;
 };
 
 export type PluginSyncPayload = {
@@ -76,6 +100,7 @@ export type PluginSyncPayload = {
     execution?: "backend" | "device";
     requiresSecrets?: string[];
     publicIntegration?: boolean;
+    secretMounts?: SecretMounts;
     version: number;
     source: string;
     filePath: string;
@@ -238,7 +263,7 @@ const saveJson = async (filePath: string, value: unknown) => {
   await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf-8");
 };
 
-export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptions) => {
+export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }: ToolHostOptions) => {
   const shells = new Map<string, ShellRecord>();
   const tasks = new Map<string, TaskRecord>();
 
@@ -254,6 +279,62 @@ export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptio
     tools: [],
     skills: [],
     agents: [],
+  };
+  let skillCache: PluginSyncPayload["skills"] = [];
+
+  const setSkills = (skills: PluginSyncPayload["skills"]) => {
+    skillCache = skills;
+  };
+
+  const getSkillById = (skillId: string) =>
+    skillCache.find((skill) => skill.id === skillId);
+
+  const expandHomePath = (value: string) =>
+    value.replace(/^~(?=$|[\\/])/, os.homedir());
+
+  const writeSecretFile = async (filePath: string, value: string, cwd: string) => {
+    const expanded = expandHomePath(filePath);
+    const resolved = path.isAbsolute(expanded)
+      ? expanded
+      : path.resolve(cwd, expanded);
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await fs.writeFile(resolved, value, "utf-8");
+    if (process.platform !== "win32") {
+      try {
+        await fs.chmod(resolved, 0o600);
+      } catch {
+        // Ignore permission failures.
+      }
+    }
+    return resolved;
+  };
+
+  const resolveSecretValue = async (
+    spec: SecretMountSpec,
+    cache: Map<string, string>,
+  ) => {
+    if (cache.has(spec.provider)) {
+      return cache.get(spec.provider) ?? null;
+    }
+    if (!resolveSecret) return null;
+
+    let resolved = await resolveSecret({ provider: spec.provider });
+    if (!resolved && requestCredential) {
+      const response = await requestCredential({
+        provider: spec.provider,
+        label: spec.label ?? spec.provider,
+        description: spec.description,
+        placeholder: spec.placeholder,
+      });
+      resolved = await resolveSecret({
+        provider: spec.provider,
+        secretId: response.secretId,
+      });
+    }
+
+    if (!resolved) return null;
+    cache.set(spec.provider, resolved.plaintext);
+    return resolved.plaintext;
   };
 
   const loadPlugins = async (): Promise<PluginSyncPayload> => {
@@ -282,7 +363,11 @@ export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptio
     return pluginSyncPayload;
   };
 
-  const startShell = (command: string, cwd: string) => {
+  const startShell = (
+    command: string,
+    cwd: string,
+    envOverrides?: Record<string, string>,
+  ) => {
     const id = crypto.randomUUID();
     // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
     const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
@@ -290,6 +375,7 @@ export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptio
 
     const child = spawn(shell, args, {
       cwd,
+      env: envOverrides ? { ...process.env, ...envOverrides } : process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -323,7 +409,12 @@ export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptio
     return record;
   };
 
-  const runShell = async (command: string, cwd: string, timeoutMs: number) => {
+  const runShell = async (
+    command: string,
+    cwd: string,
+    timeoutMs: number,
+    envOverrides?: Record<string, string>,
+  ) => {
     // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
     const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
     const args = ["-lc", command];
@@ -331,6 +422,7 @@ export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptio
     return new Promise<string>((resolve) => {
       const child = spawn(shell, args, {
         cwd,
+        env: envOverrides ? { ...process.env, ...envOverrides } : process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
 
@@ -626,6 +718,66 @@ export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptio
     }
 
     const output = await runShell(command, cwd, timeout);
+    return { result: truncate(output) };
+  };
+
+  const handleSkillBash = async (
+    args: Record<string, unknown>,
+  ): Promise<ToolResult> => {
+    const skillId = String(args.skill_id ?? "").trim();
+    if (!skillId) {
+      return { error: "skill_id is required." };
+    }
+
+    const skill = getSkillById(skillId);
+    if (!skill || !skill.secretMounts) {
+      return handleBash(args);
+    }
+
+    const command = String(args.command ?? "");
+    const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
+    const cwd = String(args.working_directory ?? process.cwd());
+    const runInBackground = Boolean(args.run_in_background ?? false);
+
+    const envOverrides: Record<string, string> = {};
+    const providerCache = new Map<string, string>();
+
+    if (skill.secretMounts.env) {
+      for (const [envName, spec] of Object.entries(skill.secretMounts.env)) {
+        if (!envName.trim()) continue;
+        const value = await resolveSecretValue(spec, providerCache);
+        if (!value) {
+          return {
+            error: `Missing secret for ${spec.provider}.`,
+          };
+        }
+        envOverrides[envName] = value;
+      }
+    }
+
+    if (skill.secretMounts.files) {
+      for (const [filePath, spec] of Object.entries(skill.secretMounts.files)) {
+        if (!filePath.trim()) continue;
+        const value = await resolveSecretValue(spec, providerCache);
+        if (!value) {
+          return {
+            error: `Missing secret for ${spec.provider}.`,
+          };
+        }
+        await writeSecretFile(filePath, value, cwd);
+      }
+    }
+
+    if (runInBackground) {
+      const record = startShell(command, cwd, envOverrides);
+      return {
+        result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
+          record.output || "(no output yet)",
+        )}`,
+      };
+    }
+
+    const output = await runShell(command, cwd, timeout, envOverrides);
     return { result: truncate(output) };
   };
 
@@ -954,6 +1106,7 @@ export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptio
     Glob: (args) => handleGlob(args),
     Grep: (args) => handleGrep(args),
     Bash: (args) => handleBash(args),
+    SkillBash: (args) => handleSkillBash(args),
     KillShell: (args) => handleKillShell(args),
     WebFetch: (args) => handleWebFetch(args),
     WebSearch: (args) => handleWebSearch(args),
@@ -1016,6 +1169,7 @@ export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptio
     getShells: () => Array.from(shells.values()),
     loadPlugins,
     getPluginSyncPayload: () => pluginSyncPayload,
+    setSkills,
   };
 };
 

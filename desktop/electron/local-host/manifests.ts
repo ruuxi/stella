@@ -75,6 +75,10 @@ export type ParsedSkill = {
   execution?: "backend" | "device";
   requiresSecrets?: string[];
   publicIntegration?: boolean;
+  secretMounts?: {
+    env?: Record<string, { provider: string; label?: string; description?: string; placeholder?: string }>;
+    files?: Record<string, { provider: string; label?: string; description?: string; placeholder?: string }>;
+  };
   version: number;
   source: string;
   filePath: string;
@@ -114,6 +118,121 @@ const deriveIdFromPath = (filePath: string) => {
   return dirName || fileStem || "unknown";
 };
 
+type SecretMountSpec = {
+  provider: string;
+  label?: string;
+  description?: string;
+  placeholder?: string;
+};
+
+const normalizeSecretMountMap = (
+  value: unknown,
+): Record<string, SecretMountSpec> | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const entries = Object.entries(value as Record<string, unknown>);
+  const result: Record<string, SecretMountSpec> = {};
+
+  for (const [key, raw] of entries) {
+    if (typeof key !== "string" || !key.trim()) continue;
+    if (typeof raw === "string") {
+      result[key] = { provider: raw };
+      continue;
+    }
+    if (raw && typeof raw === "object") {
+      const record = raw as Record<string, unknown>;
+      const provider = typeof record.provider === "string" ? record.provider.trim() : "";
+      if (!provider) continue;
+      result[key] = {
+        provider,
+        label: typeof record.label === "string" ? record.label : undefined,
+        description: typeof record.description === "string" ? record.description : undefined,
+        placeholder: typeof record.placeholder === "string" ? record.placeholder : undefined,
+      };
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+};
+
+const normalizeSecretMounts = (
+  value: unknown,
+):
+  | {
+      env?: Record<string, SecretMountSpec>;
+      files?: Record<string, SecretMountSpec>;
+    }
+  | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const env = normalizeSecretMountMap(record.env);
+  const files = normalizeSecretMountMap(record.files);
+  if (!env && !files) return undefined;
+  return {
+    env,
+    files,
+  };
+};
+
+const ENV_HINTS = ["_KEY", "_TOKEN", "_SECRET", "CLIENT_ID", "CLIENT_SECRET"];
+
+const extractEnvVars = (text: string) => {
+  const matches = text.match(/\b[A-Z][A-Z0-9_]{2,}\b/g) ?? [];
+  const result = new Set<string>();
+  for (const match of matches) {
+    if (!ENV_HINTS.some((hint) => match.includes(hint))) continue;
+    if (match.endsWith("_FILE") || match.endsWith("_PATH") || match.endsWith("_DIR")) {
+      continue;
+    }
+    result.add(match);
+  }
+  return Array.from(result);
+};
+
+const extractTokenPaths = (text: string) => {
+  const results = new Set<string>();
+  const regex = /~\/\.config\/[^\s"'`]+\/token\b/g;
+  const matches = text.match(regex) ?? [];
+  for (const match of matches) {
+    results.add(match);
+  }
+  return Array.from(results);
+};
+
+const providerFromTokenPath = (filePath: string) => {
+  const normalized = filePath.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  const dir = parts.length > 1 ? parts[parts.length - 2] : "token";
+  return `${dir}_token`;
+};
+
+const deriveSecretMountsFromMarkdown = (markdown: string) => {
+  const envVars = extractEnvVars(markdown);
+  const tokenPaths = extractTokenPaths(markdown);
+
+  const env: Record<string, SecretMountSpec> = {};
+  for (const envVar of envVars) {
+    env[envVar] = { provider: envVar, label: envVar };
+  }
+
+  const files: Record<string, SecretMountSpec> = {};
+  for (const tokenPath of tokenPaths) {
+    const provider = providerFromTokenPath(tokenPath);
+    files[tokenPath] = {
+      provider,
+      label: provider.replace(/_/g, " "),
+    };
+  }
+
+  if (Object.keys(env).length === 0 && Object.keys(files).length === 0) {
+    return undefined;
+  }
+  return {
+    env: Object.keys(env).length > 0 ? env : undefined,
+    files: Object.keys(files).length > 0 ? files : undefined,
+  };
+};
+
+
 export const parseSkillMarkdown = async (
   filePath: string,
   source: string,
@@ -141,6 +260,24 @@ export const parseSkillMarkdown = async (
       : undefined;
   const publicIntegration =
     typeof metadata.publicIntegration === "boolean" ? metadata.publicIntegration : undefined;
+  const hasSecretMounts =
+    Object.prototype.hasOwnProperty.call(metadata, "secretMounts");
+  const explicitSecretMounts = normalizeSecretMounts(metadata.secretMounts);
+  const inferredSecretMounts = hasSecretMounts ? undefined : deriveSecretMountsFromMarkdown(body);
+  const secretMounts = explicitSecretMounts ?? inferredSecretMounts;
+
+  const mergedRequires = new Set(requiresSecrets);
+  if (secretMounts?.env) {
+    for (const spec of Object.values(secretMounts.env)) {
+      mergedRequires.add(spec.provider);
+    }
+  }
+  if (secretMounts?.files) {
+    for (const spec of Object.values(secretMounts.files)) {
+      mergedRequires.add(spec.provider);
+    }
+  }
+  const derivedRequires = Array.from(mergedRequires).filter((value) => value.trim().length > 0);
 
   return {
     id,
@@ -151,8 +288,9 @@ export const parseSkillMarkdown = async (
     toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
     tags: tags.length > 0 ? tags : undefined,
     execution,
-    requiresSecrets: requiresSecrets.length > 0 ? requiresSecrets : undefined,
+    requiresSecrets: derivedRequires.length > 0 ? derivedRequires : undefined,
     publicIntegration,
+    secretMounts,
     version: coerceVersion(metadata.version),
     source,
     filePath,

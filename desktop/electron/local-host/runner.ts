@@ -42,7 +42,38 @@ const POLL_INTERVAL_MS = 1500;
 const SYNC_DEBOUNCE_MS = 500;
 
 export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential }: HostRunnerOptions) => {
-  const toolHost = createToolHost({ stellarHome, requestCredential });
+  const ownerId = "local";
+  const toolHost = createToolHost({
+    stellarHome,
+    requestCredential,
+    resolveSecret: async ({ provider, secretId }) => {
+      if (!client) return null;
+      if (secretId) {
+        return (await callQuery("secrets.getSecretValueById", {
+          ownerId,
+          secretId,
+        })) as
+          | {
+              secretId: string;
+              provider: string;
+              label: string;
+              plaintext: string;
+            }
+          | null;
+      }
+      return (await callQuery("secrets.getSecretValueForProvider", {
+        ownerId,
+        provider,
+      })) as
+        | {
+            secretId: string;
+            provider: string;
+            label: string;
+            plaintext: string;
+          }
+        | null;
+    },
+  });
   let client: ConvexHttpClient | null = null;
   let convexUrl: string | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -96,6 +127,8 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
 
         const skills = await loadSkillsFromHome(skillsPath, pluginPayload.skills);
         const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
+
+        toolHost.setSkills(skills);
 
         await callMutation("skills.upsertMany", {
           skills,
