@@ -2,7 +2,6 @@
 
 [data-theme-picker] {
   width: 256px;
-  max-height: 400px;
 }
 
 [data-theme-picker] [data-slot="popover-body"] {
@@ -24,8 +23,8 @@
 
 [data-slot="theme-picker-section"][data-bordered] {
   padding-bottom: 8px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
 }
 
 [data-slot="theme-picker-label"] {
@@ -53,12 +52,11 @@
   padding: 0 8px;
 }
 
+/* Theme list - no scrolling, show all items like Aura */
 [data-slot="theme-picker-theme-list"] {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 240px;
-  overflow-y: auto;
+  gap: 4px;
 }
 
 [data-slot="theme-picker-theme-button"] {

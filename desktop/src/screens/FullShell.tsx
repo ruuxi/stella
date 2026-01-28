@@ -217,31 +217,69 @@ export const FullShell = () => {
           )}
         </div>
 
-        {/* Composer - fixed at bottom */}
+        {/* Composer - Aura-style prompt bar at bottom */}
         <div className="composer">
-          <div className="composer-wrapper">
-            <input
-              className="composer-input"
-              placeholder="Type a message..."
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void sendMessage();
-                }
-              }}
-              disabled={!state.conversationId}
-            />
-            <button
-              className="primary-button composer-send"
-              type="button"
-              onClick={() => void sendMessage()}
-              disabled={!state.conversationId || !message.trim()}
-            >
-              Send
-            </button>
-          </div>
+          <form
+            className="composer-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void sendMessage();
+            }}
+          >
+            {/* Input scroll container */}
+            <div className="composer-scroll">
+              <textarea
+                className="composer-input"
+                placeholder="Type a message..."
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendMessage();
+                  }
+                }}
+                disabled={!state.conversationId}
+                rows={1}
+              />
+            </div>
+
+            {/* Bottom toolbar */}
+            <div className="composer-toolbar">
+              <div className="composer-toolbar-left">
+                {/* Placeholder for model/agent selector */}
+                <button type="button" className="composer-selector">
+                  <svg className="composer-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4M12 8h.01" />
+                  </svg>
+                  <span>Model</span>
+                </button>
+              </div>
+
+              <div className="composer-toolbar-right">
+                {/* Placeholder action buttons */}
+                <button type="button" className="composer-action" title="Attach file">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21,15 16,10 5,21" />
+                  </svg>
+                </button>
+
+                {/* Submit button */}
+                <button
+                  type="submit"
+                  className="composer-submit"
+                  disabled={!state.conversationId || !message.trim()}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       </div>
 

@@ -35,6 +35,15 @@ interface ThemeContextValue {
 
   // All available themes
   themes: Theme[];
+
+  // Preview functions (for hover preview like Aura)
+  previewTheme: (id: string) => void;
+  cancelThemePreview: () => void;
+  previewGradientMode: (mode: GradientMode) => void;
+  cancelGradientModePreview: () => void;
+  previewGradientColor: (color: GradientColor) => void;
+  cancelGradientColorPreview: () => void;
+  cancelPreview: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -131,7 +140,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const [systemMode, setSystemMode] = useState<"light" | "dark">(getSystemColorMode);
 
-  const theme = getThemeById(themeId) ?? defaultTheme;
+  // Preview state (for hover preview like Aura)
+  const [previewThemeId, setPreviewThemeId] = useState<string | null>(null);
+  const [previewGradientModeState, setPreviewGradientModeState] = useState<GradientMode | null>(null);
+  const [previewGradientColorState, setPreviewGradientColorState] = useState<GradientColor | null>(null);
+
+  // Use preview values if set, otherwise use actual values
+  const activeThemeId = previewThemeId ?? themeId;
+  const theme = getThemeById(activeThemeId) ?? defaultTheme;
 
   const resolvedColorMode = colorMode === "system" ? systemMode : colorMode;
 
@@ -147,13 +163,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
-  // Apply theme to document
+  // Apply theme to document (responds to both actual and preview changes)
   useEffect(() => {
     applyThemeToDocument(colors, resolvedColorMode === "dark");
   }, [colors, resolvedColorMode]);
 
   const setTheme = useCallback((id: string) => {
     setThemeId(id);
+    setPreviewThemeId(null);
     localStorage.setItem(THEME_STORAGE_KEY, id);
   }, []);
 
@@ -164,12 +181,48 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setGradientMode = useCallback((mode: GradientMode) => {
     setGradientModeState(mode);
+    setPreviewGradientModeState(null);
     localStorage.setItem(GRADIENT_MODE_STORAGE_KEY, mode);
   }, []);
 
   const setGradientColor = useCallback((color: GradientColor) => {
     setGradientColorState(color);
+    setPreviewGradientColorState(null);
     localStorage.setItem(GRADIENT_COLOR_STORAGE_KEY, color);
+  }, []);
+
+  // Preview functions (like Aura)
+  const previewTheme = useCallback((id: string) => {
+    const previewThemeObj = getThemeById(id);
+    if (previewThemeObj) {
+      setPreviewThemeId(id);
+    }
+  }, []);
+
+  const cancelThemePreview = useCallback(() => {
+    setPreviewThemeId(null);
+  }, []);
+
+  const previewGradientMode = useCallback((mode: GradientMode) => {
+    setPreviewGradientModeState(mode);
+  }, []);
+
+  const cancelGradientModePreview = useCallback(() => {
+    setPreviewGradientModeState(null);
+  }, []);
+
+  const previewGradientColor = useCallback((color: GradientColor) => {
+    setPreviewGradientColorState(color);
+  }, []);
+
+  const cancelGradientColorPreview = useCallback(() => {
+    setPreviewGradientColorState(null);
+  }, []);
+
+  const cancelPreview = useCallback(() => {
+    setPreviewThemeId(null);
+    setPreviewGradientModeState(null);
+    setPreviewGradientColorState(null);
   }, []);
 
   return (
@@ -181,12 +234,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         colorMode,
         setColorMode,
         resolvedColorMode,
-        gradientMode,
+        gradientMode: previewGradientModeState ?? gradientMode,
         setGradientMode,
-        gradientColor,
+        gradientColor: previewGradientColorState ?? gradientColor,
         setGradientColor,
         colors,
         themes,
+        previewTheme,
+        cancelThemePreview,
+        previewGradientMode,
+        cancelGradientModePreview,
+        previewGradientColor,
+        cancelGradientColorPreview,
+        cancelPreview,
       }}
     >
       {children}

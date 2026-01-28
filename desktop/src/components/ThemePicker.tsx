@@ -26,7 +26,7 @@ const GRADIENT_COLORS: { id: GradientColor; label: string }[] = [
 
 export function ThemePicker() {
   const {
-    theme,
+    themeId,
     themes,
     setTheme,
     colorMode,
@@ -35,6 +35,13 @@ export function ThemePicker() {
     setGradientMode,
     gradientColor,
     setGradientColor,
+    previewTheme,
+    cancelThemePreview,
+    previewGradientMode,
+    cancelGradientModePreview,
+    previewGradientColor,
+    cancelGradientColorPreview,
+    cancelPreview,
   } = useTheme();
 
   const [open, setOpen] = useState(false);
@@ -46,7 +53,13 @@ export function ThemePicker() {
   );
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) cancelPreview();
+      }}
+    >
       <PopoverTrigger asChild>
         <Button variant="ghost" size="normal" data-slot="theme-picker-trigger">
           theme
@@ -55,7 +68,7 @@ export function ThemePicker() {
       </PopoverTrigger>
       <PopoverContent side="top" align="end" data-theme-picker="true">
         <PopoverBody>
-          <div data-slot="theme-picker-sections">
+          <div data-slot="theme-picker-sections" onMouseLeave={() => cancelPreview()}>
             {/* Appearance Section */}
             <div data-slot="theme-picker-section" data-bordered>
               <div data-slot="theme-picker-label">Appearance</div>
@@ -75,7 +88,10 @@ export function ThemePicker() {
 
               {/* Gradient Mode */}
               <div data-slot="theme-picker-label">Gradient</div>
-              <div data-slot="theme-picker-button-row">
+              <div
+                data-slot="theme-picker-button-row"
+                onMouseLeave={() => cancelGradientModePreview()}
+              >
                 {GRADIENT_MODES.map((mode) => (
                   <Button
                     key={mode.id}
@@ -83,6 +99,8 @@ export function ThemePicker() {
                     variant={gradientMode === mode.id ? "secondary" : "ghost"}
                     data-slot="theme-picker-option-button"
                     onClick={() => setGradientMode(mode.id)}
+                    onMouseEnter={() => previewGradientMode(mode.id)}
+                    onFocus={() => previewGradientMode(mode.id)}
                   >
                     {mode.label}
                   </Button>
@@ -91,7 +109,10 @@ export function ThemePicker() {
 
               {/* Gradient Color */}
               <div data-slot="theme-picker-label">Color</div>
-              <div data-slot="theme-picker-button-row">
+              <div
+                data-slot="theme-picker-button-row"
+                onMouseLeave={() => cancelGradientColorPreview()}
+              >
                 {GRADIENT_COLORS.map((color) => (
                   <Button
                     key={color.id}
@@ -99,6 +120,8 @@ export function ThemePicker() {
                     variant={gradientColor === color.id ? "secondary" : "ghost"}
                     data-slot="theme-picker-option-button"
                     onClick={() => setGradientColor(color.id)}
+                    onMouseEnter={() => previewGradientColor(color.id)}
+                    onFocus={() => previewGradientColor(color.id)}
                   >
                     {color.label}
                   </Button>
@@ -107,9 +130,12 @@ export function ThemePicker() {
             </div>
 
             {/* Theme List Section */}
-            <div data-slot="theme-picker-theme-list">
+            <div
+              data-slot="theme-picker-theme-list"
+              onMouseLeave={() => cancelThemePreview()}
+            >
               {sortedThemes.map((t) => {
-                const isSelected = t.id === theme.id;
+                const isSelected = t.id === themeId;
                 return (
                   <Button
                     key={t.id}
@@ -118,8 +144,11 @@ export function ThemePicker() {
                     data-slot="theme-picker-theme-button"
                     onClick={() => {
                       setTheme(t.id);
+                      cancelPreview();
                       setOpen(false);
                     }}
+                    onMouseEnter={() => previewTheme(t.id)}
+                    onFocus={() => previewTheme(t.id)}
                   >
                     <span data-slot="theme-picker-theme-name">{t.name}</span>
                     {isSelected && (
