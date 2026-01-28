@@ -121,10 +121,10 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     systemPrompt: BROWSER_AGENT_SYSTEM_PROMPT,
     agentTypes: ["browser"],
     toolsAllowlist: [
-      "hera-browser_execute",
-      "hera-browser_reset",
+      "Bash",
+      "Read",
     ],
-    defaultSkills: ["hera-browser"],
+    defaultSkills: [],
     maxTaskDepth: 0,
     version: 1,
     source: "builtin",

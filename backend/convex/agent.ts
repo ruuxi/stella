@@ -242,15 +242,6 @@ export const invoke = action({
       inputSchema: Record<string, unknown>;
     }>;
 
-    const model = process.env.AI_GATEWAY_MODEL;
-    if (!model) {
-      return {
-        ok: false,
-        reason: "AI gateway model not configured.",
-        rawText: "",
-      };
-    }
-
     const deviceContext = await coerceDeviceContext(ctx, {
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
@@ -302,7 +293,12 @@ export const invoke = action({
     let rawText = "";
     try {
       const result = await streamText({
-        model,
+        model: "zai/glm-4.7",
+        providerOptions: {
+          gateway: {
+            only: ["cerebras"],
+          },
+        },
         system: `${promptBuild.systemPrompt}\n\n${invocationInstructions}`.trim(),
         tools,
         stopWhen: stepCountIs(maxSteps),

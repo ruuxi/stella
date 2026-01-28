@@ -2,7 +2,7 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { api } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { streamText } from "ai";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "./tools";
@@ -120,7 +120,7 @@ http.route({
           })
         : [];
 
-    const historyMessages = historyEvents.flatMap((event) => {
+    const historyMessages = historyEvents.flatMap((event: Doc<"events">) => {
       const payload =
         event.payload && typeof event.payload === "object"
           ? (event.payload as { text?: string })
@@ -172,14 +172,6 @@ http.route({
 
     const pluginTools = await ctx.runQuery(api.plugins.listToolDescriptors, {});
 
-    const model = process.env.AI_GATEWAY_MODEL;
-    if (!model) {
-      return withCors(
-        new Response("AI gateway model not configured", { status: 500 }),
-        origin,
-      );
-    }
-
     const contentParts: Array<
       { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }
     > = [];
@@ -203,7 +195,12 @@ http.route({
     }
 
     const result = await streamText({
-      model,
+      model: "zai/glm-4.7",
+      providerOptions: {
+        gateway: {
+            only: ["cerebras"],
+        },
+      },
       system: promptBuild.systemPrompt,
       tools: createTools(
         ctx,

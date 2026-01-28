@@ -332,27 +332,6 @@ export const runSubagent = action({
       },
     });
 
-    const model = process.env.AI_GATEWAY_MODEL;
-    if (!model) {
-      const errorMessage = "AI gateway model not configured";
-      await ctx.runMutation(api.tasks.completeTaskRecord, {
-        taskId,
-        status: "error",
-        error: errorMessage,
-      });
-      await appendTaskEvent(ctx, {
-        conversationId: args.conversationId,
-        type: "task_failed",
-        deviceId: args.targetDeviceId,
-        targetDeviceId: args.targetDeviceId,
-        payload: {
-          taskId,
-          error: errorMessage,
-        },
-      });
-      return `Task failed.\nTask ID: ${taskId}\n\n${errorMessage}`;
-    }
-
     const pluginTools = (await ctx.runQuery(api.plugins.listToolDescriptors, {})) as PluginToolDescriptor[];
 
     const toolContext: DeviceToolContext = {
@@ -366,7 +345,12 @@ export const runSubagent = action({
 
     try {
       const result = await streamText({
-        model,
+        model: "zai/glm-4.7",
+        providerOptions: {
+          gateway: {
+            only: ["cerebras"],
+          },
+        },
         system: promptBuild.systemPrompt,
         tools: createTaskTools(ctx, toolContext, {
           currentTaskId: taskId,
