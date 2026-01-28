@@ -3,6 +3,7 @@ import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import path from "path";
+import fs from "fs";
 
 const log = (...args: unknown[]) => console.log("[runner]", ...args);
 const logError = (...args: unknown[]) => console.error("[runner]", ...args);
@@ -32,6 +33,7 @@ type PaginatedResult<T> = {
 };
 
 const POLL_INTERVAL_MS = 1500;
+const SYNC_DEBOUNCE_MS = 500;
 
 export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptions) => {
   const toolHost = createToolHost({ stellarHome });
@@ -42,11 +44,12 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
   const inFlight = new Set<string>();
   let queue = Promise.resolve();
   let syncPromise: Promise<void> | null = null;
-  let lastSyncAt = 0;
+  let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const watchers: fs.FSWatcher[] = [];
 
   const skillsPath = path.join(stellarHome, "skills");
   const agentsPath = path.join(stellarHome, "agents");
-  const SYNC_MIN_INTERVAL_MS = 15_000;
+  const pluginsPath = path.join(stellarHome, "plugins");
 
   const toConvexName = (name: string) => {
     // Convex expects "module:function" identifiers, not dot-separated paths.
@@ -69,9 +72,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
 
   const syncManifests = async () => {
     if (!client) return;
-    const now = Date.now();
     if (syncPromise) return syncPromise;
-    if (now - lastSyncAt < SYNC_MIN_INTERVAL_MS) return;
 
     syncPromise = (async () => {
       try {
@@ -101,7 +102,6 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
           tools: pluginPayload.tools,
         });
 
-        lastSyncAt = Date.now();
         log("Manifest sync complete");
       } catch (error) {
         logError("Manifest sync failed:", error);
@@ -112,6 +112,56 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
     })();
 
     return syncPromise;
+  };
+
+  const scheduleSyncManifests = () => {
+    // Debounce file change events to avoid syncing too frequently
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+    }
+    syncDebounceTimer = setTimeout(() => {
+      syncDebounceTimer = null;
+      void syncManifests();
+    }, SYNC_DEBOUNCE_MS);
+  };
+
+  const startWatchers = () => {
+    const watchDirs = [skillsPath, agentsPath, pluginsPath];
+
+    for (const dir of watchDirs) {
+      // Ensure directory exists before watching
+      if (!fs.existsSync(dir)) {
+        try {
+          fs.mkdirSync(dir, { recursive: true });
+        } catch {
+          logError(`Failed to create directory: ${dir}`);
+          continue;
+        }
+      }
+
+      try {
+        const watcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
+          log(`File ${eventType}: ${filename} in ${path.basename(dir)}`);
+          scheduleSyncManifests();
+        });
+
+        watcher.on("error", (error) => {
+          logError(`Watcher error for ${dir}:`, error);
+        });
+
+        watchers.push(watcher);
+        log(`Watching for changes: ${dir}`);
+      } catch (error) {
+        logError(`Failed to watch directory ${dir}:`, error);
+      }
+    }
+  };
+
+  const stopWatchers = () => {
+    for (const watcher of watchers) {
+      watcher.close();
+    }
+    watchers.length = 0;
   };
 
   const setConvexUrl = (url: string) => {
@@ -235,15 +285,26 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptio
   const start = () => {
     if (pollTimer) return;
     log("Starting local host runner", { deviceId, stellarHome });
+
+    // Initial sync on startup
     void syncManifests();
+
+    // Start file watchers for manifest changes
+    startWatchers();
+
+    // Poll for tool requests only (not manifests)
     pollTimer = setInterval(() => {
       void pollOnce();
-      void syncManifests();
     }, POLL_INTERVAL_MS);
-    log("Local host runner started, polling every", POLL_INTERVAL_MS, "ms");
+    log("Local host runner started, polling for tool requests every", POLL_INTERVAL_MS, "ms");
   };
 
   const stop = () => {
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = null;
+    }
+    stopWatchers();
     if (!pollTimer) return;
     clearInterval(pollTimer);
     pollTimer = null;

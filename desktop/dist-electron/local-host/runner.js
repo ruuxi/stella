@@ -3,9 +3,11 @@ import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import path from "path";
+import fs from "fs";
 const log = (...args) => console.log("[runner]", ...args);
 const logError = (...args) => console.error("[runner]", ...args);
 const POLL_INTERVAL_MS = 1500;
+const SYNC_DEBOUNCE_MS = 500;
 export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
     const toolHost = createToolHost({ stellarHome });
     let client = null;
@@ -15,10 +17,11 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
     const inFlight = new Set();
     let queue = Promise.resolve();
     let syncPromise = null;
-    let lastSyncAt = 0;
+    let syncDebounceTimer = null;
+    const watchers = [];
     const skillsPath = path.join(stellarHome, "skills");
     const agentsPath = path.join(stellarHome, "agents");
-    const SYNC_MIN_INTERVAL_MS = 15000;
+    const pluginsPath = path.join(stellarHome, "plugins");
     const toConvexName = (name) => {
         // Convex expects "module:function" identifiers, not dot-separated paths.
         const firstDot = name.indexOf(".");
@@ -41,11 +44,8 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
     const syncManifests = async () => {
         if (!client)
             return;
-        const now = Date.now();
         if (syncPromise)
             return syncPromise;
-        if (now - lastSyncAt < SYNC_MIN_INTERVAL_MS)
-            return;
         syncPromise = (async () => {
             try {
                 log("Syncing manifests...");
@@ -70,7 +70,6 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
                     plugins: pluginPayload.plugins,
                     tools: pluginPayload.tools,
                 });
-                lastSyncAt = Date.now();
                 log("Manifest sync complete");
             }
             catch (error) {
@@ -82,6 +81,51 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
             }
         })();
         return syncPromise;
+    };
+    const scheduleSyncManifests = () => {
+        // Debounce file change events to avoid syncing too frequently
+        if (syncDebounceTimer) {
+            clearTimeout(syncDebounceTimer);
+        }
+        syncDebounceTimer = setTimeout(() => {
+            syncDebounceTimer = null;
+            void syncManifests();
+        }, SYNC_DEBOUNCE_MS);
+    };
+    const startWatchers = () => {
+        const watchDirs = [skillsPath, agentsPath, pluginsPath];
+        for (const dir of watchDirs) {
+            // Ensure directory exists before watching
+            if (!fs.existsSync(dir)) {
+                try {
+                    fs.mkdirSync(dir, { recursive: true });
+                }
+                catch {
+                    logError(`Failed to create directory: ${dir}`);
+                    continue;
+                }
+            }
+            try {
+                const watcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
+                    log(`File ${eventType}: ${filename} in ${path.basename(dir)}`);
+                    scheduleSyncManifests();
+                });
+                watcher.on("error", (error) => {
+                    logError(`Watcher error for ${dir}:`, error);
+                });
+                watchers.push(watcher);
+                log(`Watching for changes: ${dir}`);
+            }
+            catch (error) {
+                logError(`Failed to watch directory ${dir}:`, error);
+            }
+        }
+    };
+    const stopWatchers = () => {
+        for (const watcher of watchers) {
+            watcher.close();
+        }
+        watchers.length = 0;
     };
     const setConvexUrl = (url) => {
         if (convexUrl === url && client) {
@@ -192,14 +236,22 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
         if (pollTimer)
             return;
         log("Starting local host runner", { deviceId, stellarHome });
+        // Initial sync on startup
         void syncManifests();
+        // Start file watchers for manifest changes
+        startWatchers();
+        // Poll for tool requests only (not manifests)
         pollTimer = setInterval(() => {
             void pollOnce();
-            void syncManifests();
         }, POLL_INTERVAL_MS);
-        log("Local host runner started, polling every", POLL_INTERVAL_MS, "ms");
+        log("Local host runner started, polling for tool requests every", POLL_INTERVAL_MS, "ms");
     };
     const stop = () => {
+        if (syncDebounceTimer) {
+            clearTimeout(syncDebounceTimer);
+            syncDebounceTimer = null;
+        }
+        stopWatchers();
         if (!pollTimer)
             return;
         clearInterval(pollTimer);
