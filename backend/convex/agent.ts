@@ -4,6 +4,7 @@ import { streamText, stepCountIs } from "ai";
 import { api, internal } from "./_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "./tools";
+import { getModelConfig } from "./model";
 import type { Id } from "./_generated/dataModel";
 
 const MAX_RAW_TEXT = 60_000;
@@ -293,12 +294,7 @@ export const invoke = action({
     let rawText = "";
     try {
       const result = await streamText({
-        model: "zai/glm-4.7",
-        providerOptions: {
-          gateway: {
-            only: ["cerebras"],
-          },
-        },
+        ...getModelConfig(args.agentType),
         system: `${promptBuild.systemPrompt}\n\n${invocationInstructions}`.trim(),
         tools,
         stopWhen: stepCountIs(maxSteps),

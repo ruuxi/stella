@@ -15,6 +15,7 @@ import type * as conversations from "../conversations.js";
 import type * as device_tools from "../device_tools.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as model from "../model.js";
 import type * as plugins from "../plugins.js";
 import type * as prompt_builder from "../prompt_builder.js";
 import type * as prompts from "../prompts.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   device_tools: typeof device_tools;
   events: typeof events;
   http: typeof http;
+  model: typeof model;
   plugins: typeof plugins;
   prompt_builder: typeof prompt_builder;
   prompts: typeof prompts;

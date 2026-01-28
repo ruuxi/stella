@@ -6,6 +6,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { streamText } from "ai";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "./tools";
+import { getModelConfig } from "./model";
 
 type ChatRequest = {
   conversationId: string;
@@ -195,12 +196,7 @@ http.route({
     }
 
     const result = await streamText({
-      model: "zai/glm-4.7",
-      providerOptions: {
-        gateway: {
-            only: ["cerebras"],
-        },
-      },
+      ...getModelConfig(agentType),
       system: promptBuild.systemPrompt,
       tools: createTools(
         ctx,
