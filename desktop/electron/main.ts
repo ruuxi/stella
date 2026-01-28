@@ -14,7 +14,6 @@ import {
 import { getOrCreateDeviceId } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
 import { resolveStellarHome } from './local-host/stellar-home.js'
-import { createScreenBridge } from './local-host/screen-bridge.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -22,23 +21,10 @@ const __dirname = path.dirname(__filename)
 type UiMode = 'ask' | 'chat' | 'voice'
 type WindowMode = 'full' | 'mini'
 
-type UiPanelState = {
-  isOpen: boolean
-  width: number
-  focused: boolean
-  activeScreenId: string
-  chatDrawerOpen: boolean
-}
-
 type UiState = {
   mode: UiMode
   window: WindowMode
   conversationId: string | null
-  panel: UiPanelState
-}
-
-type UiStateUpdate = Partial<Omit<UiState, 'panel'>> & {
-  panel?: Partial<UiPanelState>
 }
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -47,13 +33,6 @@ const uiState: UiState = {
   mode: 'chat',
   window: 'full',
   conversationId: null,
-  panel: {
-    isOpen: true,
-    width: 420,
-    focused: false,
-    activeScreenId: 'media_viewer',
-    chatDrawerOpen: false,
-  },
 }
 
 let fullWindow: BrowserWindow | null = null
@@ -62,7 +41,6 @@ let mouseHook: MouseHookManager | null = null
 let localHostRunner: ReturnType<typeof createLocalHostRunner> | null = null
 let deviceId: string | null = null
 let pendingConvexUrl: string | null = null
-let screenBridge: ReturnType<typeof createScreenBridge> | null = null
 
 const miniSize = {
   width: 680,
@@ -77,7 +55,7 @@ const broadcastUiState = () => {
   }
 }
 
-const updateUiState = (partial: UiStateUpdate) => {
+const updateUiState = (partial: Partial<UiState>) => {
   if (partial.mode) {
     uiState.mode = partial.mode
   }
@@ -86,12 +64,6 @@ const updateUiState = (partial: UiStateUpdate) => {
   }
   if (partial.conversationId !== undefined) {
     uiState.conversationId = partial.conversationId
-  }
-  if (partial.panel) {
-    uiState.panel = {
-      ...uiState.panel,
-      ...partial.panel,
-    }
   }
   broadcastUiState()
 }
@@ -247,7 +219,7 @@ const handleRadialSelection = (wedge: RadialWedge) => {
 }
 
 // Trigger native context menu (platform-specific)
-const triggerNativeContextMenu = async (x: number, y: number) => {
+const triggerNativeContextMenu = async (_x: number, _y: number) => {
   // On most platforms, we simply don't block the right-click
   // The uiohook captures the event but doesn't prevent it from reaching the system
   // However, if needed, we could use platform-specific approaches:
@@ -323,43 +295,8 @@ const configureLocalHost = (convexUrl: string) => {
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData')
   const stellarHome = await resolveStellarHome(app, userDataPath)
-  const projectRoot = path.resolve(__dirname, '..')
   deviceId = await getOrCreateDeviceId(stellarHome.statePath)
-  screenBridge = createScreenBridge({
-    getTargetWindow: () => fullWindow,
-  })
-  localHostRunner = createLocalHostRunner({
-    deviceId,
-    stellarHome: stellarHome.homePath,
-    projectRoot,
-    screenBridge,
-    onRevertPrompt: async ({ triggers, reason }) => {
-      const triggerDescriptions = triggers.map((t) => {
-        switch (t.type) {
-          case 'safe_mode_trigger':
-            return `• Safe Mode Trigger: ${t.message}`
-          case 'unhealthy_boot':
-            return `• Previous Boot Issue: ${t.message}`
-          case 'smoke_check_failed':
-            return `• Build Check Failed: ${t.message}`
-          default:
-            return `• ${t.message}`
-        }
-      })
-
-      const result = await dialog.showMessageBox({
-        type: 'warning',
-        title: 'Revert to Last Known Good?',
-        message: 'Stellar detected issues that may require reverting to a previous state.',
-        detail: `The following issues were detected:\n\n${triggerDescriptions.join('\n')}\n\nWould you like to revert platform files (src/, electron/) to the last known good state?\n\nChoose "Don't Revert" to keep your current changes.`,
-        buttons: ['Revert', "Don't Revert"],
-        defaultId: 1,
-        cancelId: 1,
-      })
-
-      return result.response === 0 // 0 = Revert, 1 = Don't Revert
-    },
-  })
+  localHostRunner = createLocalHostRunner({ deviceId, stellarHome: stellarHome.homePath })
   if (pendingConvexUrl) {
     localHostRunner.setConvexUrl(pendingConvexUrl)
   }
@@ -382,12 +319,11 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('ui:getState', () => uiState)
-  ipcMain.handle('ui:setState', (_event, partial: UiStateUpdate) => {
+  ipcMain.handle('ui:setState', (_event, partial: Partial<UiState>) => {
     if (partial.window) {
       showWindow(partial.window)
     }
-    const { window, ...rest } = partial
-    void window
+    const { window: _window, ...rest } = partial
     if (Object.keys(rest).length > 0) {
       updateUiState(rest)
     }
