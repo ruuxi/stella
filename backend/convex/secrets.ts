@@ -181,6 +181,70 @@ export const getSecretHandle = query({
   },
 });
 
+export const getSecretValueForProvider = query({
+  args: {
+    ownerId: v.string(),
+    provider: v.string(),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      secretId: v.id("secrets"),
+      provider: v.string(),
+      label: v.string(),
+      plaintext: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("secrets")
+      .withIndex("by_owner_and_provider_and_updated", (q) =>
+        q.eq("ownerId", args.ownerId).eq("provider", args.provider),
+      )
+      .order("desc")
+      .first();
+    if (!record || record.ownerId !== args.ownerId) {
+      return null;
+    }
+    const plaintext = await decryptSecret(record.encryptedValue);
+    return {
+      secretId: record._id,
+      provider: record.provider,
+      label: record.label,
+      plaintext,
+    };
+  },
+});
+
+export const getSecretValueById = query({
+  args: {
+    ownerId: v.string(),
+    secretId: v.id("secrets"),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      secretId: v.id("secrets"),
+      provider: v.string(),
+      label: v.string(),
+      plaintext: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.secretId);
+    if (!record || record.ownerId !== args.ownerId) {
+      return null;
+    }
+    const plaintext = await decryptSecret(record.encryptedValue);
+    return {
+      secretId: record._id,
+      provider: record.provider,
+      label: record.label,
+      plaintext,
+    };
+  },
+});
+
 export const getSecretForTool = internalQuery({
   args: {
     ownerId: v.string(),

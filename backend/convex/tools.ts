@@ -28,18 +28,11 @@ export const BASE_TOOL_NAMES = [
   "TaskOutput",
   "AskUserQuestion",
   "RequestCredential",
+  "IntegrationRequest",
+  "SkillBash",
   "ImageGenerate",
   "ImageEdit",
   "VideoGenerate",
-  "PublicGeminiImage",
-  "PublicOpenAIImage",
-  "PublicWhisper",
-  "PublicPlacesSearch",
-  "PrivateNotion",
-  "PrivateTrello",
-  "PrivateSpotify",
-  "PrivateSonos",
-  "PrivateHue",
 ] as const;
 
 type PluginToolDescriptor = {
@@ -57,6 +50,33 @@ type ToolOptions = {
   pluginTools: PluginToolDescriptor[];
   ownerId?: string;
 };
+
+const integrationAuthSchema = z
+  .object({
+    type: z.enum(["bearer", "header", "query", "basic"]).optional(),
+    header: z.string().optional(),
+    query: z.string().optional(),
+    format: z.string().optional(),
+    username: z.string().optional(),
+  })
+  .optional();
+
+const integrationRequestSchema = z.object({
+  provider: z.string().min(1),
+  mode: z.enum(["public", "private"]).optional(),
+  secretId: z.string().optional(),
+  publicKeyEnv: z.string().optional(),
+  auth: integrationAuthSchema,
+  request: z.object({
+    url: z.string().min(1),
+    method: z.string().optional(),
+    headers: z.record(z.string()).optional(),
+    query: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+    body: z.any().optional(),
+    timeoutMs: z.number().int().positive().max(120_000).optional(),
+  }),
+  responseType: z.enum(["json", "text"]).optional(),
+});
 
 const filterTools = (
   tools: ToolSet,
@@ -155,6 +175,114 @@ export const createTools = (
     }
   };
 
+  const applyAuth = (
+    key: string,
+    auth: z.infer<typeof integrationAuthSchema> | undefined,
+    url: URL,
+    headers: Headers,
+  ) => {
+    const authType = auth?.type ?? "bearer";
+    const formatValue = (template?: string) => {
+      if (!template) return key;
+      return template.includes("{key}") ? template.replace("{key}", key) : `${template}${key}`;
+    };
+
+    if (authType === "query") {
+      const queryName = auth?.query ?? "api_key";
+      url.searchParams.set(queryName, formatValue(auth?.format));
+      return;
+    }
+
+    if (authType === "basic") {
+      const username = auth?.username ?? "";
+      const token = btoa(`${username}:${key}`);
+      headers.set("Authorization", `Basic ${token}`);
+      return;
+    }
+
+    const headerName = auth?.header ?? "Authorization";
+    const value =
+      authType === "bearer" && !auth?.format ? `Bearer ${key}` : formatValue(auth?.format);
+    headers.set(headerName, value);
+  };
+
+  const runIntegrationRequest = async (
+    args: z.infer<typeof integrationRequestSchema>,
+    key?: string,
+  ) => {
+    let url: URL;
+    try {
+      url = new URL(args.request.url);
+    } catch {
+      return "IntegrationRequest requires a valid URL.";
+    }
+
+    if (args.request.query) {
+      for (const [name, value] of Object.entries(args.request.query)) {
+        url.searchParams.set(name, String(value));
+      }
+    }
+
+    const headers = new Headers();
+    if (args.request.headers) {
+      for (const [name, value] of Object.entries(args.request.headers)) {
+        headers.set(name, value);
+      }
+    }
+
+    if (key) {
+      applyAuth(key, args.auth, url, headers);
+    }
+
+    const method = (args.request.method ?? "GET").toUpperCase();
+    let body: string | undefined;
+    if (args.request.body !== undefined) {
+      if (typeof args.request.body === "string") {
+        body = args.request.body;
+      } else {
+        body = JSON.stringify(args.request.body);
+        if (!headers.has("content-type")) {
+          headers.set("content-type", "application/json");
+        }
+      }
+    }
+
+    const timeoutMs = args.request.timeoutMs ?? 60_000;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url.toString(), {
+        method,
+        headers,
+        body,
+        signal: controller.signal,
+      });
+      const contentType = response.headers.get("content-type") ?? "";
+      const wantsText = args.responseType === "text";
+      const wantsJson = args.responseType === "json" || contentType.includes("application/json");
+      const data = wantsText
+        ? await response.text()
+        : wantsJson
+          ? await response.json().catch(async () => await response.text())
+          : await response.text();
+
+      return JSON.stringify(
+        {
+          status: response.status,
+          ok: response.ok,
+          data,
+        },
+        null,
+        2,
+      );
+    } catch (error) {
+      return `IntegrationRequest failed: ${(error as Error).message}`;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
   const pluginToolEntries = options.pluginTools.map((descriptor) => {
     // Sanitize tool name for AI provider compatibility (no dots allowed)
     const sanitizedName = sanitizeToolName(descriptor.name);
@@ -171,115 +299,34 @@ export const createTools = (
   const pluginTools = Object.fromEntries(pluginToolEntries);
 
   const backendTools: ToolSet = {
-    PublicGeminiImage: tool({
+    IntegrationRequest: tool({
       description:
-        "Generate an image with Stellar-managed Gemini integration (no user API key required).",
-      inputSchema: z.object({
-        prompt: z.string().min(1),
-        resolution: z.string().optional(),
-      }),
-      execute: async () => {
-        if (!process.env.GEMINI_API_KEY) {
-          return "Public Gemini integration is not configured.";
+        "Send a request to an external integration using a Stellar-managed public key or a user secret.",
+      inputSchema: integrationRequestSchema,
+      execute: async (args) => {
+        const mode =
+          args.mode ?? (args.secretId ? "private" : args.publicKeyEnv ? "public" : "private");
+
+        if (mode === "public") {
+          const envName = args.publicKeyEnv?.trim();
+          if (!envName) {
+            return "IntegrationRequest requires publicKeyEnv when mode is public.";
+          }
+          const key = process.env[envName];
+          if (!key) {
+            return `Public integration is missing env var: ${envName}.`;
+          }
+          return await runIntegrationRequest(args, key);
         }
-        return "Public Gemini integration is not wired yet.";
-      },
-    }),
-    PublicOpenAIImage: tool({
-      description:
-        "Generate an image with Stellar-managed OpenAI integration (no user API key required).",
-      inputSchema: z.object({
-        prompt: z.string().min(1),
-        size: z.string().optional(),
-      }),
-      execute: async () => {
-        if (!process.env.OPENAI_API_KEY) {
-          return "Public OpenAI image integration is not configured.";
+
+        if (!args.secretId) {
+          return "IntegrationRequest requires secretId when mode is private.";
         }
-        return "Public OpenAI image integration is not wired yet.";
+
+        return await withSecret(String(args.secretId), "IntegrationRequest", async (secret) =>
+          runIntegrationRequest(args, secret),
+        );
       },
-    }),
-    PublicWhisper: tool({
-      description:
-        "Transcribe audio with Stellar-managed Whisper integration (no user API key required).",
-      inputSchema: z.object({
-        audioUrl: z.string().min(1),
-      }),
-      execute: async () => {
-        if (!process.env.OPENAI_API_KEY) {
-          return "Public Whisper integration is not configured.";
-        }
-        return "Public Whisper integration is not wired yet.";
-      },
-    }),
-    PublicPlacesSearch: tool({
-      description:
-        "Search places with Stellar-managed Places integration (no user API key required).",
-      inputSchema: z.object({
-        query: z.string().min(1),
-        location: z.string().optional(),
-      }),
-      execute: async () => {
-        if (!process.env.GOOGLE_PLACES_API_KEY) {
-          return "Public Places integration is not configured.";
-        }
-        return "Public Places integration is not wired yet.";
-      },
-    }),
-    PrivateNotion: tool({
-      description: "Run a Notion request with a user-provided API key.",
-      inputSchema: z.object({
-        secretId: z.string().min(1),
-        request: z.any().optional(),
-      }),
-      execute: async (args) =>
-        withSecret(String(args.secretId), "PrivateNotion", async () => {
-          return "Notion integration is not wired yet.";
-        }),
-    }),
-    PrivateTrello: tool({
-      description: "Run a Trello request with a user-provided API key.",
-      inputSchema: z.object({
-        secretId: z.string().min(1),
-        request: z.any().optional(),
-      }),
-      execute: async (args) =>
-        withSecret(String(args.secretId), "PrivateTrello", async () => {
-          return "Trello integration is not wired yet.";
-        }),
-    }),
-    PrivateSpotify: tool({
-      description: "Run a Spotify request with a user-provided API key.",
-      inputSchema: z.object({
-        secretId: z.string().min(1),
-        request: z.any().optional(),
-      }),
-      execute: async (args) =>
-        withSecret(String(args.secretId), "PrivateSpotify", async () => {
-          return "Spotify integration is not wired yet.";
-        }),
-    }),
-    PrivateSonos: tool({
-      description: "Run a Sonos request with a user-provided API key.",
-      inputSchema: z.object({
-        secretId: z.string().min(1),
-        request: z.any().optional(),
-      }),
-      execute: async (args) =>
-        withSecret(String(args.secretId), "PrivateSonos", async () => {
-          return "Sonos integration is not wired yet.";
-        }),
-    }),
-    PrivateHue: tool({
-      description: "Run a Hue request with a user-provided API key.",
-      inputSchema: z.object({
-        secretId: z.string().min(1),
-        request: z.any().optional(),
-      }),
-      execute: async (args) =>
-        withSecret(String(args.secretId), "PrivateHue", async () => {
-          return "Hue integration is not wired yet.";
-        }),
     }),
   };
 

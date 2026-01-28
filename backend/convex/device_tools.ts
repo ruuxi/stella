@@ -26,6 +26,7 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "TestWrite",
   "AskUserQuestion",
   "RequestCredential",
+  "SkillBash",
   "ImageGenerate",
   "ImageEdit",
   "VideoGenerate",
@@ -273,6 +274,18 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         placeholder: z.string().optional(),
       }),
       execute: (args) => call("RequestCredential", args),
+    }),
+    SkillBash: tool({
+      description: "Execute a shell command using a skill's configured secret mounts.",
+      inputSchema: z.object({
+        skill_id: z.string().min(1),
+        command: z.string().min(1),
+        description: z.string().optional(),
+        timeout: z.number().optional(),
+        working_directory: z.string().optional(),
+        run_in_background: z.boolean().optional(),
+      }),
+      execute: (args) => call("SkillBash", args),
     }),
     ImageGenerate: tool({
       description: "Generate an image from a prompt.",
