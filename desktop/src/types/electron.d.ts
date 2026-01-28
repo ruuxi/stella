@@ -30,6 +30,9 @@ export type ElectronApi = {
   ) => () => void
   onRadialMouseUp: (callback: (event: unknown, data: { wedge: RadialWedge | null }) => void) => () => void
   radialSelect: (wedge: RadialWedge) => void
+  // Theme sync across windows
+  onThemeChange: (callback: (event: unknown, data: { key: string; value: string }) => void) => () => void
+  broadcastThemeChange: (key: string, value: string) => void
 }
 
 declare global {

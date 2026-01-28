@@ -61,4 +61,15 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
     radialSelect: (wedge) => electron_1.ipcRenderer.send('radial:select', wedge),
+    // Theme sync across windows
+    onThemeChange: (callback) => {
+        const handler = (event, data) => {
+            callback(event, data);
+        };
+        electron_1.ipcRenderer.on('theme:change', handler);
+        return () => {
+            electron_1.ipcRenderer.removeListener('theme:change', handler);
+        };
+    },
+    broadcastThemeChange: (key, value) => electron_1.ipcRenderer.send('theme:broadcast', { key, value }),
 });

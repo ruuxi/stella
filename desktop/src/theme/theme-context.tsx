@@ -75,6 +75,7 @@ function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
   root.style.setProperty("--card-foreground", colors.cardForeground);
   root.style.setProperty("--popover", colors.card);
   root.style.setProperty("--popover-foreground", colors.cardForeground);
+  root.style.setProperty("--surface-raised-stronger-non-alpha", colors.card);
   root.style.setProperty("--primary", colors.primary);
   root.style.setProperty("--primary-foreground", colors.primaryForeground);
   root.style.setProperty("--secondary", colors.muted);
@@ -163,6 +164,48 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
+  // Listen for theme changes from other windows via IPC (Electron multi-window sync)
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.electronAPI) {
+      return;
+    }
+    const unsubscribe = window.electronAPI.onThemeChange((_event, data) => {
+      if (data.key === THEME_STORAGE_KEY) {
+        setThemeId(data.value);
+        setPreviewThemeId(null);
+      } else if (data.key === COLOR_MODE_STORAGE_KEY) {
+        setColorModeState(data.value as ColorMode);
+      } else if (data.key === GRADIENT_MODE_STORAGE_KEY) {
+        setGradientModeState(data.value as GradientMode);
+        setPreviewGradientModeState(null);
+      } else if (data.key === GRADIENT_COLOR_STORAGE_KEY) {
+        setGradientColorState(data.value as GradientColor);
+        setPreviewGradientColorState(null);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // Also listen for localStorage changes (for browser compatibility)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === THEME_STORAGE_KEY && e.newValue) {
+        setThemeId(e.newValue);
+        setPreviewThemeId(null);
+      } else if (e.key === COLOR_MODE_STORAGE_KEY && e.newValue) {
+        setColorModeState(e.newValue as ColorMode);
+      } else if (e.key === GRADIENT_MODE_STORAGE_KEY && e.newValue) {
+        setGradientModeState(e.newValue as GradientMode);
+        setPreviewGradientModeState(null);
+      } else if (e.key === GRADIENT_COLOR_STORAGE_KEY && e.newValue) {
+        setGradientColorState(e.newValue as GradientColor);
+        setPreviewGradientColorState(null);
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
   // Apply theme to document (responds to both actual and preview changes)
   useEffect(() => {
     applyThemeToDocument(colors, resolvedColorMode === "dark");
@@ -172,23 +215,39 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeId(id);
     setPreviewThemeId(null);
     localStorage.setItem(THEME_STORAGE_KEY, id);
+    // Broadcast to other windows via IPC (Electron)
+    if (typeof window !== "undefined" && window.electronAPI) {
+      window.electronAPI.broadcastThemeChange(THEME_STORAGE_KEY, id);
+    }
   }, []);
 
   const setColorMode = useCallback((mode: ColorMode) => {
     setColorModeState(mode);
     localStorage.setItem(COLOR_MODE_STORAGE_KEY, mode);
+    // Broadcast to other windows via IPC (Electron)
+    if (typeof window !== "undefined" && window.electronAPI) {
+      window.electronAPI.broadcastThemeChange(COLOR_MODE_STORAGE_KEY, mode);
+    }
   }, []);
 
   const setGradientMode = useCallback((mode: GradientMode) => {
     setGradientModeState(mode);
     setPreviewGradientModeState(null);
     localStorage.setItem(GRADIENT_MODE_STORAGE_KEY, mode);
+    // Broadcast to other windows via IPC (Electron)
+    if (typeof window !== "undefined" && window.electronAPI) {
+      window.electronAPI.broadcastThemeChange(GRADIENT_MODE_STORAGE_KEY, mode);
+    }
   }, []);
 
   const setGradientColor = useCallback((color: GradientColor) => {
     setGradientColorState(color);
     setPreviewGradientColorState(null);
     localStorage.setItem(GRADIENT_COLOR_STORAGE_KEY, color);
+    // Broadcast to other windows via IPC (Electron)
+    if (typeof window !== "undefined" && window.electronAPI) {
+      window.electronAPI.broadcastThemeChange(GRADIENT_COLOR_STORAGE_KEY, color);
+    }
   }, []);
 
   // Preview functions (like Aura)

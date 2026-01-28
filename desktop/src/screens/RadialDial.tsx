@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { MessageSquare, Mic, Maximize2, Menu, Search } from 'lucide-react'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
+import { useTheme } from '../theme/theme-context'
+import { hexToRgb } from '../theme/color'
 
 const WEDGES: { id: RadialWedge; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'ask', label: 'Ask', icon: Search },
@@ -17,6 +19,15 @@ const INNER_RADIUS = 40
 const OUTER_RADIUS = 125
 const WEDGE_ANGLE = 72 // 360 / 5 wedges
 const DEAD_ZONE_RADIUS = 15 // Small dead zone
+
+// Helper to convert hex to rgba with alpha
+const toRgba = (color: string, alpha: number): string => {
+  if (color.startsWith('#')) {
+    const { r, g, b } = hexToRgb(color)
+    return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`
+  }
+  return color
+}
 
 // Generate SVG path for a wedge
 const createWedgePath = (startAngle: number, endAngle: number): string => {
@@ -56,6 +67,7 @@ export function RadialDial() {
   const [visible, setVisible] = useState(false)
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge | null>(null)
   const api = getElectronApi()
+  const { colors } = useTheme()
 
   const calculateWedge = useCallback(
     (x: number, y: number, centerX: number, centerY: number): RadialWedge | null => {
@@ -165,13 +177,14 @@ export function RadialDial() {
         height={SIZE}
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         className="radial-dial"
+        style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.2))' }}
       >
         {/* Background blur circle */}
         <circle
           cx={CENTER}
           cy={CENTER}
           r={OUTER_RADIUS + 10}
-          fill="rgba(0, 0, 0, 0.7)"
+          fill={toRgba(colors.background, 0.4)}
         />
 
         {/* Wedges */}
@@ -181,17 +194,30 @@ export function RadialDial() {
           const isSelected = selectedWedge === wedge.id
           const contentPos = getContentPosition(index)
           const Icon = wedge.icon
+          
+          const fillColor = isSelected 
+            ? toRgba(colors.interactive, 0.9) 
+            : colors.card // Card often has transparency
+          
+          const strokeColor = isSelected
+            ? colors.interactive
+            : toRgba(colors.border, 0.2)
+            
+          const iconColor = isSelected 
+            ? colors.primaryForeground 
+            : colors.mutedForeground
 
           return (
             <g key={wedge.id}>
               <path
                 d={createWedgePath(startAngle, endAngle)}
-                fill={isSelected ? 'rgba(59, 130, 246, 0.9)' : 'rgba(40, 40, 40, 0.9)'}
-                stroke={isSelected ? '#60a5fa' : 'rgba(255, 255, 255, 0.12)'}
+                fill={fillColor}
+                stroke={strokeColor}
                 strokeWidth={1.5}
                 className="wedge-path"
                 style={{
-                  transition: 'fill 0.1s ease, stroke 0.1s ease',
+                  transition: 'fill 0.15s ease, stroke 0.15s ease',
+                  cursor: 'pointer'
                 }}
               />
               <foreignObject
@@ -203,10 +229,20 @@ export function RadialDial() {
               >
                 <div className="flex flex-col items-center justify-center w-full h-full gap-0.5">
                   <Icon
-                    className={`w-4 h-4 transition-colors duration-100 ${isSelected ? 'text-white' : 'text-gray-300'}`}
+                    style={{ 
+                      color: iconColor,
+                      width: '16px',
+                      height: '16px',
+                      transition: 'color 0.1s'
+                    }}
                   />
                   <span
-                    className={`text-[10px] font-medium transition-colors duration-100 ${isSelected ? 'text-white' : 'text-gray-400'}`}
+                    style={{ 
+                      color: iconColor,
+                      fontSize: '10px',
+                      fontWeight: 500,
+                      transition: 'color 0.1s'
+                    }}
                   >
                     {wedge.label}
                   </span>
@@ -221,8 +257,8 @@ export function RadialDial() {
           cx={CENTER}
           cy={CENTER}
           r={INNER_RADIUS - 5}
-          fill="rgba(25, 25, 25, 0.95)"
-          stroke="rgba(255, 255, 255, 0.15)"
+          fill={toRgba(colors.background, 0.95)}
+          stroke={toRgba(colors.border, 0.5)}
           strokeWidth={1}
         />
 
@@ -231,7 +267,7 @@ export function RadialDial() {
           x={CENTER}
           y={CENTER + 4}
           textAnchor="middle"
-          fill="rgba(255, 255, 255, 0.5)"
+          fill={toRgba(colors.foreground, 0.5)}
           fontSize={10}
           fontWeight={500}
           className="select-none"

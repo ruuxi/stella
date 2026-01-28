@@ -313,6 +313,16 @@ app.whenReady().then(async () => {
         handleRadialSelection(wedge);
         hideRadialWindow();
     });
+    // Theme sync across windows
+    ipcMain.on('theme:broadcast', (_event, data) => {
+        // Broadcast theme changes to all windows except the sender
+        const sender = BrowserWindow.fromWebContents(_event.sender);
+        for (const window of BrowserWindow.getAllWindows()) {
+            if (window !== sender) {
+                window.webContents.send('theme:change', data);
+            }
+        }
+    });
     ipcMain.handle('screenshot:capture', async () => {
         const display = screen.getPrimaryDisplay();
         const scaleFactor = display.scaleFactor ?? 1;
