@@ -53,7 +53,7 @@ export function ThemePicker() {
           <ChevronUp size={12} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" data-component="theme-picker">
+      <PopoverContent side="top" align="end" data-theme-picker="true">
         <PopoverBody>
           <div data-slot="theme-picker-sections">
             {/* Appearance Section */}
