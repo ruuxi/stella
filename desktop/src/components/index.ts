@@ -82,3 +82,4 @@ export { ProgressCircle, type ProgressCircleProps } from "./progress-circle";
 // Desktop-Specific Components
 export { Keybind, type KeybindProps } from "./keybind";
 export { ResizeHandle, type ResizeHandleProps } from "./resize-handle";
+export { TitleBar } from "./TitleBar";

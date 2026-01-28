@@ -4,6 +4,13 @@ export type RadialWedge = 'ask' | 'chat' | 'voice' | 'full' | 'menu'
 
 export type ElectronApi = {
   platform: string
+  
+  // Window controls for custom title bar
+  minimizeWindow: () => void
+  maximizeWindow: () => void
+  closeWindow: () => void
+  isMaximized: () => Promise<boolean>
+  
   getUiState: () => Promise<UiState>
   setUiState: (partial: Partial<UiState>) => Promise<UiState>
   onUiState: (callback: (state: UiState) => void) => () => void

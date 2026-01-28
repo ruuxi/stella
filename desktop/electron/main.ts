@@ -90,9 +90,19 @@ const loadWindow = (window: BrowserWindow, windowMode: WindowMode) => {
 }
 
 const createFullWindow = () => {
+  const isMac = process.platform === 'darwin'
+  const isWindows = process.platform === 'win32'
+
   fullWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 400,
+    minHeight: 300,
+    // Custom title bar: frameless on Windows/Linux, hidden inset on macOS
+    frame: isMac,
+    titleBarStyle: isMac ? 'hiddenInset' : undefined,
+    trafficLightPosition: isMac ? { x: 16, y: 18 } : undefined,
+    ...(isWindows || process.platform === 'linux' ? { frame: false } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -140,7 +150,7 @@ const createMiniWindow = () => {
     alwaysOnTop: true,
     frame: false,
     transparent: true,
-    hasShadow: true,
+    hasShadow: false,
     vibrancy: 'under-window',
     visualEffectState: 'active',
     skipTaskbar: true,
@@ -316,6 +326,28 @@ app.whenReady().then(async () => {
       configureLocalHost(config.convexUrl)
     }
     return { deviceId }
+  })
+
+  // Window control handlers for custom title bar
+  ipcMain.on('window:minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    win?.minimize()
+  })
+  ipcMain.on('window:maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win?.isMaximized()) {
+      win.unmaximize()
+    } else {
+      win?.maximize()
+    }
+  })
+  ipcMain.on('window:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    win?.close()
+  })
+  ipcMain.handle('window:isMaximized', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    return win?.isMaximized() ?? false
   })
 
   ipcMain.handle('ui:getState', () => uiState)

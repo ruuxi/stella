@@ -272,3 +272,109 @@ html:has(.window-mini) #root {
   background: transparent !important;
   min-height: 100vh;
 }
+
+/* ============================================
+   CUSTOM TITLE BAR
+   ============================================ */
+
+.title-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  user-select: none;
+  padding-left: 12px;
+}
+
+.title-bar-mac {
+  /* macOS has traffic lights on the left, leave space */
+  padding-left: 80px;
+}
+
+.title-bar-left {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-drag-region {
+  position: absolute;
+  top: 0;
+  left: 50px; /* Leave space for left content */
+  right: 138px; /* Leave space for 3 buttons (46px each) */
+  bottom: 0;
+  -webkit-app-region: drag;
+}
+
+.title-bar-mac .title-bar-drag-region {
+  left: 80px; /* After traffic lights */
+  right: 50px; /* Leave space for left content */
+}
+
+.title-bar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.title-bar-controls {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.1s ease, color 0.1s ease;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-button:hover {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  color: var(--text-strong);
+}
+
+.title-bar-button:active {
+  background: color-mix(in oklch, var(--foreground) 15%, transparent);
+}
+
+.title-bar-button.title-bar-close:hover {
+  background: #e81123;
+  color: white;
+}
+
+.title-bar-button.title-bar-close:active {
+  background: #c50f1f;
+  color: white;
+}
+
+.title-bar-button svg {
+  flex-shrink: 0;
+}
