@@ -22,6 +22,8 @@ type AttachmentRef = {
   mimeType?: string;
 };
 
+import { AsciiBlackHole } from "../components/AsciiBlackHole";
+
 export const FullShell = () => {
   const { state, setConversationId, setWindow } = useUiState();
   const { gradientMode, gradientColor } = useTheme();
@@ -205,13 +207,30 @@ export const FullShell = () => {
               />
             </div>
           ) : (
-            <div className="new-session-view">
-              <div className="new-session-title">New session</div>
-              <div className="new-session-directory">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                </svg>
-                <span>Ready to start</span>
+            <div className="new-session-view" style={{ 
+              width: '100%', 
+              maxWidth: 'none', 
+              padding: 0, 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              overflow: 'hidden',
+              position: 'relative'
+            }}>
+              <AsciiBlackHole width={120} height={56} />
+              <div 
+                className="new-session-title" 
+                style={{ 
+                  position: 'absolute', 
+                  bottom: '15%', 
+                  zIndex: 10,
+                  opacity: 0.5,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  fontSize: '12px',
+                  mixBlendMode: 'plus-lighter'
+                }}
+              >
+                Stellar
               </div>
             </div>
           )}
