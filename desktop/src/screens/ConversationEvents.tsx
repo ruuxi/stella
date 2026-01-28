@@ -1,72 +1,34 @@
-import type { EventRecord } from "../hooks/use-conversation-events";
+import { useState, useMemo } from "react";
+import type { EventRecord, MessagePayload, Attachment } from "../hooks/use-conversation-events";
+import {
+  groupEventsIntoTurns,
+  getCurrentRunningTool,
+} from "../hooks/use-conversation-events";
 import { WorkingIndicator } from "../components/chat/WorkingIndicator";
 import { Markdown } from "../components/chat/Markdown";
+import { StepsContainer } from "../components/steps-container";
 
 type Props = {
   events: EventRecord[];
   maxItems?: number;
   streamingText?: string;
   isStreaming?: boolean;
-  onOpenAttachment?: (attachment: {
-    id?: string;
-    url?: string;
-    mimeType?: string;
-  }) => void;
+  onOpenAttachment?: (attachment: Attachment) => void;
 };
 
-const getEventText = (event: EventRecord) => {
+const getEventText = (event: EventRecord): string => {
   if (event.payload && typeof event.payload === "object") {
-    const payload = event.payload as {
-      text?: string;
-      result?: string;
-      error?: string;
-    };
-    if (payload.text) return payload.text;
-    if (event.type === "task_completed" && payload.result) return payload.result;
-    if (event.type === "task_failed" && payload.error) return payload.error;
+    const payload = event.payload as MessagePayload;
+    return payload.text ?? payload.content ?? payload.message ?? "";
   }
   return "";
 };
 
-const getAttachments = (event: EventRecord) => {
+const getAttachments = (event: EventRecord): Attachment[] => {
   if (event.payload && typeof event.payload === "object") {
-    return (
-      (event.payload as {
-        attachments?: Array<{ id?: string; url?: string; mimeType?: string }>;
-      }).attachments ?? []
-    );
+    return (event.payload as MessagePayload).attachments ?? [];
   }
   return [];
-};
-
-const formatFallback = (event: EventRecord) => {
-  if (event.payload && typeof event.payload === "object") {
-    const payload = event.payload as {
-      taskId?: string;
-      description?: string;
-      agentType?: string;
-      error?: string;
-    };
-    if (event.type === "task_started") {
-      return `Task started: ${payload.description ?? payload.taskId ?? "task"}`;
-    }
-    if (event.type === "task_completed") {
-      return `Task completed: ${payload.taskId ?? "task"}`;
-    }
-    if (event.type === "task_failed") {
-      return `Task failed: ${payload.error ?? payload.taskId ?? "task"}`;
-    }
-  }
-  if (event.type === "tool_request") {
-    return `Tool request -> ${event.targetDeviceId ?? "unknown device"}`;
-  }
-  if (event.type === "tool_result") {
-    return `Tool result - ${event.requestId ?? "request"}`;
-  }
-  if (event.type === "screen_event") {
-    return "Screen event";
-  }
-  return event.type.replace("_", " ");
 };
 
 export const ConversationEvents = ({
@@ -80,41 +42,52 @@ export const ConversationEvents = ({
   const showStreaming = Boolean(isStreaming || streamingText);
   const hasStreamingContent = Boolean(streamingText && streamingText.trim().length > 0);
 
-  // Filter to only show user and assistant messages for cleaner UI
-  const messageEvents = visible.filter(
-    (e) => e.type === "user_message" || e.type === "assistant_message"
-  );
+  // Group events into message turns with their associated tool steps
+  const turns = useMemo(() => groupEventsIntoTurns(visible), [visible]);
+
+  // Track expanded state for each turn's steps
+  const [expandedTurns, setExpandedTurns] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (turnId: string) => {
+    setExpandedTurns((prev) => {
+      const next = new Set(prev);
+      if (next.has(turnId)) {
+        next.delete(turnId);
+      } else {
+        next.add(turnId);
+      }
+      return next;
+    });
+  };
+
+  // Get running tool for streaming indicator
+  const runningTool = getCurrentRunningTool(visible);
 
   return (
     <div className="event-list">
-      {messageEvents.length === 0 && !showStreaming ? (
+      {turns.length === 0 && !showStreaming ? (
         <div className="event-empty">Start a conversation</div>
       ) : (
         <>
-          {messageEvents.map((event) => {
-            const text = getEventText(event);
-            const attachments = getAttachments(event);
-            const isUser = event.type === "user_message";
+          {turns.map((turn) => {
+            const userText = getEventText(turn.userMessage);
+            const userAttachments = getAttachments(turn.userMessage);
+            const assistantText = turn.assistantMessage
+              ? getEventText(turn.assistantMessage)
+              : "";
+            const hasSteps = turn.steps.length > 0;
+            const hasAssistantContent = assistantText.trim().length > 0;
+            const isExpanded = expandedTurns.has(turn.id);
+            const hasRunningStep = turn.steps.some((s) => s.status === "running");
 
             return (
-              <div key={event._id} className="session-turn">
-                {/* Message content */}
-                <div className={`event-item ${isUser ? "user" : "assistant"}`}>
-                  {isUser ? (
-                    // User messages: plain text with pre-wrap
-                    <div className="event-body">
-                      {text || formatFallback(event)}
-                    </div>
-                  ) : (
-                    // Assistant messages: render with Markdown
-                    <Markdown 
-                      text={text || formatFallback(event)} 
-                      cacheKey={event._id}
-                    />
-                  )}
-                  {attachments.length > 0 && (
+              <div key={turn.id} className="session-turn">
+                {/* User message */}
+                <div className="event-item user">
+                  <div className="event-body">{userText}</div>
+                  {userAttachments.length > 0 && (
                     <div className="event-attachments">
-                      {attachments.map((attachment, index) => {
+                      {userAttachments.map((attachment, index) => {
                         if (attachment.url) {
                           return (
                             <img
@@ -128,8 +101,7 @@ export const ConversationEvents = ({
                               onKeyDown={(eventKey) => {
                                 if (
                                   onOpenAttachment &&
-                                  (eventKey.key === "Enter" ||
-                                    eventKey.key === " ")
+                                  (eventKey.key === "Enter" || eventKey.key === " ")
                                 ) {
                                   onOpenAttachment(attachment);
                                 }
@@ -149,6 +121,28 @@ export const ConversationEvents = ({
                     </div>
                   )}
                 </div>
+
+                {/* Steps container (tool calls) */}
+                {hasSteps && (
+                  <div className="event-item assistant steps-wrapper">
+                    <StepsContainer
+                      steps={turn.steps}
+                      expanded={isExpanded}
+                      working={hasRunningStep}
+                      onToggle={() => toggleExpanded(turn.id)}
+                    />
+                  </div>
+                )}
+
+                {/* Assistant message */}
+                {hasAssistantContent && (
+                  <div className="event-item assistant">
+                    <Markdown
+                      text={assistantText}
+                      cacheKey={turn.assistantMessage?._id}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -160,6 +154,7 @@ export const ConversationEvents = ({
                 <WorkingIndicator
                   isResponding={hasStreamingContent}
                   isReasoning={!hasStreamingContent}
+                  toolName={runningTool}
                 />
                 {hasStreamingContent && streamingText && (
                   <Markdown text={streamingText} />

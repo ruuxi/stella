@@ -42,6 +42,7 @@ export type Attachment = {
 export type MessagePayload = {
   text?: string;
   content?: string;
+  message?: string;
   role?: string;
   attachments?: Attachment[];
 };
@@ -106,20 +107,61 @@ export function extractToolTitle(event: EventRecord): string {
   }
 }
 
+// Helper to get requestId from event (can be at top level or in payload)
+function getRequestId(event: EventRecord): string | undefined {
+  // Check top level first
+  if (event.requestId) return event.requestId;
+  // Then check payload
+  if (event.payload && typeof event.payload === "object") {
+    const payload = event.payload as { requestId?: string };
+    if (payload.requestId) return payload.requestId;
+  }
+  return undefined;
+}
+
 // Extract steps from events
 export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
   const requests = events.filter(isToolRequest);
-  const results = new Map<string, EventRecord & { payload: ToolResultPayload }>();
-
-  for (const event of events) {
-    if (isToolResult(event) && event.requestId) {
-      results.set(event.requestId, event);
+  const resultEvents = events.filter(isToolResult);
+  
+  // Build a map of requestId -> result for direct matching
+  const resultsByRequestId = new Map<string, EventRecord & { payload: ToolResultPayload }>();
+  for (const event of resultEvents) {
+    const reqId = getRequestId(event);
+    if (reqId) {
+      resultsByRequestId.set(reqId, event as EventRecord & { payload: ToolResultPayload });
     }
   }
+  
+  // Also track results by position for fallback matching
+  // We'll match each tool_request to the next tool_result with matching toolName
+  const usedResultIndices = new Set<number>();
 
   return requests.map((req) => {
-    const requestId = req.requestId || req._id;
-    const result = results.get(requestId);
+    const requestId = getRequestId(req) || req._id;
+    const toolName = req.payload.toolName;
+    
+    // Try to find matching result
+    let result: (EventRecord & { payload: ToolResultPayload }) | undefined;
+    
+    // First, try direct requestId matching
+    result = resultsByRequestId.get(requestId);
+    
+    // If no direct match, try position-based matching with same toolName
+    if (!result) {
+      const reqEventIndex = events.indexOf(req);
+      for (let i = 0; i < resultEvents.length; i++) {
+        if (usedResultIndices.has(i)) continue;
+        const resultEvent = resultEvents[i] as EventRecord & { payload: ToolResultPayload };
+        const resultEventIndex = events.indexOf(resultEvent);
+        // Result must come after request and have same toolName
+        if (resultEventIndex > reqEventIndex && resultEvent.payload.toolName === toolName) {
+          result = resultEvent;
+          usedResultIndices.add(i);
+          break;
+        }
+      }
+    }
 
     let status: StepItem["status"] = "running";
     if (result) {
@@ -128,7 +170,7 @@ export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
 
     return {
       id: requestId,
-      tool: req.payload.toolName,
+      tool: toolName,
       title: extractToolTitle(req),
       status,
     };

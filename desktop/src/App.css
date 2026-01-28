@@ -509,6 +509,12 @@
   opacity: 0.8;
 }
 
+.event-item.steps-wrapper {
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
 .event-item.streaming {
   border-color: var(--primary);
   animation: pulse-border 2s ease-in-out infinite;
