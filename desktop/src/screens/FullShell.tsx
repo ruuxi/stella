@@ -254,31 +254,31 @@ const FullShellLayout = (props: FullShellLayoutProps) => {
             </div>
           </div>
         )}
-      </div>
 
-      <div className="composer">
-        <div className="composer-wrapper">
-          <input
-            className="composer-input"
-            placeholder="Type a message..."
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void sendMessage();
-              }
-            }}
-            disabled={!uiState.conversationId}
-          />
-          <button
-            className="primary-button composer-send"
-            type="button"
-            onClick={() => void sendMessage()}
-            disabled={!uiState.conversationId || !message.trim()}
-          >
-            Send
-          </button>
+        <div className="composer">
+          <div className="composer-wrapper">
+            <input
+              className="composer-input"
+              placeholder="Type a message..."
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              disabled={!uiState.conversationId}
+            />
+            <button
+              className="primary-button composer-send"
+              type="button"
+              onClick={() => void sendMessage()}
+              disabled={!uiState.conversationId || !message.trim()}
+            >
+              Send
+            </button>
+          </div>
         </div>
       </div>
     </div>
