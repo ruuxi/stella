@@ -1,11 +1,11 @@
 /* ThemePicker - Aura-style theme dropdown */
 
-[data-component="theme-picker"] {
+[data-theme-picker] {
   width: 256px;
   max-height: 400px;
 }
 
-[data-component="theme-picker"] [data-slot="popover-body"] {
+[data-theme-picker] [data-slot="popover-body"] {
   padding: 0;
 }
 
