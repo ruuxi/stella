@@ -65,6 +65,11 @@
   pointer-events: auto;
 }
 
+/* Adjust header when custom title bar is present */
+.window-header.has-title-bar {
+  top: 32px;
+}
+
 .header-title {
   display: flex;
   align-items: center;
@@ -178,7 +183,7 @@
   width: 100%;
   max-width: 50rem;
   margin: 0 auto;
-  padding: 80px 24px 24px;
+  padding: 112px 24px 24px; /* Extra top padding for title bar */
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -804,7 +809,6 @@
   border-radius: var(--radius-lg);
   padding: 12px 16px;
   border: 1px solid var(--border-base);
-  box-shadow: var(--shadow-lg);
 }
 
 .spotlight-input {
@@ -851,7 +855,6 @@
   border-radius: var(--radius-lg);
   padding: 12px;
   border: 1px solid var(--border-weak);
-  box-shadow: var(--shadow-md);
   overflow-y: auto;
   max-height: 320px;
   scrollbar-width: none;
@@ -918,7 +921,7 @@
 }
 
 .radial-dial {
-  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.4));
+  /* no shadow */
 }
 
 .wedge-path {

@@ -5,15 +5,12 @@ import {
 import { useAction, useMutation } from "convex/react";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
-import { MediaViewer, type MediaItem } from "./MediaViewer";
 import { api } from "../convex/api";
 import { useConversationEvents } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
-import { getOwnerId } from "../services/identity";
 import { streamChat } from "../services/model-gateway";
 import { captureScreenshot } from "../services/screenshot";
 import { ShiftingGradient } from "../components/background/ShiftingGradient";
-import { ThemePicker } from "../components/ThemePicker";
 import { useTheme } from "../theme/theme-context";
 
 type AttachmentRef = {
@@ -23,9 +20,10 @@ type AttachmentRef = {
 };
 
 import { AsciiBlackHole } from "../components/AsciiBlackHole";
+import { TitleBar } from "../components/TitleBar";
 
 export const FullShell = () => {
-  const { state, setConversationId, setWindow } = useUiState();
+  const { state } = useUiState();
   const { gradientMode, gradientColor } = useTheme();
   const [message, setMessage] = useState("");
   const [streamingText, setStreamingText] = useState("");
@@ -35,14 +33,10 @@ export const FullShell = () => {
   );
   const appendEvent = useMutation(api.events.appendEvent);
   const createAttachment = useAction(api.attachments.createFromDataUrl);
-  const createConversation = useMutation(api.conversations.createConversation);
   const events = useConversationEvents(state.conversationId ?? undefined);
 
   // Full view is always chat mode (no screenshot)
   const isAskMode = state.mode === "ask";
-
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [activeMedia, setActiveMedia] = useState<MediaItem | null>(null);
 
   useEffect(() => {
     if (!pendingUserMessageId) {
@@ -67,19 +61,6 @@ export const FullShell = () => {
       setPendingUserMessageId(null);
     }
   }, [events, pendingUserMessageId]);
-
-  const openAttachment = (attachment: AttachmentRef) => {
-    if (!attachment.url) {
-      return;
-    }
-    setActiveMedia({
-      id: attachment.id,
-      url: attachment.url,
-      mimeType: attachment.mimeType,
-      label: attachment.id ? `Attachment ${attachment.id}` : "Attachment",
-    });
-    setPanelOpen(true);
-  };
 
   const sendMessage = async () => {
     if (!state.conversationId || !message.trim()) {
@@ -154,45 +135,13 @@ export const FullShell = () => {
     }
   };
 
-  const onNewConversation = () => {
-    void createConversation({ ownerId: getOwnerId() }).then(
-      (conversation: { _id?: string } | null) => {
-        if (conversation?._id) {
-          setConversationId(conversation._id);
-        }
-      },
-    );
-  };
-
-  const togglePanel = () => {
-    setPanelOpen((prev) => !prev);
-  };
-
   const hasMessages = events.length > 0 || isStreaming;
 
   return (
     <div className="window-shell full">
+      <TitleBar />
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
 
-      {/* Header - minimal, floating */}
-      <header className="window-header">
-        <div className="header-title">
-          <span className="app-badge">Stellar</span>
-        </div>
-        <div className="header-actions">
-          <ThemePicker />
-          <button className="ghost-button small" type="button" onClick={togglePanel}>
-            {panelOpen ? "Close" : "Media"}
-          </button>
-          <button
-            className="ghost-button small"
-            type="button"
-            onClick={() => setWindow("mini")}
-          >
-            Mini
-          </button>
-        </div>
-      </header>
 
       {/* Main content area - full screen with gradient visible */}
       <div className="full-body">
@@ -203,7 +152,6 @@ export const FullShell = () => {
                 events={events}
                 streamingText={streamingText}
                 isStreaming={isStreaming}
-                onOpenAttachment={openAttachment}
               />
             </div>
           ) : (
@@ -301,21 +249,6 @@ export const FullShell = () => {
           </form>
         </div>
       </div>
-
-      {/* Media panel - overlay style */}
-      <aside className={`side-panel${panelOpen ? " open" : ""}`} style={{ transform: panelOpen ? "translateX(0)" : "translateX(100%)" }}>
-        <div className="panel-header">
-          <div className="panel-title">Media</div>
-          <div className="panel-actions">
-            <button className="ghost-button small" type="button" onClick={togglePanel}>
-              Close
-            </button>
-          </div>
-        </div>
-        <div className="panel-content">
-          <MediaViewer item={activeMedia} onClear={() => setActiveMedia(null)} />
-        </div>
-      </aside>
     </div>
   );
 };

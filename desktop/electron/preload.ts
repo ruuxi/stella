@@ -3,6 +3,13 @@ import type { IpcRendererEvent } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
+  
+  // Window controls for custom title bar
+  minimizeWindow: () => ipcRenderer.send('window:minimize'),
+  maximizeWindow: () => ipcRenderer.send('window:maximize'),
+  closeWindow: () => ipcRenderer.send('window:close'),
+  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  
   getUiState: () => ipcRenderer.invoke('ui:getState'),
   setUiState: (partial: unknown) => ipcRenderer.invoke('ui:setState', partial),
   onUiState: (callback: (state: unknown) => void) => {
