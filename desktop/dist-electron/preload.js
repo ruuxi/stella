@@ -18,30 +18,6 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     captureScreenshot: () => electron_1.ipcRenderer.invoke('screenshot:capture'),
     getDeviceId: () => electron_1.ipcRenderer.invoke('device:getId'),
     configureHost: (config) => electron_1.ipcRenderer.invoke('host:configure', config),
-    onScreenInvoke: (callback) => {
-        const handler = (_event, request) => {
-            callback(request);
-        };
-        electron_1.ipcRenderer.on('screen:invoke', handler);
-        return () => {
-            electron_1.ipcRenderer.removeListener('screen:invoke', handler);
-        };
-    },
-    respondScreenInvoke: (result) => {
-        electron_1.ipcRenderer.send('screen:result', result);
-    },
-    onScreenListRequest: (callback) => {
-        const handler = (_event, request) => {
-            callback(request);
-        };
-        electron_1.ipcRenderer.on('screen:list-request', handler);
-        return () => {
-            electron_1.ipcRenderer.removeListener('screen:list-request', handler);
-        };
-    },
-    respondScreenList: (result) => {
-        electron_1.ipcRenderer.send('screen:list-result', result);
-    },
     // Radial dial events
     onRadialShow: (callback) => {
         const handler = (event, data) => {

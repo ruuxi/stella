@@ -2,12 +2,17 @@ import { promises as fs } from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { loadPluginsFromHome } from "./plugins.js";
-import { createCoreHost } from "./core-host/index.js";
-import { createSnapshot, diffSnapshots, restoreSnapshot, } from "./core-host/snapshots.js";
-import { ensureWithinRoot } from "./core-host/path-utils.js";
-import { defaultValidationSpecs, runValidations, } from "./core-host/validations.js";
 const MAX_OUTPUT = 30000;
 const MAX_FILE_BYTES = 1000000;
+const ensureAbsolutePath = (filePath) => {
+    if (!path.isAbsolute(filePath)) {
+        return {
+            ok: false,
+            error: `file_path must be absolute. Received: ${filePath}`,
+        };
+    }
+    return { ok: true };
+};
 const truncate = (value, max = MAX_OUTPUT) => value.length > max ? `${value.slice(0, max)}\n\n... (truncated)` : value;
 const isIgnoredDir = (name) => name === "node_modules" ||
     name === ".git" ||
@@ -121,15 +126,9 @@ const saveJson = async (filePath, value) => {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf-8");
 };
-export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridge, }) => {
+export const createToolHost = ({ stellarHome }) => {
     const shells = new Map();
     const tasks = new Map();
-    const coreHost = createCoreHost({
-        deviceId,
-        projectRoot,
-        stellarHome,
-        convexBridge: null,
-    });
     const stateRoot = path.join(stellarHome, "state");
     const pluginsRoot = path.join(stellarHome, "plugins");
     const pluginHandlers = new Map();
@@ -138,92 +137,6 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
         tools: [],
         skills: [],
         agents: [],
-    };
-    const setConvexBridge = (bridge) => {
-        coreHost.setConvexBridge(bridge);
-    };
-    const zoneManager = coreHost.zoneManager;
-    const instructionManager = coreHost.instructionManager;
-    const zoneRoots = zoneManager.getZoneRoots();
-    const workspaceRoot = zoneRoots.workspace?.[0] ?? projectRoot;
-    const userRoot = zoneRoots.user?.[0] ?? workspaceRoot;
-    const getAgentType = (context) => context.agentType ?? "general";
-    const isSelfMod = (context) => getAgentType(context) === "self_mod";
-    const runStartupChecks = async () => {
-        return await coreHost.safeModeManager.runStartupChecks();
-    };
-    const performRevert = async (bootId, reason) => {
-        return await coreHost.safeModeManager.performRevert(bootId, reason);
-    };
-    const skipRevert = async (bootId) => {
-        return await coreHost.safeModeManager.skipRevert(bootId);
-    };
-    const ensureReadWithinRoots = (absolutePath) => {
-        if (ensureWithinRoot(projectRoot, absolutePath)) {
-            return { ok: true };
-        }
-        if (ensureWithinRoot(stellarHome, absolutePath)) {
-            return { ok: true };
-        }
-        return {
-            ok: false,
-            error: `Read is restricted to the project and Stellar home roots. Received: ${absolutePath}`,
-        };
-    };
-    const resolvePathForRead = (filePath) => {
-        const resolved = zoneManager.resolvePath(filePath);
-        if (!resolved.ok) {
-            return resolved;
-        }
-        const classification = zoneManager.classifyPath(resolved.path);
-        const rootCheck = ensureReadWithinRoots(classification.absolutePath);
-        if (!rootCheck.ok) {
-            return rootCheck;
-        }
-        return {
-            ok: true,
-            classification,
-        };
-    };
-    const resolvePathForWrite = async (filePath, context, options) => {
-        const resolved = zoneManager.resolvePath(filePath);
-        if (!resolved.ok) {
-            return resolved;
-        }
-        const guard = zoneManager.enforceGuard(resolved.path, {
-            agentType: getAgentType(context),
-            operation: options.operation,
-            userConfirmed: options.userConfirmed ?? false,
-            overrideGuard: options.overrideGuard ?? false,
-        });
-        if (!guard.ok) {
-            return {
-                ok: false,
-                error: guard.reason ?? "Zone guard blocked this write.",
-                classification: guard.classification,
-            };
-        }
-        const instructions = await instructionManager.getInstructionsForPath(resolved.path);
-        if (instructions.blocked) {
-            return {
-                ok: false,
-                error: instructions.blockReasons[0] ?? "Instructions blocked this write.",
-                classification: instructions.classification,
-                instructions,
-            };
-        }
-        if (isSelfMod(context) && guard.classification.zone?.kind === "platform") {
-            await coreHost.ensureSelfModChangeSet({
-                agentType: getAgentType(context),
-                conversationId: context.conversationId,
-                deviceId: context.deviceId,
-            });
-        }
-        return {
-            ok: true,
-            classification: guard.classification,
-            instructions,
-        };
     };
     const loadPlugins = async () => {
         const loaded = await loadPluginsFromHome(pluginsRoot);
@@ -324,79 +237,59 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
     };
     const handleRead = async (args) => {
         const filePath = String(args.file_path ?? "");
-        const resolved = resolvePathForRead(filePath);
-        if (!resolved.ok) {
-            return { error: resolved.error };
-        }
-        const absolutePath = resolved.classification.absolutePath;
+        const pathCheck = ensureAbsolutePath(filePath);
+        if (!pathCheck.ok)
+            return { error: pathCheck.error };
         try {
-            await fs.access(absolutePath);
+            await fs.access(filePath);
         }
         catch {
-            return { error: `File not found: ${absolutePath}` };
+            return { error: `File not found: ${filePath}` };
         }
         const offset = Number(args.offset ?? 1);
         const limit = Number(args.limit ?? 2000);
         try {
-            const read = await readFileSafe(absolutePath);
+            const read = await readFileSafe(filePath);
             if (!read.ok)
                 return { error: read.error };
             const formatted = formatWithLineNumbers(read.content, offset, limit);
             return {
-                result: `File: ${absolutePath}\n${formatted.header}\n\n${formatted.body}`,
+                result: `File: ${filePath}\n${formatted.header}\n\n${formatted.body}`,
             };
         }
         catch (error) {
             return { error: `Error reading file: ${error.message}` };
         }
     };
-    const handleWrite = async (args, context) => {
+    const handleWrite = async (args) => {
         const filePath = String(args.file_path ?? "");
         const content = String(args.content ?? "");
-        const userConfirmed = Boolean(args.user_confirmed ?? false);
-        const overrideGuard = Boolean(args.override_guard ?? false);
-        const operation = isSelfMod(context) ? "self_mod" : "manual";
-        const resolved = await resolvePathForWrite(filePath, context, {
-            operation,
-            userConfirmed,
-            overrideGuard,
-        });
-        if (!resolved.ok) {
-            return { error: resolved.error };
-        }
-        const absolutePath = resolved.classification.absolutePath;
+        const pathCheck = ensureAbsolutePath(filePath);
+        if (!pathCheck.ok)
+            return { error: pathCheck.error };
         try {
-            await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-            await fs.writeFile(absolutePath, content, "utf-8");
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.writeFile(filePath, content, "utf-8");
             const lines = content.split("\n").length;
             return {
-                result: `Wrote ${content.length} characters (${lines} lines) to ${resolved.classification.virtualPath}`,
+                result: `Wrote ${content.length} characters (${lines} lines) to ${filePath}`,
             };
         }
         catch (error) {
             return { error: `Error writing file: ${error.message}` };
         }
     };
-    const handleEdit = async (args, context) => {
+    const handleEdit = async (args) => {
         const filePath = String(args.file_path ?? "");
         const oldString = String(args.old_string ?? "");
         const newString = String(args.new_string ?? "");
         const replaceAll = Boolean(args.replace_all ?? false);
-        const userConfirmed = Boolean(args.user_confirmed ?? false);
-        const overrideGuard = Boolean(args.override_guard ?? false);
-        const operation = isSelfMod(context) ? "self_mod" : "manual";
-        const resolved = await resolvePathForWrite(filePath, context, {
-            operation,
-            userConfirmed,
-            overrideGuard,
-        });
-        if (!resolved.ok) {
-            return { error: resolved.error };
-        }
-        const absolutePath = resolved.classification.absolutePath;
+        const pathCheck = ensureAbsolutePath(filePath);
+        if (!pathCheck.ok)
+            return { error: pathCheck.error };
         let content;
         try {
-            content = await fs.readFile(absolutePath, "utf-8");
+            content = await fs.readFile(filePath, "utf-8");
         }
         catch (error) {
             return { error: `Error reading file: ${error.message}` };
@@ -414,9 +307,9 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
             ? content.split(oldString).join(newString)
             : content.replace(oldString, newString);
         try {
-            await fs.writeFile(absolutePath, next, "utf-8");
+            await fs.writeFile(filePath, next, "utf-8");
             return {
-                result: `Replaced ${replaceAll ? occurrences : 1} occurrence(s) in ${resolved.classification.virtualPath}`,
+                result: `Replaced ${replaceAll ? occurrences : 1} occurrence(s) in ${filePath}`,
             };
         }
         catch (error) {
@@ -425,17 +318,7 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
     };
     const handleGlob = async (args) => {
         const pattern = String(args.pattern ?? "");
-        const basePathInput = String(args.path ?? projectRoot);
-        const resolved = zoneManager.resolvePath(basePathInput);
-        if (!resolved.ok) {
-            return { error: resolved.error };
-        }
-        const classification = zoneManager.classifyPath(resolved.path);
-        const rootCheck = ensureReadWithinRoots(classification.absolutePath);
-        if (!rootCheck.ok) {
-            return { error: rootCheck.error };
-        }
-        const basePath = classification.absolutePath;
+        const basePath = String(args.path ?? process.cwd());
         try {
             const stat = await fs.stat(basePath);
             if (!stat.isDirectory()) {
@@ -499,17 +382,7 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
     };
     const handleGrep = async (args) => {
         const pattern = String(args.pattern ?? "");
-        const basePathInput = String(args.path ?? projectRoot);
-        const resolved = zoneManager.resolvePath(basePathInput);
-        if (!resolved.ok) {
-            return { error: resolved.error };
-        }
-        const classification = zoneManager.classifyPath(resolved.path);
-        const rootCheck = ensureReadWithinRoots(classification.absolutePath);
-        if (!rootCheck.ok) {
-            return { error: rootCheck.error };
-        }
-        const basePath = classification.absolutePath;
+        const basePath = String(args.path ?? process.cwd());
         const glob = args.glob ? String(args.glob) : undefined;
         const type = args.type ? String(args.type) : undefined;
         const outputMode = String(args.output_mode ?? "files_with_matches");
@@ -598,87 +471,18 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
             result: `Found ${results.length} result(s):\n\n${truncate(results.join("\n"))}`,
         };
     };
-    const handleBash = async (args, context) => {
-        const command = String(args.command ?? "").trim();
-        if (!command) {
-            return { error: "command is required." };
-        }
-        const timeout = Math.min(Math.max(Number(args.timeout ?? 120000), 5000), 600000);
+    const handleBash = async (args) => {
+        const command = String(args.command ?? "");
+        const timeout = Math.min(Number(args.timeout ?? 120000), 600000);
+        const cwd = String(args.working_directory ?? process.cwd());
         const runInBackground = Boolean(args.run_in_background ?? false);
-        const userConfirmed = Boolean(args.user_confirmed ?? false);
-        const overrideGuard = Boolean(args.override_guard ?? false);
-        if (!isSelfMod(context) && runInBackground) {
-            return {
-                error: "Background shell execution is restricted to the Self-Modification agent to preserve rollback safety.",
-            };
-        }
-        const defaultCwd = isSelfMod(context) ? projectRoot : workspaceRoot;
-        const cwdInput = args.working_directory ? String(args.working_directory) : defaultCwd;
-        const resolvedCwd = zoneManager.resolvePath(cwdInput);
-        if (!resolvedCwd.ok) {
-            return { error: resolvedCwd.error };
-        }
-        const cwdClassification = zoneManager.classifyPath(resolvedCwd.path);
-        const rootCheck = ensureReadWithinRoots(cwdClassification.absolutePath);
-        if (!rootCheck.ok) {
-            return { error: rootCheck.error };
-        }
-        if (!isSelfMod(context)) {
-            const guard = zoneManager.enforceGuard(cwdClassification.absolutePath, {
-                agentType: getAgentType(context),
-                operation: "manual",
-                userConfirmed,
-                overrideGuard,
-            });
-            if (!guard.ok) {
-                return { error: guard.reason ?? "Zone guard blocked this shell command." };
-            }
-        }
-        else {
-            await coreHost.ensureSelfModChangeSet({
-                agentType: getAgentType(context),
-                conversationId: context.conversationId,
-                deviceId: context.deviceId,
-            });
-        }
-        try {
-            const stat = await fs.stat(cwdClassification.absolutePath);
-            if (!stat.isDirectory()) {
-                return { error: `working_directory is not a directory: ${cwdClassification.absolutePath}` };
-            }
-        }
-        catch {
-            if (ensureWithinRoot(userRoot, cwdClassification.absolutePath)) {
-                await fs.mkdir(cwdClassification.absolutePath, { recursive: true });
-            }
-            else {
-                return { error: `working_directory does not exist: ${cwdClassification.absolutePath}` };
-            }
-        }
-        let platformBaseline = null;
-        if (!isSelfMod(context)) {
-            platformBaseline = await createSnapshot(zoneManager, { zoneKinds: ["platform"] });
-        }
         if (runInBackground) {
-            const record = startShell(command, cwdClassification.absolutePath);
+            const record = startShell(command, cwd);
             return {
                 result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(record.output || "(no output yet)")}`,
             };
         }
-        const output = await runShell(command, cwdClassification.absolutePath, timeout);
-        if (platformBaseline) {
-            const after = await createSnapshot(zoneManager, { zoneKinds: ["platform"] });
-            const diffs = diffSnapshots(platformBaseline, after);
-            if (diffs.length > 0) {
-                const platformZoneNames = zoneManager.getPlatformZones().map((zone) => zone.name);
-                await restoreSnapshot(platformBaseline, zoneManager, { zoneNames: platformZoneNames });
-                const changed = diffs.slice(0, 8).map((diff) => diff.virtualPath).join("\n");
-                return {
-                    error: "Command attempted to modify platform zones and was rolled back.\n\nChanged paths:\n" +
-                        changed,
-                };
-            }
-        }
+        const output = await runShell(command, cwd, timeout);
         return { result: truncate(output) };
     };
     const handleKillShell = async (args) => {
@@ -845,6 +649,7 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
     };
     const handleTask = async (args) => {
         const description = String(args.description ?? "Task");
+        const prompt = String(args.prompt ?? "");
         const id = crypto.randomUUID();
         const record = {
             id,
@@ -905,259 +710,16 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
             result: "User input is required. Ask the user directly in chat.\n\n" + truncate(summary, 8000),
         };
     };
-    const parseValidationSpecs = (checks) => {
-        const specs = [];
-        for (const check of checks) {
-            if (!check || typeof check !== "object") {
-                continue;
-            }
-            const record = check;
-            const name = (record.name ?? "").trim();
-            const command = (record.command ?? "").trim();
-            if (!name || !command) {
-                continue;
-            }
-            specs.push({
-                name,
-                command,
-                cwd: projectRoot,
-                timeoutMs: record.timeoutMs,
-                required: record.required ?? true,
-            });
-        }
-        return specs;
-    };
-    const handleValidationRun = async (args, _context) => {
-        void _context;
-        const includeDefault = args.include_default !== false;
-        const checks = Array.isArray(args.checks) ? args.checks : [];
-        const specs = [
-            ...(includeDefault ? defaultValidationSpecs(projectRoot) : []),
-            ...parseValidationSpecs(checks),
-        ];
-        if (specs.length === 0) {
-            return { error: "No validation checks provided." };
-        }
-        const results = await runValidations(specs);
-        await coreHost.changeSetManager.recordValidationResults(results);
-        const failed = results.filter((result) => result.required && result.status !== "passed");
-        return {
-            result: {
-                ok: failed.length === 0,
-                failed: failed.map((item) => ({
-                    name: item.name,
-                    status: item.status,
-                    exitCode: item.exitCode,
-                })),
-                results,
-            },
-        };
-    };
-    const handleChangeSetFinish = async (args, context) => {
-        void context;
-        const title = String(args.title ?? "").trim();
-        const summary = String(args.summary ?? "").trim();
-        if (!title || !summary) {
-            return { error: "title and summary are required to finish a ChangeSet." };
-        }
-        const checks = Array.isArray(args.validations) ? args.validations : [];
-        const validations = parseValidationSpecs(checks);
-        const skipDefaultValidations = Boolean(args.skip_default_validations ?? false);
-        const result = await coreHost.changeSetManager.finishChangeSet({
-            title,
-            summary,
-            validations,
-            skipDefaultValidations,
-            userConfirmed: Boolean(args.user_confirmed ?? false),
-            overrideGuard: Boolean(args.override_guard ?? false),
-        });
-        if (!result.ok) {
-            return {
-                error: result.reason ?? "ChangeSet failed and was rolled back.",
-                result,
-            };
-        }
-        return { result };
-    };
-    const handleChangeSetRollback = async (args) => {
-        const changeSetId = String(args.change_set_id ?? "").trim();
-        const reason = String(args.reason ?? "Manual rollback requested.");
-        if (changeSetId) {
-            const result = await coreHost.changeSetManager.rollbackChangeSet(changeSetId, reason);
-            if (!result.ok) {
-                return { error: result.reason ?? "Rollback failed.", result };
-            }
-            return { result };
-        }
-        const result = await coreHost.changeSetManager.rollbackToLastKnownGood(reason);
-        if (!result.ok) {
-            return { error: result.reason ?? "Rollback to baseline failed.", result };
-        }
-        return { result };
-    };
-    const handleChangeSetStatus = async () => {
-        const active = await coreHost.stateStore.getActiveChangeSet();
-        const activeRecord = active
-            ? await coreHost.stateStore.loadChangeSetRecord(active.id)
-            : null;
-        const baseline = await coreHost.stateStore.loadBaselineMetadata();
-        const safeModeTrigger = await coreHost.stateStore.getSafeModeTrigger();
-        const installations = await coreHost.packManager.listInstallations();
-        return {
-            result: {
-                active,
-                activeRecord,
-                baseline,
-                safeModeTrigger,
-                installedPacks: installations,
-            },
-        };
-    };
-    const handlePackPublish = async (args, context) => {
-        const userConfirmed = Boolean(args.user_confirmed ?? false);
-        if (!userConfirmed) {
-            return { error: "Publishing a pack requires user_confirmed=true." };
-        }
-        const name = String(args.name ?? "").trim();
-        const description = String(args.description ?? "").trim();
-        const version = String(args.version ?? "").trim();
-        const packId = args.pack_id ? String(args.pack_id).trim() : undefined;
-        const changeSetIds = Array.isArray(args.change_set_ids)
-            ? args.change_set_ids.map((item) => String(item))
-            : [];
-        const compatibilityNotes = Array.isArray(args.compatibility_notes)
-            ? args.compatibility_notes.map((item) => String(item))
-            : undefined;
-        const result = await coreHost.packManager.publishPack({
-            packId,
-            name,
-            description,
-            version,
-            changeSetIds,
-            compatibilityNotes,
-            conversationId: context.conversationId,
-            deviceId: context.deviceId,
-        });
-        if (!result.ok) {
-            return { error: result.reason ?? "Pack publish failed.", result };
-        }
-        return { result };
-    };
-    const handlePackInstall = async (args, context) => {
-        const packId = String(args.pack_id ?? "").trim();
-        const version = String(args.version ?? "").trim();
-        const userConfirmed = Boolean(args.user_confirmed ?? false);
-        if (!packId || !version) {
-            return { error: "pack_id and version are required." };
-        }
-        const result = await coreHost.packManager.installPack({
-            packId,
-            version,
-            deviceId: context.deviceId,
-            conversationId: context.conversationId,
-            userConfirmed,
-        });
-        if (!result.ok) {
-            return { error: result.reason ?? "Pack install failed.", result };
-        }
-        return { result };
-    };
-    const handlePackUninstall = async (args, context) => {
-        const packId = String(args.pack_id ?? "").trim();
-        const version = args.version ? String(args.version).trim() : undefined;
-        const userConfirmed = Boolean(args.user_confirmed ?? false);
-        if (!packId) {
-            return { error: "pack_id is required." };
-        }
-        const result = await coreHost.packManager.uninstallPack({
-            packId,
-            version,
-            deviceId: context.deviceId,
-            conversationId: context.conversationId,
-            userConfirmed,
-        });
-        if (!result.ok) {
-            return { error: result.reason ?? "Pack uninstall failed.", result };
-        }
-        return { result };
-    };
-    const handleUpdateCheck = async (args, _context) => {
-        void _context;
-        const channelId = String(args.channel_id ?? "").trim();
-        if (!channelId) {
-            return { error: "channel_id is required." };
-        }
-        const result = await coreHost.updateManager.checkForUpdates(channelId);
-        if (!result.ok) {
-            return { error: result.reason ?? "Update check failed.", result };
-        }
-        return { result };
-    };
-    const handleUpdateApply = async (args, context) => {
-        const channelId = String(args.channel_id ?? "").trim();
-        const releaseId = args.release_id ? String(args.release_id).trim() : undefined;
-        const userConfirmed = Boolean(args.user_confirmed ?? false);
-        if (!channelId) {
-            return { error: "channel_id is required." };
-        }
-        const result = await coreHost.updateManager.applyUpdate({
-            channelId,
-            releaseId,
-            deviceId: context.deviceId,
-            conversationId: context.conversationId,
-            userConfirmed,
-        });
-        if (!result.ok) {
-            return { error: result.reason ?? "Update apply failed.", result };
-        }
-        return { result };
-    };
-    const handleScreenInvoke = async (args, context) => {
-        if (!screenBridge) {
-            return { error: "Screen bridge is not available on this device." };
-        }
-        const screenId = String(args.screen_id ?? "").trim();
-        const command = String(args.command ?? "").trim();
-        const commandArgs = args.args && typeof args.args === "object" ? args.args : {};
-        if (!screenId || !command) {
-            return { error: "screen_id and command are required." };
-        }
-        const result = await screenBridge.invokeScreenCommand({
-            screenId,
-            command,
-            args: commandArgs,
-            requestId: context.requestId,
-            conversationId: context.conversationId,
-            deviceId: context.deviceId,
-        });
-        if (!result.ok) {
-            return { error: result.error ?? "Screen command failed.", result };
-        }
-        return { result: result.result ?? { ok: true } };
-    };
-    const handleScreenList = async (_args, context) => {
-        if (!screenBridge?.listScreens) {
-            return { error: "Screen listing is not available on this device." };
-        }
-        const result = await screenBridge.listScreens({
-            conversationId: context.conversationId,
-            deviceId: context.deviceId,
-        });
-        if (!result.ok) {
-            return { error: result.error ?? "Failed to list screens.", result };
-        }
-        return { result: { screens: result.screens ?? [] } };
-    };
     const notConfigured = (name) => ({
         result: `${name} is not configured on this device yet.`,
     });
     const handlers = {
         Read: (args) => handleRead(args),
-        Write: (args, context) => handleWrite(args, context),
-        Edit: (args, context) => handleEdit(args, context),
+        Write: (args) => handleWrite(args),
+        Edit: (args) => handleEdit(args),
         Glob: (args) => handleGlob(args),
         Grep: (args) => handleGrep(args),
-        Bash: (args, context) => handleBash(args, context),
+        Bash: (args) => handleBash(args),
         KillShell: (args) => handleKillShell(args),
         WebFetch: (args) => handleWebFetch(args),
         WebSearch: (args) => handleWebSearch(args),
@@ -1166,60 +728,17 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
         Task: (args) => handleTask(args),
         TaskOutput: (args) => handleTaskOutput(args),
         AskUserQuestion: (args) => handleAskUser(args),
-        "validation.run": (args, context) => handleValidationRun(args, context),
-        "changeset.finish": (args, context) => handleChangeSetFinish(args, context),
-        "changeset.rollback": (args) => handleChangeSetRollback(args),
-        "changeset.status": () => handleChangeSetStatus(),
-        "pack.publish": (args, context) => handlePackPublish(args, context),
-        "pack.install": (args, context) => handlePackInstall(args, context),
-        "pack.uninstall": (args, context) => handlePackUninstall(args, context),
-        "update.check": (args, context) => handleUpdateCheck(args, context),
-        "update.apply": (args, context) => handleUpdateApply(args, context),
-        "screen.invoke": (args, context) => handleScreenInvoke(args, context),
-        "screen.list": (args, context) => handleScreenList(args, context),
         ImageGenerate: async () => notConfigured("ImageGenerate"),
         ImageEdit: async () => notConfigured("ImageEdit"),
         VideoGenerate: async () => notConfigured("VideoGenerate"),
     };
     const executeTool = async (toolName, toolArgs, context) => {
-        const builtinHandler = handlers[toolName];
-        const pluginHandler = pluginHandlers.get(toolName);
-        const handler = builtinHandler ?? pluginHandler;
+        const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
         if (!handler) {
             return { error: `Unknown tool: ${toolName}` };
         }
-        const isPluginTool = !builtinHandler && Boolean(pluginHandler);
-        let pluginBaseline = null;
-        if (isPluginTool) {
-            if (isSelfMod(context)) {
-                await coreHost.ensureSelfModChangeSet({
-                    agentType: getAgentType(context),
-                    conversationId: context.conversationId,
-                    deviceId: context.deviceId,
-                });
-            }
-            else {
-                pluginBaseline = await createSnapshot(zoneManager, { zoneKinds: ["platform"] });
-            }
-        }
         try {
-            const result = await handler(toolArgs, context);
-            if (isPluginTool && pluginBaseline) {
-                const after = await createSnapshot(zoneManager, { zoneKinds: ["platform"] });
-                const diffs = diffSnapshots(pluginBaseline, after);
-                if (diffs.length > 0) {
-                    const platformZoneNames = zoneManager.getPlatformZones().map((zone) => zone.name);
-                    await restoreSnapshot(pluginBaseline, zoneManager, {
-                        zoneNames: platformZoneNames,
-                    });
-                    const changed = diffs.slice(0, 8).map((diff) => diff.virtualPath).join("\n");
-                    return {
-                        error: "Plugin tool attempted to modify platform zones and was rolled back.\n\nChanged paths:\n" +
-                            changed,
-                    };
-                }
-            }
-            return result;
+            return await handler(toolArgs, context);
         }
         catch (error) {
             return { error: `Tool ${toolName} failed: ${error.message}` };
@@ -1230,10 +749,5 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
         getShells: () => Array.from(shells.values()),
         loadPlugins,
         getPluginSyncPayload: () => pluginSyncPayload,
-        setConvexBridge,
-        runStartupChecks,
-        performRevert,
-        skipRevert,
-        coreHost,
     };
 };

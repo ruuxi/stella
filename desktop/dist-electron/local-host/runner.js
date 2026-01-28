@@ -4,13 +4,8 @@ import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import path from "path";
 const POLL_INTERVAL_MS = 1500;
-export const createLocalHostRunner = ({ deviceId, stellarHome, projectRoot, screenBridge, onRevertPrompt, }) => {
-    const toolHost = createToolHost({
-        stellarHome,
-        projectRoot,
-        deviceId,
-        screenBridge: screenBridge ?? null,
-    });
+export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
+    const toolHost = createToolHost({ stellarHome });
     let client = null;
     let convexUrl = null;
     let pollTimer = null;
@@ -19,7 +14,6 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, projectRoot, scre
     let queue = Promise.resolve();
     let syncPromise = null;
     let lastSyncAt = 0;
-    let startupChecked = false;
     const skillsPath = path.join(stellarHome, "skills");
     const agentsPath = path.join(stellarHome, "agents");
     const SYNC_MIN_INTERVAL_MS = 15000;
@@ -41,21 +35,6 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, projectRoot, scre
             return Promise.resolve(null);
         const convexName = toConvexName(name);
         return client.query(convexName, args);
-    };
-    const callAction = (name, args) => {
-        if (!client)
-            return Promise.resolve(null);
-        const convexName = toConvexName(name);
-        return client.action(convexName, args);
-    };
-    const updateConvexBridge = () => {
-        toolHost.setConvexBridge(client
-            ? {
-                callMutation,
-                callQuery,
-                callAction,
-            }
-            : null);
     };
     const syncManifests = async () => {
         if (!client)
@@ -98,7 +77,6 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, projectRoot, scre
         }
         convexUrl = url;
         client = new ConvexHttpClient(url, { logger: false });
-        updateConvexBridge();
         void syncManifests();
     };
     const appendToolResult = async (request, result) => {
@@ -138,7 +116,6 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, projectRoot, scre
             }
             const toolName = request.payload?.toolName;
             const toolArgs = request.payload?.args ?? {};
-            const agentType = request.payload?.agentType;
             if (!toolName) {
                 await appendToolResult(request, { error: "toolName missing on request." });
                 processed.add(request.requestId);
@@ -148,7 +125,6 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, projectRoot, scre
                 conversationId: request.conversationId,
                 deviceId,
                 requestId: request.requestId,
-                agentType,
             });
             await appendToolResult(request, toolResult);
             processed.add(request.requestId);
@@ -183,34 +159,10 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, projectRoot, scre
             // Swallow polling errors; they will be retried on the next interval.
         }
     };
-    const handleStartupChecks = async () => {
-        const result = await toolHost.runStartupChecks();
-        // Check if revert is needed and we have a callback
-        if (result && "needsRevert" in result && result.needsRevert === true) {
-            const { triggers, reason, bootId } = result;
-            if (onRevertPrompt) {
-                const shouldRevert = await onRevertPrompt({ triggers, reason });
-                if (shouldRevert) {
-                    await toolHost.performRevert(bootId, reason);
-                }
-                else {
-                    await toolHost.skipRevert(bootId);
-                }
-            }
-            else {
-                // No callback provided - skip revert by default (dev mode behavior)
-                await toolHost.skipRevert(bootId);
-            }
-        }
-    };
     const start = () => {
         if (pollTimer)
             return;
         void syncManifests();
-        if (!startupChecked) {
-            startupChecked = true;
-            void handleStartupChecks();
-        }
         pollTimer = setInterval(() => {
             void pollOnce();
             void syncManifests();
