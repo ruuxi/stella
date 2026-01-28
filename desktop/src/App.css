@@ -540,7 +540,7 @@
   width: 60%;
 }
 
-/* Composer - fixed at bottom, Aura-style */
+/* Composer - Aura-style prompt bar at bottom */
 .composer {
   position: fixed;
   bottom: 0;
@@ -548,16 +548,9 @@
   right: 0;
   z-index: 30;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 24px 24px;
-  pointer-events: none;
-}
-
-.composer::before {
-  content: "";
-  position: absolute;
-  inset: 0;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 24px;
   pointer-events: none;
 }
 
@@ -565,40 +558,206 @@
   pointer-events: auto;
 }
 
-.composer-wrapper {
+.composer-form {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
   width: 100%;
   max-width: 50rem;
-  margin: 0 auto;
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  box-shadow: var(--shadow-xs-border);
+  overflow: hidden;
 }
 
+.composer-form:focus-within {
+  box-shadow: var(--shadow-xs-border);
+}
+
+/* Scroll container for input */
+.composer-scroll {
+  position: relative;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* Multi-line input area */
 .composer-input {
-  flex: 1;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-strong);
-  padding: 12px 16px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 20px;
+  padding-right: 48px;
+  font-family: var(--font-family-sans, "Inter", sans-serif);
   font-size: 14px;
-  background: var(--surface-raised);
-  backdrop-filter: blur(12px);
+  line-height: 1.5;
   color: var(--text-strong);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  background: transparent;
+  border: none;
+  resize: none;
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .composer-input::placeholder {
   color: var(--text-weaker);
 }
 
-.composer-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  background: var(--surface-raised-hover);
+/* Placeholder overlay for empty state */
+.composer-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 48px;
+  padding: 12px 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-weaker);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.composer-send {
-  flex-shrink: 0;
+/* Bottom toolbar */
+.composer-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 12px;
+}
+
+.composer-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Model/agent selector button */
+.composer-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+  background: transparent;
+  border: none;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.composer-selector:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+.composer-selector-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-weaker);
+}
+
+/* Action buttons in toolbar */
+.composer-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.composer-action:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+.composer-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Submit button - uses primary variant */
+.composer-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  border: none;
+  color: var(--primary-foreground);
+  cursor: default;
+  transition: opacity 0.15s ease;
+}
+
+.composer-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.composer-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Image attachments area */
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px 0;
+}
+
+.composer-attachment {
+  position: relative;
+}
+
+.composer-attachment-image {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  border: 1px solid var(--border-weak);
+}
+
+.composer-attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  border: 1px solid var(--border-weak);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: default;
+}
+
+.composer-attachment:hover .composer-attachment-remove {
+  opacity: 1;
+}
+
+.composer-attachment-remove:hover {
+  background: var(--surface-raised-hover);
 }
 
 .side-panel .screen-card {
