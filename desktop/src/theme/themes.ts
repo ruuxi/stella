@@ -51,7 +51,7 @@ export interface Theme {
 export const themes: Theme[] = [
   {
     id: "oc-1",
-    name: "OC-1 (Default)",
+    name: "OC-1",
     light: {
       background: "#f8f7f7",
       backgroundWeak: "#f0eeee",
@@ -835,4 +835,4 @@ export const getThemeById = (id: string): Theme | undefined => {
   return themes.find((t) => t.id === id);
 };
 
-export const defaultTheme = themes[0]; // oc-1
+export const defaultTheme = themes.find((t) => t.id === "tokyonight")!; // tokyonight
