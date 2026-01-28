@@ -1,0 +1,204 @@
+/* Step - Aura-style tool steps display */
+
+[data-component="steps-container"] {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  [data-slot="steps-track"] {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+
+    &[data-animating="true"] {
+      [data-slot="steps-item"] {
+        animation: carouselSlideUp 0.3s ease-out;
+      }
+
+      [data-slot="steps-item"][data-new="true"] {
+        animation: carouselFadeIn 0.3s ease-out;
+      }
+    }
+  }
+
+  [data-slot="steps-item"] {
+    position: relative;
+
+    /* Remove default collapsible styling - merge into container */
+    [data-component="collapsible"] {
+      background-color: transparent;
+      border: none;
+      border-radius: 0;
+    }
+
+    /* Tapered divider between items */
+    &:not([data-last="true"])::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 12px;
+      right: 12px;
+      height: 1px;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--border-weaker-base) 15%,
+        var(--border-weaker-base) 85%,
+        transparent 100%
+      );
+      z-index: 1;
+      pointer-events: none;
+    }
+  }
+
+  [data-slot="steps-footer"] {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    padding: 6px 0;
+    font-family: var(--font-family-sans);
+
+    /* Tapered top border */
+    &::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 12px;
+      right: 12px;
+      height: 1px;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--border-base) 15%,
+        var(--border-base) 85%,
+        transparent 100%
+      );
+    }
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    color: var(--text-weak);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--text-base);
+    }
+
+    [data-component="spinner"] {
+      width: 12px;
+      height: 12px;
+    }
+
+    [data-component="icon"] {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  /* Expanded state - show scrollable list */
+  &[data-expanded="true"] {
+    [data-slot="steps-track"] {
+      max-height: 500px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+    }
+  }
+}
+
+/* Steps group container */
+[data-slot="session-turn-steps-group"] {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Steps section */
+[data-slot="session-turn-steps-section"] {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Task agents */
+[data-slot="session-turn-task-agents"] {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-large);
+  color: var(--text-weak);
+}
+
+[data-slot="session-turn-task-agent-text"] {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-slot="session-turn-task-agent"][data-done="false"] [data-slot="session-turn-task-agent-text"] {
+  background: linear-gradient(90deg, var(--text-weak) 0%, var(--text-strong) 50%, var(--text-weak) 100%);
+  background-size: 220% 100%;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: task-agent-shimmer 3.5s linear infinite;
+}
+
+[data-slot="session-turn-task-agent"][data-done="true"] [data-slot="session-turn-task-agent-text"] {
+  color: var(--color-green);
+}
+
+/* Commentary text */
+[data-slot="session-turn-commentary"] {
+  width: 100%;
+  min-width: 0;
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-large);
+  color: var(--text-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Animations */
+@keyframes carouselSlideUp {
+  from {
+    transform: translateY(24px);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes carouselFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes task-agent-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
