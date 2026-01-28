@@ -4,6 +4,9 @@ import path from "path";
 import { spawn } from "child_process";
 import { loadPluginsFromHome } from "./plugins.js";
 
+const log = (...args: unknown[]) => console.log("[tools]", ...args);
+const logError = (...args: unknown[]) => console.error("[tools]", ...args);
+
 type ToolContext = {
   conversationId: string;
   deviceId: string;
@@ -245,11 +248,14 @@ export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
   };
 
   const loadPlugins = async (): Promise<PluginSyncPayload> => {
+    log("Loading plugins from:", pluginsRoot);
     const loaded = await loadPluginsFromHome(pluginsRoot);
     pluginHandlers.clear();
     for (const [name, handler] of loaded.handlers.entries()) {
+      log("Registering plugin handler:", name);
       pluginHandlers.set(name, handler);
     }
+    log("Total plugin handlers registered:", pluginHandlers.size);
 
     pluginSyncPayload = {
       plugins: loaded.plugins,
@@ -269,8 +275,8 @@ export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
 
   const startShell = (command: string, cwd: string) => {
     const id = crypto.randomUUID();
-    const shell = process.platform === "win32" ? "cmd.exe" : "bash";
-    const args = process.platform === "win32" ? ["/c", command] : ["-lc", command];
+    const shell = process.platform === "win32" ? "powershell.exe" : "bash";
+    const args = process.platform === "win32" ? ["-NoProfile", "-Command", command] : ["-lc", command];
 
     const child = spawn(shell, args, {
       cwd,
@@ -308,8 +314,8 @@ export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
   };
 
   const runShell = async (command: string, cwd: string, timeoutMs: number) => {
-    const shell = process.platform === "win32" ? "cmd.exe" : "bash";
-    const args = process.platform === "win32" ? ["/c", command] : ["-lc", command];
+    const shell = process.platform === "win32" ? "powershell.exe" : "bash";
+    const args = process.platform === "win32" ? ["-NoProfile", "-Command", command] : ["-lc", command];
 
     return new Promise<string>((resolve) => {
       const child = spawn(shell, args, {
@@ -928,13 +934,40 @@ export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
     toolArgs: Record<string, unknown>,
     context: ToolContext,
   ) => {
+    log(`Executing tool: ${toolName}`, {
+      args: toolName.includes("hera-browser")
+        ? { code: (toolArgs.code as string)?.slice(0, 200) + "...", timeout: toolArgs.timeout }
+        : toolArgs,
+      context,
+    });
+
     const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
     if (!handler) {
+      const availableTools = [
+        ...Object.keys(handlers),
+        ...Array.from(pluginHandlers.keys()),
+      ];
+      logError(`Unknown tool: ${toolName}. Available tools:`, availableTools);
       return { error: `Unknown tool: ${toolName}` } satisfies ToolResult;
     }
+
+    const startTime = Date.now();
     try {
-      return await handler(toolArgs, context);
+      const result = await handler(toolArgs, context);
+      const duration = Date.now() - startTime;
+      log(`Tool ${toolName} completed in ${duration}ms`, {
+        hasResult: "result" in result,
+        hasError: "error" in result,
+        resultPreview: result.error
+          ? result.error.slice(0, 500)
+          : typeof result.result === "string"
+            ? result.result.slice(0, 500)
+            : "(non-string result)",
+      });
+      return result;
     } catch (error) {
+      const duration = Date.now() - startTime;
+      logError(`Tool ${toolName} threw after ${duration}ms:`, error);
       return { error: `Tool ${toolName} failed: ${(error as Error).message}` };
     }
   };

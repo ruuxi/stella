@@ -2,6 +2,8 @@ import { promises as fs } from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { parseAgentMarkdown, parseSkillMarkdown } from "./manifests.js";
+const log = (...args) => console.log("[plugins]", ...args);
+const logError = (...args) => console.error("[plugins]", ...args);
 const DEFAULT_SCHEMA = {
     type: "object",
     properties: {},
@@ -104,6 +106,7 @@ const loadPluginAgents = async (pluginDir, pluginId, agents) => {
     return parsed;
 };
 export const loadPluginsFromHome = async (pluginsPath) => {
+    log("Loading plugins from:", pluginsPath);
     const handlers = new Map();
     const plugins = [];
     const tools = [];
@@ -175,5 +178,14 @@ export const loadPluginsFromHome = async (pluginsPath) => {
             agents.push(...parsedAgents);
         }
     }
+    log("Plugins loaded:", {
+        pluginCount: plugins.length,
+        toolCount: tools.length,
+        skillCount: skills.length,
+        agentCount: agents.length,
+        handlerCount: handlers.size,
+        pluginIds: plugins.map((p) => p.id),
+        toolNames: tools.map((t) => t.name),
+    });
     return { plugins, tools, skills, agents, handlers };
 };
