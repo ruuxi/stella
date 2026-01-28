@@ -1,16 +1,28 @@
+import { useState, useMemo } from "react";
 import { useTheme } from "../theme/theme-context";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-} from "./dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "./popover";
 import { Button } from "./button";
-import { Palette, Sun, Moon, Monitor } from "lucide-react";
+import { ChevronUp, Check } from "lucide-react";
+
+type ColorScheme = "light" | "dark" | "system";
+type GradientMode = "soft" | "crisp";
+type GradientColor = "relative" | "strong";
+
+const COLOR_SCHEMES: { id: ColorScheme; label: string }[] = [
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+  { id: "system", label: "System" },
+];
+
+const GRADIENT_MODES: { id: GradientMode; label: string }[] = [
+  { id: "soft", label: "Soft" },
+  { id: "crisp", label: "Crisp" },
+];
+
+const GRADIENT_COLORS: { id: GradientColor; label: string }[] = [
+  { id: "relative", label: "Relative" },
+  { id: "strong", label: "Strong" },
+];
 
 export function ThemePicker() {
   const {
@@ -25,80 +37,101 @@ export function ThemePicker() {
     setGradientColor,
   } = useTheme();
 
+  const [open, setOpen] = useState(false);
+
+  // Sort themes alphabetically by name
+  const sortedThemes = useMemo(
+    () => [...themes].sort((a, b) => a.name.localeCompare(b.name)),
+    [themes]
+  );
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="theme-picker-trigger">
-          <Palette className="h-4 w-4" />
-          <span className="sr-only">Change theme</span>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="normal" data-slot="theme-picker-trigger">
+          theme
+          <ChevronUp size={12} />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="theme-picker-menu">
-        <DropdownMenuLabel>Color Mode</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={colorMode} onValueChange={(v) => setColorMode(v as "light" | "dark" | "system")}>
-          <DropdownMenuRadioItem value="light" className="theme-picker-item">
-            <Sun className="h-4 w-4 mr-2" />
-            Light
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark" className="theme-picker-item">
-            <Moon className="h-4 w-4 mr-2" />
-            Dark
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="system" className="theme-picker-item">
-            <Monitor className="h-4 w-4 mr-2" />
-            System
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuLabel>Gradient Style</DropdownMenuLabel>
-        <div className="gradient-options">
-          <div className="gradient-option-group">
-            <DropdownMenuRadioGroup value={gradientMode} onValueChange={(v) => setGradientMode(v as "soft" | "crisp")}>
-              <DropdownMenuRadioItem value="soft" className="theme-picker-item">
-                Soft
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="crisp" className="theme-picker-item">
-                Crisp
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </div>
-          <div className="gradient-option-group">
-            <DropdownMenuRadioGroup value={gradientColor} onValueChange={(v) => setGradientColor(v as "relative" | "strong")}>
-              <DropdownMenuRadioItem value="relative" className="theme-picker-item">
-                Relative
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="strong" className="theme-picker-item">
-                Strong
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </div>
-        </div>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuLabel>Theme</DropdownMenuLabel>
-        <div className="theme-picker-grid">
-          {themes.map((t) => (
-            <DropdownMenuItem
-              key={t.id}
-              onClick={() => setTheme(t.id)}
-              className={`theme-picker-theme ${t.id === theme.id ? "active" : ""}`}
-            >
-              <div className="theme-picker-preview">
-                <div
-                  className="theme-preview-swatch"
-                  style={{
-                    background: `linear-gradient(135deg, ${t.dark.background} 50%, ${t.dark.primary} 50%)`,
-                  }}
-                />
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" data-component="theme-picker">
+        <PopoverBody>
+          <div data-slot="theme-picker-sections">
+            {/* Appearance Section */}
+            <div data-slot="theme-picker-section" data-bordered>
+              <div data-slot="theme-picker-label">Appearance</div>
+              <div data-slot="theme-picker-button-row">
+                {COLOR_SCHEMES.map((scheme) => (
+                  <Button
+                    key={scheme.id}
+                    size="small"
+                    variant={colorMode === scheme.id ? "secondary" : "ghost"}
+                    data-slot="theme-picker-option-button"
+                    onClick={() => setColorMode(scheme.id)}
+                  >
+                    {scheme.label}
+                  </Button>
+                ))}
               </div>
-              <span className="theme-picker-name">{t.name}</span>
-            </DropdownMenuItem>
-          ))}
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
+
+              {/* Gradient Mode */}
+              <div data-slot="theme-picker-label">Gradient</div>
+              <div data-slot="theme-picker-button-row">
+                {GRADIENT_MODES.map((mode) => (
+                  <Button
+                    key={mode.id}
+                    size="small"
+                    variant={gradientMode === mode.id ? "secondary" : "ghost"}
+                    data-slot="theme-picker-option-button"
+                    onClick={() => setGradientMode(mode.id)}
+                  >
+                    {mode.label}
+                  </Button>
+                ))}
+              </div>
+
+              {/* Gradient Color */}
+              <div data-slot="theme-picker-label">Color</div>
+              <div data-slot="theme-picker-button-row">
+                {GRADIENT_COLORS.map((color) => (
+                  <Button
+                    key={color.id}
+                    size="small"
+                    variant={gradientColor === color.id ? "secondary" : "ghost"}
+                    data-slot="theme-picker-option-button"
+                    onClick={() => setGradientColor(color.id)}
+                  >
+                    {color.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Theme List Section */}
+            <div data-slot="theme-picker-theme-list">
+              {sortedThemes.map((t) => {
+                const isSelected = t.id === theme.id;
+                return (
+                  <Button
+                    key={t.id}
+                    size="normal"
+                    variant={isSelected ? "secondary" : "ghost"}
+                    data-slot="theme-picker-theme-button"
+                    onClick={() => {
+                      setTheme(t.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <span data-slot="theme-picker-theme-name">{t.name}</span>
+                    {isSelected && (
+                      <Check size={12} data-slot="theme-picker-check" />
+                    )}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </PopoverBody>
+      </PopoverContent>
+    </Popover>
   );
 }
