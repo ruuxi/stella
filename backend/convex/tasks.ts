@@ -11,6 +11,7 @@ import {
   type DeviceToolContext,
 } from "./device_tools";
 import { jsonSchemaToZod } from "./plugins";
+import { getModelConfig } from "./model";
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
 
@@ -345,12 +346,7 @@ export const runSubagent = action({
 
     try {
       const result = await streamText({
-        model: "zai/glm-4.7",
-        providerOptions: {
-          gateway: {
-            only: ["cerebras"],
-          },
-        },
+        ...getModelConfig(args.subagentType),
         system: promptBuild.systemPrompt,
         tools: createTaskTools(ctx, toolContext, {
           currentTaskId: taskId,
