@@ -10,14 +10,37 @@ export type PromptBuildResult = {
 };
 
 const buildSkillsSection = (
-  skills: Array<{ id: string; name: string; markdown: string }>,
+  skills: Array<{
+    id: string;
+    name: string;
+    markdown: string;
+    execution?: string;
+    requiresSecrets?: string[];
+    publicIntegration?: boolean;
+  }>,
 ) => {
   if (skills.length === 0) return "";
 
   const blocks = skills
     .map((skill) => {
       const header = `## Skill: ${skill.name} (${skill.id})`;
-      return `${header}\n${skill.markdown}`.trim();
+      const notes: string[] = [];
+      if (skill.publicIntegration) {
+        notes.push("Public integration: no user API key required.");
+      }
+      if (skill.requiresSecrets && skill.requiresSecrets.length > 0) {
+        notes.push(
+          `Requires credential(s): ${skill.requiresSecrets.join(", ")}. Use RequestCredential if missing.`,
+        );
+      }
+      if (skill.execution === "backend") {
+        notes.push("Execution: backend-only.");
+      }
+      if (skill.execution === "device") {
+        notes.push("Execution: device-only.");
+      }
+      const notesBlock = notes.length > 0 ? `Note: ${notes.join(" ")}` : "";
+      return [header, notesBlock, skill.markdown].filter(Boolean).join("\n").trim();
     })
     .filter((block) => block.length > 0);
 
@@ -39,7 +62,14 @@ export const buildSystemPrompt = async (
   });
 
   const skillsSection = buildSkillsSection(
-    skills.map((skill) => ({ id: skill.id, name: skill.name, markdown: skill.markdown })),
+    skills.map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      markdown: skill.markdown,
+      execution: (skill as { execution?: string }).execution,
+      requiresSecrets: (skill as { requiresSecrets?: string[] }).requiresSecrets,
+      publicIntegration: (skill as { publicIntegration?: boolean }).publicIntegration,
+    })),
   );
 
   const systemParts = [agent.systemPrompt];

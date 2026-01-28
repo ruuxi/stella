@@ -249,6 +249,18 @@ export const invoke = action({
       targetDeviceId: args.targetDeviceId,
     });
 
+    let ownerId: string | undefined = undefined;
+    if (args.conversationId) {
+      try {
+        const convo = await ctx.runQuery(internal.conversations.getById, {
+          id: args.conversationId,
+        });
+        ownerId = convo?.ownerId;
+      } catch {
+        ownerId = undefined;
+      }
+    }
+
     const tools = deviceContext
       ? createTools(
           ctx,
@@ -262,6 +274,7 @@ export const invoke = action({
             toolsAllowlist: promptBuild.toolsAllowlist,
             maxTaskDepth: Math.min(promptBuild.maxTaskDepth, 2),
             pluginTools,
+            ownerId,
           },
         )
       : undefined;
