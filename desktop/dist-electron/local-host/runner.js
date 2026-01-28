@@ -3,6 +3,8 @@ import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import path from "path";
+const log = (...args) => console.log("[runner]", ...args);
+const logError = (...args) => console.error("[runner]", ...args);
 const POLL_INTERVAL_MS = 1500;
 export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
     const toolHost = createToolHost({ stellarHome });
@@ -46,8 +48,16 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
             return;
         syncPromise = (async () => {
             try {
+                log("Syncing manifests...");
                 await callMutation("agents.ensureBuiltins", {});
                 const pluginPayload = await toolHost.loadPlugins();
+                log("Loaded plugins:", {
+                    pluginCount: pluginPayload.plugins.length,
+                    toolCount: pluginPayload.tools.length,
+                    skillCount: pluginPayload.skills.length,
+                    agentCount: pluginPayload.agents.length,
+                    toolNames: pluginPayload.tools.map((t) => t.name),
+                });
                 const skills = await loadSkillsFromHome(skillsPath, pluginPayload.skills);
                 const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
                 await callMutation("skills.upsertMany", {
@@ -61,8 +71,10 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
                     tools: pluginPayload.tools,
                 });
                 lastSyncAt = Date.now();
+                log("Manifest sync complete");
             }
-            catch {
+            catch (error) {
+                logError("Manifest sync failed:", error);
                 // Best-effort sync; ignore failures and retry later.
             }
             finally {
@@ -104,6 +116,11 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
         if (processed.has(request.requestId) || inFlight.has(request.requestId)) {
             return;
         }
+        const toolName = request.payload?.toolName;
+        log(`Received tool request: ${toolName}`, {
+            requestId: request.requestId,
+            conversationId: request.conversationId,
+        });
         inFlight.add(request.requestId);
         try {
             const existing = await callQuery("events.getToolResult", {
@@ -111,25 +128,37 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
                 deviceId,
             });
             if (existing) {
+                log(`Tool request ${request.requestId} already processed, skipping`);
                 processed.add(request.requestId);
                 return;
             }
-            const toolName = request.payload?.toolName;
             const toolArgs = request.payload?.args ?? {};
             if (!toolName) {
+                logError("Tool request missing toolName:", request);
                 await appendToolResult(request, { error: "toolName missing on request." });
                 processed.add(request.requestId);
                 return;
             }
+            log(`Executing tool: ${toolName}`, {
+                argsPreview: JSON.stringify(toolArgs).slice(0, 200),
+            });
+            const startTime = Date.now();
             const toolResult = await toolHost.executeTool(toolName, toolArgs, {
                 conversationId: request.conversationId,
                 deviceId,
                 requestId: request.requestId,
             });
+            const duration = Date.now() - startTime;
+            log(`Tool ${toolName} completed in ${duration}ms`, {
+                hasResult: "result" in toolResult,
+                hasError: "error" in toolResult,
+                errorPreview: toolResult.error?.slice(0, 300),
+            });
             await appendToolResult(request, toolResult);
             processed.add(request.requestId);
         }
         catch (error) {
+            logError(`Tool request ${toolName} failed with exception:`, error);
             await appendToolResult(request, {
                 error: `Tool execution failed: ${error.message}`,
             });
@@ -162,11 +191,13 @@ export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
     const start = () => {
         if (pollTimer)
             return;
+        log("Starting local host runner", { deviceId, stellarHome });
         void syncManifests();
         pollTimer = setInterval(() => {
             void pollOnce();
             void syncManifests();
         }, POLL_INTERVAL_MS);
+        log("Local host runner started, polling every", POLL_INTERVAL_MS, "ms");
     };
     const stop = () => {
         if (!pollTimer)

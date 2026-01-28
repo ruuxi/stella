@@ -4,6 +4,9 @@ import { pathToFileURL } from "url";
 import type { ParsedAgent, ParsedSkill } from "./manifests.js";
 import { parseAgentMarkdown, parseSkillMarkdown } from "./manifests.js";
 
+const log = (...args: unknown[]) => console.log("[plugins]", ...args);
+const logError = (...args: unknown[]) => console.error("[plugins]", ...args);
+
 type ToolResult = {
   result?: unknown;
   error?: string;
@@ -182,6 +185,8 @@ const loadPluginAgents = async (pluginDir: string, pluginId: string, agents: str
 };
 
 export const loadPluginsFromHome = async (pluginsPath: string): Promise<PluginLoadResult> => {
+  log("Loading plugins from:", pluginsPath);
+
   const handlers = new Map<
     string,
     (args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>
@@ -265,6 +270,16 @@ export const loadPluginsFromHome = async (pluginsPath: string): Promise<PluginLo
       agents.push(...parsedAgents);
     }
   }
+
+  log("Plugins loaded:", {
+    pluginCount: plugins.length,
+    toolCount: tools.length,
+    skillCount: skills.length,
+    agentCount: agents.length,
+    handlerCount: handlers.size,
+    pluginIds: plugins.map((p) => p.id),
+    toolNames: tools.map((t) => t.name),
+  });
 
   return { plugins, tools, skills, agents, handlers };
 };
