@@ -293,6 +293,14 @@ export const createToolHost = ({
     return await coreHost.safeModeManager.runStartupChecks();
   };
 
+  const performRevert = async (bootId: string, reason: string) => {
+    return await coreHost.safeModeManager.performRevert(bootId, reason);
+  };
+
+  const skipRevert = async (bootId: string) => {
+    return await coreHost.safeModeManager.skipRevert(bootId);
+  };
+
   const ensureReadWithinRoots = (absolutePath: string) => {
     if (ensureWithinRoot(projectRoot, absolutePath)) {
       return { ok: true as const };
@@ -1538,6 +1546,8 @@ export const createToolHost = ({
     getPluginSyncPayload: () => pluginSyncPayload,
     setConvexBridge,
     runStartupChecks,
+    performRevert,
+    skipRevert,
     coreHost,
   };
 };

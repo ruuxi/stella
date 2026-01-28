@@ -3,6 +3,12 @@ import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import path from "path";
+import type { RevertTrigger } from "./core-host/safe-mode.js";
+
+export type RevertDialogCallback = (info: {
+  triggers: RevertTrigger[];
+  reason: string;
+}) => Promise<boolean>; // returns true if user wants to revert, false to skip
 
 type HostRunnerOptions = {
   deviceId: string;
@@ -22,6 +28,7 @@ type HostRunnerOptions = {
       deviceId: string;
     }) => Promise<{ ok: boolean; screens?: unknown[]; error?: string }>;
   } | null;
+  onRevertPrompt?: RevertDialogCallback;
 };
 
 type ToolRequestEvent = {
@@ -51,6 +58,7 @@ export const createLocalHostRunner = ({
   stellarHome,
   projectRoot,
   screenBridge,
+  onRevertPrompt,
 }: HostRunnerOptions) => {
   const toolHost = createToolHost({
     stellarHome,
@@ -245,12 +253,33 @@ export const createLocalHostRunner = ({
     }
   };
 
+  const handleStartupChecks = async () => {
+    const result = await toolHost.runStartupChecks();
+
+    // Check if revert is needed and we have a callback
+    if (result && "needsRevert" in result && result.needsRevert === true) {
+      const { triggers, reason, bootId } = result;
+
+      if (onRevertPrompt) {
+        const shouldRevert = await onRevertPrompt({ triggers, reason });
+        if (shouldRevert) {
+          await toolHost.performRevert(bootId, reason);
+        } else {
+          await toolHost.skipRevert(bootId);
+        }
+      } else {
+        // No callback provided - skip revert by default (dev mode behavior)
+        await toolHost.skipRevert(bootId);
+      }
+    }
+  };
+
   const start = () => {
     if (pollTimer) return;
     void syncManifests();
     if (!startupChecked) {
       startupChecked = true;
-      void toolHost.runStartupChecks();
+      void handleStartupChecks();
     }
     pollTimer = setInterval(() => {
       void pollOnce();

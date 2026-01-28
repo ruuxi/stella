@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -333,6 +333,32 @@ app.whenReady().then(async () => {
     stellarHome: stellarHome.homePath,
     projectRoot,
     screenBridge,
+    onRevertPrompt: async ({ triggers, reason }) => {
+      const triggerDescriptions = triggers.map((t) => {
+        switch (t.type) {
+          case 'safe_mode_trigger':
+            return `• Safe Mode Trigger: ${t.message}`
+          case 'unhealthy_boot':
+            return `• Previous Boot Issue: ${t.message}`
+          case 'smoke_check_failed':
+            return `• Build Check Failed: ${t.message}`
+          default:
+            return `• ${t.message}`
+        }
+      })
+
+      const result = await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Revert to Last Known Good?',
+        message: 'Stellar detected issues that may require reverting to a previous state.',
+        detail: `The following issues were detected:\n\n${triggerDescriptions.join('\n')}\n\nWould you like to revert platform files (src/, electron/) to the last known good state?\n\nChoose "Don't Revert" to keep your current changes.`,
+        buttons: ['Revert', "Don't Revert"],
+        defaultId: 1,
+        cancelId: 1,
+      })
+
+      return result.response === 0 // 0 = Revert, 1 = Don't Revert
+    },
   })
   if (pendingConvexUrl) {
     localHostRunner.setConvexUrl(pendingConvexUrl)

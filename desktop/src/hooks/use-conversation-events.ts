@@ -30,11 +30,20 @@ export type ToolResultPayload = {
   requestId?: string;
 };
 
+// Attachment structure
+export type Attachment = {
+  id?: string;
+  url?: string;
+  mimeType?: string;
+  name?: string;
+};
+
 // Message payload structure
 export type MessagePayload = {
   text?: string;
   content?: string;
   role?: string;
+  attachments?: Attachment[];
 };
 
 // Type guards
