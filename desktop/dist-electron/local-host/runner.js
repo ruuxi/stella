@@ -8,8 +8,8 @@ const log = (...args) => console.log("[runner]", ...args);
 const logError = (...args) => console.error("[runner]", ...args);
 const POLL_INTERVAL_MS = 1500;
 const SYNC_DEBOUNCE_MS = 500;
-export const createLocalHostRunner = ({ deviceId, stellarHome }) => {
-    const toolHost = createToolHost({ stellarHome });
+export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential }) => {
+    const toolHost = createToolHost({ stellarHome, requestCredential });
     let client = null;
     let convexUrl = null;
     let pollTimer = null;

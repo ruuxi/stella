@@ -42,6 +42,12 @@ type TaskRecord = {
 
 type ToolHostOptions = {
   stellarHome: string;
+  requestCredential?: (payload: {
+    provider: string;
+    label?: string;
+    description?: string;
+    placeholder?: string;
+  }) => Promise<{ secretId: string; provider: string; label: string }>;
 };
 
 export type PluginSyncPayload = {
@@ -67,6 +73,9 @@ export type PluginSyncPayload = {
     agentTypes: string[];
     toolsAllowlist?: string[];
     tags?: string[];
+    execution?: "backend" | "device";
+    requiresSecrets?: string[];
+    publicIntegration?: boolean;
     version: number;
     source: string;
     filePath: string;
@@ -229,7 +238,7 @@ const saveJson = async (filePath: string, value: unknown) => {
   await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf-8");
 };
 
-export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
+export const createToolHost = ({ stellarHome, requestCredential }: ToolHostOptions) => {
   const shells = new Map<string, ShellRecord>();
   const tasks = new Map<string, TaskRecord>();
 
@@ -275,8 +284,9 @@ export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
 
   const startShell = (command: string, cwd: string) => {
     const id = crypto.randomUUID();
-    const shell = process.platform === "win32" ? "powershell.exe" : "bash";
-    const args = process.platform === "win32" ? ["-NoProfile", "-Command", command] : ["-lc", command];
+    // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
+    const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+    const args = ["-lc", command];
 
     const child = spawn(shell, args, {
       cwd,
@@ -314,8 +324,9 @@ export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
   };
 
   const runShell = async (command: string, cwd: string, timeoutMs: number) => {
-    const shell = process.platform === "win32" ? "powershell.exe" : "bash";
-    const args = process.platform === "win32" ? ["-NoProfile", "-Command", command] : ["-lc", command];
+    // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
+    const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+    const args = ["-lc", command];
 
     return new Promise<string>((resolve) => {
       const child = spawn(shell, args, {
@@ -902,6 +913,33 @@ export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
     };
   };
 
+  const handleRequestCredential = async (
+    args: Record<string, unknown>,
+  ): Promise<ToolResult> => {
+    if (!requestCredential) {
+      return { error: "Credential requests are not supported on this device." };
+    }
+    const provider = String(args.provider ?? "").trim();
+    if (!provider) {
+      return { error: "provider is required." };
+    }
+    const label = args.label ? String(args.label) : undefined;
+    const description = args.description ? String(args.description) : undefined;
+    const placeholder = args.placeholder ? String(args.placeholder) : undefined;
+
+    try {
+      const response = await requestCredential({
+        provider,
+        label,
+        description,
+        placeholder,
+      });
+      return { result: response };
+    } catch (error) {
+      return { error: (error as Error).message || "Credential request failed." };
+    }
+  };
+
   const notConfigured = (name: string): ToolResult => ({
     result: `${name} is not configured on this device yet.`,
   });
@@ -924,6 +962,7 @@ export const createToolHost = ({ stellarHome }: ToolHostOptions) => {
     Task: (args) => handleTask(args),
     TaskOutput: (args) => handleTaskOutput(args),
     AskUserQuestion: (args) => handleAskUser(args),
+    RequestCredential: (args) => handleRequestCredential(args),
     ImageGenerate: async () => notConfigured("ImageGenerate"),
     ImageEdit: async () => notConfigured("ImageEdit"),
     VideoGenerate: async () => notConfigured("VideoGenerate"),

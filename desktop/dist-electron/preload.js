@@ -72,4 +72,15 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
     broadcastThemeChange: (key, value) => electron_1.ipcRenderer.send('theme:broadcast', { key, value }),
+    onCredentialRequest: (callback) => {
+        const handler = (event, data) => {
+            callback(event, data);
+        };
+        electron_1.ipcRenderer.on('credential:request', handler);
+        return () => {
+            electron_1.ipcRenderer.removeListener('credential:request', handler);
+        };
+    },
+    submitCredential: (payload) => electron_1.ipcRenderer.invoke('credential:submit', payload),
+    cancelCredential: (payload) => electron_1.ipcRenderer.invoke('credential:cancel', payload),
 });

@@ -33,6 +33,14 @@ export type ElectronApi = {
   // Theme sync across windows
   onThemeChange: (callback: (event: unknown, data: { key: string; value: string }) => void) => () => void
   broadcastThemeChange: (key: string, value: string) => void
+  onCredentialRequest: (
+    callback: (
+      event: unknown,
+      data: { requestId: string; provider: string; label?: string; description?: string; placeholder?: string }
+    ) => void
+  ) => () => void
+  submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) => Promise<{ ok: boolean; error?: string }>
+  cancelCredential: (payload: { requestId: string }) => Promise<{ ok: boolean; error?: string }>
 }
 
 declare global {

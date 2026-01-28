@@ -80,6 +80,11 @@ export const parseSkillMarkdown = async (filePath, source) => {
     const agentTypes = normalizeStringArray(metadata.agentTypes);
     const toolsAllowlist = normalizeStringArray(metadata.toolsAllowlist);
     const tags = normalizeStringArray(metadata.tags);
+    const requiresSecrets = normalizeStringArray(metadata.requiresSecrets);
+    const execution = metadata.execution === "backend" || metadata.execution === "device"
+        ? metadata.execution
+        : undefined;
+    const publicIntegration = typeof metadata.publicIntegration === "boolean" ? metadata.publicIntegration : undefined;
     return {
         id,
         name,
@@ -88,6 +93,9 @@ export const parseSkillMarkdown = async (filePath, source) => {
         agentTypes,
         toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
         tags: tags.length > 0 ? tags : undefined,
+        execution,
+        requiresSecrets: requiresSecrets.length > 0 ? requiresSecrets : undefined,
+        publicIntegration,
         version: coerceVersion(metadata.version),
         source,
         filePath,
