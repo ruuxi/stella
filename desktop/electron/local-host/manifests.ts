@@ -72,6 +72,9 @@ export type ParsedSkill = {
   agentTypes: string[];
   toolsAllowlist?: string[];
   tags?: string[];
+  execution?: "backend" | "device";
+  requiresSecrets?: string[];
+  publicIntegration?: boolean;
   version: number;
   source: string;
   filePath: string;
@@ -131,6 +134,13 @@ export const parseSkillMarkdown = async (
   const agentTypes = normalizeStringArray(metadata.agentTypes);
   const toolsAllowlist = normalizeStringArray(metadata.toolsAllowlist);
   const tags = normalizeStringArray(metadata.tags);
+  const requiresSecrets = normalizeStringArray(metadata.requiresSecrets);
+  const execution =
+    metadata.execution === "backend" || metadata.execution === "device"
+      ? (metadata.execution as "backend" | "device")
+      : undefined;
+  const publicIntegration =
+    typeof metadata.publicIntegration === "boolean" ? metadata.publicIntegration : undefined;
 
   return {
     id,
@@ -140,6 +150,9 @@ export const parseSkillMarkdown = async (
     agentTypes,
     toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
     tags: tags.length > 0 ? tags : undefined,
+    execution,
+    requiresSecrets: requiresSecrets.length > 0 ? requiresSecrets : undefined,
+    publicIntegration,
     version: coerceVersion(metadata.version),
     source,
     filePath,

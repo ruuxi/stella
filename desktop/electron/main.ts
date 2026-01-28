@@ -27,6 +27,21 @@ type UiState = {
   conversationId: string | null
 }
 
+type CredentialRequestPayload = {
+  requestId: string
+  provider: string
+  label?: string
+  description?: string
+  placeholder?: string
+}
+
+type CredentialResponsePayload = {
+  requestId: string
+  secretId: string
+  provider: string
+  label: string
+}
+
 const isDev = process.env.NODE_ENV === 'development'
 
 const uiState: UiState = {
@@ -41,6 +56,14 @@ let mouseHook: MouseHookManager | null = null
 let localHostRunner: ReturnType<typeof createLocalHostRunner> | null = null
 let deviceId: string | null = null
 let pendingConvexUrl: string | null = null
+const pendingCredentialRequests = new Map<
+  string,
+  {
+    resolve: (value: CredentialResponsePayload) => void
+    reject: (reason?: Error) => void
+    timeout: NodeJS.Timeout
+  }
+>()
 
 const miniSize = {
   width: 680,
@@ -302,11 +325,40 @@ const configureLocalHost = (convexUrl: string) => {
   }
 }
 
+const requestCredential = async (
+  payload: Omit<CredentialRequestPayload, 'requestId'>,
+) => {
+  const requestId = crypto.randomUUID()
+  const request: CredentialRequestPayload = { requestId, ...payload }
+
+  const focused = BrowserWindow.getFocusedWindow()
+  const targetWindows = focused ? [focused] : fullWindow ? [fullWindow] : BrowserWindow.getAllWindows()
+  if (targetWindows.length === 0) {
+    throw new Error('No window available to collect credentials.')
+  }
+
+  for (const window of targetWindows) {
+    window.webContents.send('credential:request', request)
+  }
+
+  return new Promise<CredentialResponsePayload>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingCredentialRequests.delete(requestId)
+      reject(new Error('Credential request timed out.'))
+    }, 5 * 60 * 1000)
+    pendingCredentialRequests.set(requestId, { resolve, reject, timeout })
+  })
+}
+
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData')
   const stellarHome = await resolveStellarHome(app, userDataPath)
   deviceId = await getOrCreateDeviceId(stellarHome.statePath)
-  localHostRunner = createLocalHostRunner({ deviceId, stellarHome: stellarHome.homePath })
+  localHostRunner = createLocalHostRunner({
+    deviceId,
+    stellarHome: stellarHome.homePath,
+    requestCredential,
+  })
   if (pendingConvexUrl) {
     localHostRunner.setConvexUrl(pendingConvexUrl)
   }
@@ -383,6 +435,28 @@ app.whenReady().then(async () => {
         window.webContents.send('theme:change', data)
       }
     }
+  })
+
+  ipcMain.handle('credential:submit', (_event, payload: CredentialResponsePayload) => {
+    const pending = pendingCredentialRequests.get(payload.requestId)
+    if (!pending) {
+      return { ok: false, error: 'Credential request not found.' }
+    }
+    clearTimeout(pending.timeout)
+    pendingCredentialRequests.delete(payload.requestId)
+    pending.resolve(payload)
+    return { ok: true }
+  })
+
+  ipcMain.handle('credential:cancel', (_event, payload: { requestId: string }) => {
+    const pending = pendingCredentialRequests.get(payload.requestId)
+    if (!pending) {
+      return { ok: false, error: 'Credential request not found.' }
+    }
+    clearTimeout(pending.timeout)
+    pendingCredentialRequests.delete(payload.requestId)
+    pending.reject(new Error('Credential request cancelled.'))
+    return { ok: true }
   })
 
   ipcMain.handle('screenshot:capture', async () => {

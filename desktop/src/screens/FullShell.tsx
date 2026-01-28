@@ -99,11 +99,12 @@ export const FullShell = () => {
       }
     }
 
+    const platform = window.electronAPI?.platform ?? "unknown";
     const event = await appendEvent({
       conversationId: state.conversationId,
       type: "user_message",
       deviceId,
-      payload: { text, attachments },
+      payload: { text, attachments, platform },
     });
 
     if (event?._id) {

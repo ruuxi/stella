@@ -2,6 +2,7 @@ import './App.css'
 import { useUiState } from './app/state/ui-state'
 import { getElectronApi } from './services/electron'
 import { AppBootstrap } from './app/AppBootstrap'
+import { CredentialRequestLayer } from './app/CredentialRequestLayer'
 import { FullShell } from './screens/FullShell'
 import { MiniShell } from './screens/MiniShell'
 import { RadialShell } from './screens/RadialShell'
@@ -38,6 +39,7 @@ function App() {
   return (
     <div className={`app window-${windowType}`}>
       <AppBootstrap />
+      <CredentialRequestLayer />
       {windowType === 'mini' ? <MiniShell /> : <FullShell />}
     </div>
   )

@@ -11,6 +11,12 @@ const logError = (...args: unknown[]) => console.error("[runner]", ...args);
 type HostRunnerOptions = {
   deviceId: string;
   stellarHome: string;
+  requestCredential?: (payload: {
+    provider: string;
+    label?: string;
+    description?: string;
+    placeholder?: string;
+  }) => Promise<{ secretId: string; provider: string; label: string }>;
 };
 
 type ToolRequestEvent = {
@@ -35,8 +41,8 @@ type PaginatedResult<T> = {
 const POLL_INTERVAL_MS = 1500;
 const SYNC_DEBOUNCE_MS = 500;
 
-export const createLocalHostRunner = ({ deviceId, stellarHome }: HostRunnerOptions) => {
-  const toolHost = createToolHost({ stellarHome });
+export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential }: HostRunnerOptions) => {
+  const toolHost = createToolHost({ stellarHome, requestCredential });
   let client: ConvexHttpClient | null = null;
   let convexUrl: string | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;

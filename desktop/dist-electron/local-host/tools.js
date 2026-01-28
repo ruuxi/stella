@@ -128,7 +128,7 @@ const saveJson = async (filePath, value) => {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf-8");
 };
-export const createToolHost = ({ stellarHome }) => {
+export const createToolHost = ({ stellarHome, requestCredential }) => {
     const shells = new Map();
     const tasks = new Map();
     const stateRoot = path.join(stellarHome, "state");
@@ -165,8 +165,9 @@ export const createToolHost = ({ stellarHome }) => {
     };
     const startShell = (command, cwd) => {
         const id = crypto.randomUUID();
-        const shell = process.platform === "win32" ? "powershell.exe" : "bash";
-        const args = process.platform === "win32" ? ["-NoProfile", "-Command", command] : ["-lc", command];
+        // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
+        const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+        const args = ["-lc", command];
         const child = spawn(shell, args, {
             cwd,
             stdio: ["ignore", "pipe", "pipe"],
@@ -198,8 +199,9 @@ export const createToolHost = ({ stellarHome }) => {
         return record;
     };
     const runShell = async (command, cwd, timeoutMs) => {
-        const shell = process.platform === "win32" ? "powershell.exe" : "bash";
-        const args = process.platform === "win32" ? ["-NoProfile", "-Command", command] : ["-lc", command];
+        // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
+        const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+        const args = ["-lc", command];
         return new Promise((resolve) => {
             const child = spawn(shell, args, {
                 cwd,
@@ -715,6 +717,30 @@ export const createToolHost = ({ stellarHome }) => {
             result: "User input is required. Ask the user directly in chat.\n\n" + truncate(summary, 8000),
         };
     };
+    const handleRequestCredential = async (args) => {
+        if (!requestCredential) {
+            return { error: "Credential requests are not supported on this device." };
+        }
+        const provider = String(args.provider ?? "").trim();
+        if (!provider) {
+            return { error: "provider is required." };
+        }
+        const label = args.label ? String(args.label) : undefined;
+        const description = args.description ? String(args.description) : undefined;
+        const placeholder = args.placeholder ? String(args.placeholder) : undefined;
+        try {
+            const response = await requestCredential({
+                provider,
+                label,
+                description,
+                placeholder,
+            });
+            return { result: response };
+        }
+        catch (error) {
+            return { error: error.message || "Credential request failed." };
+        }
+    };
     const notConfigured = (name) => ({
         result: `${name} is not configured on this device yet.`,
     });
@@ -733,6 +759,7 @@ export const createToolHost = ({ stellarHome }) => {
         Task: (args) => handleTask(args),
         TaskOutput: (args) => handleTaskOutput(args),
         AskUserQuestion: (args) => handleAskUser(args),
+        RequestCredential: (args) => handleRequestCredential(args),
         ImageGenerate: async () => notConfigured("ImageGenerate"),
         ImageEdit: async () => notConfigured("ImageEdit"),
         VideoGenerate: async () => notConfigured("VideoGenerate"),

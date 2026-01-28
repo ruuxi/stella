@@ -20,6 +20,7 @@ let mouseHook = null;
 let localHostRunner = null;
 let deviceId = null;
 let pendingConvexUrl = null;
+const pendingCredentialRequests = new Map();
 const miniSize = {
     width: 680,
     height: 420,
@@ -247,11 +248,34 @@ const configureLocalHost = (convexUrl) => {
         localHostRunner.setConvexUrl(convexUrl);
     }
 };
+const requestCredential = async (payload) => {
+    const requestId = crypto.randomUUID();
+    const request = { requestId, ...payload };
+    const focused = BrowserWindow.getFocusedWindow();
+    const targetWindows = focused ? [focused] : fullWindow ? [fullWindow] : BrowserWindow.getAllWindows();
+    if (targetWindows.length === 0) {
+        throw new Error('No window available to collect credentials.');
+    }
+    for (const window of targetWindows) {
+        window.webContents.send('credential:request', request);
+    }
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            pendingCredentialRequests.delete(requestId);
+            reject(new Error('Credential request timed out.'));
+        }, 5 * 60 * 1000);
+        pendingCredentialRequests.set(requestId, { resolve, reject, timeout });
+    });
+};
 app.whenReady().then(async () => {
     const userDataPath = app.getPath('userData');
     const stellarHome = await resolveStellarHome(app, userDataPath);
     deviceId = await getOrCreateDeviceId(stellarHome.statePath);
-    localHostRunner = createLocalHostRunner({ deviceId, stellarHome: stellarHome.homePath });
+    localHostRunner = createLocalHostRunner({
+        deviceId,
+        stellarHome: stellarHome.homePath,
+        requestCredential,
+    });
     if (pendingConvexUrl) {
         localHostRunner.setConvexUrl(pendingConvexUrl);
     }
@@ -322,6 +346,26 @@ app.whenReady().then(async () => {
                 window.webContents.send('theme:change', data);
             }
         }
+    });
+    ipcMain.handle('credential:submit', (_event, payload) => {
+        const pending = pendingCredentialRequests.get(payload.requestId);
+        if (!pending) {
+            return { ok: false, error: 'Credential request not found.' };
+        }
+        clearTimeout(pending.timeout);
+        pendingCredentialRequests.delete(payload.requestId);
+        pending.resolve(payload);
+        return { ok: true };
+    });
+    ipcMain.handle('credential:cancel', (_event, payload) => {
+        const pending = pendingCredentialRequests.get(payload.requestId);
+        if (!pending) {
+            return { ok: false, error: 'Credential request not found.' };
+        }
+        clearTimeout(pending.timeout);
+        pendingCredentialRequests.delete(payload.requestId);
+        pending.reject(new Error('Credential request cancelled.'));
+        return { ok: true };
     });
     ipcMain.handle('screenshot:capture', async () => {
         const display = screen.getPrimaryDisplay();
