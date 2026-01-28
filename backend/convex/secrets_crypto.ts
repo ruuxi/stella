@@ -1,0 +1,117 @@
+﻿export type EncryptedSecretPayload = {
+  keyVersion: number;
+  dataNonce: string;
+  dataCiphertext: string;
+  keyNonce: string;
+  keyCiphertext: string;
+};
+
+const KEY_BYTES = 32;
+const NONCE_BYTES = 12;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+const bytesToBase64 = (bytes: Uint8Array) => {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
+
+const base64ToBytes = (value: string) => {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const getMasterKeyBytes = () => {
+  const raw = process.env.STELLAR_SECRETS_MASTER_KEY ?? "";
+  if (!raw) {
+    throw new Error("STELLAR_SECRETS_MASTER_KEY is not set");
+  }
+  const bytes = base64ToBytes(raw);
+  if (bytes.length !== KEY_BYTES) {
+    throw new Error("STELLAR_SECRETS_MASTER_KEY must be 32 bytes (base64)");
+  }
+  return bytes;
+};
+
+const getKeyVersion = () => {
+  const raw = process.env.STELLAR_SECRETS_MASTER_KEY_VERSION ?? "1";
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
+};
+
+const importAesKey = (bytes: Uint8Array) =>
+  crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+
+const randomNonce = () => crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
+
+const encryptWithKey = async (key: CryptoKey, plaintext: Uint8Array) => {
+  const nonce = randomNonce();
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce },
+    key,
+    plaintext,
+  );
+  return {
+    nonce: bytesToBase64(nonce),
+    ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
+  };
+};
+
+const decryptWithKey = async (
+  key: CryptoKey,
+  payload: { nonce: string; ciphertext: string },
+) => {
+  const nonce = base64ToBytes(payload.nonce);
+  const ciphertext = base64ToBytes(payload.ciphertext);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: nonce },
+    key,
+    ciphertext,
+  );
+  return new Uint8Array(plaintext);
+};
+
+export const encryptSecret = async (plaintext: string): Promise<EncryptedSecretPayload> => {
+  const masterKeyBytes = getMasterKeyBytes();
+  const masterKey = await importAesKey(masterKeyBytes);
+  const keyVersion = getKeyVersion();
+  const dataKeyBytes = crypto.getRandomValues(new Uint8Array(KEY_BYTES));
+  const dataKey = await importAesKey(dataKeyBytes);
+
+  const data = await encryptWithKey(dataKey, encoder.encode(plaintext));
+  const wrappedKey = await encryptWithKey(masterKey, dataKeyBytes);
+
+  return {
+    keyVersion,
+    dataNonce: data.nonce,
+    dataCiphertext: data.ciphertext,
+    keyNonce: wrappedKey.nonce,
+    keyCiphertext: wrappedKey.ciphertext,
+  };
+};
+
+export const decryptSecret = async (serialized: string): Promise<string> => {
+  const masterKeyBytes = getMasterKeyBytes();
+  const masterKey = await importAesKey(masterKeyBytes);
+  const payload = JSON.parse(serialized) as EncryptedSecretPayload;
+
+  const dataKeyBytes = await decryptWithKey(masterKey, {
+    nonce: payload.keyNonce,
+    ciphertext: payload.keyCiphertext,
+  });
+  const dataKey = await importAesKey(dataKeyBytes);
+
+  const plaintextBytes = await decryptWithKey(dataKey, {
+    nonce: payload.dataNonce,
+    ciphertext: payload.dataCiphertext,
+  });
+
+  return decoder.decode(plaintextBytes);
+};

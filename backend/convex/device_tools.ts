@@ -25,6 +25,7 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "TodoWrite",
   "TestWrite",
   "AskUserQuestion",
+  "RequestCredential",
   "ImageGenerate",
   "ImageEdit",
   "VideoGenerate",
@@ -261,6 +262,17 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         ),
       }),
       execute: (args) => call("AskUserQuestion", args),
+    }),
+    RequestCredential: tool({
+      description:
+        "Request a private API key via a secure UI flow. Returns a secretId handle.",
+      inputSchema: z.object({
+        provider: z.string().min(1),
+        label: z.string().optional(),
+        description: z.string().optional(),
+        placeholder: z.string().optional(),
+      }),
+      execute: (args) => call("RequestCredential", args),
     }),
     ImageGenerate: tool({
       description: "Generate an image from a prompt.",

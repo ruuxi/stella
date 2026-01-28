@@ -59,6 +59,9 @@ export default defineSchema({
     agentTypes: v.array(v.string()),
     toolsAllowlist: v.optional(v.array(v.string())),
     tags: v.optional(v.array(v.string())),
+    execution: v.optional(v.string()),
+    requiresSecrets: v.optional(v.array(v.string())),
+    publicIntegration: v.optional(v.boolean()),
     version: v.number(),
     source: v.string(),
     enabled: v.boolean(),
@@ -67,6 +70,59 @@ export default defineSchema({
     .index("by_skill_key", ["id"])
     .index("by_enabled", ["enabled"])
     .index("by_updated", ["updatedAt"]),
+  secrets: defineTable({
+    ownerId: v.string(),
+    provider: v.string(),
+    label: v.string(),
+    encryptedValue: v.string(),
+    keyVersion: v.number(),
+    status: v.string(),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+  })
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
+    .index("by_owner_and_provider_and_updated", ["ownerId", "provider", "updatedAt"]),
+  secret_access_audit: defineTable({
+    ownerId: v.string(),
+    secretId: v.id("secrets"),
+    toolName: v.string(),
+    requestId: v.string(),
+    status: v.string(),
+    reason: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_owner_and_created", ["ownerId", "createdAt"])
+    .index("by_secret_and_created", ["secretId", "createdAt"]),
+  integrations_public: defineTable({
+    id: v.string(),
+    provider: v.string(),
+    enabled: v.boolean(),
+    usagePolicy: v.string(),
+    updatedAt: v.number(),
+  }).index("by_integration_id", ["id"]),
+  user_integrations: defineTable({
+    ownerId: v.string(),
+    provider: v.string(),
+    mode: v.string(),
+    externalId: v.optional(v.string()),
+    config: v.any(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
+    .index("by_owner_and_provider", ["ownerId", "provider"]),
+  remote_computers: defineTable({
+    ownerId: v.string(),
+    railwayServiceId: v.string(),
+    domain: v.string(),
+    status: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
+    .index("by_railway_service", ["railwayServiceId"]),
   plugins: defineTable({
     id: v.string(),
     name: v.string(),

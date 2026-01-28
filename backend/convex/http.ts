@@ -19,6 +19,47 @@ type ChatRequest = {
   agent?: "general" | "self_mod";
 };
 
+const getPlatformGuidance = (platform: string): string => {
+  if (platform === "win32") {
+    return `
+## Platform: Windows
+
+You are running on Windows. Use Windows-compatible commands:
+- Shell: Git Bash (bash syntax works)
+- Open apps: \`start <app>\` or \`cmd //c start <app>\` (NOT \`open -a\`)
+- Open URLs: \`start <url>\`
+- File paths: Use forward slashes in bash, or escape backslashes
+- Common paths: \`$USERPROFILE\` (home), \`$APPDATA\`, \`$LOCALAPPDATA\`
+`.trim();
+  }
+
+  if (platform === "darwin") {
+    return `
+## Platform: macOS
+
+You are running on macOS. Use macOS-compatible commands:
+- Shell: bash/zsh
+- Open apps: \`open -a <app>\`
+- Open URLs: \`open <url>\`
+- Common paths: \`$HOME\`, \`~/Library/Application Support\`
+`.trim();
+  }
+
+  if (platform === "linux") {
+    return `
+## Platform: Linux
+
+You are running on Linux. Use Linux-compatible commands:
+- Shell: bash
+- Open apps: \`xdg-open\` or app-specific launchers
+- Open URLs: \`xdg-open <url>\`
+- Common paths: \`$HOME\`, \`~/.config\`, \`~/.local/share\`
+`.trim();
+  }
+
+  return "";
+};
+
 const HISTORY_LIMIT = 20;
 
 const http = httpRouter();
@@ -105,10 +146,12 @@ http.route({
       );
     }
 
-    const userText =
+    const userPayload =
       userEvent.payload && typeof userEvent.payload === "object"
-        ? (userEvent.payload as { text?: string }).text ?? ""
-        : "";
+        ? (userEvent.payload as { text?: string; platform?: string })
+        : {};
+    const userText = userPayload.text ?? "";
+    const userPlatform = userPayload.platform ?? "unknown";
 
     const historyLimit = Math.max(0, HISTORY_LIMIT - 1);
     const historyEvents =
@@ -171,6 +214,9 @@ http.route({
     const agentType = body.agent === "self_mod" ? "self_mod" : "general";
     const promptBuild = await buildSystemPrompt(ctx, agentType);
 
+    // Add platform-specific guidance
+    const platformGuidance = getPlatformGuidance(userPlatform);
+
     const pluginTools = await ctx.runQuery(api.plugins.listToolDescriptors, {});
 
     const contentParts: Array<
@@ -195,9 +241,14 @@ http.route({
       contentParts.push({ type: "text", text: " " });
     }
 
+    // Combine system prompt with platform guidance
+    const systemPrompt = platformGuidance
+      ? `${promptBuild.systemPrompt}\n\n${platformGuidance}`
+      : promptBuild.systemPrompt;
+
     const result = await streamText({
       ...getModelConfig(agentType),
-      system: promptBuild.systemPrompt,
+      system: systemPrompt,
       tools: createTools(
         ctx,
         {
@@ -217,6 +268,7 @@ http.route({
             description: string;
             inputSchema: Record<string, unknown>;
           }>,
+          ownerId: conversation.ownerId,
         },
       ),
       messages: [

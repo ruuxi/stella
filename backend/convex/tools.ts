@@ -1,6 +1,6 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import {
@@ -27,9 +27,19 @@ export const BASE_TOOL_NAMES = [
   "Task",
   "TaskOutput",
   "AskUserQuestion",
+  "RequestCredential",
   "ImageGenerate",
   "ImageEdit",
   "VideoGenerate",
+  "PublicGeminiImage",
+  "PublicOpenAIImage",
+  "PublicWhisper",
+  "PublicPlacesSearch",
+  "PrivateNotion",
+  "PrivateTrello",
+  "PrivateSpotify",
+  "PrivateSonos",
+  "PrivateHue",
 ] as const;
 
 type PluginToolDescriptor = {
@@ -45,6 +55,7 @@ type ToolOptions = {
   maxTaskDepth: number;
   currentTaskId?: Id<"tasks">;
   pluginTools: PluginToolDescriptor[];
+  ownerId?: string;
 };
 
 const filterTools = (
@@ -88,6 +99,62 @@ export const createTools = (
 ) => {
   const coreTools = createCoreDeviceTools(ctx, context);
 
+  const requireOwnerId = (toolName: string) => {
+    if (!options.ownerId) {
+      return `${toolName} requires an authenticated owner context.`;
+    }
+    return null;
+  };
+
+  const withSecret = async (
+    secretId: string,
+    toolName: string,
+    handler: (plaintext: string) => Promise<string>,
+  ) => {
+    if (!secretId || secretId === "undefined" || secretId === "null") {
+      return `${toolName} requires a secretId.`;
+    }
+    const ownerCheck = requireOwnerId(toolName);
+    if (ownerCheck) {
+      return ownerCheck;
+    }
+
+    const ownerId = options.ownerId as string;
+    const requestId = crypto.randomUUID();
+    try {
+      const secret = await ctx.runQuery(internal.secrets.getSecretForTool, {
+        ownerId,
+        secretId: secretId as Id<"secrets">,
+      });
+      await ctx.runMutation(internal.secrets.touchSecretUsage, {
+        ownerId,
+        secretId: secretId as Id<"secrets">,
+      });
+      await ctx.runMutation(internal.secrets.auditSecretAccess, {
+        ownerId,
+        secretId: secretId as Id<"secrets">,
+        toolName,
+        requestId,
+        status: "allowed",
+      });
+      return await handler(secret.plaintext);
+    } catch (error) {
+      try {
+        await ctx.runMutation(internal.secrets.auditSecretAccess, {
+          ownerId,
+          secretId: secretId as Id<"secrets">,
+          toolName,
+          requestId,
+          status: "denied",
+          reason: (error as Error).message,
+        });
+      } catch {
+        // Ignore audit failures.
+      }
+      return `Secret access failed for ${toolName}.`;
+    }
+  };
+
   const pluginToolEntries = options.pluginTools.map((descriptor) => {
     // Sanitize tool name for AI provider compatibility (no dots allowed)
     const sanitizedName = sanitizeToolName(descriptor.name);
@@ -102,6 +169,119 @@ export const createTools = (
     ] as const;
   });
   const pluginTools = Object.fromEntries(pluginToolEntries);
+
+  const backendTools: ToolSet = {
+    PublicGeminiImage: tool({
+      description:
+        "Generate an image with Stellar-managed Gemini integration (no user API key required).",
+      inputSchema: z.object({
+        prompt: z.string().min(1),
+        resolution: z.string().optional(),
+      }),
+      execute: async () => {
+        if (!process.env.GEMINI_API_KEY) {
+          return "Public Gemini integration is not configured.";
+        }
+        return "Public Gemini integration is not wired yet.";
+      },
+    }),
+    PublicOpenAIImage: tool({
+      description:
+        "Generate an image with Stellar-managed OpenAI integration (no user API key required).",
+      inputSchema: z.object({
+        prompt: z.string().min(1),
+        size: z.string().optional(),
+      }),
+      execute: async () => {
+        if (!process.env.OPENAI_API_KEY) {
+          return "Public OpenAI image integration is not configured.";
+        }
+        return "Public OpenAI image integration is not wired yet.";
+      },
+    }),
+    PublicWhisper: tool({
+      description:
+        "Transcribe audio with Stellar-managed Whisper integration (no user API key required).",
+      inputSchema: z.object({
+        audioUrl: z.string().min(1),
+      }),
+      execute: async () => {
+        if (!process.env.OPENAI_API_KEY) {
+          return "Public Whisper integration is not configured.";
+        }
+        return "Public Whisper integration is not wired yet.";
+      },
+    }),
+    PublicPlacesSearch: tool({
+      description:
+        "Search places with Stellar-managed Places integration (no user API key required).",
+      inputSchema: z.object({
+        query: z.string().min(1),
+        location: z.string().optional(),
+      }),
+      execute: async () => {
+        if (!process.env.GOOGLE_PLACES_API_KEY) {
+          return "Public Places integration is not configured.";
+        }
+        return "Public Places integration is not wired yet.";
+      },
+    }),
+    PrivateNotion: tool({
+      description: "Run a Notion request with a user-provided API key.",
+      inputSchema: z.object({
+        secretId: z.string().min(1),
+        request: z.any().optional(),
+      }),
+      execute: async (args) =>
+        withSecret(String(args.secretId), "PrivateNotion", async () => {
+          return "Notion integration is not wired yet.";
+        }),
+    }),
+    PrivateTrello: tool({
+      description: "Run a Trello request with a user-provided API key.",
+      inputSchema: z.object({
+        secretId: z.string().min(1),
+        request: z.any().optional(),
+      }),
+      execute: async (args) =>
+        withSecret(String(args.secretId), "PrivateTrello", async () => {
+          return "Trello integration is not wired yet.";
+        }),
+    }),
+    PrivateSpotify: tool({
+      description: "Run a Spotify request with a user-provided API key.",
+      inputSchema: z.object({
+        secretId: z.string().min(1),
+        request: z.any().optional(),
+      }),
+      execute: async (args) =>
+        withSecret(String(args.secretId), "PrivateSpotify", async () => {
+          return "Spotify integration is not wired yet.";
+        }),
+    }),
+    PrivateSonos: tool({
+      description: "Run a Sonos request with a user-provided API key.",
+      inputSchema: z.object({
+        secretId: z.string().min(1),
+        request: z.any().optional(),
+      }),
+      execute: async (args) =>
+        withSecret(String(args.secretId), "PrivateSonos", async () => {
+          return "Sonos integration is not wired yet.";
+        }),
+    }),
+    PrivateHue: tool({
+      description: "Run a Hue request with a user-provided API key.",
+      inputSchema: z.object({
+        secretId: z.string().min(1),
+        request: z.any().optional(),
+      }),
+      execute: async (args) =>
+        withSecret(String(args.secretId), "PrivateHue", async () => {
+          return "Hue integration is not wired yet.";
+        }),
+    }),
+  };
 
   const Task = tool({
     description: "Delegate a task to a specialized subagent.",
@@ -184,6 +364,7 @@ export const createTools = (
 
   const allTools: ToolSet = {
     ...coreTools,
+    ...backendTools,
     ...pluginTools,
     Task,
     TaskOutput,
