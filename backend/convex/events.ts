@@ -9,6 +9,60 @@ export const getById = internalQuery({
   },
 });
 
+export const listRecentMessages = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    limit: v.optional(v.number()),
+    beforeTimestamp: v.optional(v.number()),
+    excludeEventId: v.optional(v.id("events")),
+  },
+  handler: async (ctx, args) => {
+    const requestedLimit = args.limit ?? 20;
+    if (requestedLimit <= 0) {
+      return [];
+    }
+    const limit = Math.min(Math.floor(requestedLimit), 100);
+    const take = Math.min(Math.max(limit * 3, 50), 200);
+
+    const [userEvents, assistantEvents] = await Promise.all([
+      ctx.db
+        .query("events")
+        .withIndex("by_conversation_type", (q) =>
+          q.eq("conversationId", args.conversationId).eq("type", "user_message"),
+        )
+        .order("desc")
+        .take(take),
+      ctx.db
+        .query("events")
+        .withIndex("by_conversation_type", (q) =>
+          q.eq("conversationId", args.conversationId).eq("type", "assistant_message"),
+        )
+        .order("desc")
+        .take(take),
+    ]);
+
+    let combined = [...userEvents, ...assistantEvents];
+
+    if (args.beforeTimestamp !== undefined) {
+      combined = combined.filter((event) => event.timestamp <= args.beforeTimestamp!);
+    }
+    if (args.excludeEventId) {
+      combined = combined.filter((event) => event._id !== args.excludeEventId);
+    }
+
+    combined.sort(
+      (a, b) =>
+        a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
+    );
+
+    if (combined.length > limit) {
+      combined = combined.slice(-limit);
+    }
+
+    return combined;
+  },
+});
+
 export const saveAssistantMessage = internalMutation({
   args: {
     conversationId: v.id("conversations"),

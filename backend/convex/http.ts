@@ -18,6 +18,8 @@ type ChatRequest = {
   agent?: "general" | "self_mod";
 };
 
+const HISTORY_LIMIT = 20;
+
 const http = httpRouter();
 
 const getCorsHeaders = (origin: string | null) => {
@@ -106,6 +108,34 @@ http.route({
       userEvent.payload && typeof userEvent.payload === "object"
         ? (userEvent.payload as { text?: string }).text ?? ""
         : "";
+
+    const historyLimit = Math.max(0, HISTORY_LIMIT - 1);
+    const historyEvents =
+      historyLimit > 0
+        ? await ctx.runQuery(internal.events.listRecentMessages, {
+            conversationId,
+            limit: historyLimit,
+            beforeTimestamp: userEvent.timestamp,
+            excludeEventId: userMessageId,
+          })
+        : [];
+
+    const historyMessages = historyEvents.flatMap((event) => {
+      const payload =
+        event.payload && typeof event.payload === "object"
+          ? (event.payload as { text?: string })
+          : {};
+      const text = typeof payload.text === "string" ? payload.text.trim() : "";
+      if (!text) {
+        return [];
+      }
+      return [
+        {
+          role: event.type === "assistant_message" ? ("assistant" as const) : ("user" as const),
+          content: text,
+        },
+      ];
+    });
 
     const attachments = body.attachments ?? [];
     const resolvedImages: Array<{ url: string; mimeType?: string }> = [];
@@ -197,6 +227,7 @@ http.route({
         },
       ),
       messages: [
+        ...historyMessages,
         {
           role: "user",
           content: contentParts,
