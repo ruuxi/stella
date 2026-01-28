@@ -12,13 +12,14 @@ const PopoverClose = PopoverPrimitive.Close;
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, sideOffset = 4, children, ...props }, ref) => (
+>(({ className, sideOffset = 4, children, style, ...props }, ref) => (
   <PopoverPrimitive.Portal>
     <PopoverPrimitive.Content
       ref={ref}
       sideOffset={sideOffset}
       data-component="popover-content"
       className={cn(className)}
+      style={{ ...style, zIndex: 9999 }}
       {...props}
     >
       {children}

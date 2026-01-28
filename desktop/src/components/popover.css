@@ -1,5 +1,4 @@
 [data-component="popover-content"] {
-  z-index: 50;
   min-width: 200px;
   max-width: 320px;
   border-radius: var(--radius-md, 6px);
