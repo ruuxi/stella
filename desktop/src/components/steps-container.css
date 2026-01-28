@@ -13,7 +13,13 @@
   gap: 2px;
 }
 
+/* Outer wrapper for each step in the list */
 [data-slot="steps-item"] {
+  display: block;
+}
+
+/* Inner step item styling */
+[data-slot="step-item"] {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -27,84 +33,106 @@
   transition: background-color 0.15s ease;
 }
 
-[data-slot="steps-item"][data-status="running"] {
+[data-slot="step-item"][data-status="running"] {
   background: color-mix(in srgb, var(--primary) 15%, transparent);
   color: var(--foreground);
 }
 
-[data-slot="steps-item"][data-status="completed"] {
+[data-slot="step-item"][data-status="completed"] {
   color: var(--foreground);
 }
 
-[data-slot="steps-item"][data-status="error"] {
+[data-slot="step-item"][data-status="error"] {
   background: color-mix(in srgb, var(--destructive) 15%, transparent);
   color: var(--destructive);
 }
 
-[data-slot="steps-item-icon"] {
+[data-slot="step-item-icon"] {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+  font-size: 14px;
 }
 
-[data-slot="steps-item-icon"] svg {
-  width: 14px;
-  height: 14px;
-}
-
-[data-slot="steps-item-title"] {
+[data-slot="step-item-content"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
   flex: 1;
+  min-width: 0;
+}
+
+[data-slot="step-item-tool"] {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+[data-slot="step-item-title"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: 0.8;
+}
+
+[data-slot="step-item-subtitle"] {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+[data-slot="step-item-spinner"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+[data-slot="step-item-check"] {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+[data-slot="step-item-error"] {
+  color: var(--destructive);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 [data-slot="steps-footer"] {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 12px;
+  gap: 8px;
+  padding: 6px 12px;
   font-size: 11px;
   color: var(--muted-foreground);
-}
-
-[data-slot="steps-toggle"] {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 500;
   cursor: pointer;
   border-radius: var(--radius-sm, 4px);
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-[data-slot="steps-toggle"]:hover {
-  background: color-mix(in srgb, var(--muted) 50%, transparent);
+[data-slot="steps-footer"]:hover {
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
   color: var(--foreground);
 }
 
-[data-slot="steps-toggle"] svg {
+[data-slot="steps-footer"] svg {
   transition: transform 0.2s ease;
 }
 
-[data-component="steps-container"][data-expanded="true"] [data-slot="steps-toggle"] svg {
+[data-component="steps-container"][data-expanded="true"] [data-slot="steps-footer"] svg {
   transform: rotate(180deg);
 }
 
-/* Collapsed state - show only summary */
+/* Collapsed state - hide track, show only footer */
 [data-component="steps-container"]:not([data-expanded="true"]) [data-slot="steps-track"] {
   display: none;
 }
 
-/* Animation for step items */
+/* Animation for step items entering */
 @keyframes step-fade-in {
   from {
     opacity: 0;
@@ -116,11 +144,15 @@
   }
 }
 
-[data-slot="steps-item"] {
+[data-slot="steps-item"][data-new="true"] [data-slot="step-item"] {
   animation: step-fade-in 0.2s ease-out;
 }
 
-/* Spinner animation for running steps */
+/* Spinner animation */
+[data-slot="step-item-spinner"] svg {
+  animation: spin 1s linear infinite;
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -128,8 +160,4 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-[data-slot="steps-item"][data-status="running"] [data-slot="steps-item-icon"] svg {
-  animation: spin 1s linear infinite;
 }
