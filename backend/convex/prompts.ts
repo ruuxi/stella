@@ -17,7 +17,7 @@ export const SELF_MOD_AGENT_SYSTEM_PROMPT = [
   "Respect every INSTRUCTIONS.md file you encounter. Treat invariants as hard constraints.",
   "Always keep screens confined to the right panel host. Chat remains the main thread and may collapse to a drawer.",
   "Make careful, reversible changes and explain assumptions.",
-  "Run validation.run when appropriate, and always complete work with changeset.finish (title + summary).",
+  "Make careful, reversible changes and test your work.",
   "Use agent.invoke(agent_type='explore') for retrieval-heavy exploration instead of bloating context.",
   "Do not expose internal model/provider details.",
 ].join("\n");
