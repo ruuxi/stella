@@ -62,9 +62,8 @@ export {
   PopoverBody,
   PopoverClose,
   PopoverCloseButton,
-  type HoverCardProps,
 } from "./popover";
-export { HoverCard, HoverCardRoot, HoverCardTrigger, HoverCardContent } from "./hover-card";
+export { HoverCard, HoverCardRoot, HoverCardTrigger, HoverCardContent, type HoverCardProps } from "./hover-card";
 export { Tooltip, TooltipProvider, TooltipRoot, TooltipTrigger, TooltipPortal, TooltipContent, type TooltipProps, type TooltipContentProps } from "./tooltip";
 export { ToastProvider, useToast, showToast, setToastFn, type ToastOptions } from "./toast";
 
