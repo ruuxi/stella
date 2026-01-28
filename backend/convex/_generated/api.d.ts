@@ -11,21 +11,16 @@
 import type * as agent from "../agent.js";
 import type * as agents from "../agents.js";
 import type * as attachments from "../attachments.js";
-import type * as changesets from "../changesets.js";
 import type * as conversations from "../conversations.js";
 import type * as device_tools from "../device_tools.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
-import type * as packs from "../packs.js";
-import type * as packs_registry from "../packs_registry.js";
 import type * as plugins from "../plugins.js";
 import type * as prompt_builder from "../prompt_builder.js";
 import type * as prompts from "../prompts.js";
 import type * as skills from "../skills.js";
 import type * as tasks from "../tasks.js";
 import type * as tools from "../tools.js";
-import type * as updates from "../updates.js";
-import type * as updates_registry from "../updates_registry.js";
 
 import type {
   ApiFromModules,
@@ -37,21 +32,16 @@ declare const fullApi: ApiFromModules<{
   agent: typeof agent;
   agents: typeof agents;
   attachments: typeof attachments;
-  changesets: typeof changesets;
   conversations: typeof conversations;
   device_tools: typeof device_tools;
   events: typeof events;
   http: typeof http;
-  packs: typeof packs;
-  packs_registry: typeof packs_registry;
   plugins: typeof plugins;
   prompt_builder: typeof prompt_builder;
   prompts: typeof prompts;
   skills: typeof skills;
   tasks: typeof tasks;
   tools: typeof tools;
-  updates: typeof updates;
-  updates_registry: typeof updates_registry;
 }>;
 
 /**
