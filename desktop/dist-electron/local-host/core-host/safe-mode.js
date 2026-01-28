@@ -26,9 +26,31 @@ export const createSafeModeManager = (options) => {
         const lastBoot = await stateStore.getLastBootStatus();
         const safeTrigger = await stateStore.getSafeModeTrigger();
         const boot = await stateStore.startBoot();
-        const needsSafeMode = Boolean(safeTrigger) || (lastBoot ? lastBoot.status !== "healthy" : false);
         const initialSmoke = await runSmoke();
-        if (!needsSafeMode && initialSmoke.summary.ok) {
+        // Collect all triggers
+        const triggers = [];
+        if (safeTrigger?.reason) {
+            triggers.push({
+                type: "safe_mode_trigger",
+                message: `Safe mode was triggered: ${safeTrigger.reason}`,
+            });
+        }
+        if (lastBoot && lastBoot.status !== "healthy") {
+            triggers.push({
+                type: "unhealthy_boot",
+                message: `Previous boot was ${lastBoot.status}`,
+            });
+        }
+        if (!initialSmoke.summary.ok) {
+            triggers.push({
+                type: "smoke_check_failed",
+                message: `Smoke check failed: ${initialSmoke.summary.requiredFailures
+                    .map((item) => item.name)
+                    .join(", ")}`,
+            });
+        }
+        // If no triggers, mark healthy and return
+        if (triggers.length === 0) {
             await stateStore.markBootHealthy(boot.bootId);
             await callMutation("changesets.safe_mode_status", {
                 status: "healthy",
@@ -38,25 +60,23 @@ export const createSafeModeManager = (options) => {
                 checkedAt: Date.now(),
             });
             return {
+                needsRevert: false,
                 safeModeApplied: false,
                 smokePassed: true,
                 reason: null,
                 smoke: initialSmoke.results,
             };
         }
-        const reasonParts = [];
-        if (safeTrigger?.reason) {
-            reasonParts.push(safeTrigger.reason);
-        }
-        if (!initialSmoke.summary.ok) {
-            reasonParts.push(`Smoke check failed: ${initialSmoke.summary.requiredFailures
-                .map((item) => item.name)
-                .join(", ")}`);
-        }
-        if (lastBoot && lastBoot.status !== "healthy") {
-            reasonParts.push(`Previous boot was ${lastBoot.status}.`);
-        }
-        const reason = reasonParts.join(" | ") || "Startup health check failed.";
+        // Return trigger info for user confirmation (don't auto-revert)
+        const reason = triggers.map((t) => t.message).join(" | ");
+        return {
+            needsRevert: true,
+            triggers,
+            reason,
+            bootId: boot.bootId,
+        };
+    };
+    const performRevert = async (bootId, reason) => {
         await changeSetManager.rollbackToLastKnownGood(reason);
         if (options.packManager) {
             await options.packManager.disableAllForSafeMode(reason);
@@ -66,14 +86,14 @@ export const createSafeModeManager = (options) => {
         const smokePassed = postRollbackSmoke.summary.ok;
         if (smokePassed) {
             await stateStore.setSafeModeTrigger(null);
-            await stateStore.markBootHealthy(boot.bootId);
+            await stateStore.markBootHealthy(bootId);
         }
         else {
-            await stateStore.markBootFailed(boot.bootId, reason, safeModeApplied);
+            await stateStore.markBootFailed(bootId, reason, safeModeApplied);
         }
         await callMutation("changesets.safe_mode_status", {
             status: smokePassed ? "recovered" : "failed",
-            bootId: boot.bootId,
+            bootId,
             safeModeApplied,
             smokePassed,
             reason,
@@ -87,8 +107,23 @@ export const createSafeModeManager = (options) => {
             smoke: postRollbackSmoke.results,
         };
     };
+    const skipRevert = async (bootId) => {
+        // User chose not to revert - mark as healthy anyway and clear triggers
+        await stateStore.setSafeModeTrigger(null);
+        await stateStore.markBootHealthy(bootId);
+        await callMutation("changesets.safe_mode_status", {
+            status: "skipped",
+            bootId,
+            safeModeApplied: false,
+            smokePassed: false,
+            reason: "User skipped revert",
+            checkedAt: Date.now(),
+        });
+    };
     return {
         setConvexBridge,
         runStartupChecks,
+        performRevert,
+        skipRevert,
     };
 };

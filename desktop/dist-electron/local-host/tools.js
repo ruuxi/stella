@@ -152,6 +152,12 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
     const runStartupChecks = async () => {
         return await coreHost.safeModeManager.runStartupChecks();
     };
+    const performRevert = async (bootId, reason) => {
+        return await coreHost.safeModeManager.performRevert(bootId, reason);
+    };
+    const skipRevert = async (bootId) => {
+        return await coreHost.safeModeManager.skipRevert(bootId);
+    };
     const ensureReadWithinRoots = (absolutePath) => {
         if (ensureWithinRoot(projectRoot, absolutePath)) {
             return { ok: true };
@@ -1226,6 +1232,8 @@ export const createToolHost = ({ stellarHome, projectRoot, deviceId, screenBridg
         getPluginSyncPayload: () => pluginSyncPayload,
         setConvexBridge,
         runStartupChecks,
+        performRevert,
+        skipRevert,
         coreHost,
     };
 };
