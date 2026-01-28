@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { MouseHookManager } from './mouse-hook.js';
@@ -6,7 +6,6 @@ import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCur
 import { getOrCreateDeviceId } from './local-host/device.js';
 import { createLocalHostRunner } from './local-host/runner.js';
 import { resolveStellarHome } from './local-host/stellar-home.js';
-import { createScreenBridge } from './local-host/screen-bridge.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -14,13 +13,6 @@ const uiState = {
     mode: 'chat',
     window: 'full',
     conversationId: null,
-    panel: {
-        isOpen: true,
-        width: 420,
-        focused: false,
-        activeScreenId: 'media_viewer',
-        chatDrawerOpen: false,
-    },
 };
 let fullWindow = null;
 let miniWindow = null;
@@ -28,7 +20,6 @@ let mouseHook = null;
 let localHostRunner = null;
 let deviceId = null;
 let pendingConvexUrl = null;
-let screenBridge = null;
 const miniSize = {
     width: 680,
     height: 420,
@@ -48,12 +39,6 @@ const updateUiState = (partial) => {
     }
     if (partial.conversationId !== undefined) {
         uiState.conversationId = partial.conversationId;
-    }
-    if (partial.panel) {
-        uiState.panel = {
-            ...uiState.panel,
-            ...partial.panel,
-        };
     }
     broadcastUiState();
 };
@@ -192,7 +177,7 @@ const handleRadialSelection = (wedge) => {
     }
 };
 // Trigger native context menu (platform-specific)
-const triggerNativeContextMenu = async (x, y) => {
+const triggerNativeContextMenu = async (_x, _y) => {
     // On most platforms, we simply don't block the right-click
     // The uiohook captures the event but doesn't prevent it from reaching the system
     // However, if needed, we could use platform-specific approaches:
@@ -256,41 +241,8 @@ const configureLocalHost = (convexUrl) => {
 app.whenReady().then(async () => {
     const userDataPath = app.getPath('userData');
     const stellarHome = await resolveStellarHome(app, userDataPath);
-    const projectRoot = path.resolve(__dirname, '..');
     deviceId = await getOrCreateDeviceId(stellarHome.statePath);
-    screenBridge = createScreenBridge({
-        getTargetWindow: () => fullWindow,
-    });
-    localHostRunner = createLocalHostRunner({
-        deviceId,
-        stellarHome: stellarHome.homePath,
-        projectRoot,
-        screenBridge,
-        onRevertPrompt: async ({ triggers, reason }) => {
-            const triggerDescriptions = triggers.map((t) => {
-                switch (t.type) {
-                    case 'safe_mode_trigger':
-                        return `• Safe Mode Trigger: ${t.message}`;
-                    case 'unhealthy_boot':
-                        return `• Previous Boot Issue: ${t.message}`;
-                    case 'smoke_check_failed':
-                        return `• Build Check Failed: ${t.message}`;
-                    default:
-                        return `• ${t.message}`;
-                }
-            });
-            const result = await dialog.showMessageBox({
-                type: 'warning',
-                title: 'Revert to Last Known Good?',
-                message: 'Stellar detected issues that may require reverting to a previous state.',
-                detail: `The following issues were detected:\n\n${triggerDescriptions.join('\n')}\n\nWould you like to revert platform files (src/, electron/) to the last known good state?\n\nChoose "Don't Revert" to keep your current changes.`,
-                buttons: ['Revert', "Don't Revert"],
-                defaultId: 1,
-                cancelId: 1,
-            });
-            return result.response === 0; // 0 = Revert, 1 = Don't Revert
-        },
-    });
+    localHostRunner = createLocalHostRunner({ deviceId, stellarHome: stellarHome.homePath });
     if (pendingConvexUrl) {
         localHostRunner.setConvexUrl(pendingConvexUrl);
     }
@@ -313,8 +265,7 @@ app.whenReady().then(async () => {
         if (partial.window) {
             showWindow(partial.window);
         }
-        const { window, ...rest } = partial;
-        void window;
+        const { window: _window, ...rest } = partial;
         if (Object.keys(rest).length > 0) {
             updateUiState(rest);
         }
