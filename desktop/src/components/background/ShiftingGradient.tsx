@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback, type CSSProperties } from "react";
 import { useTheme } from "../../theme/theme-context";
+import { generateGradientTokens } from "../../theme/color";
 import { cn } from "@/lib/utils";
 
 type RGB = { r: number; g: number; b: number };
@@ -36,7 +37,7 @@ function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
-// Parse any CSS color to RGB using canvas
+// Parse any color string to RGB using canvas
 function parseColor(color: string): RGB | null {
   if (!color || color === "transparent") return null;
 
@@ -58,16 +59,6 @@ function parseColor(color: string): RGB | null {
   }
 
   return null;
-}
-
-// Get computed color from CSS variable
-function getComputedColor(cssVar: string): RGB | null {
-  if (typeof document === "undefined") return null;
-  const root = document.documentElement;
-  const style = getComputedStyle(root);
-  const value = style.getPropertyValue(cssVar).trim();
-  if (!value) return null;
-  return parseColor(value);
 }
 
 function mixRgb(a: RGB, b: RGB, t: number): RGB {
@@ -113,40 +104,52 @@ export function ShiftingGradient({
   colorMode = "relative",
   blurMultiplier = 1,
 }: ShiftingGradientProps) {
-  const { resolvedColorMode, themeId } = useTheme();
+  const { resolvedColorMode, themeId, colors } = useTheme();
   const [blobs, setBlobs] = useState<Blob[]>([]);
   const [ready, setReady] = useState(false);
-  const prevKeyRef = useRef<string>("");
+  const didInitRef = useRef(false);
 
-  // Generate palette from CSS custom properties (matching Aura's approach)
+  // Generate palette directly from theme colors to avoid timing issues
   const getPalette = useCallback((): RGB[] => {
     const isDark = resolvedColorMode === "dark";
 
-    // Get background color
-    const bg = getComputedColor("--background") ?? { r: 248, g: 247, b: 247 };
+    const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
     const fallback = { r: 120, g: 120, b: 120 };
+
+    const tokens = generateGradientTokens(
+      {
+        primary: colors.primary,
+        success: colors.success,
+        warning: colors.warning,
+        info: colors.info,
+        interactive: colors.interactive,
+      },
+      isDark
+    );
 
     if (colorMode === "relative") {
       // Relative: subtle colors blended heavily with background
       // Uses derived tokens from OKLCH color scales (matching Aura)
-      // Falls back to raw theme colors if derived tokens aren't available
-      const tokenPairs = [
-        { derived: "--text-interactive-base", fallback: "--primary" },
-        { derived: "--surface-info-strong", fallback: "--ring" },
-        { derived: "--surface-success-strong", fallback: "--spinner-color-2" },
-        { derived: "--surface-warning-strong", fallback: "--spinner-color-3" },
-        { derived: "--surface-brand-base", fallback: "--primary" },
+      const tokenColors = [
+        tokens.textInteractive,
+        tokens.surfaceInfoStrong,
+        tokens.surfaceSuccessStrong,
+        tokens.surfaceWarningStrong,
+        tokens.surfaceBrandBase,
       ];
       const strength = isDark ? 0.35 : 0.4;
-      return tokenPairs.map(({ derived, fallback: fb }) => {
-        const color = getComputedColor(derived) ?? getComputedColor(fb) ?? fallback;
+      return tokenColors.map((token) => {
+        const color = parseColor(token) ?? fallback;
         return mixRgb(bg, color, strength);
       });
     }
 
     // Strong: use brand/accent colors at high saturation
-    const brandColor = getComputedColor("--surface-brand-base") ?? getComputedColor("--primary") ?? fallback;
-    const accentColor = getComputedColor("--text-interactive-base") ?? getComputedColor("--ring") ?? brandColor;
+    const brandColor = parseColor(tokens.surfaceBrandBase) ?? parseColor(colors.primary) ?? fallback;
+    const accentColor =
+      parseColor(tokens.textInteractive) ??
+      parseColor(colors.interactive) ??
+      brandColor;
     const strength = isDark ? 0.65 : 0.75;
 
     return [
@@ -156,29 +159,28 @@ export function ShiftingGradient({
       mixRgb(bg, accentColor, strength * 0.88),
       mixRgb(bg, brandColor, strength * 0.9),
     ];
-  }, [resolvedColorMode, colorMode, themeId]);
+  }, [resolvedColorMode, colorMode, colors]);
 
   // Initialize and update blobs
   useEffect(() => {
-    const key = `${themeId}-${resolvedColorMode}-${mode}-${colorMode}`;
-    const isFirstRender = !prevKeyRef.current;
-    const settingsChanged = prevKeyRef.current !== key;
-
-    if (isFirstRender || settingsChanged) {
-      // Wait for CSS variables to be applied, then read them
-      // Use requestAnimationFrame to ensure DOM is updated
-      const timer = requestAnimationFrame(() => {
-        setTimeout(() => {
-          const palette = getPalette();
-          setBlobs(generateBlobs(palette, mode, blurMultiplier));
-          if (isFirstRender) {
-            requestAnimationFrame(() => setReady(true));
+    let cancelled = false;
+    const timer = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const palette = getPalette();
+      setBlobs(generateBlobs(palette, mode, blurMultiplier));
+      if (!didInitRef.current) {
+        didInitRef.current = true;
+        requestAnimationFrame(() => {
+          if (!cancelled) {
+            setReady(true);
           }
-        }, 0);
-      });
-      prevKeyRef.current = key;
-      return () => cancelAnimationFrame(timer);
-    }
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(timer);
+    };
   }, [themeId, resolvedColorMode, mode, colorMode, getPalette, blurMultiplier]);
 
   // Periodically shift blob positions
