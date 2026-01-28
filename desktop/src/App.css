@@ -247,7 +247,7 @@
   width: 100%;
   max-width: 50rem;
   margin: 0 auto;
-  padding: 80px 24px 120px;
+  padding: 80px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -260,7 +260,7 @@
   flex-direction: column;
   justify-content: flex-end;
   align-items: flex-start;
-  padding: 0 24px 120px;
+  padding: 0 24px 24px;
   max-width: 50rem;
   margin: 0 auto;
   width: 100%;
@@ -683,9 +683,10 @@
   width: 60%;
 }
 
-/* Composer - pinned within the chat column */
+/* Composer - sticky at the bottom of the chat column */
 .composer {
-  position: relative;
+  position: sticky;
+  bottom: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1076,7 +1077,7 @@
 }
 
 .chat-column .composer {
-  position: relative;
+  position: sticky;
   z-index: 2;
 }
 
