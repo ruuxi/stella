@@ -12,6 +12,7 @@ type SkillRecord = {
   execution?: string;
   requiresSecrets?: string[];
   publicIntegration?: boolean;
+  secretMounts?: Record<string, unknown>;
   version: number;
   source: string;
   enabled: boolean;
@@ -57,6 +58,10 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
   const toolsAllowlist = coerceStringArray(record.toolsAllowlist);
   const tags = coerceStringArray(record.tags);
   const requiresSecrets = coerceStringArray(record.requiresSecrets);
+  const secretMounts =
+    record.secretMounts && typeof record.secretMounts === "object"
+      ? (record.secretMounts as Record<string, unknown>)
+      : undefined;
 
   const versionNumber = Number(record.version ?? 1);
   const version = Number.isFinite(versionNumber) && versionNumber > 0 ? Math.floor(versionNumber) : 1;
@@ -74,6 +79,7 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
     execution: typeof record.execution === "string" ? record.execution : undefined,
     requiresSecrets: requiresSecrets.length > 0 ? requiresSecrets : undefined,
     publicIntegration: record.publicIntegration === true ? true : undefined,
+    secretMounts,
     version,
     source: typeof record.source === "string" ? record.source : "local",
     enabled,

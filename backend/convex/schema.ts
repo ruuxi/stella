@@ -62,6 +62,7 @@ export default defineSchema({
     execution: v.optional(v.string()),
     requiresSecrets: v.optional(v.array(v.string())),
     publicIntegration: v.optional(v.boolean()),
+    secretMounts: v.optional(v.any()),
     version: v.number(),
     source: v.string(),
     enabled: v.boolean(),

@@ -17,6 +17,7 @@ const buildSkillsSection = (
     execution?: string;
     requiresSecrets?: string[];
     publicIntegration?: boolean;
+    secretMounts?: Record<string, unknown>;
   }>,
 ) => {
   if (skills.length === 0) return "";
@@ -30,7 +31,7 @@ const buildSkillsSection = (
       }
       if (skill.requiresSecrets && skill.requiresSecrets.length > 0) {
         notes.push(
-          `Requires credential(s): ${skill.requiresSecrets.join(", ")}. Use RequestCredential if missing.`,
+          `Requires credential(s): ${skill.requiresSecrets.join(", ")}. Use RequestCredential if missing, then IntegrationRequest to use them.`,
         );
       }
       if (skill.execution === "backend") {
@@ -38,6 +39,36 @@ const buildSkillsSection = (
       }
       if (skill.execution === "device") {
         notes.push("Execution: device-only.");
+      }
+      if (skill.secretMounts) {
+        const mounts = skill.secretMounts;
+        const env =
+          mounts &&
+          typeof mounts === "object" &&
+          "env" in mounts &&
+          mounts.env &&
+          typeof mounts.env === "object"
+            ? Object.keys(mounts.env as Record<string, unknown>)
+            : [];
+        const files =
+          mounts &&
+          typeof mounts === "object" &&
+          "files" in mounts &&
+          mounts.files &&
+          typeof mounts.files === "object"
+            ? Object.keys(mounts.files as Record<string, unknown>)
+            : [];
+        const mountParts: string[] = [];
+        if (env.length > 0) {
+          mountParts.push(`env: ${env.join(", ")}`);
+        }
+        if (files.length > 0) {
+          mountParts.push(`files: ${files.join(", ")}`);
+        }
+        if (mountParts.length > 0) {
+          notes.push(`Detected secret mounts (${mountParts.join("; ")}).`);
+        }
+        notes.push("Use SkillBash for local commands so secrets are mounted automatically.");
       }
       const notesBlock = notes.length > 0 ? `Note: ${notes.join(" ")}` : "";
       return [header, notesBlock, skill.markdown].filter(Boolean).join("\n").trim();
@@ -69,6 +100,7 @@ export const buildSystemPrompt = async (
       execution: (skill as { execution?: string }).execution,
       requiresSecrets: (skill as { requiresSecrets?: string[] }).requiresSecrets,
       publicIntegration: (skill as { publicIntegration?: boolean }).publicIntegration,
+      secretMounts: (skill as { secretMounts?: Record<string, unknown> }).secretMounts,
     })),
   );
 
