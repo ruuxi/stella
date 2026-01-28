@@ -97,7 +97,7 @@
   --surface-raised: color-mix(in srgb, var(--card) 65%, transparent);
   --surface-raised-hover: color-mix(in srgb, var(--card) 80%, transparent);
   --surface-overlay: color-mix(in srgb, var(--card) 85%, transparent);
-  --surface-raised-stronger-non-alpha: #ffffff;
+  --surface-raised-stronger-non-alpha: var(--card);
 
   /* Text hierarchy - Aura-style with solid colors for light mode */
   --text-strong: oklch(0.13 0.01 285);
@@ -192,7 +192,7 @@
   --surface-raised: color-mix(in srgb, var(--card) 50%, transparent);
   --surface-raised-hover: color-mix(in srgb, var(--card) 65%, transparent);
   --surface-overlay: color-mix(in srgb, var(--card) 75%, transparent);
-  --surface-raised-stronger-non-alpha: #1a1a1a;
+  --surface-raised-stronger-non-alpha: var(--card);
 
   /* Text hierarchy - Aura-style with alpha-based colors for dark mode */
   /* Alpha colors blend better with colorful gradient backgrounds */

@@ -72,7 +72,8 @@ function mixRgb(a: RGB, b: RGB, t: number): RGB {
 function generateBlobs(
   colors: RGB[],
   mode: GradientMode = "soft",
-  blurMultiplier = 1
+  blurMultiplier = 1,
+  sizeScale = 1
 ): Blob[] {
   // Crisp: sharp defined edges; Soft: dreamy blurred
   const blurRange = mode === "crisp" ? { min: 20, max: 40 } : { min: 120, max: 200 };
@@ -82,7 +83,7 @@ function generateBlobs(
     return {
       x: rand(base.x - 6, base.x + 6),
       y: rand(base.y - 6, base.y + 6),
-      size: Math.round(rand(1020, 1280)),
+      size: Math.round(rand(1020, 1280) * sizeScale),
       scale: rand(0.9, 1.15),
       blur: Math.round(baseBlur * blurMultiplier),
       alpha: rand(0.88, 1.0),
@@ -96,6 +97,7 @@ interface ShiftingGradientProps {
   mode?: GradientMode;
   colorMode?: GradientColor;
   blurMultiplier?: number;
+  scale?: number;
 }
 
 export function ShiftingGradient({
@@ -103,6 +105,7 @@ export function ShiftingGradient({
   mode = "soft",
   colorMode = "relative",
   blurMultiplier = 1,
+  scale = 1,
 }: ShiftingGradientProps) {
   const { resolvedColorMode, themeId, colors } = useTheme();
   const [blobs, setBlobs] = useState<Blob[]>([]);
@@ -167,7 +170,7 @@ export function ShiftingGradient({
     const timer = requestAnimationFrame(() => {
       if (cancelled) return;
       const palette = getPalette();
-      setBlobs(generateBlobs(palette, mode, blurMultiplier));
+      setBlobs(generateBlobs(palette, mode, blurMultiplier, scale));
       if (!didInitRef.current) {
         didInitRef.current = true;
         requestAnimationFrame(() => {
@@ -181,7 +184,7 @@ export function ShiftingGradient({
       cancelled = true;
       cancelAnimationFrame(timer);
     };
-  }, [themeId, resolvedColorMode, mode, colorMode, getPalette, blurMultiplier]);
+  }, [themeId, resolvedColorMode, mode, colorMode, getPalette, blurMultiplier, scale]);
 
   // Periodically shift blob positions
   //useEffect(() => {

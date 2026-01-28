@@ -66,4 +66,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   radialSelect: (wedge: string) => ipcRenderer.send('radial:select', wedge),
+
+  // Theme sync across windows
+  onThemeChange: (callback: (event: IpcRendererEvent, data: { key: string; value: string }) => void) => {
+    const handler = (event: IpcRendererEvent, data: { key: string; value: string }) => {
+      callback(event, data)
+    }
+    ipcRenderer.on('theme:change', handler)
+    return () => {
+      ipcRenderer.removeListener('theme:change', handler)
+    }
+  },
+  broadcastThemeChange: (key: string, value: string) => ipcRenderer.send('theme:broadcast', { key, value }),
 })

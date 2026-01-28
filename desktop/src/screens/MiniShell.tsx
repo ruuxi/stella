@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAction, useMutation } from "convex/react";
-import { Maximize2 } from "lucide-react";
 import { useUiState } from "../app/state/ui-state";
+import { AsciiBlackHole } from "../components/AsciiBlackHole";
 import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
 import { useConversationEvents } from "../hooks/use-conversation-events";
@@ -139,45 +139,76 @@ export const MiniShell = () => {
   const hasConversation = events.length > 0 || streamingText;
 
   return (
-    <div className="spotlight-shell">
-      {/* Conversation appears above the input */}
-      {hasConversation && (
-        <div className="spotlight-conversation">
-          <ConversationEvents
-            events={events}
-            maxItems={5}
-            streamingText={streamingText}
-            isStreaming={isStreaming}
-          />
+    <div className="raycast-shell">
+      {/* Raycast-style unified panel - no gradient, solid panel */}
+      <div className="raycast-panel">
+        {/* Search bar header */}
+        <div className="raycast-header">
+          <div className="raycast-search">
+            <div className="raycast-search-icon">
+              <AsciiBlackHole width={20} height={20} />
+            </div>
+            <input
+              className="raycast-input"
+              placeholder={isAskMode ? "Ask about your screen..." : "Search for apps and commands..."}
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              if (event.key === "Escape") {
+                // Hide the mini shell window
+                window.electronAPI?.closeWindow?.();
+              }
+              }}
+              autoFocus
+            />
+            <div className="raycast-actions">
+              <button
+                className="raycast-action-button"
+                type="button"
+                onClick={() => setWindow("full")}
+                title="Expand to full view"
+              >
+                <span className="raycast-action-label">Expand</span>
+                <kbd className="raycast-kbd">Tab</kbd>
+              </button>
+            </div>
+          </div>
         </div>
-      )}
 
-      {/* Spotlight-style input bar */}
-      <div className="spotlight-bar">
-        <input
-          className="spotlight-input"
-          placeholder={isAskMode ? "Ask about your screen..." : "Ask Stellar anything..."}
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void sendMessage();
-            }
-            if (event.key === "Escape") {
-              // Could hide window on escape
-            }
-          }}
-          autoFocus
-        />
-        <button
-          className="spotlight-expand"
-          type="button"
-          onClick={() => setWindow("full")}
-          title="Expand to full view"
-        >
-          <Maximize2 className="w-4 h-4" />
-        </button>
+        {/* Results/conversation area */}
+        {hasConversation && (
+          <>
+            <div className="raycast-results">
+              <div className="raycast-section">
+                <div className="raycast-section-header">Conversation</div>
+                <div className="raycast-conversation-content">
+                  <ConversationEvents
+                    events={events}
+                    maxItems={5}
+                    streamingText={streamingText}
+                    isStreaming={isStreaming}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer hint - only when conversation exists */}
+            <div className="raycast-footer">
+              <div className="raycast-footer-hint">
+                <kbd className="raycast-kbd-small">Enter</kbd>
+                <span>to send</span>
+              </div>
+              <div className="raycast-footer-hint">
+                <kbd className="raycast-kbd-small">Esc</kbd>
+                <span>to close</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
