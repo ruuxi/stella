@@ -61,6 +61,7 @@ let miniWindow: BrowserWindow | null = null
 let mouseHook: MouseHookManager | null = null
 let localHostRunner: ReturnType<typeof createLocalHostRunner> | null = null
 let deviceId: string | null = null
+let appReady = false // true when authenticated + onboarding complete
 let pendingConvexUrl: string | null = null
 const pendingCredentialRequests = new Map<
   string,
@@ -260,6 +261,7 @@ const createMiniWindow = () => {
 
 const showWindow = (target: WindowMode) => {
   if (target === 'mini') {
+    if (!appReady) return // Block mini shell when not signed in or onboarding incomplete
     if (!miniWindow) {
       createMiniWindow()
     }
@@ -326,6 +328,7 @@ const triggerNativeContextMenu = async (x: number, y: number) => {
 const initMouseHook = () => {
   mouseHook = new MouseHookManager({
     onRadialShow: (x: number, y: number) => {
+      if (!appReady) return
       showRadialWindow(x, y)
     },
     onRadialHide: () => {
@@ -440,6 +443,10 @@ app.whenReady().then(async () => {
 
   // Initialize mouse hook for global right-click detection
   initMouseHook()
+
+  ipcMain.on('app:setReady', (_event, ready: boolean) => {
+    appReady = !!ready
+  })
 
   ipcMain.handle('device:getId', () => deviceId)
   ipcMain.handle('host:configure', (_event, config: { convexUrl?: string }) => {

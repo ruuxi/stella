@@ -33,9 +33,11 @@ interface OnboardingStep1Props {
   onComplete: () => void;
   onAccept?: () => void;
   onInteract?: () => void;
+  onSignIn?: () => void;
+  isAuthenticated?: boolean;
 }
 
-export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract }) => {
+export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, isAuthenticated }) => {
   const [phase, setPhase] = useState<Phase>("typing-intro");
   const [displayed, setDisplayed] = useState("");
   const [showCursor, setShowCursor] = useState(true);
@@ -173,10 +175,20 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
     return clearTimeouts;
   }, [phase, onComplete]);
 
+  // Auto-advance from waiting-click when user signs in
+  useEffect(() => {
+    if (isAuthenticated && phase === "waiting-click") {
+      onInteract?.();
+      setPhase("fading-out");
+    }
+  }, [isAuthenticated, phase, onInteract]);
+
   const handleClick = () => {
     onInteract?.();
     if (phase === "waiting-click") {
-      setPhase("fading-out");
+      // Open sign-in dialog instead of advancing directly
+      onSignIn?.();
+      return;
     } else if (phase === "waiting-click-preview") {
       setPhase("fading-out-preview");
     }
@@ -240,7 +252,14 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
           <span className="onboarding-cursor" style={{ opacity: showCursor ? 1 : 0 }}>│</span>
         </div>
 
-        {(phase === "waiting-click" || phase === "waiting-click-preview") && (
+        {phase === "waiting-click" && (
+          <div className="onboarding-choices onboarding-choices--subtle" data-visible={true}>
+            <span className="onboarding-choice">
+              sign in to begin
+            </span>
+          </div>
+        )}
+        {phase === "waiting-click-preview" && (
           <div className="onboarding-choices onboarding-choices--subtle" data-visible={true}>
             <span className="onboarding-choice">
               click
