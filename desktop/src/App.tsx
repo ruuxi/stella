@@ -6,8 +6,7 @@ import { CredentialRequestLayer } from './app/CredentialRequestLayer'
 import { FullShell } from './screens/FullShell'
 import { MiniShell } from './screens/MiniShell'
 import { RadialShell } from './screens/RadialShell'
-import { Authenticated, AuthLoading, Unauthenticated } from 'convex/react'
-import { AuthPanel } from './app/AuthPanel'
+import { Authenticated } from 'convex/react'
 import { AuthTokenBridge } from './app/AuthTokenBridge'
 import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 
@@ -19,7 +18,6 @@ function App() {
   const params = new URLSearchParams(window.location.search)
   const isElectron = Boolean(api)
   const windowParam = params.get('window')
-
   let windowType: WindowType
   if (isElectron && windowParam === 'radial') {
     windowType = 'radial'
@@ -44,23 +42,14 @@ function App() {
       </div>
     )
 
+  // Always show the shell - auth is handled inline with a dialog
   return (
     <>
       <AuthDeepLinkHandler />
-      <AuthLoading>
-        <div className="auth-panel">
-          <div className="auth-panel-card">
-            <div className="auth-panel-title">Loading...</div>
-          </div>
-        </div>
-      </AuthLoading>
-      <Unauthenticated>
-        <AuthPanel />
-      </Unauthenticated>
       <Authenticated>
         <AuthTokenBridge />
-        {shell}
       </Authenticated>
+      {shell}
     </>
   )
 }
