@@ -76,6 +76,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
   });
   let client: ConvexHttpClient | null = null;
   let convexUrl: string | null = null;
+  let authToken: string | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   const processed = new Set<string>();
   const inFlight = new Set<string>();
@@ -96,13 +97,13 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
   };
 
   const callMutation = (name: string, args: Record<string, unknown>) => {
-    if (!client) return Promise.resolve(null);
+    if (!client || !authToken) return Promise.resolve(null);
     const convexName = toConvexName(name);
     return client.mutation(convexName as never, args as never);
   };
 
   const callQuery = (name: string, args: Record<string, unknown>) => {
-    if (!client) return Promise.resolve(null);
+    if (!client || !authToken) return Promise.resolve(null);
     const convexName = toConvexName(name);
     return client.query(convexName as never, args as never);
   };
@@ -209,7 +210,22 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
     }
     convexUrl = url;
     client = new ConvexHttpClient(url, { logger: false });
+    if (authToken) {
+      client.setAuth(authToken);
+    }
     void syncManifests();
+  };
+
+  const setAuthToken = (token: string | null) => {
+    authToken = token;
+    if (!client) {
+      return;
+    }
+    if (authToken) {
+      client.setAuth(authToken);
+    } else {
+      client.clearAuth();
+    }
   };
 
   const appendToolResult = async (
@@ -352,6 +368,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
   return {
     deviceId,
     setConvexUrl,
+    setAuthToken,
     start,
     stop,
   };

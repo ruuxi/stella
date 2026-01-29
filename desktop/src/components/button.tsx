@@ -4,11 +4,10 @@ import { cn } from "@/lib/utils";
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   size?: "small" | "normal" | "large";
   variant?: "primary" | "secondary" | "ghost";
-  asChild?: boolean;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "secondary", size = "normal", asChild, children, ...props }, ref) => {
+  ({ className, variant = "secondary", size = "normal", children, ...props }, ref) => {
     return (
       <button
         ref={ref}

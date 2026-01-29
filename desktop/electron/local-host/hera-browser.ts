@@ -1,6 +1,5 @@
 import { PlaywrightExecutor } from "hera-browser/dist/executor.js";
 import type { PluginToolDescriptor, PluginRecord } from "./plugins.js";
-import type { ParsedSkill } from "./manifests.js";
 
 type ToolResult = {
   result?: unknown;

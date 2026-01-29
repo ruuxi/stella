@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -43,6 +43,12 @@ type CredentialResponsePayload = {
 }
 
 const isDev = process.env.NODE_ENV === 'development'
+const AUTH_PROTOCOL = 'stellar'
+
+const getDeepLinkUrl = (argv: string[]) =>
+  argv.find((arg) => arg.startsWith(`${AUTH_PROTOCOL}://`)) || null
+
+let pendingAuthCallback: string | null = null
 
 const uiState: UiState = {
   mode: 'chat',
@@ -77,6 +83,55 @@ const broadcastUiState = () => {
     window.webContents.send('ui:state', uiState)
   }
 }
+
+const broadcastAuthCallback = (url: string) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('auth:callback', { url })
+  }
+}
+
+const handleAuthCallback = (url: string) => {
+  if (!url) {
+    return
+  }
+  pendingAuthCallback = url
+  if (app.isReady()) {
+    showWindow('full')
+    broadcastAuthCallback(url)
+    pendingAuthCallback = null
+  }
+}
+
+const registerAuthProtocol = () => {
+  if (isDev) {
+    const appPath = path.resolve(process.argv[1] ?? '')
+    if (appPath) {
+      app.setAsDefaultProtocolClient(AUTH_PROTOCOL, process.execPath, [appPath])
+    }
+    return
+  }
+  app.setAsDefaultProtocolClient(AUTH_PROTOCOL)
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const url = getDeepLinkUrl(argv)
+    if (url) {
+      handleAuthCallback(url)
+    }
+    if (fullWindow) {
+      fullWindow.focus()
+    }
+  })
+}
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  handleAuthCallback(url)
+})
 
 const updateUiState = (partial: Partial<UiState>) => {
   if (partial.mode) {
@@ -252,7 +307,9 @@ const handleRadialSelection = (wedge: RadialWedge) => {
 }
 
 // Trigger native context menu (platform-specific)
-const triggerNativeContextMenu = async (_x: number, _y: number) => {
+const triggerNativeContextMenu = async (x: number, y: number) => {
+  void x
+  void y
   // On most platforms, we simply don't block the right-click
   // The uiohook captures the event but doesn't prevent it from reaching the system
   // However, if needed, we could use platform-specific approaches:
@@ -351,6 +408,11 @@ const requestCredential = async (
 }
 
 app.whenReady().then(async () => {
+  registerAuthProtocol()
+  const initialAuthUrl = getDeepLinkUrl(process.argv)
+  if (initialAuthUrl) {
+    pendingAuthCallback = initialAuthUrl
+  }
   const userDataPath = app.getPath('userData')
   const stellarHome = await resolveStellarHome(app, userDataPath)
   deviceId = await getOrCreateDeviceId(stellarHome.statePath)
@@ -369,6 +431,11 @@ app.whenReady().then(async () => {
   createRadialWindow() // Pre-create radial window for faster display
   showWindow('full')
 
+  if (pendingAuthCallback) {
+    broadcastAuthCallback(pendingAuthCallback)
+    pendingAuthCallback = null
+  }
+
   // Initialize mouse hook for global right-click detection
   initMouseHook()
 
@@ -378,6 +445,10 @@ app.whenReady().then(async () => {
       configureLocalHost(config.convexUrl)
     }
     return { deviceId }
+  })
+  ipcMain.handle('auth:setToken', (_event, payload: { token: string | null }) => {
+    localHostRunner?.setAuthToken(payload?.token ?? null)
+    return { ok: true }
   })
 
   // Window control handlers for custom title bar
@@ -404,10 +475,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('ui:getState', () => uiState)
   ipcMain.handle('ui:setState', (_event, partial: Partial<UiState>) => {
-    if (partial.window) {
-      showWindow(partial.window)
+    const { window: nextWindow, ...rest } = partial
+    if (nextWindow) {
+      showWindow(nextWindow)
     }
-    const { window: _window, ...rest } = partial
     if (Object.keys(rest).length > 0) {
       updateUiState(rest)
     }

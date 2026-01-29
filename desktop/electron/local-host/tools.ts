@@ -994,7 +994,6 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
 
   const handleTask = async (args: Record<string, unknown>): Promise<ToolResult> => {
     const description = String(args.description ?? "Task");
-    const prompt = String(args.prompt ?? "");
     const id = crypto.randomUUID();
     const record: TaskRecord = {
       id,

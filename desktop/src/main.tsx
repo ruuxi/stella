@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ConvexProvider } from 'convex/react'
+import { ConvexBetterAuthProvider, type AuthClient } from '@convex-dev/better-auth/react'
 import './index.css'
 import './components/button.css'
 import './components/dropdown-menu.css'
@@ -34,19 +34,23 @@ import './components/progress-circle.css'
 import './components/keybind.css'
 import './components/resize-handle.css'
 import './components/steps-container.css'
+import './components/auth-panel.css'
 import App from './App.tsx'
 import { UiStateProvider } from './app/state/ui-state'
 import { ThemeProvider } from './theme/theme-context'
 import { convexClient } from './services/convex-client'
+import { authClient } from './lib/auth-client'
+
+const authClientForProvider = authClient as unknown as AuthClient
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ConvexProvider client={convexClient}>
+    <ConvexBetterAuthProvider client={convexClient} authClient={authClientForProvider}>
       <ThemeProvider>
         <UiStateProvider>
           <App />
         </UiStateProvider>
       </ThemeProvider>
-    </ConvexProvider>
+    </ConvexBetterAuthProvider>
   </StrictMode>,
 )

@@ -6,7 +6,6 @@ import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
 import { useConversationEvents } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
-import { getOwnerId } from "../services/identity";
 import { streamChat } from "../services/model-gateway";
 import { captureScreenshot } from "../services/screenshot";
 
@@ -29,7 +28,7 @@ export const MiniShell = () => {
   // Auto-create conversation if none exists
   useEffect(() => {
     if (!state.conversationId) {
-      void createConversation({ ownerId: getOwnerId() }).then(
+      void createConversation({}).then(
         (conversation: { _id?: string } | null) => {
           if (conversation?._id) {
             setConversationId(conversation._id);

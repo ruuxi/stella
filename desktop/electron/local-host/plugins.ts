@@ -5,7 +5,6 @@ import type { ParsedAgent, ParsedSkill } from "./manifests.js";
 import { parseAgentMarkdown, parseSkillMarkdown } from "./manifests.js";
 
 const log = (...args: unknown[]) => console.log("[plugins]", ...args);
-const logError = (...args: unknown[]) => console.error("[plugins]", ...args);
 
 type ToolResult = {
   result?: unknown;
