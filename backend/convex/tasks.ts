@@ -12,6 +12,7 @@ import {
 } from "./device_tools";
 import { jsonSchemaToZod } from "./plugins";
 import { getModelConfig } from "./model";
+import { requireConversationOwner } from "./auth";
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
 
@@ -197,6 +198,7 @@ export const createTaskRecord = mutation({
     maxTaskDepth: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
     const maxTaskDepth = Math.max(1, Math.floor(args.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH));
 
     let taskDepth = 1;
@@ -255,6 +257,9 @@ export const getById = query({
   },
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
+    if (record) {
+      await requireConversationOwner(ctx, record.conversationId);
+    }
     return sanitizeTaskForClient(record);
   },
 });
@@ -266,6 +271,9 @@ export const getOutputByExternalId = query({
   handler: async (ctx, args) => {
     try {
       const record = await ctx.db.get(args.taskId as Id<"tasks">);
+      if (record) {
+        await requireConversationOwner(ctx, record.conversationId);
+      }
       return sanitizeTaskForClient(record);
     } catch {
       return null;
@@ -278,6 +286,7 @@ export const listByConversation = query({
     conversationId: v.id("conversations"),
   },
   handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
     const records = await ctx.db
       .query("tasks")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
@@ -298,6 +307,7 @@ export const runSubagent = action({
     parentTaskId: v.optional(v.id("tasks")),
   },
   handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
     await ctx.runMutation(api.agents.ensureBuiltins, {});
 
     const promptBuild = await buildSystemPrompt(ctx, args.subagentType);

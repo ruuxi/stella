@@ -1,14 +1,13 @@
-﻿import { action, query, internalMutation } from "./_generated/server";
+import { action, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+import { requireUserId } from "./auth";
 
 const notConfigured = () =>
   "Railway integration is not configured. Set STELLAR_RAILWAY_TOKEN and STELLAR_RAILWAY_TEMPLATE_ID.";
 
 export const listRemoteComputers = query({
-  args: {
-    ownerId: v.string(),
-  },
+  args: {},
   returns: v.array(
     v.object({
       _id: v.id("remote_computers"),
@@ -20,10 +19,11 @@ export const listRemoteComputers = query({
       updatedAt: v.number(),
     }),
   ),
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
     return await ctx.db
       .query("remote_computers")
-      .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(100);
   },
@@ -80,7 +80,6 @@ export const deleteRemoteRecord = internalMutation({
 
 export const provisionRemote = action({
   args: {
-    ownerId: v.string(),
     plan: v.string(),
   },
   returns: v.object({
@@ -88,7 +87,8 @@ export const provisionRemote = action({
     message: v.string(),
     remoteId: v.optional(v.id("remote_computers")),
   }),
-  handler: async (_ctx, _args) => {
+  handler: async (ctx, _args) => {
+    await requireUserId(ctx);
     if (!process.env.STELLAR_RAILWAY_TOKEN || !process.env.STELLAR_RAILWAY_TEMPLATE_ID) {
       return { status: "error", message: notConfigured() };
     }
@@ -102,14 +102,14 @@ export const provisionRemote = action({
 
 export const refreshRemoteStatus = action({
   args: {
-    ownerId: v.string(),
     remoteId: v.id("remote_computers"),
   },
   returns: v.object({
     status: v.string(),
     message: v.string(),
   }),
-  handler: async (_ctx, _args) => {
+  handler: async (ctx, _args) => {
+    await requireUserId(ctx);
     if (!process.env.STELLAR_RAILWAY_TOKEN || !process.env.STELLAR_RAILWAY_TEMPLATE_ID) {
       return { status: "error", message: notConfigured() };
     }
@@ -123,14 +123,14 @@ export const refreshRemoteStatus = action({
 
 export const deprovisionRemote = action({
   args: {
-    ownerId: v.string(),
     remoteId: v.id("remote_computers"),
   },
   returns: v.object({
     status: v.string(),
     message: v.string(),
   }),
-  handler: async (_ctx, _args) => {
+  handler: async (ctx, _args) => {
+    await requireUserId(ctx);
     if (!process.env.STELLAR_RAILWAY_TOKEN || !process.env.STELLAR_RAILWAY_TEMPLATE_ID) {
       return { status: "error", message: notConfigured() };
     }
