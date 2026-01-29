@@ -146,7 +146,7 @@ export const MiniShell = () => {
         <div className="raycast-header">
           <div className="raycast-search">
             <div className="raycast-search-icon">
-              <AsciiBlackHole width={20} height={20} />
+              <AsciiBlackHole width={32} height={32} />
             </div>
             <input
               className="raycast-input"
