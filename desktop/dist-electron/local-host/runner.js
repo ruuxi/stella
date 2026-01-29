@@ -9,9 +9,28 @@ const logError = (...args) => console.error("[runner]", ...args);
 const POLL_INTERVAL_MS = 1500;
 const SYNC_DEBOUNCE_MS = 500;
 export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential }) => {
-    const toolHost = createToolHost({ stellarHome, requestCredential });
+    const ownerId = "local";
+    const toolHost = createToolHost({
+        stellarHome,
+        requestCredential,
+        resolveSecret: async ({ provider, secretId }) => {
+            if (!client)
+                return null;
+            if (secretId) {
+                return (await callQuery("secrets.getSecretValueById", {
+                    ownerId,
+                    secretId,
+                }));
+            }
+            return (await callQuery("secrets.getSecretValueForProvider", {
+                ownerId,
+                provider,
+            }));
+        },
+    });
     let client = null;
     let convexUrl = null;
+    let authToken = null;
     let pollTimer = null;
     const processed = new Set();
     const inFlight = new Set();
@@ -30,13 +49,13 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
         return `${name.slice(0, firstDot)}:${name.slice(firstDot + 1)}`;
     };
     const callMutation = (name, args) => {
-        if (!client)
+        if (!client || !authToken)
             return Promise.resolve(null);
         const convexName = toConvexName(name);
         return client.mutation(convexName, args);
     };
     const callQuery = (name, args) => {
-        if (!client)
+        if (!client || !authToken)
             return Promise.resolve(null);
         const convexName = toConvexName(name);
         return client.query(convexName, args);
@@ -60,6 +79,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
                 });
                 const skills = await loadSkillsFromHome(skillsPath, pluginPayload.skills);
                 const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
+                toolHost.setSkills(skills);
                 await callMutation("skills.upsertMany", {
                     skills,
                 });
@@ -133,7 +153,22 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
         }
         convexUrl = url;
         client = new ConvexHttpClient(url, { logger: false });
+        if (authToken) {
+            client.setAuth(authToken);
+        }
         void syncManifests();
+    };
+    const setAuthToken = (token) => {
+        authToken = token;
+        if (!client) {
+            return;
+        }
+        if (authToken) {
+            client.setAuth(authToken);
+        }
+        else {
+            client.clearAuth();
+        }
     };
     const appendToolResult = async (request, result) => {
         if (!client || !request.requestId)
@@ -260,6 +295,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
     return {
         deviceId,
         setConvexUrl,
+        setAuthToken,
         start,
         stop,
     };

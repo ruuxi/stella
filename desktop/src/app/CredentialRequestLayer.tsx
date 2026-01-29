@@ -2,7 +2,6 @@
 import { useMutation } from "convex/react";
 import { api } from "../convex/api";
 import { getElectronApi } from "../services/electron";
-import { getOwnerId } from "../services/identity";
 import { CredentialModal } from "../components/CredentialModal";
 
 export type PendingCredentialRequest = {
@@ -32,7 +31,6 @@ export const CredentialRequestLayer = () => {
   const handleSubmit = async ({ label, secret }: { label: string; secret: string }) => {
     if (!pending) return;
     const result = await createSecret({
-      ownerId: getOwnerId(),
       provider: pending.provider,
       label,
       plaintext: secret,

@@ -6,6 +6,10 @@ import { CredentialRequestLayer } from './app/CredentialRequestLayer'
 import { FullShell } from './screens/FullShell'
 import { MiniShell } from './screens/MiniShell'
 import { RadialShell } from './screens/RadialShell'
+import { Authenticated, AuthLoading, Unauthenticated } from 'convex/react'
+import { AuthPanel } from './app/AuthPanel'
+import { AuthTokenBridge } from './app/AuthTokenBridge'
+import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 
 type WindowType = 'full' | 'mini' | 'radial'
 
@@ -27,21 +31,37 @@ function App() {
     windowType = state.window as WindowType
   }
 
-  // Radial window is a special transparent overlay
-  if (windowType === 'radial') {
-    return (
+  const shell =
+    windowType === 'radial' ? (
       <div className="app window-radial">
         <RadialShell />
       </div>
+    ) : (
+      <div className={`app window-${windowType}`}>
+        <AppBootstrap />
+        <CredentialRequestLayer />
+        {windowType === 'mini' ? <MiniShell /> : <FullShell />}
+      </div>
     )
-  }
 
   return (
-    <div className={`app window-${windowType}`}>
-      <AppBootstrap />
-      <CredentialRequestLayer />
-      {windowType === 'mini' ? <MiniShell /> : <FullShell />}
-    </div>
+    <>
+      <AuthDeepLinkHandler />
+      <AuthLoading>
+        <div className="auth-panel">
+          <div className="auth-panel-card">
+            <div className="auth-panel-title">Loading...</div>
+          </div>
+        </div>
+      </AuthLoading>
+      <Unauthenticated>
+        <AuthPanel />
+      </Unauthenticated>
+      <Authenticated>
+        <AuthTokenBridge />
+        {shell}
+      </Authenticated>
+    </>
   )
 }
 

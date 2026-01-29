@@ -3,7 +3,6 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { parseAgentMarkdown, parseSkillMarkdown } from "./manifests.js";
 const log = (...args) => console.log("[plugins]", ...args);
-const logError = (...args) => console.error("[plugins]", ...args);
 const DEFAULT_SCHEMA = {
     type: "object",
     properties: {},

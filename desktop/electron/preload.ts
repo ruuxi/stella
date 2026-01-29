@@ -25,6 +25,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   captureScreenshot: () => ipcRenderer.invoke('screenshot:capture'),
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
   configureHost: (config: { convexUrl?: string }) => ipcRenderer.invoke('host:configure', config),
+  setAuthToken: (payload: { token: string | null }) => ipcRenderer.invoke('auth:setToken', payload),
+  onAuthCallback: (callback: (data: { url: string }) => void) => {
+    const handler = (_event: IpcRendererEvent, data: { url: string }) => {
+      callback(data)
+    }
+    ipcRenderer.on('auth:callback', handler)
+    return () => {
+      ipcRenderer.removeListener('auth:callback', handler)
+    }
+  },
 
   // Radial dial events
   onRadialShow: (callback: (event: IpcRendererEvent, data: { centerX: number; centerY: number }) => void) => {

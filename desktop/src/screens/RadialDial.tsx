@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, type ComponentType, type SVGProps } from 'react'
 import { MessageSquare, Mic, Maximize2, Menu, Search } from 'lucide-react'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
 import { hexToRgb } from '../theme/color'
 
-const WEDGES: { id: RadialWedge; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+const WEDGES: { id: RadialWedge; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
   { id: 'ask', label: 'Ask', icon: Search },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'voice', label: 'Voice', icon: Mic },
@@ -99,7 +99,7 @@ export function RadialDial() {
     if (!api) return
 
     // Listen for radial events from main process
-    const handleShow = (_event: unknown, _data: { centerX: number; centerY: number }) => {
+    const handleShow = () => {
       setVisible(true)
       setSelectedWedge(null)
     }
@@ -110,9 +110,10 @@ export function RadialDial() {
     }
 
     const handleCursor = (
-      _event: unknown,
+      event: unknown,
       data: { x: number; y: number; centerX: number; centerY: number }
     ) => {
+      void event
       const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
       setSelectedWedge(wedge)
     }
@@ -138,7 +139,8 @@ export function RadialDial() {
 
     const electronAPI = window.electronAPI
 
-    const handleMouseUp = (_event: unknown, data: { wedge: RadialWedge | null }) => {
+    const handleMouseUp = (event: unknown, data: { wedge: RadialWedge | null }) => {
+      void event
       if (data.wedge && visible) {
         electronAPI?.radialSelect(data.wedge)
       }

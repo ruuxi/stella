@@ -1,3 +1,5 @@
+import { getAuthToken } from "./auth-token";
+
 type ChatRequest = {
   conversationId: string;
   userMessageId: string;
@@ -49,6 +51,8 @@ export const streamChat = async (payload: ChatRequest, handlers: StreamHandlers 
     throw new Error("VITE_CONVEX_URL is not set.");
   }
 
+  const token = await getAuthToken();
+
   const httpBaseUrl =
     import.meta.env.VITE_CONVEX_HTTP_URL ??
     baseUrl.replace(".convex.cloud", ".convex.site");
@@ -59,6 +63,7 @@ export const streamChat = async (payload: ChatRequest, handlers: StreamHandlers 
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(payload),
   });

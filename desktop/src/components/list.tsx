@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export interface ListProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type ListProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const List = React.forwardRef<HTMLDivElement, ListProps>(
   ({ className, children, ...props }, ref) => {
@@ -43,7 +43,7 @@ export const ListItem = React.forwardRef<HTMLButtonElement, ListItemProps>(
 );
 ListItem.displayName = "ListItem";
 
-export interface ListHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type ListHeaderProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const ListHeader = React.forwardRef<HTMLDivElement, ListHeaderProps>(
   ({ className, children, ...props }, ref) => {
@@ -61,7 +61,7 @@ export const ListHeader = React.forwardRef<HTMLDivElement, ListHeaderProps>(
 );
 ListHeader.displayName = "ListHeader";
 
-export interface ListGroupProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type ListGroupProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const ListGroup = React.forwardRef<HTMLDivElement, ListGroupProps>(
   ({ className, children, ...props }, ref) => {
@@ -79,7 +79,7 @@ export const ListGroup = React.forwardRef<HTMLDivElement, ListGroupProps>(
 );
 ListGroup.displayName = "ListGroup";
 
-export interface ListScrollProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type ListScrollProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const ListScroll = React.forwardRef<HTMLDivElement, ListScrollProps>(
   ({ className, children, ...props }, ref) => {
@@ -97,7 +97,7 @@ export const ListScroll = React.forwardRef<HTMLDivElement, ListScrollProps>(
 );
 ListScroll.displayName = "ListScroll";
 
-export interface ListItemsProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type ListItemsProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const ListItems = React.forwardRef<HTMLDivElement, ListItemsProps>(
   ({ className, children, ...props }, ref) => {

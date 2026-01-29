@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 export interface TypewriterProps {
   text?: string;
   className?: string;
-  as?: keyof JSX.IntrinsicElements;
+  as?: React.ElementType;
 }
 
 export function Typewriter({ text, className, as: Component = "p" }: TypewriterProps) {

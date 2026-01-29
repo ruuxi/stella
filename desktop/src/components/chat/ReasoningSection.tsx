@@ -17,19 +17,8 @@ export function ReasoningSection({
   // Track if user has manually collapsed - if not, auto-expand when streaming
   const [userCollapsed, setUserCollapsed] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  const wasStreamingRef = useRef(false);
-
   // Determine if expanded: streaming always shows, or user hasn't collapsed
   const expanded = isStreaming || !userCollapsed;
-
-  // Reset userCollapsed when streaming starts (after it was stopped)
-  useEffect(() => {
-    if (isStreaming && !wasStreamingRef.current) {
-      // Streaming just started - reset collapsed state
-      setUserCollapsed(false);
-    }
-    wasStreamingRef.current = isStreaming;
-  }, [isStreaming]);
 
   // Auto-scroll to bottom when content updates during streaming
   useEffect(() => {

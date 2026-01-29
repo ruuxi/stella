@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ThemePicker } from './ThemePicker';
+import { AuthStatus } from './AuthStatus';
 
 export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -35,6 +36,7 @@ export const TitleBar = () => {
         <div className="title-bar-drag-region" />
         <div className="title-bar-left">
           <ThemePicker />
+          <AuthStatus />
         </div>
       </div>
     );
@@ -46,6 +48,7 @@ export const TitleBar = () => {
       <div className="title-bar-drag-region" />
       <div className="title-bar-left">
         <ThemePicker />
+        <AuthStatus />
       </div>
       <div className="title-bar-controls">
         <button

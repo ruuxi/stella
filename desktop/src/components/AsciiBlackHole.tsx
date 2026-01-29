@@ -58,7 +58,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
             
             // Intensity based on waves and distance
             // Brighter near the horizon (dist ~ 0.2 to 0.4)
-            let intensity = (wave1 + wave2) * 0.5 + 0.5; // 0 to 1
+            const intensity = (wave1 + wave2) * 0.5 + 0.5; // 0 to 1
             
             // Falloff: Intensity drops as we go further out
             const falloff = Math.max(0, 1 - (dist - 0.15) * 1.5);
@@ -66,7 +66,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
             // Accretion disk highlight
             const disk = Math.exp(-Math.pow((dist - 0.3) * 10, 2));
             
-            let finalVal = intensity * falloff + disk * 0.8;
+            const finalVal = intensity * falloff + disk * 0.8;
 
             // Clamp
             charIndex = Math.floor(Math.min(finalVal, 1) * (CHARS.length - 1));
