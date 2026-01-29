@@ -28,6 +28,8 @@ import { AsciiBlackHole } from "../components/AsciiBlackHole";
 import { TitleBar } from "../components/TitleBar";
 import { OnboardingStep1, useOnboardingState } from "../components/Onboarding";
 
+const CREATURE_INITIAL_SIZE = 0.22; // Small delicate neural network creature
+
 export const FullShell = () => {
   const { state } = useUiState();
   const { completed: onboardingDone, complete: completeOnboarding, reset: resetOnboarding } = useOnboardingState();
@@ -40,33 +42,71 @@ export const FullShell = () => {
     null,
   );
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
-  const [birthProgress, setBirthProgress] = useState(() => onboardingDone ? 1 : 0);
+  const [birthProgress, setBirthProgress] = useState(() => onboardingDone ? 1 : CREATURE_INITIAL_SIZE);
+  const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
+  const [onboardingKey, setOnboardingKey] = useState(0);
+  const [flash, setFlash] = useState(0);
   const birthAnimationRef = useRef<number | null>(null);
+  const flashAnimationRef = useRef<number | null>(null);
 
-  const startBirthAnimation = useCallback(() => {
+  const triggerFlash = useCallback(() => {
+    // Cancel any existing flash animation
+    if (flashAnimationRef.current) {
+      cancelAnimationFrame(flashAnimationRef.current);
+    }
+    
+    setFlash(1);
     const startTime = performance.now();
-    const duration = 6000; // 6 seconds for full emergence
+    const duration = 1200; // 1.2s for slower expanding wave
     
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // Ease-out curve for organic feel
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setBirthProgress(eased);
+      const t = Math.min(elapsed / duration, 1);
+      // Linear decay so wave expands at constant speed
+      const value = 1 - t;
+      setFlash(value);
       
-      if (progress < 1) {
+      if (t < 1) {
+        flashAnimationRef.current = requestAnimationFrame(animate);
+      } else {
+        setFlash(0);
+      }
+    };
+    
+    flashAnimationRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  const startBirthAnimation = useCallback(() => {
+    if (hasExpanded) return; // Already expanded
+    setHasExpanded(true);
+    
+    const startTime = performance.now();
+    const startProgress = birthProgress;
+    const duration = 12000; // 12 seconds for full emergence
+    
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      // Ease-out curve for organic feel
+      const eased = 1 - Math.pow(1 - t, 3);
+      // Interpolate from current small size to full
+      setBirthProgress(startProgress + (1 - startProgress) * eased);
+      
+      if (t < 1) {
         birthAnimationRef.current = requestAnimationFrame(animate);
       }
     };
     
     birthAnimationRef.current = requestAnimationFrame(animate);
-  }, []);
+  }, [hasExpanded, birthProgress]);
 
   const handleResetOnboarding = useCallback(() => {
     if (birthAnimationRef.current) {
       cancelAnimationFrame(birthAnimationRef.current);
     }
-    setBirthProgress(0);
+    setBirthProgress(CREATURE_INITIAL_SIZE);
+    setHasExpanded(false);
+    setOnboardingKey(k => k + 1);
     resetOnboarding();
   }, [resetOnboarding]);
 
@@ -74,6 +114,9 @@ export const FullShell = () => {
     return () => {
       if (birthAnimationRef.current) {
         cancelAnimationFrame(birthAnimationRef.current);
+      }
+      if (flashAnimationRef.current) {
+        cancelAnimationFrame(flashAnimationRef.current);
       }
     };
   }, []);
@@ -216,7 +259,9 @@ export const FullShell = () => {
                 className="new-session-title"
                 style={{
                   position: 'absolute',
-                  top: '30%',
+                  top: '8%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
                   zIndex: 10,
                   opacity: birthProgress * 0.5,
                   letterSpacing: '0.2em',
@@ -228,11 +273,35 @@ export const FullShell = () => {
               >
                 Stellar
               </div>
-              <AsciiBlackHole width={120} height={56} birthProgress={birthProgress} />
+              <div 
+                onClick={() => {
+                  triggerFlash();
+                  if (!hasExpanded) {
+                    startBirthAnimation();
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '25%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  zIndex: 5,
+                  width: '100%',
+                  height: '50%',
+                  maxWidth: '900px',
+                  cursor: !hasExpanded ? 'pointer' : 'default',
+                  transition: 'transform 0.3s ease',
+                }}
+                title={!hasExpanded ? 'Click to awaken' : undefined}
+              >
+                <AsciiBlackHole width={120} height={56} birthProgress={birthProgress} flash={flash} />
+              </div>
               {!onboardingDone && (
-                <OnboardingStep1 
+                <OnboardingStep1
+                  key={onboardingKey}
                   onComplete={completeOnboarding} 
                   onAccept={startBirthAnimation}
+                  onInteract={triggerFlash}
                 />
               )}
               {!isAuthenticated && onboardingDone && (

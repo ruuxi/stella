@@ -3,11 +3,10 @@ import "./Onboarding.css";
 
 const ONBOARDING_KEY = "stellar-onboarding-complete";
 
-type Phase = "typing-hey" | "pause" | "typing-question" | "waiting" | "accepted" | "declined" | "done";
+type Phase = "typing-intro" | "waiting-click" | "fading-out" | "typing-preview" | "waiting-click-preview" | "fading-out-preview" | "typing-question" | "waiting" | "fading-out-question" | "accepted" | "trust-question" | "waiting-trust" | "declined" | "done";
 
 const TYPE_SPEED_MIN = 35;
 const TYPE_SPEED_MAX = 75;
-const PAUSE_AFTER_HEY = 900;
 
 const getTypeDelay = () =>
   TYPE_SPEED_MIN + Math.random() * (TYPE_SPEED_MAX - TYPE_SPEED_MIN);
@@ -33,12 +32,14 @@ export function useOnboardingState() {
 interface OnboardingStep1Props {
   onComplete: () => void;
   onAccept?: () => void;
+  onInteract?: () => void;
 }
 
-export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept }) => {
-  const [phase, setPhase] = useState<Phase>("typing-hey");
+export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract }) => {
+  const [phase, setPhase] = useState<Phase>("typing-intro");
   const [displayed, setDisplayed] = useState("");
   const [showCursor, setShowCursor] = useState(true);
+  const [selectedTrust, setSelectedTrust] = useState<"none" | "basic" | "full" | null>(null);
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const clearTimeouts = () => {
@@ -55,8 +56,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
   useEffect(() => {
     clearTimeouts();
 
-    if (phase === "typing-hey") {
-      const text = "Hey.";
+    if (phase === "typing-intro") {
+      const text = "Stella is an artificial intelligence assistant for humans.";
       let i = 0;
       const type = () => {
         if (i < text.length) {
@@ -64,21 +65,52 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
           setDisplayed(text.slice(0, i));
           schedule(type, getTypeDelay());
         } else {
-          setPhase("pause");
+          schedule(() => {
+            setShowCursor(false);
+            setPhase("waiting-click");
+          }, 400);
         }
       };
       schedule(type, 600);
     }
 
-    if (phase === "pause") {
+    if (phase === "fading-out") {
+      // Wait for fade animation (0.4s) + pause (0.2s) = 0.6s total
+      schedule(() => {
+        setDisplayed("");
+        setPhase("typing-preview");
+      }, 600);
+    }
+
+    if (phase === "typing-preview") {
+      setShowCursor(true);
+      const text = "As an experimental research preview, Stella can make mistakes but learns, grows, and helps you along the way.";
+      let i = 0;
+      const type = () => {
+        if (i < text.length) {
+          i++;
+          setDisplayed(text.slice(0, i));
+          schedule(type, getTypeDelay());
+        } else {
+          schedule(() => {
+            setShowCursor(false);
+            setPhase("waiting-click-preview");
+          }, 400);
+        }
+      };
+      schedule(type, 200);
+    }
+
+    if (phase === "fading-out-preview") {
       schedule(() => {
         setDisplayed("");
         setPhase("typing-question");
-      }, PAUSE_AFTER_HEY);
+      }, 600);
     }
 
     if (phase === "typing-question") {
-      const text = "Will you bring me to life?";
+      setShowCursor(true);
+      const text = "Knowing this, will you bring her to life?";
       let i = 0;
       const type = () => {
         if (i < text.length) {
@@ -103,51 +135,162 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
       }, 2500);
     }
 
-    if (phase === "accepted") {
+    if (phase === "fading-out-question") {
+      // Wait for fade animation (0.4s) + pause (0.2s) = 0.6s total
       schedule(() => {
-        setPhase("done");
-        // TODO: re-enable when onboarding is finalized
-        // onComplete();
-      }, 1500);
+        setDisplayed("");
+        setPhase("accepted");
+      }, 600);
+    }
+
+    if (phase === "accepted") {
+      // Wait 5 seconds after black hole animation starts, then show trust question
+      schedule(() => {
+        setDisplayed("");
+        setPhase("trust-question");
+      }, 5000);
+    }
+
+    if (phase === "trust-question") {
+      setShowCursor(true);
+      const text = "How much do you trust me?";
+      let i = 0;
+      const type = () => {
+        if (i < text.length) {
+          i++;
+          setDisplayed(text.slice(0, i));
+          schedule(type, getTypeDelay());
+        } else {
+          schedule(() => {
+            setShowCursor(false);
+            setPhase("waiting-trust");
+          }, 400);
+        }
+      };
+      schedule(type, 200);
     }
 
     return clearTimeouts;
   }, [phase, onComplete]);
 
+  const handleClick = () => {
+    onInteract?.();
+    if (phase === "waiting-click") {
+      setPhase("fading-out");
+    } else if (phase === "waiting-click-preview") {
+      setPhase("fading-out-preview");
+    }
+  };
+
   const handleYes = () => {
-    setPhase("accepted");
+    onInteract?.();
+    setPhase("fading-out-question");
     onAccept?.();
   };
 
   const handleNo = () => {
+    onInteract?.();
     setPhase("declined");
   };
 
-  const isAccepted = phase === "accepted" || phase === "done";
+  const handleTrustSelection = (level: "none" | "basic" | "full") => {
+    onInteract?.();
+    setSelectedTrust(level);
+  };
+
+  const handleTrustConfirm = () => {
+    if (!selectedTrust) return;
+    onInteract?.();
+    // TODO: Store trust level preference
+    console.log("Trust level confirmed:", selectedTrust);
+    setPhase("done");
+    // TODO: re-enable when onboarding is finalized
+    // onComplete();
+  };
+
+  const showClickPrompt = phase === "waiting-click" || phase === "waiting-click-preview";
+  const isFadingOut = phase === "fading-out" || phase === "fading-out-preview" || phase === "fading-out-question";
   const showChoices = phase === "waiting";
+  const showTrustChoices = phase === "waiting-trust";
   const isDeclining = phase === "declined";
 
   if (phase === "done") return null;
 
   return (
-    <div
-      className="onboarding-dialogue"
-      data-fading={isAccepted}
-      data-declined={isDeclining}
-    >
-      <div className="onboarding-text">
-        {displayed}
-        {showCursor && <span className={phase === "pause" ? "blinking-cursor" : ""}>│</span>}
-      </div>
+    <>
+      {showClickPrompt && (
+        <div 
+          className="onboarding-click-overlay" 
+          onClick={handleClick}
+        />
+      )}
+      <div
+        className="onboarding-dialogue"
+        data-fading={isFadingOut}
+        data-declined={isDeclining}
+        data-phase={phase}
+        style={{ display: phase === "accepted" ? "none" : "flex" }}
+      >
+        <div 
+          className="onboarding-text" 
+          data-intro={phase === "typing-intro" || phase === "waiting-click" || phase === "fading-out" || phase === "typing-preview" || phase === "waiting-click-preview" || phase === "fading-out-preview"}
+          data-trust={phase === "trust-question" || phase === "waiting-trust"}
+        >
+          {displayed}
+          <span className="onboarding-cursor" style={{ opacity: showCursor ? 1 : 0 }}>│</span>
+        </div>
 
-      <div className="onboarding-choices" data-visible={showChoices}>
-        <button className="onboarding-choice" onClick={handleYes}>
-          yes
-        </button>
-        <button className="onboarding-choice" onClick={handleNo}>
-          no
-        </button>
+        {(phase === "waiting-click" || phase === "waiting-click-preview") && (
+          <div className="onboarding-choices onboarding-choices--subtle" data-visible={true}>
+            <span className="onboarding-choice">
+              click
+            </span>
+          </div>
+        )}
+
+        <div className="onboarding-choices" data-visible={showChoices}>
+          <button className="onboarding-choice" onClick={handleYes}>
+            yes
+          </button>
+          <button className="onboarding-choice" onClick={handleNo}>
+            no
+          </button>
+        </div>
+
+        <div className="onboarding-trust-choices" data-visible={showTrustChoices}>
+          <button 
+            className="onboarding-trust-choice" 
+            data-selected={selectedTrust === "none"}
+            onClick={() => handleTrustSelection("none")}
+          >
+            <div className="onboarding-trust-title">Not much right now</div>
+            <div className="onboarding-trust-description">Do nothing</div>
+          </button>
+          <button 
+            className="onboarding-trust-choice" 
+            data-selected={selectedTrust === "basic"}
+            onClick={() => handleTrustSelection("basic")}
+          >
+            <div className="onboarding-trust-title">I can trust you</div>
+            <div className="onboarding-trust-description">I'll learn what I can about you: your name, preferences, and things you like</div>
+          </button>
+          <button 
+            className="onboarding-trust-choice" 
+            data-selected={selectedTrust === "full"}
+            onClick={() => handleTrustSelection("full")}
+          >
+            <div className="onboarding-trust-title">I really trust you</div>
+            <div className="onboarding-trust-description">I can purchase things and log in for you</div>
+          </button>
+          <button
+            className="onboarding-confirm"
+            data-visible={selectedTrust !== null}
+            onClick={handleTrustConfirm}
+          >
+            confirm
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 };

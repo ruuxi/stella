@@ -8,6 +8,7 @@ interface AsciiBlackHoleProps {
   width?: number;
   height?: number;
   birthProgress?: number; // 0 = not born yet, 1 = fully emerged
+  flash?: number; // 0 = no flash, 1 = full flash (reacting to user)
 }
 
 const parseColor = (value: string): [number, number, number] => {
@@ -102,6 +103,7 @@ const getFragmentShader = (): string => {
     uniform float u_aspect;
     uniform float u_charCount;
     uniform float u_birth;
+    uniform float u_flash;
     uniform sampler2D u_glyph;
     uniform vec3 u_colors[5];
   `;
@@ -119,6 +121,19 @@ const getFragmentShader = (): string => {
     } else {
       color = u_colors[4];
     }
+    
+    // Expanding flash wave from center outward
+    // u_flash: 1 = just triggered (wave at center), 0 = done (wave expanded)
+    float waveRadius = (1.0 - u_flash) * 1.8;
+    float waveWidth = 0.3;
+    
+    // Distance from the wave front - intensity peaks at wave front
+    float waveDist = abs(dist - waveRadius);
+    float waveIntensity = smoothstep(waveWidth, 0.0, waveDist) * u_flash;
+    
+    // Boost existing color brightness (no white shift)
+    color *= 1.0 + waveIntensity * 2.0;
+    
     gl_FragColor = vec4(color, glyphAlpha);
   `;
 
@@ -178,11 +193,21 @@ const getFragmentShader = (): string => {
       float intensity = i1 * w1 + i2 * w2 + i3 * w3;
       intensity = min(intensity, 1.0);
       
+      // Small creatures stay bright and alive with stronger pulsing
       float birthRadius = u_birth * 1.5;
       float birthEdge = smoothstep(birthRadius, birthRadius - 0.3, dist);
-      float birthPulse = 1.0 + (1.0 - u_birth) * sin(dist * 20.0 - u_time * 5.0) * 0.3;
-      intensity *= birthEdge * birthPulse;
-      intensity *= u_birth;
+      
+      // Faster, more organic pulse at small sizes (neural network "thinking")
+      // At u_birth=1.0, this reduces to the original: pulseStrength=0, birthPulse=1.0
+      float smallness = 1.0 - u_birth;
+      float pulseSpeed = 5.0 + smallness * 2.0;
+      float pulseStrength = smallness * 0.5;
+      float birthPulse = 1.0 + sin(dist * 25.0 - u_time * pulseSpeed) * pulseStrength;
+      float breathe2 = 1.0 + sin(u_time * 1.5) * 0.15 * smallness;
+      
+      intensity *= birthEdge * birthPulse * breathe2;
+      // Use sqrt curve so small creatures stay bright, but at u_birth=1.0 this is still 1.0
+      intensity *= sqrt(u_birth);
       
       float charIndex = floor(intensity * (u_charCount - 1.0));
 
@@ -198,6 +223,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
   width = 80,
   height = 40,
   birthProgress = 1,
+  flash = 0,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -209,10 +235,15 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
   const requestRef = useRef<number | undefined>(undefined);
   const timeRef = useRef<number>(0);
   const birthRef = useRef<number>(birthProgress);
+  const flashRef = useRef<number>(flash);
 
   useEffect(() => {
     birthRef.current = birthProgress;
   }, [birthProgress]);
+
+  useEffect(() => {
+    flashRef.current = flash;
+  }, [flash]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -328,6 +359,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       const uAspect = gl.getUniformLocation(program, "u_aspect");
       const uCharCount = gl.getUniformLocation(program, "u_charCount");
       const uBirth = gl.getUniformLocation(program, "u_birth");
+      const uFlash = gl.getUniformLocation(program, "u_flash");
       const uGlyph = gl.getUniformLocation(program, "u_glyph");
       const uColors = gl.getUniformLocation(program, "u_colors[0]");
 
@@ -338,6 +370,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
         !uAspect ||
         !uCharCount ||
         !uBirth ||
+        !uFlash ||
         !uGlyph ||
         !uColors
       ) {
@@ -349,6 +382,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       gl.uniform1f(uAspect, ASPECT);
       gl.uniform1f(uCharCount, CHARS.length);
       gl.uniform1f(uBirth, 1.0);
+      gl.uniform1f(uFlash, 0.0);
       gl.uniform1i(uGlyph, 0);
       gl.uniform3fv(uColors, colors);
 
@@ -358,12 +392,13 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-      const render = (time: number, birth: number) => {
+      const render = (time: number, birth: number, flashValue: number) => {
         gl.useProgram(program);
         gl.viewport(0, 0, targetCanvas.width, targetCanvas.height);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.uniform1f(uTime, time);
         gl.uniform1f(uBirth, birth);
+        gl.uniform1f(uFlash, flashValue);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
       };
 
@@ -401,7 +436,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
     const animate = () => {
       timeRef.current += 0.015;
       const t = timeRef.current;
-      mainRenderer.render(t, birthRef.current);
+      mainRenderer.render(t, birthRef.current, flashRef.current);
       requestRef.current = requestAnimationFrame(animate);
     };
 
