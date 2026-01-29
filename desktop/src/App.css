@@ -864,15 +864,10 @@
   animation: none;
 }
 
-.raycast-search-icon .ascii-pre {
-  font-size: 3px;
-  line-height: 3px;
-  opacity: 0.9;
-}
-
-.raycast-search-icon .ascii-pre-glow {
-  filter: blur(2px);
-  opacity: 0.5;
+.raycast-search-icon .ascii-canvas {
+  top: 50%;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(0.2);
 }
 
 .raycast-input {
