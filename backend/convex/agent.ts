@@ -6,6 +6,7 @@ import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "./tools";
 import { getModelConfig } from "./model";
 import type { Id } from "./_generated/dataModel";
+import { requireConversationOwner } from "./auth";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
@@ -251,14 +252,8 @@ export const invoke = action({
 
     let ownerId: string | undefined = undefined;
     if (args.conversationId) {
-      try {
-        const convo = await ctx.runQuery(internal.conversations.getById, {
-          id: args.conversationId,
-        });
-        ownerId = convo?.ownerId;
-      } catch {
-        ownerId = undefined;
-      }
+      const convo = await requireConversationOwner(ctx, args.conversationId);
+      ownerId = convo.ownerId;
     }
 
     const tools = deviceContext

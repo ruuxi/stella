@@ -7,6 +7,7 @@ import { streamText } from "ai";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "./tools";
 import { getModelConfig } from "./model";
+import { authComponent, createAuth, requireConversationOwner } from "./auth";
 
 type ChatRequest = {
   conversationId: string;
@@ -64,6 +65,8 @@ const HISTORY_LIMIT = 20;
 
 const http = httpRouter();
 
+authComponent.registerRoutes(http, createAuth, { cors: true });
+
 const getCorsHeaders = (origin: string | null) => {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
@@ -101,6 +104,10 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const origin = request.headers.get("origin");
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
     let body: ChatRequest | null = null;
     try {
       body = (await request.json()) as ChatRequest;
@@ -120,10 +127,10 @@ http.route({
     const conversationId = body.conversationId as Id<"conversations">;
     const userMessageId = body.userMessageId as Id<"events">;
 
-    const conversation = await ctx.runQuery(internal.conversations.getById, {
-      id: conversationId,
-    });
-    if (!conversation) {
+    let conversation: Doc<"conversations"> | null = null;
+    try {
+      conversation = await requireConversationOwner(ctx, conversationId);
+    } catch {
       return withCors(new Response("Conversation not found", { status: 404 }), origin);
     }
 

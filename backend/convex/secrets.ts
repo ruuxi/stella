@@ -2,6 +2,7 @@
 import { v } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
 import type { Id } from "./_generated/dataModel";
+import { requireUserId } from "./auth";
 
 const secretPublicFields = {
   provider: v.string(),
@@ -15,7 +16,6 @@ const secretPublicFields = {
 
 export const createSecret = mutation({
   args: {
-    ownerId: v.string(),
     provider: v.string(),
     label: v.string(),
     plaintext: v.string(),
@@ -29,12 +29,13 @@ export const createSecret = mutation({
     updatedAt: v.number(),
   }),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const now = Date.now();
     const encryptedPayload = await encryptSecret(args.plaintext);
     const encryptedValue = JSON.stringify(encryptedPayload);
 
     const secretId = await ctx.db.insert("secrets", {
-      ownerId: args.ownerId,
+      ownerId,
       provider: args.provider,
       label: args.label,
       encryptedValue,
@@ -57,7 +58,6 @@ export const createSecret = mutation({
 
 export const listSecrets = query({
   args: {
-    ownerId: v.string(),
     provider: v.optional(v.string()),
   },
   returns: v.array(
@@ -67,17 +67,18 @@ export const listSecrets = query({
     }),
   ),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const records = args.provider
       ? await ctx.db
           .query("secrets")
           .withIndex("by_owner_and_provider_and_updated", (q) =>
-            q.eq("ownerId", args.ownerId).eq("provider", args.provider as string),
+            q.eq("ownerId", ownerId).eq("provider", args.provider as string),
           )
           .order("desc")
           .take(200)
       : await ctx.db
           .query("secrets")
-          .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+          .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
           .order("desc")
           .take(200);
 
@@ -96,7 +97,6 @@ export const listSecrets = query({
 
 export const updateSecret = mutation({
   args: {
-    ownerId: v.string(),
     secretId: v.id("secrets"),
     plaintext: v.string(),
     label: v.optional(v.string()),
@@ -109,8 +109,9 @@ export const updateSecret = mutation({
     updatedAt: v.number(),
   }),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const record = await ctx.db.get(args.secretId);
-    if (!record || record.ownerId !== args.ownerId) {
+    if (!record || record.ownerId !== ownerId) {
       throw new Error("Secret not found or access denied.");
     }
 
@@ -138,13 +139,13 @@ export const updateSecret = mutation({
 
 export const deleteSecret = mutation({
   args: {
-    ownerId: v.string(),
     secretId: v.id("secrets"),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const record = await ctx.db.get(args.secretId);
-    if (!record || record.ownerId !== args.ownerId) {
+    if (!record || record.ownerId !== ownerId) {
       throw new Error("Secret not found or access denied.");
     }
     await ctx.db.delete(args.secretId);
@@ -154,7 +155,6 @@ export const deleteSecret = mutation({
 
 export const getSecretHandle = query({
   args: {
-    ownerId: v.string(),
     provider: v.string(),
   },
   returns: v.array(
@@ -165,10 +165,11 @@ export const getSecretHandle = query({
     }),
   ),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const records = await ctx.db
       .query("secrets")
       .withIndex("by_owner_and_provider_and_updated", (q) =>
-        q.eq("ownerId", args.ownerId).eq("provider", args.provider),
+        q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .order("desc")
       .take(50);
@@ -183,7 +184,6 @@ export const getSecretHandle = query({
 
 export const getSecretValueForProvider = query({
   args: {
-    ownerId: v.string(),
     provider: v.string(),
   },
   returns: v.union(
@@ -196,14 +196,15 @@ export const getSecretValueForProvider = query({
     }),
   ),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const record = await ctx.db
       .query("secrets")
       .withIndex("by_owner_and_provider_and_updated", (q) =>
-        q.eq("ownerId", args.ownerId).eq("provider", args.provider),
+        q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .order("desc")
       .first();
-    if (!record || record.ownerId !== args.ownerId) {
+    if (!record || record.ownerId !== ownerId) {
       return null;
     }
     const plaintext = await decryptSecret(record.encryptedValue);
@@ -218,7 +219,6 @@ export const getSecretValueForProvider = query({
 
 export const getSecretValueById = query({
   args: {
-    ownerId: v.string(),
     secretId: v.id("secrets"),
   },
   returns: v.union(
@@ -231,8 +231,9 @@ export const getSecretValueById = query({
     }),
   ),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const record = await ctx.db.get(args.secretId);
-    if (!record || record.ownerId !== args.ownerId) {
+    if (!record || record.ownerId !== ownerId) {
       return null;
     }
     const plaintext = await decryptSecret(record.encryptedValue);

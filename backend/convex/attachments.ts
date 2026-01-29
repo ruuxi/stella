@@ -2,6 +2,7 @@ import { action, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
+import { requireConversationOwner } from "./auth";
 
 const parseDataUrl = (dataUrl: string) => {
   const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
@@ -31,6 +32,7 @@ export const createFromDataUrl = action({
     mimeType: string;
     size: number;
   }> => {
+    await requireConversationOwner(ctx, args.conversationId);
     const { mimeType, bytes } = parseDataUrl(args.dataUrl);
     const blob = new Blob([bytes], { type: mimeType });
     const storageId = await ctx.storage.store(blob);

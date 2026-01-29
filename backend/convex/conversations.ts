@@ -1,5 +1,6 @@
 import { mutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
+import { requireUserId } from "./auth";
 
 export const getById = internalQuery({
   args: { id: v.id("conversations") },
@@ -10,14 +11,14 @@ export const getById = internalQuery({
 
 export const getOrCreateDefaultConversation = mutation({
   args: {
-    ownerId: v.string(),
     title: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("conversations")
       .withIndex("by_owner_default", (q) =>
-        q.eq("ownerId", args.ownerId).eq("isDefault", true),
+        q.eq("ownerId", ownerId).eq("isDefault", true),
       )
       .first();
 
@@ -27,7 +28,7 @@ export const getOrCreateDefaultConversation = mutation({
 
     const now = Date.now();
     const id = await ctx.db.insert("conversations", {
-      ownerId: args.ownerId,
+      ownerId,
       title: args.title ?? "Default",
       isDefault: true,
       createdAt: now,
@@ -40,13 +41,13 @@ export const getOrCreateDefaultConversation = mutation({
 
 export const createConversation = mutation({
   args: {
-    ownerId: v.string(),
     title: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const now = Date.now();
     const id = await ctx.db.insert("conversations", {
-      ownerId: args.ownerId,
+      ownerId,
       title: args.title ?? "New conversation",
       isDefault: false,
       createdAt: now,

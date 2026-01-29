@@ -1,6 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireConversationOwner, requireUserId } from "./auth";
 
 export const getById = internalQuery({
   args: { id: v.id("events") },
@@ -150,12 +151,13 @@ export const getToolResult = query({
     deviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const results = await ctx.db
       .query("events")
       .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
       .order("desc")
       .take(20);
-    return (
+    const match =
       results.find((event) => {
         if (event.type !== "tool_result") {
           return false;
@@ -164,8 +166,18 @@ export const getToolResult = query({
           return false;
         }
         return true;
-      }) ?? null
-    );
+      }) ?? null;
+
+    if (!match) {
+      return null;
+    }
+
+    const conversation = await ctx.db.get(match.conversationId);
+    if (!conversation || conversation.ownerId !== ownerId) {
+      return null;
+    }
+
+    return match;
   },
 });
 
@@ -186,6 +198,7 @@ export const appendEvent = mutation({
     payload: v.any(),
   },
   handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
     if (deviceRequiredTypes.has(args.type) && !args.deviceId) {
       throw new Error(`deviceId required for ${args.type}`);
     }
@@ -228,6 +241,7 @@ export const listEvents = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
     return await ctx.db
       .query("events")
       .withIndex("by_conversation", (q) =>
@@ -245,21 +259,27 @@ export const listToolRequestsForDevice = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const page = await ctx.db
       .query("events")
       .withIndex("by_target_device", (q) => q.eq("targetDeviceId", args.deviceId))
       .order("desc")
       .paginate(args.paginationOpts);
 
-    const filtered = page.page.filter((event) => {
+    const filtered: typeof page.page = [];
+    for (const event of page.page) {
       if (event.type !== "tool_request") {
-        return false;
+        continue;
       }
       if (args.conversationId && event.conversationId !== args.conversationId) {
-        return false;
+        continue;
       }
-      return true;
-    });
+      const conversation = await ctx.db.get(event.conversationId);
+      if (!conversation || conversation.ownerId !== ownerId) {
+        continue;
+      }
+      filtered.push(event);
+    }
 
     return {
       ...page,

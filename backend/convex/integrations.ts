@@ -1,5 +1,6 @@
-﻿import { mutation, query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireUserId } from "./auth";
 
 export const listPublicIntegrations = query({
   args: {},
@@ -54,9 +55,7 @@ export const upsertPublicIntegration = mutation({
 });
 
 export const listUserIntegrations = query({
-  args: {
-    ownerId: v.string(),
-  },
+  args: {},
   returns: v.array(
     v.object({
       _id: v.id("user_integrations"),
@@ -69,10 +68,11 @@ export const listUserIntegrations = query({
       updatedAt: v.number(),
     }),
   ),
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
     return await ctx.db
       .query("user_integrations")
-      .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(200);
   },
@@ -80,7 +80,6 @@ export const listUserIntegrations = query({
 
 export const upsertUserIntegration = mutation({
   args: {
-    ownerId: v.string(),
     provider: v.string(),
     mode: v.string(),
     externalId: v.optional(v.string()),
@@ -88,10 +87,11 @@ export const upsertUserIntegration = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("user_integrations")
       .withIndex("by_owner_and_provider", (q) =>
-        q.eq("ownerId", args.ownerId).eq("provider", args.provider),
+        q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .first();
 
@@ -107,7 +107,7 @@ export const upsertUserIntegration = mutation({
     }
 
     await ctx.db.insert("user_integrations", {
-      ownerId: args.ownerId,
+      ownerId,
       provider: args.provider,
       mode: args.mode,
       externalId: args.externalId,
