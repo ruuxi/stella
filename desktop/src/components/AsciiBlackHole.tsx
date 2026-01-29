@@ -7,6 +7,7 @@ const ASPECT = 0.55;
 interface AsciiBlackHoleProps {
   width?: number;
   height?: number;
+  birthProgress?: number; // 0 = not born yet, 1 = fully emerged
 }
 
 const parseColor = (value: string): [number, number, number] => {
@@ -100,6 +101,7 @@ const getFragmentShader = (): string => {
     uniform float u_time;
     uniform float u_aspect;
     uniform float u_charCount;
+    uniform float u_birth;
     uniform sampler2D u_glyph;
     uniform vec3 u_colors[5];
   `;
@@ -176,6 +178,12 @@ const getFragmentShader = (): string => {
       float intensity = i1 * w1 + i2 * w2 + i3 * w3;
       intensity = min(intensity, 1.0);
       
+      float birthRadius = u_birth * 1.5;
+      float birthEdge = smoothstep(birthRadius, birthRadius - 0.3, dist);
+      float birthPulse = 1.0 + (1.0 - u_birth) * sin(dist * 20.0 - u_time * 5.0) * 0.3;
+      intensity *= birthEdge * birthPulse;
+      intensity *= u_birth;
+      
       float charIndex = floor(intensity * (u_charCount - 1.0));
 
       vec2 cellLocal = fract(uv * u_gridSize);
@@ -189,6 +197,7 @@ const getFragmentShader = (): string => {
 export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
   width = 80,
   height = 40,
+  birthProgress = 1,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -199,6 +208,11 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
   const brightestRef = useRef<HTMLSpanElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
   const timeRef = useRef<number>(0);
+  const birthRef = useRef<number>(birthProgress);
+
+  useEffect(() => {
+    birthRef.current = birthProgress;
+  }, [birthProgress]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -313,6 +327,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       const uTime = gl.getUniformLocation(program, "u_time");
       const uAspect = gl.getUniformLocation(program, "u_aspect");
       const uCharCount = gl.getUniformLocation(program, "u_charCount");
+      const uBirth = gl.getUniformLocation(program, "u_birth");
       const uGlyph = gl.getUniformLocation(program, "u_glyph");
       const uColors = gl.getUniformLocation(program, "u_colors[0]");
 
@@ -322,6 +337,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
         !uTime ||
         !uAspect ||
         !uCharCount ||
+        !uBirth ||
         !uGlyph ||
         !uColors
       ) {
@@ -332,6 +348,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       gl.uniform2f(uGridSize, width, height);
       gl.uniform1f(uAspect, ASPECT);
       gl.uniform1f(uCharCount, CHARS.length);
+      gl.uniform1f(uBirth, 1.0);
       gl.uniform1i(uGlyph, 0);
       gl.uniform3fv(uColors, colors);
 
@@ -341,11 +358,12 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-      const render = (time: number) => {
+      const render = (time: number, birth: number) => {
         gl.useProgram(program);
         gl.viewport(0, 0, targetCanvas.width, targetCanvas.height);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.uniform1f(uTime, time);
+        gl.uniform1f(uBirth, birth);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
       };
 
@@ -383,7 +401,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
     const animate = () => {
       timeRef.current += 0.015;
       const t = timeRef.current;
-      mainRenderer.render(t);
+      mainRenderer.render(t, birthRef.current);
       requestRef.current = requestAnimationFrame(animate);
     };
 

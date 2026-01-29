@@ -1,6 +1,8 @@
 import {
   useEffect,
   useState,
+  useRef,
+  useCallback,
 } from "react";
 import { useAction, useMutation, useConvexAuth } from "convex/react";
 import { Spinner } from "../components/spinner";
@@ -24,9 +26,11 @@ type AttachmentRef = {
 
 import { AsciiBlackHole } from "../components/AsciiBlackHole";
 import { TitleBar } from "../components/TitleBar";
+import { OnboardingStep1, useOnboardingState } from "../components/Onboarding";
 
 export const FullShell = () => {
   const { state } = useUiState();
+  const { completed: onboardingDone, complete: completeOnboarding, reset: resetOnboarding } = useOnboardingState();
   const { gradientMode, gradientColor } = useTheme();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const [message, setMessage] = useState("");
@@ -36,6 +40,44 @@ export const FullShell = () => {
     null,
   );
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [birthProgress, setBirthProgress] = useState(() => onboardingDone ? 1 : 0);
+  const birthAnimationRef = useRef<number | null>(null);
+
+  const startBirthAnimation = useCallback(() => {
+    const startTime = performance.now();
+    const duration = 6000; // 6 seconds for full emergence
+    
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease-out curve for organic feel
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setBirthProgress(eased);
+      
+      if (progress < 1) {
+        birthAnimationRef.current = requestAnimationFrame(animate);
+      }
+    };
+    
+    birthAnimationRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  const handleResetOnboarding = useCallback(() => {
+    if (birthAnimationRef.current) {
+      cancelAnimationFrame(birthAnimationRef.current);
+    }
+    setBirthProgress(0);
+    resetOnboarding();
+  }, [resetOnboarding]);
+
+  useEffect(() => {
+    return () => {
+      if (birthAnimationRef.current) {
+        cancelAnimationFrame(birthAnimationRef.current);
+      }
+    };
+  }, []);
+
   const appendEvent = useMutation(api.events.appendEvent);
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const events = useConversationEvents(state.conversationId ?? undefined);
@@ -161,32 +203,39 @@ export const FullShell = () => {
               />
             </div>
           ) : (
-            <div className="new-session-view" style={{ 
-              width: '100%', 
-              maxWidth: 'none', 
-              padding: 0, 
-              alignItems: 'center', 
-              justifyContent: 'center', 
+            <div className="new-session-view" style={{
+              width: '100%',
+              maxWidth: 'none',
+              padding: 0,
+              alignItems: 'center',
+              justifyContent: 'center',
               overflow: 'hidden',
               position: 'relative'
             }}>
-              <div 
-                className="new-session-title" 
-                style={{ 
-                  position: 'absolute', 
-                  top: '30%', 
+              <div
+                className="new-session-title"
+                style={{
+                  position: 'absolute',
+                  top: '30%',
                   zIndex: 10,
-                  opacity: 0.5,
+                  opacity: birthProgress * 0.5,
                   letterSpacing: '0.2em',
                   textTransform: 'uppercase',
                   fontSize: '16px',
-                  mixBlendMode: 'plus-lighter'
+                  mixBlendMode: 'plus-lighter',
+                  transition: 'opacity 0.3s ease',
                 }}
               >
                 Stellar
               </div>
-              <AsciiBlackHole width={120} height={56} />
-              {!isAuthenticated && (
+              <AsciiBlackHole width={120} height={56} birthProgress={birthProgress} />
+              {!onboardingDone && (
+                <OnboardingStep1 
+                  onComplete={completeOnboarding} 
+                  onAccept={startBirthAnimation}
+                />
+              )}
+              {!isAuthenticated && onboardingDone && (
                 <Button
                   variant="secondary"
                   size="large"
@@ -275,6 +324,26 @@ export const FullShell = () => {
       </div>
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
+
+      {/* Dev: Reset onboarding button */}
+      <button
+        onClick={handleResetOnboarding}
+        style={{
+          position: 'fixed',
+          bottom: 12,
+          left: 12,
+          padding: '6px 12px',
+          fontSize: 11,
+          background: 'rgba(0,0,0,0.3)',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 4,
+          color: 'rgba(255,255,255,0.5)',
+          cursor: 'pointer',
+          zIndex: 9999,
+        }}
+      >
+        Reset Onboarding
+      </button>
     </div>
   );
 };
