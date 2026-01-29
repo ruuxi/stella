@@ -185,7 +185,7 @@ export const FullShell = () => {
               >
                 Stellar
               </div>
-              <AsciiBlackHole width={120} height={56} showVariationButtons />
+              <AsciiBlackHole width={120} height={56} />
               {!isAuthenticated && (
                 <Button
                   variant="secondary"
