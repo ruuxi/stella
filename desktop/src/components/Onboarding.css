@@ -1,3 +1,11 @@
+/* Fullscreen click overlay */
+.onboarding-click-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  cursor: pointer;
+}
+
 /* Dialogue area — centered like a movie title */
 .onboarding-dialogue {
   position: absolute;
@@ -7,16 +15,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
   pointer-events: auto;
   z-index: 10;
   width: 100%;
-  max-width: 600px;
+  max-width: 1000px;
   padding: 0 24px;
 }
 
 .onboarding-text {
-  font-size: clamp(28px, 5vw, 42px);
+  position: relative;
+  font-size: clamp(20px, 3.5vw, 28px);
   font-weight: 300;
   letter-spacing: 0.06em;
   color: var(--foreground);
@@ -24,7 +32,15 @@
   text-align: center;
   line-height: 1.4;
   min-height: 1.4em;
-  white-space: pre-wrap;
+}
+
+/* Intro text: same size as step 2 */
+.onboarding-text[data-intro="true"] {
+  letter-spacing: 0.08em;
+}
+
+.onboarding-cursor {
+  transition: opacity 0.1s ease;
 }
 
 .onboarding-text .blinking-cursor {
@@ -36,20 +52,33 @@
   51%, 100% { opacity: 0; }
 }
 
-/* Yes / No choices */
+/* Choices — positioned absolutely to avoid layout shift */
 .onboarding-choices {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  margin-top: 32px;
   display: flex;
   gap: 48px;
   opacity: 0;
-  transform: translateY(8px);
   transition: opacity 0.8s ease-out, transform 0.8s ease-out;
   pointer-events: none;
 }
 
 .onboarding-choices[data-visible="true"] {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
   pointer-events: auto;
+}
+
+/* Subtle click prompt */
+.onboarding-choices--subtle .onboarding-choice {
+  opacity: 0.3;
+}
+
+.onboarding-choices--subtle .onboarding-choice:hover {
+  opacity: 0.5;
 }
 
 .onboarding-choice {
@@ -101,6 +130,27 @@
   pointer-events: none;
 }
 
+/* Faster fade-out for intro transition */
+.onboarding-dialogue[data-phase="fading-out"] {
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+  pointer-events: none;
+}
+
+/* Fade-out for question transition */
+.onboarding-dialogue[data-phase="fading-out-question"] {
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+  pointer-events: none;
+}
+
+/* Fade-out for preview transition */
+.onboarding-dialogue[data-phase="fading-out-preview"] {
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+  pointer-events: none;
+}
+
 /* "No" response — subtle shake and fade */
 .onboarding-dialogue[data-declined="true"] .onboarding-text {
   animation: gentle-drift 2s ease-out forwards;
@@ -117,4 +167,106 @@
   opacity: 0;
   transition: opacity 0.4s ease-out;
   pointer-events: none;
+}
+
+/* Trust choices — vertical list */
+.onboarding-trust-choices {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  opacity: 0;
+  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+  pointer-events: none;
+  width: 100%;
+  max-width: 500px;
+}
+
+.onboarding-trust-choices[data-visible="true"] {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.onboarding-trust-choice {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 0.3s ease, transform 0.2s ease, border-color 0.3s ease, background 0.3s ease;
+  font-family: inherit;
+  opacity: 0.6;
+}
+
+.onboarding-trust-choice:hover {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.onboarding-trust-choice:active {
+  transform: translateY(0);
+}
+
+.onboarding-trust-choice[data-selected="true"] {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Confirm button */
+.onboarding-confirm {
+  margin-top: 24px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  padding: 12px 32px;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: opacity 0.3s ease, transform 0.2s ease, border-color 0.3s ease, background 0.3s ease;
+  font-family: inherit;
+  text-transform: lowercase;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.onboarding-confirm[data-visible="true"] {
+  opacity: 0.7;
+  pointer-events: auto;
+}
+
+.onboarding-confirm:hover {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.onboarding-confirm:active {
+  transform: scale(0.97);
+}
+
+.onboarding-trust-title {
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  color: var(--foreground);
+  margin-bottom: 8px;
+}
+
+.onboarding-trust-description {
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  opacity: 0.7;
+  line-height: 1.5;
 }
