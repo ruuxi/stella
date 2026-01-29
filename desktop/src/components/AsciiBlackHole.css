@@ -1,4 +1,7 @@
 .ascii-black-hole-container {
+  --ascii-font-size: 11px;
+  --ascii-line-height: 11px;
+  --ascii-font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
   width: 100%;
   height: 100%;
   display: flex;
@@ -9,30 +12,58 @@
   background: transparent; 
   font-smooth: never;
   -webkit-font-smoothing: none;
+  animation: breathing 8s ease-in-out infinite;
 }
 
-.ascii-pre {
-  font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
-  font-size: 11px;
-  line-height: 11px;
-  white-space: pre;
-  text-align: center;
-  /* Adapts to theme */
-  color: var(--foreground, currentColor);
-  opacity: 0.85;
-  z-index: 2;
-}
-
-/* The Glow Layer - adds the bloom effect */
-.ascii-pre-glow {
+.ascii-canvas {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+  opacity: 0.85;
+  z-index: 2;
+}
+
+/* Character color classes based on brightness and theme */
+.ascii-black-hole-container .char-dark {
+  color: var(--primary, var(--foreground));
+}
+
+.ascii-black-hole-container .char-medium-dark {
+  color: var(--accent, var(--muted-foreground));
+}
+
+.ascii-black-hole-container .char-medium {
+  color: var(--ring, var(--spinner-color-1, var(--accent)));
+}
+
+.ascii-black-hole-container .char-bright {
+  color: var(--spinner-color-2, var(--accent));
+}
+
+.ascii-black-hole-container .char-brightest {
+  color: var(--spinner-color-3, var(--accent));
+}
+
+/* The Glow Layer - adds the bloom effect */
+.ascii-canvas-glow {
   filter: blur(6px);
-  color: var(--foreground, currentColor);
   z-index: 1;
   opacity: 0.4;
+}
+
+.ascii-black-hole-container .ascii-glow-color {
+  color: var(--foreground, currentColor);
+}
+
+.ascii-color-swatch {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* Optional: Add a subtle pulse to the whole container */
@@ -40,8 +71,4 @@
   0% { opacity: 0.9; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.01); }
   100% { opacity: 0.9; transform: scale(1); }
-}
-
-.ascii-black-hole-container {
-  animation: breathing 8s ease-in-out infinite;
 }
