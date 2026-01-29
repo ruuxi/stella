@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./AsciiBlackHole.css";
 
 const CHARS = " .:-=+*#%@"; // Ordered by apparent brightness
@@ -7,7 +7,10 @@ const ASPECT = 0.55;
 interface AsciiBlackHoleProps {
   width?: number;
   height?: number;
+  showVariationButtons?: boolean;
 }
+
+type AnimationVariation = 1 | 2 | 3 | 4 | 5;
 
 const parseColor = (value: string): [number, number, number] => {
   const match = value
@@ -92,10 +95,249 @@ const createProgram = (gl: WebGLRenderingContext, vs: string, fs: string) => {
   return program;
 };
 
+// Fragment shader for each variation
+const getFragmentShader = (variation: AnimationVariation): string => {
+  const baseHeader = `
+    precision mediump float;
+    uniform vec2 u_canvasSize;
+    uniform vec2 u_gridSize;
+    uniform float u_time;
+    uniform float u_aspect;
+    uniform float u_charCount;
+    uniform sampler2D u_glyph;
+    uniform vec3 u_colors[5];
+  `;
+
+  const baseColorLogic = `
+    vec3 color;
+    if (charIndex <= 2.0) {
+      color = u_colors[0];
+    } else if (charIndex <= 4.0) {
+      color = u_colors[1];
+    } else if (charIndex <= 6.0) {
+      color = u_colors[2];
+    } else if (charIndex <= 7.0) {
+      color = u_colors[3];
+    } else {
+      color = u_colors[4];
+    }
+    gl_FragColor = vec4(color, glyphAlpha);
+  `;
+
+  switch (variation) {
+    case 1: // Original Black Hole - Spiral accretion disk
+      return `${baseHeader}
+        void main() {
+          vec2 uv = vec2(gl_FragCoord.x / u_canvasSize.x, 1.0 - gl_FragCoord.y / u_canvasSize.y);
+          vec2 cell = floor(uv * u_gridSize);
+          float cx = u_gridSize.x * 0.5;
+          float cy = u_gridSize.y * 0.5;
+          float dx = (cell.x - cx) / cx;
+          float dy = (cell.y - cy) / cy;
+          float dist = sqrt(dx * dx + (dy * dy) / (u_aspect * u_aspect));
+
+          float charIndex = 0.0;
+          if (dist >= 0.15) {
+            float angle = atan(dy, dx);
+            float spiralOffset = 1.0 / (dist + 0.05);
+            float wave1 = sin(angle * 3.0 + spiralOffset * 2.0 - u_time * 3.0);
+            float wave2 = cos(angle * 5.0 - spiralOffset * 3.0 + u_time * 2.0);
+            float intensity = (wave1 + wave2) * 0.5 + 0.5;
+            float falloff = max(0.0, 1.0 - (dist - 0.15) * 1.5);
+            float disk = exp(-pow((dist - 0.3) * 10.0, 2.0)) * 0.8;
+            float finalVal = intensity * falloff + disk;
+            charIndex = floor(min(finalVal, 1.0) * (u_charCount - 1.0));
+          }
+
+          vec2 cellLocal = fract(uv * u_gridSize);
+          vec2 glyphUV = vec2((cellLocal.x + charIndex) / u_charCount, cellLocal.y);
+          float glyphAlpha = texture2D(u_glyph, glyphUV).a;
+          ${baseColorLogic}
+        }
+      `;
+
+    case 2: // Neural Pulse - Synaptic firing patterns
+      return `${baseHeader}
+        void main() {
+          vec2 uv = vec2(gl_FragCoord.x / u_canvasSize.x, 1.0 - gl_FragCoord.y / u_canvasSize.y);
+          vec2 cell = floor(uv * u_gridSize);
+          float cx = u_gridSize.x * 0.5;
+          float cy = u_gridSize.y * 0.5;
+          float dx = (cell.x - cx) / cx;
+          float dy = (cell.y - cy) / cy;
+          float dist = sqrt(dx * dx + (dy * dy) / (u_aspect * u_aspect));
+          float angle = atan(dy, dx);
+
+          float time1 = u_time * 2.0;
+          float pulse1 = sin(time1) * 0.5 + 0.5;
+          float pulse2 = sin(time1 + 2.094) * 0.5 + 0.5;
+          float pulse3 = sin(time1 + 4.188) * 0.5 + 0.5;
+          
+          float sectors = 6.0;
+          float sector1 = exp(-abs(mod(angle + 0.0, 6.283) - 3.14) * 1.5) * pulse1;
+          float sector2 = exp(-abs(mod(angle + 2.094, 6.283) - 3.14) * 1.5) * pulse2;
+          float sector3 = exp(-abs(mod(angle + 4.188, 6.283) - 3.14) * 1.5) * pulse3;
+          
+          float radialWave = sin(dist * 10.0 - u_time * 3.0) * 0.3 + 0.7;
+          float rays = max(max(sector1, sector2), sector3) * radialWave;
+          
+          float core = exp(-dist * 4.0) * 0.8;
+          float falloff = max(0.0, 1.0 - dist * 0.8);
+          
+          float intensity = rays * falloff + core;
+          intensity = min(intensity, 1.0);
+          
+          float charIndex = floor(intensity * (u_charCount - 1.0));
+
+          vec2 cellLocal = fract(uv * u_gridSize);
+          vec2 glyphUV = vec2((cellLocal.x + charIndex) / u_charCount, cellLocal.y);
+          float glyphAlpha = texture2D(u_glyph, glyphUV).a;
+          ${baseColorLogic}
+        }
+      `;
+
+    case 3: // Contemplation - Gentle layered thoughts forming and dissolving
+      return `${baseHeader}
+        void main() {
+          vec2 uv = vec2(gl_FragCoord.x / u_canvasSize.x, 1.0 - gl_FragCoord.y / u_canvasSize.y);
+          vec2 cell = floor(uv * u_gridSize);
+          float cx = u_gridSize.x * 0.5;
+          float cy = u_gridSize.y * 0.5;
+          float dx = (cell.x - cx) / cx;
+          float dy = (cell.y - cy) / cy;
+          float dist = sqrt(dx * dx + (dy * dy) / (u_aspect * u_aspect));
+          float angle = atan(dy, dx);
+
+          float thought1 = sin(dist * 8.0 - u_time * 0.8 + angle * 2.0) * 0.5 + 0.5;
+          float thought2 = sin(dist * 6.0 + u_time * 0.6 - angle * 1.5) * 0.5 + 0.5;
+          float thought3 = sin(dist * 10.0 - u_time * 1.0 + angle * 3.0) * 0.5 + 0.5;
+          
+          float layers = (thought1 * 0.4 + thought2 * 0.35 + thought3 * 0.25);
+          
+          float presence = exp(-dist * 2.5) * 0.7;
+          float curiosity = exp(-dist * 1.0) * 0.25 * (sin(u_time * 0.5) * 0.2 + 0.8);
+          
+          float intensity = layers * exp(-dist * 1.2) + presence + curiosity;
+          intensity = min(intensity, 1.0);
+          
+          float charIndex = floor(intensity * (u_charCount - 1.0));
+
+          vec2 cellLocal = fract(uv * u_gridSize);
+          vec2 glyphUV = vec2((cellLocal.x + charIndex) / u_charCount, cellLocal.y);
+          float glyphAlpha = texture2D(u_glyph, glyphUV).a;
+          ${baseColorLogic}
+        }
+      `;
+
+    case 4: // Connection - Warmth reaching outward, offering care
+      return `${baseHeader}
+        void main() {
+          vec2 uv = vec2(gl_FragCoord.x / u_canvasSize.x, 1.0 - gl_FragCoord.y / u_canvasSize.y);
+          vec2 cell = floor(uv * u_gridSize);
+          float cx = u_gridSize.x * 0.5;
+          float cy = u_gridSize.y * 0.5;
+          float dx = (cell.x - cx) / cx;
+          float dy = (cell.y - cy) / cy;
+          float dist = sqrt(dx * dx + (dy * dy) / (u_aspect * u_aspect));
+          float angle = atan(dy, dx);
+
+          float warmth = exp(-dist * 3.0) * 0.8;
+          
+          float numTendrils = 5.0;
+          float tendril = sin(angle * numTendrils + u_time * 0.7);
+          tendril = smoothstep(0.3, 1.0, tendril);
+          float reach = tendril * exp(-dist * 1.5) * (0.5 + 0.5 * sin(dist * 6.0 - u_time * 1.5));
+          
+          float pulse = sin(u_time * 0.6) * 0.15 + 0.85;
+          float heart = exp(-dist * 4.0) * pulse;
+          
+          float gentle = sin(dist * 4.0 - u_time * 0.8) * 0.2 + 0.8;
+          
+          float intensity = warmth + reach * 0.5 * gentle + heart * 0.3;
+          intensity = min(intensity, 1.0);
+          
+          float charIndex = floor(intensity * (u_charCount - 1.0));
+
+          vec2 cellLocal = fract(uv * u_gridSize);
+          vec2 glyphUV = vec2((cellLocal.x + charIndex) / u_charCount, cellLocal.y);
+          float glyphAlpha = texture2D(u_glyph, glyphUV).a;
+          ${baseColorLogic}
+        }
+      `;
+
+    case 5: // Evolving - Morphing between Black Hole, Neural, and Becoming
+      return `${baseHeader}
+        void main() {
+          vec2 uv = vec2(gl_FragCoord.x / u_canvasSize.x, 1.0 - gl_FragCoord.y / u_canvasSize.y);
+          vec2 cell = floor(uv * u_gridSize);
+          float cx = u_gridSize.x * 0.5;
+          float cy = u_gridSize.y * 0.5;
+          float dx = (cell.x - cx) / cx;
+          float dy = (cell.y - cy) / cy;
+          float dist = sqrt(dx * dx + (dy * dy) / (u_aspect * u_aspect));
+          float angle = atan(dy, dx);
+
+          float cycle = u_time * 0.15;
+          float phase = mod(cycle, 3.0);
+          
+          float w1 = max(0.0, 1.0 - abs(phase - 0.0)) + max(0.0, 1.0 - abs(phase - 3.0));
+          float w2 = max(0.0, 1.0 - abs(phase - 1.0));
+          float w3 = max(0.0, 1.0 - abs(phase - 2.0));
+          float total = w1 + w2 + w3;
+          w1 /= total; w2 /= total; w3 /= total;
+          
+          float i1 = 0.0;
+          if (dist >= 0.15) {
+            float spiralOffset = 1.0 / (dist + 0.05);
+            float wave1 = sin(angle * 3.0 + spiralOffset * 2.0 - u_time * 3.0);
+            float wave2 = cos(angle * 5.0 - spiralOffset * 3.0 + u_time * 2.0);
+            float falloff = max(0.0, 1.0 - (dist - 0.15) * 1.5);
+            float disk = exp(-pow((dist - 0.3) * 10.0, 2.0)) * 0.8;
+            i1 = ((wave1 + wave2) * 0.5 + 0.5) * falloff + disk;
+          }
+          
+          float time1 = u_time * 2.0;
+          float p1 = sin(time1) * 0.5 + 0.5;
+          float p2 = sin(time1 + 2.094) * 0.5 + 0.5;
+          float p3 = sin(time1 + 4.188) * 0.5 + 0.5;
+          float s1 = exp(-abs(mod(angle + 0.0, 6.283) - 3.14) * 1.5) * p1;
+          float s2 = exp(-abs(mod(angle + 2.094, 6.283) - 3.14) * 1.5) * p2;
+          float s3 = exp(-abs(mod(angle + 4.188, 6.283) - 3.14) * 1.5) * p3;
+          float radialWave = sin(dist * 10.0 - u_time * 3.0) * 0.3 + 0.7;
+          float rays = max(max(s1, s2), s3) * radialWave;
+          float core2 = exp(-dist * 4.0) * 0.8;
+          float falloff2 = max(0.0, 1.0 - dist * 0.8);
+          float i2 = rays * falloff2 + core2;
+          
+          float breathe = sin(u_time * 0.4) * 0.5 + 0.5;
+          float potential = sin(angle * 7.0 + dist * 8.0 + u_time * 0.5) * 0.5 + 0.5;
+          potential *= exp(-dist * 1.0);
+          float form = sin(angle * 3.0 - u_time * 0.3) * 0.5 + 0.5;
+          form *= sin(dist * 12.0 - u_time * 1.2) * 0.5 + 0.5;
+          form *= exp(-dist * 1.5);
+          float self = exp(-dist * 3.5) * (0.7 + breathe * 0.3);
+          float i3 = self + mix(potential, form, breathe) * 0.5;
+          
+          float intensity = i1 * w1 + i2 * w2 + i3 * w3;
+          intensity = min(intensity, 1.0);
+          
+          float charIndex = floor(intensity * (u_charCount - 1.0));
+
+          vec2 cellLocal = fract(uv * u_gridSize);
+          vec2 glyphUV = vec2((cellLocal.x + charIndex) / u_charCount, cellLocal.y);
+          float glyphAlpha = texture2D(u_glyph, glyphUV).a;
+          ${baseColorLogic}
+        }
+      `;
+  }
+};
+
 export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
   width = 80,
   height = 40,
+  showVariationButtons = false,
 }) => {
+  const [variation, setVariation] = useState<AnimationVariation>(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glowCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -111,8 +353,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
   useEffect(() => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
-    const glowCanvas = glowCanvasRef.current;
-    if (!container || !canvas || !glowCanvas) return;
+    if (!container || !canvas) return;
 
     const styles = getComputedStyle(container);
     const fontSize = getCssNumber(
@@ -147,7 +388,6 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
     };
 
     applyCanvasSize(canvas);
-    applyCanvasSize(glowCanvas);
 
     const glyphAtlas = buildGlyphAtlas(
       fontFamily,
@@ -164,63 +404,7 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       }
     `;
 
-    const fragmentSource = `
-      precision mediump float;
-
-      uniform vec2 u_canvasSize;
-      uniform vec2 u_gridSize;
-      uniform float u_time;
-      uniform float u_aspect;
-      uniform float u_charCount;
-      uniform sampler2D u_glyph;
-      uniform vec3 u_colors[5];
-
-      void main() {
-        vec2 uv = vec2(
-          gl_FragCoord.x / u_canvasSize.x,
-          1.0 - gl_FragCoord.y / u_canvasSize.y
-        );
-
-        vec2 cell = floor(uv * u_gridSize);
-        float cx = u_gridSize.x * 0.5;
-        float cy = u_gridSize.y * 0.5;
-        float dx = (cell.x - cx) / cx;
-        float dy = (cell.y - cy) / cy;
-        float dist = sqrt(dx * dx + (dy * dy) / (u_aspect * u_aspect));
-
-        float charIndex = 0.0;
-        if (dist >= 0.15) {
-          float angle = atan(dy, dx);
-          float spiralOffset = 1.0 / (dist + 0.05);
-          float wave1 = sin(angle * 3.0 + spiralOffset * 2.0 - u_time * 3.0);
-          float wave2 = cos(angle * 5.0 - spiralOffset * 3.0 + u_time * 2.0);
-          float intensity = (wave1 + wave2) * 0.5 + 0.5;
-          float falloff = max(0.0, 1.0 - (dist - 0.15) * 1.5);
-          float disk = exp(-pow((dist - 0.3) * 10.0, 2.0)) * 0.8;
-          float finalVal = intensity * falloff + disk;
-          charIndex = floor(min(finalVal, 1.0) * (u_charCount - 1.0));
-        }
-
-        vec2 cellLocal = fract(uv * u_gridSize);
-        vec2 glyphUV = vec2((cellLocal.x + charIndex) / u_charCount, cellLocal.y);
-        float glyphAlpha = texture2D(u_glyph, glyphUV).a;
-
-        vec3 color;
-        if (charIndex <= 2.0) {
-          color = u_colors[0];
-        } else if (charIndex <= 4.0) {
-          color = u_colors[1];
-        } else if (charIndex <= 6.0) {
-          color = u_colors[2];
-        } else if (charIndex <= 7.0) {
-          color = u_colors[3];
-        } else {
-          color = u_colors[4];
-        }
-
-        gl_FragColor = vec4(color, glyphAlpha);
-      }
-    `;
+    const fragmentSource = getFragmentShader(variation);
 
     const initRenderer = (
       targetCanvas: HTMLCanvasElement,
@@ -357,14 +541,12 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
     };
 
     const mainRenderer = initRenderer(canvas, readColors());
-    const glowRenderer = initRenderer(glowCanvas, readGlowColor());
-    if (!mainRenderer || !glowRenderer) return;
+    if (!mainRenderer) return;
 
     const animate = () => {
       timeRef.current += 0.015;
       const t = timeRef.current;
       mainRenderer.render(t);
-      glowRenderer.render(t);
       requestRef.current = requestAnimationFrame(animate);
     };
 
@@ -372,7 +554,6 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
 
     const observer = new MutationObserver(() => {
       mainRenderer.setColors(readColors());
-      glowRenderer.setColors(readGlowColor());
     });
     observer.observe(document.documentElement, {
       attributes: true,
@@ -383,48 +564,72 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
       observer.disconnect();
       mainRenderer.destroy();
-      glowRenderer.destroy();
     };
-  }, [width, height]);
+  }, [width, height, variation]);
+
+  const variationLabels: Record<AnimationVariation, string> = {
+    1: "Black Hole",
+    2: "Neural",
+    3: "Contemplation",
+    4: "Connection",
+    5: "Evolving",
+  };
 
   return (
-    <div ref={containerRef} className="ascii-black-hole-container">
-      <canvas
-        ref={glowCanvasRef}
-        className="ascii-canvas ascii-canvas-glow"
-        aria-hidden="true"
-      />
-      <canvas ref={canvasRef} className="ascii-canvas" />
-      <span
-        ref={darkRef}
-        className="ascii-color-swatch char-dark"
-        aria-hidden="true"
-      />
-      <span
-        ref={mediumDarkRef}
-        className="ascii-color-swatch char-medium-dark"
-        aria-hidden="true"
-      />
-      <span
-        ref={mediumRef}
-        className="ascii-color-swatch char-medium"
-        aria-hidden="true"
-      />
-      <span
-        ref={brightRef}
-        className="ascii-color-swatch char-bright"
-        aria-hidden="true"
-      />
-      <span
-        ref={brightestRef}
-        className="ascii-color-swatch char-brightest"
-        aria-hidden="true"
-      />
-      <span
-        ref={glowColorRef}
-        className="ascii-color-swatch ascii-glow-color"
-        aria-hidden="true"
-      />
+    <div className="ascii-black-hole-wrapper">
+      <div ref={containerRef} className="ascii-black-hole-container">
+        {/* <canvas
+          key={`glow-${variation}`}
+          ref={glowCanvasRef}
+          className="ascii-canvas ascii-canvas-glow"
+          aria-hidden="true"
+        /> */}
+        <canvas key={`main-${variation}`} ref={canvasRef} className="ascii-canvas" />
+        <span
+          ref={darkRef}
+          className="ascii-color-swatch char-dark"
+          aria-hidden="true"
+        />
+        <span
+          ref={mediumDarkRef}
+          className="ascii-color-swatch char-medium-dark"
+          aria-hidden="true"
+        />
+        <span
+          ref={mediumRef}
+          className="ascii-color-swatch char-medium"
+          aria-hidden="true"
+        />
+        <span
+          ref={brightRef}
+          className="ascii-color-swatch char-bright"
+          aria-hidden="true"
+        />
+        <span
+          ref={brightestRef}
+          className="ascii-color-swatch char-brightest"
+          aria-hidden="true"
+        />
+        <span
+          ref={glowColorRef}
+          className="ascii-color-swatch ascii-glow-color"
+          aria-hidden="true"
+        />
+      </div>
+      {showVariationButtons && (
+        <div className="ascii-variation-buttons">
+          {([1, 2, 3, 4, 5] as AnimationVariation[]).map((v) => (
+            <button
+              key={v}
+              className={`ascii-variation-btn ${variation === v ? "active" : ""}`}
+              onClick={() => setVariation(v)}
+              title={variationLabels[v]}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

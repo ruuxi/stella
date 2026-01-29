@@ -17,7 +17,7 @@
 
 .ascii-canvas {
   position: absolute;
-  top: 50%;
+  top: 55%;
   left: 50%;
   transform: translate(-50%, -50%);
   image-rendering: pixelated;
@@ -71,4 +71,55 @@
   0% { opacity: 0.9; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.01); }
   100% { opacity: 0.9; transform: scale(1); }
+}
+
+/* Wrapper for animation + buttons */
+.ascii-black-hole-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.ascii-black-hole-wrapper > .ascii-black-hole-container {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Variation selector buttons */
+.ascii-variation-buttons {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  z-index: 10;
+}
+
+.ascii-variation-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  background: var(--card, rgba(0, 0, 0, 0.4));
+  color: var(--muted-foreground, rgba(255, 255, 255, 0.6));
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.ascii-variation-btn:hover {
+  background: var(--accent, rgba(255, 255, 255, 0.1));
+  color: var(--foreground, #fff);
+  border-color: var(--accent, rgba(255, 255, 255, 0.3));
+  transform: translateY(-1px);
+}
+
+.ascii-variation-btn.active {
+  background: var(--primary, rgba(255, 255, 255, 0.2));
+  color: var(--primary-foreground, #fff);
+  border-color: var(--primary, rgba(255, 255, 255, 0.5));
+  box-shadow: 0 0 12px var(--primary, rgba(255, 255, 255, 0.3));
 }
