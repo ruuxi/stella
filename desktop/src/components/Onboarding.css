@@ -1,0 +1,120 @@
+/* Dialogue area — centered like a movie title */
+.onboarding-dialogue {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  pointer-events: auto;
+  z-index: 10;
+  width: 100%;
+  max-width: 600px;
+  padding: 0 24px;
+}
+
+.onboarding-text {
+  font-size: clamp(28px, 5vw, 42px);
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  color: var(--foreground);
+  opacity: 0.9;
+  text-align: center;
+  line-height: 1.4;
+  min-height: 1.4em;
+  white-space: pre-wrap;
+}
+
+.onboarding-text .blinking-cursor {
+  animation: onboarding-blink 1s step-end infinite;
+}
+
+@keyframes onboarding-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Yes / No choices */
+.onboarding-choices {
+  display: flex;
+  gap: 48px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+  pointer-events: none;
+}
+
+.onboarding-choices[data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.onboarding-choice {
+  background: none;
+  border: none;
+  padding: 8px 0;
+  font-size: 18px;
+  font-weight: 300;
+  letter-spacing: 0.12em;
+  color: var(--foreground);
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 0.3s ease, transform 0.2s ease;
+  font-family: inherit;
+  text-transform: lowercase;
+  position: relative;
+}
+
+.onboarding-choice::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--foreground);
+  opacity: 0;
+  transform: scaleX(0);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.onboarding-choice:hover {
+  opacity: 0.9;
+}
+
+.onboarding-choice:hover::after {
+  opacity: 0.4;
+  transform: scaleX(1);
+}
+
+.onboarding-choice:active {
+  transform: scale(0.97);
+}
+
+/* Fade-out for the entire dialogue after choice */
+.onboarding-dialogue[data-fading="true"] {
+  opacity: 0;
+  transition: opacity 1.2s ease-out;
+  pointer-events: none;
+}
+
+/* "No" response — subtle shake and fade */
+.onboarding-dialogue[data-declined="true"] .onboarding-text {
+  animation: gentle-drift 2s ease-out forwards;
+}
+
+@keyframes gentle-drift {
+  0% { opacity: 0.8; transform: translateY(0); }
+  30% { opacity: 0.6; transform: translateX(-2px); }
+  60% { opacity: 0.3; transform: translateX(1px); }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+
+.onboarding-dialogue[data-declined="true"] .onboarding-choices {
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+  pointer-events: none;
+}
