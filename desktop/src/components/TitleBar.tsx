@@ -35,8 +35,8 @@ export const TitleBar = () => {
       <div className="title-bar title-bar-mac">
         <div className="title-bar-drag-region" />
         <div className="title-bar-left">
-          <ThemePicker />
           <AuthStatus />
+          <ThemePicker />
         </div>
       </div>
     );

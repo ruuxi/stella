@@ -2,7 +2,8 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useAction, useMutation } from "convex/react";
+import { useAction, useMutation, useConvexAuth } from "convex/react";
+import { Spinner } from "../components/spinner";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
@@ -12,6 +13,8 @@ import { streamChat } from "../services/model-gateway";
 import { captureScreenshot } from "../services/screenshot";
 import { ShiftingGradient } from "../components/background/ShiftingGradient";
 import { useTheme } from "../theme/theme-context";
+import { Button } from "../components/button";
+import { AuthDialog } from "../app/AuthDialog";
 
 type AttachmentRef = {
   id?: string;
@@ -25,12 +28,14 @@ import { TitleBar } from "../components/TitleBar";
 export const FullShell = () => {
   const { state } = useUiState();
   const { gradientMode, gradientColor } = useTheme();
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const [message, setMessage] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
   );
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const appendEvent = useMutation(api.events.appendEvent);
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const events = useConversationEvents(state.conversationId ?? undefined);
@@ -165,28 +170,46 @@ export const FullShell = () => {
               overflow: 'hidden',
               position: 'relative'
             }}>
-              <AsciiBlackHole width={120} height={56} />
               <div 
                 className="new-session-title" 
                 style={{ 
                   position: 'absolute', 
-                  bottom: '15%', 
+                  top: '30%', 
                   zIndex: 10,
                   opacity: 0.5,
                   letterSpacing: '0.2em',
                   textTransform: 'uppercase',
-                  fontSize: '12px',
+                  fontSize: '16px',
                   mixBlendMode: 'plus-lighter'
                 }}
               >
                 Stellar
               </div>
+              <AsciiBlackHole width={120} height={56} />
+              {!isAuthenticated && (
+                <Button
+                  variant="secondary"
+                  size="large"
+                  onClick={() => setAuthDialogOpen(true)}
+                  disabled={isAuthLoading}
+                  style={{
+                    position: 'absolute',
+                    bottom: '18%',
+                    zIndex: 10,
+                    background: 'transparent',
+                    border: '2px solid var(--border-strong)',
+                    minWidth: '140px',
+                  }}
+                >
+                  {isAuthLoading ? <Spinner size="sm" /> : "Sign in"}
+                </Button>
+              )}
             </div>
           )}
         </div>
 
-        {/* Composer - Aura-style prompt bar at bottom */}
-        <div className="composer">
+        {/* Composer - Aura-style prompt bar at bottom (only when authenticated) */}
+        {isAuthenticated && <div className="composer">
           <form
             className="composer-form"
             onSubmit={(event) => {
@@ -248,8 +271,10 @@ export const FullShell = () => {
               </div>
             </div>
           </form>
-        </div>
+        </div>}
       </div>
+
+      <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
     </div>
   );
 };

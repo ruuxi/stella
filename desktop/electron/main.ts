@@ -185,6 +185,7 @@ const createFullWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      partition: 'persist:stellar',
     },
   })
 
@@ -236,6 +237,7 @@ const createMiniWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      partition: 'persist:stellar',
     },
   })
 

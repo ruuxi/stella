@@ -84,9 +84,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
   font-size: 12px;
 }
 
@@ -95,17 +92,26 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--muted-foreground);
 }
 
 .auth-status-button {
   border: none;
-  background: transparent;
-  color: inherit;
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--muted-foreground);
   font-size: 12px;
+  font-weight: 400;
   cursor: pointer;
-  opacity: 0.8;
+  padding: 0;
+  transition: background-color 0.1s ease, color 0.1s ease;
 }
 
 .auth-status-button:hover {
-  opacity: 1;
+  background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.auth-status-button:active {
+  background-color: color-mix(in oklch, var(--foreground) 12%, transparent);
 }
