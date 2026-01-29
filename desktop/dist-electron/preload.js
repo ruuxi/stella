@@ -33,6 +33,8 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
             electron_1.ipcRenderer.removeListener('auth:callback', handler);
         };
     },
+    // App readiness gate (controls radial menu + mini shell)
+    setAppReady: (ready) => electron_1.ipcRenderer.send('app:setReady', ready),
     // Radial dial events
     onRadialShow: (callback) => {
         const handler = (event, data) => {

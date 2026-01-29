@@ -22,6 +22,7 @@ let miniWindow = null;
 let mouseHook = null;
 let localHostRunner = null;
 let deviceId = null;
+let appReady = false; // true when authenticated + onboarding complete
 let pendingConvexUrl = null;
 const pendingCredentialRequests = new Map();
 const miniSize = {
@@ -189,6 +190,8 @@ const createMiniWindow = () => {
 };
 const showWindow = (target) => {
     if (target === 'mini') {
+        if (!appReady)
+            return; // Block mini shell when not signed in or onboarding incomplete
         if (!miniWindow) {
             createMiniWindow();
         }
@@ -253,6 +256,8 @@ const triggerNativeContextMenu = async (x, y) => {
 const initMouseHook = () => {
     mouseHook = new MouseHookManager({
         onRadialShow: (x, y) => {
+            if (!appReady)
+                return;
             showRadialWindow(x, y);
         },
         onRadialHide: () => {
@@ -347,6 +352,9 @@ app.whenReady().then(async () => {
     }
     // Initialize mouse hook for global right-click detection
     initMouseHook();
+    ipcMain.on('app:setReady', (_event, ready) => {
+        appReady = !!ready;
+    });
     ipcMain.handle('device:getId', () => deviceId);
     ipcMain.handle('host:configure', (_event, config) => {
         if (config?.convexUrl) {

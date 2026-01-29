@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // App readiness gate (controls radial menu + mini shell)
+  setAppReady: (ready: boolean) => ipcRenderer.send('app:setReady', ready),
+
   // Radial dial events
   onRadialShow: (callback: (event: IpcRendererEvent, data: { centerX: number; centerY: number }) => void) => {
     const handler = (event: IpcRendererEvent, data: { centerX: number; centerY: number }) => {

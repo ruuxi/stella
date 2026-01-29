@@ -121,6 +121,12 @@ export const FullShell = () => {
     };
   }, []);
 
+  // Broadcast gate state to main process (controls radial menu + mini shell access)
+  useEffect(() => {
+    const ready = isAuthenticated && onboardingDone;
+    window.electronAPI?.setAppReady?.(ready);
+  }, [isAuthenticated, onboardingDone]);
+
   const appendEvent = useMutation(api.events.appendEvent);
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const events = useConversationEvents(state.conversationId ?? undefined);
@@ -299,9 +305,11 @@ export const FullShell = () => {
               {!onboardingDone && (
                 <OnboardingStep1
                   key={onboardingKey}
-                  onComplete={completeOnboarding} 
+                  onComplete={completeOnboarding}
                   onAccept={startBirthAnimation}
                   onInteract={triggerFlash}
+                  onSignIn={() => setAuthDialogOpen(true)}
+                  isAuthenticated={isAuthenticated}
                 />
               )}
               {!isAuthenticated && onboardingDone && (
@@ -327,7 +335,7 @@ export const FullShell = () => {
         </div>
 
         {/* Composer - Aura-style prompt bar at bottom (only when authenticated) */}
-        {isAuthenticated && <div className="composer">
+        {isAuthenticated && onboardingDone && <div className="composer">
           <form
             className="composer-form"
             onSubmit={(event) => {
