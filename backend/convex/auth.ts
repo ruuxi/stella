@@ -4,7 +4,13 @@ import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { Resend } from "@convex-dev/resend";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { jwt, magicLink } from "better-auth/plugins";
-import { query, type ActionCtx, type MutationCtx, type QueryCtx } from "./_generated/server";
+import {
+  internalAction,
+  query,
+  type ActionCtx,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
 import { components, internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import authConfig from "./auth.config";
@@ -23,23 +29,30 @@ const extraTrustedOrigins = [
   "https://fromyou.ai",
 ];
 
-export const authComponent = createClient<DataModel>(components.betterAuth);
-const resend = new Resend(components.resend);
+const getDeepLinkOrigin = () => {
+  const raw = process.env.STELLAR_PROTOCOL;
+  if (!raw) {
+    return "stellar://auth";
+  }
+  const protocol = raw.replace("://", "").replace(":", "");
+  return `${protocol}://auth`;
+};
 
-export const createAuthOptions = (
-  ctx: GenericCtx<DataModel>,
-): BetterAuthOptions => {
+export const authComponent = createClient<DataModel>(components.betterAuth);
+const resend = new Resend(components.resend, { testMode: false });
+
+export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   const siteUrl = getRequiredEnv("SITE_URL");
   const convexSiteUrl = getRequiredEnv("CONVEX_SITE_URL");
   const trustedOrigins = Array.from(
     new Set(
-      [siteUrl, ...extraTrustedOrigins].filter((origin): origin is string =>
+      [siteUrl, getDeepLinkOrigin(), ...extraTrustedOrigins].filter((origin): origin is string =>
         Boolean(origin),
       ),
     ),
   );
 
-  return {
+  const options = {
     baseURL: convexSiteUrl,
     trustedOrigins,
     database: authComponent.adapter(ctx),
@@ -57,19 +70,28 @@ export const createAuthOptions = (
     plugins: [
       crossDomain({ siteUrl }),
       magicLink({
-        sendMagicLink: requireActionCtx(async ({ email, url }, actionCtx) => {
+        sendMagicLink: async ({ email, url }) => {
+          const actionCtx = requireActionCtx(ctx);
           await resend.sendEmail(actionCtx, {
             from: getRequiredEnv("RESEND_FROM"),
             to: email,
             subject: "Sign in to Stellar",
             html: `<p>Click <a href="${url}">here</a> to sign in.</p>`,
           });
-        }),
+        },
       }),
-      jwt(),
+      jwt({
+        jwks: {
+          keyPairConfig: {
+            alg: "RS256",
+          },
+        },
+      }),
       convex({ authConfig, jwksRotateOnTokenGenerationError: true }),
     ],
-  };
+  } satisfies BetterAuthOptions;
+
+  return options;
 };
 
 export const createAuth = (ctx: GenericCtx<DataModel>) =>
@@ -78,6 +100,14 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => authComponent.getAuthUser(ctx),
+});
+
+export const rotateKeys = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const auth = createAuth(ctx);
+    return await auth.api.rotateKeys();
+  },
 });
 
 export const requireUserIdentity = async (
