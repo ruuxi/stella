@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   showWindow: (target: 'mini' | 'full') => ipcRenderer.send('window:show', target),
   captureScreenshot: () => ipcRenderer.invoke('screenshot:capture'),
+  resetDiscoveryState: () => ipcRenderer.invoke('discovery:resetState'),
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
   configureHost: (config: { convexUrl?: string }) => ipcRenderer.invoke('host:configure', config),
   setAuthToken: (payload: { token: string | null }) => ipcRenderer.invoke('auth:setToken', payload),

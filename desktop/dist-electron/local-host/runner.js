@@ -226,6 +226,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
                 conversationId: request.conversationId,
                 deviceId,
                 requestId: request.requestId,
+                agentType: request.payload?.agentType,
             });
             const duration = Date.now() - startTime;
             log(`Tool ${toolName} completed in ${duration}ms`, {

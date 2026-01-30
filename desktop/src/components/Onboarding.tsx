@@ -34,10 +34,11 @@ interface OnboardingStep1Props {
   onAccept?: () => void;
   onInteract?: () => void;
   onSignIn?: () => void;
+  onTrustConfirm?: (level: "none" | "basic" | "full") => void;
   isAuthenticated?: boolean;
 }
 
-export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, isAuthenticated }) => {
+export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, onTrustConfirm, isAuthenticated }) => {
   const [phase, setPhase] = useState<Phase>("typing-intro");
   const [displayed, setDisplayed] = useState("");
   const [showCursor, setShowCursor] = useState(true);
@@ -213,11 +214,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
   const handleTrustConfirm = () => {
     if (!selectedTrust) return;
     onInteract?.();
-    // TODO: Store trust level preference
-    console.log("Trust level confirmed:", selectedTrust);
+    onTrustConfirm?.(selectedTrust);
     setPhase("done");
-    // TODO: re-enable when onboarding is finalized
-    // onComplete();
+    onComplete();
   };
 
   const showClickPrompt = phase === "waiting-click" || phase === "waiting-click-preview";

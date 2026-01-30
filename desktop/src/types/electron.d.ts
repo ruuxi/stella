@@ -20,6 +20,7 @@ export type ElectronApi = {
     width: number
     height: number
   } | null>
+  resetDiscoveryState: () => Promise<{ ok: boolean }>
   getDeviceId: () => Promise<string | null>
   configureHost: (config: { convexUrl?: string }) => Promise<{ deviceId: string | null }>
   setAuthToken: (payload: { token: string | null }) => Promise<{ ok: boolean }>

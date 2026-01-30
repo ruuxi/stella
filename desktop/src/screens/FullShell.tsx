@@ -100,6 +100,10 @@ export const FullShell = () => {
     birthAnimationRef.current = requestAnimationFrame(animate);
   }, [hasExpanded, birthProgress]);
 
+  const appendEvent = useMutation(api.events.appendEvent);
+  const setPreference = useMutation(api.preferences.setPreference);
+  const runContextDiscovery = useAction(api.discovery.runContextDiscovery);
+
   const handleResetOnboarding = useCallback(() => {
     if (birthAnimationRef.current) {
       cancelAnimationFrame(birthAnimationRef.current);
@@ -108,7 +112,46 @@ export const FullShell = () => {
     setHasExpanded(false);
     setOnboardingKey(k => k + 1);
     resetOnboarding();
-  }, [resetOnboarding]);
+    // Clear trust level preference and delete CORE_MEMORY.MD
+    void setPreference({ key: "trust_level", value: "" }).catch(() => {});
+    void window.electronAPI?.resetDiscoveryState?.();
+  }, [resetOnboarding, setPreference]);
+
+  const handleTrustConfirm = useCallback(async (level: "none" | "basic" | "full") => {
+    try {
+      await setPreference({ key: "trust_level", value: level });
+    } catch (error) {
+      console.error("Failed to persist trust level:", error);
+    }
+
+    if (level !== "none" && state.conversationId) {
+      try {
+        const deviceId = await getOrCreateDeviceId();
+        const platform = window.electronAPI?.platform ?? "unknown";
+
+        // Create a user_message event to anchor the discovery flow
+        const anchorEvent = await appendEvent({
+          conversationId: state.conversationId,
+          type: "user_message",
+          deviceId,
+          payload: { text: "", platform, discoveryAnchor: true },
+        });
+
+        if (anchorEvent?._id) {
+          // Fire and forget — runs in background
+          void runContextDiscovery({
+            conversationId: state.conversationId,
+            userMessageId: anchorEvent._id,
+            targetDeviceId: deviceId,
+            platform,
+            trustLevel: level,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to trigger context discovery:", error);
+      }
+    }
+  }, [setPreference, runContextDiscovery, appendEvent, state.conversationId]);
 
   useEffect(() => {
     return () => {
@@ -127,7 +170,6 @@ export const FullShell = () => {
     window.electronAPI?.setAppReady?.(ready);
   }, [isAuthenticated, onboardingDone]);
 
-  const appendEvent = useMutation(api.events.appendEvent);
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const events = useConversationEvents(state.conversationId ?? undefined);
 
@@ -243,7 +285,7 @@ export const FullShell = () => {
       {/* Main content area - full screen with gradient visible */}
       <div className="full-body">
         <div className="session-content">
-          {hasMessages ? (
+          {hasMessages && onboardingDone ? (
             <div className="session-messages">
               <ConversationEvents
                 events={events}
@@ -309,6 +351,7 @@ export const FullShell = () => {
                   onAccept={startBirthAnimation}
                   onInteract={triggerFlash}
                   onSignIn={() => setAuthDialogOpen(true)}
+                  onTrustConfirm={handleTrustConfirm}
                   isAuthenticated={isAuthenticated}
                 />
               )}
