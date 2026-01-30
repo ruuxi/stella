@@ -5,6 +5,24 @@ import os from "os";
 import { spawn } from "child_process";
 import { loadPluginsFromHome } from "./plugins.js";
 
+// Use bun:sqlite when running in Bun, better-sqlite3 otherwise (Electron/Node)
+type SqliteDatabase = {
+  prepare(sql: string): { all(): unknown[] };
+  close(): void;
+};
+
+const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
+  // Check if running in Bun
+  if (typeof globalThis.Bun !== "undefined") {
+    // @ts-expect-error bun:sqlite only available at runtime in Bun
+    const { Database: BunDatabase } = await import("bun:sqlite");
+    return new BunDatabase(dbPath, { readonly: true }) as SqliteDatabase;
+  }
+  // Node.js / Electron
+  const { default: Database } = await import("better-sqlite3");
+  return new Database(dbPath, { readonly: true }) as SqliteDatabase;
+};
+
 const log = (...args: unknown[]) => console.log("[tools]", ...args);
 const logError = (...args: unknown[]) => console.error("[tools]", ...args);
 
@@ -12,6 +30,7 @@ type ToolContext = {
   conversationId: string;
   deviceId: string;
   requestId: string;
+  agentType?: string;
 };
 
 type ToolResult = {
@@ -462,7 +481,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
   };
 
   const handleRead = async (args: Record<string, unknown>): Promise<ToolResult> => {
-    const filePath = String(args.file_path ?? "");
+    const filePath = expandHomePath(String(args.file_path ?? ""));
     const pathCheck = ensureAbsolutePath(filePath);
     if (!pathCheck.ok) return { error: pathCheck.error };
 
@@ -488,7 +507,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
   };
 
   const handleWrite = async (args: Record<string, unknown>): Promise<ToolResult> => {
-    const filePath = String(args.file_path ?? "");
+    const filePath = expandHomePath(String(args.file_path ?? ""));
     const content = String(args.content ?? "");
     const pathCheck = ensureAbsolutePath(filePath);
     if (!pathCheck.ok) return { error: pathCheck.error };
@@ -506,7 +525,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
   };
 
   const handleEdit = async (args: Record<string, unknown>): Promise<ToolResult> => {
-    const filePath = String(args.file_path ?? "");
+    const filePath = expandHomePath(String(args.file_path ?? ""));
     const oldString = String(args.old_string ?? "");
     const newString = String(args.new_string ?? "");
     const replaceAll = Boolean(args.replace_all ?? false);
@@ -702,7 +721,85 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
     };
   };
 
-  const handleBash = async (args: Record<string, unknown>): Promise<ToolResult> => {
+  const isDiscoveryAgent = (agentType?: string) =>
+    agentType?.startsWith("discovery_") ?? false;
+
+  /**
+   * Defense-in-depth: block destructive commands for discovery agents.
+   * Discovery agents should only read — never write, modify, or delete user files.
+   * Writes to system temp ($TEMP, /tmp) are allowed (for copying locked DBs).
+   */
+  const validateDiscoveryBashCommand = (command: string): string | null => {
+    const normalized = command.toLowerCase();
+
+    // Block output redirects to non-temp locations
+    // Allow: cp ... $TEMP/, cp ... /tmp/
+    // Block: > file, >> file, tee file (unless targeting temp)
+    const dangerousPatterns = [
+      /\brm\s/,
+      /\bmv\s/,
+      /\bdd\s/,
+      /\bchmod\s/,
+      /\bchown\s/,
+      /\bmkfs\b/,
+      /\bshred\b/,
+      /\btruncate\b/,
+    ];
+
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(normalized)) {
+        return `Discovery agents cannot use destructive commands. Blocked: ${command.slice(0, 100)}`;
+      }
+    }
+
+    // Block redirects that don't target temp directories or /dev/null
+    // Use a more specific pattern: redirect must be preceded by whitespace or digit (for 2>&1)
+    // and followed by a path-like target (not just a number, which would be SQL comparison like "> 0")
+    const redirectMatch = command.match(/(?:^|[\s\d])>{1,2}\s*([^\s|&;]+)/);
+    if (redirectMatch) {
+      const target = redirectMatch[1];
+      // Skip if target is purely numeric (e.g., SQL "WHERE x > 0" or shell "2>&1")
+      if (/^\d+$/.test(target)) {
+        // This is likely SQL comparison or fd redirect, not a file redirect
+      } else {
+        const isSafe =
+          target === "/dev/null" ||
+          target.includes("$TEMP") ||
+          target.includes("%TEMP%") ||
+          target.includes("$env:TEMP") ||
+          target.startsWith("/tmp") ||
+          target.includes("/tmp/");
+        if (!isSafe) {
+          return `Discovery agents can only redirect output to temp directories. Blocked target: ${target}`;
+        }
+      }
+    }
+
+    // Block tee to non-temp paths
+    const teeMatch = command.match(/\btee\s+([^\s|&;]+)/);
+    if (teeMatch) {
+      const target = teeMatch[1];
+      const isTemp =
+        target.includes("$TEMP") ||
+        target.startsWith("/tmp") ||
+        target.includes("/tmp/");
+      if (!isTemp) {
+        return `Discovery agents can only tee to temp directories. Blocked target: ${target}`;
+      }
+    }
+
+    return null; // Command is safe
+  };
+
+  const handleBash = async (args: Record<string, unknown>, context?: ToolContext): Promise<ToolResult> => {
+    if (context && isDiscoveryAgent(context.agentType)) {
+      const command = String(args.command ?? "");
+      const rejection = validateDiscoveryBashCommand(command);
+      if (rejection) {
+        return { error: rejection };
+      }
+    }
+
     const command = String(args.command ?? "");
     const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
     const cwd = String(args.working_directory ?? process.cwd());
@@ -1091,6 +1188,69 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
     }
   };
 
+  /**
+   * SqliteQuery: Execute read-only SQL queries on SQLite databases.
+   * Only available to discovery agents for security.
+   */
+  const handleSqliteQuery = async (
+    args: Record<string, unknown>,
+    context?: ToolContext,
+  ): Promise<ToolResult> => {
+    // Only allow discovery agents to use this tool
+    if (!context || !isDiscoveryAgent(context.agentType)) {
+      return { error: "SqliteQuery is only available to discovery agents." };
+    }
+
+    const dbPath = expandHomePath(String(args.database_path ?? ""));
+    const query = String(args.query ?? "").trim();
+    const limit = Math.min(Number(args.limit ?? 100), 500);
+
+    if (!dbPath) {
+      return { error: "database_path is required." };
+    }
+    if (!query) {
+      return { error: "query is required." };
+    }
+
+    // Block non-SELECT queries for safety
+    const normalizedQuery = query.toLowerCase().trim();
+    if (!normalizedQuery.startsWith("select") && !normalizedQuery.startsWith("pragma")) {
+      return { error: "Only SELECT and PRAGMA queries are allowed." };
+    }
+
+    // Verify database file exists
+    try {
+      await fs.access(dbPath);
+    } catch {
+      return { error: `Database not found: ${dbPath}` };
+    }
+
+    try {
+      const db = await openDatabase(dbPath);
+      
+      // Add LIMIT if not present to prevent massive result sets
+      let finalQuery = query;
+      if (!normalizedQuery.includes(" limit ")) {
+        finalQuery = `${query} LIMIT ${limit}`;
+      }
+
+      const stmt = db.prepare(finalQuery);
+      const rows = stmt.all();
+      db.close();
+
+      if (rows.length === 0) {
+        return { result: "Query returned no results." };
+      }
+
+      const json = JSON.stringify(rows, null, 2);
+      return {
+        result: `Query returned ${rows.length} row(s):\n\n${truncate(json, 20_000)}`,
+      };
+    } catch (error) {
+      return { error: `SQLite error: ${(error as Error).message}` };
+    }
+  };
+
   const notConfigured = (name: string): ToolResult => ({
     result: `${name} is not configured on this device yet.`,
   });
@@ -1104,7 +1264,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
     Edit: (args) => handleEdit(args),
     Glob: (args) => handleGlob(args),
     Grep: (args) => handleGrep(args),
-    Bash: (args) => handleBash(args),
+    Bash: (args, context) => handleBash(args, context),
     SkillBash: (args) => handleSkillBash(args),
     KillShell: (args) => handleKillShell(args),
     WebFetch: (args) => handleWebFetch(args),
@@ -1115,6 +1275,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
     TaskOutput: (args) => handleTaskOutput(args),
     AskUserQuestion: (args) => handleAskUser(args),
     RequestCredential: (args) => handleRequestCredential(args),
+    SqliteQuery: (args, context) => handleSqliteQuery(args, context),
     ImageGenerate: async () => notConfigured("ImageGenerate"),
     ImageEdit: async () => notConfigured("ImageEdit"),
     VideoGenerate: async () => notConfigured("VideoGenerate"),
@@ -1131,6 +1292,11 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
         : toolArgs,
       context,
     });
+
+    // Defense-in-depth: block Write/Edit for discovery agents even if backend allowlist is bypassed
+    if (isDiscoveryAgent(context.agentType) && (toolName === "Write" || toolName === "Edit")) {
+      return { error: `Discovery agents cannot use ${toolName}. They are read-only.` };
+    }
 
     const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
     if (!handler) {

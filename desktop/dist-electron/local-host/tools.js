@@ -293,7 +293,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
         });
     };
     const handleRead = async (args) => {
-        const filePath = String(args.file_path ?? "");
+        const filePath = expandHomePath(String(args.file_path ?? ""));
         const pathCheck = ensureAbsolutePath(filePath);
         if (!pathCheck.ok)
             return { error: pathCheck.error };
@@ -319,7 +319,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
         }
     };
     const handleWrite = async (args) => {
-        const filePath = String(args.file_path ?? "");
+        const filePath = expandHomePath(String(args.file_path ?? ""));
         const content = String(args.content ?? "");
         const pathCheck = ensureAbsolutePath(filePath);
         if (!pathCheck.ok)
@@ -337,7 +337,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
         }
     };
     const handleEdit = async (args) => {
-        const filePath = String(args.file_path ?? "");
+        const filePath = expandHomePath(String(args.file_path ?? ""));
         const oldString = String(args.old_string ?? "");
         const newString = String(args.new_string ?? "");
         const replaceAll = Boolean(args.replace_all ?? false);
@@ -528,7 +528,67 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
             result: `Found ${results.length} result(s):\n\n${truncate(results.join("\n"))}`,
         };
     };
-    const handleBash = async (args) => {
+    const isDiscoveryAgent = (agentType) => agentType?.startsWith("discovery_") ?? false;
+    /**
+     * Defense-in-depth: block destructive commands for discovery agents.
+     * Discovery agents should only read — never write, modify, or delete user files.
+     * Writes to system temp ($TEMP, /tmp) are allowed (for copying locked DBs).
+     */
+    const validateDiscoveryBashCommand = (command) => {
+        const normalized = command.toLowerCase();
+        // Block output redirects to non-temp locations
+        // Allow: cp ... $TEMP/, cp ... /tmp/
+        // Block: > file, >> file, tee file (unless targeting temp)
+        const dangerousPatterns = [
+            /\brm\s/,
+            /\bmv\s/,
+            /\bdd\s/,
+            /\bchmod\s/,
+            /\bchown\s/,
+            /\bmkfs\b/,
+            /\bshred\b/,
+            /\btruncate\b/,
+        ];
+        for (const pattern of dangerousPatterns) {
+            if (pattern.test(normalized)) {
+                return `Discovery agents cannot use destructive commands. Blocked: ${command.slice(0, 100)}`;
+            }
+        }
+        // Block redirects that don't target temp directories or /dev/null
+        const redirectMatch = command.match(/>{1,2}\s*([^\s|&;]+)/);
+        if (redirectMatch) {
+            const target = redirectMatch[1];
+            const isSafe = target === "/dev/null" ||
+                target.includes("$TEMP") ||
+                target.includes("%TEMP%") ||
+                target.includes("$env:TEMP") ||
+                target.startsWith("/tmp") ||
+                target.includes("/tmp/");
+            if (!isSafe) {
+                return `Discovery agents can only redirect output to temp directories. Blocked target: ${target}`;
+            }
+        }
+        // Block tee to non-temp paths
+        const teeMatch = command.match(/\btee\s+([^\s|&;]+)/);
+        if (teeMatch) {
+            const target = teeMatch[1];
+            const isTemp = target.includes("$TEMP") ||
+                target.startsWith("/tmp") ||
+                target.includes("/tmp/");
+            if (!isTemp) {
+                return `Discovery agents can only tee to temp directories. Blocked target: ${target}`;
+            }
+        }
+        return null; // Command is safe
+    };
+    const handleBash = async (args, context) => {
+        if (context && isDiscoveryAgent(context.agentType)) {
+            const command = String(args.command ?? "");
+            const rejection = validateDiscoveryBashCommand(command);
+            if (rejection) {
+                return { error: rejection };
+            }
+        }
         const command = String(args.command ?? "");
         const timeout = Math.min(Number(args.timeout ?? 120000), 600000);
         const cwd = String(args.working_directory ?? process.cwd());
@@ -849,7 +909,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
         Edit: (args) => handleEdit(args),
         Glob: (args) => handleGlob(args),
         Grep: (args) => handleGrep(args),
-        Bash: (args) => handleBash(args),
+        Bash: (args, context) => handleBash(args, context),
         SkillBash: (args) => handleSkillBash(args),
         KillShell: (args) => handleKillShell(args),
         WebFetch: (args) => handleWebFetch(args),
@@ -871,6 +931,10 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
                 : toolArgs,
             context,
         });
+        // Defense-in-depth: block Write/Edit for discovery agents even if backend allowlist is bypassed
+        if (isDiscoveryAgent(context.agentType) && (toolName === "Write" || toolName === "Edit")) {
+            return { error: `Discovery agents cannot use ${toolName}. They are read-only.` };
+        }
         const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
         if (!handler) {
             const availableTools = [

@@ -1,3 +1,6 @@
+# Testing folder (contains API keys)
+../testing-folder/
+
 # Logs
 logs
 *.log

@@ -460,6 +460,19 @@ app.whenReady().then(async () => {
     return { ok: true }
   })
 
+  ipcMain.handle('discovery:resetState', async () => {
+    const os = await import('os')
+    const fs = await import('fs/promises')
+    const path = await import('path')
+    const stateDir = path.join(os.homedir(), '.stellar', 'state')
+    try {
+      await fs.rm(path.join(stateDir, 'CORE_MEMORY.MD'), { force: true })
+    } catch {
+      // File may not exist — that's fine
+    }
+    return { ok: true }
+  })
+
   // Window control handlers for custom title bar
   ipcMain.on('window:minimize', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)

@@ -29,6 +29,7 @@ type ToolRequestEvent = {
     toolName?: string;
     args?: Record<string, unknown>;
     targetDeviceId?: string;
+    agentType?: string;
   };
 };
 
@@ -293,6 +294,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
         conversationId: request.conversationId,
         deviceId,
         requestId: request.requestId,
+        agentType: request.payload?.agentType,
       });
       const duration = Date.now() - startTime;
 
