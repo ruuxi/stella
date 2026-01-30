@@ -257,6 +257,8 @@ export const listToolRequestsForDevice = query({
     deviceId: v.string(),
     conversationId: v.optional(v.id("conversations")),
     paginationOpts: paginationOptsValidator,
+    // Only return requests created after this timestamp (for fresh subscriptions)
+    since: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
@@ -269,6 +271,10 @@ export const listToolRequestsForDevice = query({
     const filtered: typeof page.page = [];
     for (const event of page.page) {
       if (event.type !== "tool_request") {
+        continue;
+      }
+      // Skip events older than 'since' timestamp (ignore historical requests)
+      if (args.since !== undefined && event.timestamp < args.since) {
         continue;
       }
       if (args.conversationId && event.conversationId !== args.conversationId) {
