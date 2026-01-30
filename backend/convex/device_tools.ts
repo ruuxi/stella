@@ -27,6 +27,7 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "AskUserQuestion",
   "RequestCredential",
   "SkillBash",
+  "SqliteQuery",
   "ImageGenerate",
   "ImageEdit",
   "VideoGenerate",
@@ -286,6 +287,16 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         run_in_background: z.boolean().optional(),
       }),
       execute: (args) => call("SkillBash", args),
+    }),
+    SqliteQuery: tool({
+      description:
+        "Execute a read-only SQL query on a local SQLite database. Only SELECT and PRAGMA queries are allowed. Only available to discovery agents.",
+      inputSchema: z.object({
+        database_path: z.string().min(1),
+        query: z.string().min(1),
+        limit: z.number().int().positive().max(500).optional(),
+      }),
+      execute: (args) => call("SqliteQuery", args),
     }),
     ImageGenerate: tool({
       description: "Generate an image from a prompt.",

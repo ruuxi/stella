@@ -83,6 +83,7 @@ const buildSkillsSection = (
 export const buildSystemPrompt = async (
   ctx: ActionCtx,
   agentType: string,
+  options?: { ownerId?: string },
 ): Promise<PromptBuildResult> => {
   const agent = await ctx.runQuery(api.agents.getAgentConfig, {
     agentType,
@@ -107,6 +108,22 @@ export const buildSystemPrompt = async (
   const systemParts = [agent.systemPrompt];
   if (skillsSection) {
     systemParts.push(skillsSection);
+  }
+
+  // Add CORE_MEMORY awareness for the general agent when trust level is basic or full
+  if (agentType === "general" && options?.ownerId) {
+    try {
+      const trustLevel = await ctx.runQuery(api.preferences.getPreference, {
+        key: "trust_level",
+      });
+      if (trustLevel === "basic" || trustLevel === "full") {
+        systemParts.push(
+          "If ~/.stellar/state/CORE_MEMORY.MD exists, read it at the start of new conversations to personalize your responses. This contains the user's discovered context profile.",
+        );
+      }
+    } catch {
+      // Preference not found or auth issue — skip
+    }
   }
 
   const maxTaskDepthValue = Number(agent.maxTaskDepth ?? 2);

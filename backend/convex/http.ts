@@ -219,7 +219,7 @@ http.route({
     await ctx.runMutation(api.agents.ensureBuiltins, {});
 
     const agentType = body.agent === "self_mod" ? "self_mod" : "general";
-    const promptBuild = await buildSystemPrompt(ctx, agentType);
+    const promptBuild = await buildSystemPrompt(ctx, agentType, { ownerId: conversation.ownerId });
 
     // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);

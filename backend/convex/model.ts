@@ -26,6 +26,18 @@ const DEFAULT_MODEL: ModelConfig = {
 };
 
 // ============================================================================
+// DISCOVERY - Context discovery agents
+// ============================================================================
+const DISCOVERY_MODEL: ModelConfig = {
+  model: "zai/glm-4.7",
+  providerOptions: {
+    gateway: {
+      order: ["cerebras"],
+    },
+  },
+};
+
+// ============================================================================
 // PER-AGENT MODEL CONFIGURATION
 // ============================================================================
 const AGENT_MODELS: Record<string, ModelConfig> = {
@@ -68,6 +80,15 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
       },
     },
   },
+
+  // Context discovery agents (lightweight, read-only)
+  discovery_browser: DISCOVERY_MODEL,
+  discovery_dev: DISCOVERY_MODEL,
+  discovery_comms: DISCOVERY_MODEL,
+  discovery_apps: DISCOVERY_MODEL,
+
+  // Core memory synthesis (distills discovery outputs)
+  discovery_synthesis: DISCOVERY_MODEL,
 };
 
 /**
@@ -81,4 +102,4 @@ export function getModelConfig(agentType: string): ModelConfig {
 /**
  * Export individual configs for direct access if needed.
  */
-export { DEFAULT_MODEL, AGENT_MODELS };
+export { DEFAULT_MODEL, DISCOVERY_MODEL, AGENT_MODELS };
