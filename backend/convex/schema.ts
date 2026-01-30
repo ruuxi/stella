@@ -146,6 +146,13 @@ export default defineSchema({
     .index("by_tool_key", ["id"])
     .index("by_name", ["name"])
     .index("by_plugin", ["pluginId", "updatedAt"]),
+  user_preferences: defineTable({
+    ownerId: v.string(),
+    key: v.string(),
+    value: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_key", ["ownerId", "key"]),
   tasks: defineTable({
     conversationId: v.id("conversations"),
     parentTaskId: v.optional(v.id("tasks")),

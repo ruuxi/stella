@@ -30,6 +30,7 @@ export const BASE_TOOL_NAMES = [
   "RequestCredential",
   "IntegrationRequest",
   "SkillBash",
+  "SqliteQuery",
   "ImageGenerate",
   "ImageEdit",
   "VideoGenerate",
