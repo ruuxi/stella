@@ -45,6 +45,21 @@ const agentClientValidator = v.object({
   updatedAt: v.number(),
 });
 
+// Agent config response (without _id, _creationTime, model)
+const agentConfigValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  description: v.string(),
+  systemPrompt: v.string(),
+  agentTypes: v.array(v.string()),
+  toolsAllowlist: v.optional(v.array(v.string())),
+  defaultSkills: v.optional(v.array(v.string())),
+  maxTaskDepth: v.optional(v.number()),
+  version: v.number(),
+  source: v.string(),
+  updatedAt: v.number(),
+});
+
 type AgentRecord = {
   id: string;
   name: string;
@@ -339,19 +354,7 @@ export const getAgentConfig = query({
   args: {
     agentType: v.string(),
   },
-  returns: v.object({
-    id: v.string(),
-    name: v.string(),
-    description: v.string(),
-    systemPrompt: v.string(),
-    agentTypes: v.array(v.string()),
-    toolsAllowlist: v.optional(v.array(v.string())),
-    defaultSkills: v.optional(v.array(v.string())),
-    maxTaskDepth: v.optional(v.number()),
-    version: v.number(),
-    source: v.string(),
-    updatedAt: v.number(),
-  }),
+  returns: agentConfigValidator,
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("agents")
@@ -359,7 +362,7 @@ export const getAgentConfig = query({
       .take(1);
 
     if (record[0]) {
-      return sanitizeAgentForClient(record[0]) as any;
+      return sanitizeAgentForClient(record[0]);
     }
 
     const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
@@ -367,7 +370,7 @@ export const getAgentConfig = query({
       return sanitizeAgentForClient({
         ...builtin,
         updatedAt: Date.now(),
-      }) as any;
+      });
     }
 
     return sanitizeAgentForClient({
@@ -382,33 +385,20 @@ export const getAgentConfig = query({
       version: 1,
       source: "fallback",
       updatedAt: Date.now(),
-    }) as any;
+    });
   },
 });
 
 export const listAgents = query({
   args: {},
-  returns: v.array(v.object({
-    _id: v.id("agents"),
-    _creationTime: v.number(),
-    id: v.string(),
-    name: v.string(),
-    description: v.string(),
-    systemPrompt: v.string(),
-    agentTypes: v.array(v.string()),
-    toolsAllowlist: v.optional(v.array(v.string())),
-    defaultSkills: v.optional(v.array(v.string())),
-    maxTaskDepth: v.optional(v.number()),
-    version: v.number(),
-    source: v.string(),
-    updatedAt: v.number(),
-  })),
+  returns: v.array(agentClientValidator),
   handler: async (ctx) => {
     const records = await ctx.db
       .query("agents")
       .withIndex("by_updated")
       .order("desc")
       .take(200);
+    // Type assertion needed: sanitizeAgentForClient strips `model` but TS can't infer the result matches the validator
     return records.map((record) => sanitizeAgentForClient(record)) as any;
   },
 });

@@ -303,6 +303,13 @@ export const listEvents = query({
     conversationId: v.id("conversations"),
     paginationOpts: paginationOptsValidator,
   },
+  returns: v.object({
+    page: v.array(eventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
+  }),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     return await ctx.db
@@ -323,6 +330,13 @@ export const listToolRequestsForDevice = query({
     // Only return requests created after this timestamp (for fresh subscriptions)
     since: v.optional(v.number()),
   },
+  returns: v.object({
+    page: v.array(eventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
+  }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const page = await ctx.db
