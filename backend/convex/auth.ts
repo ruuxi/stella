@@ -14,6 +14,7 @@ import {
 import { components, internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import authConfig from "./auth.config";
+import { ConvexError } from "convex/values";
 
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
@@ -115,7 +116,7 @@ export const requireUserIdentity = async (
 ) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
-    throw new Error("Unauthenticated");
+    throw new ConvexError({ code: "UNAUTHENTICATED", message: "Authentication required" });
   }
   return identity;
 };
@@ -144,7 +145,7 @@ export const requireConversationOwner = async (
   const ownerId = await requireUserId(ctx);
   const conversation = await loadConversation(ctx, conversationId);
   if (!conversation || conversation.ownerId !== ownerId) {
-    throw new Error("Conversation not found");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Conversation not found" });
   }
   return conversation;
 };

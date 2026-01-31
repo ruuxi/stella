@@ -1,6 +1,26 @@
 import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 
+const skillValidator = v.object({
+  _id: v.id("skills"),
+  _creationTime: v.number(),
+  id: v.string(),
+  name: v.string(),
+  description: v.string(),
+  markdown: v.string(),
+  agentTypes: v.array(v.string()),
+  toolsAllowlist: v.optional(v.array(v.string())),
+  tags: v.optional(v.array(v.string())),
+  execution: v.optional(v.string()),
+  requiresSecrets: v.optional(v.array(v.string())),
+  publicIntegration: v.optional(v.boolean()),
+  secretMounts: v.optional(v.any()),
+  version: v.number(),
+  source: v.string(),
+  enabled: v.boolean(),
+  updatedAt: v.number(),
+});
+
 type SkillRecord = {
   id: string;
   name: string;
@@ -109,8 +129,9 @@ const upsertSkill = async (ctx: MutationCtx, skill: SkillRecord) => {
 
 export const upsertMany = mutation({
   args: {
-    skills: v.any(),
+    skills: v.array(v.any()),
   },
+  returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
     const items = Array.isArray(args.skills) ? args.skills : [];
     let upserted = 0;
@@ -128,6 +149,7 @@ export const listEnabledSkills = query({
   args: {
     agentType: v.string(),
   },
+  returns: v.array(skillValidator),
   handler: async (ctx, args) => {
     const all = await ctx.db.query("skills").withIndex("by_updated").order("desc").take(400);
     return all.filter((skill) => {
@@ -140,6 +162,7 @@ export const listEnabledSkills = query({
 
 export const listSkills = query({
   args: {},
+  returns: v.array(skillValidator),
   handler: async (ctx) => {
     return await ctx.db.query("skills").withIndex("by_updated").order("desc").take(400);
   },

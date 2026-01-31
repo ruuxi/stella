@@ -1,13 +1,25 @@
 import { action, internalMutation, internalQuery } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireConversationOwner } from "./auth";
 
+const attachmentValidator = v.object({
+  _id: v.id("attachments"),
+  _creationTime: v.number(),
+  conversationId: v.id("conversations"),
+  deviceId: v.string(),
+  storageKey: v.string(),
+  url: v.optional(v.string()),
+  mimeType: v.string(),
+  size: v.number(),
+  createdAt: v.number(),
+});
+
 const parseDataUrl = (dataUrl: string) => {
   const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
   if (!match) {
-    throw new Error("Invalid data URL");
+    throw new ConvexError({ code: "INVALID_ARGUMENT", message: "Invalid data URL" });
   }
   const [, mimeType, base64] = match;
   // Use atob + Uint8Array instead of Buffer (not available in Convex runtime)
@@ -69,6 +81,7 @@ export const insertAttachment = internalMutation({
     mimeType: v.string(),
     size: v.number(),
   },
+  returns: v.id("attachments"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("attachments", {
       conversationId: args.conversationId,
@@ -84,6 +97,7 @@ export const insertAttachment = internalMutation({
 
 export const getById = internalQuery({
   args: { id: v.id("attachments") },
+  returns: v.union(attachmentValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },

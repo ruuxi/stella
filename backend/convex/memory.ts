@@ -5,6 +5,20 @@ import type { Doc } from "./_generated/dataModel";
 import { embed as aiEmbed, generateText } from "ai";
 import { getModelConfig } from "./model";
 
+const memoryValidator = v.object({
+  _id: v.id("memories"),
+  _creationTime: v.number(),
+  ownerId: v.string(),
+  conversationId: v.optional(v.id("conversations")),
+  category: v.string(),
+  subcategory: v.string(),
+  content: v.string(),
+  embedding: v.array(v.float64()),
+  accessedAt: v.number(),
+  createdAt: v.number(),
+  decay: v.number(),
+});
+
 // ---------------------------------------------------------------------------
 // Embedding helper — uses the AI SDK gateway, same as streamText
 // ---------------------------------------------------------------------------
@@ -163,6 +177,7 @@ export const getExistingMemories = internalQuery({
     category: v.string(),
     subcategory: v.string(),
   },
+  returns: v.array(memoryValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("memories")
@@ -186,6 +201,7 @@ export const insertMemory = internalMutation({
     content: v.string(),
     embedding: v.array(v.float64()),
   },
+  returns: v.id("memories"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("memories", {
@@ -212,6 +228,7 @@ export const mergeMemory = internalMutation({
     content: v.string(),
     embedding: v.array(v.float64()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.memoryId, {
       content: args.content,
@@ -219,6 +236,7 @@ export const mergeMemory = internalMutation({
       accessedAt: Date.now(),
       decay: 0,
     });
+    return null;
   },
 });
 
@@ -423,11 +441,13 @@ export const search = internalAction({
 
 export const touchMemory = internalMutation({
   args: { memoryId: v.id("memories") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.memoryId, {
       accessedAt: Date.now(),
       decay: 0,
     });
+    return null;
   },
 });
 
@@ -437,6 +457,7 @@ export const touchMemory = internalMutation({
 
 export const getMemoryById = internalQuery({
   args: { id: v.id("memories") },
+  returns: v.union(memoryValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -448,6 +469,11 @@ export const getMemoryById = internalQuery({
 
 export const listCategories = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.array(v.object({
+    category: v.string(),
+    subcategory: v.string(),
+    count: v.number(),
+  })),
   handler: async (ctx, args) => {
     const all = await ctx.db
       .query("memories")
@@ -507,6 +533,7 @@ export const listStaleMemories = internalQuery({
     beforeTimestamp: v.number(),
     limit: v.number(),
   },
+  returns: v.array(memoryValidator),
   handler: async (ctx, args) => {
     const decayLevels = [0, 1, 2, 3];
     const candidates: Doc<"memories">[] = [];
@@ -543,12 +570,14 @@ export const patchDecay = internalMutation({
     embedding: v.array(v.float64()),
     decay: v.number(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.memoryId, {
       content: args.content,
       embedding: args.embedding,
       decay: args.decay,
     });
+    return null;
   },
 });
 
@@ -558,7 +587,9 @@ export const patchDecay = internalMutation({
 
 export const deleteMemory = internalMutation({
   args: { memoryId: v.id("memories") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.memoryId);
+    return null;
   },
 });
