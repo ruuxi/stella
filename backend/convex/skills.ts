@@ -151,9 +151,12 @@ export const listEnabledSkills = query({
   },
   returns: v.array(skillValidator),
   handler: async (ctx, args) => {
-    const all = await ctx.db.query("skills").withIndex("by_updated").order("desc").take(400);
-    return all.filter((skill) => {
-      if (!skill.enabled) return false;
+    // Use by_enabled index to fetch only enabled skills, then post-filter by agentType
+    const enabledSkills = await ctx.db
+      .query("skills")
+      .withIndex("by_enabled", (q) => q.eq("enabled", true))
+      .take(400);
+    return enabledSkills.filter((skill) => {
       if (!skill.agentTypes || skill.agentTypes.length === 0) return true;
       return skill.agentTypes.includes(args.agentType);
     });
