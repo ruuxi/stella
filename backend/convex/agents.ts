@@ -54,6 +54,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "ImageGenerate",
       "ImageEdit",
       "VideoGenerate",
+      "MemorySearch",
     ],
     defaultSkills: [],
     maxTaskDepth: 2,

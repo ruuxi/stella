@@ -3,6 +3,48 @@ import { mutation, query, internalQuery, internalMutation } from "./_generated/s
 import { v } from "convex/values";
 import { requireConversationOwner, requireUserId } from "./auth";
 
+export const countByConversation = internalQuery({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .take(10000);
+    return events.length;
+  },
+});
+
+export const listOlderMessages = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    beforeTimestamp: v.number(),
+    afterTimestamp: v.optional(v.number()),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const afterTs = args.afterTimestamp ?? 0;
+    // Use index range to start scanning from afterTimestamp, up to beforeTimestamp.
+    // The by_conversation index is ["conversationId", "timestamp"], so we can
+    // bound the timestamp range efficiently.
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_conversation", (q) =>
+        q
+          .eq("conversationId", args.conversationId)
+          .gt("timestamp", afterTs)
+          .lt("timestamp", args.beforeTimestamp),
+      )
+      .order("asc")
+      .take(args.limit * 3);
+
+    return events
+      .filter(
+        (e) => e.type === "user_message" || e.type === "assistant_message",
+      )
+      .slice(0, args.limit);
+  },
+});
+
 export const getById = internalQuery({
   args: { id: v.id("events") },
   handler: async (ctx, args) => {

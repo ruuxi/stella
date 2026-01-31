@@ -34,6 +34,7 @@ export const BASE_TOOL_NAMES = [
   "ImageGenerate",
   "ImageEdit",
   "VideoGenerate",
+  "MemorySearch",
 ] as const;
 
 type PluginToolDescriptor = {
@@ -410,6 +411,43 @@ export const createTools = (
     },
   });
 
+  const MemorySearch = tool({
+    description:
+      "Search episodic memories for relevant past context. Use when the user references past conversations, previous tasks, or you need historical context.",
+    inputSchema: z.object({
+      query: z.string().min(1).describe("What to search for in memory"),
+      category: z.string().optional().describe("Optional category filter"),
+    }),
+    execute: async (args) => {
+      if (!options.ownerId) {
+        return "MemorySearch requires an authenticated owner context.";
+      }
+      try {
+        const [categories, results] = await Promise.all([
+          ctx.runQuery(internal.memory.listCategories, { ownerId: options.ownerId }),
+          ctx.runAction(internal.memory.search, {
+            query: args.query,
+            category: args.category,
+            ownerId: options.ownerId,
+          }),
+        ]);
+        const categoryTree = categories
+          .map((c: { category: string; subcategory: string; count: number }) =>
+            `${c.category}/${c.subcategory} (${c.count})`,
+          )
+          .join("\n");
+        const memories = results
+          .map((r: { category: string; subcategory: string; content: string }) =>
+            `[${r.category}/${r.subcategory}] ${r.content}`,
+          )
+          .join("\n\n");
+        return `Available categories:\n${categoryTree}\n\n---\nMatched memories:\n${memories || "(none)"}`;
+      } catch (error) {
+        return `MemorySearch failed: ${(error as Error).message}`;
+      }
+    },
+  });
+
   const allTools: ToolSet = {
     ...coreTools,
     ...backendTools,
@@ -417,6 +455,7 @@ export const createTools = (
     Task,
     TaskOutput,
     AgentInvoke,
+    MemorySearch,
   };
 
   const allowlist = options.toolsAllowlist
