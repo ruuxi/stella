@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { embed as aiEmbed, generateText } from "ai";
 import { getModelConfig } from "./model";
 
@@ -33,6 +34,76 @@ async function cheapLLM(systemPrompt: string, userPrompt: string): Promise<strin
   });
   return text;
 }
+
+type MemoryFact = { category: string; subcategory: string; content: string };
+type FactExtractionResult = { facts: MemoryFact[]; parseOk: boolean };
+
+const extractJsonArray = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const start = trimmed.indexOf("[");
+  const end = trimmed.lastIndexOf("]");
+  if (start < 0 || end <= start) return null;
+  return trimmed.slice(start, end + 1).trim();
+};
+
+const normalizeFacts = (parsed: unknown): MemoryFact[] => {
+  if (!Array.isArray(parsed)) return [];
+  const seen = new Set<string>();
+  const facts: MemoryFact[] = [];
+  for (const item of parsed) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (
+      typeof record.category !== "string" ||
+      typeof record.subcategory !== "string" ||
+      typeof record.content !== "string"
+    ) {
+      continue;
+    }
+    const category = record.category.trim();
+    const subcategory = record.subcategory.trim();
+    const content = record.content.trim();
+    if (!category || !subcategory || !content) continue;
+    const key = `${category}|${subcategory}|${content}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    facts.push({ category, subcategory, content });
+  }
+  return facts;
+};
+
+const parseFactResponse = (response: string): FactExtractionResult => {
+  const trimmed = response.trim();
+  const tryParse = (value: string): FactExtractionResult | null => {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return { facts: normalizeFacts(parsed), parseOk: true };
+      }
+      if (parsed && typeof parsed === "object") {
+        const facts = (parsed as Record<string, unknown>).facts;
+        if (Array.isArray(facts)) {
+          return { facts: normalizeFacts(facts), parseOk: true };
+        }
+      }
+      return { facts: [], parseOk: false };
+    } catch {
+      return null;
+    }
+  };
+
+  const direct = tryParse(trimmed);
+  if (direct) return direct;
+
+  const arrayBlock = extractJsonArray(trimmed);
+  if (arrayBlock) {
+    const fromBlock = tryParse(arrayBlock);
+    if (fromBlock) return fromBlock;
+  }
+
+  return { facts: [], parseOk: false };
+};
 
 // ---------------------------------------------------------------------------
 // Prompts
@@ -76,22 +147,9 @@ const DECAY_SUMMARIZE_PROMPT = `Compress this memory into a shorter, more abstra
 
 export const extractFacts = internalAction({
   args: { summary: v.string() },
-  handler: async (_ctx, args): Promise<Array<{ category: string; subcategory: string; content: string }>> => {
+  handler: async (_ctx, args): Promise<FactExtractionResult> => {
     const response = await cheapLLM(FACT_EXTRACTION_PROMPT, args.summary);
-    try {
-      const parsed = JSON.parse(response.trim());
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(
-        (f: unknown) =>
-          f &&
-          typeof f === "object" &&
-          typeof (f as Record<string, unknown>).category === "string" &&
-          typeof (f as Record<string, unknown>).subcategory === "string" &&
-          typeof (f as Record<string, unknown>).content === "string",
-      ) as Array<{ category: string; subcategory: string; content: string }>;
-    } catch {
-      return [];
-    }
+    return parseFactResponse(response);
   },
 });
 
@@ -197,7 +255,10 @@ export const ingestSummary = internalAction({
     }
 
     // 1. Extract facts
-    const facts = await ctx.runAction(internal.memory.extractFacts, { summary });
+    const { facts, parseOk } = await ctx.runAction(internal.memory.extractFacts, { summary });
+    if (!parseOk) {
+      return;
+    }
     if (facts.length === 0) {
       await markIngested();
       return;
@@ -226,13 +287,14 @@ export const ingestSummary = internalAction({
           const parsed = JSON.parse(dedupResult.trim());
           if (parsed.action === "SKIP") {
             shouldInsert = false;
-          } else if (parsed.action === "MERGE" && typeof parsed.content === "string") {
-            shouldInsert = false;
+          } else if (parsed.action === "MERGE") {
+            const parsedContent = typeof parsed.content === "string" ? parsed.content.trim() : "";
             const targetIdx = typeof parsed.mergeTargetIndex === "number" ? parsed.mergeTargetIndex : 0;
             const target = existing[targetIdx];
-            if (target) {
+            if (target && parsedContent.length > 0) {
+              shouldInsert = false;
               mergeTarget = { _id: target._id as string, content: target.content };
-              mergedContent = parsed.content;
+              mergedContent = parsedContent;
             } else {
               shouldInsert = true;
             }
@@ -279,17 +341,43 @@ export const search = internalAction({
   handler: async (ctx, args): Promise<Array<{ category: string; subcategory: string; content: string; score: number }>> => {
     const vector = await embed(args.query);
 
+    const searchLimit = args.category ? 256 : 10;
+
     // Vector search filters only support q.eq and q.or — no AND.
     // Always filter by ownerId (security). Post-filter by category after fetch.
-    const results = await ctx.vectorSearch("memories", "by_embedding", {
+    const ownerResults = await ctx.vectorSearch("memories", "by_embedding", {
       vector,
-      limit: args.category ? 32 : 10,
+      limit: searchLimit,
       filter: (q) => q.eq("ownerId", args.ownerId),
     });
+
+    let results = ownerResults;
+    if (args.category) {
+      const category = args.category;
+      const categoryResults = await ctx.vectorSearch("memories", "by_embedding", {
+        vector,
+        limit: 256,
+        filter: (q) => q.eq("category", category),
+      });
+      const merged = new Map<string, { _id: any; _score: number }>();
+      const addResult = (item: { _id: any; _score: number }) => {
+        const key = String(item._id);
+        const existing = merged.get(key);
+        if (!existing || item._score > existing._score) {
+          merged.set(key, { _id: item._id, _score: item._score });
+        }
+      };
+      ownerResults.forEach(addResult);
+      categoryResults.forEach(addResult);
+      results = Array.from(merged.values()).sort(
+        (a, b) => b._score - a._score || String(a._id).localeCompare(String(b._id)),
+      );
+    }
 
     // Fetch full docs
     type MemoryDoc = {
       _id: string;
+      ownerId: string;
       category: string;
       subcategory: string;
       content: string;
@@ -307,6 +395,7 @@ export const search = internalAction({
     const matched = docs
       .filter((entry): entry is { doc: MemoryDoc; score: number } => {
         if (!entry) return false;
+        if (entry.doc.ownerId !== args.ownerId) return false;
         if (args.category && entry.doc.category !== args.category) return false;
         return true;
       })
@@ -419,15 +508,27 @@ export const listStaleMemories = internalQuery({
     limit: v.number(),
   },
   handler: async (ctx, args) => {
-    // Query memories ordered by decay + accessedAt
-    const results = await ctx.db
-      .query("memories")
-      .withIndex("by_decay")
-      .take(args.limit * 3);
+    const decayLevels = [0, 1, 2, 3];
+    const candidates: Doc<"memories">[] = [];
 
-    return results
-      .filter((m) => m.accessedAt < args.beforeTimestamp)
-      .slice(0, args.limit);
+    for (const decay of decayLevels) {
+      const items = await ctx.db
+        .query("memories")
+        .withIndex("by_decay", (q) =>
+          q.eq("decay", decay).lt("accessedAt", args.beforeTimestamp),
+        )
+        .take(args.limit);
+      candidates.push(...items);
+    }
+
+    candidates.sort(
+      (a, b) =>
+        a.accessedAt - b.accessedAt ||
+        a.decay - b.decay ||
+        String(a._id).localeCompare(String(b._id)),
+    );
+
+    return candidates.slice(0, args.limit);
   },
 });
 
