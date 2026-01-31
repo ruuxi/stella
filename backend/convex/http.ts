@@ -61,7 +61,7 @@ You are running on Linux. Use Linux-compatible commands:
   return "";
 };
 
-const HISTORY_LIMIT = 20;
+const HISTORY_LIMIT = 100;
 
 const http = httpRouter();
 
@@ -285,12 +285,63 @@ http.route({
           content: contentParts,
         },
       ],
-      onFinish: async ({ text }) => {
+      onFinish: async ({ text, usage, totalUsage }) => {
         await ctx.runMutation(internal.events.saveAssistantMessage, {
           conversationId,
           text,
           userMessageId,
         });
+
+        // Track cumulative token usage on conversation
+        const usageTotals = totalUsage ?? usage;
+        const totalTokens = usageTotals?.totalTokens ?? 0;
+        if (totalTokens > 0) {
+          await ctx.runMutation(internal.conversations.patchTokenCount, {
+            conversationId,
+            tokenDelta: totalTokens,
+          });
+        }
+
+        // Check if current context size exceeds 50k input tokens.
+        // Use the larger of last-step vs total usage for safety.
+        const inputTokens = Math.max(usage?.inputTokens ?? 0, totalUsage?.inputTokens ?? 0);
+        if (inputTokens > 50_000) {
+          const oldestHistoryTimestamp =
+            historyEvents.length > 0
+              ? historyEvents[0]?.timestamp ?? Date.now()
+              : Date.now();
+          try {
+            const olderEvents = await ctx.runQuery(
+              internal.events.listOlderMessages,
+              {
+                conversationId,
+                beforeTimestamp: oldestHistoryTimestamp,
+                // Skip events already ingested in a previous run
+                afterTimestamp: conversation.lastIngestedAt ?? undefined,
+                limit: 50,
+              },
+            );
+            if (olderEvents.length > 0) {
+              const latestTimestamp = olderEvents[olderEvents.length - 1]?.timestamp ?? Date.now();
+              // Schedule ingestion as a separate job so it runs independently
+              await ctx.scheduler.runAfter(0, internal.memory.ingestSummary, {
+                conversationId,
+                ownerId: conversation.ownerId,
+                ingestedThroughTimestamp: latestTimestamp,
+                events: olderEvents.map((e: any) => ({
+                  type: e.type as string,
+                  text:
+                    (e.payload &&
+                      typeof e.payload === "object" &&
+                      (e.payload as { text?: string }).text) ??
+                    "",
+                })),
+              });
+            }
+          } catch {
+            // Ingestion failure should not affect the chat response
+          }
+        }
       },
     });
 

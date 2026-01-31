@@ -8,6 +8,8 @@ export default defineSchema({
     isDefault: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
+    tokenCount: v.optional(v.number()),
+    lastIngestedAt: v.optional(v.number()),
   })
     .index("by_owner_default", ["ownerId", "isDefault"])
     .index("by_owner_updated", ["ownerId", "updatedAt"]),
@@ -171,4 +173,22 @@ export default defineSchema({
     .index("by_conversation", ["conversationId", "createdAt"])
     .index("by_status", ["status", "updatedAt"])
     .index("by_parent", ["parentTaskId", "createdAt"]),
+  memories: defineTable({
+    ownerId: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    category: v.string(),
+    subcategory: v.string(),
+    content: v.string(),
+    embedding: v.array(v.float64()),
+    accessedAt: v.number(),
+    createdAt: v.number(),
+    decay: v.number(),
+  })
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["ownerId", "category"],
+    })
+    .index("by_owner_category", ["ownerId", "category", "subcategory"])
+    .index("by_decay", ["decay", "accessedAt"]),
 });

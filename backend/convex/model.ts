@@ -10,6 +10,11 @@ type ModelConfig = {
       only?: string[];
       order?: string[];
     };
+    deepinfra?: {
+      dimensions?: number;
+      [key: string]: any;
+    };
+    [key: string]: any;
   };
 };
 
@@ -89,6 +94,26 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   // Core memory synthesis (distills discovery outputs)
   discovery_synthesis: DISCOVERY_MODEL,
+
+  // Embedding model for episodic memory
+  embedding: {
+    model: "alibaba/qwen3-embedding-8b",
+    providerOptions: {
+      deepinfra: {
+        dimensions: 1536, // Match schema vector index dimensions
+      },
+    },
+  },
+
+  // Cheap model for memory extraction, dedup, decay summarization
+  memory: {
+    model: "zai/glm-4.7",
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
 };
 
 /**
