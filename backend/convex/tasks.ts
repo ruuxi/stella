@@ -1,5 +1,5 @@
 import { action, mutation, query, ActionCtx } from "./_generated/server";
-import { v, ConvexError } from "convex/values";
+import { v, ConvexError, Infer } from "convex/values";
 import { streamText, tool, ToolSet } from "ai";
 import { z } from "zod";
 import { api } from "./_generated/api";
@@ -50,6 +50,9 @@ const taskClientValidator = v.object({
   completedAt: v.optional(v.number()),
 });
 
+// Inferred type from validator for type-safe sanitization
+type TaskClient = Infer<typeof taskClientValidator>;
+
 const DEFAULT_MAX_TASK_DEPTH = 2;
 
 type TaskStatus = "running" | "completed" | "error";
@@ -84,10 +87,17 @@ const formatTaskResult = (task: {
   return `Task running.\nTask ID: ${task._id}\nElapsed: ${duration}ms`;
 };
 
-const sanitizeTaskForClient = <T extends { model?: string } | null | undefined>(task: T) => {
-  if (!task) return task;
-  const { model: _model, ...rest } = task as { model?: string } & Record<string, unknown>;
-  return rest;
+/** Strip model field for client responses */
+const toTaskClient = (task: Record<string, unknown>): TaskClient => {
+  const { model: _model, ...rest } = task;
+  return rest as TaskClient;
+};
+
+/** Strip model field, returning null if task is null */
+const toTaskClientOrNull = (task: Record<string, unknown> | null): TaskClient | null => {
+  if (!task) return null;
+  const { model: _model, ...rest } = task;
+  return rest as TaskClient;
 };
 
 const appendTaskEvent = async (
@@ -289,7 +299,7 @@ export const completeTaskRecord = mutation({
       completedAt: now,
     });
     const record = await ctx.db.get(args.taskId);
-    return sanitizeTaskForClient(record) as any;
+    return toTaskClientOrNull(record);
   },
 });
 
@@ -303,7 +313,7 @@ export const getById = query({
     if (record) {
       await requireConversationOwner(ctx, record.conversationId);
     }
-    return sanitizeTaskForClient(record) as any;
+    return toTaskClientOrNull(record);
   },
 });
 
@@ -318,7 +328,7 @@ export const getOutputByExternalId = query({
       if (record) {
         await requireConversationOwner(ctx, record.conversationId);
       }
-      return sanitizeTaskForClient(record) as any;
+      return toTaskClientOrNull(record);
     } catch {
       return null;
     }
@@ -337,7 +347,7 @@ export const listByConversation = query({
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
       .order("desc")
       .take(200);
-    return records.map((record) => sanitizeTaskForClient(record)) as any;
+    return records.map((record) => toTaskClient(record));
   },
 });
 

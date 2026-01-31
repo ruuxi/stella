@@ -1,5 +1,5 @@
 import { mutation, query, MutationCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { v, Infer } from "convex/values";
 import {
   GENERAL_AGENT_SYSTEM_PROMPT,
   SELF_MOD_AGENT_SYSTEM_PROMPT,
@@ -59,6 +59,10 @@ const agentConfigValidator = v.object({
   source: v.string(),
   updatedAt: v.number(),
 });
+
+// Inferred types from validators for type-safe sanitization
+type AgentClient = Infer<typeof agentClientValidator>;
+type AgentConfig = Infer<typeof agentConfigValidator>;
 
 type AgentRecord = {
   id: string;
@@ -288,12 +292,16 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
   };
 };
 
-const sanitizeAgentForClient = <T extends Record<string, unknown> | null | undefined>(
-  agent: T,
-) => {
-  if (!agent) return agent;
+/** Strip model field for client responses (keeps _id, _creationTime) */
+const toAgentClient = (agent: Record<string, unknown>): AgentClient => {
   const { model: _model, ...rest } = agent;
-  return rest;
+  return rest as AgentClient;
+};
+
+/** Strip model, _id, _creationTime for config responses */
+const toAgentConfig = (agent: Record<string, unknown>): AgentConfig => {
+  const { model: _model, _id: _docId, _creationTime: _ct, ...rest } = agent;
+  return rest as AgentConfig;
 };
 
 const upsertAgent = async (ctx: MutationCtx, agent: AgentRecord) => {
@@ -362,18 +370,18 @@ export const getAgentConfig = query({
       .take(1);
 
     if (record[0]) {
-      return sanitizeAgentForClient(record[0]);
+      return toAgentConfig(record[0]);
     }
 
     const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
     if (builtin) {
-      return sanitizeAgentForClient({
+      return toAgentConfig({
         ...builtin,
         updatedAt: Date.now(),
       });
     }
 
-    return sanitizeAgentForClient({
+    return toAgentConfig({
       id: args.agentType,
       name: args.agentType,
       description: "Agent instructions.",
@@ -398,7 +406,6 @@ export const listAgents = query({
       .withIndex("by_updated")
       .order("desc")
       .take(200);
-    // Type assertion needed: sanitizeAgentForClient strips `model` but TS can't infer the result matches the validator
-    return records.map((record) => sanitizeAgentForClient(record)) as any;
+    return records.map((record) => toAgentClient(record));
   },
 });
