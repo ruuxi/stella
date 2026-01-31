@@ -11,6 +11,40 @@ import {
   buildDiscoveryAppsPrompt,
 } from "./prompts";
 
+const agentValidator = v.object({
+  _id: v.id("agents"),
+  _creationTime: v.number(),
+  id: v.string(),
+  name: v.string(),
+  description: v.string(),
+  systemPrompt: v.string(),
+  agentTypes: v.array(v.string()),
+  toolsAllowlist: v.optional(v.array(v.string())),
+  defaultSkills: v.optional(v.array(v.string())),
+  model: v.optional(v.string()),
+  maxTaskDepth: v.optional(v.number()),
+  version: v.number(),
+  source: v.string(),
+  updatedAt: v.number(),
+});
+
+// Sanitized agent (without model field) for client responses
+const agentClientValidator = v.object({
+  _id: v.id("agents"),
+  _creationTime: v.number(),
+  id: v.string(),
+  name: v.string(),
+  description: v.string(),
+  systemPrompt: v.string(),
+  agentTypes: v.array(v.string()),
+  toolsAllowlist: v.optional(v.array(v.string())),
+  defaultSkills: v.optional(v.array(v.string())),
+  maxTaskDepth: v.optional(v.number()),
+  version: v.number(),
+  source: v.string(),
+  updatedAt: v.number(),
+});
+
 type AgentRecord = {
   id: string;
   name: string;
@@ -271,6 +305,7 @@ const upsertAgent = async (ctx: MutationCtx, agent: AgentRecord) => {
 
 export const ensureBuiltins = mutation({
   args: {},
+  returns: v.object({ ok: v.boolean() }),
   handler: async (ctx) => {
     for (const builtin of BUILTIN_AGENT_DEFS) {
       await upsertAgent(ctx, {
@@ -284,8 +319,9 @@ export const ensureBuiltins = mutation({
 
 export const upsertMany = mutation({
   args: {
-    agents: v.any(),
+    agents: v.array(v.any()),
   },
+  returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
     const items = Array.isArray(args.agents) ? args.agents : [];
     let upserted = 0;
@@ -303,6 +339,19 @@ export const getAgentConfig = query({
   args: {
     agentType: v.string(),
   },
+  returns: v.object({
+    id: v.string(),
+    name: v.string(),
+    description: v.string(),
+    systemPrompt: v.string(),
+    agentTypes: v.array(v.string()),
+    toolsAllowlist: v.optional(v.array(v.string())),
+    defaultSkills: v.optional(v.array(v.string())),
+    maxTaskDepth: v.optional(v.number()),
+    version: v.number(),
+    source: v.string(),
+    updatedAt: v.number(),
+  }),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("agents")
@@ -310,7 +359,7 @@ export const getAgentConfig = query({
       .take(1);
 
     if (record[0]) {
-      return sanitizeAgentForClient(record[0]);
+      return sanitizeAgentForClient(record[0]) as any;
     }
 
     const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
@@ -318,7 +367,7 @@ export const getAgentConfig = query({
       return sanitizeAgentForClient({
         ...builtin,
         updatedAt: Date.now(),
-      });
+      }) as any;
     }
 
     return sanitizeAgentForClient({
@@ -333,18 +382,33 @@ export const getAgentConfig = query({
       version: 1,
       source: "fallback",
       updatedAt: Date.now(),
-    });
+    }) as any;
   },
 });
 
 export const listAgents = query({
   args: {},
+  returns: v.array(v.object({
+    _id: v.id("agents"),
+    _creationTime: v.number(),
+    id: v.string(),
+    name: v.string(),
+    description: v.string(),
+    systemPrompt: v.string(),
+    agentTypes: v.array(v.string()),
+    toolsAllowlist: v.optional(v.array(v.string())),
+    defaultSkills: v.optional(v.array(v.string())),
+    maxTaskDepth: v.optional(v.number()),
+    version: v.number(),
+    source: v.string(),
+    updatedAt: v.number(),
+  })),
   handler: async (ctx) => {
     const records = await ctx.db
       .query("agents")
       .withIndex("by_updated")
       .order("desc")
       .take(200);
-    return records.map((record) => sanitizeAgentForClient(record));
+    return records.map((record) => sanitizeAgentForClient(record)) as any;
   },
 });

@@ -1,5 +1,5 @@
 import { action, mutation, query, ActionCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { streamText, tool, ToolSet } from "ai";
 import { z } from "zod";
 import { api } from "./_generated/api";
@@ -13,6 +13,42 @@ import {
 import { jsonSchemaToZod } from "./plugins";
 import { getModelConfig } from "./model";
 import { requireConversationOwner } from "./auth";
+
+const taskValidator = v.object({
+  _id: v.id("tasks"),
+  _creationTime: v.number(),
+  conversationId: v.id("conversations"),
+  parentTaskId: v.optional(v.id("tasks")),
+  description: v.string(),
+  prompt: v.string(),
+  agentType: v.string(),
+  status: v.string(),
+  taskDepth: v.number(),
+  model: v.optional(v.string()),
+  result: v.optional(v.string()),
+  error: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+  completedAt: v.optional(v.number()),
+});
+
+// Task without model field for client responses
+const taskClientValidator = v.object({
+  _id: v.id("tasks"),
+  _creationTime: v.number(),
+  conversationId: v.id("conversations"),
+  parentTaskId: v.optional(v.id("tasks")),
+  description: v.string(),
+  prompt: v.string(),
+  agentType: v.string(),
+  status: v.string(),
+  taskDepth: v.number(),
+  result: v.optional(v.string()),
+  error: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+  completedAt: v.optional(v.number()),
+});
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
 
@@ -197,6 +233,11 @@ export const createTaskRecord = mutation({
     parentTaskId: v.optional(v.id("tasks")),
     maxTaskDepth: v.optional(v.number()),
   },
+  returns: v.object({
+    taskId: v.id("tasks"),
+    taskDepth: v.number(),
+    maxTaskDepth: v.number(),
+  }),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     const maxTaskDepth = Math.max(1, Math.floor(args.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH));
@@ -208,7 +249,7 @@ export const createTaskRecord = mutation({
         taskDepth = parent.taskDepth + 1;
       }
       if (taskDepth > maxTaskDepth) {
-        throw new Error(`Task depth limit exceeded (${maxTaskDepth}).`);
+        throw new ConvexError({ code: "LIMIT_EXCEEDED", message: `Task depth limit exceeded (${maxTaskDepth})` });
       }
     }
 
@@ -237,6 +278,7 @@ export const completeTaskRecord = mutation({
     result: v.optional(v.string()),
     error: v.optional(v.string()),
   },
+  returns: v.union(taskClientValidator, v.null()),
   handler: async (ctx, args) => {
     const now = Date.now();
     await ctx.db.patch(args.taskId, {
@@ -247,7 +289,7 @@ export const completeTaskRecord = mutation({
       completedAt: now,
     });
     const record = await ctx.db.get(args.taskId);
-    return sanitizeTaskForClient(record);
+    return sanitizeTaskForClient(record) as any;
   },
 });
 
@@ -255,12 +297,13 @@ export const getById = query({
   args: {
     taskId: v.id("tasks"),
   },
+  returns: v.union(taskClientValidator, v.null()),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     if (record) {
       await requireConversationOwner(ctx, record.conversationId);
     }
-    return sanitizeTaskForClient(record);
+    return sanitizeTaskForClient(record) as any;
   },
 });
 
@@ -268,13 +311,14 @@ export const getOutputByExternalId = query({
   args: {
     taskId: v.string(),
   },
+  returns: v.union(taskClientValidator, v.null()),
   handler: async (ctx, args) => {
     try {
       const record = await ctx.db.get(args.taskId as Id<"tasks">);
       if (record) {
         await requireConversationOwner(ctx, record.conversationId);
       }
-      return sanitizeTaskForClient(record);
+      return sanitizeTaskForClient(record) as any;
     } catch {
       return null;
     }
@@ -285,6 +329,7 @@ export const listByConversation = query({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.array(taskClientValidator),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     const records = await ctx.db
@@ -292,7 +337,7 @@ export const listByConversation = query({
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
       .order("desc")
       .take(200);
-    return records.map((record) => sanitizeTaskForClient(record));
+    return records.map((record) => sanitizeTaskForClient(record)) as any;
   },
 });
 
@@ -306,6 +351,7 @@ export const runSubagent = action({
     subagentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
   },
+  returns: v.string(),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     await ctx.runMutation(api.agents.ensureBuiltins, {});

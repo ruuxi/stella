@@ -1,5 +1,5 @@
-﻿import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import { v } from "convex/values";
+import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
+import { v, ConvexError } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
 import type { Id } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
@@ -112,7 +112,7 @@ export const updateSecret = mutation({
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== ownerId) {
-      throw new Error("Secret not found or access denied.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
     }
 
     const now = Date.now();
@@ -146,7 +146,7 @@ export const deleteSecret = mutation({
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== ownerId) {
-      throw new Error("Secret not found or access denied.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
     }
     await ctx.db.delete(args.secretId);
     return null;
@@ -262,7 +262,7 @@ export const getSecretForTool = internalQuery({
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== args.ownerId) {
-      throw new Error("Secret not found or access denied.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
     }
     const plaintext = await decryptSecret(record.encryptedValue);
     return {
@@ -285,7 +285,7 @@ export const touchSecretUsage = internalMutation({
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== args.ownerId) {
-      throw new Error("Secret not found or access denied.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
     }
     await ctx.db.patch(args.secretId, { lastUsedAt: Date.now() });
     return null;

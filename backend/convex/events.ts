@@ -1,10 +1,23 @@
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireConversationOwner, requireUserId } from "./auth";
+
+const eventValidator = v.object({
+  _id: v.id("events"),
+  _creationTime: v.number(),
+  conversationId: v.id("conversations"),
+  timestamp: v.number(),
+  type: v.string(),
+  deviceId: v.optional(v.string()),
+  requestId: v.optional(v.string()),
+  targetDeviceId: v.optional(v.string()),
+  payload: v.any(),
+});
 
 export const countByConversation = internalQuery({
   args: { conversationId: v.id("conversations") },
+  returns: v.number(),
   handler: async (ctx, args) => {
     const events = await ctx.db
       .query("events")
@@ -21,6 +34,7 @@ export const listOlderMessages = internalQuery({
     afterTimestamp: v.optional(v.number()),
     limit: v.number(),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const afterTs = args.afterTimestamp ?? 0;
     // Use index range to start scanning from afterTimestamp, up to beforeTimestamp.
@@ -47,6 +61,7 @@ export const listOlderMessages = internalQuery({
 
 export const getById = internalQuery({
   args: { id: v.id("events") },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -59,6 +74,7 @@ export const listRecentMessages = internalQuery({
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const requestedLimit = args.limit ?? 20;
     if (requestedLimit <= 0) {
@@ -112,6 +128,7 @@ export const saveAssistantMessage = internalMutation({
     text: v.string(),
     userMessageId: v.id("events"),
   },
+  returns: v.id("events"),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
     const eventId = await ctx.db.insert("events", {
@@ -139,6 +156,7 @@ export const enqueueToolRequest = internalMutation({
     userMessageId: v.optional(v.id("events")),
     agentType: v.optional(v.string()),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
     const eventId = await ctx.db.insert("events", {
@@ -158,7 +176,7 @@ export const enqueueToolRequest = internalMutation({
       },
     });
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
-    return await ctx.db.get("events", eventId);
+    return await ctx.db.get(eventId);
   },
 });
 
@@ -167,6 +185,7 @@ export const getToolResultByRequestId = internalQuery({
     requestId: v.string(),
     deviceId: v.optional(v.string()),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const results = await ctx.db
       .query("events")
@@ -192,6 +211,7 @@ export const getToolResult = query({
     requestId: v.string(),
     deviceId: v.optional(v.string()),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const results = await ctx.db
@@ -239,14 +259,15 @@ export const appendEvent = mutation({
     targetDeviceId: v.optional(v.string()),
     payload: v.any(),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     if (deviceRequiredTypes.has(args.type) && !args.deviceId) {
-      throw new Error(`deviceId required for ${args.type}`);
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: `deviceId required for ${args.type}` });
     }
 
     if (args.type === "tool_result" && !args.requestId) {
-      throw new Error("tool_result requires requestId");
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "tool_result requires requestId" });
     }
 
     const payloadTargetDeviceId =
@@ -256,7 +277,7 @@ export const appendEvent = mutation({
     const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceId;
 
     if (args.type === "tool_request" && !resolvedTargetDeviceId) {
-      throw new Error("tool_request requires targetDeviceId");
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "tool_request requires targetDeviceId" });
     }
 
     const timestamp = args.timestamp ?? Date.now();
@@ -273,7 +294,7 @@ export const appendEvent = mutation({
 
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
 
-    return await ctx.db.get("events", eventId);
+    return await ctx.db.get(eventId);
   },
 });
 

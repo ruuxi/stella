@@ -2,6 +2,29 @@ import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { z } from "zod";
 
+const pluginValidator = v.object({
+  _id: v.id("plugins"),
+  _creationTime: v.number(),
+  id: v.string(),
+  name: v.string(),
+  version: v.string(),
+  description: v.optional(v.string()),
+  source: v.string(),
+  updatedAt: v.number(),
+});
+
+const pluginToolValidator = v.object({
+  _id: v.id("plugin_tools"),
+  _creationTime: v.number(),
+  id: v.string(),
+  pluginId: v.string(),
+  name: v.string(),
+  description: v.string(),
+  inputSchema: v.any(),
+  source: v.string(),
+  updatedAt: v.number(),
+});
+
 type PluginRecord = {
   id: string;
   name: string;
@@ -120,9 +143,13 @@ const upsertPluginTool = async (ctx: MutationCtx, tool: ToolDescriptor) => {
 
 export const upsertMany = mutation({
   args: {
-    plugins: v.any(),
-    tools: v.any(),
+    plugins: v.array(v.any()),
+    tools: v.array(v.any()),
   },
+  returns: v.object({
+    pluginsUpserted: v.number(),
+    toolsUpserted: v.number(),
+  }),
   handler: async (ctx, args) => {
     const pluginItems = Array.isArray(args.plugins) ? args.plugins : [];
     const toolItems = Array.isArray(args.tools) ? args.tools : [];
@@ -149,6 +176,7 @@ export const upsertMany = mutation({
 
 export const listPlugins = query({
   args: {},
+  returns: v.array(pluginValidator),
   handler: async (ctx) => {
     return await ctx.db.query("plugins").withIndex("by_updated").order("desc").take(200);
   },
@@ -156,6 +184,7 @@ export const listPlugins = query({
 
 export const listToolDescriptors = query({
   args: {},
+  returns: v.array(pluginToolValidator),
   handler: async (ctx) => {
     return await ctx.db.query("plugin_tools").withIndex("by_name").order("asc").take(400);
   },
