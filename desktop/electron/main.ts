@@ -14,6 +14,7 @@ import {
 import { getOrCreateDeviceId } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
 import { resolveStellarHome } from './local-host/stellar-home.js'
+import { runLocalDiscovery } from './local-host/discovery.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -582,6 +583,47 @@ app.whenReady().then(async () => {
       width: size.width,
       height: size.height,
     }
+  })
+
+  // Local discovery handler - runs AI inference via backend, tools locally
+  ipcMain.handle('discovery:run', async (_event, payload: {
+    conversationId: string
+    platform: 'win32' | 'darwin'
+    trustLevel: 'basic' | 'full'
+  }) => {
+    if (!localHostRunner || !deviceId) {
+      return { success: false, error: 'Local host runner not initialized' }
+    }
+
+    const convexUrl = localHostRunner.getConvexUrl()
+    const authToken = localHostRunner.getAuthToken()
+
+    if (!convexUrl || !authToken) {
+      return { success: false, error: 'Not connected to backend' }
+    }
+
+    const stellarHome = await resolveStellarHome(app, app.getPath('userData'))
+
+    const result = await runLocalDiscovery({
+      convexUrl,
+      authToken,
+      conversationId: payload.conversationId,
+      deviceId,
+      platform: payload.platform,
+      trustLevel: payload.trustLevel,
+      stellarHome: stellarHome.homePath,
+      toolHost: {
+        executeTool: localHostRunner.executeTool,
+      },
+      onProgress: (status, agentType) => {
+        // Broadcast progress to renderer
+        for (const window of BrowserWindow.getAllWindows()) {
+          window.webContents.send('discovery:progress', { status, agentType })
+        }
+      },
+    })
+
+    return result
   })
 
   app.on('activate', () => {

@@ -13,6 +13,7 @@ export const MiniShell = () => {
   const { state, setConversationId, setWindow } = useUiState();
   const [message, setMessage] = useState("");
   const [streamingText, setStreamingText] = useState("");
+  const [reasoningText, setReasoningText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
@@ -57,6 +58,7 @@ export const MiniShell = () => {
 
     if (hasAssistantReply) {
       setStreamingText("");
+      setReasoningText("");
       setIsStreaming(false);
       setPendingUserMessageId(null);
     }
@@ -109,6 +111,7 @@ export const MiniShell = () => {
 
     if (event?._id) {
       setStreamingText("");
+      setReasoningText("");
       setIsStreaming(true);
       setPendingUserMessageId(event._id);
       void streamChat(
@@ -120,6 +123,9 @@ export const MiniShell = () => {
         {
           onTextDelta: (delta) => {
             setStreamingText((prev) => prev + delta);
+          },
+          onReasoningDelta: (delta) => {
+            setReasoningText((prev) => prev + delta);
           },
           onDone: () => {
             setIsStreaming(false);
@@ -190,6 +196,7 @@ export const MiniShell = () => {
                     events={events}
                     maxItems={5}
                     streamingText={streamingText}
+                    reasoningText={reasoningText}
                     isStreaming={isStreaming}
                   />
                 </div>

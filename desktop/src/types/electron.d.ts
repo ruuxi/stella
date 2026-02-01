@@ -46,6 +46,20 @@ export type ElectronApi = {
   ) => () => void
   submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) => Promise<{ ok: boolean; error?: string }>
   cancelCredential: (payload: { requestId: string }) => Promise<{ ok: boolean; error?: string }>
+  // Local discovery (runs AI via backend proxy, tools locally)
+  runDiscovery: (payload: {
+    conversationId: string
+    platform: 'win32' | 'darwin'
+    trustLevel: 'basic' | 'full'
+  }) => Promise<{
+    success: boolean
+    coreMemory?: string
+    welcomeMessage?: string
+    error?: string
+  }>
+  onDiscoveryProgress: (
+    callback: (event: unknown, data: { status: string; agentType?: string }) => void
+  ) => () => void
 }
 
 declare global {

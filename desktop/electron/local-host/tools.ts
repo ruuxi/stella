@@ -5,6 +5,9 @@ import os from "os";
 import { spawn } from "child_process";
 import { loadPluginsFromHome } from "./plugins.js";
 
+// Declare Bun on globalThis for runtime detection
+declare const globalThis: typeof global & { Bun?: unknown };
+
 // Use bun:sqlite when running in Bun, better-sqlite3 otherwise (Electron/Node)
 type SqliteDatabase = {
   prepare(sql: string): { all(): unknown[] };

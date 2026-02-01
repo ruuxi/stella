@@ -1,4 +1,4 @@
-import { ConvexHttpClient } from "convex/browser";
+import { ConvexClient } from "convex/browser";
 import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
@@ -6,7 +6,6 @@ import path from "path";
 import fs from "fs";
 const log = (...args) => console.log("[runner]", ...args);
 const logError = (...args) => console.error("[runner]", ...args);
-const POLL_INTERVAL_MS = 1500;
 const SYNC_DEBOUNCE_MS = 500;
 export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential }) => {
     const ownerId = "local";
@@ -31,7 +30,8 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
     let client = null;
     let convexUrl = null;
     let authToken = null;
-    let pollTimer = null;
+    let unsubscribe = null;
+    let isRunning = false;
     const processed = new Set();
     const inFlight = new Set();
     let queue = Promise.resolve();
@@ -147,27 +147,72 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
         }
         watchers.length = 0;
     };
+    const stopSubscription = () => {
+        if (unsubscribe) {
+            unsubscribe();
+            unsubscribe = null;
+            log("Tool request subscription stopped");
+        }
+    };
+    const startSubscription = () => {
+        // Only start subscription if we have client, auth, and not already subscribed
+        if (!client || !authToken || unsubscribe)
+            return;
+        // Use current timestamp to filter out historical requests
+        // Only requests created AFTER this moment will be received
+        const since = Date.now();
+        log("Starting tool request subscription for device:", deviceId, { since });
+        // Use onUpdate for real-time subscription to tool requests
+        // The subscription will automatically receive updates when new tool requests are created
+        unsubscribe = client.onUpdate("events:listToolRequestsForDevice", { deviceId, paginationOpts: { cursor: null, numItems: 20 }, since }, (response) => {
+            if (!response || typeof response !== "object" || !("page" in response)) {
+                return;
+            }
+            const result = response;
+            for (const request of result.page) {
+                queue = queue.then(() => handleToolRequest(request)).catch(() => undefined);
+            }
+        });
+        log("Tool request subscription active - receiving only new requests");
+    };
     const setConvexUrl = (url) => {
         if (convexUrl === url && client) {
             return;
         }
+        // Stop existing subscription before changing client
+        stopSubscription();
         convexUrl = url;
-        client = new ConvexHttpClient(url, { logger: false });
+        // Close existing client if any
+        if (client) {
+            client.close();
+        }
+        client = new ConvexClient(url);
         if (authToken) {
-            client.setAuth(authToken);
+            client.setAuth(() => Promise.resolve(authToken));
         }
         void syncManifests();
+        // Restart subscription with new client if runner is running (and auth is set)
+        if (isRunning) {
+            startSubscription();
+        }
     };
     const setAuthToken = (token) => {
+        // Stop subscription before changing auth
+        stopSubscription();
         authToken = token;
         if (!client) {
             return;
         }
         if (authToken) {
-            client.setAuth(authToken);
+            client.setAuth(() => Promise.resolve(authToken));
+            // Start subscription if runner is running and we now have auth
+            if (isRunning) {
+                startSubscription();
+            }
         }
         else {
-            client.clearAuth();
+            // Clear auth by setting it to return null
+            client.setAuth(() => Promise.resolve(null));
         }
     };
     const appendToolResult = async (request, result) => {
@@ -248,50 +293,30 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
             inFlight.delete(request.requestId);
         }
     };
-    const pollOnce = async () => {
-        if (!client)
-            return;
-        try {
-            const response = await callQuery("events.listToolRequestsForDevice", {
-                deviceId,
-                paginationOpts: { cursor: null, numItems: 20 },
-            });
-            if (!response || typeof response !== "object" || !("page" in response)) {
-                return;
-            }
-            const result = response;
-            for (const request of result.page) {
-                queue = queue.then(() => handleToolRequest(request)).catch(() => undefined);
-            }
-        }
-        catch {
-            // Swallow polling errors; they will be retried on the next interval.
-        }
-    };
     const start = () => {
-        if (pollTimer)
+        if (isRunning)
             return;
+        isRunning = true;
         log("Starting local host runner", { deviceId, stellarHome });
         // Initial sync on startup
         void syncManifests();
         // Start file watchers for manifest changes
         startWatchers();
-        // Poll for tool requests only (not manifests)
-        pollTimer = setInterval(() => {
-            void pollOnce();
-        }, POLL_INTERVAL_MS);
-        log("Local host runner started, polling for tool requests every", POLL_INTERVAL_MS, "ms");
+        // Start real-time subscription for tool requests (only if auth is ready)
+        startSubscription();
     };
     const stop = () => {
+        isRunning = false;
         if (syncDebounceTimer) {
             clearTimeout(syncDebounceTimer);
             syncDebounceTimer = null;
         }
         stopWatchers();
-        if (!pollTimer)
-            return;
-        clearInterval(pollTimer);
-        pollTimer = null;
+        stopSubscription();
+        if (client) {
+            client.close();
+            client = null;
+        }
     };
     return {
         deviceId,

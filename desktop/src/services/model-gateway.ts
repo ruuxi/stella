@@ -8,10 +8,12 @@ type ChatRequest = {
     url?: string;
     mimeType?: string;
   }>;
+  agent?: "orchestrator" | "general" | "self_mod";
 };
 
 type StreamHandlers = {
   onTextDelta?: (delta: string) => void;
+  onReasoningDelta?: (delta: string) => void;
   onStart?: () => void;
   onDone?: () => void;
   onError?: (error: Error) => void;
@@ -35,6 +37,13 @@ const handleUiEvent = (
     const delta = event.text ?? event.delta ?? "";
     if (delta) {
       handlers.onTextDelta?.(delta);
+    }
+  }
+  // Handle reasoning events from AI SDK
+  if (event.type === "reasoning-delta") {
+    const delta = event.text ?? event.delta ?? "";
+    if (delta) {
+      handlers.onReasoningDelta?.(delta);
     }
   }
   if (event.type === "text-end" || event.type === "finish") {

@@ -4,7 +4,7 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { useAction, useMutation, useConvexAuth } from "convex/react";
+import { useAction, useMutation, useQuery, useConvexAuth } from "convex/react";
 import { Spinner } from "../components/spinner";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
@@ -37,7 +37,10 @@ export const FullShell = () => {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const [message, setMessage] = useState("");
   const [streamingText, setStreamingText] = useState("");
+  const [reasoningText, setReasoningText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const streamingTextRef = useRef("");
+  const reasoningTextRef = useRef("");
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
   );
@@ -102,7 +105,8 @@ export const FullShell = () => {
 
   const appendEvent = useMutation(api.events.appendEvent);
   const setPreference = useMutation(api.preferences.setPreference);
-  const runContextDiscovery = useAction(api.discovery.runContextDiscovery);
+  const trustLevel = useQuery(api.preferences.getPreference, isAuthenticated ? { key: "trust_level" } : "skip");
+  const discoveryTriggeredRef = useRef(false);
 
   const handleResetOnboarding = useCallback(() => {
     if (birthAnimationRef.current) {
@@ -115,43 +119,9 @@ export const FullShell = () => {
     // Clear trust level preference and delete CORE_MEMORY.MD
     void setPreference({ key: "trust_level", value: "" }).catch(() => {});
     void window.electronAPI?.resetDiscoveryState?.();
+    // Reset discovery trigger flag so it can run again
+    discoveryTriggeredRef.current = false;
   }, [resetOnboarding, setPreference]);
-
-  const handleTrustConfirm = useCallback(async (level: "none" | "basic" | "full") => {
-    try {
-      await setPreference({ key: "trust_level", value: level });
-    } catch (error) {
-      console.error("Failed to persist trust level:", error);
-    }
-
-    if (level !== "none" && state.conversationId) {
-      try {
-        const deviceId = await getOrCreateDeviceId();
-        const platform = window.electronAPI?.platform ?? "unknown";
-
-        // Create a user_message event to anchor the discovery flow
-        const anchorEvent = await appendEvent({
-          conversationId: state.conversationId,
-          type: "user_message",
-          deviceId,
-          payload: { text: "", platform, discoveryAnchor: true },
-        });
-
-        if (anchorEvent?._id) {
-          // Fire and forget — runs in background
-          void runContextDiscovery({
-            conversationId: state.conversationId,
-            userMessageId: anchorEvent._id,
-            targetDeviceId: deviceId,
-            platform,
-            trustLevel: level,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to trigger context discovery:", error);
-      }
-    }
-  }, [setPreference, runContextDiscovery, appendEvent, state.conversationId]);
 
   useEffect(() => {
     return () => {
@@ -163,6 +133,57 @@ export const FullShell = () => {
       }
     };
   }, []);
+
+  // Auto-trigger discovery immediately after sign-in (if not already run)
+  useEffect(() => {
+    // Skip if already triggered, not authenticated, no conversation, or still loading preference
+    if (discoveryTriggeredRef.current || !isAuthenticated || !state.conversationId || trustLevel === undefined) {
+      return;
+    }
+    
+    // If trust_level is already set (and not empty), discovery has already run
+    if (trustLevel && trustLevel !== "") {
+      return;
+    }
+
+    // Mark as triggered to prevent double-firing
+    discoveryTriggeredRef.current = true;
+
+    // Trigger discovery with basic trust (runs locally via Electron)
+    const triggerDiscovery = async () => {
+      try {
+        // Set the preference first
+        await setPreference({ key: "trust_level", value: "basic" });
+
+        const platform = window.electronAPI?.platform ?? "unknown";
+
+        // Run discovery locally - AI proxied through backend, tools executed locally
+        // Only the welcome message is saved to database
+        if (window.electronAPI?.runDiscovery) {
+          const result = await window.electronAPI.runDiscovery({
+            conversationId: state.conversationId!,
+            platform: platform === "darwin" ? "darwin" : "win32",
+            trustLevel: "basic",
+          });
+
+          if (!result.success) {
+            console.error("Discovery failed:", result.error);
+            // Reset flag so it can retry
+            discoveryTriggeredRef.current = false;
+          }
+        } else {
+          console.warn("Discovery not available - electronAPI.runDiscovery not found");
+          discoveryTriggeredRef.current = false;
+        }
+      } catch (error) {
+        console.error("Failed to auto-trigger discovery:", error);
+        // Reset flag so it can retry
+        discoveryTriggeredRef.current = false;
+      }
+    };
+
+    void triggerDiscovery();
+  }, [isAuthenticated, state.conversationId, trustLevel, setPreference]);
 
   // Broadcast gate state to main process (controls radial menu + mini shell access)
   useEffect(() => {
@@ -195,6 +216,9 @@ export const FullShell = () => {
 
     if (hasAssistantReply) {
       setStreamingText("");
+      streamingTextRef.current = "";
+      setReasoningText("");
+      reasoningTextRef.current = "";
       setIsStreaming(false);
       setPendingUserMessageId(null);
     }
@@ -207,6 +231,8 @@ export const FullShell = () => {
     const deviceId = await getOrCreateDeviceId();
     const text = message.trim();
     setMessage("");
+    streamingTextRef.current = "";
+    reasoningTextRef.current = "";
 
     let attachments: AttachmentRef[] = [];
 
@@ -247,6 +273,9 @@ export const FullShell = () => {
 
     if (event?._id) {
       setStreamingText("");
+      streamingTextRef.current = "";
+      setReasoningText("");
+      reasoningTextRef.current = "";
       setIsStreaming(true);
       setPendingUserMessageId(event._id);
       void streamChat(
@@ -257,10 +286,25 @@ export const FullShell = () => {
         },
         {
           onTextDelta: (delta) => {
-            setStreamingText((prev) => prev + delta);
+            setStreamingText((prev) => {
+              const next = prev + delta;
+              streamingTextRef.current = next;
+              return next;
+            });
+          },
+          onReasoningDelta: (delta) => {
+            setReasoningText((prev) => {
+              const next = prev + delta;
+              reasoningTextRef.current = next;
+              return next;
+            });
           },
           onDone: () => {
             setIsStreaming(false);
+            if (streamingTextRef.current.trim().length === 0) {
+              setStreamingText("");
+              setPendingUserMessageId(null);
+            }
           },
           onError: (error) => {
             console.error("Model gateway error", error);
@@ -290,6 +334,7 @@ export const FullShell = () => {
               <ConversationEvents
                 events={events}
                 streamingText={streamingText}
+                reasoningText={reasoningText}
                 isStreaming={isStreaming}
               />
             </div>
@@ -351,7 +396,6 @@ export const FullShell = () => {
                   onAccept={startBirthAnimation}
                   onInteract={triggerFlash}
                   onSignIn={() => setAuthDialogOpen(true)}
-                  onTrustConfirm={handleTrustConfirm}
                   isAuthenticated={isAuthenticated}
                 />
               )}

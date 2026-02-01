@@ -1,14 +1,10 @@
-import React from "react";
 import type { EventRecord, MessagePayload, Attachment } from "../../hooks/use-conversation-events";
-import type { StepItem } from "../steps-container";
-import { StepsContainer } from "../steps-container";
 import { WorkingIndicator } from "./WorkingIndicator";
 import { Markdown } from "./Markdown";
 
 type MessageGroupProps = {
   userMessage: EventRecord;
   assistantMessage?: EventRecord;
-  steps: StepItem[];
   isStreaming?: boolean;
   streamingText?: string;
   currentToolName?: string;
@@ -34,7 +30,6 @@ const getAttachments = (event: EventRecord): Attachment[] => {
 export function MessageGroup({
   userMessage,
   assistantMessage,
-  steps,
   isStreaming,
   streamingText,
   currentToolName,
@@ -45,18 +40,8 @@ export function MessageGroup({
   const assistantText = assistantMessage ? getMessageText(assistantMessage) : "";
   const hasStreamingContent = Boolean(streamingText && streamingText.trim().length > 0);
 
-  // Show steps container if there are steps or if we're streaming with tool activity
-  const showSteps = steps.length > 0 || (isStreaming && currentToolName);
-
   // Determine if we're still waiting for assistant response
   const showWorkingIndicator = isStreaming && !assistantMessage;
-
-  // Get the running steps count
-  const runningStepsCount = steps.filter((s) => s.status === "running").length;
-  const isWorking = isStreaming || runningStepsCount > 0;
-
-  // Expanded state for steps container
-  const [stepsExpanded, setStepsExpanded] = React.useState(false);
 
   return (
     <div className="message-group">
@@ -95,20 +80,6 @@ export function MessageGroup({
           )}
         </div>
       </div>
-
-      {/* Steps container - shows tool calls */}
-      {showSteps && (
-        <div className="session-turn">
-          <div className="event-item assistant steps">
-            <StepsContainer
-              steps={steps}
-              expanded={stepsExpanded}
-              working={isWorking}
-              onToggle={() => setStepsExpanded(!stepsExpanded)}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Working indicator - shows while streaming without content yet */}
       {showWorkingIndicator && (

@@ -111,4 +111,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('credential:submit', payload),
   cancelCredential: (payload: { requestId: string }) =>
     ipcRenderer.invoke('credential:cancel', payload),
+
+  // Local discovery (runs AI via backend proxy, tools locally)
+  runDiscovery: (payload: {
+    conversationId: string
+    platform: 'win32' | 'darwin'
+    trustLevel: 'basic' | 'full'
+  }) => ipcRenderer.invoke('discovery:run', payload),
+  onDiscoveryProgress: (callback: (event: IpcRendererEvent, data: { status: string; agentType?: string }) => void) => {
+    const handler = (event: IpcRendererEvent, data: { status: string; agentType?: string }) => {
+      callback(event, data)
+    }
+    ipcRenderer.on('discovery:progress', handler)
+    return () => {
+      ipcRenderer.removeListener('discovery:progress', handler)
+    }
+  },
 })

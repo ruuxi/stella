@@ -16,6 +16,7 @@
     "electron:preview": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron ."
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.19",
     "@ai-sdk/react": "^3.0.51",
     "@convex-dev/better-auth": "^0.10.0",
     "@hookform/resolvers": "^5.2.2",
