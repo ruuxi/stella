@@ -3,7 +3,7 @@ import "./Onboarding.css";
 
 const ONBOARDING_KEY = "stellar-onboarding-complete";
 
-type Phase = "typing-intro" | "waiting-click" | "fading-out" | "typing-preview" | "waiting-click-preview" | "fading-out-preview" | "typing-question" | "waiting" | "fading-out-question" | "accepted" | "trust-question" | "waiting-trust" | "declined" | "done";
+type Phase = "typing-intro" | "waiting-click" | "fading-out" | "typing-preview" | "waiting-click-preview" | "fading-out-preview" | "typing-question" | "waiting" | "fading-out-question" | "accepted" | "declined" | "done";
 
 const TYPE_SPEED_MIN = 35;
 const TYPE_SPEED_MAX = 75;
@@ -34,15 +34,13 @@ interface OnboardingStep1Props {
   onAccept?: () => void;
   onInteract?: () => void;
   onSignIn?: () => void;
-  onTrustConfirm?: (level: "none" | "basic" | "full") => void;
   isAuthenticated?: boolean;
 }
 
-export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, onTrustConfirm, isAuthenticated }) => {
+export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, isAuthenticated }) => {
   const [phase, setPhase] = useState<Phase>("typing-intro");
   const [displayed, setDisplayed] = useState("");
   const [showCursor, setShowCursor] = useState(true);
-  const [selectedTrust, setSelectedTrust] = useState<"none" | "basic" | "full" | null>(null);
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const clearTimeouts = () => {
@@ -147,30 +145,12 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
     }
 
     if (phase === "accepted") {
-      // Wait 5 seconds after black hole animation starts, then show trust question
+      // Wait for black hole animation, then complete onboarding
+      // Discovery is triggered automatically by FullShell when authenticated
       schedule(() => {
-        setDisplayed("");
-        setPhase("trust-question");
-      }, 5000);
-    }
-
-    if (phase === "trust-question") {
-      setShowCursor(true);
-      const text = "How much do you trust me?";
-      let i = 0;
-      const type = () => {
-        if (i < text.length) {
-          i++;
-          setDisplayed(text.slice(0, i));
-          schedule(type, getTypeDelay());
-        } else {
-          schedule(() => {
-            setShowCursor(false);
-            setPhase("waiting-trust");
-          }, 400);
-        }
-      };
-      schedule(type, 200);
+        setPhase("done");
+        onComplete();
+      }, 3000);
     }
 
     return clearTimeouts;
@@ -206,23 +186,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
     setPhase("declined");
   };
 
-  const handleTrustSelection = (level: "none" | "basic" | "full") => {
-    onInteract?.();
-    setSelectedTrust(level);
-  };
-
-  const handleTrustConfirm = () => {
-    if (!selectedTrust) return;
-    onInteract?.();
-    onTrustConfirm?.(selectedTrust);
-    setPhase("done");
-    onComplete();
-  };
-
   const showClickPrompt = phase === "waiting-click" || phase === "waiting-click-preview";
   const isFadingOut = phase === "fading-out" || phase === "fading-out-preview" || phase === "fading-out-question";
   const showChoices = phase === "waiting";
-  const showTrustChoices = phase === "waiting-trust";
   const isDeclining = phase === "declined";
 
   if (phase === "done") return null;
@@ -245,7 +211,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
         <div 
           className="onboarding-text" 
           data-intro={phase === "typing-intro" || phase === "waiting-click" || phase === "fading-out" || phase === "typing-preview" || phase === "waiting-click-preview" || phase === "fading-out-preview"}
-          data-trust={phase === "trust-question" || phase === "waiting-trust"}
         >
           {displayed}
           <span className="onboarding-cursor" style={{ opacity: showCursor ? 1 : 0 }}>│</span>
@@ -272,40 +237,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
           </button>
           <button className="onboarding-choice" onClick={handleNo}>
             no
-          </button>
-        </div>
-
-        <div className="onboarding-trust-choices" data-visible={showTrustChoices}>
-          <button 
-            className="onboarding-trust-choice" 
-            data-selected={selectedTrust === "none"}
-            onClick={() => handleTrustSelection("none")}
-          >
-            <div className="onboarding-trust-title">Not much right now</div>
-            <div className="onboarding-trust-description">Do nothing</div>
-          </button>
-          <button 
-            className="onboarding-trust-choice" 
-            data-selected={selectedTrust === "basic"}
-            onClick={() => handleTrustSelection("basic")}
-          >
-            <div className="onboarding-trust-title">I can trust you</div>
-            <div className="onboarding-trust-description">I'll learn what I can about you: your name, preferences, and things you like</div>
-          </button>
-          <button 
-            className="onboarding-trust-choice" 
-            data-selected={selectedTrust === "full"}
-            onClick={() => handleTrustSelection("full")}
-          >
-            <div className="onboarding-trust-title">I really trust you</div>
-            <div className="onboarding-trust-description">I can purchase things and log in for you</div>
-          </button>
-          <button
-            className="onboarding-confirm"
-            data-visible={selectedTrust !== null}
-            onClick={handleTrustConfirm}
-          >
-            confirm
           </button>
         </div>
       </div>

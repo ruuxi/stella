@@ -1,17 +1,20 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import type { EventRecord, MessagePayload, Attachment } from "../hooks/use-conversation-events";
 import {
   groupEventsIntoTurns,
   getCurrentRunningTool,
+  getRunningTasks,
 } from "../hooks/use-conversation-events";
 import { WorkingIndicator } from "../components/chat/WorkingIndicator";
 import { Markdown } from "../components/chat/Markdown";
-import { StepsContainer } from "../components/steps-container";
+import { ReasoningSection } from "../components/chat/ReasoningSection";
+import { TaskIndicator } from "../components/chat/TaskIndicator";
 
 type Props = {
   events: EventRecord[];
   maxItems?: number;
   streamingText?: string;
+  reasoningText?: string;
   isStreaming?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
 };
@@ -35,33 +38,23 @@ export const ConversationEvents = ({
   events,
   maxItems,
   streamingText,
+  reasoningText,
   isStreaming,
   onOpenAttachment,
 }: Props) => {
   const visible = maxItems ? events.slice(-maxItems) : events;
   const showStreaming = Boolean(isStreaming || streamingText);
   const hasStreamingContent = Boolean(streamingText && streamingText.trim().length > 0);
+  const hasReasoningContent = Boolean(reasoningText && reasoningText.trim().length > 0);
 
   // Group events into message turns with their associated tool steps
   const turns = useMemo(() => groupEventsIntoTurns(visible), [visible]);
 
-  // Track expanded state for each turn's steps
-  const [expandedTurns, setExpandedTurns] = useState<Set<string>>(new Set());
-
-  const toggleExpanded = (turnId: string) => {
-    setExpandedTurns((prev) => {
-      const next = new Set(prev);
-      if (next.has(turnId)) {
-        next.delete(turnId);
-      } else {
-        next.add(turnId);
-      }
-      return next;
-    });
-  };
-
   // Get running tool for streaming indicator
   const runningTool = getCurrentRunningTool(visible);
+
+  // Get running tasks for task indicator
+  const runningTasks = useMemo(() => getRunningTasks(visible), [visible]);
 
   return (
     <div className="event-list">
@@ -75,10 +68,7 @@ export const ConversationEvents = ({
             const assistantText = turn.assistantMessage
               ? getEventText(turn.assistantMessage)
               : "";
-            const hasSteps = turn.steps.length > 0;
             const hasAssistantContent = assistantText.trim().length > 0;
-            const isExpanded = expandedTurns.has(turn.id);
-            const hasRunningStep = turn.steps.some((s) => s.status === "running");
 
             return (
               <div key={turn.id} className="session-turn">
@@ -122,18 +112,6 @@ export const ConversationEvents = ({
                   )}
                 </div>
 
-                {/* Steps container (tool calls) */}
-                {hasSteps && (
-                  <div className="event-item assistant steps-wrapper">
-                    <StepsContainer
-                      steps={turn.steps}
-                      expanded={isExpanded}
-                      working={hasRunningStep}
-                      onToggle={() => toggleExpanded(turn.id)}
-                    />
-                  </div>
-                )}
-
                 {/* Assistant message */}
                 {hasAssistantContent && (
                   <div className="event-item assistant">
@@ -151,11 +129,25 @@ export const ConversationEvents = ({
           {showStreaming && (
             <div className="session-turn">
               <div className="event-item assistant streaming">
-                <WorkingIndicator
-                  isResponding={hasStreamingContent}
-                  isReasoning={!hasStreamingContent}
-                  toolName={runningTool}
-                />
+                {/* Show active tasks when agents are working */}
+                {runningTasks.length > 0 && (
+                  <TaskIndicator tasks={runningTasks} />
+                )}
+                {/* Show reasoning section when we have reasoning content */}
+                {hasReasoningContent && (
+                  <ReasoningSection
+                    content={reasoningText!}
+                    isStreaming={isStreaming && !hasStreamingContent}
+                  />
+                )}
+                {/* Show working indicator when no content yet */}
+                {!hasStreamingContent && !hasReasoningContent && runningTasks.length === 0 && (
+                  <WorkingIndicator
+                    isResponding={false}
+                    isReasoning={true}
+                    toolName={runningTool}
+                  />
+                )}
                 {hasStreamingContent && streamingText && (
                   <Markdown text={streamingText} />
                 )}

@@ -47,6 +47,36 @@ export type MessagePayload = {
   attachments?: Attachment[];
 };
 
+// Task event payload structures
+export type TaskStartedPayload = {
+  taskId: string;
+  description: string;
+  agentType: string;
+  parentTaskId?: string;
+  taskDepth?: number;
+  maxTaskDepth?: number;
+  skillIds?: string[];
+};
+
+export type TaskCompletedPayload = {
+  taskId: string;
+  result?: string;
+};
+
+export type TaskFailedPayload = {
+  taskId: string;
+  error?: string;
+};
+
+// Task item for UI display
+export type TaskItem = {
+  id: string;
+  description: string;
+  agentType: string;
+  status: "running" | "completed" | "error";
+  parentTaskId?: string;
+};
+
 // Type guards
 export function isToolRequest(
   event: EventRecord
@@ -75,6 +105,39 @@ export function isUserMessage(event: EventRecord): boolean {
 
 export function isAssistantMessage(event: EventRecord): boolean {
   return event.type === "assistant_message";
+}
+
+export function isTaskStarted(
+  event: EventRecord
+): event is EventRecord & { payload: TaskStartedPayload } {
+  return (
+    event.type === "task_started" &&
+    typeof event.payload === "object" &&
+    event.payload !== null &&
+    "taskId" in event.payload
+  );
+}
+
+export function isTaskCompleted(
+  event: EventRecord
+): event is EventRecord & { payload: TaskCompletedPayload } {
+  return (
+    event.type === "task_completed" &&
+    typeof event.payload === "object" &&
+    event.payload !== null &&
+    "taskId" in event.payload
+  );
+}
+
+export function isTaskFailed(
+  event: EventRecord
+): event is EventRecord & { payload: TaskFailedPayload } {
+  return (
+    event.type === "task_failed" &&
+    typeof event.payload === "object" &&
+    event.payload !== null &&
+    "taskId" in event.payload
+  );
 }
 
 // Extract a human-readable title from a tool request
@@ -230,6 +293,49 @@ export function getCurrentRunningTool(events: EventRecord[]): string | undefined
   const steps = extractStepsFromEvents(events);
   const running = steps.find((s) => s.status === "running");
   return running?.tool;
+}
+
+// Extract tasks from events
+export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
+  const startedEvents = events.filter(isTaskStarted);
+  const completedEvents = events.filter(isTaskCompleted);
+  const failedEvents = events.filter(isTaskFailed);
+
+  // Build maps of taskId -> completion/failure events
+  const completedByTaskId = new Map<string, EventRecord & { payload: TaskCompletedPayload }>();
+  for (const event of completedEvents) {
+    completedByTaskId.set(event.payload.taskId, event);
+  }
+
+  const failedByTaskId = new Map<string, EventRecord & { payload: TaskFailedPayload }>();
+  for (const event of failedEvents) {
+    failedByTaskId.set(event.payload.taskId, event);
+  }
+
+  return startedEvents.map((event) => {
+    const taskId = event.payload.taskId;
+    let status: TaskItem["status"] = "running";
+
+    if (completedByTaskId.has(taskId)) {
+      status = "completed";
+    } else if (failedByTaskId.has(taskId)) {
+      status = "error";
+    }
+
+    return {
+      id: taskId,
+      description: event.payload.description,
+      agentType: event.payload.agentType,
+      status,
+      parentTaskId: event.payload.parentTaskId,
+    };
+  });
+}
+
+// Get currently running tasks
+export function getRunningTasks(events: EventRecord[]): TaskItem[] {
+  const tasks = extractTasksFromEvents(events);
+  return tasks.filter((t) => t.status === "running");
 }
 
 // Main hook to fetch conversation events

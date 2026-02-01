@@ -399,11 +399,23 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
     }
   };
 
+  // Expose tool execution for local discovery
+  const executeTool = async (
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    context: { conversationId: string; deviceId: string; requestId: string; agentType?: string }
+  ) => {
+    return toolHost.executeTool(toolName, toolArgs, context);
+  };
+
   return {
     deviceId,
     setConvexUrl,
     setAuthToken,
     start,
     stop,
+    executeTool,
+    getConvexUrl: () => convexUrl,
+    getAuthToken: () => authToken,
   };
 };
