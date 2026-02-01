@@ -37,11 +37,12 @@ type DeviceToolName = (typeof CORE_DEVICE_TOOL_NAMES)[number] | string;
 
 export type DeviceToolContext = {
   conversationId: Id<"conversations">;
-  userMessageId: Id<"events">;
+  userMessageId?: Id<"events">;
   targetDeviceId: string;
   agentType: string;
   sourceDeviceId?: string;
   currentTaskId?: Id<"tasks">;
+  ephemeral?: boolean; // If true, events will be deleted after the operation
 };
 
 const TOOL_TIMEOUT_MS = 120_000;

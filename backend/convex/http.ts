@@ -3,11 +3,20 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { streamText } from "ai";
+import { streamText, generateText, tool } from "ai";
+import { z } from "zod";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "./tools";
 import { getModelConfig } from "./model";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
+import {
+  buildDiscoveryBrowserPrompt,
+  buildDiscoveryDevPrompt,
+  buildDiscoveryAppsPrompt,
+  CORE_MEMORY_SYNTHESIS_PROMPT,
+  buildCoreSynthesisUserMessage,
+  buildWelcomeMessagePrompt,
+} from "./prompts";
 
 type ChatRequest = {
   conversationId: string;
@@ -17,7 +26,7 @@ type ChatRequest = {
     url?: string;
     mimeType?: string;
   }>;
-  agent?: "general" | "self_mod";
+  agent?: "orchestrator" | "general" | "self_mod";
 };
 
 const getPlatformGuidance = (platform: string): string => {
@@ -133,6 +142,9 @@ http.route({
     } catch {
       return withCors(new Response("Conversation not found", { status: 404 }), origin);
     }
+    if (!conversation) {
+      return withCors(new Response("Conversation not found", { status: 404 }), origin);
+    }
 
     const userEvent = await ctx.runQuery(internal.events.getById, {
       id: userMessageId,
@@ -218,7 +230,12 @@ http.route({
 
     await ctx.runMutation(api.agents.ensureBuiltins, {});
 
-    const agentType = body.agent === "self_mod" ? "self_mod" : "general";
+    const agentType =
+      body.agent === "self_mod"
+        ? "self_mod"
+        : body.agent === "general"
+          ? "general"
+          : "orchestrator";
     const promptBuild = await buildSystemPrompt(ctx, agentType, { ownerId: conversation.ownerId });
 
     // Add platform-specific guidance
@@ -286,11 +303,13 @@ http.route({
         },
       ],
       onFinish: async ({ text, usage, totalUsage }) => {
-        await ctx.runMutation(internal.events.saveAssistantMessage, {
-          conversationId,
-          text,
-          userMessageId,
-        });
+        if (text.trim().length > 0) {
+          await ctx.runMutation(internal.events.saveAssistantMessage, {
+            conversationId,
+            text,
+            userMessageId,
+          });
+        }
 
         // Track cumulative token usage on conversation
         const usageTotals = totalUsage ?? usage;
@@ -347,6 +366,367 @@ http.route({
 
     const response = result.toUIMessageStreamResponse();
     return withCors(response, origin);
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Discovery Endpoints (Stateless AI Proxy - No DB writes during discovery)
+// ---------------------------------------------------------------------------
+
+type DiscoveryAgentType = "browser" | "dev" | "apps";
+
+type DiscoveryChatRequest = {
+  agentType: DiscoveryAgentType;
+  platform: "win32" | "darwin";
+  trustLevel: "basic" | "full";
+  messages: Array<{
+    role: "user" | "assistant" | "tool";
+    content: string;
+    tool_call_id?: string;
+    tool_name?: string;
+  }>;
+};
+
+type DiscoverySynthesizeRequest = {
+  rawOutputs: string;
+  platform: "win32" | "darwin";
+};
+
+type DiscoveryCompleteRequest = {
+  conversationId: string;
+  coreMemory: string;
+};
+
+// Tool definitions for discovery agents (local execution on client)
+// These tools don't have execute handlers - they just define the schema
+// The client will execute them locally and send results back
+const createDiscoveryTools = () => ({
+  Bash: tool({
+    description: "Execute a shell command. Returns stdout/stderr.",
+    inputSchema: z.object({
+      command: z.string().describe("The shell command to execute"),
+      description: z.string().optional().describe("Brief description of what the command does"),
+      timeout: z.number().optional().describe("Timeout in milliseconds (default 60000)"),
+    }),
+  }),
+  Read: tool({
+    description: "Read a file's contents with line numbers.",
+    inputSchema: z.object({
+      file_path: z.string().describe("Absolute path to the file"),
+      offset: z.number().optional().describe("Starting line number (1-based)"),
+      limit: z.number().optional().describe("Maximum lines to read"),
+    }),
+  }),
+  Glob: tool({
+    description: "Find files matching a glob pattern.",
+    inputSchema: z.object({
+      pattern: z.string().describe("Glob pattern to match"),
+      path: z.string().optional().describe("Base directory for the search"),
+    }),
+  }),
+  Grep: tool({
+    description: "Search for text patterns in files.",
+    inputSchema: z.object({
+      pattern: z.string().describe("Regex pattern to search for"),
+      path: z.string().optional().describe("File or directory to search in"),
+      glob: z.string().optional().describe("Only search files matching this glob"),
+    }),
+  }),
+  SqliteQuery: tool({
+    description: "Execute a read-only SQL query on a SQLite database.",
+    inputSchema: z.object({
+      database_path: z.string().describe("Absolute path to the SQLite database"),
+      query: z.string().describe("SQL SELECT query to execute"),
+      limit: z.number().optional().describe("Maximum rows to return (default 100)"),
+    }),
+  }),
+});
+
+const getDiscoveryPrompt = (agentType: DiscoveryAgentType, platform: "win32" | "darwin", trustLevel: "basic" | "full"): string => {
+  switch (agentType) {
+    case "browser":
+      return buildDiscoveryBrowserPrompt({ platform, trustLevel });
+    case "dev":
+      return buildDiscoveryDevPrompt({ platform, trustLevel });
+    case "apps":
+      return buildDiscoveryAppsPrompt({ platform, trustLevel });
+    default:
+      throw new Error(`Unknown discovery agent type: ${agentType}`);
+  }
+};
+
+// OPTIONS for discovery/chat
+http.route({
+  path: "/api/discovery/chat",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+// POST /api/discovery/chat - Stateless AI proxy for discovery agents
+// Returns JSON with text response and tool_calls (if any)
+// NO database writes - purely for AI inference
+http.route({
+  path: "/api/discovery/chat",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("origin");
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    let body: DiscoveryChatRequest | null = null;
+    try {
+      body = (await request.json()) as DiscoveryChatRequest;
+    } catch {
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
+    }
+
+    if (!body?.agentType || !body?.platform || !body?.messages) {
+      return withCors(
+        new Response("agentType, platform, and messages are required", { status: 400 }),
+        origin,
+      );
+    }
+
+    const systemPrompt = getDiscoveryPrompt(body.agentType, body.platform, body.trustLevel ?? "basic");
+    const modelConfig = getModelConfig(`discovery_${body.agentType}`);
+
+    // Convert messages to AI SDK format
+    type AiMessage =
+      | { role: "user"; content: string }
+      | { role: "assistant"; content: string; toolInvocations?: Array<{ toolCallId: string; toolName: string; args: unknown; result: unknown }> }
+      | { role: "tool"; content: Array<{ type: "tool-result"; toolCallId: string; toolName: string; result: unknown }> };
+
+    const aiMessages: AiMessage[] = body.messages.map((msg) => {
+      if (msg.role === "tool") {
+        return {
+          role: "tool" as const,
+          content: [
+            {
+              type: "tool-result" as const,
+              toolCallId: msg.tool_call_id ?? "",
+              toolName: msg.tool_name ?? "unknown",
+              result: msg.content,
+            },
+          ],
+        };
+      }
+      return {
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      };
+    });
+
+    try {
+      const discoveryTools = createDiscoveryTools();
+      const result = await generateText({
+        ...modelConfig,
+        system: systemPrompt,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages: aiMessages as any,
+        tools: discoveryTools,
+      });
+
+      // Extract tool calls if any
+      const toolCalls = (result.toolCalls ?? []).map((tc) => ({
+        id: tc.toolCallId,
+        name: tc.toolName,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        arguments: (tc as any).args ?? {},
+      }));
+
+      const responseBody = JSON.stringify({
+        text: result.text,
+        toolCalls,
+        finishReason: result.finishReason,
+      });
+
+      return withCors(
+        new Response(responseBody, {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    } catch (error) {
+      console.error("Discovery chat error:", error);
+      return withCors(
+        new Response(JSON.stringify({ error: (error as Error).message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    }
+  }),
+});
+
+// OPTIONS for discovery/synthesize
+http.route({
+  path: "/api/discovery/synthesize",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+// POST /api/discovery/synthesize - Synthesize raw outputs into core memory
+// NO database writes - returns the synthesized profile
+http.route({
+  path: "/api/discovery/synthesize",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("origin");
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    let body: DiscoverySynthesizeRequest | null = null;
+    try {
+      body = (await request.json()) as DiscoverySynthesizeRequest;
+    } catch {
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
+    }
+
+    if (!body?.rawOutputs) {
+      return withCors(new Response("rawOutputs is required", { status: 400 }), origin);
+    }
+
+    const modelConfig = getModelConfig("discovery_synthesis");
+
+    try {
+      const result = await generateText({
+        ...modelConfig,
+        system: CORE_MEMORY_SYNTHESIS_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: buildCoreSynthesisUserMessage(body.rawOutputs),
+          },
+        ],
+      });
+
+      // Add metadata header
+      const coreMemory = `# CORE_MEMORY
+> Generated: ${new Date().toISOString()}
+> Platform: ${body.platform === "win32" ? "Windows" : "macOS"}
+
+${result.text}`;
+
+      return withCors(
+        new Response(JSON.stringify({ coreMemory }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    } catch (error) {
+      console.error("Discovery synthesize error:", error);
+      return withCors(
+        new Response(JSON.stringify({ error: (error as Error).message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    }
+  }),
+});
+
+// OPTIONS for discovery/complete
+http.route({
+  path: "/api/discovery/complete",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+// POST /api/discovery/complete - Generate and save welcome message
+// This is the ONLY discovery endpoint that writes to the database
+http.route({
+  path: "/api/discovery/complete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("origin");
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    let body: DiscoveryCompleteRequest | null = null;
+    try {
+      body = (await request.json()) as DiscoveryCompleteRequest;
+    } catch {
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
+    }
+
+    if (!body?.conversationId || !body?.coreMemory) {
+      return withCors(
+        new Response("conversationId and coreMemory are required", { status: 400 }),
+        origin,
+      );
+    }
+
+    const conversationId = body.conversationId as Id<"conversations">;
+
+    let conversation: Doc<"conversations"> | null = null;
+    try {
+      conversation = await requireConversationOwner(ctx, conversationId);
+    } catch {
+      return withCors(new Response("Conversation not found", { status: 404 }), origin);
+    }
+    if (!conversation) {
+      return withCors(new Response("Conversation not found", { status: 404 }), origin);
+    }
+
+    try {
+      // Generate welcome message
+      const modelConfig = getModelConfig("general");
+      const result = await generateText({
+        ...modelConfig,
+        messages: [
+          {
+            role: "user",
+            content: buildWelcomeMessagePrompt(body.coreMemory),
+          },
+        ],
+      });
+
+      const welcomeText = result.text.trim();
+
+      // Save ONLY the welcome message to database
+      if (welcomeText) {
+        await ctx.runMutation(internal.events.saveAssistantMessage, {
+          conversationId,
+          text: welcomeText,
+        });
+      }
+
+      return withCors(
+        new Response(JSON.stringify({ welcomeMessage: welcomeText }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    } catch (error) {
+      console.error("Discovery complete error:", error);
+      return withCors(
+        new Response(JSON.stringify({ error: (error as Error).message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    }
   }),
 });
 

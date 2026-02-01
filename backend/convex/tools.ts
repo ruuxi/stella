@@ -53,6 +53,11 @@ type ToolOptions = {
   ownerId?: string;
 };
 
+const TASK_POLL_INTERVAL_MS = 750;
+const TASK_MAX_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const integrationAuthSchema = z
   .object({
     type: z.enum(["bearer", "header", "query", "basic"]).optional(),
@@ -350,6 +355,7 @@ export const createTools = (
         prompt: args.prompt,
         subagentType: args.subagent_type,
         parentTaskId: options.currentTaskId,
+        runInBackground: args.run_in_background,
       });
 
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
@@ -364,13 +370,35 @@ export const createTools = (
       timeout: z.number().optional(),
     }),
     execute: async (args) => {
+      const timeoutMs = Math.min(
+        Math.max(Math.floor(args.timeout ?? 20_000), TASK_POLL_INTERVAL_MS),
+        TASK_MAX_TIMEOUT_MS,
+      );
+      const deadline = Date.now() + timeoutMs;
       try {
-        const record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
+        let record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
           taskId: args.task_id,
         });
         if (!record) {
           return `Task not found: ${args.task_id}`;
         }
+        if (!args.block || record.status !== "running") {
+          return formatTaskResult(record as any);
+        }
+
+        while (Date.now() < deadline) {
+          await sleep(TASK_POLL_INTERVAL_MS);
+          record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
+            taskId: args.task_id,
+          });
+          if (!record) {
+            return `Task not found: ${args.task_id}`;
+          }
+          if (record.status !== "running") {
+            return formatTaskResult(record as any);
+          }
+        }
+
         return formatTaskResult(record as any);
       } catch {
         return `Failed to load task: ${args.task_id}`;

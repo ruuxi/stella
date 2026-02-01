@@ -1,16 +1,11 @@
-import { action, mutation, query, ActionCtx } from "./_generated/server";
+import { action, internalAction, mutation, query, ActionCtx } from "./_generated/server";
 import { v, ConvexError, Infer } from "convex/values";
-import { streamText, tool, ToolSet } from "ai";
-import { z } from "zod";
-import { api } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import { streamText } from "ai";
+import { api, internal } from "./_generated/api";
+import type { Doc, Id } from "./_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
-import {
-  createCoreDeviceTools,
-  executeDeviceTool,
-  type DeviceToolContext,
-} from "./device_tools";
-import { jsonSchemaToZod } from "./plugins";
+import type { DeviceToolContext } from "./device_tools";
+import { createTools } from "./tools";
 import { getModelConfig } from "./model";
 import { requireConversationOwner } from "./auth";
 
@@ -64,29 +59,6 @@ type PluginToolDescriptor = {
   inputSchema: Record<string, unknown>;
 };
 
-const formatTaskResult = (task: {
-  _id: Id<"tasks">;
-  status: string;
-  result?: string;
-  error?: string;
-  taskDepth: number;
-  completedAt?: number;
-  createdAt: number;
-}) => {
-  const duration = (task.completedAt ?? Date.now()) - task.createdAt;
-  if (task.status === "completed") {
-    return `Task completed.\nTask ID: ${task._id}\nDuration: ${duration}ms\n\n--- Result ---\n${
-      task.result ?? "(no result)"
-    }`;
-  }
-  if (task.status === "error") {
-    return `Task failed.\nTask ID: ${task._id}\nDuration: ${duration}ms\n\n--- Error ---\n${
-      task.error ?? "(no error)"
-    }`;
-  }
-  return `Task running.\nTask ID: ${task._id}\nElapsed: ${duration}ms`;
-};
-
 /** Strip model field for client responses */
 const toTaskClient = (task: Record<string, unknown>): TaskClient => {
   const { model: _model, ...rest } = task;
@@ -119,117 +91,100 @@ const appendTaskEvent = async (
   });
 };
 
-const createTaskTools = (
+type SubagentExecutionArgs = {
+  conversationId: Id<"conversations">;
+  userMessageId: Id<"events">;
+  targetDeviceId: string;
+  prompt: string;
+  subagentType: string;
+  taskId: Id<"tasks">;
+  ownerId?: string;
+};
+
+const executeSubagentRun = async (
   ctx: ActionCtx,
-  context: DeviceToolContext,
-  options: {
-    currentTaskId: Id<"tasks">;
-    taskDepth: number;
-    maxTaskDepth: number;
-    pluginTools: PluginToolDescriptor[];
-  },
-): ToolSet => {
-  const coreTools = createCoreDeviceTools(ctx, context);
-
-  const pluginToolEntries = options.pluginTools.map((descriptor) => {
-    return [
-      descriptor.name,
-      tool({
-        description: descriptor.description,
-        inputSchema: jsonSchemaToZod(descriptor.inputSchema),
-        execute: (args) => executeDeviceTool(ctx, context, descriptor.name, args),
-      }),
-    ] as const;
+  args: SubagentExecutionArgs,
+): Promise<string> => {
+  const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
+    ownerId: args.ownerId,
   });
+  const pluginTools = (await ctx.runQuery(api.plugins.listToolDescriptors, {})) as PluginToolDescriptor[];
 
-  const pluginTools = Object.fromEntries(pluginToolEntries);
-
-  const Task = tool({
-    description: "Delegate a task to a specialized subagent.",
-    inputSchema: z.object({
-      description: z.string().min(1),
-      prompt: z.string().min(1),
-      subagent_type: z.string().min(1),
-    }),
-    execute: async (args) => {
-      if (options.taskDepth >= options.maxTaskDepth) {
-        return `Task depth limit reached (${options.maxTaskDepth}). Complete the work directly.`;
-      }
-
-      const result = await ctx.runAction(api.tasks.runSubagent, {
-        conversationId: context.conversationId,
-        userMessageId: context.userMessageId,
-        targetDeviceId: context.targetDeviceId,
-        description: args.description,
-        prompt: args.prompt,
-        subagentType: args.subagent_type,
-        parentTaskId: options.currentTaskId,
-      });
-
-      return typeof result === "string" ? result : JSON.stringify(result, null, 2);
-    },
-  });
-
-  const TaskOutput = tool({
-    description: "Retrieve output from a background task.",
-    inputSchema: z.object({
-      task_id: z.string().min(1),
-    }),
-    execute: async (args) => {
-      try {
-        const result = await ctx.runQuery(api.tasks.getOutputByExternalId, {
-          taskId: args.task_id,
-        });
-        if (!result) {
-          return `Task not found: ${args.task_id}`;
-        }
-        return formatTaskResult(result as any);
-      } catch {
-        return `Failed to load task: ${args.task_id}`;
-      }
-    },
-  });
-
-  const AgentInvoke = tool({
-    description:
-      "Invoke a bounded tool-like subagent call and return structured results.",
-    inputSchema: z.object({
-      agent_type: z.string().min(1),
-      mode: z.string().optional(),
-      prompt: z.string().optional(),
-      input: z.any().optional(),
-      result_schema: z.any().optional(),
-      max_steps: z.number().int().positive().max(6).optional(),
-      target_device_id: z.string().optional(),
-    }),
-    execute: async (args) => {
-      if (args.target_device_id && args.target_device_id !== context.targetDeviceId) {
-        return "agent.invoke must target the current device.";
-      }
-
-      const result = await ctx.runAction(api.agent.invoke, {
-        agentType: args.agent_type,
-        mode: args.mode,
-        prompt: args.prompt,
-        input: args.input,
-        resultSchema: args.result_schema,
-        maxSteps: args.max_steps,
-        conversationId: context.conversationId,
-        userMessageId: context.userMessageId,
-        targetDeviceId: context.targetDeviceId,
-      });
-
-      return typeof result === "string" ? result : JSON.stringify(result, null, 2);
-    },
-  });
-
-  return {
-    ...coreTools,
-    ...pluginTools,
-    Task,
-    TaskOutput,
-    AgentInvoke,
+  const toolContext: DeviceToolContext = {
+    conversationId: args.conversationId,
+    userMessageId: args.userMessageId,
+    targetDeviceId: args.targetDeviceId,
+    agentType: args.subagentType,
+    sourceDeviceId: args.targetDeviceId,
+    currentTaskId: args.taskId,
   };
+
+  try {
+    const result = await streamText({
+      ...getModelConfig(args.subagentType),
+      system: promptBuild.systemPrompt,
+      tools: createTools(
+        ctx,
+        toolContext,
+        {
+          agentType: args.subagentType,
+          toolsAllowlist: promptBuild.toolsAllowlist,
+          maxTaskDepth: promptBuild.maxTaskDepth,
+          pluginTools,
+          ownerId: args.ownerId,
+          currentTaskId: args.taskId,
+        },
+      ),
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: args.prompt.trim() || " " }],
+        },
+      ],
+    });
+
+    const text: string = await result.text;
+
+    await ctx.runMutation(api.tasks.completeTaskRecord, {
+      taskId: args.taskId,
+      status: "completed",
+      result: text,
+    });
+
+    await appendTaskEvent(ctx, {
+      conversationId: args.conversationId,
+      type: "task_completed",
+      deviceId: args.targetDeviceId,
+      targetDeviceId: args.targetDeviceId,
+      payload: {
+        taskId: args.taskId,
+        result: text,
+      },
+    });
+
+    return `Agent completed.\nTask ID: ${args.taskId}\n\n--- Agent Result ---\n${text}`;
+  } catch (error) {
+    const errorMessage = (error as Error).message || "Unknown task error";
+
+    await ctx.runMutation(api.tasks.completeTaskRecord, {
+      taskId: args.taskId,
+      status: "error",
+      error: errorMessage,
+    });
+
+    await appendTaskEvent(ctx, {
+      conversationId: args.conversationId,
+      type: "task_failed",
+      deviceId: args.targetDeviceId,
+      targetDeviceId: args.targetDeviceId,
+      payload: {
+        taskId: args.taskId,
+        error: errorMessage,
+      },
+    });
+
+    return `Task failed.\nTask ID: ${args.taskId}\n\n--- Error ---\n${errorMessage}`;
+  }
 };
 
 export const createTaskRecord = mutation({
@@ -360,13 +315,16 @@ export const runSubagent = action({
     prompt: v.string(),
     subagentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
+    runInBackground: v.optional(v.boolean()),
   },
   returns: v.string(),
-  handler: async (ctx, args) => {
-    await requireConversationOwner(ctx, args.conversationId);
+  handler: async (ctx, args): Promise<string> => {
+    const conversation: Doc<"conversations"> = await requireConversationOwner(ctx, args.conversationId);
     await ctx.runMutation(api.agents.ensureBuiltins, {});
 
-    const promptBuild = await buildSystemPrompt(ctx, args.subagentType);
+    const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
+      ownerId: conversation.ownerId,
+    });
 
     const created: { taskId: Id<"tasks">; taskDepth: number; maxTaskDepth: number } =
       await ctx.runMutation(api.tasks.createTaskRecord, {
@@ -399,76 +357,53 @@ export const runSubagent = action({
       },
     });
 
-    const pluginTools = (await ctx.runQuery(api.plugins.listToolDescriptors, {})) as PluginToolDescriptor[];
+    if (args.runInBackground) {
+      await ctx.scheduler.runAfter(0, internal.tasks.executeSubagent, {
+        conversationId: args.conversationId,
+        userMessageId: args.userMessageId,
+        targetDeviceId: args.targetDeviceId,
+        prompt: args.prompt,
+        subagentType: args.subagentType,
+        taskId,
+        ownerId: conversation.ownerId,
+      });
 
-    const toolContext: DeviceToolContext = {
+      return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
+    }
+
+    return await executeSubagentRun(ctx, {
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
       targetDeviceId: args.targetDeviceId,
-      agentType: args.subagentType,
-      sourceDeviceId: args.targetDeviceId,
-      currentTaskId: taskId,
-    };
+      prompt: args.prompt,
+      subagentType: args.subagentType,
+      taskId,
+      ownerId: conversation.ownerId,
+    });
+  },
+});
 
-    try {
-      const result = await streamText({
-        ...getModelConfig(args.subagentType),
-        system: promptBuild.systemPrompt,
-        tools: createTaskTools(ctx, toolContext, {
-          currentTaskId: taskId,
-          taskDepth,
-          maxTaskDepth: promptBuild.maxTaskDepth,
-          pluginTools,
-        }),
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: args.prompt.trim() || " " }],
-          },
-        ],
-      });
-
-      const text: string = await result.text;
-
-      await ctx.runMutation(api.tasks.completeTaskRecord, {
-        taskId,
-        status: "completed",
-        result: text,
-      });
-
-      await appendTaskEvent(ctx, {
-        conversationId: args.conversationId,
-        type: "task_completed",
-        deviceId: args.targetDeviceId,
-        targetDeviceId: args.targetDeviceId,
-        payload: {
-          taskId,
-          result: text,
-        },
-      });
-
-      return `Agent completed.\nTask ID: ${taskId}\n\n--- Agent Result ---\n${text}`;
-    } catch (error) {
-      const errorMessage = (error as Error).message || "Unknown task error";
-
-      await ctx.runMutation(api.tasks.completeTaskRecord, {
-        taskId,
-        status: "error",
-        error: errorMessage,
-      });
-
-      await appendTaskEvent(ctx, {
-        conversationId: args.conversationId,
-        type: "task_failed",
-        deviceId: args.targetDeviceId,
-        targetDeviceId: args.targetDeviceId,
-        payload: {
-          taskId,
-          error: errorMessage,
-        },
-      });
-
-      return `Task failed.\nTask ID: ${taskId}\n\n--- Error ---\n${errorMessage}`;
-    }
+export const executeSubagent = internalAction({
+  args: {
+    conversationId: v.id("conversations"),
+    userMessageId: v.id("events"),
+    targetDeviceId: v.string(),
+    prompt: v.string(),
+    subagentType: v.string(),
+    taskId: v.id("tasks"),
+    ownerId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await executeSubagentRun(ctx, {
+      conversationId: args.conversationId,
+      userMessageId: args.userMessageId,
+      targetDeviceId: args.targetDeviceId,
+      prompt: args.prompt,
+      subagentType: args.subagentType,
+      taskId: args.taskId,
+      ownerId: args.ownerId,
+    });
+    return null;
   },
 });

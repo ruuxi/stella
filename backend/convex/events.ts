@@ -126,7 +126,7 @@ export const saveAssistantMessage = internalMutation({
   args: {
     conversationId: v.id("conversations"),
     text: v.string(),
-    userMessageId: v.id("events"),
+    userMessageId: v.optional(v.id("events")),
   },
   returns: v.id("events"),
   handler: async (ctx, args) => {
@@ -137,7 +137,7 @@ export const saveAssistantMessage = internalMutation({
       type: "assistant_message",
       payload: {
         text: args.text,
-        userMessageId: args.userMessageId,
+        ...(args.userMessageId && { userMessageId: args.userMessageId }),
       },
     });
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
