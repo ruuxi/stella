@@ -5,6 +5,8 @@
 
 type ModelConfig = {
   model: string;
+  temperature?: number;
+  maxOutputTokens?: number;
   providerOptions?: {
     gateway?: {
       only?: string[];
@@ -23,6 +25,8 @@ type ModelConfig = {
 // ============================================================================
 const DEFAULT_MODEL: ModelConfig = {
   model: "zai/glm-4.7",
+  temperature: 1.0,
+  maxOutputTokens: 4096,
   providerOptions: {
     gateway: {
       order: ["cerebras"],
@@ -35,6 +39,8 @@ const DEFAULT_MODEL: ModelConfig = {
 // ============================================================================
 const DISCOVERY_MODEL: ModelConfig = {
   model: "zai/glm-4.7",
+  temperature: 1.0,
+  maxOutputTokens: 4096,
   providerOptions: {
     gateway: {
       order: ["cerebras"],
@@ -46,9 +52,35 @@ const DISCOVERY_MODEL: ModelConfig = {
 // PER-AGENT MODEL CONFIGURATION
 // ============================================================================
 const AGENT_MODELS: Record<string, ModelConfig> = {
+  // Orchestrator (top-level responder)
+  orchestrator: {
+    model: "anthropic/claude-opus-4.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
   // Main general-purpose agent
   general: {
     model: "anthropic/claude-opus-4.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // Memory retrieval agent
+  memory: {
+    model: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 4096,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
@@ -59,6 +91,8 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   // Codebase exploration and research
   explore: {
     model: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
@@ -69,6 +103,8 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   // Browser automation via Playwright
   browser: {
     model: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
     providerOptions: {
       gateway: {
         order: ["fireworks"],
@@ -79,6 +115,8 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   // Self-modification agent (if re-enabled)
   self_mod: {
     model: "anthropic/claude-opus-4.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
@@ -93,7 +131,16 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   discovery_apps: DISCOVERY_MODEL,
 
   // Core memory synthesis (distills discovery outputs)
-  discovery_synthesis: DISCOVERY_MODEL,
+  discovery_synthesis: {
+    model: "google/gemini-3-flash",
+    temperature: 1.0,
+    maxOutputTokens: 12096,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
 
   // Embedding model for episodic memory
   embedding: {
@@ -106,8 +153,10 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   // Cheap model for memory extraction, dedup, decay summarization
-  memory: {
+  memory_ops: {
     model: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8096,
     providerOptions: {
       gateway: {
         order: ["cerebras"],

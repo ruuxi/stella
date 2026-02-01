@@ -38,13 +38,11 @@ async function embed(text: string): Promise<number[]> {
 // ---------------------------------------------------------------------------
 
 async function cheapLLM(systemPrompt: string, userPrompt: string): Promise<string> {
-  const config = getModelConfig("memory");
+  const config = getModelConfig("memory_ops");
   const { text } = await generateText({
     ...config,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-    temperature: 0.1,
-    maxOutputTokens: 4096,
   });
   return text;
 }

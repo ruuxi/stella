@@ -2,6 +2,8 @@ import { mutation, query, MutationCtx } from "./_generated/server";
 import { v, Infer } from "convex/values";
 import {
   GENERAL_AGENT_SYSTEM_PROMPT,
+  ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
+  MEMORY_AGENT_SYSTEM_PROMPT,
   SELF_MOD_AGENT_SYSTEM_PROMPT,
   EXPLORE_AGENT_SYSTEM_PROMPT,
   BROWSER_AGENT_SYSTEM_PROMPT,
@@ -79,6 +81,32 @@ type AgentRecord = {
 };
 
 const BUILTIN_AGENT_DEFS: AgentRecord[] = [
+  {
+    id: "orchestrator",
+    name: "Orchestrator",
+    description: "Coordinates subagents and responds to the user.",
+    systemPrompt: ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
+    agentTypes: ["orchestrator"],
+    toolsAllowlist: ["Task", "TaskOutput"],
+    defaultSkills: [],
+    maxTaskDepth: 2,
+    version: 1,
+    source: "builtin",
+    updatedAt: 0,
+  },
+  {
+    id: "memory",
+    name: "Memory Agent",
+    description: "Retrieves relevant prior context for the current request.",
+    systemPrompt: MEMORY_AGENT_SYSTEM_PROMPT,
+    agentTypes: ["memory"],
+    toolsAllowlist: ["MemorySearch", "Read"],
+    defaultSkills: [],
+    maxTaskDepth: 1,
+    version: 1,
+    source: "builtin",
+    updatedAt: 0,
+  },
   {
     id: "general",
     name: "General Agent",
