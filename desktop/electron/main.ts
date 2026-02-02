@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen, type Display } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -11,6 +11,15 @@ import {
   calculateSelectedWedge,
   type RadialWedge,
 } from './radial-window.js'
+import { showRegionCaptureWindow, hideRegionCaptureWindow } from './region-capture-window.js'
+import { captureChatContext, type ChatContext } from './chat-context.js'
+import { initSelectedTextProcess, cleanupSelectedTextProcess } from './selected-text.js'
+import {
+  createModifierOverlay,
+  showModifierOverlay,
+  hideModifierOverlay,
+  destroyModifierOverlay,
+} from './modifier-overlay.js'
 import { getOrCreateDeviceId } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
 import { resolveStellarHome } from './local-host/stellar-home.js'
@@ -27,13 +36,26 @@ import type { AllUserSignalsResult } from './local-host/types.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-type UiMode = 'ask' | 'chat' | 'voice'
+type UiMode = 'chat' | 'voice'
 type WindowMode = 'full' | 'mini'
 
 type UiState = {
   mode: UiMode
   window: WindowMode
   conversationId: string | null
+}
+
+type ScreenshotCapture = {
+  dataUrl: string
+  width: number
+  height: number
+}
+
+type RegionSelection = {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 type CredentialRequestPayload = {
@@ -73,6 +95,11 @@ let deviceId: string | null = null
 let stellarHomePath: string | null = null
 let appReady = false // true when authenticated + onboarding complete
 let pendingConvexUrl: string | null = null
+let pendingChatContext: ChatContext | null = null
+let lastRadialPoint: { x: number; y: number } | null = null
+let regionCaptureDisplay: Display | null = null
+let pendingRegionCaptureResolve: ((value: ScreenshotCapture | null) => void) | null = null
+let pendingRegionCapturePromise: Promise<ScreenshotCapture | null> | null = null
 const pendingCredentialRequests = new Map<
   string,
   {
@@ -145,15 +172,7 @@ app.on('open-url', (event, url) => {
 })
 
 const updateUiState = (partial: Partial<UiState>) => {
-  if (partial.mode) {
-    uiState.mode = partial.mode
-  }
-  if (partial.window) {
-    uiState.window = partial.window
-  }
-  if (partial.conversationId !== undefined) {
-    uiState.conversationId = partial.conversationId
-  }
+  Object.assign(uiState, partial)
   broadcastUiState()
 }
 
@@ -216,11 +235,11 @@ const positionMiniWindow = () => {
   }
   const anchor = fullWindow ?? miniWindow
   const display = anchor ? screen.getDisplayMatching(anchor.getBounds()) : screen.getPrimaryDisplay()
-  const { x, y, width } = display.workArea
+  const { x, y, width, height } = display.workArea
 
-  // Center horizontally, position in upper third of screen (like Spotlight)
+  // Center horizontally, position near bottom of screen
   const targetX = Math.round(x + (width - miniSize.width) / 2)
-  const targetY = Math.round(y + 120)
+  const targetY = Math.round(y + height - miniSize.height - 20)
 
   miniWindow.setBounds({
     x: targetX,
@@ -251,6 +270,9 @@ const createMiniWindow = () => {
       partition: 'persist:stellar',
     },
   })
+
+  // Set higher alwaysOnTop level to appear above other floating windows
+  miniWindow.setAlwaysOnTop(true, 'pop-up-menu')
 
   loadWindow(miniWindow, 'mini')
 
@@ -292,57 +314,226 @@ const showWindow = (target: WindowMode) => {
   }
 }
 
-// Handle radial wedge selection
-const handleRadialSelection = (wedge: RadialWedge) => {
-  switch (wedge) {
-    case 'ask':
-      // Ask mode: mini window with screenshot capability
-      updateUiState({ mode: 'ask' })
-      showWindow('mini')
-      break
-    case 'chat':
-      // Chat mode: mini window for general chat
-      updateUiState({ mode: 'chat' })
-      showWindow('mini')
-      break
-    case 'voice':
-      // Voice mode: mini window with voice input (stubbed)
-      updateUiState({ mode: 'voice' })
-      showWindow('mini')
-      break
-    case 'full':
-      // Full always uses chat mode
-      showWindow('full') // This already sets mode to 'chat'
-      break
-    case 'menu':
-      // Menu just closes the radial - native menu passthrough is handled separately
-      break
+const captureRadialContext = async (x: number, y: number) => {
+  lastRadialPoint = { x, y }
+  try {
+    pendingChatContext = await captureChatContext({ x, y })
+  } catch (error) {
+    console.warn('Failed to capture chat context', error)
+    pendingChatContext = null
   }
 }
 
-// Trigger native context menu (platform-specific)
-const triggerNativeContextMenu = async (x: number, y: number) => {
-  void x
-  void y
-  // On most platforms, we simply don't block the right-click
-  // The uiohook captures the event but doesn't prevent it from reaching the system
-  // However, if needed, we could use platform-specific approaches:
-  // - Windows: Could use PowerShell or nircmd
-  // - macOS: Could use AppleScript
-  // - Linux: xdotool
-  // For now, we just do nothing and let the system handle it normally
-  // since uiohook doesn't actually block events, just observes them
+
+const consumeChatContext = () => {
+  const context = pendingChatContext
+  pendingChatContext = null
+  return context
+}
+
+const broadcastChatContext = () => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('chatContext:updated', pendingChatContext)
+  }
+}
+
+const getDisplayForPoint = (point?: { x: number; y: number }) => {
+  const targetPoint = point ?? lastRadialPoint ?? screen.getCursorScreenPoint()
+  return screen.getDisplayNearestPoint(targetPoint)
+}
+
+const getDisplaySource = async (display: Display) => {
+  const scaleFactor = display.scaleFactor ?? 1
+  const thumbnailSize = {
+    width: Math.floor(display.size.width * scaleFactor),
+    height: Math.floor(display.size.height * scaleFactor),
+  }
+
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize,
+  })
+
+  const preferred = sources.find((source) => source.display_id === String(display.id))
+  const source = preferred ?? sources[0]
+  if (!source) {
+    return null
+  }
+
+  return { source, scaleFactor }
+}
+
+const captureDisplayScreenshot = async (display: Display): Promise<ScreenshotCapture | null> => {
+  const result = await getDisplaySource(display)
+  if (!result) return null
+
+  const image = result.source.thumbnail
+  const png = image.toPNG()
+  const size = image.getSize()
+
+  return {
+    dataUrl: `data:image/png;base64,${png.toString('base64')}`,
+    width: size.width,
+    height: size.height,
+  }
+}
+
+const captureRegionScreenshot = async (
+  display: Display,
+  selection: RegionSelection,
+): Promise<ScreenshotCapture | null> => {
+  const result = await getDisplaySource(display)
+  if (!result) return null
+
+  const image = result.source.thumbnail
+  const size = image.getSize()
+  const cropX = Math.max(0, Math.round(selection.x * result.scaleFactor))
+  const cropY = Math.max(0, Math.round(selection.y * result.scaleFactor))
+  const cropWidth = Math.min(size.width - cropX, Math.round(selection.width * result.scaleFactor))
+  const cropHeight = Math.min(size.height - cropY, Math.round(selection.height * result.scaleFactor))
+
+  if (cropWidth <= 0 || cropHeight <= 0) {
+    return null
+  }
+
+  const cropped = image.crop({
+    x: cropX,
+    y: cropY,
+    width: cropWidth,
+    height: cropHeight,
+  })
+  const png = cropped.toPNG()
+  const cropSize = cropped.getSize()
+
+  return {
+    dataUrl: `data:image/png;base64,${png.toString('base64')}`,
+    width: cropSize.width,
+    height: cropSize.height,
+  }
+}
+
+const resetRegionCapture = () => {
+  pendingRegionCaptureResolve = null
+  pendingRegionCapturePromise = null
+  regionCaptureDisplay = null
+  hideRegionCaptureWindow()
+}
+
+const startRegionCapture = async () => {
+  if (pendingRegionCapturePromise) {
+    return pendingRegionCapturePromise
+  }
+
+  regionCaptureDisplay = getDisplayForPoint()
+  showRegionCaptureWindow(regionCaptureDisplay)
+
+  pendingRegionCapturePromise = new Promise<ScreenshotCapture | null>((resolve) => {
+    pendingRegionCaptureResolve = resolve
+  })
+
+  return pendingRegionCapturePromise
+}
+
+const finalizeRegionCapture = async (selection: RegionSelection) => {
+  if (!pendingRegionCaptureResolve) {
+    resetRegionCapture()
+    return
+  }
+
+  const display = regionCaptureDisplay ?? getDisplayForPoint()
+  const screenshot = await captureRegionScreenshot(display, selection)
+  pendingRegionCaptureResolve(screenshot)
+  resetRegionCapture()
+}
+
+const cancelRegionCapture = () => {
+  if (pendingRegionCaptureResolve) {
+    pendingRegionCaptureResolve(null)
+  }
+  resetRegionCapture()
+}
+
+// Handle radial wedge selection
+const handleRadialSelection = async (wedge: RadialWedge) => {
+  switch (wedge) {
+    case 'dismiss':
+      // Center/dismiss: clear context and do nothing else
+      pendingChatContext = null
+      break
+    case 'capture': {
+      updateUiState({ mode: 'chat' })
+      const regionScreenshot = await startRegionCapture()
+      if (regionScreenshot) {
+        const baseContext: ChatContext = pendingChatContext ?? {
+          window: null,
+          browserUrl: null,
+          selectedText: null,
+          regionScreenshot: null,
+        }
+        pendingChatContext = { ...baseContext, regionScreenshot }
+      }
+      showWindow('mini')
+      broadcastChatContext()
+      break
+    }
+    case 'chat':
+    case 'auto':
+      updateUiState({ mode: 'chat' })
+      showWindow('mini')
+      broadcastChatContext()
+      break
+    case 'voice':
+      updateUiState({ mode: 'voice' })
+      showWindow('mini')
+      broadcastChatContext()
+      break
+    case 'full':
+      pendingChatContext = null
+      showWindow('full')
+      break
+  }
 }
 
 // Initialize mouse hook
 const initMouseHook = () => {
   mouseHook = new MouseHookManager({
-    onRadialShow: (x: number, y: number) => {
+    onModifierDown: () => {},
+    onModifierUp: () => {
+      // Clear any unused context (overlay hiding is handled by onRadialHide)
+      pendingChatContext = null
+    },
+    onLeftClick: (x: number, y: number) => {
+      // Hide mini window if clicking outside its bounds
+      if (miniWindow && miniWindow.isVisible()) {
+        const bounds = miniWindow.getBounds()
+        const display = screen.getDisplayNearestPoint({ x, y })
+        const scaleFactor = display.scaleFactor ?? 1
+        const clickX = x / scaleFactor
+        const clickY = y / scaleFactor
+        
+        const isOutside = 
+          clickX < bounds.x || 
+          clickX > bounds.x + bounds.width ||
+          clickY < bounds.y || 
+          clickY > bounds.y + bounds.height
+        
+        if (isOutside) {
+          miniWindow.hide()
+        }
+      }
+    },
+    onRadialShow: async (x: number, y: number) => {
       if (!appReady) return
+      // 1. Capture selected text first (while original app has focus, ~50ms)
+      await captureRadialContext(x, y)
+      // 2. Show overlay to block context menu on mouseup
+      showModifierOverlay()
+      // 3. Show radial on top of overlay
       showRadialWindow(x, y)
     },
     onRadialHide: () => {
       hideRadialWindow()
+      hideModifierOverlay()
     },
     onMouseMove: (x: number, y: number) => {
       updateRadialCursor(x, y)
@@ -367,23 +558,9 @@ const initMouseHook = () => {
           RADIAL_SIZE / 2
         )
 
-        if (wedge) {
-          handleRadialSelection(wedge)
-        } else {
-          // No wedge selected - focus radial briefly to try to suppress native menu
-          // This is a workaround since uiohook is passive and can't block events
-          radialWin.focus()
-          setTimeout(() => {
-            hideRadialWindow()
-          }, 10)
-        }
-
-        // Send mouse up event to radial window
-        radialWin.webContents.send('radial:mouseup', { wedge })
+        // Always a valid wedge (center = 'dismiss')
+        void handleRadialSelection(wedge)
       }
-    },
-    onNativeMenuRequest: (x: number, y: number) => {
-      triggerNativeContextMenu(x, y)
     },
   })
 
@@ -424,6 +601,10 @@ const requestCredential = async (
 
 app.whenReady().then(async () => {
   registerAuthProtocol()
+  
+  // Start persistent PowerShell process for fast selected text capture
+  initSelectedTextProcess()
+  
   const initialAuthUrl = getDeepLinkUrl(process.argv)
   if (initialAuthUrl) {
     pendingAuthCallback = initialAuthUrl
@@ -444,6 +625,7 @@ app.whenReady().then(async () => {
   createFullWindow()
   createMiniWindow()
   createRadialWindow() // Pre-create radial window for faster display
+  createModifierOverlay() // Overlay to capture right-clicks when Ctrl is held
   showWindow('full')
 
   if (pendingAuthCallback) {
@@ -511,10 +693,14 @@ app.whenReady().then(async () => {
     showWindow(target)
   })
 
-  // Handle radial wedge selection from renderer
-  ipcMain.on('radial:select', (_event, wedge: RadialWedge) => {
-    handleRadialSelection(wedge)
-    hideRadialWindow()
+  ipcMain.handle('chatContext:get', () => consumeChatContext())
+
+  ipcMain.on('region:select', (_event, selection: RegionSelection) => {
+    void finalizeRegionCapture(selection)
+  })
+
+  ipcMain.on('region:cancel', () => {
+    cancelRegionCapture()
   })
 
   // Theme sync across windows
@@ -597,36 +783,9 @@ app.whenReady().then(async () => {
     return collectAllSignals(stellarHomePath)
   })
 
-  ipcMain.handle('screenshot:capture', async () => {
-    const display = screen.getPrimaryDisplay()
-    const scaleFactor = display.scaleFactor ?? 1
-    const thumbnailSize = {
-      width: Math.floor(display.size.width * scaleFactor),
-      height: Math.floor(display.size.height * scaleFactor),
-    }
-
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize,
-    })
-
-    const preferred = sources.find(
-      (source) => source.display_id === String(display.id),
-    )
-    const source = preferred ?? sources[0]
-    if (!source) {
-      return null
-    }
-
-    const image = source.thumbnail
-    const png = image.toPNG()
-    const size = image.getSize()
-
-    return {
-      dataUrl: `data:image/png;base64,${png.toString('base64')}`,
-      width: size.width,
-      height: size.height,
-    }
+  ipcMain.handle('screenshot:capture', async (_event, point?: { x: number; y: number }) => {
+    const display = getDisplayForPoint(point)
+    return captureDisplayScreenshot(display)
   })
 
   app.on('activate', () => {
@@ -642,6 +801,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  cleanupSelectedTextProcess()
+  destroyModifierOverlay()
 })
 
 app.on('will-quit', () => {

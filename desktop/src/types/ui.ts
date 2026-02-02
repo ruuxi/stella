@@ -1,4 +1,4 @@
-export type UiMode = 'ask' | 'chat' | 'voice'
+export type UiMode = 'chat' | 'voice'
 
 export type WindowMode = 'full' | 'mini'
 

@@ -12,8 +12,9 @@
     "test:run": "vitest run",
     "test:electron": "vitest run --config vitest.electron.config.ts",
     "preview": "vite preview",
+    "native:build": "cd native && npm install && npm run build",
     "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
-    "electron:build": "tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron-builder",
+    "electron:build": "npm run native:build && tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron-builder",
     "electron:preview": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron ."
   },
   "dependencies": {
@@ -114,7 +115,8 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "native/mouse_block.exe"
     ],
     "win": {
       "target": "nsis"

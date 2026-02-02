@@ -22,7 +22,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   showWindow: (target: 'mini' | 'full') => ipcRenderer.send('window:show', target),
-  captureScreenshot: () => ipcRenderer.invoke('screenshot:capture'),
+  captureScreenshot: (point?: { x: number; y: number }) =>
+    ipcRenderer.invoke('screenshot:capture', point),
+  getChatContext: () => ipcRenderer.invoke('chatContext:get'),
+  onChatContext: (callback: (context: unknown) => void) => {
+    const handler = (_event: IpcRendererEvent, context: unknown) => {
+      callback(context)
+    }
+    ipcRenderer.on('chatContext:updated', handler)
+    return () => {
+      ipcRenderer.removeListener('chatContext:updated', handler)
+    }
+  },
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
   configureHost: (config: { convexUrl?: string }) => ipcRenderer.invoke('host:configure', config),
   setAuthToken: (payload: { token: string | null }) => ipcRenderer.invoke('auth:setToken', payload),
@@ -69,16 +80,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('radial:cursor', handler)
     }
   },
-  onRadialMouseUp: (callback: (event: IpcRendererEvent, data: { wedge: string | null }) => void) => {
-    const handler = (event: IpcRendererEvent, data: { wedge: string | null }) => {
-      callback(event, data)
-    }
-    ipcRenderer.on('radial:mouseup', handler)
-    return () => {
-      ipcRenderer.removeListener('radial:mouseup', handler)
-    }
-  },
-  radialSelect: (wedge: string) => ipcRenderer.send('radial:select', wedge),
+  submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.send('region:select', payload),
+  cancelRegionCapture: () => ipcRenderer.send('region:cancel'),
 
   // Theme sync across windows
   onThemeChange: (callback: (event: IpcRendererEvent, data: { key: string; value: string }) => void) => {

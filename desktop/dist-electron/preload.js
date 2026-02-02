@@ -20,7 +20,17 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
     showWindow: (target) => electron_1.ipcRenderer.send('window:show', target),
-    captureScreenshot: () => electron_1.ipcRenderer.invoke('screenshot:capture'),
+    captureScreenshot: (point) => electron_1.ipcRenderer.invoke('screenshot:capture', point),
+    getChatContext: () => electron_1.ipcRenderer.invoke('chatContext:get'),
+    onChatContext: (callback) => {
+        const handler = (_event, context) => {
+            callback(context);
+        };
+        electron_1.ipcRenderer.on('chatContext:updated', handler);
+        return () => {
+            electron_1.ipcRenderer.removeListener('chatContext:updated', handler);
+        };
+    },
     getDeviceId: () => electron_1.ipcRenderer.invoke('device:getId'),
     configureHost: (config) => electron_1.ipcRenderer.invoke('host:configure', config),
     setAuthToken: (payload) => electron_1.ipcRenderer.invoke('auth:setToken', payload),
@@ -63,16 +73,8 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
             electron_1.ipcRenderer.removeListener('radial:cursor', handler);
         };
     },
-    onRadialMouseUp: (callback) => {
-        const handler = (event, data) => {
-            callback(event, data);
-        };
-        electron_1.ipcRenderer.on('radial:mouseup', handler);
-        return () => {
-            electron_1.ipcRenderer.removeListener('radial:mouseup', handler);
-        };
-    },
-    radialSelect: (wedge) => electron_1.ipcRenderer.send('radial:select', wedge),
+    submitRegionSelection: (payload) => electron_1.ipcRenderer.send('region:select', payload),
+    cancelRegionCapture: () => electron_1.ipcRenderer.send('region:cancel'),
     // Theme sync across windows
     onThemeChange: (callback) => {
         const handler = (event, data) => {

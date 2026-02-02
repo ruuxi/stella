@@ -28,10 +28,9 @@ export const createRadialWindow = () => {
         minimizable: false,
         maximizable: false,
         closable: false,
-        alwaysOnTop: true,
         skipTaskbar: true,
         hasShadow: false,
-        focusable: true, // Allow focus to help suppress native context menu
+        focusable: true,
         show: false,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -40,6 +39,8 @@ export const createRadialWindow = () => {
             partition: 'persist:stellar',
         },
     });
+    // Set higher alwaysOnTop level than overlay
+    radialWindow.setAlwaysOnTop(true, 'screen-saver');
     // Make window click-through when not interacting
     radialWindow.setIgnoreMouseEvents(false);
     if (isDev) {
@@ -104,15 +105,15 @@ export const updateRadialCursor = (x, y) => {
     });
 };
 export const getRadialWindow = () => radialWindow;
-export const RADIAL_WEDGES = ['ask', 'chat', 'voice', 'full', 'menu'];
-const DEAD_ZONE_RADIUS = 15;
+export const RADIAL_WEDGES = ['capture', 'chat', 'full', 'voice', 'auto'];
+const DEAD_ZONE_RADIUS = 30; // Larger center zone for "dismiss"
 export const calculateSelectedWedge = (cursorX, cursorY, centerX, centerY) => {
     const dx = cursorX - centerX;
     const dy = cursorY - centerY;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    // Small dead zone in center
+    // Center zone = dismiss (cancel action)
     if (distance < DEAD_ZONE_RADIUS) {
-        return null;
+        return 'dismiss';
     }
     // Calculate angle (0 = right, going clockwise)
     let angle = Math.atan2(dy, dx) * (180 / Math.PI);
@@ -125,6 +126,6 @@ export const calculateSelectedWedge = (cursorX, cursorY, centerX, centerY) => {
     angle = (angle + 90) % 360;
     // Determine wedge index
     const wedgeIndex = Math.floor(angle / 72);
-    // Map: 0=Ask (top), 1=Chat (top-right), 2=Voice (bottom-right), 3=Full (bottom-left), 4=Menu (top-left)
-    return RADIAL_WEDGES[wedgeIndex];
+    // Map: 0=Capture (top), 1=Chat (top-right), 2=Full (bottom-right), 3=Voice (bottom-left), 4=Auto (top-left)
+    return RADIAL_WEDGES[wedgeIndex] ?? 'dismiss';
 };

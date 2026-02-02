@@ -6,33 +6,42 @@ import { CredentialRequestLayer } from './app/CredentialRequestLayer'
 import { FullShell } from './screens/FullShell'
 import { MiniShell } from './screens/MiniShell'
 import { RadialShell } from './screens/RadialShell'
+import { RegionCapture } from './screens/RegionCapture'
 import { Authenticated } from 'convex/react'
 import { AuthTokenBridge } from './app/AuthTokenBridge'
 import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 
-type WindowType = 'full' | 'mini' | 'radial'
+type WindowType = 'full' | 'mini' | 'radial' | 'region'
+
+function getWindowType(isElectron: boolean, windowParam: string | null, fallback: string): WindowType {
+  if (!isElectron) {
+    return fallback as WindowType
+  }
+  switch (windowParam) {
+    case 'radial':
+    case 'region':
+    case 'mini':
+      return windowParam
+    default:
+      return 'full'
+  }
+}
 
 function App() {
   const { state } = useUiState()
   const api = getElectronApi()
   const params = new URLSearchParams(window.location.search)
   const isElectron = Boolean(api)
-  const windowParam = params.get('window')
-  let windowType: WindowType
-  if (isElectron && windowParam === 'radial') {
-    windowType = 'radial'
-  } else if (isElectron && windowParam === 'mini') {
-    windowType = 'mini'
-  } else if (isElectron) {
-    windowType = 'full'
-  } else {
-    windowType = state.window as WindowType
-  }
+  const windowType = getWindowType(isElectron, params.get('window'), state.window)
 
   const shell =
     windowType === 'radial' ? (
       <div className="app window-radial">
         <RadialShell />
+      </div>
+    ) : windowType === 'region' ? (
+      <div className="app window-region">
+        <RegionCapture />
       </div>
     ) : (
       <div className={`app window-${windowType}`}>

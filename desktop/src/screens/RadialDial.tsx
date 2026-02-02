@@ -1,16 +1,16 @@
 import { useEffect, useState, useCallback, type ComponentType, type SVGProps } from 'react'
-import { MessageSquare, Mic, Maximize2, Menu, Search } from 'lucide-react'
+import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
 import { hexToRgb } from '../theme/color'
 
 const WEDGES: { id: RadialWedge; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
-  { id: 'ask', label: 'Ask', icon: Search },
+  { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'full', label: 'Full', icon: Maximize2 },
-  { id: 'menu', label: 'Menu', icon: Menu },
+  { id: 'voice', label: 'Voice', icon: Mic },
+  { id: 'auto', label: 'Auto', icon: Sparkles },
 ]
 
 const SIZE = 280
@@ -18,7 +18,7 @@ const CENTER = SIZE / 2
 const INNER_RADIUS = 40
 const OUTER_RADIUS = 125
 const WEDGE_ANGLE = 72 // 360 / 5 wedges
-const DEAD_ZONE_RADIUS = 15 // Small dead zone
+const DEAD_ZONE_RADIUS = 30 // Center zone for "dismiss"
 
 // Helper to convert hex to rgba with alpha
 const toRgba = (color: string, alpha: number): string => {
@@ -65,19 +65,19 @@ const getContentPosition = (index: number) => {
 
 export function RadialDial() {
   const [visible, setVisible] = useState(false)
-  const [selectedWedge, setSelectedWedge] = useState<RadialWedge | null>(null)
+  const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
   const api = getElectronApi()
   const { colors } = useTheme()
 
   const calculateWedge = useCallback(
-    (x: number, y: number, centerX: number, centerY: number): RadialWedge | null => {
+    (x: number, y: number, centerX: number, centerY: number): RadialWedge => {
       const dx = x - centerX
       const dy = y - centerY
       const distance = Math.sqrt(dx * dx + dy * dy)
 
-      // Small dead zone in center - no outer limit so dragging far still works
+      // Center zone = dismiss
       if (distance < DEAD_ZONE_RADIUS) {
-        return null
+        return 'dismiss'
       }
 
       // Calculate angle (0 = right, going clockwise)
@@ -90,7 +90,7 @@ export function RadialDial() {
 
       // Determine wedge index
       const wedgeIndex = Math.floor(angle / WEDGE_ANGLE)
-      return WEDGES[wedgeIndex]?.id ?? null
+      return WEDGES[wedgeIndex]?.id ?? 'dismiss'
     },
     []
   )
@@ -101,19 +101,18 @@ export function RadialDial() {
     // Listen for radial events from main process
     const handleShow = () => {
       setVisible(true)
-      setSelectedWedge(null)
+      setSelectedWedge('dismiss')
     }
 
     const handleHide = () => {
       setVisible(false)
-      setSelectedWedge(null)
+      setSelectedWedge('dismiss')
     }
 
     const handleCursor = (
-      event: unknown,
+      _event: unknown,
       data: { x: number; y: number; centerX: number; centerY: number }
     ) => {
-      void event
       const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
       setSelectedWedge(wedge)
     }
@@ -132,41 +131,6 @@ export function RadialDial() {
       }
     }
   }, [api, calculateWedge])
-
-  // Also listen for wedge selection on mouse up
-  useEffect(() => {
-    if (!api) return
-
-    const electronAPI = window.electronAPI
-
-    const handleMouseUp = (event: unknown, data: { wedge: RadialWedge | null }) => {
-      void event
-      if (data.wedge && visible) {
-        electronAPI?.radialSelect(data.wedge)
-      }
-    }
-
-    if (electronAPI?.onRadialMouseUp) {
-      const cleanup = electronAPI.onRadialMouseUp(handleMouseUp)
-      return cleanup
-    }
-  }, [api, visible, selectedWedge])
-
-  // Send selection when mouse is released while radial is visible
-  useEffect(() => {
-    if (!visible) return
-
-    const electronAPI = window.electronAPI
-
-    const handleGlobalMouseUp = () => {
-      if (selectedWedge && electronAPI?.radialSelect) {
-        electronAPI.radialSelect(selectedWedge)
-      }
-    }
-
-    window.addEventListener('mouseup', handleGlobalMouseUp)
-    return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
-  }, [visible, selectedWedge])
 
   if (!visible) {
     return <div className="radial-dial-container" />
@@ -254,27 +218,35 @@ export function RadialDial() {
           )
         })}
 
-        {/* Center circle */}
+        {/* Center circle - shows dismiss feedback */}
         <circle
           cx={CENTER}
           cy={CENTER}
           r={INNER_RADIUS - 5}
-          fill={toRgba(colors.background, 0.95)}
-          stroke={toRgba(colors.border, 0.5)}
-          strokeWidth={1}
+          fill={selectedWedge === 'dismiss' 
+            ? toRgba(colors.destructive ?? colors.muted, 0.3) 
+            : toRgba(colors.background, 0.95)}
+          stroke={selectedWedge === 'dismiss'
+            ? toRgba(colors.destructive ?? colors.border, 0.6)
+            : toRgba(colors.border, 0.5)}
+          strokeWidth={selectedWedge === 'dismiss' ? 2 : 1}
+          style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
         />
 
-        {/* Stellar logo/text in center */}
+        {/* Center icon - X when dismiss, star otherwise */}
         <text
           x={CENTER}
           y={CENTER + 4}
           textAnchor="middle"
-          fill={toRgba(colors.foreground, 0.5)}
-          fontSize={10}
+          fill={selectedWedge === 'dismiss' 
+            ? colors.destructiveForeground ?? colors.foreground 
+            : toRgba(colors.foreground, 0.5)}
+          fontSize={selectedWedge === 'dismiss' ? 14 : 10}
           fontWeight={500}
           className="select-none"
+          style={{ transition: 'fill 0.1s ease, font-size 0.1s ease' }}
         >
-          ✦
+          {selectedWedge === 'dismiss' ? '✕' : '✦'}
         </text>
       </svg>
     </div>

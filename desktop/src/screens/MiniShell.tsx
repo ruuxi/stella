@@ -6,18 +6,24 @@ import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
 import { useConversationEvents, type EventRecord } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
+import { getElectronApi } from "../services/electron";
 import { streamChat } from "../services/model-gateway";
-import { captureScreenshot } from "../services/screenshot";
+import type { ChatContext } from "../types/electron";
+
+type AttachmentRef = { id?: string; url?: string; mimeType?: string };
 
 export const MiniShell = () => {
   const { state, setConversationId, setWindow } = useUiState();
   const [message, setMessage] = useState("");
+  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
+  const [selectedText, setSelectedText] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [reasoningText, setReasoningText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
   );
+  const [expanded, setExpanded] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
   const appendEvent = useMutation(api.events.appendEvent);
@@ -44,7 +50,7 @@ export const MiniShell = () => {
   }, []);
 
   const startStream = useCallback(
-    (args: { userMessageId: string; attachments?: Array<{ id?: string; url?: string; mimeType?: string }> }) => {
+    (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
       if (!state.conversationId) {
         return;
       }
@@ -111,7 +117,7 @@ export const MiniShell = () => {
       if (!event.payload || typeof event.payload !== "object") continue;
       const payload = event.payload as {
         mode?: string;
-        attachments?: Array<{ id?: string; url?: string; mimeType?: string }>;
+        attachments?: AttachmentRef[];
       };
       if (payload.mode !== "follow_up") continue;
       if (responded.has(event._id)) continue;
@@ -120,8 +126,29 @@ export const MiniShell = () => {
     return null;
   }, []);
 
-  // Mode is set by the radial menu selection
-  const isAskMode = state.mode === "ask";
+  useEffect(() => {
+    const electronApi = getElectronApi();
+    if (!electronApi) return;
+
+    // Fetch initial context
+    electronApi.getChatContext?.()
+      .then((context) => {
+        if (!context) return;
+        setChatContext(context);
+        setSelectedText(context.selectedText ?? null);
+      })
+      .catch((error) => {
+        console.warn("Failed to load chat context", error);
+      });
+
+    // Subscribe to context updates
+    if (!electronApi.onChatContext) return;
+    const unsubscribe = electronApi.onChatContext((context) => {
+      setChatContext(context);
+      setSelectedText(context?.selectedText ?? null);
+    });
+    return unsubscribe;
+  }, []);
 
   // Auto-create conversation if none exists
   useEffect(() => {
@@ -154,13 +181,9 @@ export const MiniShell = () => {
     });
 
     if (hasAssistantReply) {
-      setStreamingText("");
-      setReasoningText("");
-      setIsStreaming(false);
-      setPendingUserMessageId(null);
-      streamAbortRef.current = null;
+      resetStreamingState();
     }
-  }, [events, pendingUserMessageId]);
+  }, [events, pendingUserMessageId, resetStreamingState]);
 
   useEffect(() => {
     if (isStreaming || pendingUserMessageId || !state.conversationId) {
@@ -184,45 +207,41 @@ export const MiniShell = () => {
   ]);
 
   const sendMessage = async () => {
-    if (!state.conversationId || !message.trim()) {
+    const selectedSnippet = selectedText?.trim() ?? "";
+    const rawText = message.trim();
+    if (!state.conversationId || (!rawText && !selectedSnippet)) {
       return;
     }
     const deviceId = await getOrCreateDeviceId();
-    const rawText = message.trim();
     setMessage("");
 
     const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
     const cleanedText = followUpMatch ? rawText.slice(followUpMatch[0].length).trim() : rawText;
-    if (!cleanedText) {
+    const combinedText = selectedSnippet
+      ? `"${selectedSnippet}"${cleanedText ? `\n\n${cleanedText}` : ""}`
+      : cleanedText;
+    if (!combinedText) {
       return;
     }
 
-    let attachments: Array<{ id?: string; url?: string; mimeType?: string }> = [];
+    const attachments: AttachmentRef[] = [];
 
-    // In Ask mode, capture screenshot automatically
-    if (isAskMode) {
+    if (chatContext?.regionScreenshot?.dataUrl) {
       try {
-        const screenshot = await captureScreenshot();
-        if (!screenshot?.dataUrl) {
-          throw new Error("Screenshot capture failed.");
-        }
         const attachment = await createAttachment({
           conversationId: state.conversationId,
           deviceId,
-          dataUrl: screenshot.dataUrl,
+          dataUrl: chatContext.regionScreenshot.dataUrl,
         });
         if (attachment?._id) {
-          attachments = [
-            {
-              id: attachment._id as string,
-              url: attachment.url,
-              mimeType: attachment.mimeType,
-            },
-          ];
+          attachments.push({
+            id: attachment._id as string,
+            url: attachment.url,
+            mimeType: attachment.mimeType,
+          });
         }
       } catch (error) {
-        console.error("Screenshot capture failed", error);
-        return;
+        console.error("Region capture upload failed", error);
       }
     }
 
@@ -238,21 +257,32 @@ export const MiniShell = () => {
       conversationId: state.conversationId,
       type: "user_message",
       deviceId,
-      payload: { text: cleanedText, attachments, platform, ...(mode && { mode }) },
+      payload: { text: combinedText, attachments, platform, ...(mode && { mode }) },
     });
 
     if (event?._id) {
       if (mode === "follow_up") {
         return;
       }
+      setSelectedText(null);
+      setChatContext(null);
+      setExpanded(true);
       startStream({ userMessageId: event._id, attachments });
     }
   };
 
   const hasConversation = events.length > 0 || streamingText;
+  const showConversation = expanded && hasConversation;
+
+  const handleShellClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Close if clicking directly on the shell background (not the panel)
+    if (e.target === e.currentTarget) {
+      window.electronAPI?.closeWindow?.();
+    }
+  };
 
   return (
-    <div className="raycast-shell">
+    <div className="raycast-shell" onClick={handleShellClick}>
       {/* Raycast-style unified panel - no gradient, solid panel */}
       <div className="raycast-panel">
         {/* Search bar header */}
@@ -261,23 +291,36 @@ export const MiniShell = () => {
             <div className="raycast-search-icon">
               <AsciiBlackHole width={32} height={32} />
             </div>
-            <input
-              className="raycast-input"
-              placeholder={isAskMode ? "Ask about your screen..." : "Search for apps and commands..."}
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void sendMessage();
+            <div className="raycast-input-wrap">
+              {selectedText && (
+                <span className="raycast-selected-text">"{selectedText}"</span>
+              )}
+              <input
+                className="raycast-input"
+                placeholder={
+                  selectedText ? "Ask about the selection..." : "Ask about your screen..."
                 }
-              if (event.key === "Escape") {
-                // Hide the mini shell window
-                window.electronAPI?.closeWindow?.();
-              }
-              }}
-              autoFocus
-            />
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Backspace" && !message && selectedText) {
+                    setSelectedText(null);
+                    setChatContext((prev) =>
+                      prev ? { ...prev, selectedText: null } : prev,
+                    );
+                  }
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendMessage();
+                  }
+                  if (event.key === "Escape") {
+                    // Hide the mini shell window
+                    window.electronAPI?.closeWindow?.();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
             <div className="raycast-actions">
               <button
                 className="raycast-action-button"
@@ -292,10 +335,10 @@ export const MiniShell = () => {
           </div>
         </div>
 
-        {/* Results/conversation area */}
-        {hasConversation && (
+        {/* Results/conversation area - animated expansion */}
+        {showConversation && (
           <>
-            <div className="raycast-results">
+            <div className="raycast-results raycast-results-enter">
               <div className="raycast-section">
                 <div className="raycast-section-header">Conversation</div>
                 <div className="raycast-conversation-content">
@@ -310,23 +353,15 @@ export const MiniShell = () => {
               </div>
             </div>
 
-            {/* Footer hint - only when conversation exists */}
-            <div className="raycast-footer">
-              <div className="raycast-footer-hint">
-                <kbd className="raycast-kbd-small">Enter</kbd>
-                <span>to send</span>
-              </div>
-              {isStreaming && (
+            {/* Footer hint - only when streaming */}
+            {isStreaming && (
+              <div className="raycast-footer">
                 <div className="raycast-footer-hint">
                   <kbd className="raycast-kbd-small">/queue</kbd>
                   <span>to send next</span>
                 </div>
-              )}
-              <div className="raycast-footer-hint">
-                <kbd className="raycast-kbd-small">Esc</kbd>
-                <span>to close</span>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>

@@ -4,7 +4,7 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { useAction, useMutation, useConvexAuth } from "convex/react";
+import { useMutation, useConvexAuth } from "convex/react";
 import { Spinner } from "../components/spinner";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
@@ -12,7 +12,6 @@ import { api } from "../convex/api";
 import { useConversationEvents, type EventRecord } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { streamChat } from "../services/model-gateway";
-import { captureScreenshot } from "../services/screenshot";
 import { synthesizeCoreMemory } from "../services/synthesis";
 import { ShiftingGradient } from "../components/background/ShiftingGradient";
 import { useTheme } from "../theme/theme-context";
@@ -215,7 +214,6 @@ export const FullShell = () => {
     void synthesize();
   }, [isAuthenticated, onboardingDone, state.conversationId, appendEvent]);
 
-  const createAttachment = useAction(api.attachments.createFromDataUrl);
   const events = useConversationEvents(state.conversationId ?? undefined);
 
   const startStream = useCallback(
@@ -309,9 +307,6 @@ export const FullShell = () => {
     return null;
   }, []);
 
-  // Full view is always chat mode (no screenshot)
-  const isAskMode = state.mode === "ask";
-
   useEffect(() => {
     if (!pendingUserMessageId) {
       return;
@@ -330,15 +325,9 @@ export const FullShell = () => {
     });
 
     if (hasAssistantReply) {
-      setStreamingText("");
-      streamingTextRef.current = "";
-      setReasoningText("");
-      reasoningTextRef.current = "";
-      setIsStreaming(false);
-      setPendingUserMessageId(null);
-      streamAbortRef.current = null;
+      resetStreamingState();
     }
-  }, [events, pendingUserMessageId]);
+  }, [events, pendingUserMessageId, resetStreamingState]);
 
   useEffect(() => {
     if (isStreaming || pendingUserMessageId || !state.conversationId) {
@@ -384,33 +373,6 @@ export const FullShell = () => {
     }
 
     let attachments: AttachmentRef[] = [];
-
-    // In Ask mode, capture screenshot
-    if (isAskMode) {
-      try {
-        const screenshot = await captureScreenshot();
-        if (!screenshot?.dataUrl) {
-          throw new Error("Screenshot capture failed.");
-        }
-        const attachment = await createAttachment({
-          conversationId: state.conversationId,
-          deviceId,
-          dataUrl: screenshot.dataUrl,
-        });
-        if (attachment?._id) {
-          attachments = [
-            {
-              id: attachment._id as string,
-              url: attachment.url,
-              mimeType: attachment.mimeType,
-            },
-          ];
-        }
-      } catch (error) {
-        console.error("Screenshot capture failed", error);
-        return;
-      }
-    }
 
     const platform = window.electronAPI?.platform ?? "unknown";
     const shouldQueue =

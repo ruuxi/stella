@@ -6,10 +6,12 @@ export type ScreenshotCapture = {
   height: number;
 };
 
-export const captureScreenshot = async (): Promise<ScreenshotCapture | null> => {
+export const captureScreenshot = async (
+  point?: { x: number; y: number }
+): Promise<ScreenshotCapture | null> => {
   const api = getElectronApi();
   if (!api?.captureScreenshot) {
     return null;
   }
-  return await api.captureScreenshot();
+  return await api.captureScreenshot(point);
 };
