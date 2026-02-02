@@ -298,12 +298,27 @@ http.route({
           content: contentParts,
         },
       ],
+      abortSignal: request.signal,
       onFinish: async ({ text, usage, totalUsage }) => {
         if (text.trim().length > 0) {
+          const usageTotals = totalUsage ?? usage;
+          const hasUsage =
+            usageTotals &&
+            (typeof usageTotals.inputTokens === "number" ||
+              typeof usageTotals.outputTokens === "number" ||
+              typeof usageTotals.totalTokens === "number");
+          const usageSummary = hasUsage
+            ? {
+                inputTokens: usageTotals.inputTokens,
+                outputTokens: usageTotals.outputTokens,
+                totalTokens: usageTotals.totalTokens,
+              }
+            : undefined;
           await ctx.runMutation(internal.events.saveAssistantMessage, {
             conversationId,
             text,
             userMessageId,
+            usage: usageSummary,
           });
         }
 

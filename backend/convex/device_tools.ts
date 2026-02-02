@@ -61,7 +61,7 @@ const formatToolResult = (toolName: string, payload: unknown) => {
   };
 
   if (error) {
-    return `Tool ${toolName} failed: ${error}`;
+    return `ERROR: ${toolName} failed: ${error}`;
   }
 
   if (typeof result === "string") {
@@ -122,7 +122,25 @@ export const executeDeviceTool = async (
   );
 
   if (!resultEvent) {
-    return `Tool ${toolName} timed out after ${Math.round(TOOL_TIMEOUT_MS / 1000)}s.`;
+    const error = `Tool ${toolName} timed out after ${Math.round(TOOL_TIMEOUT_MS / 1000)}s.`;
+    try {
+      await ctx.runMutation(internal.events.appendInternalEvent, {
+        conversationId: context.conversationId,
+        type: "tool_result",
+        deviceId: context.targetDeviceId,
+        requestId,
+        targetDeviceId: context.targetDeviceId,
+        payload: {
+          toolName,
+          error,
+          requestId,
+          targetDeviceId: context.targetDeviceId,
+        },
+      });
+    } catch {
+      // Best-effort: timeout reporting should not fail tool execution.
+    }
+    return `ERROR: ${error}`;
   }
 
   return formatToolResult(toolName, resultEvent.payload);
