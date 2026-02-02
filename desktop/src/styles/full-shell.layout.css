@@ -1,0 +1,248 @@
+/* ============================================
+   AURA-STYLE LAYOUT
+   Open design with gradient showing through
+   ============================================ */
+
+.window-shell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.window-shell.full {
+  padding: 0;
+}
+
+.window-shell.mini {
+  padding: 12px;
+  gap: 8px;
+}
+
+/* Header - minimal, positioned at top */
+.window-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  pointer-events: none;
+}
+
+.window-header > * {
+  pointer-events: auto;
+}
+
+/* Adjust header when custom title bar is present */
+.window-header.has-title-bar {
+  top: 32px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-badge {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+  padding: 6px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(12px);
+}
+
+.header-subtitle {
+  font-size: 13px;
+  color: var(--text-weak);
+}
+
+.host-status {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Aura-style buttons */
+.primary-button,
+.ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.primary-button {
+  background: var(--text-strong);
+  color: var(--background);
+  border-color: var(--border-weak);
+}
+
+.primary-button:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.ghost-button {
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  border-color: var(--border-base);
+  backdrop-filter: blur(8px);
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: var(--surface-raised-hover);
+}
+
+/* Small button variant */
+.ghost-button.small,
+.primary-button.small {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+/* Full-screen Aura-style layout */
+.full-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Session content - open layout with gradient visible */
+.session-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.session-content::-webkit-scrollbar {
+  display: none;
+}
+
+/* Message container - centered with max-width */
+.session-messages {
+  flex: 1;
+  width: 100%;
+  max-width: 50rem;
+  margin: 0 auto;
+  padding: 112px 24px 24px; /* Extra top padding for title bar */
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* New session view - minimal home screen */
+.new-session-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  max-width: none;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.new-session-title {
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-weaker);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  mix-blend-mode: plus-lighter;
+  opacity: 0.11;
+}
+
+.new-session-title[data-expanded="true"] {
+  opacity: 0.5;
+  transition: opacity 12s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.onboarding-blackhole {
+  position: absolute;
+  top: 25%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 100%;
+  height: 50%;
+  max-width: 900px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.onboarding-blackhole[data-expanded="true"] {
+  cursor: default;
+}
+
+.onboarding-signin {
+  position: absolute;
+  bottom: 18%;
+  z-index: 10;
+  background: transparent;
+  border: 2px solid var(--border-strong);
+  min-width: 140px;
+}
+
+.onboarding-reset {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  padding: 6px 12px;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  z-index: 9999;
+}
+
+.new-session-directory {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+}
+

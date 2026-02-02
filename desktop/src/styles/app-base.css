@@ -1,0 +1,26 @@
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+.app * {
+  box-sizing: border-box;
+}
+
+.app button,
+.app input {
+  font-family: inherit;
+}
+
+.app {
+  height: 100%;
+  background: transparent;
+  color: var(--foreground);
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-feature-settings: var(--font-feature-settings, normal);
+  display: flex;
+  align-items: stretch;
+  position: relative;
+  overflow: hidden;
+}
+
