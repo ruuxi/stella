@@ -69,3 +69,23 @@
   cursor: pointer;
 }
 
+.radial-center-blackhole {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.radial-center-blackhole .ascii-black-hole-container {
+  width: 40px;
+  height: 40px;
+}
+
+.radial-center-blackhole .ascii-canvas {
+  top: 50%;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(0.28);
+}
+
