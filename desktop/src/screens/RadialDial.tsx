@@ -19,6 +19,7 @@ const INNER_RADIUS = 40
 const OUTER_RADIUS = 125
 const WEDGE_ANGLE = 72 // 360 / 5 wedges
 const DEAD_ZONE_RADIUS = 30 // Center zone for "dismiss"
+const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
 // Helper to convert hex to rgba with alpha
 const toRgba = (color: string, alpha: number): string => {
@@ -157,14 +158,6 @@ export function RadialDial() {
         className="radial-dial"
         style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.2))' }}
       >
-        {/* Background blur circle */}
-        <circle
-          cx={CENTER}
-          cy={CENTER}
-          r={OUTER_RADIUS + 10}
-          fill={toRgba(colors.background, 0.4)}
-        />
-
         {/* Wedges */}
         {WEDGES.map((wedge, index) => {
           const startAngle = index * WEDGE_ANGLE
@@ -230,37 +223,32 @@ export function RadialDial() {
           )
         })}
 
-        {/* Center circle - shows dismiss feedback */}
+        {/* Center circle */}
         <circle
           cx={CENTER}
           cy={CENTER}
-          r={INNER_RADIUS - 5}
-          fill={selectedWedge === 'dismiss' 
-            ? toRgba(colors.error ?? colors.muted, 0.3) 
-            : toRgba(colors.background, 0.95)}
-          stroke={selectedWedge === 'dismiss'
-            ? toRgba(colors.error ?? colors.border, 0.6)
-            : toRgba(colors.border, 0.5)}
-          strokeWidth={selectedWedge === 'dismiss' ? 2 : 1}
+          r={CENTER_BG_RADIUS}
+          fill={toRgba(colors.background, 0.95)}
+          stroke={toRgba(colors.border, 0.5)}
+          strokeWidth={1}
           style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
         />
 
-        {/* Center icon - X when dismiss, star otherwise */}
+        {/* Center icon */}
         <text
           x={CENTER}
           y={CENTER + 4}
           textAnchor="middle"
-          fill={selectedWedge === 'dismiss' 
-            ? colors.foregroundStrong ?? colors.foreground 
-            : toRgba(colors.foreground, 0.5)}
-          fontSize={selectedWedge === 'dismiss' ? 14 : 10}
+          fill={toRgba(colors.foreground, 0.5)}
+          fontSize={10}
           fontWeight={500}
           className="select-none"
           style={{ transition: 'fill 0.1s ease, font-size 0.1s ease' }}
         >
-          {selectedWedge === 'dismiss' ? '✕' : '✦'}
+          {'✦'}
         </text>
       </svg>
     </div>
   )
 }
+
