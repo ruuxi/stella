@@ -43,15 +43,6 @@
   transition: opacity 0.1s ease;
 }
 
-.onboarding-text .blinking-cursor {
-  animation: onboarding-blink 1s step-end infinite;
-}
-
-@keyframes onboarding-blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
 /* Choices — positioned absolutely to avoid layout shift */
 .onboarding-choices {
   position: absolute;
@@ -123,32 +114,22 @@
   transform: scale(0.97);
 }
 
-/* Fade-out for the entire dialogue after choice */
-.onboarding-dialogue[data-fading="true"] {
-  opacity: 0;
-  transition: opacity 1.2s ease-out;
-  pointer-events: none;
-}
-
-/* Faster fade-out for intro transition */
-.onboarding-dialogue[data-phase="fading-out"] {
+/* Fade-out transitions */
+.onboarding-dialogue[data-phase^="fading-out"] {
   opacity: 0;
   transition: opacity 0.4s ease-out;
   pointer-events: none;
 }
 
-/* Fade-out for question transition */
-.onboarding-dialogue[data-phase="fading-out-question"] {
-  opacity: 0;
-  transition: opacity 0.4s ease-out;
-  pointer-events: none;
+/* Theme selection step */
+.onboarding-choices--theme {
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
 }
 
-/* Fade-out for preview transition */
-.onboarding-dialogue[data-phase="fading-out-preview"] {
-  opacity: 0;
-  transition: opacity 0.4s ease-out;
-  pointer-events: none;
+.onboarding-choices--theme .onboarding-confirm {
+  margin-top: 0;
 }
 
 /* "No" response — subtle shake and fade */
@@ -167,57 +148,6 @@
   opacity: 0;
   transition: opacity 0.4s ease-out;
   pointer-events: none;
-}
-
-/* Trust choices — vertical list */
-.onboarding-trust-choices {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%) translateY(8px);
-  margin-top: 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  opacity: 0;
-  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
-  pointer-events: none;
-  width: 100%;
-  max-width: 500px;
-}
-
-.onboarding-trust-choices[data-visible="true"] {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-  pointer-events: auto;
-}
-
-.onboarding-trust-choice {
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 16px;
-  text-align: left;
-  cursor: pointer;
-  transition: opacity 0.3s ease, transform 0.2s ease, border-color 0.3s ease, background 0.3s ease;
-  font-family: inherit;
-  opacity: 0.6;
-}
-
-.onboarding-trust-choice:hover {
-  opacity: 1;
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-}
-
-.onboarding-trust-choice:active {
-  transform: translateY(0);
-}
-
-.onboarding-trust-choice[data-selected="true"] {
-  opacity: 1;
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Confirm button */
@@ -254,19 +184,3 @@
   transform: scale(0.97);
 }
 
-.onboarding-trust-title {
-  font-size: 16px;
-  font-weight: 400;
-  letter-spacing: 0.06em;
-  color: var(--foreground);
-  margin-bottom: 8px;
-}
-
-.onboarding-trust-description {
-  font-size: 13px;
-  font-weight: 300;
-  letter-spacing: 0.04em;
-  color: var(--foreground);
-  opacity: 0.7;
-  line-height: 1.5;
-}

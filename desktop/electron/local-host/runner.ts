@@ -399,7 +399,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
     }
   };
 
-  // Expose tool execution for local discovery
+  // Expose tool execution for external callers
   const executeTool = async (
     toolName: string,
     toolArgs: Record<string, unknown>,

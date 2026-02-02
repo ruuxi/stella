@@ -70,47 +70,51 @@ export const ConversationEvents = ({
               : "";
             const hasAssistantContent = assistantText.trim().length > 0;
 
+            const hasUserContent = userText.trim().length > 0 || userAttachments.length > 0;
+
             return (
               <div key={turn.id} className="session-turn">
-                {/* User message */}
-                <div className="event-item user">
-                  <div className="event-body">{userText}</div>
-                  {userAttachments.length > 0 && (
-                    <div className="event-attachments">
-                      {userAttachments.map((attachment, index) => {
-                        if (attachment.url) {
+                {/* User message (skip if empty, e.g., for standalone assistant messages) */}
+                {hasUserContent && (
+                  <div className="event-item user">
+                    <div className="event-body">{userText}</div>
+                    {userAttachments.length > 0 && (
+                      <div className="event-attachments">
+                        {userAttachments.map((attachment, index) => {
+                          if (attachment.url) {
+                            return (
+                              <img
+                                key={attachment.id ?? `${index}`}
+                                src={attachment.url}
+                                alt="Attachment"
+                                className="event-attachment"
+                                onClick={() => onOpenAttachment?.(attachment)}
+                                role={onOpenAttachment ? "button" : undefined}
+                                tabIndex={onOpenAttachment ? 0 : undefined}
+                                onKeyDown={(eventKey) => {
+                                  if (
+                                    onOpenAttachment &&
+                                    (eventKey.key === "Enter" || eventKey.key === " ")
+                                  ) {
+                                    onOpenAttachment(attachment);
+                                  }
+                                }}
+                              />
+                            );
+                          }
                           return (
-                            <img
+                            <div
                               key={attachment.id ?? `${index}`}
-                              src={attachment.url}
-                              alt="Attachment"
-                              className="event-attachment"
-                              onClick={() => onOpenAttachment?.(attachment)}
-                              role={onOpenAttachment ? "button" : undefined}
-                              tabIndex={onOpenAttachment ? 0 : undefined}
-                              onKeyDown={(eventKey) => {
-                                if (
-                                  onOpenAttachment &&
-                                  (eventKey.key === "Enter" || eventKey.key === " ")
-                                ) {
-                                  onOpenAttachment(attachment);
-                                }
-                              }}
-                            />
+                              className="event-attachment-fallback"
+                            >
+                              Attachment {index + 1}
+                            </div>
                           );
-                        }
-                        return (
-                          <div
-                            key={attachment.id ?? `${index}`}
-                            className="event-attachment-fallback"
-                          >
-                            Attachment {index + 1}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Assistant message */}
                 {hasAssistantContent && (

@@ -1,14 +1,21 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useImperativeHandle, useRef } from "react";
 import "./AsciiBlackHole.css";
 
 const CHARS = " .:-=+*#%@"; // Ordered by apparent brightness
 const ASPECT = 0.55;
+const BIRTH_DURATION = 12000;
+const FLASH_DURATION = 1200;
+
+export interface AsciiBlackHoleHandle {
+  triggerFlash: () => void;
+  startBirth: () => void;
+  reset: (value?: number) => void;
+}
 
 interface AsciiBlackHoleProps {
   width?: number;
   height?: number;
-  birthProgress?: number; // 0 = not born yet, 1 = fully emerged
-  flash?: number; // 0 = no flash, 1 = full flash (reacting to user)
+  initialBirthProgress?: number; // 0 = not born yet, 1 = fully emerged
 }
 
 const parseColor = (value: string): [number, number, number] => {
@@ -219,12 +226,10 @@ const getFragmentShader = (): string => {
   `;
 };
 
-export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
-  width = 80,
-  height = 40,
-  birthProgress = 1,
-  flash = 0,
-}) => {
+export const AsciiBlackHole = React.forwardRef<
+  AsciiBlackHoleHandle,
+  AsciiBlackHoleProps
+>(({ width = 80, height = 40, initialBirthProgress = 1 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const darkRef = useRef<HTMLSpanElement>(null);
@@ -234,16 +239,51 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
   const brightestRef = useRef<HTMLSpanElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
   const timeRef = useRef<number>(0);
-  const birthRef = useRef<number>(birthProgress);
-  const flashRef = useRef<number>(flash);
+  const birthRef = useRef<number>(initialBirthProgress);
+  const flashRef = useRef<number>(0);
+  const birthAnimationRef = useRef<{
+    startTime: number;
+    startValue: number;
+    duration: number;
+  } | null>(null);
+  const flashAnimationRef = useRef<{
+    startTime: number;
+    duration: number;
+  } | null>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      triggerFlash: () => {
+        flashAnimationRef.current = {
+          startTime: performance.now(),
+          duration: FLASH_DURATION,
+        };
+        flashRef.current = 1;
+      },
+      startBirth: () => {
+        if (birthRef.current >= 1) return;
+        birthAnimationRef.current = {
+          startTime: performance.now(),
+          startValue: birthRef.current,
+          duration: BIRTH_DURATION,
+        };
+      },
+      reset: (value = initialBirthProgress) => {
+        birthRef.current = value;
+        birthAnimationRef.current = null;
+        flashRef.current = 0;
+        flashAnimationRef.current = null;
+      },
+    }),
+    [initialBirthProgress],
+  );
 
   useEffect(() => {
-    birthRef.current = birthProgress;
-  }, [birthProgress]);
-
-  useEffect(() => {
-    flashRef.current = flash;
-  }, [flash]);
+    if (!birthAnimationRef.current) {
+      birthRef.current = initialBirthProgress;
+    }
+  }, [initialBirthProgress]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -381,8 +421,8 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       gl.uniform2f(uGridSize, width, height);
       gl.uniform1f(uAspect, ASPECT);
       gl.uniform1f(uCharCount, CHARS.length);
-      gl.uniform1f(uBirth, 1.0);
-      gl.uniform1f(uFlash, 0.0);
+      gl.uniform1f(uBirth, birthRef.current);
+      gl.uniform1f(uFlash, flashRef.current);
       gl.uniform1i(uGlyph, 0);
       gl.uniform3fv(uColors, colors);
 
@@ -433,12 +473,37 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
     const mainRenderer = initRenderer(canvas, readColors());
     if (!mainRenderer) return;
 
-    const animate = () => {
-      timeRef.current += 0.015;
-      const t = timeRef.current;
-      mainRenderer.render(t, birthRef.current, flashRef.current);
-      requestRef.current = requestAnimationFrame(animate);
-    };
+      const animate = () => {
+        timeRef.current += 0.015;
+        const now = performance.now();
+
+        const birthAnimation = birthAnimationRef.current;
+        if (birthAnimation) {
+          const elapsed = now - birthAnimation.startTime;
+          const t = Math.min(elapsed / birthAnimation.duration, 1);
+          const eased = 1 - Math.pow(1 - t, 3);
+          birthRef.current =
+            birthAnimation.startValue +
+            (1 - birthAnimation.startValue) * eased;
+          if (t >= 1) {
+            birthAnimationRef.current = null;
+          }
+        }
+
+        const flashAnimation = flashAnimationRef.current;
+        if (flashAnimation) {
+          const elapsed = now - flashAnimation.startTime;
+          const t = Math.min(elapsed / flashAnimation.duration, 1);
+          flashRef.current = 1 - t;
+          if (t >= 1) {
+            flashRef.current = 0;
+            flashAnimationRef.current = null;
+          }
+        }
+
+        mainRenderer.render(timeRef.current, birthRef.current, flashRef.current);
+        requestRef.current = requestAnimationFrame(animate);
+      };
 
     requestRef.current = requestAnimationFrame(animate);
 
@@ -487,4 +552,5 @@ export const AsciiBlackHole: React.FC<AsciiBlackHoleProps> = ({
       />
     </div>
   );
-};
+});
+AsciiBlackHole.displayName = "AsciiBlackHole";

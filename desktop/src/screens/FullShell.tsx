@@ -4,7 +4,7 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { useAction, useMutation, useQuery, useConvexAuth } from "convex/react";
+import { useAction, useMutation, useConvexAuth } from "convex/react";
 import { Spinner } from "../components/spinner";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
@@ -13,10 +13,12 @@ import { useConversationEvents } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { streamChat } from "../services/model-gateway";
 import { captureScreenshot } from "../services/screenshot";
+import { synthesizeCoreMemory } from "../services/synthesis";
 import { ShiftingGradient } from "../components/background/ShiftingGradient";
 import { useTheme } from "../theme/theme-context";
 import { Button } from "../components/button";
 import { AuthDialog } from "../app/AuthDialog";
+import type { AllUserSignalsResult } from "../types/electron";
 
 type AttachmentRef = {
   id?: string;
@@ -24,7 +26,7 @@ type AttachmentRef = {
   mimeType?: string;
 };
 
-import { AsciiBlackHole } from "../components/AsciiBlackHole";
+import { AsciiBlackHole, type AsciiBlackHoleHandle } from "../components/AsciiBlackHole";
 import { TitleBar } from "../components/TitleBar";
 import { OnboardingStep1, useOnboardingState } from "../components/Onboarding";
 
@@ -35,6 +37,7 @@ export const FullShell = () => {
   const { completed: onboardingDone, complete: completeOnboarding, reset: resetOnboarding } = useOnboardingState();
   const { gradientMode, gradientColor } = useTheme();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+  const isDev = import.meta.env.DEV;
   const [message, setMessage] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [reasoningText, setReasoningText] = useState("");
@@ -45,151 +48,149 @@ export const FullShell = () => {
     null,
   );
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
-  const [birthProgress, setBirthProgress] = useState(() => onboardingDone ? 1 : CREATURE_INITIAL_SIZE);
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
   const [onboardingKey, setOnboardingKey] = useState(0);
-  const [flash, setFlash] = useState(0);
-  const birthAnimationRef = useRef<number | null>(null);
-  const flashAnimationRef = useRef<number | null>(null);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [themeConfirmed, setThemeConfirmed] = useState(false);
+  const [hasSelectedTheme, setHasSelectedTheme] = useState(false);
+  const blackHoleRef = useRef<AsciiBlackHoleHandle | null>(null);
 
   const triggerFlash = useCallback(() => {
-    // Cancel any existing flash animation
-    if (flashAnimationRef.current) {
-      cancelAnimationFrame(flashAnimationRef.current);
-    }
-    
-    setFlash(1);
-    const startTime = performance.now();
-    const duration = 1200; // 1.2s for slower expanding wave
-    
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const t = Math.min(elapsed / duration, 1);
-      // Linear decay so wave expands at constant speed
-      const value = 1 - t;
-      setFlash(value);
-      
-      if (t < 1) {
-        flashAnimationRef.current = requestAnimationFrame(animate);
-      } else {
-        setFlash(0);
-      }
-    };
-    
-    flashAnimationRef.current = requestAnimationFrame(animate);
+    blackHoleRef.current?.triggerFlash();
   }, []);
 
   const startBirthAnimation = useCallback(() => {
     if (hasExpanded) return; // Already expanded
     setHasExpanded(true);
-    
-    const startTime = performance.now();
-    const startProgress = birthProgress;
-    const duration = 12000; // 12 seconds for full emergence
-    
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const t = Math.min(elapsed / duration, 1);
-      // Ease-out curve for organic feel
-      const eased = 1 - Math.pow(1 - t, 3);
-      // Interpolate from current small size to full
-      setBirthProgress(startProgress + (1 - startProgress) * eased);
-      
-      if (t < 1) {
-        birthAnimationRef.current = requestAnimationFrame(animate);
-      }
-    };
-    
-    birthAnimationRef.current = requestAnimationFrame(animate);
-  }, [hasExpanded, birthProgress]);
+    blackHoleRef.current?.startBirth();
+  }, [hasExpanded]);
 
   const appendEvent = useMutation(api.events.appendEvent);
-  const setPreference = useMutation(api.preferences.setPreference);
-  const trustLevel = useQuery(api.preferences.getPreference, isAuthenticated ? { key: "trust_level" } : "skip");
-  const discoveryTriggeredRef = useRef(false);
 
   const handleResetOnboarding = useCallback(() => {
-    if (birthAnimationRef.current) {
-      cancelAnimationFrame(birthAnimationRef.current);
-    }
-    setBirthProgress(CREATURE_INITIAL_SIZE);
     setHasExpanded(false);
     setOnboardingKey(k => k + 1);
+    setThemeConfirmed(false);
+    setHasSelectedTheme(false);
+    setThemePickerOpen(false);
+    blackHoleRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
-    // Clear trust level preference and delete CORE_MEMORY.MD
-    void setPreference({ key: "trust_level", value: "" }).catch(() => {});
-    void window.electronAPI?.resetDiscoveryState?.();
-    // Reset discovery trigger flag so it can run again
-    discoveryTriggeredRef.current = false;
-  }, [resetOnboarding, setPreference]);
+  }, [resetOnboarding]);
 
-  useEffect(() => {
-    return () => {
-      if (birthAnimationRef.current) {
-        cancelAnimationFrame(birthAnimationRef.current);
-      }
-      if (flashAnimationRef.current) {
-        cancelAnimationFrame(flashAnimationRef.current);
-      }
-    };
+  const handleOpenThemePicker = useCallback(() => {
+    setThemePickerOpen(true);
   }, []);
 
-  // Auto-trigger discovery immediately after sign-in (if not already run)
-  useEffect(() => {
-    // Skip if already triggered, not authenticated, no conversation, or still loading preference
-    if (discoveryTriggeredRef.current || !isAuthenticated || !state.conversationId || trustLevel === undefined) {
-      return;
-    }
-    
-    // If trust_level is already set (and not empty), discovery has already run
-    if (trustLevel && trustLevel !== "") {
-      return;
-    }
+  const handleConfirmTheme = useCallback(() => {
+    setThemeConfirmed(true);
+    setThemePickerOpen(false);
+  }, []);
 
-    // Mark as triggered to prevent double-firing
-    discoveryTriggeredRef.current = true;
-
-    // Trigger discovery with basic trust (runs locally via Electron)
-    const triggerDiscovery = async () => {
-      try {
-        // Set the preference first
-        await setPreference({ key: "trust_level", value: "basic" });
-
-        const platform = window.electronAPI?.platform ?? "unknown";
-
-        // Run discovery locally - AI proxied through backend, tools executed locally
-        // Only the welcome message is saved to database
-        if (window.electronAPI?.runDiscovery) {
-          const result = await window.electronAPI.runDiscovery({
-            conversationId: state.conversationId!,
-            platform: platform === "darwin" ? "darwin" : "win32",
-            trustLevel: "basic",
-          });
-
-          if (!result.success) {
-            console.error("Discovery failed:", result.error);
-            // Reset flag so it can retry
-            discoveryTriggeredRef.current = false;
-          }
-        } else {
-          console.warn("Discovery not available - electronAPI.runDiscovery not found");
-          discoveryTriggeredRef.current = false;
-        }
-      } catch (error) {
-        console.error("Failed to auto-trigger discovery:", error);
-        // Reset flag so it can retry
-        discoveryTriggeredRef.current = false;
-      }
-    };
-
-    void triggerDiscovery();
-  }, [isAuthenticated, state.conversationId, trustLevel, setPreference]);
+  const handleThemeSelect = useCallback(() => {
+    setHasSelectedTheme(true);
+  }, []);
 
   // Broadcast gate state to main process (controls radial menu + mini shell access)
   useEffect(() => {
     const ready = isAuthenticated && onboardingDone;
     window.electronAPI?.setAppReady?.(ready);
   }, [isAuthenticated, onboardingDone]);
+
+  // ---------------------------------------------------------------------------
+  // Background Discovery System
+  // ---------------------------------------------------------------------------
+  // Discovery runs immediately on app startup (non-blocking).
+  // Synthesis happens only after auth + onboarding are complete.
+  // Welcome message is injected as an actual assistant_message event.
+  // ---------------------------------------------------------------------------
+  const discoveryRef = useRef<{
+    started: boolean;
+    synthesized: boolean;
+    result: AllUserSignalsResult | null;
+    error: string | null;
+  }>({ started: false, synthesized: false, result: null, error: null });
+
+  const waitForSignalCollection = async (maxWaitSeconds: number): Promise<boolean> => {
+    let attempts = 0;
+    const maxAttempts = maxWaitSeconds;
+    while (!discoveryRef.current.result && !discoveryRef.current.error && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      attempts++;
+    }
+    return !!discoveryRef.current.result && !discoveryRef.current.error;
+  };
+
+  // Step 1: Start signal collection immediately on mount (non-blocking)
+  useEffect(() => {
+    if (discoveryRef.current.started) return;
+    discoveryRef.current.started = true;
+
+    const collectSignals = async () => {
+      try {
+        const exists = await window.electronAPI?.checkCoreMemoryExists?.();
+        if (exists) return;
+
+        const result = await window.electronAPI?.collectAllSignals?.();
+        
+        if (!result) {
+          discoveryRef.current.error = "No result from signal collection";
+          return;
+        }
+
+        if (result.error) {
+          discoveryRef.current.error = result.error;
+          return;
+        }
+        
+        discoveryRef.current.result = result;
+      } catch (error) {
+        discoveryRef.current.error = (error as Error).message;
+      }
+    };
+
+    void collectSignals();
+  }, []);
+
+  // Step 2: After auth + onboarding + conversationId, synthesize and inject welcome message
+  useEffect(() => {
+    if (!isAuthenticated || !onboardingDone || !state.conversationId) return;
+    if (discoveryRef.current.synthesized) return; // Only run once
+
+    const synthesize = async () => {
+      try {
+        const exists = await window.electronAPI?.checkCoreMemoryExists?.();
+        if (exists) return;
+
+        discoveryRef.current.synthesized = true;
+
+        const collectionReady = await waitForSignalCollection(30);
+        if (!collectionReady) return;
+
+        const result = discoveryRef.current.result;
+        if (!result?.formatted) return;
+
+        const synthesisResult = await synthesizeCoreMemory(result.formatted);
+        if (!synthesisResult.coreMemory) return;
+
+        await window.electronAPI?.writeCoreMemory?.(synthesisResult.coreMemory);
+
+        // Add welcome message as the first assistant message in the conversation
+        if (synthesisResult.welcomeMessage && state.conversationId) {
+          const deviceId = await getOrCreateDeviceId();
+          await appendEvent({
+            conversationId: state.conversationId,
+            type: "assistant_message",
+            deviceId,
+            payload: { text: synthesisResult.welcomeMessage },
+          });
+        }
+      } catch {
+        // Silent fail - discovery is non-critical
+      }
+    };
+
+    void synthesize();
+  }, [isAuthenticated, onboardingDone, state.conversationId, appendEvent]);
 
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const events = useConversationEvents(state.conversationId ?? undefined);
@@ -322,7 +323,12 @@ export const FullShell = () => {
 
   return (
     <div className="window-shell full">
-      <TitleBar />
+      <TitleBar 
+        hideThemePicker={!onboardingDone} 
+        themePickerOpen={themePickerOpen}
+        onThemePickerOpenChange={setThemePickerOpen}
+        onThemeSelect={handleThemeSelect}
+      />
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
 
 
@@ -339,30 +345,10 @@ export const FullShell = () => {
               />
             </div>
           ) : (
-            <div className="new-session-view" style={{
-              width: '100%',
-              maxWidth: 'none',
-              padding: 0,
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-              position: 'relative'
-            }}>
+            <div className="new-session-view">
               <div
                 className="new-session-title"
-                style={{
-                  position: 'absolute',
-                  top: '8%',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  zIndex: 10,
-                  opacity: birthProgress * 0.5,
-                  letterSpacing: '0.2em',
-                  textTransform: 'uppercase',
-                  fontSize: '16px',
-                  mixBlendMode: 'plus-lighter',
-                  transition: 'opacity 0.3s ease',
-                }}
+                data-expanded={hasExpanded ? "true" : "false"}
               >
                 Stellar
               </div>
@@ -373,21 +359,16 @@ export const FullShell = () => {
                     startBirthAnimation();
                   }
                 }}
-                style={{
-                  position: 'absolute',
-                  top: '25%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  zIndex: 5,
-                  width: '100%',
-                  height: '50%',
-                  maxWidth: '900px',
-                  cursor: !hasExpanded ? 'pointer' : 'default',
-                  transition: 'transform 0.3s ease',
-                }}
+                className="onboarding-blackhole"
+                data-expanded={hasExpanded ? "true" : "false"}
                 title={!hasExpanded ? 'Click to awaken' : undefined}
               >
-                <AsciiBlackHole width={120} height={56} birthProgress={birthProgress} flash={flash} />
+                <AsciiBlackHole
+                  ref={blackHoleRef}
+                  width={120}
+                  height={56}
+                  initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
+                />
               </div>
               {!onboardingDone && (
                 <OnboardingStep1
@@ -396,6 +377,10 @@ export const FullShell = () => {
                   onAccept={startBirthAnimation}
                   onInteract={triggerFlash}
                   onSignIn={() => setAuthDialogOpen(true)}
+                  onOpenThemePicker={handleOpenThemePicker}
+                  onConfirmTheme={handleConfirmTheme}
+                  themeConfirmed={themeConfirmed}
+                  hasSelectedTheme={hasSelectedTheme}
                   isAuthenticated={isAuthenticated}
                 />
               )}
@@ -405,14 +390,7 @@ export const FullShell = () => {
                   size="large"
                   onClick={() => setAuthDialogOpen(true)}
                   disabled={isAuthLoading}
-                  style={{
-                    position: 'absolute',
-                    bottom: '18%',
-                    zIndex: 10,
-                    background: 'transparent',
-                    border: '2px solid var(--border-strong)',
-                    minWidth: '140px',
-                  }}
+                  className="onboarding-signin"
                 >
                   {isAuthLoading ? <Spinner size="sm" /> : "Sign in"}
                 </Button>
@@ -489,25 +467,11 @@ export const FullShell = () => {
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
 
-      {/* Dev: Reset onboarding button */}
-      <button
-        onClick={handleResetOnboarding}
-        style={{
-          position: 'fixed',
-          bottom: 12,
-          left: 12,
-          padding: '6px 12px',
-          fontSize: 11,
-          background: 'rgba(0,0,0,0.3)',
-          border: '1px solid rgba(255,255,255,0.2)',
-          borderRadius: 4,
-          color: 'rgba(255,255,255,0.5)',
-          cursor: 'pointer',
-          zIndex: 9999,
-        }}
-      >
-        Reset Onboarding
-      </button>
+      {isDev && (
+        <button className="onboarding-reset" onClick={handleResetOnboarding}>
+          Reset Onboarding
+        </button>
+      )}
     </div>
   );
 };

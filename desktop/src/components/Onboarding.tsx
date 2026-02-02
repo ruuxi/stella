@@ -3,13 +3,93 @@ import "./Onboarding.css";
 
 const ONBOARDING_KEY = "stellar-onboarding-complete";
 
-type Phase = "typing-intro" | "waiting-click" | "fading-out" | "typing-preview" | "waiting-click-preview" | "fading-out-preview" | "typing-question" | "waiting" | "fading-out-question" | "accepted" | "declined" | "done";
-
 const TYPE_SPEED_MIN = 35;
 const TYPE_SPEED_MAX = 75;
 
 const getTypeDelay = () =>
   TYPE_SPEED_MIN + Math.random() * (TYPE_SPEED_MAX - TYPE_SPEED_MIN);
+
+const PHASES = {
+  "typing-intro": {
+    kind: "typing",
+    text: "Stella is an artificial intelligence assistant for humans.",
+    startDelay: 600,
+    next: "waiting-click",
+  },
+  "waiting-click": {
+    kind: "click",
+    prompt: "sign in to begin",
+  },
+  "fading-out": {
+    kind: "fade",
+    next: "typing-preview",
+  },
+  "typing-preview": {
+    kind: "typing",
+    text: "As an experimental research preview, Stella can make mistakes but learns, grows, and helps you along the way.",
+    startDelay: 200,
+    next: "waiting-click-preview",
+  },
+  "waiting-click-preview": {
+    kind: "click",
+    prompt: "click",
+  },
+  "fading-out-preview": {
+    kind: "fade",
+    next: "typing-question",
+  },
+  "typing-question": {
+    kind: "typing",
+    text: "Knowing this, will you bring her to life?",
+    startDelay: 200,
+    next: "waiting",
+  },
+  "waiting": {
+    kind: "choices",
+  },
+  "fading-out-question": {
+    kind: "fade",
+    next: "delay-theme",
+  },
+  "delay-theme": {
+    kind: "delay",
+    delayMs: 3000,
+    next: "typing-theme",
+  },
+  "typing-theme": {
+    kind: "typing",
+    text: "Select Theme",
+    startDelay: 200,
+    next: "waiting-theme",
+  },
+  "waiting-theme": {
+    kind: "theme",
+  },
+  "fading-out-theme": {
+    kind: "fade",
+    next: "accepted",
+  },
+  "accepted": {
+    kind: "accepted",
+  },
+  "declined": {
+    kind: "declined",
+  },
+  "done": {
+    kind: "done",
+  },
+} as const;
+
+type Phase = keyof typeof PHASES;
+
+const INTRO_PHASES = new Set<Phase>([
+  "typing-intro",
+  "waiting-click",
+  "fading-out",
+  "typing-preview",
+  "waiting-click-preview",
+  "fading-out-preview",
+]);
 
 export function useOnboardingState() {
   const [completed, setCompleted] = useState(() => {
@@ -34,126 +114,88 @@ interface OnboardingStep1Props {
   onAccept?: () => void;
   onInteract?: () => void;
   onSignIn?: () => void;
+  onOpenThemePicker?: () => void;
+  onConfirmTheme?: () => void;
+  themeConfirmed?: boolean;
+  hasSelectedTheme?: boolean;
   isAuthenticated?: boolean;
 }
 
-export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, isAuthenticated }) => {
+export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, onOpenThemePicker, onConfirmTheme, themeConfirmed, hasSelectedTheme, isAuthenticated }) => {
   const [phase, setPhase] = useState<Phase>("typing-intro");
   const [displayed, setDisplayed] = useState("");
   const [showCursor, setShowCursor] = useState(true);
-  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clearTimeouts = () => {
-    for (const t of timeoutsRef.current) clearTimeout(t);
-    timeoutsRef.current = [];
+  const clearTimeoutRef = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
   };
 
   const schedule = (fn: () => void, ms: number) => {
-    const t = setTimeout(fn, ms);
-    timeoutsRef.current.push(t);
-    return t;
+    timeoutRef.current = setTimeout(fn, ms);
   };
 
   useEffect(() => {
-    clearTimeouts();
+    clearTimeoutRef();
 
-    if (phase === "typing-intro") {
-      const text = "Stella is an artificial intelligence assistant for humans.";
+    const config = PHASES[phase];
+    if (config.kind === "typing") {
+      setShowCursor(true);
+      setDisplayed("");
       let i = 0;
       const type = () => {
-        if (i < text.length) {
+        if (i < config.text.length) {
           i++;
-          setDisplayed(text.slice(0, i));
+          setDisplayed(config.text.slice(0, i));
           schedule(type, getTypeDelay());
         } else {
           schedule(() => {
             setShowCursor(false);
-            setPhase("waiting-click");
+            setPhase(config.next);
           }, 400);
         }
       };
-      schedule(type, 600);
+      schedule(type, config.startDelay);
+      return clearTimeoutRef;
     }
 
-    if (phase === "fading-out") {
+    if (config.kind === "fade") {
       // Wait for fade animation (0.4s) + pause (0.2s) = 0.6s total
       schedule(() => {
         setDisplayed("");
-        setPhase("typing-preview");
+        setPhase(config.next);
       }, 600);
+      return clearTimeoutRef;
     }
 
-    if (phase === "typing-preview") {
-      setShowCursor(true);
-      const text = "As an experimental research preview, Stella can make mistakes but learns, grows, and helps you along the way.";
-      let i = 0;
-      const type = () => {
-        if (i < text.length) {
-          i++;
-          setDisplayed(text.slice(0, i));
-          schedule(type, getTypeDelay());
-        } else {
-          schedule(() => {
-            setShowCursor(false);
-            setPhase("waiting-click-preview");
-          }, 400);
-        }
-      };
-      schedule(type, 200);
-    }
-
-    if (phase === "fading-out-preview") {
+    if (config.kind === "delay") {
       schedule(() => {
-        setDisplayed("");
-        setPhase("typing-question");
-      }, 600);
+        setPhase(config.next);
+      }, config.delayMs);
+      return clearTimeoutRef;
     }
 
-    if (phase === "typing-question") {
-      setShowCursor(true);
-      const text = "Knowing this, will you bring her to life?";
-      let i = 0;
-      const type = () => {
-        if (i < text.length) {
-          i++;
-          setDisplayed(text.slice(0, i));
-          schedule(type, getTypeDelay());
-        } else {
-          schedule(() => {
-            setShowCursor(false);
-            setPhase("waiting");
-          }, 400);
-        }
-      };
-      schedule(type, 200);
-    }
-
-    if (phase === "declined") {
+    if (config.kind === "declined") {
       schedule(() => {
         setDisplayed("");
         setShowCursor(true);
         setPhase("typing-question");
       }, 2500);
+      return clearTimeoutRef;
     }
 
-    if (phase === "fading-out-question") {
-      // Wait for fade animation (0.4s) + pause (0.2s) = 0.6s total
-      schedule(() => {
-        setDisplayed("");
-        setPhase("accepted");
-      }, 600);
-    }
-
-    if (phase === "accepted") {
+    if (config.kind === "accepted") {
       // Wait for black hole animation, then complete onboarding
-      // Discovery is triggered automatically by FullShell when authenticated
       schedule(() => {
         setPhase("done");
         onComplete();
       }, 3000);
     }
 
-    return clearTimeouts;
+    return clearTimeoutRef;
   }, [phase, onComplete]);
 
   // Auto-advance from waiting-click when user signs in
@@ -163,6 +205,14 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
       setPhase("fading-out");
     }
   }, [isAuthenticated, phase, onInteract]);
+
+  // Auto-advance from waiting-theme when theme is confirmed
+  useEffect(() => {
+    if (themeConfirmed && phase === "waiting-theme") {
+      onInteract?.();
+      setPhase("fading-out-theme");
+    }
+  }, [themeConfirmed, phase, onInteract]);
 
   const handleClick = () => {
     onInteract?.();
@@ -186,10 +236,23 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
     setPhase("declined");
   };
 
-  const showClickPrompt = phase === "waiting-click" || phase === "waiting-click-preview";
-  const isFadingOut = phase === "fading-out" || phase === "fading-out-preview" || phase === "fading-out-question";
-  const showChoices = phase === "waiting";
-  const isDeclining = phase === "declined";
+  const handleOpenThemePicker = () => {
+    onInteract?.();
+    onOpenThemePicker?.();
+  };
+
+  const handleConfirmTheme = () => {
+    onInteract?.();
+    onConfirmTheme?.();
+  };
+
+  const phaseConfig = PHASES[phase];
+  const isIntro = INTRO_PHASES.has(phase);
+  const clickPromptText = phaseConfig.kind === "click" ? phaseConfig.prompt : "";
+  const showClickPrompt = Boolean(clickPromptText);
+  const showChoices = phaseConfig.kind === "choices";
+  const isDeclining = phaseConfig.kind === "declined";
+  const showThemePicker = phaseConfig.kind === "theme";
 
   if (phase === "done") return null;
 
@@ -203,30 +266,22 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
       )}
       <div
         className="onboarding-dialogue"
-        data-fading={isFadingOut}
         data-declined={isDeclining}
         data-phase={phase}
         style={{ display: phase === "accepted" ? "none" : "flex" }}
       >
         <div 
           className="onboarding-text" 
-          data-intro={phase === "typing-intro" || phase === "waiting-click" || phase === "fading-out" || phase === "typing-preview" || phase === "waiting-click-preview" || phase === "fading-out-preview"}
+          data-intro={isIntro}
         >
           {displayed}
           <span className="onboarding-cursor" style={{ opacity: showCursor ? 1 : 0 }}>│</span>
         </div>
 
-        {phase === "waiting-click" && (
+        {showClickPrompt && (
           <div className="onboarding-choices onboarding-choices--subtle" data-visible={true}>
             <span className="onboarding-choice">
-              sign in to begin
-            </span>
-          </div>
-        )}
-        {phase === "waiting-click-preview" && (
-          <div className="onboarding-choices onboarding-choices--subtle" data-visible={true}>
-            <span className="onboarding-choice">
-              click
+              {clickPromptText}
             </span>
           </div>
         )}
@@ -239,6 +294,17 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
             no
           </button>
         </div>
+
+        {showThemePicker && (
+          <div className="onboarding-choices onboarding-choices--theme" data-visible={true}>
+            <button className="onboarding-choice" onClick={handleOpenThemePicker}>
+              choose
+            </button>
+            <button className="onboarding-confirm" data-visible={hasSelectedTheme} onClick={handleConfirmTheme}>
+              confirm
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

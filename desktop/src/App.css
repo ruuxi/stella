@@ -194,19 +194,73 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  align-items: flex-start;
-  padding: 0 24px 24px;
-  max-width: 50rem;
-  margin: 0 auto;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  max-width: none;
   width: 100%;
-  gap: 12px;
+  overflow: hidden;
+  position: relative;
 }
 
 .new-session-title {
-  font-size: 20px;
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-size: 16px;
   font-weight: 500;
   color: var(--text-weaker);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  mix-blend-mode: plus-lighter;
+  opacity: 0.11;
+}
+
+.new-session-title[data-expanded="true"] {
+  opacity: 0.5;
+  transition: opacity 12s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.onboarding-blackhole {
+  position: absolute;
+  top: 25%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 100%;
+  height: 50%;
+  max-width: 900px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.onboarding-blackhole[data-expanded="true"] {
+  cursor: default;
+}
+
+.onboarding-signin {
+  position: absolute;
+  bottom: 18%;
+  z-index: 10;
+  background: transparent;
+  border: 2px solid var(--border-strong);
+  min-width: 140px;
+}
+
+.onboarding-reset {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  padding: 6px 12px;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  z-index: 9999;
 }
 
 .new-session-directory {

@@ -2,7 +2,19 @@ import { useState, useEffect } from 'react';
 import { ThemePicker } from './ThemePicker';
 import { AuthStatus } from './AuthStatus';
 
-export const TitleBar = () => {
+interface TitleBarProps {
+  hideThemePicker?: boolean;
+  themePickerOpen?: boolean;
+  onThemePickerOpenChange?: (open: boolean) => void;
+  onThemeSelect?: () => void;
+}
+
+export const TitleBar = ({ 
+  hideThemePicker = false,
+  themePickerOpen,
+  onThemePickerOpenChange,
+  onThemeSelect,
+}: TitleBarProps) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const platform = window.electronAPI?.platform ?? 'unknown';
   const isMac = platform === 'darwin';
@@ -36,7 +48,12 @@ export const TitleBar = () => {
         <div className="title-bar-drag-region" />
         <div className="title-bar-left">
           <AuthStatus />
-          <ThemePicker />
+          <ThemePicker 
+            hideTrigger={hideThemePicker} 
+            open={themePickerOpen}
+            onOpenChange={onThemePickerOpenChange}
+            onThemeSelect={onThemeSelect}
+          />
         </div>
       </div>
     );
@@ -47,7 +64,12 @@ export const TitleBar = () => {
     <div className="title-bar">
       <div className="title-bar-drag-region" />
       <div className="title-bar-left">
-        <ThemePicker />
+        <ThemePicker 
+          hideTrigger={hideThemePicker}
+          open={themePickerOpen}
+          onOpenChange={onThemePickerOpenChange}
+          onThemeSelect={onThemeSelect}
+        />
         <AuthStatus />
       </div>
       <div className="title-bar-controls">
