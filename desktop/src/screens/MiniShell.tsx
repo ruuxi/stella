@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction, useMutation } from "convex/react";
 import { useUiState } from "../app/state/ui-state";
 import { AsciiBlackHole } from "../components/AsciiBlackHole";
 import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
-import { useConversationEvents } from "../hooks/use-conversation-events";
+import { useConversationEvents, type EventRecord } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { streamChat } from "../services/model-gateway";
 import { captureScreenshot } from "../services/screenshot";
@@ -18,10 +18,107 @@ export const MiniShell = () => {
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
   );
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const streamRunIdRef = useRef(0);
   const appendEvent = useMutation(api.events.appendEvent);
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const createConversation = useMutation(api.conversations.createConversation);
   const events = useConversationEvents(state.conversationId ?? undefined);
+
+  const resetStreamingState = useCallback((runId?: number) => {
+    if (typeof runId === "number" && runId !== streamRunIdRef.current) {
+      return;
+    }
+    setStreamingText("");
+    setReasoningText("");
+    setIsStreaming(false);
+    setPendingUserMessageId(null);
+    streamAbortRef.current = null;
+  }, []);
+
+  const cancelCurrentStream = useCallback(() => {
+    if (streamAbortRef.current) {
+      streamAbortRef.current.abort();
+    }
+    streamAbortRef.current = null;
+  }, []);
+
+  const startStream = useCallback(
+    (args: { userMessageId: string; attachments?: Array<{ id?: string; url?: string; mimeType?: string }> }) => {
+      if (!state.conversationId) {
+        return;
+      }
+      const runId = streamRunIdRef.current + 1;
+      streamRunIdRef.current = runId;
+      const controller = new AbortController();
+      streamAbortRef.current = controller;
+      setStreamingText("");
+      setReasoningText("");
+      setIsStreaming(true);
+      setPendingUserMessageId(args.userMessageId);
+
+      void streamChat(
+        {
+          conversationId: state.conversationId,
+          userMessageId: args.userMessageId,
+          attachments: args.attachments ?? [],
+        },
+        {
+          onTextDelta: (delta) => {
+            if (runId !== streamRunIdRef.current) return;
+            setStreamingText((prev) => prev + delta);
+          },
+          onReasoningDelta: (delta) => {
+            if (runId !== streamRunIdRef.current) return;
+            setReasoningText((prev) => prev + delta);
+          },
+          onDone: () => {
+            if (runId !== streamRunIdRef.current) return;
+            streamAbortRef.current = null;
+            setIsStreaming(false);
+          },
+          onAbort: () => resetStreamingState(runId),
+          onError: (error) => {
+            if (runId !== streamRunIdRef.current) return;
+            console.error("Model gateway error", error);
+            resetStreamingState(runId);
+          },
+        },
+        { signal: controller.signal },
+      ).catch((error) => {
+        if (runId !== streamRunIdRef.current) return;
+        console.error("Model gateway error", error);
+        resetStreamingState(runId);
+      });
+    },
+    [resetStreamingState, state.conversationId],
+  );
+
+  const findQueuedFollowUp = useCallback((source: EventRecord[]) => {
+    const responded = new Set<string>();
+    for (const event of source) {
+      if (event.type !== "assistant_message") continue;
+      if (event.payload && typeof event.payload === "object") {
+        const payload = event.payload as { userMessageId?: string };
+        if (payload.userMessageId) {
+          responded.add(payload.userMessageId);
+        }
+      }
+    }
+
+    for (const event of source) {
+      if (event.type !== "user_message") continue;
+      if (!event.payload || typeof event.payload !== "object") continue;
+      const payload = event.payload as {
+        mode?: string;
+        attachments?: Array<{ id?: string; url?: string; mimeType?: string }>;
+      };
+      if (payload.mode !== "follow_up") continue;
+      if (responded.has(event._id)) continue;
+      return { event, attachments: payload.attachments ?? [] };
+    }
+    return null;
+  }, []);
 
   // Mode is set by the radial menu selection
   const isAskMode = state.mode === "ask";
@@ -61,16 +158,44 @@ export const MiniShell = () => {
       setReasoningText("");
       setIsStreaming(false);
       setPendingUserMessageId(null);
+      streamAbortRef.current = null;
     }
   }, [events, pendingUserMessageId]);
+
+  useEffect(() => {
+    if (isStreaming || pendingUserMessageId || !state.conversationId) {
+      return;
+    }
+    const queued = findQueuedFollowUp(events);
+    if (!queued) {
+      return;
+    }
+    startStream({
+      userMessageId: queued.event._id,
+      attachments: queued.attachments,
+    });
+  }, [
+    events,
+    findQueuedFollowUp,
+    isStreaming,
+    pendingUserMessageId,
+    startStream,
+    state.conversationId,
+  ]);
 
   const sendMessage = async () => {
     if (!state.conversationId || !message.trim()) {
       return;
     }
     const deviceId = await getOrCreateDeviceId();
-    const text = message.trim();
+    const rawText = message.trim();
     setMessage("");
+
+    const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
+    const cleanedText = followUpMatch ? rawText.slice(followUpMatch[0].length).trim() : rawText;
+    if (!cleanedText) {
+      return;
+    }
 
     let attachments: Array<{ id?: string; url?: string; mimeType?: string }> = [];
 
@@ -102,43 +227,25 @@ export const MiniShell = () => {
     }
 
     const platform = window.electronAPI?.platform ?? "unknown";
+    const mode = isStreaming && followUpMatch ? "follow_up" : isStreaming ? "steer" : undefined;
+
+    if (isStreaming && mode === "steer") {
+      cancelCurrentStream();
+      resetStreamingState();
+    }
+
     const event = await appendEvent({
       conversationId: state.conversationId,
       type: "user_message",
       deviceId,
-      payload: { text, attachments, platform },
+      payload: { text: cleanedText, attachments, platform, ...(mode && { mode }) },
     });
 
     if (event?._id) {
-      setStreamingText("");
-      setReasoningText("");
-      setIsStreaming(true);
-      setPendingUserMessageId(event._id);
-      void streamChat(
-        {
-          conversationId: state.conversationId!,
-          userMessageId: event._id,
-          attachments,
-        },
-        {
-          onTextDelta: (delta) => {
-            setStreamingText((prev) => prev + delta);
-          },
-          onReasoningDelta: (delta) => {
-            setReasoningText((prev) => prev + delta);
-          },
-          onDone: () => {
-            setIsStreaming(false);
-          },
-          onError: (error) => {
-            console.error("Model gateway error", error);
-            setIsStreaming(false);
-          },
-        },
-      ).catch((error) => {
-        console.error("Model gateway error", error);
-        setIsStreaming(false);
-      });
+      if (mode === "follow_up") {
+        return;
+      }
+      startStream({ userMessageId: event._id, attachments });
     }
   };
 
@@ -209,6 +316,12 @@ export const MiniShell = () => {
                 <kbd className="raycast-kbd-small">Enter</kbd>
                 <span>to send</span>
               </div>
+              {isStreaming && (
+                <div className="raycast-footer-hint">
+                  <kbd className="raycast-kbd-small">/queue</kbd>
+                  <span>to send next</span>
+                </div>
+              )}
               <div className="raycast-footer-hint">
                 <kbd className="raycast-kbd-small">Esc</kbd>
                 <span>to close</span>

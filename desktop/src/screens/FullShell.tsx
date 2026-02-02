@@ -9,7 +9,7 @@ import { Spinner } from "../components/spinner";
 import { useUiState } from "../app/state/ui-state";
 import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
-import { useConversationEvents } from "../hooks/use-conversation-events";
+import { useConversationEvents, type EventRecord } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { streamChat } from "../services/model-gateway";
 import { captureScreenshot } from "../services/screenshot";
@@ -44,6 +44,9 @@ export const FullShell = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const streamingTextRef = useRef("");
   const reasoningTextRef = useRef("");
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const streamRunIdRef = useRef(0);
+  const [queueNext, setQueueNext] = useState(false);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
   );
@@ -66,6 +69,26 @@ export const FullShell = () => {
   }, [hasExpanded]);
 
   const appendEvent = useMutation(api.events.appendEvent);
+
+  const resetStreamingState = useCallback((runId?: number) => {
+    if (typeof runId === "number" && runId !== streamRunIdRef.current) {
+      return;
+    }
+    setStreamingText("");
+    streamingTextRef.current = "";
+    setReasoningText("");
+    reasoningTextRef.current = "";
+    setIsStreaming(false);
+    setPendingUserMessageId(null);
+    streamAbortRef.current = null;
+  }, []);
+
+  const cancelCurrentStream = useCallback(() => {
+    if (streamAbortRef.current) {
+      streamAbortRef.current.abort();
+    }
+    streamAbortRef.current = null;
+  }, []);
 
   const handleResetOnboarding = useCallback(() => {
     setHasExpanded(false);
@@ -195,6 +218,97 @@ export const FullShell = () => {
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const events = useConversationEvents(state.conversationId ?? undefined);
 
+  const startStream = useCallback(
+    (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
+      if (!state.conversationId) {
+        return;
+      }
+      const runId = streamRunIdRef.current + 1;
+      streamRunIdRef.current = runId;
+      const controller = new AbortController();
+      streamAbortRef.current = controller;
+      setStreamingText("");
+      streamingTextRef.current = "";
+      setReasoningText("");
+      reasoningTextRef.current = "";
+      setIsStreaming(true);
+      setPendingUserMessageId(args.userMessageId);
+
+      void streamChat(
+        {
+          conversationId: state.conversationId,
+          userMessageId: args.userMessageId,
+          attachments: args.attachments ?? [],
+        },
+        {
+          onTextDelta: (delta) => {
+            if (runId !== streamRunIdRef.current) return;
+            setStreamingText((prev) => {
+              const next = prev + delta;
+              streamingTextRef.current = next;
+              return next;
+            });
+          },
+          onReasoningDelta: (delta) => {
+            if (runId !== streamRunIdRef.current) return;
+            setReasoningText((prev) => {
+              const next = prev + delta;
+              reasoningTextRef.current = next;
+              return next;
+            });
+          },
+          onDone: () => {
+            if (runId !== streamRunIdRef.current) return;
+            streamAbortRef.current = null;
+            setIsStreaming(false);
+            if (streamingTextRef.current.trim().length === 0) {
+              setStreamingText("");
+              setPendingUserMessageId(null);
+            }
+          },
+          onAbort: () => resetStreamingState(runId),
+          onError: (error) => {
+            if (runId !== streamRunIdRef.current) return;
+            console.error("Model gateway error", error);
+            resetStreamingState(runId);
+          },
+        },
+        { signal: controller.signal },
+      ).catch((error) => {
+        if (runId !== streamRunIdRef.current) return;
+        console.error("Model gateway error", error);
+        resetStreamingState(runId);
+      });
+    },
+    [resetStreamingState, state.conversationId],
+  );
+
+  const findQueuedFollowUp = useCallback((source: EventRecord[]) => {
+    const responded = new Set<string>();
+    for (const event of source) {
+      if (event.type !== "assistant_message") continue;
+      if (event.payload && typeof event.payload === "object") {
+        const payload = event.payload as { userMessageId?: string };
+        if (payload.userMessageId) {
+          responded.add(payload.userMessageId);
+        }
+      }
+    }
+
+    for (const event of source) {
+      if (event.type !== "user_message") continue;
+      if (!event.payload || typeof event.payload !== "object") continue;
+      const payload = event.payload as {
+        mode?: string;
+        attachments?: AttachmentRef[];
+      };
+      if (payload.mode !== "follow_up") continue;
+      if (responded.has(event._id)) continue;
+      return { event, attachments: payload.attachments ?? [] };
+    }
+    return null;
+  }, []);
+
   // Full view is always chat mode (no screenshot)
   const isAskMode = state.mode === "ask";
 
@@ -222,18 +336,52 @@ export const FullShell = () => {
       reasoningTextRef.current = "";
       setIsStreaming(false);
       setPendingUserMessageId(null);
+      streamAbortRef.current = null;
     }
   }, [events, pendingUserMessageId]);
+
+  useEffect(() => {
+    if (isStreaming || pendingUserMessageId || !state.conversationId) {
+      return;
+    }
+    const queued = findQueuedFollowUp(events);
+    if (!queued) {
+      return;
+    }
+    startStream({
+      userMessageId: queued.event._id,
+      attachments: queued.attachments,
+    });
+  }, [
+    events,
+    findQueuedFollowUp,
+    isStreaming,
+    pendingUserMessageId,
+    startStream,
+    state.conversationId,
+  ]);
+
+  useEffect(() => {
+    if (!isStreaming && queueNext) {
+      setQueueNext(false);
+    }
+  }, [isStreaming, queueNext]);
 
   const sendMessage = async () => {
     if (!state.conversationId || !message.trim()) {
       return;
     }
     const deviceId = await getOrCreateDeviceId();
-    const text = message.trim();
+    const rawText = message.trim();
     setMessage("");
     streamingTextRef.current = "";
     reasoningTextRef.current = "";
+
+    const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
+    const cleanedText = followUpMatch ? rawText.slice(followUpMatch[0].length).trim() : rawText;
+    if (!cleanedText) {
+      return;
+    }
 
     let attachments: AttachmentRef[] = [];
 
@@ -265,57 +413,29 @@ export const FullShell = () => {
     }
 
     const platform = window.electronAPI?.platform ?? "unknown";
+    const shouldQueue =
+      isStreaming && (queueNext || Boolean(followUpMatch));
+    const mode = shouldQueue ? "follow_up" : isStreaming ? "steer" : undefined;
+
+    if (isStreaming && mode === "steer") {
+      cancelCurrentStream();
+      resetStreamingState();
+    }
+
     const event = await appendEvent({
       conversationId: state.conversationId,
       type: "user_message",
       deviceId,
-      payload: { text, attachments, platform },
+      payload: { text: cleanedText, attachments, platform, ...(mode && { mode }) },
     });
 
     if (event?._id) {
-      setStreamingText("");
-      streamingTextRef.current = "";
-      setReasoningText("");
-      reasoningTextRef.current = "";
-      setIsStreaming(true);
-      setPendingUserMessageId(event._id);
-      void streamChat(
-        {
-          conversationId: state.conversationId!,
-          userMessageId: event._id,
-          attachments,
-        },
-        {
-          onTextDelta: (delta) => {
-            setStreamingText((prev) => {
-              const next = prev + delta;
-              streamingTextRef.current = next;
-              return next;
-            });
-          },
-          onReasoningDelta: (delta) => {
-            setReasoningText((prev) => {
-              const next = prev + delta;
-              reasoningTextRef.current = next;
-              return next;
-            });
-          },
-          onDone: () => {
-            setIsStreaming(false);
-            if (streamingTextRef.current.trim().length === 0) {
-              setStreamingText("");
-              setPendingUserMessageId(null);
-            }
-          },
-          onError: (error) => {
-            console.error("Model gateway error", error);
-            setIsStreaming(false);
-          },
-        },
-      ).catch((error) => {
-        console.error("Model gateway error", error);
-        setIsStreaming(false);
-      });
+      if (mode === "follow_up") {
+        setQueueNext(false);
+        return;
+      }
+      setQueueNext(false);
+      startStream({ userMessageId: event._id, attachments });
     }
   };
 
@@ -437,6 +557,17 @@ export const FullShell = () => {
                   </svg>
                   <span>Model</span>
                 </button>
+                {isStreaming && (
+                  <button
+                    type="button"
+                    className="composer-selector"
+                    data-active={queueNext ? "true" : "false"}
+                    onClick={() => setQueueNext((prev) => !prev)}
+                    title="Queue the next message to send after the current response"
+                  >
+                    <span>Queue</span>
+                  </button>
+                )}
               </div>
 
               <div className="composer-toolbar-right">

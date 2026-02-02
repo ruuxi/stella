@@ -17,6 +17,11 @@ type StreamHandlers = {
   onStart?: () => void;
   onDone?: () => void;
   onError?: (error: Error) => void;
+  onAbort?: () => void;
+};
+
+type StreamOptions = {
+  signal?: AbortSignal;
 };
 
 type UiStreamEvent = {
@@ -54,10 +59,24 @@ const handleUiEvent = (
   }
 };
 
-export const streamChat = async (payload: ChatRequest, handlers: StreamHandlers = {}) => {
+const isAbortError = (error: unknown, signal?: AbortSignal) => {
+  if (signal?.aborted) return true;
+  return error instanceof Error && error.name === "AbortError";
+};
+
+export const streamChat = async (
+  payload: ChatRequest,
+  handlers: StreamHandlers = {},
+  options: StreamOptions = {},
+) => {
   const baseUrl = import.meta.env.VITE_CONVEX_URL;
   if (!baseUrl) {
     throw new Error("VITE_CONVEX_URL is not set.");
+  }
+
+  if (options.signal?.aborted) {
+    handlers.onAbort?.();
+    return;
   }
 
   const token = await getAuthToken();
@@ -67,18 +86,31 @@ export const streamChat = async (payload: ChatRequest, handlers: StreamHandlers 
     baseUrl.replace(".convex.cloud", ".convex.site");
 
   const endpoint = new URL("/api/chat", httpBaseUrl).toString();
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(payload),
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error, options.signal)) {
+      handlers.onAbort?.();
+      return;
+    }
+    handlers.onError?.(error as Error);
+    throw error;
+  }
 
   if (!response.ok) {
-    throw new Error(`Chat gateway error: ${response.status}`);
+    const error = new Error(`Chat gateway error: ${response.status}`);
+    handlers.onError?.(error);
+    throw error;
   }
 
   if (!response.body) {
@@ -90,42 +122,51 @@ export const streamChat = async (payload: ChatRequest, handlers: StreamHandlers 
   let buffer = "";
   const doneState = { done: false };
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
 
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop() ?? "";
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
 
-    for (const part of parts) {
-      const lines = part.split("\n");
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) {
-          continue;
-        }
-        const payloadText = trimmed.slice(5).trim();
-        if (!payloadText) {
-          continue;
-        }
-        if (payloadText === "[DONE]") {
-          if (!doneState.done) {
-            doneState.done = true;
-            handlers.onDone?.();
+      for (const part of parts) {
+        const lines = part.split("\n");
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) {
+            continue;
           }
-          continue;
-        }
-        try {
-          const event = JSON.parse(payloadText) as UiStreamEvent;
-          handleUiEvent(event, handlers, doneState);
-        } catch (error) {
-          handlers.onError?.(error as Error);
+          const payloadText = trimmed.slice(5).trim();
+          if (!payloadText) {
+            continue;
+          }
+          if (payloadText === "[DONE]") {
+            if (!doneState.done) {
+              doneState.done = true;
+              handlers.onDone?.();
+            }
+            continue;
+          }
+          try {
+            const event = JSON.parse(payloadText) as UiStreamEvent;
+            handleUiEvent(event, handlers, doneState);
+          } catch (error) {
+            handlers.onError?.(error as Error);
+          }
         }
       }
     }
+  } catch (error) {
+    if (isAbortError(error, options.signal)) {
+      handlers.onAbort?.();
+      return;
+    }
+    handlers.onError?.(error as Error);
+    throw error;
   }
 
   if (!doneState.done) {

@@ -34,6 +34,7 @@ const getAttachments = (event: EventRecord): Attachment[] => {
   return [];
 };
 
+
 export const ConversationEvents = ({
   events,
   maxItems,
