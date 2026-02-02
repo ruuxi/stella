@@ -1,0 +1,71 @@
+/* Radial Dial */
+.window-radial {
+  background: transparent !important;
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+}
+
+/* Region Capture */
+.region-capture-root {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.region-capture-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.region-capture-selection {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.region-capture-hint {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  letter-spacing: 0.2px;
+  pointer-events: none;
+}
+
+.radial-shell {
+  width: 280px;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radial-dial-container {
+  width: 280px;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radial-dial {
+  /* no shadow */
+}
+
+.wedge-path {
+  cursor: pointer;
+}
+

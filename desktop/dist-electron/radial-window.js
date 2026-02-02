@@ -6,6 +6,7 @@ const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
 const RADIAL_SIZE = 280; // Diameter of the radial dial
 let radialWindow = null;
+let isRadialShowing = false;
 const getDevUrl = () => {
     const url = new URL('http://localhost:5173');
     url.searchParams.set('window', 'radial');
@@ -56,11 +57,17 @@ export const createRadialWindow = () => {
     return radialWindow;
 };
 export const showRadialWindow = (x, y) => {
+    // Prevent double-show
+    if (isRadialShowing)
+        return;
+    isRadialShowing = true;
     if (!radialWindow) {
         createRadialWindow();
     }
-    if (!radialWindow)
+    if (!radialWindow) {
+        isRadialShowing = false;
         return;
+    }
     // Get the display where the cursor is
     const cursorPoint = { x, y };
     const display = screen.getDisplayNearestPoint(cursorPoint);
@@ -83,6 +90,7 @@ export const showRadialWindow = (x, y) => {
     radialWindow.show();
 };
 export const hideRadialWindow = () => {
+    isRadialShowing = false;
     if (radialWindow) {
         radialWindow.webContents.send('radial:hide');
         radialWindow.hide();

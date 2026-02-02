@@ -1,4 +1,3 @@
-import './App.css'
 import { useUiState } from './app/state/ui-state'
 import { getElectronApi } from './services/electron'
 import { AppBootstrap } from './app/AppBootstrap'
