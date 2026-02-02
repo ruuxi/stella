@@ -1,0 +1,196 @@
+import { spawn, exec, type ChildProcess } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
+const TIMEOUT_MS = 3000
+
+// Persistent PowerShell process for fast UI Automation queries
+let psProcess: ChildProcess | null = null
+let psReady = false
+let pendingResolve: ((value: string | null) => void) | null = null
+let outputBuffer = ''
+
+const MARKER_START = '___STELLAR_START___'
+const MARKER_END = '___STELLAR_END___'
+
+/**
+ * Initialize persistent PowerShell process at app startup
+ * This loads UI Automation assemblies once and keeps them in memory
+ */
+export const initSelectedTextProcess = (): void => {
+  if (process.platform !== 'win32') return
+  if (psProcess) return
+
+  psProcess = spawn('powershell', ['-NoProfile', '-NoLogo', '-NonInteractive', '-Command', '-'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  })
+
+  psProcess.stdout?.setEncoding('utf8')
+  psProcess.stderr?.setEncoding('utf8')
+
+  psProcess.stdout?.on('data', (data: string) => {
+    outputBuffer += data
+    
+    // Check if we have a complete response
+    const startIdx = outputBuffer.indexOf(MARKER_START)
+    const endIdx = outputBuffer.indexOf(MARKER_END)
+    
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      const result = outputBuffer.slice(startIdx + MARKER_START.length, endIdx).trim()
+      console.log('[selected-text] Got result:', result ? result.substring(0, 50) + '...' : '(empty)')
+      outputBuffer = outputBuffer.slice(endIdx + MARKER_END.length)
+      
+      if (pendingResolve) {
+        pendingResolve(result || null)
+        pendingResolve = null
+      }
+    }
+  })
+
+  psProcess.on('exit', (code) => {
+    console.log('[selected-text] PowerShell process exited with code:', code)
+    psProcess = null
+    psReady = false
+    if (pendingResolve) {
+      pendingResolve(null)
+      pendingResolve = null
+    }
+  })
+
+  psProcess.stderr?.on('data', (data: string) => {
+    console.error('[selected-text] PowerShell stderr:', data)
+  })
+
+  // Load UI Automation assemblies once
+  const initScript = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Write-Output "READY"
+`
+  psProcess.stdin?.write(initScript + '\n')
+  
+  // Wait for READY signal
+  const checkReady = () => {
+    if (outputBuffer.includes('READY')) {
+      outputBuffer = ''
+      psReady = true
+      console.log('[selected-text] PowerShell process ready')
+    } else {
+      setTimeout(checkReady, 50)
+    }
+  }
+  checkReady()
+}
+
+/**
+ * Cleanup persistent PowerShell process on app quit
+ */
+export const cleanupSelectedTextProcess = (): void => {
+  if (psProcess) {
+    psProcess.stdin?.write('exit\n')
+    psProcess.kill()
+    psProcess = null
+  }
+}
+
+
+/**
+ * Windows: Use UI Automation via persistent PowerShell to get selected text
+ */
+const getSelectedTextWindows = (): Promise<string | null> => {
+  return new Promise((resolve) => {
+    if (!psProcess || !psReady) {
+      console.log('[selected-text] PowerShell not ready:', { psProcess: !!psProcess, psReady })
+      resolve(null)
+      return
+    }
+
+    // Set a timeout in case PowerShell hangs
+    const timeout = setTimeout(() => {
+      if (pendingResolve === resolve) {
+        pendingResolve = null
+        resolve(null)
+      }
+    }, 500)
+
+    pendingResolve = (result) => {
+      clearTimeout(timeout)
+      resolve(result)
+    }
+
+    // Send command to get selected text
+    const cmd = `
+Write-Output "${MARKER_START}"
+try {
+  $element = [System.Windows.Automation.AutomationElement]::FocusedElement
+  if ($element -ne $null) {
+    $textPattern = $element.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+    if ($textPattern -ne $null) {
+      $selection = $textPattern.GetSelection()
+      if ($selection.Length -gt 0) {
+        Write-Output $selection[0].GetText(-1)
+      }
+    }
+  }
+} catch { }
+Write-Output "${MARKER_END}"
+`
+    psProcess.stdin?.write(cmd + '\n')
+  })
+}
+
+/**
+ * macOS: Use AppleScript with System Events to get selected text
+ * Requires Accessibility permissions
+ */
+const getSelectedTextMacOS = async (): Promise<string | null> => {
+  const script = `
+tell application "System Events"
+  set frontProcess to first process whose frontmost is true
+  try
+    set selectedText to value of attribute "AXSelectedText" of (first window of frontProcess whose focused is true)
+    if selectedText is not missing value and selectedText is not "" then
+      return selectedText
+    end if
+  end try
+  try
+    set focusedElement to focused of frontProcess
+    if focusedElement is not missing value then
+      set selectedText to value of attribute "AXSelectedText" of focusedElement
+      if selectedText is not missing value then
+        return selectedText
+      end if
+    end if
+  end try
+end tell
+return ""
+`
+  try {
+    const { stdout } = await execAsync(
+      `osascript -e '${script.replace(/'/g, "'\\''")}'`,
+      { timeout: TIMEOUT_MS, encoding: 'utf8' }
+    )
+    return stdout.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Get currently selected text using platform-native APIs (Windows/macOS only)
+ */
+export const getSelectedText = async (): Promise<string | null> => {
+  try {
+    if (process.platform === 'win32') {
+      return await getSelectedTextWindows()
+    }
+    if (process.platform === 'darwin') {
+      return await getSelectedTextMacOS()
+    }
+  } catch (error) {
+    console.warn('Failed to get selected text:', error)
+  }
+  return null
+}

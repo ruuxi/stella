@@ -1,6 +1,21 @@
 import type { UiState, WindowMode } from './ui'
 
-export type RadialWedge = 'ask' | 'chat' | 'voice' | 'full' | 'menu'
+export type RadialWedge = 'capture' | 'chat' | 'full' | 'voice' | 'auto' | 'dismiss'
+
+export type ChatContext = {
+  window: {
+    title: string
+    app: string
+    bounds: { x: number; y: number; width: number; height: number }
+  } | null
+  browserUrl?: string | null
+  selectedText?: string | null
+  regionScreenshot?: {
+    dataUrl: string
+    width: number
+    height: number
+  } | null
+}
 
 // ---------------------------------------------------------------------------
 // Browser Data Types
@@ -99,11 +114,13 @@ export type ElectronApi = {
   setUiState: (partial: Partial<UiState>) => Promise<UiState>
   onUiState: (callback: (state: UiState) => void) => () => void
   showWindow: (target: WindowMode) => void
-  captureScreenshot: () => Promise<{
+  captureScreenshot: (point?: { x: number; y: number }) => Promise<{
     dataUrl: string
     width: number
     height: number
   } | null>
+  getChatContext: () => Promise<ChatContext | null>
+  onChatContext: (callback: (context: ChatContext | null) => void) => () => void
   getDeviceId: () => Promise<string | null>
   configureHost: (config: { convexUrl?: string }) => Promise<{ deviceId: string | null }>
   setAuthToken: (payload: { token: string | null }) => Promise<{ ok: boolean }>
@@ -116,8 +133,8 @@ export type ElectronApi = {
   onRadialCursor: (
     callback: (event: unknown, data: { x: number; y: number; centerX: number; centerY: number }) => void
   ) => () => void
-  onRadialMouseUp: (callback: (event: unknown, data: { wedge: RadialWedge | null }) => void) => () => void
-  radialSelect: (wedge: RadialWedge) => void
+  submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) => void
+  cancelRegionCapture: () => void
   // Theme sync across windows
   onThemeChange: (callback: (event: unknown, data: { key: string; value: string }) => void) => () => void
   broadcastThemeChange: (key: string, value: string) => void

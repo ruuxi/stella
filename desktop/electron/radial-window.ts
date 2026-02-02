@@ -35,10 +35,9 @@ export const createRadialWindow = () => {
     minimizable: false,
     maximizable: false,
     closable: false,
-    alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,
-    focusable: true, // Allow focus to help suppress native context menu
+    focusable: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -47,6 +46,9 @@ export const createRadialWindow = () => {
       partition: 'persist:stellar',
     },
   })
+
+  // Set higher alwaysOnTop level than overlay
+  radialWindow.setAlwaysOnTop(true, 'screen-saver')
 
   // Make window click-through when not interacting
   radialWindow.setIgnoreMouseEvents(false)
@@ -126,24 +128,24 @@ export const updateRadialCursor = (x: number, y: number) => {
 
 export const getRadialWindow = () => radialWindow
 
-export const RADIAL_WEDGES = ['ask', 'chat', 'voice', 'full', 'menu'] as const
-export type RadialWedge = (typeof RADIAL_WEDGES)[number]
+export const RADIAL_WEDGES = ['capture', 'chat', 'full', 'voice', 'auto'] as const
+export type RadialWedge = (typeof RADIAL_WEDGES)[number] | 'dismiss'
 
-const DEAD_ZONE_RADIUS = 15
+const DEAD_ZONE_RADIUS = 30 // Larger center zone for "dismiss"
 
 export const calculateSelectedWedge = (
   cursorX: number,
   cursorY: number,
   centerX: number,
   centerY: number
-): RadialWedge | null => {
+): RadialWedge => {
   const dx = cursorX - centerX
   const dy = cursorY - centerY
   const distance = Math.sqrt(dx * dx + dy * dy)
 
-  // Small dead zone in center
+  // Center zone = dismiss (cancel action)
   if (distance < DEAD_ZONE_RADIUS) {
-    return null
+    return 'dismiss'
   }
 
   // Calculate angle (0 = right, going clockwise)
@@ -159,6 +161,6 @@ export const calculateSelectedWedge = (
   // Determine wedge index
   const wedgeIndex = Math.floor(angle / 72)
 
-  // Map: 0=Ask (top), 1=Chat (top-right), 2=Voice (bottom-right), 3=Full (bottom-left), 4=Menu (top-left)
-  return RADIAL_WEDGES[wedgeIndex]
+  // Map: 0=Capture (top), 1=Chat (top-right), 2=Full (bottom-right), 3=Voice (bottom-left), 4=Auto (top-left)
+  return RADIAL_WEDGES[wedgeIndex] ?? 'dismiss'
 }
