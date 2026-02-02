@@ -30,6 +30,13 @@
   max-width: 680px;
   display: flex;
   flex-direction: column;
+  /* Show/hide motion is driven by `.raycast-shell.is-visible`. */
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+  transition:
+    opacity 140ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: opacity, transform;
   /* Solid opaque background - use background color for light, card for dark */
   background: var(--background);
   border-radius: 16px 16px 12px 12px;
@@ -40,6 +47,11 @@
     0 8px 24px rgba(0, 0, 0, 0.12),
     0 16px 48px rgba(0, 0, 0, 0.16);
   overflow: hidden;
+}
+
+.raycast-shell.is-visible .raycast-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .dark .raycast-panel {
@@ -195,25 +207,19 @@
 .raycast-results {
   flex: 1;
   min-height: 0;
-  max-height: 300px;
+  max-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: max-height 0.25s ease-out, opacity 0.25s ease-out;
 }
 
-/* Animated expansion for results panel */
-.raycast-results-enter {
-  animation: raycast-expand 0.25s ease-out forwards;
-}
-
-@keyframes raycast-expand {
-  from {
-    max-height: 0;
-    opacity: 0;
-  }
-  to {
-    max-height: 300px;
-    opacity: 1;
-  }
+/* Expand/collapse via transition (doesn't replay on window show/hide). */
+.raycast-results.is-open {
+  max-height: 300px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .raycast-results::-webkit-scrollbar {
@@ -318,4 +324,3 @@
     min-width: 0;
   }
 }
-

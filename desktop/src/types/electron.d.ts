@@ -17,6 +17,11 @@ export type ChatContext = {
   } | null
 }
 
+export type ChatContextUpdate = {
+  context: ChatContext | null
+  version: number
+}
+
 // ---------------------------------------------------------------------------
 // Browser Data Types
 // ---------------------------------------------------------------------------
@@ -120,7 +125,9 @@ export type ElectronApi = {
     height: number
   } | null>
   getChatContext: () => Promise<ChatContext | null>
-  onChatContext: (callback: (context: ChatContext | null) => void) => () => void
+  onChatContext: (callback: (payload: ChatContext | null | ChatContextUpdate) => void) => () => void
+  ackChatContext: (payload: { version: number }) => void
+  onMiniVisibility: (callback: (visible: boolean) => void) => () => void
   getDeviceId: () => Promise<string | null>
   configureHost: (config: { convexUrl?: string }) => Promise<{ deviceId: string | null }>
   setAuthToken: (payload: { token: string | null }) => Promise<{ ok: boolean }>

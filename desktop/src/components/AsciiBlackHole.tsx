@@ -16,6 +16,7 @@ interface AsciiBlackHoleProps {
   width?: number;
   height?: number;
   initialBirthProgress?: number; // 0 = not born yet, 1 = fully emerged
+  paused?: boolean;
 }
 
 const parseColor = (value: string): [number, number, number] => {
@@ -229,7 +230,7 @@ const getFragmentShader = (): string => {
 export const AsciiBlackHole = React.forwardRef<
   AsciiBlackHoleHandle,
   AsciiBlackHoleProps
->(({ width = 80, height = 40, initialBirthProgress = 1 }, ref) => {
+>(({ width = 80, height = 40, initialBirthProgress = 1, paused = false }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const darkRef = useRef<HTMLSpanElement>(null);
@@ -238,6 +239,8 @@ export const AsciiBlackHole = React.forwardRef<
   const brightRef = useRef<HTMLSpanElement>(null);
   const brightestRef = useRef<HTMLSpanElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
+  const animateRef = useRef<(() => void) | null>(null);
+  const pausedRef = useRef(paused);
   const timeRef = useRef<number>(0);
   const birthRef = useRef<number>(initialBirthProgress);
   const flashRef = useRef<number>(0);
@@ -284,6 +287,14 @@ export const AsciiBlackHole = React.forwardRef<
       birthRef.current = initialBirthProgress;
     }
   }, [initialBirthProgress]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+    // Resume the loop if we were paused and are now active again.
+    if (!paused && !requestRef.current && animateRef.current) {
+      requestRef.current = requestAnimationFrame(animateRef.current);
+    }
+  }, [paused]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -474,6 +485,11 @@ export const AsciiBlackHole = React.forwardRef<
     if (!mainRenderer) return;
 
       const animate = () => {
+        // When paused, stop scheduling frames (keeps the GL resources alive but saves CPU/GPU).
+        if (pausedRef.current) {
+          requestRef.current = undefined;
+          return;
+        }
         timeRef.current += 0.015;
         const now = performance.now();
 
@@ -505,7 +521,10 @@ export const AsciiBlackHole = React.forwardRef<
         requestRef.current = requestAnimationFrame(animate);
       };
 
-    requestRef.current = requestAnimationFrame(animate);
+    animateRef.current = animate;
+    if (!pausedRef.current) {
+      requestRef.current = requestAnimationFrame(animate);
+    }
 
     const observer = new MutationObserver(() => {
       mainRenderer.setColors(readColors());
@@ -517,6 +536,7 @@ export const AsciiBlackHole = React.forwardRef<
 
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      animateRef.current = null;
       observer.disconnect();
       mainRenderer.destroy();
     };
