@@ -22,6 +22,17 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     showWindow: (target) => electron_1.ipcRenderer.send('window:show', target),
     captureScreenshot: (point) => electron_1.ipcRenderer.invoke('screenshot:capture', point),
     getChatContext: () => electron_1.ipcRenderer.invoke('chatContext:get'),
+    // Renderer acks that it has applied a particular chat context version. Used to avoid flashing stale frames on show.
+    ackChatContext: (payload) => electron_1.ipcRenderer.send('chatContext:ack', payload),
+    onMiniVisibility: (callback) => {
+        const handler = (_event, data) => {
+            callback(Boolean(data?.visible));
+        };
+        electron_1.ipcRenderer.on('mini:visibility', handler);
+        return () => {
+            electron_1.ipcRenderer.removeListener('mini:visibility', handler);
+        };
+    },
     onChatContext: (callback) => {
         const handler = (_event, context) => {
             callback(context);

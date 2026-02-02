@@ -8,7 +8,7 @@ import { useConversationEvents, type EventRecord } from "../hooks/use-conversati
 import { getOrCreateDeviceId } from "../services/device";
 import { getElectronApi } from "../services/electron";
 import { streamChat } from "../services/model-gateway";
-import type { ChatContext } from "../types/electron";
+import type { ChatContext, ChatContextUpdate } from "../types/electron";
 
 type AttachmentRef = { id?: string; url?: string; mimeType?: string };
 
@@ -17,6 +17,7 @@ export const MiniShell = () => {
   const [message, setMessage] = useState("");
   const [chatContext, setChatContext] = useState<ChatContext | null>(null);
   const [selectedText, setSelectedText] = useState<string | null>(null);
+  const [shellVisible, setShellVisible] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [reasoningText, setReasoningText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -130,6 +131,10 @@ export const MiniShell = () => {
     const electronApi = getElectronApi();
     if (!electronApi) return;
 
+    const unsubscribeVisibility = electronApi.onMiniVisibility?.((visible) => {
+      setShellVisible(visible);
+    });
+
     // Fetch initial context
     electronApi.getChatContext?.()
       .then((context) => {
@@ -141,13 +146,37 @@ export const MiniShell = () => {
         console.warn("Failed to load chat context", error);
       });
 
-    // Subscribe to context updates
+    // Subscribe to context updates.
+    // When the mini window is hidden, Windows can show the last cached frame for a moment on next show.
+    // We ack after a couple rAFs so main can wait for a "fresh" frame before showing the window.
     if (!electronApi.onChatContext) return;
-    const unsubscribe = electronApi.onChatContext((context) => {
+    const unsubscribe = electronApi.onChatContext((payload) => {
+      let context: ChatContext | null = null;
+      let version: number | null = null;
+
+      if (payload && typeof payload === "object" && "context" in payload) {
+        const update = payload as ChatContextUpdate;
+        context = update.context ?? null;
+        version = typeof update.version === "number" ? update.version : null;
+      } else {
+        context = (payload as ChatContext | null) ?? null;
+      }
+
       setChatContext(context);
       setSelectedText(context?.selectedText ?? null);
+
+      if (version !== null) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.electronAPI?.ackChatContext?.({ version });
+          });
+        });
+      }
     });
-    return unsubscribe;
+    return () => {
+      unsubscribe?.();
+      unsubscribeVisibility?.();
+    };
   }, []);
 
   // Auto-create conversation if none exists
@@ -282,14 +311,14 @@ export const MiniShell = () => {
   };
 
   return (
-    <div className="raycast-shell" onClick={handleShellClick}>
+    <div className={`raycast-shell${shellVisible ? " is-visible" : ""}`} onClick={handleShellClick}>
       {/* Raycast-style unified panel - no gradient, solid panel */}
       <div className="raycast-panel">
         {/* Search bar header */}
         <div className="raycast-header">
           <div className="raycast-search">
             <div className="raycast-search-icon">
-              <AsciiBlackHole width={32} height={32} />
+              <AsciiBlackHole width={32} height={32} paused={!shellVisible} />
             </div>
             <div className="raycast-input-wrap">
               {selectedText && (
@@ -335,34 +364,33 @@ export const MiniShell = () => {
           </div>
         </div>
 
-        {/* Results/conversation area - animated expansion */}
-        {showConversation && (
-          <>
-            <div className="raycast-results raycast-results-enter">
-              <div className="raycast-section">
-                <div className="raycast-section-header">Conversation</div>
-                <div className="raycast-conversation-content">
-                  <ConversationEvents
-                    events={events}
-                    maxItems={5}
-                    streamingText={streamingText}
-                    reasoningText={reasoningText}
-                    isStreaming={isStreaming}
-                  />
-                </div>
+        {/* Results/conversation area.
+            Keep the container mounted so its enter animation doesn't replay on every window show/hide. */}
+        <div className={`raycast-results${showConversation ? " is-open" : ""}`}>
+          {showConversation && (
+            <div className="raycast-section">
+              <div className="raycast-section-header">Conversation</div>
+              <div className="raycast-conversation-content">
+                <ConversationEvents
+                  events={events}
+                  maxItems={5}
+                  streamingText={streamingText}
+                  reasoningText={reasoningText}
+                  isStreaming={isStreaming}
+                />
               </div>
             </div>
+          )}
+        </div>
 
-            {/* Footer hint - only when streaming */}
-            {isStreaming && (
-              <div className="raycast-footer">
-                <div className="raycast-footer-hint">
-                  <kbd className="raycast-kbd-small">/queue</kbd>
-                  <span>to send next</span>
-                </div>
-              </div>
-            )}
-          </>
+        {/* Footer hint - only when streaming */}
+        {showConversation && isStreaming && (
+          <div className="raycast-footer">
+            <div className="raycast-footer-hint">
+              <kbd className="raycast-kbd-small">/queue</kbd>
+              <span>to send next</span>
+            </div>
+          </div>
         )}
       </div>
     </div>
