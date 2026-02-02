@@ -264,19 +264,19 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
   };
 
   const setAuthToken = (token: string | null) => {
-    // Stop subscription before changing auth
-    stopSubscription();
     authToken = token;
     if (!client) {
       return;
     }
     if (authToken) {
       client.setAuth(() => Promise.resolve(authToken));
-      // Start subscription if runner is running and we now have auth
-      if (isRunning) {
-        startSubscription();
-      }
+      // Start subscription if runner is running and we now have auth.
+      // Note: avoid restarting an active subscription on token refresh; Convex
+      // will re-authenticate as needed via the updated auth callback.
+      if (isRunning) startSubscription();
     } else {
+      // Stop subscription when auth is cleared (logout/unauthenticated).
+      stopSubscription();
       // Clear auth by setting it to return null
       client.setAuth(() => Promise.resolve(null));
     }

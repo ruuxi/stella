@@ -460,6 +460,7 @@
   white-space: pre-wrap;
 }
 
+
 .event-attachments {
   display: flex;
   flex-wrap: wrap;
@@ -716,6 +717,11 @@
 
 .composer-selector:hover {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+.composer-selector[data-active="true"] {
+  background: color-mix(in oklch, var(--primary) 15%, transparent);
   color: var(--text-strong);
 }
 

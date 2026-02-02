@@ -45,6 +45,12 @@ export type MessagePayload = {
   message?: string;
   role?: string;
   attachments?: Attachment[];
+  mode?: string;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
 };
 
 // Task event payload structures
@@ -191,7 +197,7 @@ export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
   const resultsByRequestId = new Map<string, EventRecord & { payload: ToolResultPayload }>();
   for (const event of resultEvents) {
     const reqId = getRequestId(event);
-    if (reqId) {
+    if (reqId && !resultsByRequestId.has(reqId)) {
       resultsByRequestId.set(reqId, event as EventRecord & { payload: ToolResultPayload });
     }
   }
