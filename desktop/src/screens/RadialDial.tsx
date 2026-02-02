@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, type ComponentType, type SVGProps } from 'react'
+import { useEffect, useState, useCallback, useRef, type ComponentType, type SVGProps } from 'react'
 import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
@@ -66,6 +66,7 @@ const getContentPosition = (index: number) => {
 export function RadialDial() {
   const [visible, setVisible] = useState(false)
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
+  const visibleRef = useRef(false)
   const api = getElectronApi()
   const { colors } = useTheme()
 
@@ -99,12 +100,22 @@ export function RadialDial() {
     if (!api) return
 
     // Listen for radial events from main process
-    const handleShow = () => {
+    const handleShow = (
+      _event: unknown,
+      data: { centerX: number; centerY: number; x?: number; y?: number }
+    ) => {
+      visibleRef.current = true
       setVisible(true)
-      setSelectedWedge('dismiss')
+      if (typeof data.x === 'number' && typeof data.y === 'number') {
+        const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
+        setSelectedWedge(wedge)
+      } else {
+        setSelectedWedge('dismiss')
+      }
     }
 
     const handleHide = () => {
+      visibleRef.current = false
       setVisible(false)
       setSelectedWedge('dismiss')
     }
@@ -113,8 +124,9 @@ export function RadialDial() {
       _event: unknown,
       data: { x: number; y: number; centerX: number; centerY: number }
     ) => {
+      if (!visibleRef.current) return
       const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
-      setSelectedWedge(wedge)
+      setSelectedWedge((prev) => (prev === wedge ? prev : wedge))
     }
 
     // Access ipcRenderer through electronAPI
@@ -224,10 +236,10 @@ export function RadialDial() {
           cy={CENTER}
           r={INNER_RADIUS - 5}
           fill={selectedWedge === 'dismiss' 
-            ? toRgba(colors.destructive ?? colors.muted, 0.3) 
+            ? toRgba(colors.error ?? colors.muted, 0.3) 
             : toRgba(colors.background, 0.95)}
           stroke={selectedWedge === 'dismiss'
-            ? toRgba(colors.destructive ?? colors.border, 0.6)
+            ? toRgba(colors.error ?? colors.border, 0.6)
             : toRgba(colors.border, 0.5)}
           strokeWidth={selectedWedge === 'dismiss' ? 2 : 1}
           style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
@@ -239,7 +251,7 @@ export function RadialDial() {
           y={CENTER + 4}
           textAnchor="middle"
           fill={selectedWedge === 'dismiss' 
-            ? colors.destructiveForeground ?? colors.foreground 
+            ? colors.foregroundStrong ?? colors.foreground 
             : toRgba(colors.foreground, 0.5)}
           fontSize={selectedWedge === 'dismiss' ? 14 : 10}
           fontWeight={500}
