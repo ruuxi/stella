@@ -10,6 +10,11 @@ const isDev = process.env.NODE_ENV === 'development'
 const RADIAL_SIZE = 280 // Diameter of the radial dial
 
 let radialWindow: BrowserWindow | null = null
+// Cache the bounds/scale used when the radial is shown.
+// Using getBounds() during the first few ms after setBounds() can return stale values on some systems.
+let radialBounds: { x: number; y: number } | null = null
+let radialScaleFactor = 1
+let hideTimer: NodeJS.Timeout | null = null
 
 const getDevUrl = () => {
   const url = new URL('http://localhost:5173')
@@ -74,15 +79,22 @@ export const showRadialWindow = (x: number, y: number) => {
 
   if (!radialWindow) return
 
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+
   // Get the display where the cursor is
   const cursorPoint = { x, y }
   const display = screen.getDisplayNearestPoint(cursorPoint)
   const scaleFactor = display.scaleFactor ?? 1
+  radialScaleFactor = scaleFactor
 
   // Position window centered on cursor
   // Account for display scaling
   const adjustedX = Math.round(x / scaleFactor - RADIAL_SIZE / 2)
   const adjustedY = Math.round(y / scaleFactor - RADIAL_SIZE / 2)
+  radialBounds = { x: adjustedX, y: adjustedY }
 
   radialWindow.setBounds({
     x: adjustedX,
@@ -91,8 +103,13 @@ export const showRadialWindow = (x: number, y: number) => {
     height: RADIAL_SIZE,
   })
 
-  // Send cursor position to renderer (relative to window center)
+  // Send initial cursor position to renderer (relative to window center).
+  // Doing this on show avoids a "previous selection flash" before the first cursor move event arrives.
+  const relativeX = x / scaleFactor - adjustedX
+  const relativeY = y / scaleFactor - adjustedY
   radialWindow.webContents.send('radial:show', {
+    x: relativeX,
+    y: relativeY,
     centerX: RADIAL_SIZE / 2,
     centerY: RADIAL_SIZE / 2,
   })
@@ -103,17 +120,24 @@ export const showRadialWindow = (x: number, y: number) => {
 export const hideRadialWindow = () => {
   if (radialWindow) {
     radialWindow.webContents.send('radial:hide')
-    radialWindow.hide()
+    // Give the renderer a frame to paint the "hidden/reset" state before we actually hide the window.
+    // Otherwise the OS can show the previous frame briefly on next open.
+    if (hideTimer) {
+      clearTimeout(hideTimer)
+    }
+    hideTimer = setTimeout(() => {
+      radialWindow?.hide()
+      hideTimer = null
+    }, 16)
   }
 }
 
 export const updateRadialCursor = (x: number, y: number) => {
   if (!radialWindow || !radialWindow.isVisible()) return
 
-  // Get window bounds to calculate relative cursor position
-  const bounds = radialWindow.getBounds()
-  const display = screen.getDisplayNearestPoint({ x, y })
-  const scaleFactor = display.scaleFactor ?? 1
+  // Use cached bounds/scale from show time for stable math (especially right after setBounds()).
+  const bounds = radialBounds ?? radialWindow.getBounds()
+  const scaleFactor = radialBounds ? radialScaleFactor : (screen.getDisplayNearestPoint({ x, y }).scaleFactor ?? 1)
 
   const relativeX = x / scaleFactor - bounds.x
   const relativeY = y / scaleFactor - bounds.y

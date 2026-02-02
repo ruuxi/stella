@@ -51,8 +51,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAppReady: (ready: boolean) => ipcRenderer.send('app:setReady', ready),
 
   // Radial dial events
-  onRadialShow: (callback: (event: IpcRendererEvent, data: { centerX: number; centerY: number }) => void) => {
-    const handler = (event: IpcRendererEvent, data: { centerX: number; centerY: number }) => {
+  onRadialShow: (
+    callback: (
+      event: IpcRendererEvent,
+      data: { centerX: number; centerY: number; x?: number; y?: number }
+    ) => void
+  ) => {
+    const handler = (event: IpcRendererEvent, data: { centerX: number; centerY: number; x?: number; y?: number }) => {
       callback(event, data)
     }
     ipcRenderer.on('radial:show', handler)

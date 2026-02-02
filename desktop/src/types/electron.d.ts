@@ -128,7 +128,9 @@ export type ElectronApi = {
   // App readiness gate (controls radial menu + mini shell)
   setAppReady: (ready: boolean) => void
   // Radial dial events
-  onRadialShow: (callback: (event: unknown, data: { centerX: number; centerY: number }) => void) => () => void
+  onRadialShow: (
+    callback: (event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number }) => void
+  ) => () => void
   onRadialHide: (callback: () => void) => () => void
   onRadialCursor: (
     callback: (event: unknown, data: { x: number; y: number; centerX: number; centerY: number }) => void
