@@ -37,6 +37,12 @@ export function RegionCapture() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    api?.cancelRegionCapture?.();
+    clearSelection();
+  };
+
   const handleMouseDown = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
@@ -77,6 +83,7 @@ export function RegionCapture() {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onContextMenu={handleContextMenu}
     >
       {!selection && <div className="region-capture-dim" />}
       {selection && (
@@ -90,7 +97,7 @@ export function RegionCapture() {
           }}
         />
       )}
-      <div className="region-capture-hint">Drag to capture region • Esc to cancel</div>
+      <div className="region-capture-hint">Drag to capture region • Right-click or Esc to cancel</div>
     </div>
   );
 }

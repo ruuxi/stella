@@ -11,8 +11,9 @@ import {
   calculateSelectedWedge,
   type RadialWedge,
 } from './radial-window.js'
-import { showRegionCaptureWindow, hideRegionCaptureWindow } from './region-capture-window.js'
+import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow } from './region-capture-window.js'
 import { captureChatContext, type ChatContext } from './chat-context.js'
+import { captureWindowAtPoint, prefetchWindowSources } from './window-capture.js'
 import { initSelectedTextProcess, cleanupSelectedTextProcess } from './selected-text.js'
 import {
   createModifierOverlay,
@@ -124,6 +125,13 @@ const pendingCredentialRequests = new Map<
     timeout: NodeJS.Timeout
   }
 >()
+
+const emptyContext = (): ChatContext => ({
+  window: null,
+  browserUrl: null,
+  selectedText: null,
+  regionScreenshots: [],
+})
 
 const miniSize = {
   width: 680,
@@ -470,7 +478,13 @@ const showWindow = (target: WindowMode) => {
 const captureRadialContext = async (x: number, y: number) => {
   lastRadialPoint = { x, y }
   try {
-    setPendingChatContext(await captureChatContext({ x, y }))
+    const fresh = await captureChatContext({ x, y })
+    // Preserve existing screenshots from prior captures
+    const existingScreenshots = pendingChatContext?.regionScreenshots ?? []
+    setPendingChatContext({
+      ...fresh,
+      regionScreenshots: existingScreenshots,
+    })
   } catch (error) {
     console.warn('Failed to capture chat context', error)
     setPendingChatContext(null)
@@ -616,8 +630,8 @@ const startRegionCapture = async () => {
     return pendingRegionCapturePromise
   }
 
-  regionCaptureDisplay = getDisplayForPoint()
-  showRegionCaptureWindow(regionCaptureDisplay)
+  regionCaptureDisplay = getDisplayForPoint(screen.getCursorScreenPoint())
+  await showRegionCaptureWindow(regionCaptureDisplay, cancelRegionCapture)
 
   pendingRegionCapturePromise = new Promise<ScreenshotCapture | null>((resolve) => {
     pendingRegionCaptureResolve = resolve
@@ -656,25 +670,60 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
       updateUiState({ mode: 'chat' })
       const regionScreenshot = await startRegionCapture()
       if (regionScreenshot) {
-        const baseContext: ChatContext = pendingChatContext ?? {
-          window: null,
-          browserUrl: null,
-          selectedText: null,
-          regionScreenshot: null,
-        }
-        setPendingChatContext({ ...baseContext, regionScreenshot })
+        const ctx = pendingChatContext ?? emptyContext()
+        const existing = ctx.regionScreenshots ?? []
+        setPendingChatContext({ ...ctx, regionScreenshots: [...existing, regionScreenshot] })
       }
-      showWindow('mini')
+      if (!isMiniShowing()) showWindow('mini')
+      else broadcastChatContext()
       break
     }
     case 'chat':
-    case 'auto':
+    case 'auto': {
       updateUiState({ mode: 'chat' })
-      showWindow('mini')
+      // Pre-fetch window sources BEFORE showing the mini shell so we don't
+      // accidentally capture the mini shell itself in the thumbnail list.
+      const cursorPt = screen.getCursorScreenPoint()
+      const miniAlreadyShowing = isMiniShowing()
+      // Exclude the mini shell window from capture sources so it never appears in screenshots.
+      const excludeIds = miniWindow ? [miniWindow.getMediaSourceId()] : []
+      const sourcesPromise = prefetchWindowSources(excludeIds)
+      setPendingChatContext({ ...(pendingChatContext ?? emptyContext()), capturePending: true })
+      if (!miniAlreadyShowing) showWindow('mini')
+      else broadcastChatContext()
+      // Fire-and-forget: capture window screenshot and push update to renderer
+      void (async () => {
+        try {
+          const sources = await sourcesPromise
+          const capture = await captureWindowAtPoint(cursorPt.x, cursorPt.y, sources)
+          const ctx = pendingChatContext ?? emptyContext()
+          if (capture) {
+            const existing = ctx.regionScreenshots ?? []
+            setPendingChatContext({
+              ...ctx,
+              window: {
+                title: capture.windowInfo.title,
+                app: capture.windowInfo.process,
+                bounds: capture.windowInfo.bounds,
+              },
+              regionScreenshots: [...existing, capture.screenshot],
+              capturePending: false,
+            })
+          } else {
+            setPendingChatContext({ ...ctx, capturePending: false })
+          }
+          broadcastChatContext()
+        } catch (error) {
+          console.warn('Window capture failed', error)
+          setPendingChatContext({ ...(pendingChatContext ?? emptyContext()), capturePending: false })
+          broadcastChatContext()
+        }
+      })()
       break
+    }
     case 'voice':
       updateUiState({ mode: 'voice' })
-      showWindow('mini')
+      if (!isMiniShowing()) showWindow('mini')
       break
     case 'full':
       setPendingChatContext(null)
@@ -688,8 +737,11 @@ const initMouseHook = () => {
   mouseHook = new MouseHookManager({
     onModifierDown: () => {},
     onModifierUp: () => {
-      // Clear any unused context (overlay hiding is handled by onRadialHide)
-      setPendingChatContext(null)
+      // Clear any unused context, but not if the mini shell is already showing
+      // (the user selected a wedge and the context is in use)
+      if (!isMiniShowing()) {
+        setPendingChatContext(null)
+      }
     },
     onLeftClick: (x: number, y: number) => {
       // Hide mini window if clicking outside its bounds
@@ -714,6 +766,12 @@ const initMouseHook = () => {
     },
     onRadialShow: async (x: number, y: number) => {
       if (!appReady) return
+      // Suppress mini blur so the radial overlay doesn't dismiss an already-open mini shell.
+      suppressMiniBlurUntil = Date.now() + 2000
+      // Dismiss any open image preview in the mini shell.
+      if (isMiniShowing() && miniWindow) {
+        miniWindow.webContents.send('mini:dismissPreview')
+      }
       radialShowActive = true
       const requestId = ++radialShowRequestId
       // 1. Capture selected text first (while original app has focus, ~50ms)
@@ -825,6 +883,7 @@ app.whenReady().then(async () => {
   createFullWindow()
   createMiniWindow()
   createRadialWindow() // Pre-create radial window for faster display
+  createRegionCaptureWindow() // Pre-create region capture window for faster display
   createModifierOverlay() // Overlay to capture right-clicks when Ctrl is held
   showWindow('full')
 

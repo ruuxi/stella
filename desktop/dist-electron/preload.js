@@ -33,6 +33,12 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
             electron_1.ipcRenderer.removeListener('mini:visibility', handler);
         };
     },
+    onDismissPreview: (callback) => {
+        electron_1.ipcRenderer.on('mini:dismissPreview', callback);
+        return () => {
+            electron_1.ipcRenderer.removeListener('mini:dismissPreview', callback);
+        };
+    },
     onChatContext: (callback) => {
         const handler = (_event, context) => {
             callback(context);

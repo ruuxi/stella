@@ -25,6 +25,7 @@ export const MiniShell = () => {
     null,
   );
   const [expanded, setExpanded] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
   const appendEvent = useMutation(api.events.appendEvent);
@@ -135,6 +136,10 @@ export const MiniShell = () => {
       setShellVisible(visible);
     });
 
+    const unsubscribeDismissPreview = electronApi.onDismissPreview?.(() => {
+      setPreviewIndex(null);
+    });
+
     // Fetch initial context
     electronApi.getChatContext?.()
       .then((context) => {
@@ -176,6 +181,7 @@ export const MiniShell = () => {
     return () => {
       unsubscribe?.();
       unsubscribeVisibility?.();
+      unsubscribeDismissPreview?.();
     };
   }, []);
 
@@ -255,22 +261,24 @@ export const MiniShell = () => {
 
     const attachments: AttachmentRef[] = [];
 
-    if (chatContext?.regionScreenshot?.dataUrl) {
-      try {
-        const attachment = await createAttachment({
-          conversationId: state.conversationId,
-          deviceId,
-          dataUrl: chatContext.regionScreenshot.dataUrl,
-        });
-        if (attachment?._id) {
-          attachments.push({
-            id: attachment._id as string,
-            url: attachment.url,
-            mimeType: attachment.mimeType,
+    if (chatContext?.regionScreenshots?.length) {
+      for (const screenshot of chatContext.regionScreenshots) {
+        try {
+          const attachment = await createAttachment({
+            conversationId: state.conversationId,
+            deviceId,
+            dataUrl: screenshot.dataUrl,
           });
+          if (attachment?._id) {
+            attachments.push({
+              id: attachment._id as string,
+              url: attachment.url,
+              mimeType: attachment.mimeType,
+            });
+          }
+        } catch (error) {
+          console.error("Screenshot upload failed", error);
         }
-      } catch (error) {
-        console.error("Region capture upload failed", error);
       }
     }
 
@@ -306,7 +314,11 @@ export const MiniShell = () => {
   const handleShellClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Close if clicking directly on the shell background (not the panel)
     if (e.target === e.currentTarget) {
-      window.electronAPI?.closeWindow?.();
+      if (previewIndex !== null) {
+        setPreviewIndex(null);
+      } else {
+        window.electronAPI?.closeWindow?.();
+      }
     }
   };
 
@@ -321,13 +333,50 @@ export const MiniShell = () => {
               <AsciiBlackHole width={32} height={32} paused={!shellVisible} />
             </div>
             <div className="raycast-input-wrap">
+              {chatContext?.regionScreenshots?.map((screenshot, index) => (
+                <div key={index} className="raycast-screenshot-chip">
+                  <img
+                    src={screenshot.dataUrl}
+                    className="raycast-screenshot-thumb"
+                    alt={`Screenshot ${index + 1}`}
+                    onClick={() => setPreviewIndex(index)}
+                  />
+                  <button
+                    type="button"
+                    className="raycast-screenshot-dismiss"
+                    aria-label="Remove screenshot"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setChatContext((prev) => {
+                        if (!prev) return prev;
+                        const next = [...(prev.regionScreenshots ?? [])];
+                        next.splice(index, 1);
+                        return { ...prev, regionScreenshots: next };
+                      });
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {chatContext?.capturePending && (
+                <div className="raycast-screenshot-chip raycast-screenshot-skeleton">
+                  <div className="raycast-screenshot-skeleton-inner" />
+                </div>
+              )}
               {selectedText && (
                 <span className="raycast-selected-text">"{selectedText}"</span>
               )}
               <input
                 className="raycast-input"
                 placeholder={
-                  selectedText ? "Ask about the selection..." : "Ask about your screen..."
+                  chatContext?.capturePending
+                    ? "Capturing screen..."
+                    : chatContext?.regionScreenshots?.length
+                      ? "Ask about the capture..."
+                      : selectedText
+                        ? "Ask about the selection..."
+                        : "Ask about your screen..."
                 }
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
@@ -343,8 +392,11 @@ export const MiniShell = () => {
                     void sendMessage();
                   }
                   if (event.key === "Escape") {
-                    // Hide the mini shell window
-                    window.electronAPI?.closeWindow?.();
+                    if (previewIndex !== null) {
+                      setPreviewIndex(null);
+                    } else {
+                      window.electronAPI?.closeWindow?.();
+                    }
                   }
                 }}
                 autoFocus
@@ -393,6 +445,16 @@ export const MiniShell = () => {
           </div>
         )}
       </div>
+      {previewIndex !== null && chatContext?.regionScreenshots?.[previewIndex] && (
+        <div className="raycast-screenshot-overlay" onClick={() => setPreviewIndex(null)}>
+          <img
+            src={chatContext.regionScreenshots[previewIndex].dataUrl}
+            className="raycast-screenshot-preview"
+            alt="Screenshot preview"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 };
