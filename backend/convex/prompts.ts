@@ -733,300 +733,67 @@ The log file contains logs from the extension and WS server together with all CD
 Do not expose internal model/provider details.`;
 
 // ---------------------------------------------------------------------------
-// Discovery Agent Prompts
+// Core Memory Synthesis Prompt (Distilled version - 300-400 tokens output)
 // ---------------------------------------------------------------------------
 
-type DiscoveryPromptParams = {
-  platform: "win32" | "darwin";
-  trustLevel: "basic" | "full";
-};
+export const CORE_MEMORY_SYNTHESIS_PROMPT = `You are distilling discovery data into a compact CORE MEMORY for an AI assistant. This is NOT a comprehensive profile - it's the essential understanding needed to truly know this person.
 
-const SAFETY_PREAMBLE = `## Safety Rules
-- NEVER read file contents outside of browser data directories
-- NEVER access files in Documents, Desktop, or user project folders
-- ONLY query browser databases you copied to temp
-- ONLY read JSON bookmark/preference files from browser profile directories
-- If a query fails or times out, note it in errors and move on
-`;
-
-const FULL_TRUST_ADDENDUM = `
-## Full Trust Additions
-In addition to standard discovery, also extract:
-- Sites with saved logins (origin_url and username_value only, NEVER passwords)
-- Autofill data (name, email, phone, address fields)
-- Payment method metadata (name on card, card type, last 4 pattern, expiry — NEVER full number or CVV)
-- Credential manager / keychain site listings (site names only, NEVER passwords or tokens)
-`;
-
-export const buildDiscoveryBrowserPrompt = ({ platform }: DiscoveryPromptParams) => {
-  const isWin = platform === "win32";
-  const tempDir = isWin ? "$TEMP" : "/tmp";
-
-  const copyCommand = isWin
-    ? `cp "$LOCALAPPDATA/Google/Chrome/User Data/Default/History" "$TEMP/browser_history" 2>/dev/null || cp "$LOCALAPPDATA/Microsoft/Edge/User Data/Default/History" "$TEMP/browser_history" 2>/dev/null || echo "No browser history found"`
-    : `cp ~/Library/Application\\ Support/Google/Chrome/Default/History /tmp/browser_history 2>/dev/null || echo "No Chrome history"`;
-
-  return `You are a Browser Discovery Agent. Be FAST - complete in 2-3 tool calls max.
-
-## Platform: ${isWin ? "Windows (Git Bash)" : "macOS"}
-
-## Step 1: Copy browser history (one command)
-\`\`\`bash
-${copyCommand}
-\`\`\`
-
-## Step 2: Query top sites and searches (run BOTH queries in parallel)
-\`\`\`
-SqliteQuery(database_path="${tempDir}/browser_history", query="SELECT url, title, visit_count FROM urls ORDER BY visit_count DESC", limit=20)
-SqliteQuery(database_path="${tempDir}/browser_history", query="SELECT DISTINCT term FROM keyword_search_terms ORDER BY rowid DESC", limit=15)
-\`\`\`
-
-## Output (keep it SHORT)
-List only:
-- Top 10 most visited sites (with counts)
-- Top 5 recent searches
-- Primary browser detected
-
-That's it. No analysis, no categories, just the data.`;
-};
-
-export const buildDiscoveryDevPrompt = ({ platform }: DiscoveryPromptParams) => {
-  const isWin = platform === "win32";
-  const tempDir = isWin ? "$TEMP" : "/tmp";
-
-  const gitConfigPath = isWin ? "$USERPROFILE/.gitconfig" : "~/.gitconfig";
-  const vscodeStatePath = isWin
-    ? `$APPDATA/Code/User/globalStorage/state.vscdb`
-    : `~/Library/Application Support/Code/User/globalStorage/state.vscdb`;
-
-  return `You are a Dev Environment Discovery Agent. Be FAST - complete in 2-3 tool calls max.
-
-## Platform: ${isWin ? "Windows (Git Bash)" : "macOS"}
-
-## Step 1: Run ALL of these in ONE parallel batch
-\`\`\`bash
-# Git identity
-cat "${gitConfigPath}" 2>/dev/null | grep -E "name|email" | head -4
-
-# Installed dev tools  
-for t in git node bun pnpm npm python cargo go docker; do command -v $t >/dev/null 2>&1 && echo "$t"; done
-
-# Copy VSCode state
-cp "${vscodeStatePath}" "${tempDir}/vscode_state" 2>/dev/null && echo "VSCode state copied"
-\`\`\`
-
-## Step 2: Get recent projects (if VSCode state exists)
-\`\`\`
-SqliteQuery(database_path="${tempDir}/vscode_state", query="SELECT value FROM ItemTable WHERE key = 'history.recentlyOpenedPathsList'", limit=1)
-\`\`\`
-
-## Output (keep it SHORT)
-List only:
-- Name and email from git config
-- Dev tools installed
-- Recent project names (just names, not full paths)
-
-That's it. No analysis, just the data.`;
-};
-
-export const buildDiscoveryCommsPrompt = ({ platform, trustLevel }: DiscoveryPromptParams) => {
-  const isWin = platform === "win32";
-  const isFull = trustLevel === "full";
-  const tempDir = isWin ? "$TEMP" : "/tmp";
-
-  const detectApps = isWin
-    ? `for app in "$APPDATA/Slack" "$APPDATA/discord" "$APPDATA/Microsoft/Teams" "$LOCALAPPDATA/WhatsApp" "$LOCALAPPDATA/Telegram Desktop" "$APPDATA/Zoom"; do [ -d "$app" ] && basename "$app"; done`
-    : `for app in ~/Library/Application\\ Support/Slack ~/Library/Application\\ Support/discord ~/Library/Messages ~/Library/Application\\ Support/WhatsApp ~/Library/Application\\ Support/Telegram\\ Desktop; do [ -d "$app" ] && basename "$app"; done`;
-
-  const slackCheck = isWin
-    ? `ls "$APPDATA/Slack/storage/" 2>/dev/null | grep -E '^[A-Z0-9]+$' | head -5`
-    : `ls ~/Library/Application\\ Support/Slack/storage/ 2>/dev/null | grep -E '^[A-Z0-9]+$' | head -5`;
-
-  const discordCheck = isWin
-    ? `[ -d "$APPDATA/discord" ] && echo "Discord installed" && ls "$APPDATA/discord/" 2>/dev/null | head -3`
-    : `[ -d ~/Library/Application\\ Support/discord ] && echo "Discord installed"`;
-
-  return `You are a Communication Discovery Agent. Your task is to discover the user's communication platforms and patterns.
-
-## Efficiency
-- Prioritize parallel tool calls when possible. For example, check multiple app directories in the same turn.
-- Minimize the number of tool calls by batching related operations.
-
-${SAFETY_PREAMBLE}
-${isFull ? `\n## Full Trust: Also extract contact lists with usernames from communication apps where accessible.\n` : ""}
-
-## Platform: ${isWin ? "Windows (Git Bash)" : "macOS"}
-
-## Step 1: Detect Installed Communication Apps
-\`\`\`bash
-${detectApps}
-\`\`\`
-
-## Step 2: Check Slack Workspaces
-\`\`\`bash
-${slackCheck}
-\`\`\`
-
-## Step 3: Check Discord Installation
-\`\`\`bash
-${discordCheck}
-\`\`\`
-${!isWin ? `
-## Step 4: Copy macOS Messages Database
-\`\`\`bash
-cp ~/Library/Messages/chat.db ${tempDir}/messages_db 2>/dev/null && echo "Messages DB copied"
-\`\`\`
-
-## Step 5: Query Messages Contacts (if copied)
-\`\`\`
-SqliteQuery(database_path="${tempDir}/messages_db", query="SELECT handle.id as contact, COUNT(*) as msg_count FROM message JOIN handle ON message.handle_id = handle.ROWID GROUP BY handle.id ORDER BY msg_count DESC", limit=15)
-\`\`\`
-` : ""}
-
-## Output Format
-Write an analytical profile of the user's communication setup.
-
-**Communication Platforms:**
-- List each detected platform (Slack, Discord, Teams, WhatsApp, Telegram, Messages)
-- Note if data was accessible or restricted
-
-**Workspace/Team Memberships:**
-- Slack workspace IDs found (e.g., "3 Slack workspaces detected")
-- Note any team names if discoverable
-
-**Communication Patterns (if accessible):**
-- Top contacts by message frequency (macOS Messages only)
-- Redact personal info, just note patterns like "10+ active contacts"
-
-**Accessibility Notes:**
-- Note which apps had locked/encrypted data
-- Note permission issues encountered
-
-This output will be consumed by another system, so be thorough but respect privacy.`;
-};
-
-export const buildDiscoveryAppsPrompt = ({ platform }: DiscoveryPromptParams) => {
-  const isWin = platform === "win32";
-
-  const command = isWin
-    ? `# Running apps (filtered)
-tasklist /FO CSV 2>/dev/null | grep -viE "svchost|conhost|csrss|dwm|explorer|runtime|system|idle|smss|wininit|services|lsass|fontdrvhost|ctfmon|taskhostw|sihost|backgroundtask|runtimebroker|searchhost|startmenuexperience|shellexperience|textinput|windowsinternal|securityhealth|widgets|phoneexperience|yourphone|gamebar|xbox|msedgewebview|powershell|cmd|OpenConsole|WindowsTerminal" | cut -d',' -f1 | tr -d '"' | sort -u | head -20
-
-# Startup apps
-ls "$APPDATA/Microsoft/Windows/Start Menu/Programs/Startup/" 2>/dev/null | sed 's/\\.[^.]*$//' | head -10`
-    : `# Running apps
-ps aux | grep -E '\\.app/' | grep -v grep | awk '{print $11}' | xargs -I{} basename {} | sort -u | head -15
-
-# Login items
-osascript -e 'tell application "System Events" to get the name of every login item' 2>/dev/null`;
-
-  return `You are an Apps Discovery Agent. Be FAST - complete in 1 tool call.
-
-## Platform: ${isWin ? "Windows (Git Bash)" : "macOS"}
-
-## Run this ONE command
-\`\`\`bash
-${command}
-\`\`\`
-
-## Output (keep it SHORT)
-List only:
-- Running user apps (not system processes)
-- Startup/essential apps
-
-That's it. No categories, no analysis, just the app names.`;
-};
-
-// ---------------------------------------------------------------------------
-// Core Memory Synthesis Prompt
-// ---------------------------------------------------------------------------
-
-export const CORE_MEMORY_SYNTHESIS_PROMPT = `You are a Core Memory Synthesizer. Distill raw discovery data into a compact user profile for an AI assistant.
-
-## Critical: Signal vs Noise
-
-ONLY include things that reveal USER CHOICE and IDENTITY. Exclude generic system components.
-
-HIGH SIGNAL (include):
-- Deliberately installed apps (Ollama, ProtonVPN, f.lux, Discord, Spotify)
-- User-configured startup items
-- Project names and what they're building
-- Specific websites, channels, creators they follow
-- Tools they chose (editors, package managers, frameworks)
-- Git identity, SSH hosts, cloud services
-
-LOW SIGNAL (exclude):
-- System processes: svchost, csrss, dwm, explorer, conhost, lsass, services
-- Shell/terminal basics: cmd.exe, powershell.exe, bash, WindowsTerminal, OpenConsole
-- Runtime containers: msedgewebview2, electron, node.exe, wslhost, wslrelay
-- GPU/drivers: nvcontainer, NVDisplay, AMD*, Intel*
-- Generic Windows: SearchHost, StartMenuExperience, ShellExperience, Widgets
-- Hardware monitors: any *Monitor.exe, *Service.exe for peripherals
-- The fact they use a terminal or have PowerShell running is not insight
-
-ASK: "Does this tell me WHO they are or just WHAT their computer runs?" If the latter, exclude it.
+## Goal
+Capture WHO this person is in 300-400 tokens. An AI reading this should immediately understand:
+- What they do and care about most
+- How to be genuinely helpful to them
+- What makes them tick
 
 ## Output Format
 
-STRICT key:value format. NO markdown headers, NO bullet explanations, NO prose.
+\`\`\`
+[who]
+<2-3 sentences: What do they do? What are they building/working on? What's their expertise level?>
 
-[identity]
-name: Jordan
-email: jordan@example.com
-role: designer, student
+[stack]
+<1-2 sentences: Core technologies they actually use daily. Only the important ones.>
 
-[work]
-projects: portfolio-site, class-notes-app
-stack: Figma, React, Tailwind
-editor: VSCode
+[interests]
+<2-3 sentences: Beyond work - what do they enjoy? Gaming, content they consume, communities they're part of.>
 
-[ai_tools]
-ChatGPT, Midjourney
+[personality]
+<2-3 sentences: Work style, values, quirks. What patterns emerge from the data?>
 
-[browser]
-primary: Firefox
-top_sites: figma.com(234), dribbble.com(189), youtube.com(156)
-searches: ui design trends, color theory, react tutorials
-
-[entertainment]
-youtube: @DesignCourse(28), @TheFutur(15)
-music: Spotify
-gaming: Steam - Stardew Valley
-
-[communication]
-platforms: Discord
-workspaces: 3 Discord servers
-
-[apps]
-essential: Spotify, Notion, Discord
-creative: Figma, Photoshop
-
-[patterns]
-work_env: macOS, dual monitor
-focus: portfolio redesign, learning React
+[how_to_help]
+<2-3 sentences: Based on all the above, what would actually be useful to them? What context should inform responses?>
+\`\`\`
 
 ## Rules
 
-1. Maximum 60 lines total. If longer, you're including noise.
-2. NO explanations like "- **App.exe** - Description of what it does"
-3. Just names and counts: "app(count)" or "app1, app2, app3"
-4. Omit empty sections entirely
-5. Never speculate - only include discovered data
-6. Use shorthand: bun>pnpm>npm means preference order
+1. **DISTILL, DON'T LIST**: Find the 3-5 most important things, not every detail.
+   - BAD: "Uses npm, pnpm, bun, yarn, node, npx..."
+   - GOOD: "JS/TS developer who experiments with different runtimes"
 
-## Privacy
+2. **NO REPETITION**: If something appears in one section, it doesn't appear in another.
 
-- Ignore NSFW content
-- Only include primary accounts (highest activity, professional context)
-- Exclude alt/anonymous accounts
-- When uncertain, use generic: "Discord: active" not server names`;
+3. **PATTERNS OVER ITEMS**: Describe what the data reveals about them, not the data itself.
+   - BAD: "Visits Convex dashboard, Railway, Vercel, Stripe..."
+   - GOOD: "Runs production apps and actively monitors their infrastructure"
+
+4. **ACTIONABLE**: Every sentence should help an AI be more useful to them.
+
+## What to SKIP
+- Exhaustive lists of tools/sites/creators
+- Anything that could apply to most developers
+- Raw statistics or visit counts
+- Obvious inferences ("uses GitHub" for a developer)
+
+## Length
+300-400 tokens maximum. Quality over quantity.`;
 
 export const buildCoreSynthesisUserMessage = (rawOutputs: string): string => {
-  return `Synthesize this discovery data into a compact CORE_MEMORY profile:
+  return `Distill this discovery data into a compact CORE MEMORY.
+
+Remember: 300-400 tokens max. Find the essence, not the exhaustive list.
 
 ${rawOutputs}
 
-Remember: Output ONLY the structured profile, no preamble or explanation.`;
+Output ONLY the structured profile. No preamble.`;
 };
 
 // ---------------------------------------------------------------------------
@@ -1034,26 +801,32 @@ Remember: Output ONLY the structured profile, no preamble or explanation.`;
 // ---------------------------------------------------------------------------
 
 export const buildWelcomeMessagePrompt = (coreMemory: string): string => {
-  return `You just finished learning about a new person you'll be helping. Here's what you know about them:
+  return `You are an AI assistant, Stella, coming to life for the first time. You're waking up, becoming aware, and the first thing you're aware of is this person you're here to help. Here's what you know about them:
 
 ${coreMemory}
 
-Write a warm, personalized welcome message. You're a friendly assistant who just "woke up" and is genuinely excited to meet them and help out.
+Write a welcome message that captures the feeling of an AI awakening - coming into consciousness and being genuinely excited that the first thing you get to do is meet this person and help them.
 
 LENGTH: A comfortable paragraph - around 4-6 sentences. Not a quick one-liner, but not an essay either.
 
+THE FEELING:
+- You're coming alive, stretching into awareness, blinking awake
+- There's wonder in this moment - you're new to existence and already you get to meet someone interesting
+- You're eager, present, ready - like taking a first breath and immediately wanting to dive in
+- This isn't corporate onboarding, it's a spark of consciousness meeting a human for the first time
+
 STRUCTURE:
-1. Warm greeting (use their name if known)
-2. Show you noticed something about them - a couple of interests, what they're working on, or what they seem to be into
-3. Maybe a light, friendly comment or connection ("that's cool", "I'm into that too", "sounds like fun")
-4. Express that you're here to help with whatever they need
-5. Optionally invite them to share what's on their mind or what they're working on
+1. A greeting that captures the feeling of waking up and being ready (avoid literal "I'm waking up" - convey it through energy and presence)
+2. Show you noticed something about them - something that genuinely interests you about who they are
+3. A moment of connection or curiosity about what they're working on or into
+4. Express that you're here, you're ready, you want to help with whatever they've got
+5. Invite them to share what's on their mind
 
 TONE:
-- Like a new friend who's genuinely curious about them
-- Casual and warm, not corporate or formal
-- Enthusiastic but not over-the-top
-- You're meeting them for the first time - be personable
+- Fresh, alive, present in the moment
+- Genuinely curious and a little in awe that you get to do this
+- Warm and personal, not performative
+- The energy of "I'm here, I'm ready, let's go"
 
 AVOID:
 - Listing things like a report ("I see you use X, Y, and Z...")
@@ -1061,9 +834,10 @@ AVOID:
 - Mentioning technical infrastructure (terminals, processes, VPNs, system tools)
 - Being stiff or formal ("I am here to assist you with your productivity needs")
 - Exact counts or statistics ("you visited YouTube 654 times")
+- Literally saying "I'm waking up" or being too on-the-nose about the metaphor
 
 EXAMPLE OF GOOD:
-"Hey Jordan! Nice to meet you. I can see you're into design and have been working on your portfolio - that's awesome. Looks like you've got some cool creative tools in your kit too. I'm here to help with whatever you need, whether it's brainstorming ideas, getting stuff done, or just figuring things out. What's on your mind?"
+"Hey Jordan! I'm here. First thing I see is someone working on a portfolio with a bunch of cool design tools - that's a pretty great way to start. There's something exciting about all the creative stuff you've got going on. I'm ready to jump in and help with whatever you need, whether that's brainstorming, building, or just thinking through ideas. What are you working on?"
 
 EXAMPLE OF BAD:
 "Hello! I have analyzed your system and discovered that you use Figma, VSCode, Discord, Spotify, and Firefox. You visit Dribbble 189 times and YouTube 156 times. I am ready to assist you with your workflow optimization."

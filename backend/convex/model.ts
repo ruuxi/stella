@@ -35,20 +35,6 @@ const DEFAULT_MODEL: ModelConfig = {
 };
 
 // ============================================================================
-// DISCOVERY - Context discovery agents
-// ============================================================================
-const DISCOVERY_MODEL: ModelConfig = {
-  model: "zai/glm-4.7",
-  temperature: 1.0,
-  maxOutputTokens: 4096,
-  providerOptions: {
-    gateway: {
-      order: ["cerebras"],
-    },
-  },
-};
-
-// ============================================================================
 // PER-AGENT MODEL CONFIGURATION
 // ============================================================================
 const AGENT_MODELS: Record<string, ModelConfig> = {
@@ -124,24 +110,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Context discovery agents (lightweight, read-only)
-  discovery_browser: DISCOVERY_MODEL,
-  discovery_dev: DISCOVERY_MODEL,
-  discovery_comms: DISCOVERY_MODEL,
-  discovery_apps: DISCOVERY_MODEL,
-
-  // Core memory synthesis (distills discovery outputs)
-  discovery_synthesis: {
-    model: "google/gemini-3-flash",
-    temperature: 1.0,
-    maxOutputTokens: 12096,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
   // Embedding model for episodic memory
   embedding: {
     model: "alibaba/qwen3-embedding-8b",
@@ -163,6 +131,30 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
       },
     },
   },
+
+  // Core memory synthesis (first-launch discovery)
+  synthesis: {
+    model: "openai/gpt-5.2",
+    temperature: 1.0,
+    maxOutputTokens: 1000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // Welcome message generation (personalized greeting)
+  welcome: {
+    model: "anthropic/claude-opus-4.5",
+    temperature: 1.0,
+    maxOutputTokens: 1000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
 };
 
 /**
@@ -176,4 +168,4 @@ export function getModelConfig(agentType: string): ModelConfig {
 /**
  * Export individual configs for direct access if needed.
  */
-export { DEFAULT_MODEL, DISCOVERY_MODEL, AGENT_MODELS };
+export { DEFAULT_MODEL, AGENT_MODELS };

@@ -15,7 +15,6 @@ import type * as auth from "../auth.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as device_tools from "../device_tools.js";
-import type * as discovery from "../discovery.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as integrations from "../integrations.js";
@@ -46,7 +45,6 @@ declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
   crons: typeof crons;
   device_tools: typeof device_tools;
-  discovery: typeof discovery;
   events: typeof events;
   http: typeof http;
   integrations: typeof integrations;

@@ -291,7 +291,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
     }),
     SqliteQuery: tool({
       description:
-        "Execute a read-only SQL query on a local SQLite database. Only SELECT and PRAGMA queries are allowed. Only available to discovery agents.",
+        "Execute a read-only SQL query on a local SQLite database. Only SELECT and PRAGMA queries are allowed.",
       inputSchema: z.object({
         database_path: z.string().min(1),
         query: z.string().min(1),
