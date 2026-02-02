@@ -266,10 +266,23 @@ export function groupEventsIntoTurns(events: EventRecord[]): MessageTurn[] {
         toolEvents: [],
         steps: [],
       };
-    } else if (currentTurn) {
-      if (isAssistantMessage(event)) {
+    } else if (isAssistantMessage(event)) {
+      if (currentTurn) {
+        // Attach to existing turn
         currentTurn.assistantMessage = event;
-      } else if (isToolRequest(event) || isToolResult(event)) {
+      } else {
+        // Standalone assistant message (e.g., welcome message)
+        // Create a synthetic turn with an empty user message
+        turns.push({
+          id: event._id,
+          userMessage: { _id: `synthetic-${event._id}`, timestamp: event.timestamp, type: "user_message", payload: { text: "" } },
+          assistantMessage: event,
+          toolEvents: [],
+          steps: [],
+        });
+      }
+    } else if (currentTurn) {
+      if (isToolRequest(event) || isToolResult(event)) {
         currentTurn.toolEvents.push(event);
       }
     }

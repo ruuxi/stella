@@ -73,7 +73,6 @@ export { Avatar, type AvatarProps } from "./avatar";
 
 // Content Display Components
 export { Code, type CodeProps } from "./code";
-export { Typewriter, type TypewriterProps } from "./typewriter";
 export { OnboardingStep1, useOnboardingState } from "./Onboarding";
 export { ImagePreview, type ImagePreviewProps } from "./image-preview";
 export { Tag, type TagProps } from "./tag";

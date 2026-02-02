@@ -23,7 +23,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   showWindow: (target: 'mini' | 'full') => ipcRenderer.send('window:show', target),
   captureScreenshot: () => ipcRenderer.invoke('screenshot:capture'),
-  resetDiscoveryState: () => ipcRenderer.invoke('discovery:resetState'),
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
   configureHost: (config: { convexUrl?: string }) => ipcRenderer.invoke('host:configure', config),
   setAuthToken: (payload: { token: string | null }) => ipcRenderer.invoke('auth:setToken', payload),
@@ -112,19 +111,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelCredential: (payload: { requestId: string }) =>
     ipcRenderer.invoke('credential:cancel', payload),
 
-  // Local discovery (runs AI via backend proxy, tools locally)
-  runDiscovery: (payload: {
-    conversationId: string
-    platform: 'win32' | 'darwin'
-    trustLevel: 'basic' | 'full'
-  }) => ipcRenderer.invoke('discovery:run', payload),
-  onDiscoveryProgress: (callback: (event: IpcRendererEvent, data: { status: string; agentType?: string }) => void) => {
-    const handler = (event: IpcRendererEvent, data: { status: string; agentType?: string }) => {
-      callback(event, data)
-    }
-    ipcRenderer.on('discovery:progress', handler)
-    return () => {
-      ipcRenderer.removeListener('discovery:progress', handler)
-    }
-  },
+  // Browser data collection for core memory
+  checkCoreMemoryExists: () => ipcRenderer.invoke('browserData:exists'),
+  collectBrowserData: () => ipcRenderer.invoke('browserData:collect'),
+  writeCoreMemory: (content: string) => ipcRenderer.invoke('browserData:writeCoreMemory', content),
+
+  // Comprehensive user signal collection (browser + dev projects + shell + apps)
+  collectAllSignals: () => ipcRenderer.invoke('signals:collectAll'),
 })

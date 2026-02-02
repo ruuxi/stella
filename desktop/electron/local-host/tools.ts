@@ -311,8 +311,39 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
   const getSkillById = (skillId: string) =>
     skillCache.find((skill) => skill.id === skillId);
 
-  const expandHomePath = (value: string) =>
-    value.replace(/^~(?=$|[\\/])/, os.homedir());
+  const expandHomePath = (value: string) => {
+    const home = os.homedir();
+    const userProfile = process.env.USERPROFILE || home;
+    const localAppData =
+      process.env.LOCALAPPDATA || path.join(userProfile, "AppData", "Local");
+    const appData =
+      process.env.APPDATA || path.join(userProfile, "AppData", "Roaming");
+    const tempDir = process.env.TEMP || process.env.TMP || os.tmpdir();
+
+    // Expand "~" (unix + Git Bash style).
+    let expanded = value.replace(/^~(?=$|[\\/])/, home);
+
+    // Expand common env placeholders used in prompts/tool args.
+    // Note: SqliteQuery/Read/Glob/Grep run in Node (not bash), so we must expand
+    // these ourselves if the agent includes them.
+    expanded = expanded
+      .replace(/\$USERPROFILE\b/gi, userProfile)
+      .replace(/%USERPROFILE%/gi, userProfile)
+      .replace(/\$LOCALAPPDATA\b/gi, localAppData)
+      .replace(/%LOCALAPPDATA%/gi, localAppData)
+      .replace(/\$APPDATA\b/gi, appData)
+      .replace(/%APPDATA%/gi, appData)
+      .replace(/\$TEMP\b/gi, tempDir)
+      .replace(/%TEMP%/gi, tempDir)
+      .replace(/\$TMP\b/gi, tempDir)
+      .replace(/%TMP%/gi, tempDir)
+      .replace(/\$HOME\b/gi, home)
+      .replace(/%HOME%/gi, home)
+      // Windows doesn't have /tmp, but prompts sometimes include it.
+      .replace(/\/tmp\b/g, tempDir);
+
+    return expanded;
+  };
 
   const writeSecretFile = async (filePath: string, value: string, cwd: string) => {
     const expanded = expandHomePath(filePath);
@@ -468,10 +499,14 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
         if (finished) return;
         finished = true;
         clearTimeout(timer);
+        // Clean Windows console noise (chcp output) that confuses LLMs
+        const cleanedOutput = output
+          .replace(/^Active code page: \d+\s*/gm, "")
+          .replace(/^\s+/, ""); // Trim leading whitespace after removal
         if (code === 0) {
-          resolve(output || "Command completed successfully (no output).");
+          resolve(cleanedOutput || "Command completed successfully (no output).");
         } else {
-          resolve(`Command exited with code ${code}.\n\n${truncate(output)}`);
+          resolve(`Command exited with code ${code}.\n\n${truncate(cleanedOutput)}`);
         }
       });
       child.on("error", (error) => {
@@ -568,7 +603,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
 
   const handleGlob = async (args: Record<string, unknown>): Promise<ToolResult> => {
     const pattern = String(args.pattern ?? "");
-    const basePath = String(args.path ?? process.cwd());
+    const basePath = expandHomePath(String(args.path ?? process.cwd()));
 
     try {
       const stat = await fs.stat(basePath);
@@ -639,7 +674,7 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
 
   const handleGrep = async (args: Record<string, unknown>): Promise<ToolResult> => {
     const pattern = String(args.pattern ?? "");
-    const basePath = String(args.path ?? process.cwd());
+    const basePath = expandHomePath(String(args.path ?? process.cwd()));
     const glob = args.glob ? String(args.glob) : undefined;
     const type = args.type ? String(args.type) : undefined;
     const outputMode = String(args.output_mode ?? "files_with_matches");
@@ -724,85 +759,8 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
     };
   };
 
-  const isDiscoveryAgent = (agentType?: string) =>
-    agentType?.startsWith("discovery_") ?? false;
-
-  /**
-   * Defense-in-depth: block destructive commands for discovery agents.
-   * Discovery agents should only read — never write, modify, or delete user files.
-   * Writes to system temp ($TEMP, /tmp) are allowed (for copying locked DBs).
-   */
-  const validateDiscoveryBashCommand = (command: string): string | null => {
-    const normalized = command.toLowerCase();
-
-    // Block output redirects to non-temp locations
-    // Allow: cp ... $TEMP/, cp ... /tmp/
-    // Block: > file, >> file, tee file (unless targeting temp)
-    const dangerousPatterns = [
-      /\brm\s/,
-      /\bmv\s/,
-      /\bdd\s/,
-      /\bchmod\s/,
-      /\bchown\s/,
-      /\bmkfs\b/,
-      /\bshred\b/,
-      /\btruncate\b/,
-    ];
-
-    for (const pattern of dangerousPatterns) {
-      if (pattern.test(normalized)) {
-        return `Discovery agents cannot use destructive commands. Blocked: ${command.slice(0, 100)}`;
-      }
-    }
-
-    // Block redirects that don't target temp directories or /dev/null
-    // Use a more specific pattern: redirect must be preceded by whitespace or digit (for 2>&1)
-    // and followed by a path-like target (not just a number, which would be SQL comparison like "> 0")
-    const redirectMatch = command.match(/(?:^|[\s\d])>{1,2}\s*([^\s|&;]+)/);
-    if (redirectMatch) {
-      const target = redirectMatch[1];
-      // Skip if target is purely numeric (e.g., SQL "WHERE x > 0" or shell "2>&1")
-      if (/^\d+$/.test(target)) {
-        // This is likely SQL comparison or fd redirect, not a file redirect
-      } else {
-        const isSafe =
-          target === "/dev/null" ||
-          target.includes("$TEMP") ||
-          target.includes("%TEMP%") ||
-          target.includes("$env:TEMP") ||
-          target.startsWith("/tmp") ||
-          target.includes("/tmp/");
-        if (!isSafe) {
-          return `Discovery agents can only redirect output to temp directories. Blocked target: ${target}`;
-        }
-      }
-    }
-
-    // Block tee to non-temp paths
-    const teeMatch = command.match(/\btee\s+([^\s|&;]+)/);
-    if (teeMatch) {
-      const target = teeMatch[1];
-      const isTemp =
-        target.includes("$TEMP") ||
-        target.startsWith("/tmp") ||
-        target.includes("/tmp/");
-      if (!isTemp) {
-        return `Discovery agents can only tee to temp directories. Blocked target: ${target}`;
-      }
-    }
-
-    return null; // Command is safe
-  };
-
   const handleBash = async (args: Record<string, unknown>, context?: ToolContext): Promise<ToolResult> => {
-    if (context && isDiscoveryAgent(context.agentType)) {
-      const command = String(args.command ?? "");
-      const rejection = validateDiscoveryBashCommand(command);
-      if (rejection) {
-        return { error: rejection };
-      }
-    }
-
+    void context; // Unused but kept for interface consistency
     const command = String(args.command ?? "");
     const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
     const cwd = String(args.working_directory ?? process.cwd());
@@ -1193,17 +1151,12 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
 
   /**
    * SqliteQuery: Execute read-only SQL queries on SQLite databases.
-   * Only available to discovery agents for security.
    */
   const handleSqliteQuery = async (
     args: Record<string, unknown>,
     context?: ToolContext,
   ): Promise<ToolResult> => {
-    // Only allow discovery agents to use this tool
-    if (!context || !isDiscoveryAgent(context.agentType)) {
-      return { error: "SqliteQuery is only available to discovery agents." };
-    }
-
+    void context; // Unused but kept for interface consistency
     const dbPath = expandHomePath(String(args.database_path ?? ""));
     const query = String(args.query ?? "").trim();
     const limit = Math.min(Number(args.limit ?? 100), 500);
@@ -1295,11 +1248,6 @@ export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }
         : toolArgs,
       context,
     });
-
-    // Defense-in-depth: block Write/Edit for discovery agents even if backend allowlist is bypassed
-    if (isDiscoveryAgent(context.agentType) && (toolName === "Write" || toolName === "Edit")) {
-      return { error: `Discovery agents cannot use ${toolName}. They are read-only.` };
-    }
 
     const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
     if (!handler) {

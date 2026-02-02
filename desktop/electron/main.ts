@@ -14,7 +14,15 @@ import {
 import { getOrCreateDeviceId } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
 import { resolveStellarHome } from './local-host/stellar-home.js'
-import { runLocalDiscovery } from './local-host/discovery.js'
+import {
+  collectBrowserData,
+  coreMemoryExists,
+  writeCoreMemory,
+  formatBrowserDataForSynthesis,
+  type BrowserData,
+} from './local-host/browser-data.js'
+import { collectAllSignals } from './local-host/collect-all.js'
+import type { AllUserSignalsResult } from './local-host/types.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -62,6 +70,7 @@ let miniWindow: BrowserWindow | null = null
 let mouseHook: MouseHookManager | null = null
 let localHostRunner: ReturnType<typeof createLocalHostRunner> | null = null
 let deviceId: string | null = null
+let stellarHomePath: string | null = null
 let appReady = false // true when authenticated + onboarding complete
 let pendingConvexUrl: string | null = null
 const pendingCredentialRequests = new Map<
@@ -419,8 +428,8 @@ app.whenReady().then(async () => {
   if (initialAuthUrl) {
     pendingAuthCallback = initialAuthUrl
   }
-  const userDataPath = app.getPath('userData')
-  const stellarHome = await resolveStellarHome(app, userDataPath)
+  const stellarHome = await resolveStellarHome(app)
+  stellarHomePath = stellarHome.homePath
   deviceId = await getOrCreateDeviceId(stellarHome.statePath)
   localHostRunner = createLocalHostRunner({
     deviceId,
@@ -461,18 +470,6 @@ app.whenReady().then(async () => {
     return { ok: true }
   })
 
-  ipcMain.handle('discovery:resetState', async () => {
-    const os = await import('os')
-    const fs = await import('fs/promises')
-    const path = await import('path')
-    const stateDir = path.join(os.homedir(), '.stellar', 'state')
-    try {
-      await fs.rm(path.join(stateDir, 'CORE_MEMORY.MD'), { force: true })
-    } catch {
-      // File may not exist — that's fine
-    }
-    return { ok: true }
-  })
 
   // Window control handlers for custom title bar
   ipcMain.on('window:minimize', (event) => {
@@ -553,6 +550,53 @@ app.whenReady().then(async () => {
     return { ok: true }
   })
 
+  // Browser data collection for core memory
+  ipcMain.handle('browserData:exists', async () => {
+    if (!stellarHomePath) return false
+    return coreMemoryExists(stellarHomePath)
+  })
+
+  ipcMain.handle('browserData:collect', async (): Promise<{
+    data: BrowserData | null
+    formatted: string | null
+    error?: string
+  }> => {
+    if (!stellarHomePath) {
+      return { data: null, formatted: null, error: 'Stellar home not initialized' }
+    }
+    try {
+      const data = await collectBrowserData(stellarHomePath)
+      const formatted = formatBrowserDataForSynthesis(data)
+      return { data, formatted }
+    } catch (error) {
+      return {
+        data: null,
+        formatted: null,
+        error: (error as Error).message,
+      }
+    }
+  })
+
+  ipcMain.handle('browserData:writeCoreMemory', async (_event, content: string) => {
+    if (!stellarHomePath) {
+      return { ok: false, error: 'Stellar home not initialized' }
+    }
+    try {
+      await writeCoreMemory(stellarHomePath, content)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: (error as Error).message }
+    }
+  })
+
+  // Comprehensive user signal collection
+  ipcMain.handle('signals:collectAll', async (): Promise<AllUserSignalsResult> => {
+    if (!stellarHomePath) {
+      return { data: null, formatted: null, error: 'Stellar home not initialized' }
+    }
+    return collectAllSignals(stellarHomePath)
+  })
+
   ipcMain.handle('screenshot:capture', async () => {
     const display = screen.getPrimaryDisplay()
     const scaleFactor = display.scaleFactor ?? 1
@@ -583,47 +627,6 @@ app.whenReady().then(async () => {
       width: size.width,
       height: size.height,
     }
-  })
-
-  // Local discovery handler - runs AI inference via backend, tools locally
-  ipcMain.handle('discovery:run', async (_event, payload: {
-    conversationId: string
-    platform: 'win32' | 'darwin'
-    trustLevel: 'basic' | 'full'
-  }) => {
-    if (!localHostRunner || !deviceId) {
-      return { success: false, error: 'Local host runner not initialized' }
-    }
-
-    const convexUrl = localHostRunner.getConvexUrl()
-    const authToken = localHostRunner.getAuthToken()
-
-    if (!convexUrl || !authToken) {
-      return { success: false, error: 'Not connected to backend' }
-    }
-
-    const stellarHome = await resolveStellarHome(app, app.getPath('userData'))
-
-    const result = await runLocalDiscovery({
-      convexUrl,
-      authToken,
-      conversationId: payload.conversationId,
-      deviceId,
-      platform: payload.platform,
-      trustLevel: payload.trustLevel,
-      stellarHome: stellarHome.homePath,
-      toolHost: {
-        executeTool: localHostRunner.executeTool,
-      },
-      onProgress: (status, agentType) => {
-        // Broadcast progress to renderer
-        for (const window of BrowserWindow.getAllWindows()) {
-          window.webContents.send('discovery:progress', { status, agentType })
-        }
-      },
-    })
-
-    return result
   })
 
   app.on('activate', () => {

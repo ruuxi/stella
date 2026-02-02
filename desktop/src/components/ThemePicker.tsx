@@ -24,7 +24,19 @@ const GRADIENT_COLORS: { id: GradientColor; label: string }[] = [
   { id: "strong", label: "Strong" },
 ];
 
-export function ThemePicker() {
+interface ThemePickerProps {
+  hideTrigger?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onThemeSelect?: () => void;
+}
+
+export function ThemePicker({ 
+  hideTrigger = false,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  onThemeSelect,
+}: ThemePickerProps) {
   const {
     themeId,
     themes,
@@ -44,7 +56,11 @@ export function ThemePicker() {
     cancelPreview,
   } = useTheme();
 
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  
+  // Support both controlled and uncontrolled mode
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = controlledOnOpenChange || setInternalOpen;
 
   // Sort themes alphabetically by name
   const sortedThemes = useMemo(
@@ -61,7 +77,14 @@ export function ThemePicker() {
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="normal" data-slot="theme-picker-trigger">
+        <Button 
+          variant="ghost" 
+          size="normal" 
+          data-slot="theme-picker-trigger"
+          style={hideTrigger ? { opacity: 0, pointerEvents: 'none', position: 'absolute' } : undefined}
+          tabIndex={hideTrigger ? -1 : undefined}
+          aria-hidden={hideTrigger}
+        >
           theme
           <ChevronUp size={12} />
         </Button>
@@ -146,6 +169,7 @@ export function ThemePicker() {
                       setTheme(t.id);
                       cancelPreview();
                       setOpen(false);
+                      onThemeSelect?.();
                     }}
                     onMouseEnter={() => previewTheme(t.id)}
                     onFocus={() => previewTheme(t.id)}

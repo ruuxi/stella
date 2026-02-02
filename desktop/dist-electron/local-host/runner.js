@@ -318,11 +318,18 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
             client = null;
         }
     };
+    // Expose tool execution for external callers
+    const executeTool = async (toolName, toolArgs, context) => {
+        return toolHost.executeTool(toolName, toolArgs, context);
+    };
     return {
         deviceId,
         setConvexUrl,
         setAuthToken,
         start,
         stop,
+        executeTool,
+        getConvexUrl: () => convexUrl,
+        getAuthToken: () => authToken,
     };
 };

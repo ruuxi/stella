@@ -6,6 +6,8 @@ import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCur
 import { getOrCreateDeviceId } from './local-host/device.js';
 import { createLocalHostRunner } from './local-host/runner.js';
 import { resolveStellarHome } from './local-host/stellar-home.js';
+import { collectBrowserData, coreMemoryExists, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
+import { collectAllSignals } from './local-host/collect-all.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -22,6 +24,7 @@ let miniWindow = null;
 let mouseHook = null;
 let localHostRunner = null;
 let deviceId = null;
+let stellarHomePath = null;
 let appReady = false; // true when authenticated + onboarding complete
 let pendingConvexUrl = null;
 const pendingCredentialRequests = new Map();
@@ -330,8 +333,8 @@ app.whenReady().then(async () => {
     if (initialAuthUrl) {
         pendingAuthCallback = initialAuthUrl;
     }
-    const userDataPath = app.getPath('userData');
-    const stellarHome = await resolveStellarHome(app, userDataPath);
+    const stellarHome = await resolveStellarHome(app);
+    stellarHomePath = stellarHome.homePath;
     deviceId = await getOrCreateDeviceId(stellarHome.statePath);
     localHostRunner = createLocalHostRunner({
         deviceId,
@@ -364,19 +367,6 @@ app.whenReady().then(async () => {
     });
     ipcMain.handle('auth:setToken', (_event, payload) => {
         localHostRunner?.setAuthToken(payload?.token ?? null);
-        return { ok: true };
-    });
-    ipcMain.handle('discovery:resetState', async () => {
-        const os = await import('os');
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const stateDir = path.join(os.homedir(), '.stellar', 'state');
-        try {
-            await fs.rm(path.join(stateDir, 'CORE_MEMORY.MD'), { force: true });
-        }
-        catch {
-            // File may not exist — that's fine
-        }
         return { ok: true };
     });
     // Window control handlers for custom title bar
@@ -452,6 +442,48 @@ app.whenReady().then(async () => {
         pendingCredentialRequests.delete(payload.requestId);
         pending.reject(new Error('Credential request cancelled.'));
         return { ok: true };
+    });
+    // Browser data collection for core memory
+    ipcMain.handle('browserData:exists', async () => {
+        if (!stellarHomePath)
+            return false;
+        return coreMemoryExists(stellarHomePath);
+    });
+    ipcMain.handle('browserData:collect', async () => {
+        if (!stellarHomePath) {
+            return { data: null, formatted: null, error: 'Stellar home not initialized' };
+        }
+        try {
+            const data = await collectBrowserData(stellarHomePath);
+            const formatted = formatBrowserDataForSynthesis(data);
+            return { data, formatted };
+        }
+        catch (error) {
+            return {
+                data: null,
+                formatted: null,
+                error: error.message,
+            };
+        }
+    });
+    ipcMain.handle('browserData:writeCoreMemory', async (_event, content) => {
+        if (!stellarHomePath) {
+            return { ok: false, error: 'Stellar home not initialized' };
+        }
+        try {
+            await writeCoreMemory(stellarHomePath, content);
+            return { ok: true };
+        }
+        catch (error) {
+            return { ok: false, error: error.message };
+        }
+    });
+    // Comprehensive user signal collection
+    ipcMain.handle('signals:collectAll', async () => {
+        if (!stellarHomePath) {
+            return { data: null, formatted: null, error: 'Stellar home not initialized' };
+        }
+        return collectAllSignals(stellarHomePath);
     });
     ipcMain.handle('screenshot:capture', async () => {
         const display = screen.getPrimaryDisplay();

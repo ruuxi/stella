@@ -21,7 +21,6 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     },
     showWindow: (target) => electron_1.ipcRenderer.send('window:show', target),
     captureScreenshot: () => electron_1.ipcRenderer.invoke('screenshot:capture'),
-    resetDiscoveryState: () => electron_1.ipcRenderer.invoke('discovery:resetState'),
     getDeviceId: () => electron_1.ipcRenderer.invoke('device:getId'),
     configureHost: (config) => electron_1.ipcRenderer.invoke('host:configure', config),
     setAuthToken: (payload) => electron_1.ipcRenderer.invoke('auth:setToken', payload),
@@ -96,4 +95,10 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     },
     submitCredential: (payload) => electron_1.ipcRenderer.invoke('credential:submit', payload),
     cancelCredential: (payload) => electron_1.ipcRenderer.invoke('credential:cancel', payload),
+    // Browser data collection for core memory
+    checkCoreMemoryExists: () => electron_1.ipcRenderer.invoke('browserData:exists'),
+    collectBrowserData: () => electron_1.ipcRenderer.invoke('browserData:collect'),
+    writeCoreMemory: (content) => electron_1.ipcRenderer.invoke('browserData:writeCoreMemory', content),
+    // Comprehensive user signal collection (browser + dev projects + shell + apps)
+    collectAllSignals: () => electron_1.ipcRenderer.invoke('signals:collectAll'),
 });

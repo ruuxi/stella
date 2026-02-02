@@ -10,13 +10,13 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:electron": "vitest run --config vitest.electron.config.ts",
     "preview": "vite preview",
     "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron-builder",
     "electron:preview": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron ."
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.19",
     "@ai-sdk/react": "^3.0.51",
     "@convex-dev/better-auth": "^0.10.0",
     "@hookform/resolvers": "^5.2.2",

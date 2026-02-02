@@ -2,6 +2,90 @@ import type { UiState, WindowMode } from './ui'
 
 export type RadialWedge = 'ask' | 'chat' | 'voice' | 'full' | 'menu'
 
+// ---------------------------------------------------------------------------
+// Browser Data Types
+// ---------------------------------------------------------------------------
+
+export type BrowserType = 'chrome' | 'edge' | 'brave' | 'arc' | 'opera' | 'vivaldi'
+
+export type DomainVisit = {
+  domain: string
+  visits: number
+}
+
+export type DomainDetail = {
+  title: string
+  url: string
+  visitCount: number
+}
+
+export type BrowserData = {
+  browser: BrowserType | null
+  clusterDomains: string[]
+  recentDomains: DomainVisit[]
+  allTimeDomains: DomainVisit[]
+  domainDetails: Record<string, DomainDetail[]>
+}
+
+export type BrowserDataResult = {
+  data: BrowserData | null
+  formatted: string | null
+  error?: string
+}
+
+// ---------------------------------------------------------------------------
+// Dev Projects Types
+// ---------------------------------------------------------------------------
+
+export type DevProject = {
+  name: string
+  path: string
+  lastActivity: number // timestamp in ms
+}
+
+// ---------------------------------------------------------------------------
+// Shell History Types
+// ---------------------------------------------------------------------------
+
+export type CommandFrequency = {
+  command: string
+  count: number
+}
+
+export type ShellAnalysis = {
+  topCommands: CommandFrequency[]
+  projectPaths: string[]
+  toolsUsed: string[]
+}
+
+// ---------------------------------------------------------------------------
+// App Discovery Types
+// ---------------------------------------------------------------------------
+
+export type DiscoveredApp = {
+  name: string
+  executablePath: string
+  source: 'running' | 'recent'
+  lastUsed?: number
+}
+
+// ---------------------------------------------------------------------------
+// Combined User Signals Types
+// ---------------------------------------------------------------------------
+
+export type AllUserSignals = {
+  browser: BrowserData
+  devProjects: DevProject[]
+  shell: ShellAnalysis
+  apps: DiscoveredApp[]
+}
+
+export type AllUserSignalsResult = {
+  data: AllUserSignals | null
+  formatted: string | null
+  error?: string
+}
+
 export type ElectronApi = {
   platform: string
   
@@ -20,7 +104,6 @@ export type ElectronApi = {
     width: number
     height: number
   } | null>
-  resetDiscoveryState: () => Promise<{ ok: boolean }>
   getDeviceId: () => Promise<string | null>
   configureHost: (config: { convexUrl?: string }) => Promise<{ deviceId: string | null }>
   setAuthToken: (payload: { token: string | null }) => Promise<{ ok: boolean }>
@@ -46,20 +129,12 @@ export type ElectronApi = {
   ) => () => void
   submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) => Promise<{ ok: boolean; error?: string }>
   cancelCredential: (payload: { requestId: string }) => Promise<{ ok: boolean; error?: string }>
-  // Local discovery (runs AI via backend proxy, tools locally)
-  runDiscovery: (payload: {
-    conversationId: string
-    platform: 'win32' | 'darwin'
-    trustLevel: 'basic' | 'full'
-  }) => Promise<{
-    success: boolean
-    coreMemory?: string
-    welcomeMessage?: string
-    error?: string
-  }>
-  onDiscoveryProgress: (
-    callback: (event: unknown, data: { status: string; agentType?: string }) => void
-  ) => () => void
+  // Browser data collection for core memory
+  checkCoreMemoryExists: () => Promise<boolean>
+  collectBrowserData: () => Promise<BrowserDataResult>
+  writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
+  // Comprehensive user signal collection (browser + dev projects + shell + apps)
+  collectAllSignals: () => Promise<AllUserSignalsResult>
 }
 
 declare global {
