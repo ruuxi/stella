@@ -191,4 +191,56 @@ export default defineSchema({
     })
     .index("by_owner_category", ["ownerId", "category", "subcategory"])
     .index("by_decay", ["decay", "accessedAt"]),
+  heartbeat_configs: defineTable({
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    enabled: v.boolean(),
+    intervalMs: v.number(),
+    prompt: v.optional(v.string()),
+    checklist: v.optional(v.string()),
+    ackMaxChars: v.optional(v.number()),
+    deliver: v.optional(v.boolean()),
+    agentType: v.optional(v.string()),
+    activeHours: v.optional(
+      v.object({
+        start: v.string(),
+        end: v.string(),
+        timezone: v.optional(v.string()),
+      }),
+    ),
+    targetDeviceId: v.optional(v.string()),
+    lastRunAtMs: v.optional(v.number()),
+    nextRunAtMs: v.number(),
+    lastStatus: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    lastSentText: v.optional(v.string()),
+    lastSentAtMs: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_conversation", ["ownerId", "conversationId"])
+    .index("by_next_run", ["nextRunAtMs", "ownerId"])
+    .index("by_owner_updated", ["ownerId", "updatedAt"]),
+  cron_jobs: defineTable({
+    ownerId: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    name: v.string(),
+    description: v.optional(v.string()),
+    enabled: v.boolean(),
+    schedule: v.any(),
+    sessionTarget: v.string(),
+    payload: v.any(),
+    deleteAfterRun: v.optional(v.boolean()),
+    nextRunAtMs: v.number(),
+    runningAtMs: v.optional(v.number()),
+    lastRunAtMs: v.optional(v.number()),
+    lastStatus: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    lastDurationMs: v.optional(v.number()),
+    lastOutputPreview: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_updated", ["ownerId", "updatedAt"])
+    .index("by_next_run", ["nextRunAtMs", "ownerId"]),
 });

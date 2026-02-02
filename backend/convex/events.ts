@@ -128,6 +128,24 @@ export const listRecentMessages = internalQuery({
   },
 });
 
+export const getLatestDeviceIdForConversation = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_conversation_type", (q) =>
+        q.eq("conversationId", args.conversationId).eq("type", "user_message"),
+      )
+      .order("desc")
+      .first();
+    const deviceId = typeof event?.deviceId === "string" ? event.deviceId.trim() : "";
+    return deviceId || null;
+  },
+});
+
 export const saveAssistantMessage = internalMutation({
   args: {
     conversationId: v.id("conversations"),

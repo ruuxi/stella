@@ -29,6 +29,7 @@ export const BASE_TOOL_NAMES = [
   "AskUserQuestion",
   "RequestCredential",
   "IntegrationRequest",
+  "Scheduler",
   "SkillBash",
   "SqliteQuery",
   "ImageGenerate",
@@ -83,6 +84,20 @@ const integrationRequestSchema = z.object({
     timeoutMs: z.number().int().positive().max(120_000).optional(),
   }),
   responseType: z.enum(["json", "text"]).optional(),
+});
+
+const schedulerSchema = z.object({
+  action: z.enum([
+    "heartbeat.get",
+    "heartbeat.upsert",
+    "heartbeat.run",
+    "cron.list",
+    "cron.add",
+    "cron.update",
+    "cron.remove",
+    "cron.run",
+  ]),
+  params: z.record(z.any()).optional(),
 });
 
 const filterTools = (
@@ -290,6 +305,50 @@ export const createTools = (
     }
   };
 
+  const normalizeParams = (value: unknown) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return {};
+  };
+
+  const readString = (params: Record<string, unknown>, key: string) => {
+    const value = params[key];
+    if (typeof value !== "string") {
+      return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  };
+
+  const readBoolean = (params: Record<string, unknown>, key: string) => {
+    const value = params[key];
+    return typeof value === "boolean" ? value : undefined;
+  };
+
+  const readNumber = (params: Record<string, unknown>, key: string) => {
+    const value = params[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  };
+
+  const readObject = (params: Record<string, unknown>, key: string) => {
+    const value = params[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return undefined;
+  };
+
+  const requireValue = <T,>(value: T | undefined, label: string): T => {
+    if (value === undefined) {
+      throw new Error(`${label} is required.`);
+    }
+    return value;
+  };
+
+  const formatResult = (value: unknown) =>
+    typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
+
   const pluginToolEntries = options.pluginTools.map((descriptor) => {
     // Sanitize tool name for AI provider compatibility (no dots allowed)
     const sanitizedName = sanitizeToolName(descriptor.name);
@@ -333,6 +392,107 @@ export const createTools = (
         return await withSecret(String(args.secretId), "IntegrationRequest", async (secret) =>
           runIntegrationRequest(args, secret),
         );
+      },
+    }),
+    Scheduler: tool({
+      description:
+        "Manage heartbeat + cron schedules. action: heartbeat.get|heartbeat.upsert|heartbeat.run|cron.list|cron.add|cron.update|cron.remove|cron.run.",
+      inputSchema: schedulerSchema,
+      execute: async (args) => {
+        const params = normalizeParams(args.params);
+        switch (args.action) {
+          case "heartbeat.get": {
+            const conversationId = readString(params, "conversationId");
+            const result = await ctx.runQuery(api.heartbeat.getConfig, {
+              ...(conversationId ? { conversationId } : {}),
+            });
+            return formatResult(result);
+          }
+          case "heartbeat.upsert": {
+            const conversationId = readString(params, "conversationId");
+            const upsertArgs: Record<string, unknown> = {};
+            if (conversationId) upsertArgs.conversationId = conversationId;
+            const enabled = readBoolean(params, "enabled");
+            if (enabled !== undefined) upsertArgs.enabled = enabled;
+            const intervalMs = readNumber(params, "intervalMs");
+            if (intervalMs !== undefined) upsertArgs.intervalMs = intervalMs;
+            const prompt = readString(params, "prompt");
+            if (prompt !== undefined) upsertArgs.prompt = prompt;
+            const checklist = readString(params, "checklist");
+            if (checklist !== undefined) upsertArgs.checklist = checklist;
+            const ackMaxChars = readNumber(params, "ackMaxChars");
+            if (ackMaxChars !== undefined) upsertArgs.ackMaxChars = ackMaxChars;
+            const deliver = readBoolean(params, "deliver");
+            if (deliver !== undefined) upsertArgs.deliver = deliver;
+            const agentType = readString(params, "agentType");
+            if (agentType !== undefined) upsertArgs.agentType = agentType;
+            const activeHours = readObject(params, "activeHours");
+            if (activeHours !== undefined) upsertArgs.activeHours = activeHours;
+            const targetDeviceId = readString(params, "targetDeviceId");
+            if (targetDeviceId !== undefined) upsertArgs.targetDeviceId = targetDeviceId;
+            const result = await ctx.runMutation(api.heartbeat.upsertConfig, upsertArgs);
+            return formatResult(result);
+          }
+          case "heartbeat.run": {
+            const conversationId = readString(params, "conversationId");
+            const result = await ctx.runMutation(api.heartbeat.runNow, {
+              ...(conversationId ? { conversationId } : {}),
+            });
+            return formatResult(result);
+          }
+          case "cron.list": {
+            const result = await ctx.runQuery(api.cron_jobs.list, {});
+            return formatResult(result);
+          }
+          case "cron.add": {
+            const name = requireValue(readString(params, "name"), "name");
+            const schedule = requireValue(readObject(params, "schedule"), "schedule");
+            const payload = requireValue(readObject(params, "payload"), "payload");
+            const sessionTarget = requireValue(readString(params, "sessionTarget"), "sessionTarget");
+            const conversationId = readString(params, "conversationId");
+            const description = readString(params, "description");
+            const enabled = readBoolean(params, "enabled");
+            const deleteAfterRun = readBoolean(params, "deleteAfterRun");
+            const result = await ctx.runMutation(api.cron_jobs.add, {
+              name,
+              schedule,
+              payload,
+              sessionTarget,
+              ...(conversationId ? { conversationId } : {}),
+              ...(description ? { description } : {}),
+              ...(enabled !== undefined ? { enabled } : {}),
+              ...(deleteAfterRun !== undefined ? { deleteAfterRun } : {}),
+            });
+            return formatResult(result);
+          }
+          case "cron.update": {
+            const jobId = readString(params, "jobId") ?? readString(params, "id");
+            const patch = readObject(params, "patch");
+            const resolvedJobId = requireValue(jobId, "jobId");
+            const resolvedPatch = requireValue(patch, "patch");
+            const result = await ctx.runMutation(api.cron_jobs.update, {
+              jobId: resolvedJobId as Id<"cron_jobs">,
+              patch: resolvedPatch,
+            });
+            return formatResult(result);
+          }
+          case "cron.remove": {
+            const jobId = readString(params, "jobId") ?? readString(params, "id");
+            const resolvedJobId = requireValue(jobId, "jobId");
+            await ctx.runMutation(api.cron_jobs.remove, {
+              jobId: resolvedJobId as Id<"cron_jobs">,
+            });
+            return "Cron job removed.";
+          }
+          case "cron.run": {
+            const jobId = readString(params, "jobId") ?? readString(params, "id");
+            const resolvedJobId = requireValue(jobId, "jobId");
+            const result = await ctx.runMutation(api.cron_jobs.run, {
+              jobId: resolvedJobId as Id<"cron_jobs">,
+            });
+            return formatResult(result);
+          }
+        }
       },
     }),
   };
