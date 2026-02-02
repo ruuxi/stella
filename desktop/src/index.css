@@ -262,13 +262,16 @@ html:has(.window-shell) .app {
   background: transparent !important;
 }
 
-/* Transparent windows - radial and mini (Spotlight) */
+/* Transparent windows - radial, mini (Spotlight), and region capture */
 html:has(.window-radial),
 html:has(.window-radial) body,
 html:has(.window-radial) #root,
 html:has(.window-mini),
 html:has(.window-mini) body,
-html:has(.window-mini) #root {
+html:has(.window-mini) #root,
+html:has(.window-region),
+html:has(.window-region) body,
+html:has(.window-region) #root {
   background: transparent !important;
   min-height: 100vh;
 }

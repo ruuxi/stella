@@ -87,6 +87,96 @@
   min-width: 0;
 }
 
+.raycast-screenshot-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.raycast-screenshot-dismiss {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in oklch, var(--foreground) 70%, transparent);
+  color: var(--background);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  padding: 0;
+}
+
+.raycast-screenshot-chip:hover .raycast-screenshot-dismiss {
+  opacity: 1;
+}
+
+.raycast-screenshot-skeleton {
+  cursor: default;
+  pointer-events: none;
+}
+
+.raycast-screenshot-skeleton-inner {
+  width: 56px;
+  height: 42px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 25%,
+    color-mix(in oklch, var(--foreground) 16%, transparent) 50%,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.raycast-screenshot-thumb {
+  width: 56px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.raycast-screenshot-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  cursor: pointer;
+}
+
+.raycast-screenshot-preview {
+  max-width: 90%;
+  max-height: 80%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  cursor: default;
+}
+
 .raycast-selected-text {
   max-width: 240px;
   padding: 4px 8px;

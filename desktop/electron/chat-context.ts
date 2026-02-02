@@ -10,11 +10,12 @@ export type ChatContext = {
   } | null
   browserUrl?: string | null
   selectedText?: string | null
-  regionScreenshot?: {
+  regionScreenshots?: {
     dataUrl: string
     width: number
     height: number
-  } | null
+  }[]
+  capturePending?: boolean
 }
 
 export const captureChatContext = async (_point: { x: number; y: number }): Promise<ChatContext> => {
@@ -25,6 +26,6 @@ export const captureChatContext = async (_point: { x: number; y: number }): Prom
     window: null,
     browserUrl: null,
     selectedText,
-    regionScreenshot: null,
+    regionScreenshots: [],
   }
 }

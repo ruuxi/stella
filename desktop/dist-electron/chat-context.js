@@ -6,6 +6,6 @@ export const captureChatContext = async (_point) => {
         window: null,
         browserUrl: null,
         selectedText,
-        regionScreenshot: null,
+        regionScreenshots: [],
     };
 };

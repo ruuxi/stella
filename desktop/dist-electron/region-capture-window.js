@@ -5,6 +5,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
 let regionWindow = null;
+let contentReady = false;
 const getDevUrl = () => {
     const url = new URL('http://localhost:5173');
     url.searchParams.set('window', 'region');
@@ -17,6 +18,7 @@ const getFileTarget = () => ({
 export const createRegionCaptureWindow = () => {
     if (regionWindow)
         return regionWindow;
+    contentReady = false;
     regionWindow = new BrowserWindow({
         frame: false,
         transparent: true,
@@ -38,6 +40,9 @@ export const createRegionCaptureWindow = () => {
             partition: 'persist:stellar',
         },
     });
+    regionWindow.webContents.on('did-finish-load', () => {
+        contentReady = true;
+    });
     if (isDev) {
         regionWindow.loadURL(getDevUrl());
     }
@@ -47,10 +52,11 @@ export const createRegionCaptureWindow = () => {
     }
     regionWindow.on('closed', () => {
         regionWindow = null;
+        contentReady = false;
     });
     return regionWindow;
 };
-export const showRegionCaptureWindow = (display = screen.getPrimaryDisplay()) => {
+export const showRegionCaptureWindow = async (display = screen.getPrimaryDisplay()) => {
     if (!regionWindow) {
         createRegionCaptureWindow();
     }
@@ -63,6 +69,12 @@ export const showRegionCaptureWindow = (display = screen.getPrimaryDisplay()) =>
         width: bounds.width,
         height: bounds.height,
     });
+    if (!contentReady) {
+        await new Promise((resolve) => {
+            regionWindow.webContents.once('did-finish-load', () => resolve());
+        });
+    }
+    regionWindow.setAlwaysOnTop(true, 'screen-saver');
     regionWindow.show();
     regionWindow.focus();
 };

@@ -10,11 +10,12 @@ export type ChatContext = {
   } | null
   browserUrl?: string | null
   selectedText?: string | null
-  regionScreenshot?: {
+  regionScreenshots?: {
     dataUrl: string
     width: number
     height: number
-  } | null
+  }[]
+  capturePending?: boolean
 }
 
 export type ChatContextUpdate = {
@@ -128,6 +129,7 @@ export type ElectronApi = {
   onChatContext: (callback: (payload: ChatContext | null | ChatContextUpdate) => void) => () => void
   ackChatContext: (payload: { version: number }) => void
   onMiniVisibility: (callback: (visible: boolean) => void) => () => void
+  onDismissPreview: (callback: () => void) => () => void
   getDeviceId: () => Promise<string | null>
   configureHost: (config: { convexUrl?: string }) => Promise<{ deviceId: string | null }>
   setAuthToken: (payload: { token: string | null }) => Promise<{ ok: boolean }>
