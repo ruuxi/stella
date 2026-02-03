@@ -53,8 +53,19 @@
   justify-content: center;
 }
 
+@keyframes radial-enter {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
 .radial-dial {
-  /* no shadow */
+  /* Base state: invisible. The entrance animation overrides this when active. */
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+.radial-dial.radial-dial--visible {
+  animation: radial-enter 0.12s ease-out forwards;
 }
 
 .wedge-path {

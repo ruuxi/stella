@@ -74,7 +74,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       data: { centerX: number; centerY: number; x?: number; y?: number }
     ) => void
   ) => {
-    const handler = (event: IpcRendererEvent, data: { centerX: number; centerY: number; x?: number; y?: number }) => {
+    const handler = (
+      event: IpcRendererEvent,
+      data: { centerX: number; centerY: number; x?: number; y?: number }
+    ) => {
       callback(event, data)
     }
     ipcRenderer.on('radial:show', handler)
