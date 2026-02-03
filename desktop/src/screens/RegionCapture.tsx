@@ -60,20 +60,28 @@ export function RegionCapture() {
     setCurrentPoint({ x: event.clientX, y: event.clientY });
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (event: MouseEvent<HTMLDivElement>) => {
     if (!startPoint) {
       return;
     }
+    event.preventDefault();
+    const endPoint = currentPoint ?? { x: event.clientX, y: event.clientY };
+    const resolvedSelection = {
+      x: Math.min(startPoint.x, endPoint.x),
+      y: Math.min(startPoint.y, endPoint.y),
+      width: Math.abs(startPoint.x - endPoint.x),
+      height: Math.abs(startPoint.y - endPoint.y),
+    };
+
     if (
-      !selection ||
-      selection.width < MIN_SELECTION_SIZE ||
-      selection.height < MIN_SELECTION_SIZE
+      resolvedSelection.width < MIN_SELECTION_SIZE ||
+      resolvedSelection.height < MIN_SELECTION_SIZE
     ) {
-      api?.cancelRegionCapture?.();
+      api?.submitRegionClick?.(endPoint);
       clearSelection();
       return;
     }
-    api?.submitRegionSelection?.(selection);
+    api?.submitRegionSelection?.(resolvedSelection);
     clearSelection();
   };
 
@@ -97,7 +105,7 @@ export function RegionCapture() {
           }}
         />
       )}
-      <div className="region-capture-hint">Drag to capture region • Right-click or Esc to cancel</div>
+      <div className="region-capture-hint">Click to capture window - drag to capture region - Right-click or Esc to cancel</div>
     </div>
   );
 }

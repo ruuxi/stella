@@ -53,14 +53,6 @@
   justify-content: center;
 }
 
-.radial-dial-container {
-  width: 280px;
-  height: 280px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .radial-dial {
   /* no shadow */
 }
@@ -88,4 +80,3 @@
   opacity: 1;
   transform: translate(-50%, -50%) scale(0.28);
 }
-

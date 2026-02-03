@@ -110,3 +110,5 @@ export const hideRegionCaptureWindow = () => {
     regionWindow.hide()
   }
 }
+
+export const getRegionCaptureWindow = () => regionWindow
