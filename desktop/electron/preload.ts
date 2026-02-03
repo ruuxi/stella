@@ -107,7 +107,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.send('region:select', payload),
+  submitRegionClick: (point: { x: number; y: number }) =>
+    ipcRenderer.send('region:click', point),
   cancelRegionCapture: () => ipcRenderer.send('region:cancel'),
+  removeScreenshot: (index: number) => ipcRenderer.send('chatContext:removeScreenshot', index),
 
   // Theme sync across windows
   onThemeChange: (callback: (event: IpcRendererEvent, data: { key: string; value: string }) => void) => {

@@ -91,7 +91,9 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
     submitRegionSelection: (payload) => electron_1.ipcRenderer.send('region:select', payload),
+    submitRegionClick: (point) => electron_1.ipcRenderer.send('region:click', point),
     cancelRegionCapture: () => electron_1.ipcRenderer.send('region:cancel'),
+    removeScreenshot: (index) => electron_1.ipcRenderer.send('chatContext:removeScreenshot', index),
     // Theme sync across windows
     onThemeChange: (callback) => {
         const handler = (event, data) => {
