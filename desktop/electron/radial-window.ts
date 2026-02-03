@@ -14,18 +14,10 @@ let radialWindow: BrowserWindow | null = null
 // Using getBounds() during the first few ms after setBounds() can return stale values on some systems.
 let radialBounds: { x: number; y: number } | null = null
 let radialScaleFactor = 1
-let hideTimer: NodeJS.Timeout | null = null
 
-const getDevUrl = () => {
-  const url = new URL('http://localhost:5173')
-  url.searchParams.set('window', 'radial')
-  return url.toString()
-}
+const getDevUrl = () => 'http://localhost:5173/radial.html'
 
-const getFileTarget = () => ({
-  filePath: path.join(__dirname, '../dist/index.html'),
-  query: { window: 'radial' },
-})
+const getProdPath = () => path.join(__dirname, '../dist/radial.html')
 
 export const createRadialWindow = () => {
   if (radialWindow) return radialWindow
@@ -43,7 +35,8 @@ export const createRadialWindow = () => {
     skipTaskbar: true,
     hasShadow: false,
     focusable: true,
-    show: false,
+    show: true,
+    opacity: 0,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -55,14 +48,13 @@ export const createRadialWindow = () => {
   // Set higher alwaysOnTop level than overlay
   radialWindow.setAlwaysOnTop(true, 'screen-saver')
 
-  // Make window click-through when not interacting
-  radialWindow.setIgnoreMouseEvents(false)
+  // Start click-through — window is invisible until first show
+  radialWindow.setIgnoreMouseEvents(true, { forward: true })
 
   if (isDev) {
     radialWindow.loadURL(getDevUrl())
   } else {
-    const target = getFileTarget()
-    radialWindow.loadFile(target.filePath, { query: target.query })
+    radialWindow.loadFile(getProdPath())
   }
 
   radialWindow.on('closed', () => {
@@ -78,11 +70,6 @@ export const showRadialWindow = (x: number, y: number) => {
   }
 
   if (!radialWindow) return
-
-  if (hideTimer) {
-    clearTimeout(hideTimer)
-    hideTimer = null
-  }
 
   // Get the display where the cursor is
   const cursorPoint = { x, y }
@@ -107,33 +94,31 @@ export const showRadialWindow = (x: number, y: number) => {
   // Doing this on show avoids a "previous selection flash" before the first cursor move event arrives.
   const relativeX = x / scaleFactor - adjustedX
   const relativeY = y / scaleFactor - adjustedY
+  // Make visible and interactive
+  radialWindow.setOpacity(1)
+  radialWindow.setIgnoreMouseEvents(false)
+
   radialWindow.webContents.send('radial:show', {
     x: relativeX,
     y: relativeY,
     centerX: RADIAL_SIZE / 2,
     centerY: RADIAL_SIZE / 2,
   })
-
-  radialWindow.show()
 }
 
 export const hideRadialWindow = () => {
   if (radialWindow) {
     radialWindow.webContents.send('radial:hide')
-    // Give the renderer a frame to paint the "hidden/reset" state before we actually hide the window.
-    // Otherwise the OS can show the previous frame briefly on next open.
-    if (hideTimer) {
-      clearTimeout(hideTimer)
-    }
-    hideTimer = setTimeout(() => {
-      radialWindow?.hide()
-      hideTimer = null
-    }, 16)
+    // Make invisible and click-through. The window stays on-screen so the
+    // renderer is never throttled by Chromium — rAF and IPC stay responsive.
+    radialWindow.setOpacity(0)
+    radialWindow.setIgnoreMouseEvents(true, { forward: true })
+    radialBounds = null
   }
 }
 
 export const updateRadialCursor = (x: number, y: number) => {
-  if (!radialWindow || !radialWindow.isVisible()) return
+  if (!radialWindow || !radialBounds) return
 
   // Use cached bounds/scale from show time for stable math (especially right after setBounds()).
   const bounds = radialBounds ?? radialWindow.getBounds()

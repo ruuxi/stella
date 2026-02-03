@@ -65,8 +65,8 @@ const getContentPosition = (index: number) => {
 }
 
 export function RadialDial() {
-  const [visible, setVisible] = useState(false)
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
+  const [animateIn, setAnimateIn] = useState(false)
   const visibleRef = useRef(false)
   const api = getElectronApi()
   const { colors } = useTheme()
@@ -106,19 +106,23 @@ export function RadialDial() {
       data: { centerX: number; centerY: number; x?: number; y?: number }
     ) => {
       visibleRef.current = true
-      setVisible(true)
       if (typeof data.x === 'number' && typeof data.y === 'number') {
         const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
         setSelectedWedge(wedge)
       } else {
         setSelectedWedge('dismiss')
       }
+      // Trigger entrance animation directly — uses CSS @keyframes (not transitions),
+      // so it carries its own "from" state and doesn't need a pre-committed frame.
+      setAnimateIn(true)
     }
 
     const handleHide = () => {
       visibleRef.current = false
-      setVisible(false)
       setSelectedWedge('dismiss')
+      // Reset immediately — the window is parked off-screen so the user won't
+      // see this. Next show will start from the base state.
+      setAnimateIn(false)
     }
 
     const handleCursor = (
@@ -145,18 +149,16 @@ export function RadialDial() {
     }
   }, [api, calculateWedge])
 
-  if (!visible) {
-    return <div className="radial-dial-container" />
-  }
-
+  // Always render the full SVG so the compositor buffer is pre-painted.
+  // Window visibility is controlled by OS show()/hide() in the main process.
   return (
     <div className="radial-dial-container">
       <svg
         width={SIZE}
         height={SIZE}
         viewBox={`0 0 ${SIZE} ${SIZE}`}
-        className="radial-dial"
-        style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.2))' }}
+        className={`radial-dial${animateIn ? ' radial-dial--visible' : ''}`}
+        style={{}}
       >
         {/* Wedges */}
         {WEDGES.map((wedge, index) => {
@@ -245,10 +247,9 @@ export function RadialDial() {
           className="select-none"
           style={{ transition: 'fill 0.1s ease, font-size 0.1s ease' }}
         >
-          {'✦'}
+          {'âœ¦'}
         </text>
       </svg>
     </div>
   )
 }
-

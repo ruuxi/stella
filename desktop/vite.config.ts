@@ -8,6 +8,12 @@ export default defineConfig({
   base: './',
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        radial: path.resolve(__dirname, 'radial.html'),
+      },
+    },
   },
   resolve: {
     alias: {

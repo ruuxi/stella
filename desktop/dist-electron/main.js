@@ -651,10 +651,13 @@ const initMouseHook = () => {
             // Prime the mini shell with the captured context while the radial is open.
             // This prevents a brief flash of the previous context if the user releases quickly.
             broadcastChatContext();
-            // 2. Show overlay to block context menu on mouseup
-            showModifierOverlay();
-            // 3. Show radial on top of overlay
+            // 2. Show radial first — its compositor surface must be
+            //    presented before the overlay to avoid first-show delay
+            //    on Windows (DWM surface allocation for the fullscreen
+            //    overlay can block the radial's first paint).
             showRadialWindow(x, y);
+            // 3. Show overlay to block context menu on mouseup
+            showModifierOverlay();
         },
         onRadialHide: () => {
             radialShowActive = false;
