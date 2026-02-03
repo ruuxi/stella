@@ -13,7 +13,7 @@ const buildSkillsSection = (
   skills: Array<{
     id: string;
     name: string;
-    markdown: string;
+    description: string;
     execution?: string;
     requiresSecrets?: string[];
     publicIntegration?: boolean;
@@ -22,62 +22,23 @@ const buildSkillsSection = (
 ) => {
   if (skills.length === 0) return "";
 
-  const blocks = skills
-    .map((skill) => {
-      const header = `## Skill: ${skill.name} (${skill.id})`;
-      const notes: string[] = [];
-      if (skill.publicIntegration) {
-        notes.push("Public integration: no user API key required.");
-      }
-      if (skill.requiresSecrets && skill.requiresSecrets.length > 0) {
-        notes.push(
-          `Requires credential(s): ${skill.requiresSecrets.join(", ")}. Use RequestCredential if missing, then IntegrationRequest to use them.`,
-        );
-      }
-      if (skill.execution === "backend") {
-        notes.push("Execution: backend-only.");
-      }
-      if (skill.execution === "device") {
-        notes.push("Execution: device-only.");
-      }
-      if (skill.secretMounts) {
-        const mounts = skill.secretMounts;
-        const env =
-          mounts &&
-          typeof mounts === "object" &&
-          "env" in mounts &&
-          mounts.env &&
-          typeof mounts.env === "object"
-            ? Object.keys(mounts.env as Record<string, unknown>)
-            : [];
-        const files =
-          mounts &&
-          typeof mounts === "object" &&
-          "files" in mounts &&
-          mounts.files &&
-          typeof mounts.files === "object"
-            ? Object.keys(mounts.files as Record<string, unknown>)
-            : [];
-        const mountParts: string[] = [];
-        if (env.length > 0) {
-          mountParts.push(`env: ${env.join(", ")}`);
-        }
-        if (files.length > 0) {
-          mountParts.push(`files: ${files.join(", ")}`);
-        }
-        if (mountParts.length > 0) {
-          notes.push(`Detected secret mounts (${mountParts.join("; ")}).`);
-        }
-        notes.push("Use SkillBash for local commands so secrets are mounted automatically.");
-      }
-      const notesBlock = notes.length > 0 ? `Note: ${notes.join(" ")}` : "";
-      return [header, notesBlock, skill.markdown].filter(Boolean).join("\n").trim();
-    })
-    .filter((block) => block.length > 0);
+  const lines = skills.map((skill) => {
+    const tags: string[] = [];
+    if (skill.publicIntegration) tags.push("public");
+    if (skill.requiresSecrets && skill.requiresSecrets.length > 0) tags.push("requires credentials");
+    if (skill.execution === "backend") tags.push("backend-only");
+    if (skill.execution === "device") tags.push("device-only");
+    if (skill.secretMounts) tags.push("has secret mounts");
+    const suffix = tags.length > 0 ? ` [${tags.join(", ")}]` : "";
+    return `- **${skill.name}** (${skill.id}): ${skill.description}${suffix}`;
+  });
 
-  if (blocks.length === 0) return "";
-
-  return ["# Skills", ...blocks].join("\n\n");
+  return [
+    "# Skills",
+    "Use the ActivateSkill tool to load a skill's full instructions before using it.",
+    "",
+    ...lines,
+  ].join("\n");
 };
 
 export const buildSystemPrompt = async (
@@ -97,7 +58,7 @@ export const buildSystemPrompt = async (
     skills.map((skill) => ({
       id: skill.id,
       name: skill.name,
-      markdown: skill.markdown,
+      description: skill.description,
       execution: (skill as { execution?: string }).execution,
       requiresSecrets: (skill as { requiresSecrets?: string[] }).requiresSecrets,
       publicIntegration: (skill as { publicIntegration?: boolean }).publicIntegration,

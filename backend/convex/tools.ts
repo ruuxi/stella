@@ -36,6 +36,7 @@ export const BASE_TOOL_NAMES = [
   "ImageEdit",
   "VideoGenerate",
   "MemorySearch",
+  "ActivateSkill",
 ] as const;
 
 type PluginToolDescriptor = {
@@ -394,6 +395,40 @@ export const createTools = (
         );
       },
     }),
+    ActivateSkill: tool({
+      description:
+        "Load the full instructions for a skill by its ID. Call this before using a skill.",
+      inputSchema: z.object({
+        skill_id: z.string().min(1),
+      }),
+      execute: async (args) => {
+        const skill = await ctx.runQuery(api.skills.getSkillById, {
+          skillId: args.skill_id,
+        });
+        if (!skill) {
+          return `Skill not found: ${args.skill_id}`;
+        }
+        if (!skill.enabled) {
+          return `Skill is disabled: ${args.skill_id}`;
+        }
+        const parts = [`## Skill: ${skill.name} (${skill.id})`];
+        if (skill.requiresSecrets && skill.requiresSecrets.length > 0) {
+          parts.push(
+            `Requires credentials: ${skill.requiresSecrets.join(", ")}. Use RequestCredential if missing.`,
+          );
+        }
+        if (skill.execution) {
+          parts.push(`Execution: ${skill.execution}-only.`);
+        }
+        if (skill.secretMounts) {
+          parts.push(
+            "Use SkillBash for local commands so secrets are mounted automatically.",
+          );
+        }
+        parts.push(skill.markdown);
+        return parts.join("\n\n");
+      },
+    }),
     Scheduler: tool({
       description:
         "Manage heartbeat + cron schedules. action: heartbeat.get|heartbeat.upsert|heartbeat.run|cron.list|cron.add|cron.update|cron.remove|cron.run.",
@@ -654,6 +689,7 @@ export const createTools = (
           "Task",
           "TaskOutput",
           "AgentInvoke",
+          "ActivateSkill",
           ...options.pluginTools.map((toolDef) => sanitizeToolName(toolDef.name)),
         ]),
       )

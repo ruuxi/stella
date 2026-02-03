@@ -163,6 +163,20 @@ export const listEnabledSkills = query({
   },
 });
 
+export const getSkillById = query({
+  args: {
+    skillId: v.string(),
+  },
+  returns: v.union(skillValidator, v.null()),
+  handler: async (ctx, args) => {
+    const results = await ctx.db
+      .query("skills")
+      .withIndex("by_skill_key", (q) => q.eq("id", args.skillId))
+      .take(1);
+    return results[0] ?? null;
+  },
+});
+
 export const listSkills = query({
   args: {},
   returns: v.array(skillValidator),
