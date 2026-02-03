@@ -501,7 +501,7 @@ const startRegionCapture = async () => {
         return pendingRegionCapturePromise;
     }
     regionCaptureDisplay = getDisplayForPoint(screen.getCursorScreenPoint());
-    await showRegionCaptureWindow(regionCaptureDisplay);
+    await showRegionCaptureWindow(regionCaptureDisplay, cancelRegionCapture);
     pendingRegionCapturePromise = new Promise((resolve) => {
         pendingRegionCaptureResolve = resolve;
     });

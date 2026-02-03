@@ -185,6 +185,16 @@ export const MiniShell = () => {
     };
   }, []);
 
+  useEffect(() => {
+    window.electronAPI?.setMiniPreviewOpen?.(previewIndex !== null);
+  }, [previewIndex]);
+
+  useEffect(() => {
+    return () => {
+      window.electronAPI?.setMiniPreviewOpen?.(false);
+    };
+  }, []);
+
   // Auto-create conversation if none exists
   useEffect(() => {
     if (!state.conversationId) {
@@ -303,6 +313,7 @@ export const MiniShell = () => {
       }
       setSelectedText(null);
       setChatContext(null);
+      window.electronAPI?.clearSelectedText?.();
       setExpanded(true);
       startStream({ userMessageId: event._id, attachments });
     }
@@ -365,7 +376,24 @@ export const MiniShell = () => {
                 </div>
               )}
               {selectedText && (
-                <span className="raycast-selected-text">"{selectedText}"</span>
+                <div className="raycast-selected-text-chip">
+                  <span className="raycast-selected-text">"{selectedText}"</span>
+                  <button
+                    type="button"
+                    className="raycast-screenshot-dismiss"
+                    aria-label="Remove selected text"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedText(null);
+                      setChatContext((prev) =>
+                        prev ? { ...prev, selectedText: null } : prev,
+                      );
+                      window.electronAPI?.clearSelectedText?.();
+                    }}
+                  >
+                    &times;
+                  </button>
+                </div>
               )}
               <input
                 className="raycast-input"
@@ -386,6 +414,7 @@ export const MiniShell = () => {
                     setChatContext((prev) =>
                       prev ? { ...prev, selectedText: null } : prev,
                     );
+                    window.electronAPI?.clearSelectedText?.();
                   }
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -458,3 +487,4 @@ export const MiniShell = () => {
     </div>
   );
 };
+
