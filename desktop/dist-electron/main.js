@@ -87,6 +87,8 @@ const hideMiniWindow = (animate = true) => {
     sendMiniVisibility(false);
     miniWindow.setIgnoreMouseEvents(true, { forward: true });
     miniWindow.setFocusable(false);
+    // Explicitly blur so isFocused() returns false in the timer callback
+    miniWindow.blur();
     if (!animate) {
         miniWindow.setOpacity(0);
         return;
@@ -303,6 +305,10 @@ const showWindow = (target) => {
         if (pendingMiniOpacityHideTimer) {
             clearTimeout(pendingMiniOpacityHideTimer);
             pendingMiniOpacityHideTimer = null;
+        }
+        if (pendingMiniBlurHideTimer) {
+            clearTimeout(pendingMiniBlurHideTimer);
+            pendingMiniBlurHideTimer = null;
         }
         const requestId = ++miniShowRequestId;
         // Give the mini window a short blur-grace period while we transition away from the radial/overlay.
@@ -547,48 +553,8 @@ const handleRadialSelection = async (wedge) => {
         case 'chat':
         case 'auto': {
             updateUiState({ mode: 'chat' });
-            // Pre-fetch window sources BEFORE showing the mini shell so we don't
-            // accidentally capture the mini shell itself in the thumbnail list.
-            const cursorPt = screen.getCursorScreenPoint();
-            const miniAlreadyShowing = isMiniShowing();
-            // Exclude the mini shell window from capture sources so it never appears in screenshots.
-            const excludeIds = miniWindow ? [miniWindow.getMediaSourceId()] : [];
-            const sourcesPromise = prefetchWindowSources(excludeIds);
-            setPendingChatContext({ ...(pendingChatContext ?? emptyContext()), capturePending: true });
-            if (!miniAlreadyShowing)
+            if (!isMiniShowing())
                 showWindow('mini');
-            else
-                broadcastChatContext();
-            // Fire-and-forget: capture window screenshot and push update to renderer
-            void (async () => {
-                try {
-                    const sources = await sourcesPromise;
-                    const capture = await captureWindowAtPoint(cursorPt.x, cursorPt.y, sources);
-                    const ctx = pendingChatContext ?? emptyContext();
-                    if (capture) {
-                        const existing = ctx.regionScreenshots ?? [];
-                        setPendingChatContext({
-                            ...ctx,
-                            window: {
-                                title: capture.windowInfo.title,
-                                app: capture.windowInfo.process,
-                                bounds: capture.windowInfo.bounds,
-                            },
-                            regionScreenshots: [...existing, capture.screenshot],
-                            capturePending: false,
-                        });
-                    }
-                    else {
-                        setPendingChatContext({ ...ctx, capturePending: false });
-                    }
-                    broadcastChatContext();
-                }
-                catch (error) {
-                    console.warn('Window capture failed', error);
-                    setPendingChatContext({ ...(pendingChatContext ?? emptyContext()), capturePending: false });
-                    broadcastChatContext();
-                }
-            })();
             break;
         }
         case 'voice':
@@ -819,11 +785,43 @@ app.whenReady().then(async () => {
         showWindow(target);
     });
     ipcMain.handle('chatContext:get', () => consumeChatContext());
+    ipcMain.on('chatContext:removeScreenshot', (_event, index) => {
+        if (!pendingChatContext?.regionScreenshots)
+            return;
+        const next = [...pendingChatContext.regionScreenshots];
+        next.splice(index, 1);
+        setPendingChatContext({ ...pendingChatContext, regionScreenshots: next });
+    });
     ipcMain.on('region:select', (_event, selection) => {
         void finalizeRegionCapture(selection);
     });
     ipcMain.on('region:cancel', () => {
         cancelRegionCapture();
+    });
+    ipcMain.on('region:click', async (_event, point) => {
+        if (!pendingRegionCaptureResolve) {
+            resetRegionCapture();
+            return;
+        }
+        // Grab the resolve function before resetting (resetRegionCapture clears it)
+        const resolve = pendingRegionCaptureResolve;
+        // Hide the region capture overlay BEFORE capturing so it doesn't appear in the screenshot
+        hideRegionCaptureWindow();
+        // Also hide the mini shell if visible (so we capture the window underneath)
+        const miniWasShowing = isMiniShowing();
+        if (miniWasShowing) {
+            hideMiniWindow(false);
+        }
+        // Wait a frame for the windows to actually hide
+        await new Promise((r) => setTimeout(r, 50));
+        // Pre-fetch sources (overlay and mini shell should now be hidden)
+        const sources = await prefetchWindowSources([]);
+        // Capture window at clicked point
+        const capture = await captureWindowAtPoint(point.x, point.y, sources);
+        resolve(capture?.screenshot ?? null);
+        pendingRegionCaptureResolve = null;
+        pendingRegionCapturePromise = null;
+        regionCaptureDisplay = null;
     });
     // Theme sync across windows
     ipcMain.on('theme:broadcast', (_event, data) => {

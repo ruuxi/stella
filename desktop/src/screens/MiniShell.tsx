@@ -358,6 +358,7 @@ export const MiniShell = () => {
                     aria-label="Remove screenshot"
                     onClick={(e) => {
                       e.stopPropagation();
+                      window.electronAPI?.removeScreenshot?.(index);
                       setChatContext((prev) => {
                         if (!prev) return prev;
                         const next = [...(prev.regionScreenshots ?? [])];
@@ -475,13 +476,22 @@ export const MiniShell = () => {
         )}
       </div>
       {previewIndex !== null && chatContext?.regionScreenshots?.[previewIndex] && (
-        <div className="raycast-screenshot-overlay" onClick={() => setPreviewIndex(null)}>
-          <img
-            src={chatContext.regionScreenshots[previewIndex].dataUrl}
-            className="raycast-screenshot-preview"
-            alt="Screenshot preview"
-            onClick={(e) => e.stopPropagation()}
-          />
+        <div className="raycast-screenshot-overlay">
+          <div className="raycast-screenshot-preview-container">
+            <img
+              src={chatContext.regionScreenshots[previewIndex].dataUrl}
+              className="raycast-screenshot-preview"
+              alt="Screenshot preview"
+            />
+            <button
+              type="button"
+              className="raycast-screenshot-close"
+              onClick={() => setPreviewIndex(null)}
+              aria-label="Close preview"
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
     </div>
