@@ -12,6 +12,9 @@ import type * as agent from "../agent.js";
 import type * as agents from "../agents.js";
 import type * as attachments from "../attachments.js";
 import type * as auth from "../auth.js";
+import type * as automation_index from "../automation/index.js";
+import type * as automation_runner from "../automation/runner.js";
+import type * as automation_utils from "../automation/utils.js";
 import type * as automation_runner from "../automation_runner.js";
 import type * as automation_utils from "../automation_utils.js";
 import type * as conversations from "../conversations.js";
@@ -27,13 +30,23 @@ import type * as model from "../model.js";
 import type * as plugins from "../plugins.js";
 import type * as preferences from "../preferences.js";
 import type * as prompt_builder from "../prompt_builder.js";
-import type * as prompts from "../prompts.js";
+import type * as prompts_browser from "../prompts/browser.js";
+import type * as prompts_explore from "../prompts/explore.js";
+import type * as prompts_general from "../prompts/general.js";
+import type * as prompts_index from "../prompts/index.js";
+import type * as prompts_memory from "../prompts/memory.js";
+import type * as prompts_orchestrator from "../prompts/orchestrator.js";
+import type * as prompts_self_mod from "../prompts/self_mod.js";
+import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as railway from "../railway.js";
 import type * as secrets from "../secrets.js";
 import type * as secrets_crypto from "../secrets_crypto.js";
 import type * as skills from "../skills.js";
 import type * as tasks from "../tasks.js";
-import type * as tools from "../tools.js";
+import type * as tools_backend from "../tools/backend.js";
+import type * as tools_index from "../tools/index.js";
+import type * as tools_orchestration from "../tools/orchestration.js";
+import type * as tools_types from "../tools/types.js";
 
 import type {
   ApiFromModules,
@@ -46,6 +59,9 @@ declare const fullApi: ApiFromModules<{
   agents: typeof agents;
   attachments: typeof attachments;
   auth: typeof auth;
+  "automation/index": typeof automation_index;
+  "automation/runner": typeof automation_runner;
+  "automation/utils": typeof automation_utils;
   automation_runner: typeof automation_runner;
   automation_utils: typeof automation_utils;
   conversations: typeof conversations;
@@ -61,13 +77,23 @@ declare const fullApi: ApiFromModules<{
   plugins: typeof plugins;
   preferences: typeof preferences;
   prompt_builder: typeof prompt_builder;
-  prompts: typeof prompts;
+  "prompts/browser": typeof prompts_browser;
+  "prompts/explore": typeof prompts_explore;
+  "prompts/general": typeof prompts_general;
+  "prompts/index": typeof prompts_index;
+  "prompts/memory": typeof prompts_memory;
+  "prompts/orchestrator": typeof prompts_orchestrator;
+  "prompts/self_mod": typeof prompts_self_mod;
+  "prompts/synthesis": typeof prompts_synthesis;
   railway: typeof railway;
   secrets: typeof secrets;
   secrets_crypto: typeof secrets_crypto;
   skills: typeof skills;
   tasks: typeof tasks;
-  tools: typeof tools;
+  "tools/backend": typeof tools_backend;
+  "tools/index": typeof tools_index;
+  "tools/orchestration": typeof tools_orchestration;
+  "tools/types": typeof tools_types;
 }>;
 
 /**

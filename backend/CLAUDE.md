@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Stellar Backend is a Convex-powered backend for an AI assistant platform. It provides:
+Stella Backend is a Convex-powered backend for an AI assistant platform. It provides:
 - Conversation management with multi-device support
 - Streaming AI chat via HTTP endpoints using the Vercel AI SDK
 - Configurable agents with system prompts and tool allowlists

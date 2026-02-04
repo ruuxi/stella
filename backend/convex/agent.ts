@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { streamText, stepCountIs } from "ai";
 import { api, internal } from "./_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
-import { createTools } from "./tools";
+import { createTools } from "./tools/index";
 import { getModelConfig } from "./model";
 import type { Id } from "./_generated/dataModel";
 import { requireConversationOwner } from "./auth";

@@ -124,7 +124,7 @@ const parseFactResponse = (response: string): FactExtractionResult => {
 const FACT_EXTRACTION_PROMPT = `You extract discrete facts from conversation summaries. For each fact, assign a category and subcategory.
 
 Categories:
-- projects: subcategories are project names (e.g., "stellar", "my-app")
+- projects: subcategories are project names (e.g., "Stella", "my-app")
 - personal: preferences, habits, biographical info
 - tasks: things the user wants to do, action items, goals
 - technical: technical knowledge, solutions, configurations

@@ -79,7 +79,7 @@ export const buildSystemPrompt = async (
       });
       if (trustLevel === "basic" || trustLevel === "full") {
         systemParts.push(
-          "If ~/.stellar/state/CORE_MEMORY.MD exists, read it at the start of new conversations to personalize your responses. This contains the user's discovered context profile.",
+          "If ~/.stella/state/CORE_MEMORY.MD exists, read it at the start of new conversations to personalize your responses. This contains the user's discovered context profile.",
         );
       }
     } catch {

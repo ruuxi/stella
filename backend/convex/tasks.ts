@@ -5,7 +5,7 @@ import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
 import type { DeviceToolContext } from "./device_tools";
-import { createTools } from "./tools";
+import { createTools } from "./tools/index";
 import { getModelConfig } from "./model";
 import { requireConversationOwner } from "./auth";
 
