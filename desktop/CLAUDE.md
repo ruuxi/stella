@@ -5,12 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev              # Vite dev server (React only, HMR)
-npm run electron:dev     # Full Electron + Vite dev mode
-npm run test             # Run Vitest tests (watch mode)
-npm run test:run         # Run tests once
-npm run lint             # ESLint
-npm run electron:build   # Package for distribution
+bun run dev              # Vite dev server (React only, HMR)
+bun run electron:dev     # Full Electron + Vite dev mode
+bun run test             # Run Vitest tests (watch mode)
+bun run test:run         # Run tests once
+bun run lint             # ESLint
+bun run electron:build   # Package for distribution
 ```
 
 ## Path Aliases
@@ -83,5 +83,5 @@ See `src/components/CLAUDE.md` for component conventions.
 
 Tests use Vitest with React Testing Library:
 - Unit tests in `__tests__/` directories or `*.test.ts` files
-- Run `npm run test` for watch mode during development
-- Run `npm run test:run` for CI/single run
+- Run `bun run test` for watch mode during development
+- Run `bun run test:run` for CI/single run

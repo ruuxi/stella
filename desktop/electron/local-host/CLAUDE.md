@@ -96,7 +96,7 @@ interface ToolContext {
 
 - Unit tests in `__tests__/` directory
 - Manual test files: `*.manual-test.ts` (not run in CI)
-- Run tests: `npm run test:run` from frontend root
+- Run tests: `bun run test:run` from frontend root
 
 ## Key Patterns
 
