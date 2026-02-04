@@ -9,7 +9,7 @@ export const handleWebFetch = async (args) => {
     try {
         const response = await fetch(secureUrl, {
             headers: {
-                "User-Agent": "StellarLocalHost/1.0",
+                "User-Agent": "StellaLocalHost/1.0",
             },
         });
         if (!response.ok) {

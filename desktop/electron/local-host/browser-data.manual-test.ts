@@ -24,7 +24,7 @@ const main = async () => {
   console.log("Home:", os.homedir());
 
   // Use a temp directory for testing
-  const testHome = path.join(os.tmpdir(), `stellar-test-${Date.now()}`);
+  const testHome = path.join(os.tmpdir(), `stella-test-${Date.now()}`);
   console.log("Test home:", testHome);
   console.log("\n" + "─".repeat(60) + "\n");
 

@@ -1,7 +1,7 @@
 /**
  * App Discovery
  *
- * Discovers apps with executable paths for Stellar to launch.
+ * Discovers apps with executable paths for Stella to launch.
  * Sources:
  * 1. Currently running apps (highest signal)
  * 2. Recently used apps (check data folder mtime)
@@ -513,7 +513,7 @@ const formatAppEntry = (app: DiscoveredApp): string => {
 
 /**
  * Format app discovery for LLM synthesis
- * Includes executable paths so Stellar can launch apps
+ * Includes executable paths so Stella can launch apps
  */
 export const formatAppDiscoveryForSynthesis = (result: AppDiscoveryResult): string => {
   if (result.apps.length === 0) return "";

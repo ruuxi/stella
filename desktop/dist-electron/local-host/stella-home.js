@@ -3,8 +3,8 @@ import path from "path";
 const ensureDir = async (dirPath) => {
     await fs.mkdir(dirPath, { recursive: true });
 };
-export const resolveStellarHome = async (app) => {
-    const homePath = path.join(app.getPath("home"), ".stellar");
+export const resolveStellaHome = async (app) => {
+    const homePath = path.join(app.getPath("home"), ".stella");
     const agentsPath = path.join(homePath, "agents");
     const skillsPath = path.join(homePath, "skills");
     const pluginsPath = path.join(homePath, "plugins");

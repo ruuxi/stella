@@ -18,7 +18,7 @@ type Status = "idle" | "sending" | "sent" | "error";
 
 const getCallbackUrl = () => {
   if (window.electronAPI) {
-    const protocol = (import.meta.env.VITE_STELLAR_PROTOCOL as string | undefined) ?? "stellar";
+    const protocol = (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined) ?? "Stella";
     return `${protocol}://auth`;
   }
   return (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
@@ -79,7 +79,7 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent fit>
         <DialogHeader>
-          <DialogTitle>Welcome to Stellar</DialogTitle>
+          <DialogTitle>Welcome to Stella</DialogTitle>
           <DialogCloseButton />
         </DialogHeader>
         <DialogDescription>Sign in to sync your conversations and settings.</DialogDescription>

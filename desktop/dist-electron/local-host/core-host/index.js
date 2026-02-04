@@ -9,11 +9,11 @@ import { createSafeModeManager } from "./safe-mode.js";
 export const createCoreHost = (options) => {
     const zoneManager = createZoneManager({
         projectRoot: options.projectRoot,
-        stellarHome: options.stellarHome,
+        StellaHome: options.stellaHome,
     });
     const stateStore = new StateStore({
-        stateRoot: path.join(options.stellarHome, "state"),
-        packsRoot: path.join(options.stellarHome, "packs"),
+        stateRoot: path.join(options.stellaHome, "state"),
+        packsRoot: path.join(options.stellaHome, "packs"),
     });
     const instructionManager = createInstructionManager(zoneManager);
     const changeSetManager = createChangeSetManager({

@@ -1,7 +1,7 @@
-# Stellar Architecture
+# Stella Architecture
 
 ## Overview
-Stellar is an Electron desktop app with a React/Vite renderer and a Convex-backed service layer. The main process is the "Local Host" boundary for OS-level capabilities. The renderer is UI-only and communicates through IPC + network calls.
+Stella is an Electron desktop app with a React/Vite renderer and a Convex-backed service layer. The main process is the "Local Host" boundary for OS-level capabilities. The renderer is UI-only and communicates through IPC + network calls.
 
 ## Boundary: Main vs Renderer
 
@@ -48,6 +48,6 @@ Switching windows is handled by the main process. The renderer requests the wind
 - Both are invoked from the renderer via the Model Gateway (server-side only).
 
 ## Agent System Notes
-- Stellar uses a single default home directory at `~/.stellar`.
-- The local host scans `~/.stellar/{agents,skills,plugins}` and syncs manifests to the backend.
+- Stella uses a single default home directory at `~/.stella`.
+- The local host scans `~/.stella/{agents,skills,plugins}` and syncs manifests to the backend.
 - Task delegation (`Task`, `TaskOutput`) is handled server-side, while device and plugin tools run on the local host.

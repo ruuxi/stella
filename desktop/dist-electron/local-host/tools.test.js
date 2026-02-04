@@ -19,10 +19,10 @@ vi.mock("child_process", () => ({
 }));
 describe("Tools Module - Unit Tests", () => {
     let toolHost;
-    const mockStellarHome = "/tmp/test-stellar-home";
+    const mockStellaHome = "/tmp/test-stella-home";
     beforeEach(() => {
         toolHost = createToolHost({
-            stellarHome: mockStellarHome,
+            StellaHome: mockStellaHome,
         });
         vi.clearAllMocks();
     });

@@ -18,12 +18,12 @@ const log = (...args) => console.log("[collect-all]", ...args);
 /**
  * Collect all user signals in parallel
  */
-export const collectAllUserSignals = async (stellarHome) => {
+export const collectAllUserSignals = async (StellaHome) => {
     log("Starting parallel collection of all user signals...");
     const start = Date.now();
     // All collections run in parallel for speed
     const [browser, devProjects, shell, appResult] = await Promise.all([
-        collectBrowserData(stellarHome),
+        collectBrowserData(StellaHome),
         collectDevProjects(),
         analyzeShellHistory(),
         discoverApps(),
@@ -73,9 +73,9 @@ export const formatAllSignalsForSynthesis = (data) => {
 /**
  * Collect and format all signals - for use in IPC handler
  */
-export const collectAllSignals = async (stellarHome) => {
+export const collectAllSignals = async (StellaHome) => {
     try {
-        const data = await collectAllUserSignals(stellarHome);
+        const data = await collectAllUserSignals(StellaHome);
         const formatted = formatAllSignalsForSynthesis(data);
         return {
             data,

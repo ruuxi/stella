@@ -1,4 +1,4 @@
-# Stellar Frontend Architecture
+# Stella Frontend Architecture
 
 ## Quick Reference
 
@@ -80,9 +80,9 @@ electron/
 │   ├── tools-user.ts   # AskUser/RequestCredential handlers
 │   ├── tools-database.ts # SqliteQuery handler
 │   ├── runner.ts       # Tool request runner (polls Convex)
-│   ├── skills.ts       # Skill loading from ~/.stellar
-│   ├── agents.ts       # Agent loading from ~/.stellar
-│   └── plugins.ts      # Plugin loading from ~/.stellar
+│   ├── skills.ts       # Skill loading from ~/.stella
+│   ├── agents.ts       # Agent loading from ~/.stella
+│   └── plugins.ts      # Plugin loading from ~/.stella
 ├── radial-window.ts    # Radial menu window management
 └── region-capture-window.ts # Screen capture window
 ```

@@ -4,7 +4,7 @@ Plugins can contribute tools, skills, and agents.
 
 Plugins live on disk at:
 
-- `~/.stellar/plugins/<pluginId>/plugin.json`
+- `~/.stella/plugins/<pluginId>/plugin.json`
 
 ## `plugin.json` format
 

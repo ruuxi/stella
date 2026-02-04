@@ -10,13 +10,13 @@ import { initSelectedTextProcess, cleanupSelectedTextProcess } from './selected-
 import { createModifierOverlay, showModifierOverlay, hideModifierOverlay, destroyModifierOverlay, } from './modifier-overlay.js';
 import { getOrCreateDeviceId } from './local-host/device.js';
 import { createLocalHostRunner } from './local-host/runner.js';
-import { resolveStellarHome } from './local-host/stellar-home.js';
+import { resolveStellaHome } from './local-host/stella-home.js';
 import { collectBrowserData, coreMemoryExists, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
 import { collectAllSignals } from './local-host/collect-all.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
-const AUTH_PROTOCOL = 'stellar';
+const AUTH_PROTOCOL = 'Stella';
 const getDeepLinkUrl = (argv) => argv.find((arg) => arg.startsWith(`${AUTH_PROTOCOL}://`)) || null;
 let pendingAuthCallback = null;
 const uiState = {
@@ -29,7 +29,7 @@ let miniWindow = null;
 let mouseHook = null;
 let localHostRunner = null;
 let deviceId = null;
-let stellarHomePath = null;
+let StellaHomePath = null;
 let appReady = false; // true when authenticated + onboarding complete
 let isQuitting = false;
 let pendingConvexUrl = null;
@@ -199,7 +199,7 @@ const createFullWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
-            partition: 'persist:stellar',
+            partition: 'persist:Stella',
         },
     });
     loadWindow(fullWindow, 'full');
@@ -247,7 +247,7 @@ const createMiniWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
-            partition: 'persist:stellar',
+            partition: 'persist:Stella',
         },
     });
     // Set higher alwaysOnTop level to appear above other floating windows
@@ -685,12 +685,12 @@ app.whenReady().then(async () => {
     if (initialAuthUrl) {
         pendingAuthCallback = initialAuthUrl;
     }
-    const stellarHome = await resolveStellarHome(app);
-    stellarHomePath = stellarHome.homePath;
-    deviceId = await getOrCreateDeviceId(stellarHome.statePath);
+    const StellaHome = await resolveStellaHome(app);
+    StellaHomePath = StellaHome.homePath;
+    deviceId = await getOrCreateDeviceId(StellaHome.statePath);
     localHostRunner = createLocalHostRunner({
         deviceId,
-        stellarHome: stellarHome.homePath,
+        StellaHome: StellaHome.homePath,
         requestCredential,
     });
     if (pendingConvexUrl) {
@@ -855,16 +855,16 @@ app.whenReady().then(async () => {
     });
     // Browser data collection for core memory
     ipcMain.handle('browserData:exists', async () => {
-        if (!stellarHomePath)
+        if (!StellaHomePath)
             return false;
-        return coreMemoryExists(stellarHomePath);
+        return coreMemoryExists(StellaHomePath);
     });
     ipcMain.handle('browserData:collect', async () => {
-        if (!stellarHomePath) {
-            return { data: null, formatted: null, error: 'Stellar home not initialized' };
+        if (!StellaHomePath) {
+            return { data: null, formatted: null, error: 'Stella home not initialized' };
         }
         try {
-            const data = await collectBrowserData(stellarHomePath);
+            const data = await collectBrowserData(StellaHomePath);
             const formatted = formatBrowserDataForSynthesis(data);
             return { data, formatted };
         }
@@ -877,11 +877,11 @@ app.whenReady().then(async () => {
         }
     });
     ipcMain.handle('browserData:writeCoreMemory', async (_event, content) => {
-        if (!stellarHomePath) {
-            return { ok: false, error: 'Stellar home not initialized' };
+        if (!StellaHomePath) {
+            return { ok: false, error: 'Stella home not initialized' };
         }
         try {
-            await writeCoreMemory(stellarHomePath, content);
+            await writeCoreMemory(StellaHomePath, content);
             return { ok: true };
         }
         catch (error) {
@@ -890,10 +890,10 @@ app.whenReady().then(async () => {
     });
     // Comprehensive user signal collection
     ipcMain.handle('signals:collectAll', async () => {
-        if (!stellarHomePath) {
-            return { data: null, formatted: null, error: 'Stellar home not initialized' };
+        if (!StellaHomePath) {
+            return { data: null, formatted: null, error: 'Stella home not initialized' };
         }
-        return collectAllSignals(stellarHomePath);
+        return collectAllSignals(StellaHomePath);
     });
     ipcMain.handle('screenshot:capture', async (_event, point) => {
         const display = getDisplayForPoint(point);

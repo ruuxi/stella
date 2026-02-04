@@ -7,10 +7,10 @@ import fs from "fs";
 const log = (...args) => console.log("[runner]", ...args);
 const logError = (...args) => console.error("[runner]", ...args);
 const SYNC_DEBOUNCE_MS = 500;
-export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential }) => {
+export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential }) => {
     const ownerId = "local";
     const toolHost = createToolHost({
-        stellarHome,
+        StellaHome,
         requestCredential,
         resolveSecret: async ({ provider, secretId }) => {
             if (!client)
@@ -38,9 +38,9 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
     let syncPromise = null;
     let syncDebounceTimer = null;
     const watchers = [];
-    const skillsPath = path.join(stellarHome, "skills");
-    const agentsPath = path.join(stellarHome, "agents");
-    const pluginsPath = path.join(stellarHome, "plugins");
+    const skillsPath = path.join(StellaHome, "skills");
+    const agentsPath = path.join(StellaHome, "agents");
+    const pluginsPath = path.join(StellaHome, "plugins");
     const toConvexName = (name) => {
         // Convex expects "module:function" identifiers, not dot-separated paths.
         const firstDot = name.indexOf(".");
@@ -298,7 +298,7 @@ export const createLocalHostRunner = ({ deviceId, stellarHome, requestCredential
         if (isRunning)
             return;
         isRunning = true;
-        log("Starting local host runner", { deviceId, stellarHome });
+        log("Starting local host runner", { deviceId, StellaHome });
         // Initial sync on startup
         void syncManifests();
         // Start file watchers for manifest changes

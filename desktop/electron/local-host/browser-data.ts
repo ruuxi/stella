@@ -892,9 +892,9 @@ const findBrowser = async (): Promise<{
  */
 const copyHistoryDatabase = async (
   historyPath: string,
-  stellarHome: string
+  StellaHome: string
 ): Promise<string> => {
-  const cacheDir = path.join(stellarHome, "cache");
+  const cacheDir = path.join(StellaHome, "cache");
   await fs.mkdir(cacheDir, { recursive: true });
 
   const timestamp = Date.now();
@@ -1104,7 +1104,7 @@ const emptyBrowserData = (browser: BrowserType | null = null): BrowserData => ({
  * Collect browser data from the user's default browser
  */
 export const collectBrowserData = async (
-  stellarHome: string
+  StellaHome: string
 ): Promise<BrowserData> => {
   log("Starting browser data collection...");
 
@@ -1115,7 +1115,7 @@ export const collectBrowserData = async (
   let db: SqliteDatabase | null = null;
 
   try {
-    tempDbPath = await copyHistoryDatabase(browser.historyPath, stellarHome);
+    tempDbPath = await copyHistoryDatabase(browser.historyPath, StellaHome);
     db = await openDatabase(tempDbPath);
 
     // Run queries
@@ -1170,8 +1170,8 @@ export const collectBrowserData = async (
 /**
  * Check if core memory already exists
  */
-export const coreMemoryExists = async (stellarHome: string): Promise<boolean> => {
-  const coreMemoryPath = path.join(stellarHome, "state", "CORE_MEMORY.MD");
+export const coreMemoryExists = async (StellaHome: string): Promise<boolean> => {
+  const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
   try {
     await fs.access(coreMemoryPath);
     return true;
@@ -1184,10 +1184,10 @@ export const coreMemoryExists = async (stellarHome: string): Promise<boolean> =>
  * Write core memory profile to disk
  */
 export const writeCoreMemory = async (
-  stellarHome: string,
+  StellaHome: string,
   content: string
 ): Promise<void> => {
-  const statePath = path.join(stellarHome, "state");
+  const statePath = path.join(StellaHome, "state");
   await fs.mkdir(statePath, { recursive: true });
   const coreMemoryPath = path.join(statePath, "CORE_MEMORY.MD");
   await fs.writeFile(coreMemoryPath, content, "utf-8");

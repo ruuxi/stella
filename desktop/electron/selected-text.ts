@@ -10,8 +10,8 @@ let psReady = false
 let pendingResolve: ((value: string | null) => void) | null = null
 let outputBuffer = ''
 
-const MARKER_START = '___STELLAR_START___'
-const MARKER_END = '___STELLAR_END___'
+const MARKER_START = '___STELLA_START___'
+const MARKER_END = '___STELLA_END___'
 
 /**
  * Initialize persistent PowerShell process at app startup

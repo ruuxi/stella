@@ -49,10 +49,10 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const THEME_STORAGE_KEY = "stellar-theme-id";
-const COLOR_MODE_STORAGE_KEY = "stellar-color-mode";
-const GRADIENT_MODE_STORAGE_KEY = "stellar-gradient-mode";
-const GRADIENT_COLOR_STORAGE_KEY = "stellar-gradient-color";
+const THEME_STORAGE_KEY = "stella-theme-id";
+const COLOR_MODE_STORAGE_KEY = "stella-color-mode";
+const GRADIENT_MODE_STORAGE_KEY = "stella-gradient-mode";
+const GRADIENT_COLOR_STORAGE_KEY = "stella-gradient-color";
 
 function getSystemColorMode(): "light" | "dark" {
   if (typeof window === "undefined") return "light";

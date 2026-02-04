@@ -227,7 +227,7 @@ describe("Collect All Signals", () => {
           domainDetails: {},
         },
         devProjects: [
-          { name: "stellar", path: "/projects/stellar", lastActivity: Date.now() },
+          { name: "Stella", path: "/projects/Stella", lastActivity: Date.now() },
         ],
         shell: {
           topCommands: [{ command: "git", count: 50 }],
