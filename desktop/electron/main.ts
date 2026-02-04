@@ -78,7 +78,8 @@ const isDev = process.env.NODE_ENV === 'development'
 const AUTH_PROTOCOL = 'Stella'
 
 const getDeepLinkUrl = (argv: string[]) =>
-  argv.find((arg) => arg.startsWith(`${AUTH_PROTOCOL}://`)) || null
+  // Case-insensitive check for the protocol (Windows may lowercase it)
+  argv.find((arg) => arg.toLowerCase().startsWith(`${AUTH_PROTOCOL.toLowerCase()}://`)) || null
 
 let pendingAuthCallback: string | null = null
 
@@ -218,10 +219,9 @@ const handleAuthCallback = (url: string) => {
 
 const registerAuthProtocol = () => {
   if (isDev) {
-    const appPath = path.resolve(process.argv[1] ?? '')
-    if (appPath) {
-      app.setAsDefaultProtocolClient(AUTH_PROTOCOL, process.execPath, [appPath])
-    }
+    // In dev mode, we need to pass the project directory so Electron can find package.json
+    const projectDir = path.resolve(__dirname, '..')
+    app.setAsDefaultProtocolClient(AUTH_PROTOCOL, process.execPath, [projectDir])
     return
   }
   app.setAsDefaultProtocolClient(AUTH_PROTOCOL)
@@ -859,9 +859,14 @@ app.whenReady().then(async () => {
   createModifierOverlay() // Overlay to capture right-clicks when Ctrl is held
   showWindow('full')
 
-  if (pendingAuthCallback) {
-    broadcastAuthCallback(pendingAuthCallback)
+  // Wait for the full window to finish loading before broadcasting auth callback
+  // Otherwise the renderer won't be ready to receive the IPC message
+  if (pendingAuthCallback && fullWindow) {
+    const authUrl = pendingAuthCallback
     pendingAuthCallback = null
+    fullWindow.webContents.once('did-finish-load', () => {
+      broadcastAuthCallback(authUrl)
+    })
   }
 
   // Initialize mouse hook for global right-click detection

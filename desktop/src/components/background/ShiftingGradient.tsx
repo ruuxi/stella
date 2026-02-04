@@ -224,7 +224,7 @@ export function ShiftingGradient({
             willChange: "left, top, transform",
             filter: `blur(${blob.blur}px)`,
             borderRadius: "9999px",
-            background: `radial-gradient(circle at center, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha}) 0%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${Math.max(0, blob.alpha - 0.18)}) 26%, transparent 72%)`,
+            background: `radial-gradient(circle at center, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha}) 0%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.95}) 12%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${Math.max(0, blob.alpha - 0.18)}) 26%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${Math.max(0, blob.alpha - 0.35)}) 45%, transparent 72%)`,
           } as CSSProperties}
         />
       ))}
@@ -233,14 +233,17 @@ export function ShiftingGradient({
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          backgroundColor: `hsl(from var(--background) h s l / 0.25)`,
+          zIndex: 10,
+          backgroundColor: colors.background
+            ? `color-mix(in srgb, ${colors.background} 25%, transparent)`
+            : 'transparent',
         }}
       >
         <div
           className="gradient-grain"
           style={{
             backgroundImage: `url("${GRAIN_DATA_URI}")`,
-            opacity: mode === "soft" ? 0.15 : 1,
+            opacity: mode === "soft" ? 0.4 : 1,
           }}
         />
       </div>
