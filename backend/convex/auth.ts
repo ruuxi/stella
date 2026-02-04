@@ -47,8 +47,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   const convexSiteUrl = getRequiredEnv("CONVEX_SITE_URL");
   const trustedOrigins = Array.from(
     new Set(
-      [siteUrl, getDeepLinkOrigin(), ...extraTrustedOrigins].filter((origin): origin is string =>
-        Boolean(origin),
+      [siteUrl, getDeepLinkOrigin(), ...extraTrustedOrigins].filter(
+        (origin): origin is string => Boolean(origin),
       ),
     ),
   );
@@ -116,7 +116,10 @@ export const requireUserIdentity = async (
 ) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
-    throw new ConvexError({ code: "UNAUTHENTICATED", message: "Authentication required" });
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
   }
   return identity;
 };
@@ -135,7 +138,9 @@ const loadConversation = async (
   if ("db" in ctx) {
     return await ctx.db.get(conversationId);
   }
-  return await ctx.runQuery(internal.conversations.getById, { id: conversationId });
+  return await ctx.runQuery(internal.conversations.getById, {
+    id: conversationId,
+  });
 };
 
 export const requireConversationOwner = async (
@@ -145,7 +150,10 @@ export const requireConversationOwner = async (
   const ownerId = await requireUserId(ctx);
   const conversation = await loadConversation(ctx, conversationId);
   if (!conversation || conversation.ownerId !== ownerId) {
-    throw new ConvexError({ code: "NOT_FOUND", message: "Conversation not found" });
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Conversation not found",
+    });
   }
   return conversation;
 };
