@@ -6,8 +6,9 @@
   overflow-wrap: break-word;
   color: var(--text-base, var(--foreground));
   font-family: var(--font-family-sans, inherit);
-  font-size: 14px;
-  line-height: 1.7;
+  font-feature-settings: var(--font-family-sans--font-feature-settings, normal);
+  font-size: 15px;
+  line-height: 180%;
 }
 
 /* Spacing for flow */
@@ -26,7 +27,7 @@
 .markdown h4,
 .markdown h5,
 .markdown h6 {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text-strong, var(--foreground));
   font-weight: 500;
   margin-top: 1.5rem;
@@ -148,7 +149,8 @@
 
 /* Inline code */
 .markdown :not(pre) > code {
-  font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
   color: var(--primary);
   font-weight: 500;
   font-size: 13px;
@@ -212,7 +214,7 @@
   width: 100%;
   border-collapse: collapse;
   margin: 1rem 0;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .markdown th,

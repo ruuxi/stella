@@ -16,8 +16,8 @@
   height: 100%;
   background: transparent;
   color: var(--foreground);
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-  font-feature-settings: var(--font-feature-settings, normal);
+  font-family: var(--font-family-sans);
+  font-feature-settings: var(--font-family-sans--font-feature-settings, normal);
   display: flex;
   align-items: stretch;
   position: relative;
