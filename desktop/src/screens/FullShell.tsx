@@ -30,6 +30,7 @@ import { TitleBar } from "../components/TitleBar";
 import { OnboardingStep1, useOnboardingState } from "../components/Onboarding";
 
 const CREATURE_INITIAL_SIZE = 0.22; // Small delicate neural network creature
+const SCROLL_THRESHOLD = 100; // Pixels from bottom to consider "at bottom"
 
 export const FullShell = () => {
   const { state } = useUiState();
@@ -56,6 +57,30 @@ export const FullShell = () => {
   const [themeConfirmed, setThemeConfirmed] = useState(false);
   const [hasSelectedTheme, setHasSelectedTheme] = useState(false);
   const blackHoleRef = useRef<AsciiBlackHoleHandle | null>(null);
+
+  // Scroll management
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
+  const checkIfNearBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return true;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    return scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD;
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior });
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const nearBottom = checkIfNearBottom();
+    setIsNearBottom(nearBottom);
+    setShowScrollButton(!nearBottom);
+  }, [checkIfNearBottom]);
 
   const triggerFlash = useCallback(() => {
     blackHoleRef.current?.triggerFlash();
@@ -403,6 +428,20 @@ export const FullShell = () => {
 
   const hasMessages = events.length > 0 || isStreaming;
 
+  // Auto-scroll when new content arrives (if user is near bottom)
+  useEffect(() => {
+    if (isNearBottom) {
+      scrollToBottom("smooth");
+    }
+  }, [events.length, streamingText, isNearBottom, scrollToBottom]);
+
+  // Scroll to bottom immediately when streaming starts
+  useEffect(() => {
+    if (isStreaming && isNearBottom) {
+      scrollToBottom("smooth");
+    }
+  }, [isStreaming, isNearBottom, scrollToBottom]);
+
   return (
     <div className="window-shell full">
       <TitleBar 
@@ -416,7 +455,11 @@ export const FullShell = () => {
 
       {/* Main content area - full screen with gradient visible */}
       <div className="full-body">
-        <div className="session-content">
+        <div
+          className="session-content"
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+        >
           {hasMessages && onboardingDone ? (
             <div className="session-messages">
               <ConversationEvents
@@ -480,6 +523,19 @@ export const FullShell = () => {
             </div>
           )}
         </div>
+
+        {/* Scroll to bottom button */}
+        {showScrollButton && hasMessages && onboardingDone && (
+          <button
+            className="scroll-to-bottom"
+            onClick={() => scrollToBottom("smooth")}
+            aria-label="Scroll to bottom"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+        )}
 
         {/* Composer - Aura-style prompt bar at bottom (only when authenticated) */}
         {isAuthenticated && onboardingDone && <div className="composer">

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap");
+@import "./styles/fonts.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -52,7 +52,13 @@
   /* Base radius - Aura-style smaller */
   --radius: 0.375rem;
 
-  /* Font feature settings for Inter */
+  /* Font families with metric-adjusted fallbacks */
+  --font-family-sans: "Inter", "Inter Fallback", system-ui, sans-serif;
+  --font-family-sans--font-feature-settings: "ss03" 1;
+  --font-family-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
+  --font-family-mono--font-feature-settings: "ss01" 1;
+
+  /* Font feature settings for Inter (legacy, use --font-family-sans--font-feature-settings) */
   --font-feature-settings: "ss03" 1;
 
   /* Gradient controls */
