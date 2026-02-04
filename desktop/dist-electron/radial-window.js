@@ -34,7 +34,7 @@ export const createRadialWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
-            partition: 'persist:stellar',
+            partition: 'persist:Stella',
         },
     });
     // Set higher alwaysOnTop level than overlay

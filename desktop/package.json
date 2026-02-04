@@ -1,5 +1,5 @@
 {
-  "name": "stellar",
+  "name": "Stella",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -104,11 +104,11 @@
     "wait-on": "^9.0.3"
   },
   "build": {
-    "appId": "com.stellar.app",
-    "productName": "Stellar",
+    "appId": "com.stella.app",
+    "productName": "Stella",
     "protocols": {
-      "name": "Stellar Auth",
-      "schemes": ["stellar"]
+      "name": "Stella Auth",
+      "schemes": ["Stella"]
     },
     "directories": {
       "output": "release"

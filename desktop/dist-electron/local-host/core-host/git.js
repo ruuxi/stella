@@ -139,7 +139,7 @@ export const applyReversePatch = async (cwd, patchContent) => {
     if (!patchContent.trim()) {
         return { ok: true, output: "No patch content provided." };
     }
-    const tempFile = path.join(os.tmpdir(), `stellar-patch-${crypto.randomUUID()}.diff`);
+    const tempFile = path.join(os.tmpdir(), `stella-patch-${crypto.randomUUID()}.diff`);
     try {
         await fs.writeFile(tempFile, patchContent, "utf-8");
         const result = await runCommand("git", ["apply", "-R", "--whitespace=nowarn", tempFile], cwd, 60000);

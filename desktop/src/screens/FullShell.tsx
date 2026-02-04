@@ -432,7 +432,7 @@ export const FullShell = () => {
                 className="new-session-title"
                 data-expanded={hasExpanded ? "true" : "false"}
               >
-                Stellar
+                Stella
               </div>
               <div 
                 onClick={() => {

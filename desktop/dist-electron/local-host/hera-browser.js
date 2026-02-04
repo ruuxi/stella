@@ -63,7 +63,7 @@ const handleExecute = async (args) => {
             imageCount: result.images?.length ?? 0,
             isError: result.isError,
         });
-        // Format result for Stellar
+        // Format result for Stella
         let output = result.text;
         if (result.images && result.images.length > 0) {
             output += `\n\n[${result.images.length} screenshot(s) captured]`;

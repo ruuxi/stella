@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { App } from "electron";
 
-export type StellarHome = {
+export type StellaHome = {
   homePath: string;
   agentsPath: string;
   skillsPath: string;
@@ -15,8 +15,8 @@ const ensureDir = async (dirPath: string) => {
   await fs.mkdir(dirPath, { recursive: true });
 };
 
-export const resolveStellarHome = async (app: App): Promise<StellarHome> => {
-  const homePath = path.join(app.getPath("home"), ".stellar");
+export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
+  const homePath = path.join(app.getPath("home"), ".stella");
 
   const agentsPath = path.join(homePath, "agents");
   const skillsPath = path.join(homePath, "skills");

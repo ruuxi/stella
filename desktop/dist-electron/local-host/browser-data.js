@@ -766,8 +766,8 @@ const findBrowser = async () => {
  * Also copies WAL files (-wal, -shm) if they exist, as Chrome uses
  * Write-Ahead Logging and recent data may be in these files.
  */
-const copyHistoryDatabase = async (historyPath, stellarHome) => {
-    const cacheDir = path.join(stellarHome, "cache");
+const copyHistoryDatabase = async (historyPath, StellaHome) => {
+    const cacheDir = path.join(StellaHome, "cache");
     await fs.mkdir(cacheDir, { recursive: true });
     const timestamp = Date.now();
     const tempPath = path.join(cacheDir, `browser_history_${timestamp}.db`);
@@ -948,7 +948,7 @@ const emptyBrowserData = (browser = null) => ({
 /**
  * Collect browser data from the user's default browser
  */
-export const collectBrowserData = async (stellarHome) => {
+export const collectBrowserData = async (StellaHome) => {
     log("Starting browser data collection...");
     const browser = await findBrowser();
     if (!browser)
@@ -956,7 +956,7 @@ export const collectBrowserData = async (stellarHome) => {
     let tempDbPath = null;
     let db = null;
     try {
-        tempDbPath = await copyHistoryDatabase(browser.historyPath, stellarHome);
+        tempDbPath = await copyHistoryDatabase(browser.historyPath, StellaHome);
         db = await openDatabase(tempDbPath);
         // Run queries
         const clusterDomains = queryClusterDomains(db);
@@ -1007,8 +1007,8 @@ export const collectBrowserData = async (stellarHome) => {
 /**
  * Check if core memory already exists
  */
-export const coreMemoryExists = async (stellarHome) => {
-    const coreMemoryPath = path.join(stellarHome, "state", "CORE_MEMORY.MD");
+export const coreMemoryExists = async (StellaHome) => {
+    const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
     try {
         await fs.access(coreMemoryPath);
         return true;
@@ -1020,8 +1020,8 @@ export const coreMemoryExists = async (stellarHome) => {
 /**
  * Write core memory profile to disk
  */
-export const writeCoreMemory = async (stellarHome, content) => {
-    const statePath = path.join(stellarHome, "state");
+export const writeCoreMemory = async (StellaHome, content) => {
+    const statePath = path.join(StellaHome, "state");
     await fs.mkdir(statePath, { recursive: true });
     const coreMemoryPath = path.join(statePath, "CORE_MEMORY.MD");
     await fs.writeFile(coreMemoryPath, content, "utf-8");

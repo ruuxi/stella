@@ -4,7 +4,7 @@ Agents are instruction sets that define a system prompt, tool preferences, and d
 
 Agents live on disk at:
 
-- `~/.stellar/agents/<agentId>/AGENT.md`
+- `~/.stella/agents/<agentId>/AGENT.md`
 
 ## `AGENT.md` format
 
@@ -27,6 +27,6 @@ You are a careful implementation agent...
 
 ## Sync behavior
 
-The local host scans `~/.stellar/agents` and syncs manifests to the backend via `agents.upsertMany`.
+The local host scans `~/.stella/agents` and syncs manifests to the backend via `agents.upsertMany`.
 
 Built-in agents (`general`, `self_mod`) are always ensured server-side.

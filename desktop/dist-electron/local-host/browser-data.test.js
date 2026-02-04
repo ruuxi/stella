@@ -33,9 +33,9 @@ import { collectBrowserData, coreMemoryExists, writeCoreMemory, formatBrowserDat
 describe("Browser Data Collection - Unit Tests", () => {
     const mockFs = fs;
     // Use a valid absolute path for Windows
-    const testStellarHome = process.platform === "win32"
-        ? "C:\\temp\\test-stellar-home"
-        : "/tmp/test-stellar-home";
+    const testStellaHome = process.platform === "win32"
+        ? "C:\\temp\\test-stella-home"
+        : "/tmp/test-stella-home";
     beforeEach(() => {
         vi.clearAllMocks();
         mockPrepare.mockReturnValue({ all: mockAll });
@@ -70,13 +70,13 @@ describe("Browser Data Collection - Unit Tests", () => {
     describe("coreMemoryExists", () => {
         it("should return true when CORE_MEMORY.MD exists", async () => {
             mockFs.access.mockResolvedValue(undefined);
-            const result = await coreMemoryExists(testStellarHome);
+            const result = await coreMemoryExists(testStellaHome);
             expect(result).toBe(true);
-            expect(mockFs.access).toHaveBeenCalledWith(path.join(testStellarHome, "state", "CORE_MEMORY.MD"));
+            expect(mockFs.access).toHaveBeenCalledWith(path.join(testStellaHome, "state", "CORE_MEMORY.MD"));
         });
         it("should return false when CORE_MEMORY.MD does not exist", async () => {
             mockFs.access.mockRejectedValue(new Error("ENOENT"));
-            const result = await coreMemoryExists(testStellarHome);
+            const result = await coreMemoryExists(testStellaHome);
             expect(result).toBe(false);
         });
     });
@@ -84,9 +84,9 @@ describe("Browser Data Collection - Unit Tests", () => {
         it("should write content to CORE_MEMORY.MD", async () => {
             mockFs.mkdir.mockResolvedValue(undefined);
             mockFs.writeFile.mockResolvedValue(undefined);
-            await writeCoreMemory(testStellarHome, "# Test Profile\n\nContent here");
-            expect(mockFs.mkdir).toHaveBeenCalledWith(path.join(testStellarHome, "state"), { recursive: true });
-            expect(mockFs.writeFile).toHaveBeenCalledWith(path.join(testStellarHome, "state", "CORE_MEMORY.MD"), "# Test Profile\n\nContent here", "utf-8");
+            await writeCoreMemory(testStellaHome, "# Test Profile\n\nContent here");
+            expect(mockFs.mkdir).toHaveBeenCalledWith(path.join(testStellaHome, "state"), { recursive: true });
+            expect(mockFs.writeFile).toHaveBeenCalledWith(path.join(testStellaHome, "state", "CORE_MEMORY.MD"), "# Test Profile\n\nContent here", "utf-8");
         });
     });
     describe("formatBrowserDataForSynthesis", () => {
@@ -146,7 +146,7 @@ describe("Browser Data Collection - Unit Tests", () => {
         it("should return null browser when no history found", async () => {
             // All browser paths fail
             mockFs.access.mockRejectedValue(new Error("ENOENT"));
-            const result = await collectBrowserData(testStellarHome);
+            const result = await collectBrowserData(testStellaHome);
             expect(result.browser).toBeNull();
             expect(result.clusterDomains).toEqual([]);
             expect(result.recentDomains).toEqual([]);
@@ -165,7 +165,7 @@ describe("Browser Data Collection - Unit Tests", () => {
             mockDatabase.mockImplementationOnce(() => {
                 throw new Error("Database error");
             });
-            const result = await collectBrowserData(testStellarHome);
+            const result = await collectBrowserData(testStellaHome);
             // Should return browser type but empty data due to error
             expect(result.browser).toBe("chrome");
             expect(result.clusterDomains).toEqual([]);
@@ -184,7 +184,7 @@ describe("Browser Data Collection - Integration Test", () => {
         vi.unmock("better-sqlite3");
         // Dynamically import the real module
         const { collectBrowserData: realCollect, formatBrowserDataForSynthesis: realFormat } = await import("./browser-data.js");
-        const testHome = path.join(os.tmpdir(), "stellar-test-" + Date.now());
+        const testHome = path.join(os.tmpdir(), "stella-test-" + Date.now());
         console.log("\n=== Browser Data Collection Integration Test ===\n");
         console.log("Test home:", testHome);
         const data = await realCollect(testHome);

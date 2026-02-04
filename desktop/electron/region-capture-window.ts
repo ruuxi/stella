@@ -45,7 +45,7 @@ export const createRegionCaptureWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      partition: 'persist:stellar',
+      partition: 'persist:Stella',
     },
   })
 

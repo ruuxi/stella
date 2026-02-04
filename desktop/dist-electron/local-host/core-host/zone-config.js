@@ -1,13 +1,13 @@
 import path from "path";
 import { ensureWithinRoot, joinRoot, normalizeAbsolutePath, relativeToRoot, toPosix, } from "./path-utils.js";
-const getZoneRoots = (projectRoot, stellarHome) => {
+const getZoneRoots = (projectRoot, StellaHome) => {
     const uiRoot = path.join(projectRoot, "src");
     const screensRoot = path.join(uiRoot, "screens");
     const coreHostRoot = path.join(projectRoot, "electron", "local-host");
     const instructionsRoot = path.join(projectRoot, "instructions");
-    const packsRoot = path.join(stellarHome, "packs");
-    const workspaceRoot = path.join(stellarHome, "workspace");
-    const userRoot = path.join(stellarHome, "user");
+    const packsRoot = path.join(StellaHome, "packs");
+    const workspaceRoot = path.join(StellaHome, "workspace");
+    const userRoot = path.join(StellaHome, "user");
     return {
         uiRoot,
         screensRoot,
@@ -18,8 +18,8 @@ const getZoneRoots = (projectRoot, stellarHome) => {
         userRoot,
     };
 };
-const buildZones = (projectRoot, stellarHome) => {
-    const roots = getZoneRoots(projectRoot, stellarHome);
+const buildZones = (projectRoot, StellaHome) => {
+    const roots = getZoneRoots(projectRoot, StellaHome);
     return [
         {
             name: "ui",
@@ -156,8 +156,8 @@ const guardUnknownZone = (context) => {
 };
 export const createZoneManager = (options) => {
     const projectRoot = normalizeAbsolutePath(options.projectRoot);
-    const stellarHome = normalizeAbsolutePath(options.stellarHome);
-    const zones = buildZones(projectRoot, stellarHome);
+    const StellaHome = normalizeAbsolutePath(options.stellaHome);
+    const zones = buildZones(projectRoot, StellaHome);
     const resolvePath = (inputPath) => {
         const trimmed = String(inputPath ?? "").trim();
         if (!trimmed) {
@@ -217,7 +217,7 @@ export const createZoneManager = (options) => {
     };
     return {
         projectRoot,
-        stellarHome,
+        StellaHome,
         resolvePath,
         classifyPath,
         enforceGuard,

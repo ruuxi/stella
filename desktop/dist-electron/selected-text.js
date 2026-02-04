@@ -7,8 +7,8 @@ let psProcess = null;
 let psReady = false;
 let pendingResolve = null;
 let outputBuffer = '';
-const MARKER_START = '___STELLAR_START___';
-const MARKER_END = '___STELLAR_END___';
+const MARKER_START = '___STELLA_START___';
+const MARKER_END = '___STELLA_END___';
 /**
  * Initialize persistent PowerShell process at app startup
  * This loads UI Automation assemblies once and keeps them in memory

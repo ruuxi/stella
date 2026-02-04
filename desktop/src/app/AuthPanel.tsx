@@ -7,7 +7,7 @@ type Status = "idle" | "sending" | "sent" | "error";
 
 const getCallbackUrl = () => {
   if (window.electronAPI) {
-    const protocol = (import.meta.env.VITE_STELLAR_PROTOCOL as string | undefined) ?? "stellar";
+    const protocol = (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined) ?? "Stella";
     return `${protocol}://auth`;
   }
   return (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
@@ -56,7 +56,7 @@ export const AuthPanel = () => {
     <div className="auth-panel">
       <div className="auth-panel-card">
         <div className="auth-panel-header">
-          <div className="auth-panel-title">Welcome to Stellar</div>
+          <div className="auth-panel-title">Welcome to Stella</div>
           <div className="auth-panel-subtitle">Sign in to continue.</div>
         </div>
 

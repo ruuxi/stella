@@ -1,6 +1,6 @@
 import { getElectronApi } from "./electron";
 
-const DEVICE_ID_KEY = "stellar.deviceId";
+const DEVICE_ID_KEY = "Stella.deviceId";
 
 let cachedDeviceId: string | null = null;
 

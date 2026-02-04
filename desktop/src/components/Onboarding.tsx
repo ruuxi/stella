@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import "./Onboarding.css";
 
-const ONBOARDING_KEY = "stellar-onboarding-complete";
+const ONBOARDING_KEY = "stella-onboarding-complete";
 
 const TYPE_SPEED_MIN = 35;
 const TYPE_SPEED_MAX = 75;

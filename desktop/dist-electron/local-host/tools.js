@@ -26,9 +26,9 @@ import { createShellState, handleBash, handleSkillBash, handleKillShell, } from 
 import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import { createStateContext, handleTodoWrite, handleTestWrite, handleTask, handleTaskOutput, } from "./tools-state.js";
 import { handleAskUser, handleRequestCredential } from "./tools-user.js";
-export const createToolHost = ({ stellarHome, requestCredential, resolveSecret }) => {
-    const stateRoot = path.join(stellarHome, "state");
-    const pluginsRoot = path.join(stellarHome, "plugins");
+export const createToolHost = ({ StellaHome, requestCredential, resolveSecret }) => {
+    const stateRoot = path.join(StellaHome, "state");
+    const pluginsRoot = path.join(StellaHome, "plugins");
     // Plugin state
     const pluginHandlers = new Map();
     let pluginSyncPayload = {

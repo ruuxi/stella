@@ -56,7 +56,7 @@ export type TaskRecord = {
 };
 
 export type ToolHostOptions = {
-  stellarHome: string;
+  StellaHome: string;
   requestCredential?: (payload: {
     provider: string;
     label?: string;

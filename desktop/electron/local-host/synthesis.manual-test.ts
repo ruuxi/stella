@@ -142,7 +142,7 @@ const main = async () => {
   console.log(`✓ Using model: ${SYNTHESIS_MODEL}\n`);
 
   // Use a temp directory for testing
-  const testHome = path.join(os.tmpdir(), `stellar-synthesis-test-${Date.now()}`);
+  const testHome = path.join(os.tmpdir(), `stella-synthesis-test-${Date.now()}`);
 
   // ---------------------------------------------------------------------------
   // Step 1: Collect signals
