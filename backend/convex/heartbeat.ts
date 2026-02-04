@@ -10,8 +10,8 @@ import {
   isHeartbeatContentEffectivelyEmpty,
   resolveHeartbeatPrompt,
   stripHeartbeatToken,
-} from "./automation_utils";
-import { runAgentTurn } from "./automation_runner";
+} from "./automation/utils";
+import { runAgentTurn } from "./automation/runner";
 
 const ACTIVE_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]|24):([0-5]\d)$/;
 const DUPLICATE_SUPPRESSION_MS = 24 * 60 * 60 * 1000;

@@ -1,4 +1,4 @@
-﻿export type EncryptedSecretPayload = {
+export type EncryptedSecretPayload = {
   keyVersion: number;
   dataNonce: string;
   dataCiphertext: string;
@@ -29,19 +29,19 @@ const base64ToBytes = (value: string) => {
 };
 
 const getMasterKeyBytes = () => {
-  const raw = process.env.STELLAR_SECRETS_MASTER_KEY ?? "";
+  const raw = process.env.STELLA_SECRETS_MASTER_KEY ?? "";
   if (!raw) {
-    throw new Error("STELLAR_SECRETS_MASTER_KEY is not set");
+    throw new Error("STELLA_SECRETS_MASTER_KEY is not set");
   }
   const bytes = base64ToBytes(raw);
   if (bytes.length !== KEY_BYTES) {
-    throw new Error("STELLAR_SECRETS_MASTER_KEY must be 32 bytes (base64)");
+    throw new Error("STELLA_SECRETS_MASTER_KEY must be 32 bytes (base64)");
   }
   return bytes;
 };
 
 const getKeyVersion = () => {
-  const raw = process.env.STELLAR_SECRETS_MASTER_KEY_VERSION ?? "1";
+  const raw = process.env.STELLA_SECRETS_MASTER_KEY_VERSION ?? "1";
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
 };

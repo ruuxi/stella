@@ -4,7 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
 
 const notConfigured = () =>
-  "Railway integration is not configured. Set STELLAR_RAILWAY_TOKEN and STELLAR_RAILWAY_TEMPLATE_ID.";
+  "Railway integration is not configured. Set STELLA_RAILWAY_TOKEN and STELLA_RAILWAY_TEMPLATE_ID.";
 
 export const listRemoteComputers = query({
   args: {},
@@ -89,7 +89,7 @@ export const provisionRemote = action({
   }),
   handler: async (ctx, _args) => {
     await requireUserId(ctx);
-    if (!process.env.STELLAR_RAILWAY_TOKEN || !process.env.STELLAR_RAILWAY_TEMPLATE_ID) {
+    if (!process.env.STELLA_RAILWAY_TOKEN || !process.env.STELLA_RAILWAY_TEMPLATE_ID) {
       return { status: "error", message: notConfigured() };
     }
 
@@ -110,7 +110,7 @@ export const refreshRemoteStatus = action({
   }),
   handler: async (ctx, _args) => {
     await requireUserId(ctx);
-    if (!process.env.STELLAR_RAILWAY_TOKEN || !process.env.STELLAR_RAILWAY_TEMPLATE_ID) {
+    if (!process.env.STELLA_RAILWAY_TOKEN || !process.env.STELLA_RAILWAY_TEMPLATE_ID) {
       return { status: "error", message: notConfigured() };
     }
 
@@ -131,7 +131,7 @@ export const deprovisionRemote = action({
   }),
   handler: async (ctx, _args) => {
     await requireUserId(ctx);
-    if (!process.env.STELLAR_RAILWAY_TOKEN || !process.env.STELLAR_RAILWAY_TEMPLATE_ID) {
+    if (!process.env.STELLA_RAILWAY_TOKEN || !process.env.STELLA_RAILWAY_TEMPLATE_ID) {
       return { status: "error", message: notConfigured() };
     }
 

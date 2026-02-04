@@ -31,9 +31,9 @@ const extraTrustedOrigins = [
 ];
 
 const getDeepLinkOrigin = () => {
-  const raw = process.env.STELLAR_PROTOCOL;
+  const raw = process.env.STELLA_PROTOCOL;
   if (!raw) {
-    return "stellar://auth";
+    return "Stella://auth";
   }
   const protocol = raw.replace("://", "").replace(":", "");
   return `${protocol}://auth`;
@@ -76,7 +76,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
           await resend.sendEmail(actionCtx, {
             from: getRequiredEnv("RESEND_FROM"),
             to: email,
-            subject: "Sign in to Stellar",
+            subject: "Sign in to Stella",
             html: `<p>Click <a href="${url}">here</a> to sign in.</p>`,
           });
         },

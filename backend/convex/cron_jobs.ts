@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireConversationOwner, requireUserId } from "./auth";
-import { runAgentTurn } from "./automation_runner";
+import { runAgentTurn } from "./automation/runner";
 
 const STUCK_RUN_MS = 2 * 60 * 60 * 1000;
 const MAX_PREVIEW_CHARS = 800;

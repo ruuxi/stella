@@ -7,7 +7,7 @@ import {
   SELF_MOD_AGENT_SYSTEM_PROMPT,
   EXPLORE_AGENT_SYSTEM_PROMPT,
   BROWSER_AGENT_SYSTEM_PROMPT,
-} from "./prompts";
+} from "./prompts/index";
 
 const agentValidator = v.object({
   _id: v.id("agents"),
@@ -143,7 +143,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
   // {
   //   id: "self_mod",
   //   name: "Self-Modification Agent",
-  //   description: "Modifies Stellar itself with care.",
+  //   description: "Modifies Stella itself with care.",
   //   systemPrompt: SELF_MOD_AGENT_SYSTEM_PROMPT,
   //   agentTypes: ["self_mod"],
   //   toolsAllowlist: [

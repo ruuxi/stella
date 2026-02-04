@@ -5,14 +5,14 @@ import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./prompt_builder";
-import { createTools } from "./tools";
+import { createTools } from "./tools/index";
 import { getModelConfig } from "./model";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
 import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
-} from "./prompts";
+} from "./prompts/index";
 
 type ChatRequest = {
   conversationId: string;
@@ -393,7 +393,7 @@ type SynthesizeResponse = {
   welcomeMessage: string;
 };
 
-const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stellar, your AI assistant. What can I help you with today?";
+const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 
 http.route({
   path: "/api/synthesize",
