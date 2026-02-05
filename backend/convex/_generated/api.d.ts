@@ -37,6 +37,7 @@ import type * as prompts_index from "../prompts/index.js";
 import type * as prompts_memory from "../prompts/memory.js";
 import type * as prompts_orchestrator from "../prompts/orchestrator.js";
 import type * as prompts_self_mod from "../prompts/self_mod.js";
+import type * as prompts_skill_metadata from "../prompts/skill_metadata.js";
 import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as railway from "../railway.js";
 import type * as secrets from "../secrets.js";
@@ -84,6 +85,7 @@ declare const fullApi: ApiFromModules<{
   "prompts/memory": typeof prompts_memory;
   "prompts/orchestrator": typeof prompts_orchestrator;
   "prompts/self_mod": typeof prompts_self_mod;
+  "prompts/skill_metadata": typeof prompts_skill_metadata;
   "prompts/synthesis": typeof prompts_synthesis;
   railway: typeof railway;
   secrets: typeof secrets;
