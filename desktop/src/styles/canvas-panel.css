@@ -1,0 +1,168 @@
+/* ============================================
+   CANVAS PANEL
+   Right-side panel for generative UI display.
+   Conditionally shown when a canvas is active.
+   ============================================ */
+
+/* --- Resize handle between chat and canvas --- */
+
+.canvas-resize-handle {
+  width: 8px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  position: relative;
+}
+
+.canvas-resize-handle::before {
+  content: '';
+  width: 1px;
+  height: 100%;
+  background: var(--border-base);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+
+.canvas-resize-handle:hover::before {
+  width: 2px;
+  background: var(--primary);
+}
+
+/* --- Panel container --- */
+
+.canvas-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  background: color-mix(in srgb, var(--surface-inset) 60%, transparent);
+  backdrop-filter: blur(16px);
+  animation: canvas-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes canvas-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* --- Panel header --- */
+
+.canvas-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 16px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-weak);
+  -webkit-app-region: no-drag;
+}
+
+.canvas-panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.canvas-panel-tier {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-inset) 80%, transparent);
+  border: 1px solid var(--border-weak);
+  flex-shrink: 0;
+}
+
+.canvas-panel-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-panel-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.canvas-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.canvas-panel-close:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+/* --- Panel content area --- */
+
+.canvas-panel-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+/* --- Placeholder (when no renderer registered) --- */
+
+.canvas-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.canvas-placeholder-icon {
+  color: var(--text-weaker);
+  opacity: 0.5;
+}
+
+.canvas-placeholder-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  font-family: var(--font-family-mono);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
+}
+
+.canvas-placeholder-description {
+  font-size: 12px;
+  color: var(--text-weak);
+  line-height: 1.5;
+}
+
+/* Composer and scroll-to-bottom are position:absolute inside
+   .full-body-main, so they naturally scope to the chat column
+   when the canvas panel is open — no overrides needed. */
