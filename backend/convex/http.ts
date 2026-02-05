@@ -12,6 +12,8 @@ import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
+  SKILL_METADATA_PROMPT,
+  buildSkillMetadataUserMessage,
 } from "./prompts/index";
 
 type ChatRequest = {
@@ -488,6 +490,133 @@ http.route({
       console.error("[synthesize] Error:", error);
       return withCors(
         new Response(`Synthesis failed: ${(error as Error).message}`, { status: 500 }),
+        origin,
+      );
+    }
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Skill Metadata Generation Endpoint
+// ---------------------------------------------------------------------------
+
+type SkillMetadataRequest = {
+  markdown: string;
+  skillDirName: string;
+};
+
+type SkillMetadataResponse = {
+  metadata: {
+    id: string;
+    name: string;
+    description: string;
+    agentTypes: string[];
+  };
+};
+
+http.route({
+  path: "/api/generate-skill-metadata",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+http.route({
+  path: "/api/generate-skill-metadata",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("origin");
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    let body: SkillMetadataRequest | null = null;
+    try {
+      body = (await request.json()) as SkillMetadataRequest;
+    } catch {
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
+    }
+
+    if (!body?.markdown || !body?.skillDirName) {
+      return withCors(
+        new Response("markdown and skillDirName are required", { status: 400 }),
+        origin,
+      );
+    }
+
+    const apiKey = process.env.AI_GATEWAY_API_KEY;
+    if (!apiKey) {
+      console.error("[generate-skill-metadata] Missing AI_GATEWAY_API_KEY environment variable");
+      return withCors(
+        new Response("Server configuration error", { status: 500 }),
+        origin,
+      );
+    }
+
+    const gateway = createGateway({ apiKey });
+
+    try {
+      const userMessage = buildSkillMetadataUserMessage(body.skillDirName, body.markdown);
+
+      const result = await generateText({
+        model: gateway("openai/gpt-4o-mini"),
+        system: SKILL_METADATA_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+        maxOutputTokens: 200,
+        temperature: 0.3,
+      });
+
+      const text = result.text?.trim() || "";
+
+      // Parse the YAML response
+      const lines = text.split("\n");
+      const metadata: Record<string, unknown> = {};
+
+      for (const line of lines) {
+        const colonIndex = line.indexOf(":");
+        if (colonIndex === -1) continue;
+
+        const key = line.slice(0, colonIndex).trim();
+        let value = line.slice(colonIndex + 1).trim();
+
+        // Handle array values like [general-purpose]
+        if (value.startsWith("[") && value.endsWith("]")) {
+          const inner = value.slice(1, -1);
+          metadata[key] = inner
+            .split(",")
+            .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+            .filter((s) => s.length > 0);
+        } else {
+          // Remove surrounding quotes
+          value = value.replace(/^["']|["']$/g, "");
+          metadata[key] = value;
+        }
+      }
+
+      const response: SkillMetadataResponse = {
+        metadata: {
+          id: (metadata.id as string) || body.skillDirName,
+          name: (metadata.name as string) || body.skillDirName,
+          description: (metadata.description as string) || "Skill instructions.",
+          agentTypes: (metadata.agentTypes as string[]) || ["general-purpose"],
+        },
+      };
+
+      return withCors(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    } catch (error) {
+      console.error("[generate-skill-metadata] Error:", error);
+      return withCors(
+        new Response(`Metadata generation failed: ${(error as Error).message}`, { status: 500 }),
         origin,
       );
     }
