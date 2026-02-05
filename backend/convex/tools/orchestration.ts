@@ -39,16 +39,56 @@ export const createOrchestrationTools = (
   options: ToolOptions,
 ): ToolSet => {
   const Task = tool({
-    description: "Delegate a task to a specialized subagent.",
+    description:
+      "Manage subagent tasks. action: create (delegate a task), output (retrieve result), cancel (stop a running task).",
     inputSchema: z.object({
-      description: z.string().min(1),
-      prompt: z.string().min(1),
-      subagent_type: z.string().min(1),
+      action: z.enum(["create", "output", "cancel"]).default("create"),
+      // create params
+      description: z.string().optional(),
+      prompt: z.string().optional(),
+      subagent_type: z.string().optional(),
       run_in_background: z.boolean().optional(),
       include_history: z.boolean().optional(),
       resume: z.string().optional(),
+      // output/cancel params
+      task_id: z.string().optional(),
+      reason: z.string().optional(),
     }),
     execute: async (args) => {
+      const action = args.action ?? "create";
+
+      if (action === "output") {
+        const taskId = args.task_id;
+        if (!taskId) return "task_id is required for output action.";
+        try {
+          const record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
+            taskId,
+          });
+          if (!record) return `Task not found: ${taskId}`;
+          return formatTaskResult(record as any);
+        } catch {
+          return `Failed to load task: ${taskId}`;
+        }
+      }
+
+      if (action === "cancel") {
+        const taskId = args.task_id;
+        if (!taskId) return "task_id is required for cancel action.";
+        const record = await ctx.runMutation(api.tasks.cancelTask, {
+          taskId: taskId as Id<"tasks">,
+          reason: args.reason,
+        });
+        if (!record) return `Task not found: ${taskId}`;
+        return formatTaskResult(record as any);
+      }
+
+      // action === "create"
+      if (!args.description || !args.prompt || !args.subagent_type) {
+        return "description, prompt, and subagent_type are required for create action.";
+      }
+      if (!context.userMessageId) {
+        return "Cannot create a task without a user message context.";
+      }
       const result = await ctx.runAction(api.tasks.runSubagent, {
         conversationId: context.conversationId,
         userMessageId: context.userMessageId,
@@ -62,44 +102,6 @@ export const createOrchestrationTools = (
       });
 
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
-    },
-  });
-
-  const TaskOutput = tool({
-    description: "Retrieve output from a task.",
-    inputSchema: z.object({
-      task_id: z.string().min(1),
-    }),
-    execute: async (args) => {
-      try {
-        const record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
-          taskId: args.task_id,
-        });
-        if (!record) {
-          return `Task not found: ${args.task_id}`;
-        }
-        return formatTaskResult(record as any);
-      } catch {
-        return `Failed to load task: ${args.task_id}`;
-      }
-    },
-  });
-
-  const TaskCancel = tool({
-    description: "Cancel a running task by task ID.",
-    inputSchema: z.object({
-      task_id: z.string().min(1),
-      reason: z.string().optional(),
-    }),
-    execute: async (args) => {
-      const record = await ctx.runMutation(api.tasks.cancelTask, {
-        taskId: args.task_id as Id<"tasks">,
-        reason: args.reason,
-      });
-      if (!record) {
-        return `Task not found: ${args.task_id}`;
-      }
-      return formatTaskResult(record as any);
     },
   });
 
@@ -118,6 +120,9 @@ export const createOrchestrationTools = (
     execute: async (args) => {
       if (args.target_device_id && args.target_device_id !== context.targetDeviceId) {
         return "agent.invoke must target the current device.";
+      }
+      if (!context.userMessageId) {
+        return "AgentInvoke requires a user message context.";
       }
 
       const result = await ctx.runAction(api.agent.invoke, {
@@ -175,8 +180,6 @@ export const createOrchestrationTools = (
 
   return {
     Task,
-    TaskOutput,
-    TaskCancel,
     AgentInvoke,
     MemorySearch,
   };
