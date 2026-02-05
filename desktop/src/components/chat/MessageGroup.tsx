@@ -90,7 +90,7 @@ export function MessageGroup({
               isReasoning={!hasStreamingContent}
               toolName={currentToolName}
             />
-            {hasStreamingContent && streamingText && <Markdown text={streamingText} />}
+            {hasStreamingContent && streamingText && <Markdown text={streamingText} isAnimating={isStreaming} />}
           </div>
         </div>
       )}

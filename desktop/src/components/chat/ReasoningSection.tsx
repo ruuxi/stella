@@ -59,7 +59,7 @@ export function ReasoningSection({
         <div className="reasoning-body">
           <div ref={contentRef} className="reasoning-content">
             {content ? (
-              <Markdown text={content} />
+              <Markdown text={content} isAnimating={isStreaming} />
             ) : (
               "Thinking..."
             )}
