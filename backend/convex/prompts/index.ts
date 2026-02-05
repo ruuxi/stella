@@ -9,3 +9,7 @@ export {
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
 } from "./synthesis";
+export {
+  SKILL_METADATA_PROMPT,
+  buildSkillMetadataUserMessage,
+} from "./skill_metadata";
