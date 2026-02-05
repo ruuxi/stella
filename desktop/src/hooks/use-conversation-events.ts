@@ -366,8 +366,10 @@ export const useConversationEvents = (conversationId?: string) => {
       : "skip"
   ) as { page: EventRecord[] } | undefined;
 
-  const events = result?.page ?? [];
-  return [...events].reverse();
+  return useMemo(() => {
+    const events = result?.page ?? [];
+    return [...events].reverse();
+  }, [result?.page]);
 };
 
 // Hook to extract steps from events

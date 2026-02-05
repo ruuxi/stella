@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, type CSSProperties } from "react";
+import { useEffect, useState, useRef, useCallback, memo, type CSSProperties } from "react";
 import { useTheme } from "../../theme/theme-context";
 import { generateGradientTokens } from "../../theme/color";
 import { cn } from "@/lib/utils";
@@ -100,7 +100,7 @@ interface ShiftingGradientProps {
   scale?: number;
 }
 
-export function ShiftingGradient({
+export const ShiftingGradient = memo(function ShiftingGradient({
   className,
   mode = "soft",
   colorMode = "relative",
@@ -249,4 +249,4 @@ export function ShiftingGradient({
       </div>
     </div>
   );
-}
+});

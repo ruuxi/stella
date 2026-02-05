@@ -4,6 +4,7 @@ import {
   useRef,
   useCallback,
 } from "react";
+import { useRafStringAccumulator } from "../hooks/use-raf-state";
 import { useMutation, useConvexAuth } from "convex/react";
 import { Spinner } from "../components/spinner";
 import { useUiState } from "../app/state/ui-state";
@@ -39,11 +40,9 @@ export const FullShell = () => {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const isDev = import.meta.env.DEV;
   const [message, setMessage] = useState("");
-  const [streamingText, setStreamingText] = useState("");
-  const [reasoningText, setReasoningText] = useState("");
+  const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
+  const [reasoningText, appendReasoningDelta, resetReasoningText, reasoningTextRef] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
-  const streamingTextRef = useRef("");
-  const reasoningTextRef = useRef("");
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
   const [queueNext, setQueueNext] = useState(false);
@@ -92,20 +91,53 @@ export const FullShell = () => {
     blackHoleRef.current?.startBirth();
   }, [hasExpanded]);
 
-  const appendEvent = useMutation(api.events.appendEvent);
+  const appendEvent = useMutation(api.events.appendEvent).withOptimisticUpdate(
+    (localStore, args) => {
+      if (args.type !== "user_message") return;
+
+      const queryArgs = {
+        conversationId: args.conversationId,
+        paginationOpts: { cursor: null, numItems: 200 }
+      };
+      const current = localStore.getQuery(api.events.listEvents, queryArgs);
+      if (!current?.page) return;
+
+      // Create optimistic event (query returns newest-first, reversed in hook)
+      const optimisticEvent = {
+        _id: `optimistic-${crypto.randomUUID()}`,
+        timestamp: Date.now(),
+        type: args.type,
+        deviceId: args.deviceId,
+        payload: args.payload,
+      };
+
+      // Prepend to page (newest first in raw query result)
+      localStore.setQuery(api.events.listEvents, queryArgs, {
+        ...current,
+        page: [optimisticEvent, ...current.page],
+      });
+    }
+  );
 
   const resetStreamingState = useCallback((runId?: number) => {
     if (typeof runId === "number" && runId !== streamRunIdRef.current) {
       return;
     }
-    setStreamingText("");
-    streamingTextRef.current = "";
-    setReasoningText("");
-    reasoningTextRef.current = "";
+    const scheduledForRunId = streamRunIdRef.current;
+    resetStreamingText();
+    resetReasoningText();
     setIsStreaming(false);
-    setPendingUserMessageId(null);
+    // `resetStreamingText` is RAF-batched; clearing `pendingUserMessageId` immediately can
+    // cause a one-frame flash where the UI renders a standalone streaming row with the
+    // previous `streamingText`. Clear the pending id on the next frame instead.
+    requestAnimationFrame(() => {
+      if (scheduledForRunId !== streamRunIdRef.current) {
+        return;
+      }
+      setPendingUserMessageId(null);
+    });
     streamAbortRef.current = null;
-  }, []);
+  }, [resetStreamingText, resetReasoningText]);
 
   const cancelCurrentStream = useCallback(() => {
     if (streamAbortRef.current) {
@@ -250,10 +282,8 @@ export const FullShell = () => {
       streamRunIdRef.current = runId;
       const controller = new AbortController();
       streamAbortRef.current = controller;
-      setStreamingText("");
-      streamingTextRef.current = "";
-      setReasoningText("");
-      reasoningTextRef.current = "";
+      resetStreamingText();
+      resetReasoningText();
       setIsStreaming(true);
       setPendingUserMessageId(args.userMessageId);
 
@@ -266,26 +296,18 @@ export const FullShell = () => {
         {
           onTextDelta: (delta) => {
             if (runId !== streamRunIdRef.current) return;
-            setStreamingText((prev) => {
-              const next = prev + delta;
-              streamingTextRef.current = next;
-              return next;
-            });
+            appendStreamingDelta(delta);
           },
           onReasoningDelta: (delta) => {
             if (runId !== streamRunIdRef.current) return;
-            setReasoningText((prev) => {
-              const next = prev + delta;
-              reasoningTextRef.current = next;
-              return next;
-            });
+            appendReasoningDelta(delta);
           },
           onDone: () => {
             if (runId !== streamRunIdRef.current) return;
             streamAbortRef.current = null;
             setIsStreaming(false);
             if (streamingTextRef.current.trim().length === 0) {
-              setStreamingText("");
+              resetStreamingText();
               setPendingUserMessageId(null);
             }
           },
@@ -303,7 +325,7 @@ export const FullShell = () => {
         resetStreamingState(runId);
       });
     },
-    [resetStreamingState, state.conversationId],
+    [resetStreamingState, state.conversationId, resetStreamingText, resetReasoningText, appendStreamingDelta, appendReasoningDelta, streamingTextRef],
   );
 
   const findQueuedFollowUp = useCallback((source: EventRecord[]) => {
@@ -388,8 +410,6 @@ export const FullShell = () => {
     const deviceId = await getOrCreateDeviceId();
     const rawText = message.trim();
     setMessage("");
-    streamingTextRef.current = "";
-    reasoningTextRef.current = "";
 
     const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
     const cleanedText = followUpMatch ? rawText.slice(followUpMatch[0].length).trim() : rawText;
@@ -467,6 +487,8 @@ export const FullShell = () => {
                 streamingText={streamingText}
                 reasoningText={reasoningText}
                 isStreaming={isStreaming}
+                pendingUserMessageId={pendingUserMessageId}
+                scrollContainerRef={scrollContainerRef}
               />
             </div>
           ) : (

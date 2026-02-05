@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRafStringAccumulator } from "../hooks/use-raf-state";
 import { useAction, useMutation } from "convex/react";
 import { useUiState } from "../app/state/ui-state";
 import { AsciiBlackHole } from "../components/AsciiBlackHole";
@@ -18,8 +19,8 @@ export const MiniShell = () => {
   const [chatContext, setChatContext] = useState<ChatContext | null>(null);
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [shellVisible, setShellVisible] = useState(false);
-  const [streamingText, setStreamingText] = useState("");
-  const [reasoningText, setReasoningText] = useState("");
+  const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
+  const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
@@ -28,7 +29,33 @@ export const MiniShell = () => {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
-  const appendEvent = useMutation(api.events.appendEvent);
+  const appendEvent = useMutation(api.events.appendEvent).withOptimisticUpdate(
+    (localStore, args) => {
+      if (args.type !== "user_message") return;
+
+      const queryArgs = {
+        conversationId: args.conversationId,
+        paginationOpts: { cursor: null, numItems: 200 }
+      };
+      const current = localStore.getQuery(api.events.listEvents, queryArgs);
+      if (!current?.page) return;
+
+      // Create optimistic event (query returns newest-first, reversed in hook)
+      const optimisticEvent = {
+        _id: `optimistic-${crypto.randomUUID()}`,
+        timestamp: Date.now(),
+        type: args.type,
+        deviceId: args.deviceId,
+        payload: args.payload,
+      };
+
+      // Prepend to page (newest first in raw query result)
+      localStore.setQuery(api.events.listEvents, queryArgs, {
+        ...current,
+        page: [optimisticEvent, ...current.page],
+      });
+    }
+  );
   const createAttachment = useAction(api.attachments.createFromDataUrl);
   const createConversation = useMutation(api.conversations.createConversation);
   const events = useConversationEvents(state.conversationId ?? undefined);
@@ -37,12 +64,21 @@ export const MiniShell = () => {
     if (typeof runId === "number" && runId !== streamRunIdRef.current) {
       return;
     }
-    setStreamingText("");
-    setReasoningText("");
+    const scheduledForRunId = streamRunIdRef.current;
+    resetStreamingText();
+    resetReasoningText();
     setIsStreaming(false);
-    setPendingUserMessageId(null);
+    // `resetStreamingText` is RAF-batched; clearing `pendingUserMessageId` immediately can
+    // cause a one-frame flash where the UI renders a standalone streaming row with the
+    // previous `streamingText`. Clear the pending id on the next frame instead.
+    requestAnimationFrame(() => {
+      if (scheduledForRunId !== streamRunIdRef.current) {
+        return;
+      }
+      setPendingUserMessageId(null);
+    });
     streamAbortRef.current = null;
-  }, []);
+  }, [resetStreamingText, resetReasoningText]);
 
   const cancelCurrentStream = useCallback(() => {
     if (streamAbortRef.current) {
@@ -60,8 +96,8 @@ export const MiniShell = () => {
       streamRunIdRef.current = runId;
       const controller = new AbortController();
       streamAbortRef.current = controller;
-      setStreamingText("");
-      setReasoningText("");
+      resetStreamingText();
+      resetReasoningText();
       setIsStreaming(true);
       setPendingUserMessageId(args.userMessageId);
 
@@ -74,11 +110,11 @@ export const MiniShell = () => {
         {
           onTextDelta: (delta) => {
             if (runId !== streamRunIdRef.current) return;
-            setStreamingText((prev) => prev + delta);
+            appendStreamingDelta(delta);
           },
           onReasoningDelta: (delta) => {
             if (runId !== streamRunIdRef.current) return;
-            setReasoningText((prev) => prev + delta);
+            appendReasoningDelta(delta);
           },
           onDone: () => {
             if (runId !== streamRunIdRef.current) return;
@@ -99,7 +135,7 @@ export const MiniShell = () => {
         resetStreamingState(runId);
       });
     },
-    [resetStreamingState, state.conversationId],
+    [resetStreamingState, state.conversationId, resetStreamingText, resetReasoningText, appendStreamingDelta, appendReasoningDelta],
   );
 
   const findQueuedFollowUp = useCallback((source: EventRecord[]) => {
@@ -459,6 +495,7 @@ export const MiniShell = () => {
                   streamingText={streamingText}
                   reasoningText={reasoningText}
                   isStreaming={isStreaming}
+                  pendingUserMessageId={pendingUserMessageId}
                 />
               </div>
             </div>
