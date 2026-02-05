@@ -1,6 +1,6 @@
 /* Composer - Aura-style prompt bar at bottom */
 .composer {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;

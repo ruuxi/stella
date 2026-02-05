@@ -161,6 +161,7 @@
 /* Content should be above gradient */
 .window-header,
 .full-body,
+.full-body-main,
 .session-content,
 .composer {
   position: relative;

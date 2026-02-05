@@ -8,6 +8,7 @@ import { useRafStringAccumulator } from "../hooks/use-raf-state";
 import { useMutation, useConvexAuth } from "convex/react";
 import { Spinner } from "../components/spinner";
 import { useUiState } from "../app/state/ui-state";
+import { useCanvas } from "../app/state/canvas-state";
 import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
 import { useConversationEvents, type EventRecord } from "../hooks/use-conversation-events";
@@ -18,6 +19,7 @@ import { ShiftingGradient } from "../components/background/ShiftingGradient";
 import { useTheme } from "../theme/theme-context";
 import { Button } from "../components/button";
 import { AuthDialog } from "../app/AuthDialog";
+import { CanvasPanel } from "../components/canvas/CanvasPanel";
 import type { AllUserSignalsResult } from "../types/electron";
 
 type AttachmentRef = {
@@ -35,6 +37,7 @@ const SCROLL_THRESHOLD = 100; // Pixels from bottom to consider "at bottom"
 
 export const FullShell = () => {
   const { state } = useUiState();
+  const { state: canvasState } = useCanvas();
   const { completed: onboardingDone, complete: completeOnboarding, reset: resetOnboarding } = useOnboardingState();
   const { gradientMode, gradientColor } = useTheme();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -478,178 +481,188 @@ export const FullShell = () => {
     }
   }, [isStreaming, isNearBottom, scrollToBottom]);
 
+  const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
+  const shellClassName = `window-shell full${canvasOpen ? ' has-canvas' : ''}`;
+  const canvasWidthVar = canvasOpen
+    ? { '--canvas-panel-width': `${canvasState.width}px` } as React.CSSProperties
+    : undefined;
+
   return (
-    <div className="window-shell full">
-      <TitleBar 
-        hideThemePicker={!onboardingDone} 
+    <div className={shellClassName} style={canvasWidthVar}>
+      <TitleBar
+        hideThemePicker={!onboardingDone}
         themePickerOpen={themePickerOpen}
         onThemePickerOpenChange={setThemePickerOpen}
         onThemeSelect={handleThemeSelect}
       />
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
 
-
-      {/* Main content area - full screen with gradient visible */}
+      {/* Main content area - row layout: chat + optional canvas */}
       <div className="full-body">
-        <div
-          className="session-content"
-          ref={scrollContainerRef}
-          onScroll={handleScroll}
-        >
-          {hasMessages && onboardingDone ? (
-            <div className="session-messages">
-              <ConversationEvents
-                events={events}
-                streamingText={streamingText}
-                reasoningText={reasoningText}
-                isStreaming={isStreaming}
-                pendingUserMessageId={pendingUserMessageId}
-                scrollContainerRef={scrollContainerRef}
-              />
-            </div>
-          ) : (
-            <div className="new-session-view">
-              <div
-                className="new-session-title"
-                data-expanded={hasExpanded ? "true" : "false"}
-              >
-                Stella
-              </div>
-              <div 
-                onClick={() => {
-                  triggerFlash();
-                  if (!hasExpanded) {
-                    startBirthAnimation();
-                  }
-                }}
-                className="onboarding-blackhole"
-                data-expanded={hasExpanded ? "true" : "false"}
-                title={!hasExpanded ? 'Click to awaken' : undefined}
-              >
-                <AsciiBlackHole
-                  ref={blackHoleRef}
-                  width={120}
-                  height={56}
-                  initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
+        <div className="full-body-main">
+          <div
+            className="session-content"
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+          >
+            {hasMessages && onboardingDone ? (
+              <div className="session-messages">
+                <ConversationEvents
+                  events={events}
+                  streamingText={streamingText}
+                  reasoningText={reasoningText}
+                  isStreaming={isStreaming}
+                  pendingUserMessageId={pendingUserMessageId}
+                  scrollContainerRef={scrollContainerRef}
                 />
               </div>
-              {!onboardingDone && (
-                <OnboardingStep1
-                  key={onboardingKey}
-                  onComplete={completeOnboarding}
-                  onAccept={startBirthAnimation}
-                  onInteract={triggerFlash}
-                  onSignIn={() => setAuthDialogOpen(true)}
-                  onOpenThemePicker={handleOpenThemePicker}
-                  onConfirmTheme={handleConfirmTheme}
-                  themeConfirmed={themeConfirmed}
-                  hasSelectedTheme={hasSelectedTheme}
-                  isAuthenticated={isAuthenticated}
-                />
-              )}
-              {!isAuthenticated && onboardingDone && (
-                <Button
-                  variant="secondary"
-                  size="large"
-                  onClick={() => setAuthDialogOpen(true)}
-                  disabled={isAuthLoading}
-                  className="onboarding-signin"
+            ) : (
+              <div className="new-session-view">
+                <div
+                  className="new-session-title"
+                  data-expanded={hasExpanded ? "true" : "false"}
                 >
-                  {isAuthLoading ? <Spinner size="sm" /> : "Sign in"}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Scroll to bottom button */}
-        {showScrollButton && hasMessages && onboardingDone && (
-          <button
-            className="scroll-to-bottom"
-            onClick={() => scrollToBottom("smooth")}
-            aria-label="Scroll to bottom"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
-        )}
-
-        {/* Composer - Aura-style prompt bar at bottom (only when authenticated) */}
-        {isAuthenticated && onboardingDone && <div className="composer">
-          <form
-            className="composer-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void sendMessage();
-            }}
-          >
-            {/* Input scroll container */}
-            <div className="composer-scroll">
-              <textarea
-                className="composer-input"
-                placeholder="Type a message..."
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendMessage();
-                  }
-                }}
-                disabled={!state.conversationId}
-                rows={1}
-              />
-            </div>
-
-            {/* Bottom toolbar */}
-            <div className="composer-toolbar">
-              <div className="composer-toolbar-left">
-                {/* Placeholder for model/agent selector */}
-                <button type="button" className="composer-selector">
-                  <svg className="composer-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M12 16v-4M12 8h.01" />
-                  </svg>
-                  <span>Model</span>
-                </button>
-                {isStreaming && (
-                  <button
-                    type="button"
-                    className="composer-selector"
-                    data-active={queueNext ? "true" : "false"}
-                    onClick={() => setQueueNext((prev) => !prev)}
-                    title="Queue the next message to send after the current response"
+                  Stella
+                </div>
+                <div
+                  onClick={() => {
+                    triggerFlash();
+                    if (!hasExpanded) {
+                      startBirthAnimation();
+                    }
+                  }}
+                  className="onboarding-blackhole"
+                  data-expanded={hasExpanded ? "true" : "false"}
+                  title={!hasExpanded ? 'Click to awaken' : undefined}
+                >
+                  <AsciiBlackHole
+                    ref={blackHoleRef}
+                    width={120}
+                    height={56}
+                    initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
+                  />
+                </div>
+                {!onboardingDone && (
+                  <OnboardingStep1
+                    key={onboardingKey}
+                    onComplete={completeOnboarding}
+                    onAccept={startBirthAnimation}
+                    onInteract={triggerFlash}
+                    onSignIn={() => setAuthDialogOpen(true)}
+                    onOpenThemePicker={handleOpenThemePicker}
+                    onConfirmTheme={handleConfirmTheme}
+                    themeConfirmed={themeConfirmed}
+                    hasSelectedTheme={hasSelectedTheme}
+                    isAuthenticated={isAuthenticated}
+                  />
+                )}
+                {!isAuthenticated && onboardingDone && (
+                  <Button
+                    variant="secondary"
+                    size="large"
+                    onClick={() => setAuthDialogOpen(true)}
+                    disabled={isAuthLoading}
+                    className="onboarding-signin"
                   >
-                    <span>Queue</span>
-                  </button>
+                    {isAuthLoading ? <Spinner size="sm" /> : "Sign in"}
+                  </Button>
                 )}
               </div>
+            )}
+          </div>
 
-              <div className="composer-toolbar-right">
-                {/* Placeholder action buttons */}
-                <button type="button" className="composer-action" title="Attach file">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21,15 16,10 5,21" />
-                  </svg>
-                </button>
+          {/* Scroll to bottom button */}
+          {showScrollButton && hasMessages && onboardingDone && (
+            <button
+              className="scroll-to-bottom"
+              onClick={() => scrollToBottom("smooth")}
+              aria-label="Scroll to bottom"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+          )}
 
-                {/* Submit button */}
-                <button
-                  type="submit"
-                  className="composer-submit"
-                  disabled={!state.conversationId || !message.trim()}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M12 19V5M5 12l7-7 7 7" />
-                  </svg>
-                </button>
+          {/* Composer - Aura-style prompt bar at bottom (only when authenticated) */}
+          {isAuthenticated && onboardingDone && <div className="composer">
+            <form
+              className="composer-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendMessage();
+              }}
+            >
+              {/* Input scroll container */}
+              <div className="composer-scroll">
+                <textarea
+                  className="composer-input"
+                  placeholder="Type a message..."
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void sendMessage();
+                    }
+                  }}
+                  disabled={!state.conversationId}
+                  rows={1}
+                />
               </div>
-            </div>
-          </form>
-        </div>}
+
+              {/* Bottom toolbar */}
+              <div className="composer-toolbar">
+                <div className="composer-toolbar-left">
+                  {/* Placeholder for model/agent selector */}
+                  <button type="button" className="composer-selector">
+                    <svg className="composer-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 16v-4M12 8h.01" />
+                    </svg>
+                    <span>Model</span>
+                  </button>
+                  {isStreaming && (
+                    <button
+                      type="button"
+                      className="composer-selector"
+                      data-active={queueNext ? "true" : "false"}
+                      onClick={() => setQueueNext((prev) => !prev)}
+                      title="Queue the next message to send after the current response"
+                    >
+                      <span>Queue</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="composer-toolbar-right">
+                  {/* Placeholder action buttons */}
+                  <button type="button" className="composer-action" title="Attach file">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21,15 16,10 5,21" />
+                    </svg>
+                  </button>
+
+                  {/* Submit button */}
+                  <button
+                    type="submit"
+                    className="composer-submit"
+                    disabled={!state.conversationId || !message.trim()}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M12 19V5M5 12l7-7 7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>}
+        </div>
+
+        {/* Canvas panel - right side, conditionally rendered */}
+        {canvasOpen && <CanvasPanel />}
       </div>
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
