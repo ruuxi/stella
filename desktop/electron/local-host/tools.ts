@@ -9,9 +9,9 @@
  * - tools-database.ts — SqliteQuery handler
  * - tools-file.ts     — Read, Write, Edit handlers
  * - tools-search.ts   — Glob, Grep handlers
- * - tools-shell.ts    — Bash, SkillBash, KillShell handlers
+ * - tools-shell.ts    — Bash, SkillBash handlers
  * - tools-web.ts      — WebFetch, WebSearch handlers
- * - tools-state.ts    — TodoWrite, TestWrite, Task, TaskOutput handlers
+ * - tools-state.ts    — Task, TaskOutput handlers
  * - tools-user.ts     — AskUserQuestion, RequestCredential handlers
  */
 
@@ -38,14 +38,11 @@ import {
   createShellState,
   handleBash,
   handleSkillBash,
-  handleKillShell,
   type ShellState,
 } from "./tools-shell.js";
 import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import {
   createStateContext,
-  handleTodoWrite,
-  handleTestWrite,
   handleTask,
   handleTaskOutput,
   type StateContext,
@@ -158,15 +155,12 @@ export const createToolHost = ({ StellaHome, requestCredential, resolveSecret }:
     // Shell tools
     Bash: (args, context) => handleBash(shellState, args, context),
     SkillBash: (args) => handleSkillBash(shellState, args),
-    KillShell: (args) => handleKillShell(shellState, args),
 
     // Web tools
     WebFetch: (args) => handleWebFetch(args),
     WebSearch: (args) => handleWebSearch(args),
 
     // State tools
-    TodoWrite: (args, context) => handleTodoWrite(stateContext, args, context),
-    TestWrite: (args, context) => handleTestWrite(stateContext, args, context),
     Task: (args) => handleTask(stateContext, args),
     TaskOutput: (args) => handleTaskOutput(stateContext, args),
 
@@ -177,10 +171,8 @@ export const createToolHost = ({ StellaHome, requestCredential, resolveSecret }:
     // Database tools
     SqliteQuery: (args, context) => handleSqliteQuery(args, context),
 
-    // Placeholder tools (not yet implemented)
-    ImageGenerate: async () => notConfigured("ImageGenerate"),
-    ImageEdit: async () => notConfigured("ImageEdit"),
-    VideoGenerate: async () => notConfigured("VideoGenerate"),
+    // Media tools (not yet implemented)
+    MediaGenerate: async () => notConfigured("MediaGenerate"),
   };
 
   const executeTool = async (

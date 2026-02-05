@@ -133,9 +133,19 @@
 /* Full-screen Aura-style layout */
 .full-body {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
+}
+
+/* Main chat column — takes remaining space when canvas is open */
+.full-body-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
 }
 
 /* Session content - open layout with gradient visible */
