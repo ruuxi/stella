@@ -184,7 +184,11 @@ const TurnItem = memo(function TurnItem({
           )}
 
           {assistantDisplayText.trim().length > 0 && (
-            <Markdown text={assistantDisplayText} cacheKey={assistantCacheKey} />
+            <Markdown
+              text={assistantDisplayText}
+              cacheKey={assistantCacheKey}
+              isAnimating={shouldShowStreamingAssistant && streaming?.isStreaming}
+            />
           )}
         </div>
       )}
@@ -237,6 +241,7 @@ const StreamingIndicator = memo(function StreamingIndicator({
           <Markdown
             text={streamingText}
             cacheKey={pendingUserMessageId ? `streaming-${pendingUserMessageId}` : undefined}
+            isAnimating={isStreaming}
           />
         )}
       </div>
