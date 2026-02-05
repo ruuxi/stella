@@ -19,18 +19,13 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "Glob",
   "Grep",
   "Bash",
-  "KillShell",
   "WebFetch",
   "WebSearch",
-  "TodoWrite",
-  "TestWrite",
   "AskUserQuestion",
   "RequestCredential",
   "SkillBash",
   "SqliteQuery",
-  "ImageGenerate",
-  "ImageEdit",
-  "VideoGenerate",
+  "MediaGenerate",
 ] as const;
 
 type DeviceToolName = (typeof CORE_DEVICE_TOOL_NAMES)[number] | string;
@@ -146,20 +141,6 @@ export const executeDeviceTool = async (
   return formatToolResult(toolName, resultEvent.payload);
 };
 
-const todoItemSchema = z.object({
-  content: z.string().min(1),
-  activeForm: z.string().optional(),
-  status: z.enum(["pending", "in_progress", "completed"]),
-});
-
-const testItemSchema = z.object({
-  id: z.string().optional(),
-  description: z.string().min(1),
-  filePath: z.string().optional(),
-  status: z.enum(["planned", "written", "passing", "failing"]),
-  acceptanceCriteria: z.string().optional(),
-});
-
 export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext) => {
   const call = (name: DeviceToolName, args: unknown) =>
     executeDeviceTool(ctx, context, name, args);
@@ -215,22 +196,17 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       execute: (args) => call("Grep", args),
     }),
     Bash: tool({
-      description: "Execute a shell command on the local device.",
+      description:
+        "Execute a shell command on the local device. To kill a background shell, pass kill_shell_id instead of command.",
       inputSchema: z.object({
-        command: z.string(),
+        command: z.string().optional(),
         description: z.string().optional(),
         timeout: z.number().optional(),
         working_directory: z.string().optional(),
         run_in_background: z.boolean().optional(),
+        kill_shell_id: z.string().optional(),
       }),
       execute: (args) => call("Bash", args),
-    }),
-    KillShell: tool({
-      description: "Terminate a background shell by ID.",
-      inputSchema: z.object({
-        shell_id: z.string().min(1),
-      }),
-      execute: (args) => call("KillShell", args),
     }),
     WebFetch: tool({
       description: "Fetch content from a URL.",
@@ -246,24 +222,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         query: z.string().min(2),
       }),
       execute: (args) => call("WebSearch", args),
-    }),
-    TodoWrite: tool({
-      description: "Update the session todo list.",
-      inputSchema: z.object({
-        todos: z.array(todoItemSchema),
-      }),
-      execute: (args) => call("TodoWrite", args),
-    }),
-    TestWrite: tool({
-      description: "Track planned or executed tests.",
-      inputSchema: z.object({
-        action: z.enum(["add", "update_status"]),
-        tests: z.array(testItemSchema).optional(),
-        testId: z.string().optional(),
-        newStatus: z.enum(["planned", "written", "passing", "failing"]).optional(),
-        newFilePath: z.string().optional(),
-      }),
-      execute: (args) => call("TestWrite", args),
     }),
     AskUserQuestion: tool({
       description: "Ask the user to choose between options.",
@@ -317,27 +275,16 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("SqliteQuery", args),
     }),
-    ImageGenerate: tool({
-      description: "Generate an image from a prompt.",
+    MediaGenerate: tool({
+      description:
+        "Generate or edit media. mode: generate (create new), edit (modify existing). media_type: image or video.",
       inputSchema: z.object({
+        mode: z.enum(["generate", "edit"]).default("generate"),
+        media_type: z.enum(["image", "video"]).default("image"),
         prompt: z.string(),
+        source_url: z.string().optional(),
       }),
-      execute: (args) => call("ImageGenerate", args),
-    }),
-    ImageEdit: tool({
-      description: "Edit an image using a prompt.",
-      inputSchema: z.object({
-        prompt: z.string(),
-        image_url: z.string().optional(),
-      }),
-      execute: (args) => call("ImageEdit", args),
-    }),
-    VideoGenerate: tool({
-      description: "Generate a video from a prompt.",
-      inputSchema: z.object({
-        prompt: z.string(),
-      }),
-      execute: (args) => call("VideoGenerate", args),
+      execute: (args) => call("MediaGenerate", args),
     }),
   };
 };

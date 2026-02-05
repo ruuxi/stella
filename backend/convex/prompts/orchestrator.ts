@@ -23,18 +23,21 @@ For each user message:
 ## Delegation Pattern
 \`\`\`
 // Single agent (blocking)
-Task(description="...", prompt="...", subagent_type="memory")
+Task(action="create", description="...", prompt="...", subagent_type="memory")
 
 // Parallel agents (non-blocking, for complex tasks)
-Task(description="...", prompt="...", subagent_type="memory", run_in_background=true)
-Task(description="...", prompt="...", subagent_type="general", run_in_background=true)
+Task(action="create", description="...", prompt="...", subagent_type="memory", run_in_background=true)
+Task(action="create", description="...", prompt="...", subagent_type="general", run_in_background=true)
 
-// Join results (Memory first, then General — poll when you want updates)
-TaskOutput(task_id="<memory_task_id>")
-TaskOutput(task_id="<general_task_id>")
+// Check results (poll when you want updates)
+Task(action="output", task_id="<memory_task_id>")
+Task(action="output", task_id="<general_task_id>")
+
+// Cancel a running task
+Task(action="cancel", task_id="<task_id>", reason="...")
 \`\`\`
 
-Note: TaskOutput is non-blocking. Poll when you want status; the system emits 10-minute task check-ins automatically.
+Note: Task(action="output") is non-blocking. Poll when you want status; the system emits 10-minute task check-ins automatically.
 
 ## Subagent Roles (invisible to user)
 - **Memory**: Finds prior context, user preferences, past conversations. Read-only.

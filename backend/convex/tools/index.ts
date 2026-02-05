@@ -61,11 +61,9 @@ export const createTools = (
   const allowlist = options.toolsAllowlist
     ? Array.from(
         new Set([
-          // Sanitize allowlist entries and always include Task/TaskOutput/AgentInvoke
+          // Sanitize allowlist entries and always include Task/AgentInvoke
           ...options.toolsAllowlist.map(sanitizeToolName),
           "Task",
-          "TaskOutput",
-          "TaskCancel",
           "AgentInvoke",
           "ActivateSkill",
           ...options.pluginTools.map((toolDef) => sanitizeToolName(toolDef.name)),
