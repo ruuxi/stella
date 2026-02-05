@@ -60,7 +60,10 @@ export const FullShell = () => {
   // Scroll management
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
-  const [showScrollButton, setShowScrollButton] = useState(false);
+  const scrollRafRef = useRef<number | null>(null);
+
+  // Derive showScrollButton from isNearBottom - no need for separate state
+  const showScrollButton = !isNearBottom;
 
   const checkIfNearBottom = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -75,11 +78,24 @@ export const FullShell = () => {
     container.scrollTo({ top: container.scrollHeight, behavior });
   }, []);
 
+  // Throttle scroll handler with RAF - reduces ~60 state updates/sec to ~1 per frame
   const handleScroll = useCallback(() => {
-    const nearBottom = checkIfNearBottom();
-    setIsNearBottom(nearBottom);
-    setShowScrollButton(!nearBottom);
+    if (scrollRafRef.current !== null) return; // Already scheduled
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const nearBottom = checkIfNearBottom();
+      setIsNearBottom(nearBottom);
+    });
   }, [checkIfNearBottom]);
+
+  // Cleanup RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, []);
 
   const triggerFlash = useCallback(() => {
     blackHoleRef.current?.triggerFlash();
