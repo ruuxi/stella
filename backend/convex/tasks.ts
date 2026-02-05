@@ -1,4 +1,11 @@
-import { action, internalAction, mutation, query, ActionCtx } from "./_generated/server";
+import {
+  action,
+  internalAction,
+  internalQuery,
+  mutation,
+  query,
+  ActionCtx,
+} from "./_generated/server";
 import { v, ConvexError, Infer } from "convex/values";
 import { streamText } from "ai";
 import { api, internal } from "./_generated/api";
@@ -49,8 +56,13 @@ const taskClientValidator = v.object({
 type TaskClient = Infer<typeof taskClientValidator>;
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
+const SUBAGENT_HISTORY_LIMIT = 100;
+const TASK_CANCEL_POLL_INTERVAL_MS = 2000;
+const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
 
-type TaskStatus = "running" | "completed" | "error";
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+type TaskStatus = "running" | "completed" | "error" | "canceled";
 
 type PluginToolDescriptor = {
   pluginId: string;
@@ -99,16 +111,65 @@ type SubagentExecutionArgs = {
   subagentType: string;
   taskId: Id<"tasks">;
   ownerId?: string;
+  includeHistory?: boolean;
+};
+
+const buildHistoryMessages = async (
+  ctx: ActionCtx,
+  conversationId: Id<"conversations">,
+  userMessageId: Id<"events">,
+  limit: number,
+) => {
+  const userEvent = await ctx.runQuery(internal.events.getById, { id: userMessageId });
+  const historyEvents = await ctx.runQuery(internal.events.listRecentMessages, {
+    conversationId,
+    limit,
+    beforeTimestamp: userEvent?.timestamp,
+    excludeEventId: userMessageId,
+  });
+
+  return historyEvents.flatMap((event: Doc<"events">) => {
+    const payload =
+      event.payload && typeof event.payload === "object"
+        ? (event.payload as { text?: string })
+        : {};
+    const text = typeof payload.text === "string" ? payload.text.trim() : "";
+    if (!text) {
+      return [];
+    }
+    return [
+      {
+        role: event.type === "assistant_message" ? ("assistant" as const) : ("user" as const),
+        content: text,
+      },
+    ];
+  });
 };
 
 const executeSubagentRun = async (
   ctx: ActionCtx,
   args: SubagentExecutionArgs,
 ): Promise<string> => {
+  const currentStatus = await ctx.runQuery(internal.tasks.getTaskStatus, {
+    taskId: args.taskId,
+  });
+  if (currentStatus && currentStatus !== "running") {
+    return `Task ${currentStatus}.\nTask ID: ${args.taskId}`;
+  }
+
   const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
     ownerId: args.ownerId,
   });
   const pluginTools = (await ctx.runQuery(api.plugins.listToolDescriptors, {})) as PluginToolDescriptor[];
+
+  const historyMessages = args.includeHistory
+    ? await buildHistoryMessages(
+        ctx,
+        args.conversationId,
+        args.userMessageId,
+        SUBAGENT_HISTORY_LIMIT,
+      )
+    : [];
 
   const toolContext: DeviceToolContext = {
     conversationId: args.conversationId,
@@ -118,6 +179,30 @@ const executeSubagentRun = async (
     sourceDeviceId: args.targetDeviceId,
     currentTaskId: args.taskId,
   };
+
+  let finished = false;
+  let canceled = false;
+  const abortController = new AbortController();
+
+  const cancelWatcher = (async () => {
+    while (!finished) {
+      await sleep(TASK_CANCEL_POLL_INTERVAL_MS);
+      if (finished) {
+        return;
+      }
+      const status = await ctx.runQuery(internal.tasks.getTaskStatus, {
+        taskId: args.taskId,
+      });
+      if (status === "canceled") {
+        canceled = true;
+        abortController.abort();
+        return;
+      }
+      if (status && status !== "running") {
+        return;
+      }
+    }
+  })();
 
   try {
     const result = await streamText({
@@ -136,14 +221,25 @@ const executeSubagentRun = async (
         },
       ),
       messages: [
+        ...historyMessages,
         {
           role: "user",
           content: [{ type: "text", text: args.prompt.trim() || " " }],
         },
       ],
+      abortSignal: abortController.signal,
     });
 
     const text: string = await result.text;
+    finished = true;
+    await cancelWatcher;
+
+    const postStatus = await ctx.runQuery(internal.tasks.getTaskStatus, {
+      taskId: args.taskId,
+    });
+    if (postStatus && postStatus !== "running") {
+      return `Task ${postStatus}.\nTask ID: ${args.taskId}`;
+    }
 
     await ctx.runMutation(api.tasks.completeTaskRecord, {
       taskId: args.taskId,
@@ -164,6 +260,16 @@ const executeSubagentRun = async (
 
     return `Agent completed.\nTask ID: ${args.taskId}\n\n--- Agent Result ---\n${text}`;
   } catch (error) {
+    finished = true;
+    await cancelWatcher;
+
+    const status = await ctx.runQuery(internal.tasks.getTaskStatus, {
+      taskId: args.taskId,
+    });
+    if (canceled || status === "canceled") {
+      return `Task canceled.\nTask ID: ${args.taskId}`;
+    }
+
     const errorMessage = (error as Error).message || "Unknown task error";
 
     await ctx.runMutation(api.tasks.completeTaskRecord, {
@@ -258,6 +364,61 @@ export const completeTaskRecord = mutation({
   },
 });
 
+export const cancelTask = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    reason: v.optional(v.string()),
+  },
+  returns: v.union(taskClientValidator, v.null()),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.taskId);
+    if (!record) return null;
+    await requireConversationOwner(ctx, record.conversationId);
+
+    if (record.status !== "running") {
+      return toTaskClient(record);
+    }
+
+    const now = Date.now();
+    const reason = args.reason?.trim() || "Canceled";
+    await ctx.db.patch(args.taskId, {
+      status: "canceled" satisfies TaskStatus,
+      error: reason,
+      updatedAt: now,
+      completedAt: now,
+    });
+
+    const targetDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
+      conversationId: record.conversationId,
+    });
+
+    await appendTaskEvent(ctx, {
+      conversationId: record.conversationId,
+      type: "task_failed",
+      deviceId: targetDeviceId ?? undefined,
+      targetDeviceId: targetDeviceId ?? undefined,
+      payload: {
+        taskId: args.taskId,
+        error: reason,
+      },
+    });
+
+    const updated = await ctx.db.get(args.taskId);
+    return toTaskClientOrNull(updated);
+  },
+});
+
+export const getTaskStatus = internalQuery({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.taskId);
+    return record?.status ?? null;
+  },
+});
+
 export const getById = query({
   args: {
     taskId: v.id("tasks"),
@@ -316,6 +477,7 @@ export const runSubagent = action({
     subagentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
     runInBackground: v.optional(v.boolean()),
+    includeHistory: v.optional(v.boolean()),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -357,6 +519,12 @@ export const runSubagent = action({
       },
     });
 
+    await ctx.scheduler.runAfter(TASK_CHECKIN_INTERVAL_MS, internal.tasks.taskCheckin, {
+      conversationId: args.conversationId,
+      targetDeviceId: args.targetDeviceId,
+      taskId,
+    });
+
     if (args.runInBackground) {
       await ctx.scheduler.runAfter(0, internal.tasks.executeSubagent, {
         conversationId: args.conversationId,
@@ -366,6 +534,7 @@ export const runSubagent = action({
         subagentType: args.subagentType,
         taskId,
         ownerId: conversation.ownerId,
+        includeHistory: args.includeHistory,
       });
 
       return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
@@ -379,6 +548,7 @@ export const runSubagent = action({
       subagentType: args.subagentType,
       taskId,
       ownerId: conversation.ownerId,
+      includeHistory: args.includeHistory,
     });
   },
 });
@@ -392,6 +562,7 @@ export const executeSubagent = internalAction({
     subagentType: v.string(),
     taskId: v.id("tasks"),
     ownerId: v.string(),
+    includeHistory: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -403,6 +574,42 @@ export const executeSubagent = internalAction({
       subagentType: args.subagentType,
       taskId: args.taskId,
       ownerId: args.ownerId,
+      includeHistory: args.includeHistory,
+    });
+    return null;
+  },
+});
+
+export const taskCheckin = internalAction({
+  args: {
+    conversationId: v.id("conversations"),
+    targetDeviceId: v.string(),
+    taskId: v.id("tasks"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const status = await ctx.runQuery(internal.tasks.getTaskStatus, {
+      taskId: args.taskId,
+    });
+    if (!status || status !== "running") {
+      return null;
+    }
+
+    await appendTaskEvent(ctx, {
+      conversationId: args.conversationId,
+      type: "task_checkin",
+      deviceId: args.targetDeviceId,
+      targetDeviceId: args.targetDeviceId,
+      payload: {
+        taskId: args.taskId,
+        status,
+      },
+    });
+
+    await ctx.scheduler.runAfter(TASK_CHECKIN_INTERVAL_MS, internal.tasks.taskCheckin, {
+      conversationId: args.conversationId,
+      targetDeviceId: args.targetDeviceId,
+      taskId: args.taskId,
     });
     return null;
   },

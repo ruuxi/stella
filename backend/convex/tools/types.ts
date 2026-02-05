@@ -31,6 +31,7 @@ export const BASE_TOOL_NAMES = [
   "AgentInvoke",
   "Task",
   "TaskOutput",
+  "TaskCancel",
   "AskUserQuestion",
   "RequestCredential",
   "IntegrationRequest",
@@ -43,6 +44,3 @@ export const BASE_TOOL_NAMES = [
   "MemorySearch",
   "ActivateSkill",
 ] as const;
-
-export const TASK_POLL_INTERVAL_MS = 750;
-export const TASK_MAX_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes

@@ -65,6 +65,7 @@ export const createTools = (
           ...options.toolsAllowlist.map(sanitizeToolName),
           "Task",
           "TaskOutput",
+          "TaskCancel",
           "AgentInvoke",
           "ActivateSkill",
           ...options.pluginTools.map((toolDef) => sanitizeToolName(toolDef.name)),

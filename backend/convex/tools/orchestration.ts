@@ -4,9 +4,7 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { DeviceToolContext } from "../device_tools";
-import { TASK_POLL_INTERVAL_MS, TASK_MAX_TIMEOUT_MS, type ToolOptions } from "./types";
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import { type ToolOptions } from "./types";
 
 const formatTaskResult = (task: {
   _id: Id<"tasks">;
@@ -20,6 +18,11 @@ const formatTaskResult = (task: {
   if (task.status === "completed") {
     return `Task completed.\nTask ID: ${task._id}\nDuration: ${duration}ms\n\n--- Result ---\n${
       task.result ?? "(no result)"
+    }`;
+  }
+  if (task.status === "canceled") {
+    return `Task canceled.\nTask ID: ${task._id}\nDuration: ${duration}ms\n\n--- Error ---\n${
+      task.error ?? "Canceled"
     }`;
   }
   if (task.status === "error") {
@@ -42,6 +45,7 @@ export const createOrchestrationTools = (
       prompt: z.string().min(1),
       subagent_type: z.string().min(1),
       run_in_background: z.boolean().optional(),
+      include_history: z.boolean().optional(),
       resume: z.string().optional(),
     }),
     execute: async (args) => {
@@ -54,6 +58,7 @@ export const createOrchestrationTools = (
         subagentType: args.subagent_type,
         parentTaskId: options.currentTaskId,
         runInBackground: args.run_in_background,
+        includeHistory: args.include_history,
       });
 
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
@@ -61,46 +66,40 @@ export const createOrchestrationTools = (
   });
 
   const TaskOutput = tool({
-    description: "Retrieve output from a background task.",
+    description: "Retrieve output from a task.",
     inputSchema: z.object({
       task_id: z.string().min(1),
-      block: z.boolean().optional(),
-      timeout: z.number().optional(),
     }),
     execute: async (args) => {
-      const timeoutMs = Math.min(
-        Math.max(Math.floor(args.timeout ?? 20_000), TASK_POLL_INTERVAL_MS),
-        TASK_MAX_TIMEOUT_MS,
-      );
-      const deadline = Date.now() + timeoutMs;
       try {
-        let record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
+        const record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
           taskId: args.task_id,
         });
         if (!record) {
           return `Task not found: ${args.task_id}`;
         }
-        if (!args.block || record.status !== "running") {
-          return formatTaskResult(record as any);
-        }
-
-        while (Date.now() < deadline) {
-          await sleep(TASK_POLL_INTERVAL_MS);
-          record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
-            taskId: args.task_id,
-          });
-          if (!record) {
-            return `Task not found: ${args.task_id}`;
-          }
-          if (record.status !== "running") {
-            return formatTaskResult(record as any);
-          }
-        }
-
         return formatTaskResult(record as any);
       } catch {
         return `Failed to load task: ${args.task_id}`;
       }
+    },
+  });
+
+  const TaskCancel = tool({
+    description: "Cancel a running task by task ID.",
+    inputSchema: z.object({
+      task_id: z.string().min(1),
+      reason: z.string().optional(),
+    }),
+    execute: async (args) => {
+      const record = await ctx.runMutation(api.tasks.cancelTask, {
+        taskId: args.task_id as Id<"tasks">,
+        reason: args.reason,
+      });
+      if (!record) {
+        return `Task not found: ${args.task_id}`;
+      }
+      return formatTaskResult(record as any);
     },
   });
 
@@ -177,6 +176,7 @@ export const createOrchestrationTools = (
   return {
     Task,
     TaskOutput,
+    TaskCancel,
     AgentInvoke,
     MemorySearch,
   };
