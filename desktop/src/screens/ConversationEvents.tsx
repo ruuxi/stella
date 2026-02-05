@@ -4,7 +4,6 @@ import type {
   EventRecord,
   MessagePayload,
   Attachment,
-  MessageTurn,
   TaskItem,
 } from "../hooks/use-conversation-events";
 import {
@@ -19,6 +18,7 @@ import { TaskIndicator } from "../components/chat/TaskIndicator";
 
 type Props = {
   events: EventRecord[];
+  /** Max number of message turns to render. */
   maxItems?: number;
   streamingText?: string;
   reasoningText?: string;
@@ -38,6 +38,14 @@ type StreamingTurnProps = {
   runningTool?: string;
 };
 
+type TurnViewModel = {
+  id: string;
+  userText: string;
+  userAttachments: Attachment[];
+  assistantText: string;
+  assistantMessageId: string | null;
+};
+
 const getEventText = (event: EventRecord): string => {
   if (event.payload && typeof event.payload === "object") {
     const payload = event.payload as MessagePayload;
@@ -53,22 +61,36 @@ const getAttachments = (event: EventRecord): Attachment[] => {
   return [];
 };
 
+function attachmentsEqual(a: Attachment[], b: Attachment[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; i += 1) {
+    const av = a[i];
+    const bv = b[i];
+
+    if ((av.id ?? null) !== (bv.id ?? null)) return false;
+    if ((av.url ?? null) !== (bv.url ?? null)) return false;
+    if ((av.mimeType ?? null) !== (bv.mimeType ?? null)) return false;
+    if ((av.name ?? null) !== (bv.name ?? null)) return false;
+  }
+
+  return true;
+}
+
 /** Memoized turn renderer to prevent unnecessary re-renders */
-const TurnItem = memo(
-  function TurnItem({
-    turn,
-    onOpenAttachment,
-    streaming,
-  }: {
-    turn: MessageTurn;
-    onOpenAttachment?: (attachment: Attachment) => void;
-    streaming?: StreamingTurnProps;
-  }) {
-  const userText = getEventText(turn.userMessage);
-  const userAttachments = getAttachments(turn.userMessage);
-  const assistantText = turn.assistantMessage
-    ? getEventText(turn.assistantMessage)
-    : "";
+const TurnItem = memo(function TurnItem({
+  turn,
+  onOpenAttachment,
+  streaming,
+}: {
+  turn: TurnViewModel;
+  onOpenAttachment?: (attachment: Attachment) => void;
+  streaming?: StreamingTurnProps;
+}) {
+  const userText = turn.userText;
+  const userAttachments = turn.userAttachments;
+  const assistantText = turn.assistantText;
   const hasAssistantContent = assistantText.trim().length > 0;
   const hasUserContent = userText.trim().length > 0 || userAttachments.length > 0;
 
@@ -168,81 +190,7 @@ const TurnItem = memo(
       )}
     </div>
   );
-  },
-  (prevProps, nextProps) => {
-    if (prevProps.onOpenAttachment !== nextProps.onOpenAttachment) {
-      return false;
-    }
-
-    const prevTurn = prevProps.turn;
-    const nextTurn = nextProps.turn;
-
-    if (prevTurn.userMessage._id !== nextTurn.userMessage._id) {
-      return false;
-    }
-
-    if (getEventText(prevTurn.userMessage) !== getEventText(nextTurn.userMessage)) {
-      return false;
-    }
-
-    const prevAttachments = getAttachments(prevTurn.userMessage);
-    const nextAttachments = getAttachments(nextTurn.userMessage);
-    if (prevAttachments.length !== nextAttachments.length) {
-      return false;
-    }
-    for (let i = 0; i < prevAttachments.length; i += 1) {
-      const prevAttachment = prevAttachments[i];
-      const nextAttachment = nextAttachments[i];
-      if ((prevAttachment?.id ?? null) !== (nextAttachment?.id ?? null)) return false;
-      if ((prevAttachment?.url ?? null) !== (nextAttachment?.url ?? null)) return false;
-      if ((prevAttachment?.mimeType ?? null) !== (nextAttachment?.mimeType ?? null)) return false;
-      if ((prevAttachment?.name ?? null) !== (nextAttachment?.name ?? null)) return false;
-    }
-
-    if (
-      (prevTurn.assistantMessage?._id ?? null) !== (nextTurn.assistantMessage?._id ?? null)
-    ) {
-      return false;
-    }
-
-    const prevAssistantText = prevTurn.assistantMessage
-      ? getEventText(prevTurn.assistantMessage)
-      : "";
-    const nextAssistantText = nextTurn.assistantMessage
-      ? getEventText(nextTurn.assistantMessage)
-      : "";
-    if (prevAssistantText !== nextAssistantText) {
-      return false;
-    }
-
-    const prevStreaming = prevProps.streaming;
-    const nextStreaming = nextProps.streaming;
-    if (!prevStreaming && !nextStreaming) {
-      return true;
-    }
-    if (!prevStreaming || !nextStreaming) {
-      return false;
-    }
-
-    if (prevStreaming.streamingText !== nextStreaming.streamingText) return false;
-    if (prevStreaming.reasoningText !== nextStreaming.reasoningText) return false;
-    if (prevStreaming.isStreaming !== nextStreaming.isStreaming) return false;
-    if (prevStreaming.pendingUserMessageId !== nextStreaming.pendingUserMessageId) return false;
-    if (prevStreaming.runningTool !== nextStreaming.runningTool) return false;
-
-    if (prevStreaming.runningTasks.length !== nextStreaming.runningTasks.length) return false;
-    for (let i = 0; i < prevStreaming.runningTasks.length; i += 1) {
-      const prevTask = prevStreaming.runningTasks[i];
-      const nextTask = nextStreaming.runningTasks[i];
-      if (prevTask.id !== nextTask.id) return false;
-      if (prevTask.status !== nextTask.status) return false;
-      if (prevTask.agentType !== nextTask.agentType) return false;
-      if (prevTask.description !== nextTask.description) return false;
-    }
-
-    return true;
-  },
-);
+});
 
 /** Streaming indicator component */
 const StreamingIndicator = memo(function StreamingIndicator({
@@ -309,7 +257,7 @@ function NonVirtualizedList({
   onOpenAttachment,
   showStandaloneStreaming,
 }: {
-  turns: MessageTurn[];
+  turns: TurnViewModel[];
   showStreaming: boolean;
   streamingText?: string;
   reasoningText?: string;
@@ -378,7 +326,7 @@ function VirtualizedList({
   scrollContainerRef,
   showStandaloneStreaming,
 }: {
-  turns: MessageTurn[];
+  turns: TurnViewModel[];
   showStreaming: boolean;
   streamingText?: string;
   reasoningText?: string;
@@ -524,31 +472,95 @@ export const ConversationEvents = memo(function ConversationEvents({
   onOpenAttachment,
   scrollContainerRef,
 }: Props) {
-  const visible = useMemo(() => {
-    return maxItems ? events.slice(-maxItems) : events;
-  }, [events, maxItems]);
-
   // Check if the pending user message already has an assistant reply in events.
   // If so, hide streaming section immediately to prevent duplicate content flash.
   const hasAssistantReply = useMemo(() => {
     if (!pendingUserMessageId) return false;
-    return visible.some(
+    return events.some(
       (event) =>
         event.type === "assistant_message" &&
         (event.payload as { userMessageId?: string } | null)?.userMessageId === pendingUserMessageId
     );
-  }, [visible, pendingUserMessageId]);
+  }, [events, pendingUserMessageId]);
 
   const showStreaming = Boolean((isStreaming || streamingText) && !hasAssistantReply);
 
-  // Group events into message turns with their associated tool steps
-  const turns = useMemo(() => groupEventsIntoTurns(visible), [visible]);
+  const maxTurns =
+    typeof maxItems === "number" ? Math.max(0, Math.floor(maxItems)) : null;
+
+  // Group events into message turns with their associated tool steps.
+  const allTurns = useMemo(() => groupEventsIntoTurns(events), [events]);
+
+  const slicedTurns = useMemo(() => {
+    if (maxTurns === null) {
+      return allTurns;
+    }
+    if (maxTurns <= 0) {
+      return [];
+    }
+
+    const baseStart = Math.max(0, allTurns.length - maxTurns);
+    if (!showStreaming || !pendingUserMessageId) {
+      return allTurns.slice(baseStart);
+    }
+
+    const pendingIndex = allTurns.findIndex((turn) => turn.id === pendingUserMessageId);
+
+    // If we have more than `maxTurns` turns and the pending turn would be sliced out,
+    // shift the window so the streamed turn stays visible.
+    if (pendingIndex !== -1 && pendingIndex < baseStart) {
+      const windowEnd = pendingIndex + 1;
+      const windowStart = Math.max(0, windowEnd - maxTurns);
+      return allTurns.slice(windowStart, windowEnd);
+    }
+
+    return allTurns.slice(baseStart);
+  }, [allTurns, maxTurns, pendingUserMessageId, showStreaming]);
+
+  const turnViewCacheRef = useRef<Map<string, TurnViewModel>>(new Map());
+  const turns = useMemo(() => {
+    const nextCache = new Map<string, TurnViewModel>();
+    const viewModels: TurnViewModel[] = [];
+
+    for (const turn of slicedTurns) {
+      const userText = getEventText(turn.userMessage);
+      const userAttachments = getAttachments(turn.userMessage);
+      const assistantText = turn.assistantMessage ? getEventText(turn.assistantMessage) : "";
+      const assistantMessageId = turn.assistantMessage?._id ?? null;
+
+      const prev = turnViewCacheRef.current.get(turn.id);
+      if (
+        prev &&
+        prev.userText === userText &&
+        prev.assistantText === assistantText &&
+        prev.assistantMessageId === assistantMessageId &&
+        attachmentsEqual(prev.userAttachments, userAttachments)
+      ) {
+        nextCache.set(turn.id, prev);
+        viewModels.push(prev);
+        continue;
+      }
+
+      const next: TurnViewModel = {
+        id: turn.id,
+        userText,
+        userAttachments,
+        assistantText,
+        assistantMessageId,
+      };
+      nextCache.set(turn.id, next);
+      viewModels.push(next);
+    }
+
+    turnViewCacheRef.current = nextCache;
+    return viewModels;
+  }, [slicedTurns]);
 
   // Get running tool for streaming indicator
-  const runningTool = getCurrentRunningTool(visible);
+  const runningTool = getCurrentRunningTool(events);
 
   // Get running tasks for task indicator
-  const runningTasks = useMemo(() => getRunningTasks(visible), [visible]);
+  const runningTasks = useMemo(() => getRunningTasks(events), [events]);
 
   // Use virtualization only when:
   // 1. scrollContainerRef is provided
@@ -560,8 +572,9 @@ export const ConversationEvents = memo(function ConversationEvents({
     return turns.some((turn) => turn.id === pendingUserMessageId);
   }, [turns, pendingUserMessageId]);
 
-  // If the pending turn isn't present (e.g. maxItems sliced it out), fall back to a standalone streaming row.
-  const showStandaloneStreaming = Boolean(showStreaming && !hasPendingTurn);
+  const showStandaloneStreaming = Boolean(
+    showStreaming && pendingUserMessageId && !hasPendingTurn,
+  );
 
   if (turns.length === 0 && !showStreaming) {
     return (
