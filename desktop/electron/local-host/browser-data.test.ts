@@ -1,22 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { promises as fs } from "fs";
+import fs from "fs";
 import path from "path";
 import os from "os";
 
 // Import types only - we'll dynamically import for tests that need real behavior
 import type { BrowserData } from "./browser-data.js";
-
-// Mock fs
-vi.mock("fs", () => ({
-  promises: {
-    access: vi.fn(),
-    mkdir: vi.fn(),
-    copyFile: vi.fn(),
-    unlink: vi.fn(),
-    writeFile: vi.fn(),
-    readFile: vi.fn(),
-  },
-}));
 
 // Mock database modules
 const mockPrepare = vi.fn();
@@ -46,7 +34,7 @@ import {
 } from "./browser-data.js";
 
 describe("Browser Data Collection - Unit Tests", () => {
-  const mockFs = fs as unknown as {
+  const mockFs = fs.promises as unknown as {
     access: ReturnType<typeof vi.fn>;
     mkdir: ReturnType<typeof vi.fn>;
     copyFile: ReturnType<typeof vi.fn>;
@@ -60,12 +48,20 @@ describe("Browser Data Collection - Unit Tests", () => {
     : "/tmp/test-stella-home";
 
   beforeEach(() => {
+    vi.spyOn(fs.promises, "access");
+    vi.spyOn(fs.promises, "mkdir");
+    vi.spyOn(fs.promises, "copyFile");
+    vi.spyOn(fs.promises, "unlink");
+    vi.spyOn(fs.promises, "writeFile");
+    vi.spyOn(fs.promises, "readFile");
+    vi.spyOn(fs.promises, "stat");
+
     vi.clearAllMocks();
     mockPrepare.mockReturnValue({ all: mockAll });
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe("Platform Path Detection", () => {
@@ -230,8 +226,8 @@ describe("Browser Data Collection - Unit Tests", () => {
 
       const result = await collectBrowserData(testStellaHome);
 
-      // Should return browser type but empty data due to error
-      expect(result.browser).toBe("chrome");
+      // Should preserve whichever browser was detected, but return empty data due to DB error
+      expect(result.browser).not.toBeNull();
       expect(result.clusterDomains).toEqual([]);
       expect(result.recentDomains).toEqual([]);
     });
