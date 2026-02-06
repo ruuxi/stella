@@ -1,6 +1,7 @@
 import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./channel_utils";
+import { retryFetch } from "./retry_fetch";
 
 // ---------------------------------------------------------------------------
 // Azure AD JWT Verification (Bot Framework)
@@ -70,7 +71,7 @@ export async function verifyTeamsToken(
       "https://sts.windows.net/d6d49420-f39b-4df7-a1dc-d59a935871db/",
       "https://login.microsoftonline.com/d6d49420-f39b-4df7-a1dc-d59a935871db/v2.0",
     ];
-    if (!validIssuers.some((iss) => payload.iss?.startsWith(iss))) return false;
+    if (!validIssuers.includes(payload.iss)) return false;
 
     // Find matching key
     const jwks = await fetchBotFrameworkJwks();
@@ -157,7 +158,7 @@ const sendTeamsMessage = async (
     // Normalize service URL
     const baseUrl = serviceUrl.endsWith("/") ? serviceUrl.slice(0, -1) : serviceUrl;
 
-    const res = await fetch(
+    const res = await retryFetch(
       `${baseUrl}/v3/conversations/${encodeURIComponent(conversationId)}/activities`,
       {
         method: "POST",
@@ -205,6 +206,10 @@ export const handleLinkCommand = internalAction({
       await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Invalid or expired code. Please generate a new one in Stella Settings.");
     } else if (result === "already_linked") {
       await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Your Teams account is already linked to Stella!");
+    } else if (result === "linking_disabled") {
+      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Teams linking is currently disabled.");
+    } else if (result === "not_allowed") {
+      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "This Teams account is not allowed to link.");
     } else {
       await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Linked! You can now message Stella directly here.");
     }

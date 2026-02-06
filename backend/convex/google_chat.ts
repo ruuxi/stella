@@ -1,6 +1,7 @@
 import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./channel_utils";
+import { retryFetch } from "./retry_fetch";
 
 // ---------------------------------------------------------------------------
 // Google Chat JWT Verification
@@ -90,11 +91,17 @@ export async function verifyGoogleChatJwt(
 // Google Chat API Helpers
 // ---------------------------------------------------------------------------
 
+let cachedGoogleToken: { token: string; expiresAt: number } | null = null;
+
 /**
  * Get OAuth2 access token using service account key.
  * Creates a self-signed JWT, exchanges it for an access token.
  */
 async function getGoogleAccessToken(): Promise<string> {
+  if (cachedGoogleToken && cachedGoogleToken.expiresAt > Date.now() + 60_000) {
+    return cachedGoogleToken.token;
+  }
+
   const keyJson = process.env.GOOGLE_CHAT_SERVICE_ACCOUNT_KEY;
   if (!keyJson) throw new Error("Missing GOOGLE_CHAT_SERVICE_ACCOUNT_KEY");
 
@@ -155,7 +162,7 @@ async function getGoogleAccessToken(): Promise<string> {
   const jwt = `${unsigned}.${sigB64}`;
 
   // Exchange JWT for access token
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+  const tokenRes = await retryFetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
@@ -166,6 +173,11 @@ async function getGoogleAccessToken(): Promise<string> {
   }
 
   const tokenData = await tokenRes.json();
+  const expiresIn = Number(tokenData.expires_in);
+  cachedGoogleToken = {
+    token: tokenData.access_token,
+    expiresAt: Date.now() + ((Number.isFinite(expiresIn) ? expiresIn : 3600) - 60) * 1000,
+  };
   return tokenData.access_token;
 }
 
@@ -178,7 +190,7 @@ const sendGoogleChatMessage = async (spaceName: string, text: string) => {
       ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
       : text;
 
-    const res = await fetch(
+    const res = await retryFetch(
       `https://chat.googleapis.com/v1/${spaceName}/messages`,
       {
         method: "POST",
@@ -222,6 +234,10 @@ export const handleLinkCommand = internalAction({
       await sendGoogleChatMessage(args.spaceName, "Invalid or expired code. Please generate a new one in Stella Settings.");
     } else if (result === "already_linked") {
       await sendGoogleChatMessage(args.spaceName, "Your Google Chat account is already linked to Stella!");
+    } else if (result === "linking_disabled") {
+      await sendGoogleChatMessage(args.spaceName, "Google Chat linking is currently disabled.");
+    } else if (result === "not_allowed") {
+      await sendGoogleChatMessage(args.spaceName, "This Google Chat account is not allowed to link.");
     } else {
       await sendGoogleChatMessage(args.spaceName, "Linked! You can now message Stella directly here.");
     }

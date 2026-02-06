@@ -1,10 +1,20 @@
 import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./channel_utils";
+import { retryFetch } from "./retry_fetch";
 
 // ---------------------------------------------------------------------------
 // Slack Signature Verification (HMAC-SHA256)
 // ---------------------------------------------------------------------------
+
+const constantTimeEqual = (a: string, b: string): boolean => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+};
 
 export async function verifySlackSignature(
   rawBody: string,
@@ -38,7 +48,7 @@ export async function verifySlackSignature(
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    return computed === signature;
+    return constantTimeEqual(computed, signature);
   } catch (error) {
     console.error("[slack] Signature verification failed:", error);
     return false;
@@ -62,7 +72,7 @@ const sendSlackMessage = async (channel: string, text: string) => {
     ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
     : text;
 
-  const res = await fetch("https://slack.com/api/chat.postMessage", {
+  const res = await retryFetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -105,6 +115,10 @@ export const handleLinkCommand = internalAction({
       await sendSlackMessage(args.channelId, "Invalid or expired code. Please generate a new one in Stella Settings.");
     } else if (result === "already_linked") {
       await sendSlackMessage(args.channelId, "Your Slack account is already linked to Stella!");
+    } else if (result === "linking_disabled") {
+      await sendSlackMessage(args.channelId, "Slack linking is currently disabled.");
+    } else if (result === "not_allowed") {
+      await sendSlackMessage(args.channelId, "This Slack account is not allowed to link.");
     } else {
       await sendSlackMessage(args.channelId, "Linked! You can now message Stella directly here.");
     }

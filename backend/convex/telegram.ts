@@ -1,10 +1,46 @@
 import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./channel_utils";
+import { retryFetch } from "./retry_fetch";
 
 // ---------------------------------------------------------------------------
 // Telegram API Helpers
 // ---------------------------------------------------------------------------
+
+const TELEGRAM_MAX_LEN = 4096;
+
+const escapeMarkdownV2 = (value: string) =>
+  value.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
+
+const sendTelegramChunk = async (
+  token: string,
+  chatId: string,
+  text: string,
+  parseMode?: "MarkdownV2",
+) => {
+  const body: { chat_id: string; text: string; parse_mode?: "MarkdownV2" } = {
+    chat_id: chatId,
+    text,
+  };
+  if (parseMode) body.parse_mode = parseMode;
+
+  const res = await retryFetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => null) as
+    | { ok?: boolean; description?: string }
+    | null;
+
+  if (!res.ok || data?.ok === false) {
+    const description =
+      data?.description ??
+      `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}`;
+    throw new Error(description);
+  }
+};
 
 const sendTelegramMessage = async (chatId: string, text: string) => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -13,38 +49,32 @@ const sendTelegramMessage = async (chatId: string, text: string) => {
     return;
   }
 
-  // Escape special characters for MarkdownV2
-  const escaped = text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
-
-  // Split into chunks of 4096 chars (Telegram limit)
-  const maxLen = 4096;
-  const chunks: string[] = [];
-  for (let i = 0; i < escaped.length; i += maxLen) {
-    chunks.push(escaped.slice(i, i + maxLen));
+  // Split original text into Telegram-size chunks.
+  const rawChunks: string[] = [];
+  for (let i = 0; i < text.length; i += TELEGRAM_MAX_LEN) {
+    rawChunks.push(text.slice(i, i + TELEGRAM_MAX_LEN));
   }
 
-  for (const chunk of chunks) {
-    try {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: chunk,
-          parse_mode: "MarkdownV2",
-        }),
-      });
-    } catch (error) {
-      // If MarkdownV2 fails, retry without formatting
-      console.error("[telegram] MarkdownV2 send failed, retrying plain:", error);
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: text.slice(0, maxLen),
-        }),
-      });
+  for (const rawChunk of rawChunks) {
+    const escapedChunk = escapeMarkdownV2(rawChunk);
+    let sent = false;
+
+    // Try MarkdownV2 first when escaping fits in Telegram's limit.
+    if (escapedChunk.length <= TELEGRAM_MAX_LEN) {
+      try {
+        await sendTelegramChunk(token, chatId, escapedChunk, "MarkdownV2");
+        sent = true;
+      } catch (error) {
+        console.error("[telegram] MarkdownV2 send failed, retrying plain:", error);
+      }
+    }
+
+    if (!sent) {
+      try {
+        await sendTelegramChunk(token, chatId, rawChunk);
+      } catch (error) {
+        console.error("[telegram] Plain send failed:", error);
+      }
     }
   }
 };
@@ -88,6 +118,10 @@ export const handleStartCommand = internalAction({
       );
     } else if (result === "already_linked") {
       await sendTelegramMessage(args.chatId, "Your Telegram is already linked to Stella!");
+    } else if (result === "linking_disabled") {
+      await sendTelegramMessage(args.chatId, "Telegram linking is currently disabled.");
+    } else if (result === "not_allowed") {
+      await sendTelegramMessage(args.chatId, "This Telegram account is not allowed to link.");
     } else {
       await sendTelegramMessage(
         args.chatId,
