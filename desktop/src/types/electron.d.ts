@@ -164,7 +164,12 @@ export type ElectronApi = {
   collectBrowserData: () => Promise<BrowserDataResult>
   writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
   // Comprehensive user signal collection (browser + dev projects + shell + apps)
-  collectAllSignals: () => Promise<AllUserSignalsResult>
+  collectAllSignals: (options?: { categories?: string[] }) => Promise<AllUserSignalsResult>
+  // Identity map for pseudonymization
+  getIdentityMap: () => Promise<{ version: number; mappings: { real: { name: string; identifier: string }; alias: { name: string; identifier: string }; source: string }[] }>
+  depseudonymize: (text: string) => Promise<string>
+  // System preferences (macOS FDA)
+  openFullDiskAccess: () => void
 }
 
 declare global {
