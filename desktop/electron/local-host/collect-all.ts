@@ -10,6 +10,8 @@
  * Category 4 (messages_notes): iMessage + Notes + Reminders + Calendar (opt-in)
  */
 
+import { promises as fs } from "fs";
+import path from "path";
 import { collectBrowserData, formatBrowserDataForSynthesis } from "./browser-data.js";
 import { collectDevProjects, formatDevProjectsForSynthesis } from "./dev-projects.js";
 import { analyzeShellHistory, formatShellAnalysisForSynthesis } from "./shell-history.js";
@@ -32,6 +34,31 @@ const DEFAULT_CATEGORIES: DiscoveryCategory[] = [
   "dev_environment",
   "apps_system",
 ];
+
+const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
+
+type FormattedCategorySections = Partial<Record<DiscoveryCategory, string>>;
+
+const joinSections = (sections: string[]): string =>
+  sections.filter((s) => s && s.trim().length > 0).join("\n\n");
+
+const persistSelectedCategories = async (
+  stellaHome: string,
+  categories: DiscoveryCategory[],
+): Promise<void> => {
+  try {
+    const stateDir = path.join(stellaHome, "state");
+    const statePath = path.join(stateDir, DISCOVERY_CATEGORIES_STATE_FILE);
+    await fs.mkdir(stateDir, { recursive: true });
+    await fs.writeFile(
+      statePath,
+      JSON.stringify({ categories, updatedAt: Date.now() }, null, 2),
+      "utf-8",
+    );
+  } catch (error) {
+    log("Failed to persist selected discovery categories:", error);
+  }
+};
 
 // ---------------------------------------------------------------------------
 // Extended Signals Type
@@ -138,48 +165,82 @@ export const formatAllSignalsForSynthesis = async (
   StellaHome: string,
   categories: DiscoveryCategory[] = DEFAULT_CATEGORIES,
 ): Promise<string> => {
-  const sections: string[] = [];
+  const { formatted } = await formatSignalsForSynthesisWithSections(
+    data,
+    StellaHome,
+    categories,
+  );
+  return formatted;
+};
+
+const formatSignalsForSynthesisWithSections = async (
+  data: ExtendedUserSignals,
+  StellaHome: string,
+  categories: DiscoveryCategory[] = DEFAULT_CATEGORIES,
+): Promise<{ formatted: string; formattedSections: FormattedCategorySections }> => {
+  const formattedSections: FormattedCategorySections = {};
 
   // --- Category 1: Browsing & Bookmarks ---
   if (categories.includes("browsing_bookmarks")) {
+    const categorySections: string[] = [];
+
     const browserSection = formatBrowserDataForSynthesis(data.browser);
     if (browserSection && browserSection !== "No browser data available.") {
-      sections.push(browserSection);
+      categorySections.push(browserSection);
     }
 
     if (data.bookmarks) {
       const bookmarksSection = formatBrowserBookmarksForSynthesis(data.bookmarks);
-      if (bookmarksSection) sections.push(bookmarksSection);
+      if (bookmarksSection) categorySections.push(bookmarksSection);
     }
 
     if (data.safari) {
       const safariSection = formatSafariDataForSynthesis(data.safari);
-      if (safariSection) sections.push(safariSection);
+      if (safariSection) categorySections.push(safariSection);
+    }
+
+    const categoryFormatted = joinSections(categorySections);
+    if (categoryFormatted) {
+      formattedSections.browsing_bookmarks = categoryFormatted;
     }
   }
 
   // --- Category 2: Development Environment ---
   if (categories.includes("dev_environment")) {
+    const categorySections: string[] = [];
+
     const projectsSection = formatDevProjectsForSynthesis(data.devProjects);
-    if (projectsSection) sections.push(projectsSection);
+    if (projectsSection) categorySections.push(projectsSection);
 
     const shellSection = formatShellAnalysisForSynthesis(data.shell);
-    if (shellSection) sections.push(shellSection);
+    if (shellSection) categorySections.push(shellSection);
 
     if (data.devEnvironment) {
       const devEnvSection = formatDevEnvironmentForSynthesis(data.devEnvironment);
-      if (devEnvSection) sections.push(devEnvSection);
+      if (devEnvSection) categorySections.push(devEnvSection);
+    }
+
+    const categoryFormatted = joinSections(categorySections);
+    if (categoryFormatted) {
+      formattedSections.dev_environment = categoryFormatted;
     }
   }
 
   // --- Category 3: Apps & System ---
   if (categories.includes("apps_system")) {
+    const categorySections: string[] = [];
+
     const appsSection = formatAppDiscoveryForSynthesis({ apps: data.apps });
-    if (appsSection) sections.push(appsSection);
+    if (appsSection) categorySections.push(appsSection);
 
     if (data.systemSignals) {
       const systemSection = formatSystemSignalsForSynthesis(data.systemSignals);
-      if (systemSection) sections.push(systemSection);
+      if (systemSection) categorySections.push(systemSection);
+    }
+
+    const categoryFormatted = joinSections(categorySections);
+    if (categoryFormatted) {
+      formattedSections.apps_system = categoryFormatted;
     }
   }
 
@@ -221,29 +282,43 @@ export const formatAllSignalsForSynthesis = async (
     }
 
     // Format then pseudonymize
+    let identityMap: Awaited<ReturnType<typeof loadIdentityMap>> | null = null;
+    const getIdentityMap = async () => {
+      if (!identityMap) {
+        identityMap = await loadIdentityMap(StellaHome);
+      }
+      return identityMap;
+    };
+
     let messagesSection = formatMessagesNotesForSynthesis(data.messagesNotes);
     if (messagesSection) {
-      const identityMap = await loadIdentityMap(StellaHome);
-      if (identityMap.mappings.length > 0) {
-        messagesSection = pseudonymize(messagesSection, identityMap);
+      const map = await getIdentityMap();
+      if (map.mappings.length > 0) {
+        messagesSection = pseudonymize(messagesSection, map);
       }
-      sections.push(messagesSection);
+      formattedSections.messages_notes = messagesSection;
     }
 
     // Also pseudonymize git config in dev environment section if present
-    if (data.devEnvironment?.gitConfig?.name) {
-      const identityMap = await loadIdentityMap(StellaHome);
-      if (identityMap.mappings.length > 0) {
-        // Re-pseudonymize the dev environment section that was already added
-        const devEnvIdx = sections.findIndex((s) => s.startsWith("## Development Environment"));
-        if (devEnvIdx >= 0) {
-          sections[devEnvIdx] = pseudonymize(sections[devEnvIdx], identityMap);
-        }
+    if (data.devEnvironment?.gitConfig?.name && formattedSections.dev_environment) {
+      const map = await getIdentityMap();
+      if (map.mappings.length > 0) {
+        formattedSections.dev_environment = pseudonymize(
+          formattedSections.dev_environment,
+          map,
+        );
       }
     }
   }
 
-  return sections.join("\n\n");
+  const orderedSections = categories
+    .map((category) => formattedSections[category])
+    .filter((section): section is string => Boolean(section && section.trim().length > 0));
+
+  return {
+    formatted: orderedSections.join("\n\n"),
+    formattedSections,
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -259,18 +334,25 @@ export const collectAllSignals = async (
 ): Promise<AllUserSignalsResult> => {
   try {
     const cats = categories ?? DEFAULT_CATEGORIES;
+    await persistSelectedCategories(StellaHome, cats);
     const data = await collectAllUserSignals(StellaHome, cats);
-    const formatted = await formatAllSignalsForSynthesis(data, StellaHome, cats);
+    const { formatted, formattedSections } = await formatSignalsForSynthesisWithSections(
+      data,
+      StellaHome,
+      cats,
+    );
 
     return {
       data,
       formatted,
+      formattedSections,
     };
   } catch (error) {
     log("Error collecting signals:", error);
     return {
       data: null,
       formatted: null,
+      formattedSections: null,
       error: (error as Error).message,
     };
   }
