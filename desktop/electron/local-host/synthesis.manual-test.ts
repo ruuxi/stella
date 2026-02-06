@@ -166,7 +166,7 @@ const main = async () => {
   console.log("─".repeat(60));
   console.log("📝 STEP 2: Formatting for LLM synthesis...\n");
 
-  const formatted = formatAllSignalsForSynthesis(data);
+  const formatted = await formatAllSignalsForSynthesis(data, testHome);
   const inputTokens = estimateTokens(formatted);
 
   console.log(`   ✓ Formatted output: ${formatted.length} chars`);

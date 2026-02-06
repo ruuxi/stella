@@ -149,5 +149,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeCoreMemory: (content: string) => ipcRenderer.invoke('browserData:writeCoreMemory', content),
 
   // Comprehensive user signal collection (browser + dev projects + shell + apps)
-  collectAllSignals: () => ipcRenderer.invoke('signals:collectAll'),
+  collectAllSignals: (options?: { categories?: string[] }) =>
+    ipcRenderer.invoke('signals:collectAll', options),
+
+  // Identity map for pseudonymization
+  getIdentityMap: () => ipcRenderer.invoke('identity:getMap'),
+  depseudonymize: (text: string) => ipcRenderer.invoke('identity:depseudonymize', text),
+
+  // System preferences (macOS FDA)
+  openFullDiskAccess: () => ipcRenderer.send('system:openFullDiskAccess'),
 })

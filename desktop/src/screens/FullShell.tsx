@@ -14,7 +14,7 @@ import { api } from "../convex/api";
 import { useConversationEvents, type EventRecord } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { streamChat } from "../services/model-gateway";
-import { synthesizeCoreMemory } from "../services/synthesis";
+import { synthesizeCoreMemory, seedDiscoveryMemories } from "../services/synthesis";
 import { ShiftingGradient } from "../components/background/ShiftingGradient";
 import { useTheme } from "../theme/theme-context";
 import { Button } from "../components/button";
@@ -34,6 +34,44 @@ import { OnboardingStep1, useOnboardingState } from "../components/Onboarding";
 
 const CREATURE_INITIAL_SIZE = 0.22; // Small delicate neural network creature
 const SCROLL_THRESHOLD = 100; // Pixels from bottom to consider "at bottom"
+const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
+
+const DEFAULT_DISCOVERY_CATEGORIES = [
+  "browsing_bookmarks",
+  "dev_environment",
+  "apps_system",
+] as const;
+
+type DiscoveryCategory =
+  | (typeof DEFAULT_DISCOVERY_CATEGORIES)[number]
+  | "messages_notes";
+
+const parseStoredDiscoveryCategories = (
+  raw: string | null,
+): DiscoveryCategory[] => {
+  if (!raw) {
+    return [...DEFAULT_DISCOVERY_CATEGORIES];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [...DEFAULT_DISCOVERY_CATEGORIES];
+    }
+    const valid = parsed.filter((value): value is DiscoveryCategory =>
+      value === "browsing_bookmarks" ||
+      value === "dev_environment" ||
+      value === "apps_system" ||
+      value === "messages_notes",
+    );
+    if (parsed.length === 0) {
+      return [];
+    }
+    return valid.length > 0 ? valid : [...DEFAULT_DISCOVERY_CATEGORIES];
+  } catch {
+    return [...DEFAULT_DISCOVERY_CATEGORIES];
+  }
+};
 
 export const FullShell = () => {
   const { state } = useUiState();
@@ -44,7 +82,7 @@ export const FullShell = () => {
   const isDev = import.meta.env.DEV;
   const [message, setMessage] = useState("");
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
-  const [reasoningText, appendReasoningDelta, resetReasoningText, reasoningTextRef] = useRafStringAccumulator();
+  const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
@@ -197,9 +235,9 @@ export const FullShell = () => {
   // ---------------------------------------------------------------------------
   // Background Discovery System
   // ---------------------------------------------------------------------------
-  // Discovery runs immediately on app startup (non-blocking).
+  // Discovery is DELAYED until the user selects categories during onboarding.
   // Synthesis happens only after auth + onboarding are complete.
-  // Welcome message is injected as an actual assistant_message event.
+  // Discovery data is also seeded into ephemeral memory (fire-and-forget).
   // ---------------------------------------------------------------------------
   const discoveryRef = useRef<{
     started: boolean;
@@ -207,6 +245,17 @@ export const FullShell = () => {
     result: AllUserSignalsResult | null;
     error: string | null;
   }>({ started: false, synthesized: false, result: null, error: null });
+
+  const [discoveryCategories, setDiscoveryCategories] = useState<
+    DiscoveryCategory[] | null
+  >(() => {
+    if (!onboardingDone) {
+      return null;
+    }
+    return parseStoredDiscoveryCategories(
+      localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
+    );
+  });
 
   const waitForSignalCollection = async (maxWaitSeconds: number): Promise<boolean> => {
     let attempts = 0;
@@ -218,9 +267,28 @@ export const FullShell = () => {
     return !!discoveryRef.current.result && !discoveryRef.current.error;
   };
 
-  // Step 1: Start signal collection immediately on mount (non-blocking)
+  // Callback from onboarding discovery phase
+  const handleDiscoveryConfirm = useCallback(
+    (categories: DiscoveryCategory[]) => {
+      setDiscoveryCategories(categories);
+    },
+    [],
+  );
+
+  // Returning users may have completed onboarding in a previous version.
+  // If so, hydrate categories from localStorage (or use defaults) so discovery can run.
   useEffect(() => {
-    if (discoveryRef.current.started) return;
+    if (!onboardingDone || discoveryCategories) return;
+    setDiscoveryCategories(
+      parseStoredDiscoveryCategories(
+        localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
+      ),
+    );
+  }, [onboardingDone, discoveryCategories]);
+
+  // Step 1: Start signal collection when categories are selected (delayed)
+  useEffect(() => {
+    if (!discoveryCategories || discoveryRef.current.started) return;
     discoveryRef.current.started = true;
 
     const collectSignals = async () => {
@@ -228,8 +296,8 @@ export const FullShell = () => {
         const exists = await window.electronAPI?.checkCoreMemoryExists?.();
         if (exists) return;
 
-        const result = await window.electronAPI?.collectAllSignals?.();
-        
+        const result = await window.electronAPI?.collectAllSignals?.({ categories: discoveryCategories });
+
         if (!result) {
           discoveryRef.current.error = "No result from signal collection";
           return;
@@ -239,7 +307,7 @@ export const FullShell = () => {
           discoveryRef.current.error = result.error;
           return;
         }
-        
+
         discoveryRef.current.result = result;
       } catch (error) {
         discoveryRef.current.error = (error as Error).message;
@@ -247,7 +315,7 @@ export const FullShell = () => {
     };
 
     void collectSignals();
-  }, []);
+  }, [discoveryCategories]);
 
   // Step 2: After auth + onboarding + conversationId, synthesize and inject welcome message
   useEffect(() => {
@@ -271,6 +339,9 @@ export const FullShell = () => {
         if (!synthesisResult.coreMemory) return;
 
         await window.electronAPI?.writeCoreMemory?.(synthesisResult.coreMemory);
+
+        // Seed discovery data into ephemeral memory (fire-and-forget)
+        void seedDiscoveryMemories(result.formatted);
 
         // Add welcome message as the first assistant message in the conversation
         if (synthesisResult.welcomeMessage && state.conversationId) {
@@ -551,6 +622,7 @@ export const FullShell = () => {
                     onSignIn={() => setAuthDialogOpen(true)}
                     onOpenThemePicker={handleOpenThemePicker}
                     onConfirmTheme={handleConfirmTheme}
+                    onDiscoveryConfirm={handleDiscoveryConfirm}
                     themeConfirmed={themeConfirmed}
                     hasSelectedTheme={hasSelectedTheme}
                     isAuthenticated={isAuthenticated}

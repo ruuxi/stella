@@ -67,6 +67,19 @@ const PHASES = {
   },
   "fading-out-theme": {
     kind: "fade",
+    next: "typing-discovery",
+  },
+  "typing-discovery": {
+    kind: "typing",
+    text: "What should Stella learn about you?",
+    startDelay: 200,
+    next: "waiting-discovery",
+  },
+  "waiting-discovery": {
+    kind: "discovery",
+  },
+  "fading-out-discovery": {
+    kind: "fade",
     next: "accepted",
   },
   "accepted": {
@@ -109,6 +122,23 @@ export function useOnboardingState() {
   return { completed, complete, reset };
 }
 
+type DiscoveryCategory = "browsing_bookmarks" | "dev_environment" | "apps_system" | "messages_notes";
+
+const DISCOVERY_CATEGORIES: {
+  id: DiscoveryCategory;
+  label: string;
+  description: string;
+  defaultEnabled: boolean;
+  requiresFDA: boolean;
+}[] = [
+  { id: "browsing_bookmarks", label: "Browsing & Bookmarks", description: "Browser history, bookmarks, and saved pages", defaultEnabled: true, requiresFDA: false },
+  { id: "dev_environment", label: "Development Environment", description: "IDE extensions, git config, dotfiles, runtimes, and package managers", defaultEnabled: true, requiresFDA: false },
+  { id: "apps_system", label: "Apps & System", description: "App usage patterns, dock pins, and filesystem signals", defaultEnabled: true, requiresFDA: true },
+  { id: "messages_notes", label: "Messages & Notes", description: "Communication patterns, note titles, calendar density (metadata only)", defaultEnabled: false, requiresFDA: true },
+];
+
+const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
+
 interface OnboardingStep1Props {
   onComplete: () => void;
   onAccept?: () => void;
@@ -116,16 +146,26 @@ interface OnboardingStep1Props {
   onSignIn?: () => void;
   onOpenThemePicker?: () => void;
   onConfirmTheme?: () => void;
+  onDiscoveryConfirm?: (categories: DiscoveryCategory[]) => void;
   themeConfirmed?: boolean;
   hasSelectedTheme?: boolean;
   isAuthenticated?: boolean;
 }
 
-export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, onOpenThemePicker, onConfirmTheme, themeConfirmed, hasSelectedTheme, isAuthenticated }) => {
+export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, onOpenThemePicker, onConfirmTheme, onDiscoveryConfirm, themeConfirmed, hasSelectedTheme, isAuthenticated }) => {
   const [phase, setPhase] = useState<Phase>("typing-intro");
   const [displayed, setDisplayed] = useState("");
   const [showCursor, setShowCursor] = useState(true);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Discovery category toggles
+  const [categoryStates, setCategoryStates] = useState<Record<DiscoveryCategory, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const cat of DISCOVERY_CATEGORIES) {
+      initial[cat.id] = cat.defaultEnabled;
+    }
+    return initial as Record<DiscoveryCategory, boolean>;
+  });
 
   const clearTimeoutRef = () => {
     if (timeoutRef.current) {
@@ -246,6 +286,16 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
     onConfirmTheme?.();
   };
 
+  const handleDiscoveryConfirm = () => {
+    onInteract?.();
+    const selected = (Object.entries(categoryStates) as [DiscoveryCategory, boolean][])
+      .filter(([, enabled]) => enabled)
+      .map(([id]) => id);
+    localStorage.setItem(DISCOVERY_CATEGORIES_KEY, JSON.stringify(selected));
+    onDiscoveryConfirm?.(selected);
+    setPhase("fading-out-discovery");
+  };
+
   const phaseConfig = PHASES[phase];
   const isIntro = INTRO_PHASES.has(phase);
   const clickPromptText = phaseConfig.kind === "click" ? phaseConfig.prompt : "";
@@ -253,6 +303,11 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
   const showChoices = phaseConfig.kind === "choices";
   const isDeclining = phaseConfig.kind === "declined";
   const showThemePicker = phaseConfig.kind === "theme";
+  const showDiscovery = phaseConfig.kind === "discovery";
+  const platform = window.electronAPI?.platform ?? "unknown";
+  const hasFDACategories = DISCOVERY_CATEGORIES.some(
+    (cat) => cat.requiresFDA && categoryStates[cat.id]
+  );
 
   if (phase === "done") return null;
 
@@ -302,6 +357,49 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
             </button>
             <button className="onboarding-confirm" data-visible={hasSelectedTheme} onClick={handleConfirmTheme}>
               confirm
+            </button>
+          </div>
+        )}
+
+        {showDiscovery && (
+          <div className="onboarding-discovery" data-visible={true}>
+            {DISCOVERY_CATEGORIES.map((cat) => (
+              <div key={cat.id} className="onboarding-discovery-card">
+                <div className="onboarding-discovery-card-text">
+                  <div className="onboarding-discovery-card-title">{cat.label}</div>
+                  <div className="onboarding-discovery-card-desc">{cat.description}</div>
+                  {cat.requiresFDA && platform === "darwin" && (
+                    <div className="onboarding-discovery-fda">requires full disk access</div>
+                  )}
+                </div>
+                <button
+                  className="onboarding-discovery-toggle"
+                  data-active={categoryStates[cat.id]}
+                  onClick={() =>
+                    setCategoryStates((prev) => ({
+                      ...prev,
+                      [cat.id]: !prev[cat.id],
+                    }))
+                  }
+                >
+                  <span className="onboarding-discovery-toggle-thumb" />
+                </button>
+              </div>
+            ))}
+            {hasFDACategories && platform === "darwin" && (
+              <button
+                className="onboarding-discovery-fda-button"
+                onClick={() => window.electronAPI?.openFullDiskAccess?.()}
+              >
+                open system preferences
+              </button>
+            )}
+            <button
+              className="onboarding-confirm"
+              data-visible={true}
+              onClick={handleDiscoveryConfirm}
+            >
+              continue
             </button>
           </div>
         )}
