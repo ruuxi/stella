@@ -1090,7 +1090,6 @@ http.route({
         externalUserId: payload.externalUserId ?? "",
         text: payload.text ?? "",
         displayName: payload.displayName,
-        replyCallback: payload.replyCallback,
       });
     } else if (payload.type === "error") {
       await ctx.scheduler.runAfter(0, internal.bridge.handleBridgeError, {

@@ -38,6 +38,31 @@ export const spritesApi = async (path: string, method = "GET", body?: unknown) =
   return res.json();
 };
 
+/**
+ * Like spritesApi but returns raw text. Used for endpoints that return
+ * streaming NDJSON (services start/stop, checkpoints create/restore).
+ */
+export const spritesApiText = async (path: string, method = "GET", body?: unknown) => {
+  const token = process.env.SPRITES_TOKEN;
+  if (!token) throw new Error("Missing SPRITES_TOKEN environment variable");
+
+  const res = await fetch(`${SPRITES_API_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Sprites API ${method} ${path}: ${res.status} ${text}`);
+  }
+
+  return res.text();
+};
+
 export const spritesExec = async (
   spriteName: string,
   command: string,
@@ -183,7 +208,8 @@ export const setupSprite = internalAction({
       );
 
       // Create a checkpoint after setup for rollback safety
-      await spritesApi(`/sprites/${args.spriteName}/checkpoints`, "POST", {
+      // Checkpoint creation returns streaming NDJSON, use text variant
+      await spritesApiText(`/sprites/${args.spriteName}/checkpoints`, "POST", {
         comment: "initial-setup",
       });
 

@@ -453,7 +453,7 @@ export const createBackendTools = (
           case "heartbeat.run": {
             const conversationId = readString(params, "conversationId");
             const result = await ctx.runMutation(api.heartbeat.runNow, {
-              ...(conversationId ? { conversationId } : {}),
+              ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
             });
             return formatResult(result);
           }
