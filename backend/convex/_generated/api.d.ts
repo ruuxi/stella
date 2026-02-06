@@ -17,6 +17,8 @@ import type * as automation_runner from "../automation/runner.js";
 import type * as automation_utils from "../automation/utils.js";
 import type * as automation_runner from "../automation_runner.js";
 import type * as automation_utils from "../automation_utils.js";
+import type * as bridge from "../bridge.js";
+import type * as channel_utils from "../channel_utils.js";
 import type * as cloud_devices from "../cloud_devices.js";
 import type * as conversations from "../conversations.js";
 import type * as cron_jobs from "../cron_jobs.js";
@@ -24,6 +26,7 @@ import type * as crons from "../crons.js";
 import type * as device_tools from "../device_tools.js";
 import type * as discord from "../discord.js";
 import type * as events from "../events.js";
+import type * as google_chat from "../google_chat.js";
 import type * as heartbeat from "../heartbeat.js";
 import type * as http from "../http.js";
 import type * as integrations from "../integrations.js";
@@ -43,14 +46,18 @@ import type * as prompts_skill_metadata from "../prompts/skill_metadata.js";
 import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as secrets from "../secrets.js";
 import type * as secrets_crypto from "../secrets_crypto.js";
+import type * as signal from "../signal.js";
 import type * as skills from "../skills.js";
+import type * as slack from "../slack.js";
 import type * as tasks from "../tasks.js";
+import type * as teams from "../teams.js";
 import type * as telegram from "../telegram.js";
 import type * as tools_backend from "../tools/backend.js";
 import type * as tools_cloud from "../tools/cloud.js";
 import type * as tools_index from "../tools/index.js";
 import type * as tools_orchestration from "../tools/orchestration.js";
 import type * as tools_types from "../tools/types.js";
+import type * as whatsapp from "../whatsapp.js";
 
 import type {
   ApiFromModules,
@@ -68,6 +75,8 @@ declare const fullApi: ApiFromModules<{
   "automation/utils": typeof automation_utils;
   automation_runner: typeof automation_runner;
   automation_utils: typeof automation_utils;
+  bridge: typeof bridge;
+  channel_utils: typeof channel_utils;
   cloud_devices: typeof cloud_devices;
   conversations: typeof conversations;
   cron_jobs: typeof cron_jobs;
@@ -75,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   device_tools: typeof device_tools;
   discord: typeof discord;
   events: typeof events;
+  google_chat: typeof google_chat;
   heartbeat: typeof heartbeat;
   http: typeof http;
   integrations: typeof integrations;
@@ -94,14 +104,18 @@ declare const fullApi: ApiFromModules<{
   "prompts/synthesis": typeof prompts_synthesis;
   secrets: typeof secrets;
   secrets_crypto: typeof secrets_crypto;
+  signal: typeof signal;
   skills: typeof skills;
+  slack: typeof slack;
   tasks: typeof tasks;
+  teams: typeof teams;
   telegram: typeof telegram;
   "tools/backend": typeof tools_backend;
   "tools/cloud": typeof tools_cloud;
   "tools/index": typeof tools_index;
   "tools/orchestration": typeof tools_orchestration;
   "tools/types": typeof tools_types;
+  whatsapp: typeof whatsapp;
 }>;
 
 /**

@@ -1,14 +1,6 @@
-import {
-  internalAction,
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-} from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
-import { runAgentTurn } from "./automation/runner";
-import { requireUserId } from "./auth";
+import { processIncomingMessage, processLinkCode } from "./channel_utils";
 
 // ---------------------------------------------------------------------------
 // Ed25519 Signature Verification (Discord Interactions Endpoint)
@@ -78,16 +70,11 @@ const discordApi = async (
   });
 };
 
-/**
- * Edit the deferred interaction response (the "thinking..." message).
- * Must be called within 15 minutes of the original interaction.
- */
 const editInteractionResponse = async (
   applicationId: string,
   interactionToken: string,
   content: string,
 ) => {
-  // Discord message limit is 2000 chars
   const maxLen = 2000;
   const truncated =
     content.length > maxLen
@@ -113,142 +100,6 @@ const editInteractionResponse = async (
 };
 
 // ---------------------------------------------------------------------------
-// Internal Queries
-// ---------------------------------------------------------------------------
-
-export const getConnectionByExternalId = internalQuery({
-  args: {
-    provider: v.string(),
-    externalUserId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("channel_connections")
-      .withIndex("by_provider_external", (q) =>
-        q.eq("provider", args.provider).eq("externalUserId", args.externalUserId),
-      )
-      .first();
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Internal Mutations
-// ---------------------------------------------------------------------------
-
-export const createConnection = internalMutation({
-  args: {
-    ownerId: v.string(),
-    provider: v.string(),
-    externalUserId: v.string(),
-    displayName: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const now = Date.now();
-    return await ctx.db.insert("channel_connections", {
-      ownerId: args.ownerId,
-      provider: args.provider,
-      externalUserId: args.externalUserId,
-      displayName: args.displayName,
-      linkedAt: now,
-      updatedAt: now,
-    });
-  },
-});
-
-export const getOrCreateConversationForOwner = internalMutation({
-  args: {
-    ownerId: v.string(),
-    title: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("conversations")
-      .withIndex("by_owner_default", (q) =>
-        q.eq("ownerId", args.ownerId).eq("isDefault", true),
-      )
-      .first();
-
-    if (existing) return existing._id;
-
-    const now = Date.now();
-    return await ctx.db.insert("conversations", {
-      ownerId: args.ownerId,
-      title: args.title ?? "Discord",
-      isDefault: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-  },
-});
-
-export const setConnectionConversation = internalMutation({
-  args: {
-    connectionId: v.id("channel_connections"),
-    conversationId: v.id("conversations"),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.connectionId, {
-      conversationId: args.conversationId,
-      updatedAt: Date.now(),
-    });
-  },
-});
-
-// Link code storage — same pattern as Telegram, using user_preferences
-export const storeLinkCode = internalMutation({
-  args: {
-    ownerId: v.string(),
-    code: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const key = "discord_link_code";
-    const now = Date.now();
-    const value = JSON.stringify({ code: args.code, expiresAt: now + 5 * 60 * 1000 });
-
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", args.ownerId).eq("key", key))
-      .first();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, { value, updatedAt: now });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId: args.ownerId,
-        key,
-        value,
-        updatedAt: now,
-      });
-    }
-  },
-});
-
-export const consumeLinkCode = internalMutation({
-  args: {
-    code: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const prefs = await ctx.db
-      .query("user_preferences")
-      .filter((q) => q.eq(q.field("key"), "discord_link_code"))
-      .collect();
-
-    for (const pref of prefs) {
-      try {
-        const parsed = JSON.parse(pref.value) as { code: string; expiresAt: number };
-        if (parsed.code === args.code && parsed.expiresAt > Date.now()) {
-          await ctx.db.delete(pref._id);
-          return pref.ownerId;
-        }
-      } catch {
-        // Skip malformed entries
-      }
-    }
-    return null;
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Internal Actions (scheduled from webhook)
 // ---------------------------------------------------------------------------
 
@@ -261,48 +112,33 @@ export const handleLinkCommand = internalAction({
     displayName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Validate the link code
-    const ownerId = await ctx.runMutation(internal.discord.consumeLinkCode, {
+    const result = await processLinkCode({
+      ctx,
+      provider: "discord",
+      externalUserId: args.discordUserId,
       code: args.codeArg,
+      displayName: args.displayName,
     });
 
-    if (!ownerId) {
+    if (result === "invalid_code") {
       await editInteractionResponse(
         args.applicationId,
         args.interactionToken,
         "Invalid or expired code. Please generate a new one in Stella Settings.",
       );
-      return;
-    }
-
-    // Check if already linked
-    const existing = await ctx.runQuery(internal.discord.getConnectionByExternalId, {
-      provider: "discord",
-      externalUserId: args.discordUserId,
-    });
-
-    if (existing) {
+    } else if (result === "already_linked") {
       await editInteractionResponse(
         args.applicationId,
         args.interactionToken,
         "Your Discord account is already linked to Stella!",
       );
-      return;
+    } else {
+      await editInteractionResponse(
+        args.applicationId,
+        args.interactionToken,
+        "Linked! You can now use `/ask` to message Stella.",
+      );
     }
-
-    // Create the connection
-    await ctx.runMutation(internal.discord.createConnection, {
-      ownerId,
-      provider: "discord",
-      externalUserId: args.discordUserId,
-      displayName: args.displayName,
-    });
-
-    await editInteractionResponse(
-      args.applicationId,
-      args.interactionToken,
-      "Linked! You can now use `/ask` to message Stella.",
-    );
   },
 });
 
@@ -315,72 +151,27 @@ export const handleAskCommand = internalAction({
     displayName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Look up the connection
-    const connection = await ctx.runQuery(internal.discord.getConnectionByExternalId, {
-      provider: "discord",
-      externalUserId: args.discordUserId,
-    });
-
-    if (!connection) {
-      await editInteractionResponse(
-        args.applicationId,
-        args.interactionToken,
-        "Your account isn't linked yet. Use `/link` with your 6-digit code from Stella Settings.",
-      );
-      return;
-    }
-
-    // Resolve or create conversation
-    let conversationId = connection.conversationId;
-    if (!conversationId) {
-      conversationId = await ctx.runMutation(
-        internal.discord.getOrCreateConversationForOwner,
-        {
-          ownerId: connection.ownerId,
-          title: "Discord",
-        },
-      );
-      await ctx.runMutation(internal.discord.setConnectionConversation, {
-        connectionId: connection._id,
-        conversationId,
-      });
-    }
-
-    // Insert the user message as an event
-    await ctx.runMutation(internal.events.appendInternalEvent, {
-      conversationId,
-      type: "user_message",
-      payload: { text: args.text },
-    });
-
-    // Resolve cloud device if 24/7 mode is enabled
-    const spriteName = await ctx.runQuery(internal.cloud_devices.resolveForOwner, {
-      ownerId: connection.ownerId,
-    });
-
-    if (spriteName) {
-      await ctx.runMutation(internal.cloud_devices.touchActivity, {
-        ownerId: connection.ownerId,
-      });
-    }
-
-    // Run the agent turn
     try {
-      const result = await runAgentTurn({
+      const result = await processIncomingMessage({
         ctx,
-        conversationId,
-        prompt: args.text,
-        agentType: "orchestrator",
-        ownerId: connection.ownerId,
-        targetDeviceId: undefined,
-        spriteName: spriteName ?? undefined,
+        provider: "discord",
+        externalUserId: args.discordUserId,
+        text: args.text,
       });
 
-      const responseText = result.text.trim() || "(Stella had nothing to say.)";
+      if (!result) {
+        await editInteractionResponse(
+          args.applicationId,
+          args.interactionToken,
+          "Your account isn't linked yet. Use `/link` with your 6-digit code from Stella Settings.",
+        );
+        return;
+      }
+
       await editInteractionResponse(
         args.applicationId,
         args.interactionToken,
-        responseText,
+        result.text,
       );
     } catch (error) {
       console.error("[discord] Agent turn failed:", error);
@@ -390,41 +181,6 @@ export const handleAskCommand = internalAction({
         "Sorry, something went wrong. Please try again.",
       );
     }
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Public Mutations (for frontend)
-// ---------------------------------------------------------------------------
-
-export const generateLinkCode = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
-    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-
-    await ctx.runMutation(internal.discord.storeLinkCode, {
-      ownerId,
-      code,
-    });
-
-    return { code };
-  },
-});
-
-export const getConnection = query({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-    const ownerId = identity.subject;
-
-    return await ctx.db
-      .query("channel_connections")
-      .withIndex("by_owner_provider", (q) =>
-        q.eq("ownerId", ownerId).eq("provider", "discord"),
-      )
-      .first();
   },
 });
 
@@ -444,18 +200,17 @@ export const registerCommands = internalAction({
       {
         name: "ask",
         description: "Send a message to Stella",
-        type: 1, // CHAT_INPUT
+        type: 1,
         options: [
           {
             name: "message",
             description: "Your message to Stella",
-            type: 3, // STRING
+            type: 3,
             required: true,
           },
         ],
-        // Enable in DMs and private channels for user-installed apps
-        integration_types: [1], // USER_INSTALL
-        contexts: [1, 2], // BOT_DM, PRIVATE_CHANNEL
+        integration_types: [1],
+        contexts: [1, 2],
       },
       {
         name: "link",

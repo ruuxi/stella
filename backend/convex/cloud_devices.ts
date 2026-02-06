@@ -16,7 +16,7 @@ import { requireUserId } from "./auth";
 
 const SPRITES_API_BASE = "https://api.sprites.dev/v1";
 
-const spritesApi = async (path: string, method = "GET", body?: unknown) => {
+export const spritesApi = async (path: string, method = "GET", body?: unknown) => {
   const token = process.env.SPRITES_TOKEN;
   if (!token) throw new Error("Missing SPRITES_TOKEN environment variable");
 

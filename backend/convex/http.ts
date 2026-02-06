@@ -16,6 +16,9 @@ import {
   buildSkillMetadataUserMessage,
 } from "./prompts/index";
 import { verifyDiscordSignature } from "./discord";
+import { verifySlackSignature } from "./slack";
+import { verifyGoogleChatJwt } from "./google_chat";
+import { verifyTeamsToken } from "./teams";
 
 type ChatRequest = {
   conversationId: string;
@@ -760,7 +763,7 @@ http.route({
       if (commandName === "status") {
         // Status is fast enough to respond immediately
         const connection = discordUserId
-          ? await ctx.runQuery(internal.discord.getConnectionByExternalId, {
+          ? await ctx.runQuery(internal.channel_utils.getConnectionByProviderAndExternalId, {
               provider: "discord",
               externalUserId: discordUserId,
             })
@@ -834,6 +837,269 @@ http.route({
     }
 
     // Unhandled interaction type
+    return new Response("OK", { status: 200 });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Slack Webhook
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/webhooks/slack",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const signingSecret = process.env.SLACK_SIGNING_SECRET;
+    if (!signingSecret) {
+      console.error("[slack] Missing SLACK_SIGNING_SECRET");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    const rawBody = await request.text();
+    const timestamp = request.headers.get("x-slack-request-timestamp") ?? "";
+    const signature = request.headers.get("x-slack-signature") ?? "";
+
+    const isValid = await verifySlackSignature(rawBody, timestamp, signature, signingSecret);
+    if (!isValid) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const payload = JSON.parse(rawBody);
+
+    // Handle URL verification challenge (Slack setup requirement)
+    if (payload.type === "url_verification") {
+      return new Response(JSON.stringify({ challenge: payload.challenge }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Handle event callbacks
+    if (payload.type === "event_callback") {
+      const event = payload.event;
+
+      // Only handle DMs (im) that aren't from bots
+      if (event?.type === "message" && !event.bot_id && event.channel_type === "im") {
+        const text = (event.text ?? "").trim();
+        const slackUserId = event.user;
+        const channelId = event.channel;
+
+        if (text.toLowerCase().startsWith("link ")) {
+          await ctx.scheduler.runAfter(0, internal.slack.handleLinkCommand, {
+            slackUserId,
+            channelId,
+            code: text.slice(5).trim(),
+          });
+        } else {
+          await ctx.scheduler.runAfter(0, internal.slack.handleIncomingMessage, {
+            slackUserId,
+            channelId,
+            text,
+          });
+        }
+      }
+    }
+
+    return new Response("OK", { status: 200 });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Google Chat Webhook
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/webhooks/google_chat",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const projectNumber = process.env.GOOGLE_CHAT_PROJECT_NUMBER;
+    if (!projectNumber) {
+      console.error("[google_chat] Missing GOOGLE_CHAT_PROJECT_NUMBER");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    const authHeader = request.headers.get("authorization") ?? "";
+    const isValid = await verifyGoogleChatJwt(authHeader, projectNumber);
+    if (!isValid) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    let event: {
+      type?: string;
+      message?: {
+        sender?: { name?: string; displayName?: string };
+        argumentText?: string;
+        text?: string;
+      };
+      space?: { name?: string };
+    };
+    try {
+      event = await request.json();
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    if (event.type === "MESSAGE") {
+      const text = (event.message?.argumentText ?? event.message?.text ?? "").trim();
+      const senderName = event.message?.sender?.name ?? "";
+      // Google Chat sender name format: "users/123456"
+      const googleUserId = senderName.startsWith("users/") ? senderName.slice(6) : senderName;
+      const displayName = event.message?.sender?.displayName;
+      const spaceName = event.space?.name ?? "";
+
+      if (text.toLowerCase().startsWith("link ")) {
+        await ctx.scheduler.runAfter(0, internal.google_chat.handleLinkCommand, {
+          spaceName,
+          googleUserId,
+          code: text.slice(5).trim(),
+          displayName,
+        });
+      } else {
+        await ctx.scheduler.runAfter(0, internal.google_chat.handleIncomingMessage, {
+          spaceName,
+          googleUserId,
+          text,
+          displayName,
+        });
+      }
+    }
+
+    // Return empty response (async processing)
+    return new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Microsoft Teams Webhook (Bot Framework)
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/webhooks/teams",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const appId = process.env.TEAMS_APP_ID;
+    if (!appId) {
+      console.error("[teams] Missing TEAMS_APP_ID");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    const authHeader = request.headers.get("authorization") ?? "";
+    const isValid = await verifyTeamsToken(authHeader, appId);
+    if (!isValid) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    let activity: {
+      type?: string;
+      text?: string;
+      from?: { aadObjectId?: string; id?: string; name?: string };
+      serviceUrl?: string;
+      conversation?: { id?: string };
+    };
+    try {
+      activity = await request.json();
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    if (activity.type === "message" && activity.text) {
+      // Strip @mentions (Teams wraps them in <at>...</at>)
+      const text = (activity.text ?? "").replace(/<at>.*?<\/at>/g, "").trim();
+      const teamsUserId = activity.from?.aadObjectId ?? activity.from?.id ?? "";
+      const displayName = activity.from?.name;
+      const serviceUrl = activity.serviceUrl ?? "";
+      const conversationId = activity.conversation?.id ?? "";
+
+      if (text.toLowerCase().startsWith("link ")) {
+        await ctx.scheduler.runAfter(0, internal.teams.handleLinkCommand, {
+          serviceUrl,
+          conversationIdTeams: conversationId,
+          teamsUserId,
+          code: text.slice(5).trim(),
+          displayName,
+        });
+      } else {
+        await ctx.scheduler.runAfter(0, internal.teams.handleIncomingMessage, {
+          serviceUrl,
+          conversationIdTeams: conversationId,
+          teamsUserId,
+          text,
+          displayName,
+        });
+      }
+    }
+
+    return new Response(JSON.stringify({ status: "ok" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Bridge Webhook (WhatsApp, Signal — persistent processes in Sprites)
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/webhooks/bridge",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = request.headers.get("x-bridge-secret");
+    const expectedSecret = process.env.BRIDGE_WEBHOOK_SECRET;
+    if (!expectedSecret || secret !== expectedSecret) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    let payload: {
+      type: string;
+      provider: string;
+      ownerId: string;
+      externalUserId?: string;
+      text?: string;
+      displayName?: string;
+      replyCallback?: string;
+      authState?: unknown;
+      status?: string;
+      error?: string;
+    };
+    try {
+      payload = await request.json();
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    if (payload.type === "heartbeat") {
+      await ctx.scheduler.runAfter(0, internal.bridge.handleHeartbeat, {
+        ownerId: payload.ownerId,
+        provider: payload.provider,
+      });
+    } else if (payload.type === "auth_update") {
+      await ctx.scheduler.runAfter(0, internal.bridge.handleAuthUpdate, {
+        ownerId: payload.ownerId,
+        provider: payload.provider,
+        authState: payload.authState ?? {},
+        status: payload.status ?? "awaiting_auth",
+      });
+    } else if (payload.type === "message") {
+      await ctx.scheduler.runAfter(0, internal.bridge.handleBridgeMessage, {
+        provider: payload.provider,
+        ownerId: payload.ownerId,
+        externalUserId: payload.externalUserId ?? "",
+        text: payload.text ?? "",
+        displayName: payload.displayName,
+        replyCallback: payload.replyCallback,
+      });
+    } else if (payload.type === "error") {
+      await ctx.scheduler.runAfter(0, internal.bridge.handleBridgeError, {
+        ownerId: payload.ownerId,
+        provider: payload.provider,
+        error: payload.error ?? "Unknown error",
+      });
+    }
+
     return new Response("OK", { status: 200 });
   }),
 });
