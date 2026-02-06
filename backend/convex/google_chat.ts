@@ -59,7 +59,7 @@ export async function verifyGoogleChatJwt(
 
     // Find matching key
     const jwks = await fetchGoogleJwks();
-    const jwk = jwks.find((k: Record<string, unknown>) => k.kid === header.kid);
+    const jwk = jwks.find((k) => (k as JsonWebKey & { kid?: string }).kid === header.kid);
     if (!jwk) return false;
 
     // Import RSA public key

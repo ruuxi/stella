@@ -85,7 +85,7 @@ const toTaskClientOrNull = (task: Record<string, unknown> | null): TaskClient | 
 };
 
 const appendTaskEvent = async (
-  ctx: ActionCtx,
+  ctx: Pick<ActionCtx, "runMutation">,
   args: {
     conversationId: Id<"conversations">;
     type: string;
@@ -392,16 +392,18 @@ export const cancelTask = mutation({
       conversationId: record.conversationId,
     });
 
-    await appendTaskEvent(ctx, {
-      conversationId: record.conversationId,
-      type: "task_failed",
-      deviceId: targetDeviceId ?? undefined,
-      targetDeviceId: targetDeviceId ?? undefined,
-      payload: {
-        taskId: args.taskId,
-        error: reason,
-      },
-    });
+    if (targetDeviceId) {
+      await appendTaskEvent(ctx, {
+        conversationId: record.conversationId,
+        type: "task_failed",
+        deviceId: targetDeviceId,
+        targetDeviceId: targetDeviceId,
+        payload: {
+          taskId: args.taskId,
+          error: reason,
+        },
+      });
+    }
 
     const updated = await ctx.db.get(args.taskId);
     return toTaskClientOrNull(updated);

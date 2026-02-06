@@ -5,11 +5,12 @@ import {
   internalQuery,
   query,
 } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
 import { processIncomingMessage } from "./channel_utils";
-import { spritesApi, spritesExec } from "./cloud_devices";
+import { spritesApi, spritesApiText, spritesExec } from "./cloud_devices";
 
 // ---------------------------------------------------------------------------
 // Bridge service code templates
@@ -170,20 +171,18 @@ export const deployBridge = internalAction({
       }
 
       // 6. Start as Sprites Service (auto-restarts on crash)
+      // PUT creates AND starts the service (response: service object with "starting" status)
+      // Fields per Sprites docs: cmd (string), args (string[]), needs (string[]), http_port (number?)
       const serviceName = `stella-bridge-${args.provider}`;
       await spritesApi(
         `/sprites/${args.spriteName}/services/${serviceName}`,
         "PUT",
         {
-          command: "node",
+          cmd: "node",
           args: ["/home/sprite/stella-bridge/bridge.js"],
-          env: { NODE_ENV: "production" },
+          needs: [],
+          http_port: 8080,
         },
-      );
-
-      await spritesApi(
-        `/sprites/${args.spriteName}/services/${serviceName}/start`,
-        "POST",
       );
 
       // 7. Update session status
@@ -208,7 +207,7 @@ export const deployBridge = internalAction({
 
 export const setupBridge = action({
   args: { provider: v.string() },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ status: string; sessionId?: Id<"bridge_sessions"> }> => {
     const ownerId = await requireUserId(ctx);
 
     // Check existing session
@@ -226,19 +225,25 @@ export const setupBridge = action({
     }
 
     // Ensure user has a sprite
-    let spriteName = await ctx.runQuery(internal.cloud_devices.resolveForOwner, { ownerId });
+    let spriteName: string | null = await ctx.runQuery(
+      internal.cloud_devices.resolveForOwner,
+      { ownerId },
+    );
     if (!spriteName) {
-      // Auto-provision a sprite
-      const result = await ctx.runAction(internal.cloud_devices.enable247 as never);
-      spriteName = (result as { spriteName: string }).spriteName;
+      // Auto-provision a sprite (enable247 is a public action)
+      const result = await ctx.runAction(api.cloud_devices.enable247, {});
+      spriteName = result.spriteName;
     }
 
     // Create session record
-    const sessionId = await ctx.runMutation(internal.bridge.createBridgeSession, {
-      ownerId,
-      provider: args.provider,
-      spriteName,
-    });
+    const sessionId: Id<"bridge_sessions"> = await ctx.runMutation(
+      internal.bridge.createBridgeSession,
+      {
+        ownerId,
+        provider: args.provider,
+        spriteName,
+      },
+    );
 
     // Deploy bridge code
     await ctx.scheduler.runAfter(0, internal.bridge.deployBridge, {
@@ -262,10 +267,10 @@ export const stopBridge = action({
     });
     if (!session) return { status: "not_running" };
 
-    // Stop the Sprites Service
+    // Stop the Sprites Service (returns streaming NDJSON)
     const serviceName = `stella-bridge-${args.provider}`;
     try {
-      await spritesApi(
+      await spritesApiText(
         `/sprites/${session.spriteName}/services/${serviceName}/stop`,
         "POST",
       );
@@ -358,7 +363,6 @@ export const handleBridgeMessage = internalAction({
     externalUserId: v.string(),
     text: v.string(),
     displayName: v.optional(v.string()),
-    replyCallback: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const result = await processIncomingMessage({
@@ -368,20 +372,33 @@ export const handleBridgeMessage = internalAction({
       text: args.text,
     });
 
-    // Send response back to bridge via callback URL
-    if (args.replyCallback && result) {
-      try {
-        await fetch(args.replyCallback, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            externalUserId: args.externalUserId,
-            text: result.text,
-          }),
-        });
-      } catch (error) {
-        console.error(`[bridge] Failed to deliver reply for ${args.provider}:`, error);
-      }
+    if (!result) return;
+
+    // Look up the bridge session to get the sprite name
+    const session = await ctx.runQuery(internal.bridge.getBridgeSession, {
+      ownerId: args.ownerId,
+      provider: args.provider,
+    });
+    if (!session) {
+      console.error(`[bridge] No session found for ${args.provider}/${args.ownerId}`);
+      return;
+    }
+
+    // Deliver reply by executing curl inside the sprite to hit the bridge's
+    // local HTTP server. This avoids the sprite's internal hostname being
+    // unreachable from Convex's network.
+    try {
+      const payload = JSON.stringify({
+        externalUserId: args.externalUserId,
+        text: result.text,
+      });
+      const escapedPayload = payload.replace(/'/g, "'\\''");
+      await spritesExec(
+        session.spriteName,
+        `curl -s -X POST http://localhost:8080/reply -H 'Content-Type: application/json' -d '${escapedPayload}'`,
+      );
+    } catch (error) {
+      console.error(`[bridge] Failed to deliver reply for ${args.provider}:`, error);
     }
   },
 });
