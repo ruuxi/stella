@@ -244,6 +244,19 @@ export default defineSchema({
   })
     .index("by_provider_external", ["provider", "externalUserId"])
     .index("by_owner_provider", ["ownerId", "provider"]),
+  bridge_sessions: defineTable({
+    ownerId: v.string(),
+    provider: v.string(),
+    spriteName: v.string(),
+    status: v.string(),
+    authState: v.optional(v.any()),
+    errorMessage: v.optional(v.string()),
+    lastHeartbeatAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_provider", ["ownerId", "provider"])
+    .index("by_sprite", ["spriteName", "provider"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
