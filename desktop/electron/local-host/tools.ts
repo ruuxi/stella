@@ -40,7 +40,8 @@ import {
   handleSkillBash,
   type ShellState,
 } from "./tools-shell.js";
-import { handleWebFetch, handleWebSearch } from "./tools-web.js";
+// WebFetch and WebSearch have been promoted to backend tools (Convex actions).
+// import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import {
   createStateContext,
   handleTask,
@@ -155,10 +156,6 @@ export const createToolHost = ({ StellaHome, requestCredential, resolveSecret }:
     // Shell tools
     Bash: (args, context) => handleBash(shellState, args, context),
     SkillBash: (args) => handleSkillBash(shellState, args),
-
-    // Web tools
-    WebFetch: (args) => handleWebFetch(args),
-    WebSearch: (args) => handleWebSearch(args),
 
     // State tools
     Task: (args) => handleTask(stateContext, args),

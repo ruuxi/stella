@@ -49,15 +49,14 @@ export const createModifierOverlay = (): void => {
 }
 
 /**
- * Show the overlay and make it capture right-clicks
+ * Resize the overlay to cover all displays.
  */
-export const showModifierOverlay = (): void => {
+const coverAllDisplays = (): void => {
   if (!overlayWindow) return
 
-  // Cover all displays
   const displays = screen.getAllDisplays()
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  
+
   for (const display of displays) {
     const { x, y, width, height } = display.bounds
     minX = Math.min(minX, x)
@@ -72,7 +71,32 @@ export const showModifierOverlay = (): void => {
     width: maxX - minX,
     height: maxY - minY,
   })
+}
 
+/**
+ * Show the overlay preemptively on macOS when the modifier key is pressed.
+ * This positions the overlay before a right-click can fire so that macOS
+ * delivers the context-menu event to the overlay (which suppresses it)
+ * instead of to the app underneath.
+ */
+export const showModifierOverlayPreemptive = (): void => {
+  if (!overlayWindow) return
+  coverAllDisplays()
+  // Capture mouse events so the overlay receives the right-click.
+  // showInactive() keeps the underlying app focused (important for
+  // captureRadialContext to read selected text). The overlay still
+  // receives mouse events because macOS delivers clicks to the
+  // topmost window under the cursor, regardless of key-window status.
+  overlayWindow.setIgnoreMouseEvents(false)
+  overlayWindow.showInactive()
+}
+
+/**
+ * Show the overlay and make it capture right-clicks
+ */
+export const showModifierOverlay = (): void => {
+  if (!overlayWindow) return
+  coverAllDisplays()
   // Capture right-clicks (but let left-clicks through)
   overlayWindow.setIgnoreMouseEvents(false)
   overlayWindow.showInactive()
