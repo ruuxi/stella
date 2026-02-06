@@ -86,7 +86,7 @@ export async function runAgentTurn({
         })
       : [];
 
-  const historyMessages = (historyEvents ?? []).flatMap((event) => {
+  const historyMessages = (historyEvents ?? []).flatMap((event: { type: string; payload?: unknown }) => {
     const payload =
       event.payload && typeof event.payload === "object"
         ? (event.payload as { text?: string })

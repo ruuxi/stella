@@ -55,14 +55,14 @@ export const buildSystemPrompt = async (
   });
 
   const skillsSection = buildSkillsSection(
-    skills.map((skill) => ({
+    skills.map((skill: { id: string; name: string; description: string; execution?: string; requiresSecrets?: string[]; publicIntegration?: boolean; secretMounts?: Record<string, unknown> }) => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,
-      execution: (skill as { execution?: string }).execution,
-      requiresSecrets: (skill as { requiresSecrets?: string[] }).requiresSecrets,
-      publicIntegration: (skill as { publicIntegration?: boolean }).publicIntegration,
-      secretMounts: (skill as { secretMounts?: Record<string, unknown> }).secretMounts,
+      execution: skill.execution,
+      requiresSecrets: skill.requiresSecrets,
+      publicIntegration: skill.publicIntegration,
+      secretMounts: skill.secretMounts,
     })),
   );
 
@@ -97,6 +97,6 @@ export const buildSystemPrompt = async (
     toolsAllowlist: agent.toolsAllowlist ?? undefined,
     maxTaskDepth,
     defaultSkills: agent.defaultSkills ?? [],
-    skillIds: skills.map((skill) => skill.id),
+    skillIds: skills.map((skill: { id: string }) => skill.id),
   };
 };
