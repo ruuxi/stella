@@ -258,7 +258,96 @@ export const createBackendTools = (
     }
   };
 
+  const stripHtml = (html: string) =>
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const truncateText = (value: string, max = 30_000) =>
+    value.length > max ? `${value.slice(0, max)}\n\n... (truncated)` : value;
+
   return {
+    WebSearch: tool({
+      description:
+        "Search the web for up-to-date information using semantic search.",
+      inputSchema: z.object({
+        query: z.string().min(2),
+      }),
+      execute: async (args) => {
+        const apiKey = process.env.EXA_API_KEY;
+        if (!apiKey) {
+          return "WebSearch is not configured (missing EXA_API_KEY).";
+        }
+        try {
+          const response = await fetch("https://api.exa.ai/search", {
+            method: "POST",
+            headers: {
+              "x-api-key": apiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              query: args.query,
+              type: "auto",
+              numResults: 6,
+              contents: {
+                text: { maxCharacters: 1000 },
+              },
+            }),
+          });
+          if (!response.ok) {
+            return `WebSearch failed (${response.status}): ${await response.text()}`;
+          }
+          const data = (await response.json()) as {
+            results?: Array<{
+              title?: string;
+              url?: string;
+              text?: string;
+            }>;
+          };
+          const results = data.results ?? [];
+          if (results.length === 0) {
+            return `No web results found for "${args.query}".`;
+          }
+          const formatted = results
+            .map((r, i) => {
+              const parts = [`${i + 1}. ${r.title ?? "(no title)"}\n   ${r.url ?? ""}`];
+              if (r.text) parts.push(`   ${r.text.slice(0, 300)}`);
+              return parts.join("\n");
+            })
+            .join("\n\n");
+          return `Web search results for "${args.query}":\n\n${formatted}`;
+        } catch (error) {
+          return `WebSearch failed: ${(error as Error).message}`;
+        }
+      },
+    }),
+    WebFetch: tool({
+      description: "Fetch content from a URL.",
+      inputSchema: z.object({
+        url: z.string(),
+        prompt: z.string(),
+      }),
+      execute: async (args) => {
+        const secureUrl = args.url.replace(/^http:/, "https:");
+        try {
+          const response = await fetch(secureUrl, {
+            headers: { "User-Agent": "StellaBackend/1.0" },
+          });
+          if (!response.ok) {
+            return `Failed to fetch (${response.status} ${response.statusText})`;
+          }
+          const text = await response.text();
+          const contentType = response.headers.get("content-type") ?? "";
+          const body = contentType.includes("text/html") ? stripHtml(text) : text;
+          return `Content from ${secureUrl}\nPrompt: ${args.prompt}\n\n${truncateText(body, 15_000)}`;
+        } catch (error) {
+          return `Error fetching URL: ${(error as Error).message}`;
+        }
+      },
+    }),
     IntegrationRequest: tool({
       description:
         "Send a request to an external integration using a stella-managed public key or a user secret.",
@@ -332,7 +421,7 @@ export const createBackendTools = (
           case "heartbeat.get": {
             const conversationId = readString(params, "conversationId");
             const result = await ctx.runQuery(api.heartbeat.getConfig, {
-              ...(conversationId ? { conversationId } : {}),
+              ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
             });
             return formatResult(result);
           }
@@ -386,7 +475,7 @@ export const createBackendTools = (
               schedule,
               payload,
               sessionTarget,
-              ...(conversationId ? { conversationId } : {}),
+              ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
               ...(description ? { description } : {}),
               ...(enabled !== undefined ? { enabled } : {}),
               ...(deleteAfterRun !== undefined ? { deleteAfterRun } : {}),

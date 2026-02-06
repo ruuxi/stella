@@ -40,7 +40,7 @@ const DEFAULT_MODEL: ModelConfig = {
 const AGENT_MODELS: Record<string, ModelConfig> = {
   // Orchestrator (top-level responder)
   orchestrator: {
-    model: "anthropic/claude-opus-4.5",
+    model: "anthropic/claude-opus-4.6",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -52,7 +52,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   // Main general-purpose agent
   general: {
-    model: "anthropic/claude-opus-4.5",
+    model: "anthropic/claude-opus-4.6",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -100,7 +100,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   // Self-modification agent (if re-enabled)
   self_mod: {
-    model: "anthropic/claude-opus-4.5",
+    model: "anthropic/claude-opus-4.6",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -146,7 +146,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   // Welcome message generation (personalized greeting)
   welcome: {
-    model: "anthropic/claude-opus-4.5",
+    model: "anthropic/claude-opus-4.6",
     temperature: 1.0,
     maxOutputTokens: 1000,
     providerOptions: {

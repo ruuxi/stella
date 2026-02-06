@@ -126,6 +126,18 @@ export default defineSchema({
   })
     .index("by_owner_and_updated", ["ownerId", "updatedAt"])
     .index("by_railway_service", ["railwayServiceId"]),
+  cloud_devices: defineTable({
+    ownerId: v.string(),
+    provider: v.string(),
+    spriteName: v.string(),
+    status: v.string(),
+    lastActiveAt: v.number(),
+    setupComplete: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_sprite_name", ["spriteName"]),
   plugins: defineTable({
     id: v.string(),
     name: v.string(),
@@ -221,6 +233,17 @@ export default defineSchema({
     .index("by_owner_conversation", ["ownerId", "conversationId"])
     .index("by_next_run", ["nextRunAtMs", "ownerId"])
     .index("by_owner_updated", ["ownerId", "updatedAt"]),
+  channel_connections: defineTable({
+    ownerId: v.string(),
+    provider: v.string(),
+    externalUserId: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    displayName: v.optional(v.string()),
+    linkedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_provider_external", ["provider", "externalUserId"])
+    .index("by_owner_provider", ["ownerId", "provider"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),

@@ -387,6 +387,11 @@ export const run = internalAction({
       })) ??
       undefined;
 
+    // Cloud device fallback: if no local device, check for a Sprites cloud device
+    const spriteName = !targetDeviceId
+      ? await ctx.runQuery(internal.cloud_devices.resolveForOwner, { ownerId: config.ownerId })
+      : undefined;
+
     const agentType = config.agentType ?? "orchestrator";
 
     let text = "";
@@ -399,6 +404,7 @@ export const run = internalAction({
         agentType,
         ownerId: config.ownerId,
         targetDeviceId: targetDeviceId ?? undefined,
+        spriteName: spriteName ?? undefined,
         includeHistory: true,
       });
       text = result.text ?? "";

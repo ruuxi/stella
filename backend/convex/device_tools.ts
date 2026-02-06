@@ -19,8 +19,6 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "Glob",
   "Grep",
   "Bash",
-  "WebFetch",
-  "WebSearch",
   "AskUserQuestion",
   "RequestCredential",
   "SkillBash",
@@ -207,21 +205,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         kill_shell_id: z.string().optional(),
       }),
       execute: (args) => call("Bash", args),
-    }),
-    WebFetch: tool({
-      description: "Fetch content from a URL.",
-      inputSchema: z.object({
-        url: z.string(),
-        prompt: z.string(),
-      }),
-      execute: (args) => call("WebFetch", args),
-    }),
-    WebSearch: tool({
-      description: "Search the web for up-to-date information.",
-      inputSchema: z.object({
-        query: z.string().min(2),
-      }),
-      execute: (args) => call("WebSearch", args),
     }),
     AskUserQuestion: tool({
       description: "Ask the user to choose between options.",
