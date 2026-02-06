@@ -44,6 +44,9 @@ type PaginatedResult<T> = {
 };
 
 const SYNC_DEBOUNCE_MS = 500;
+const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
+const MESSAGES_NOTES_CATEGORY = "messages_notes";
+const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
 
 export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential }: HostRunnerOptions) => {
   const ownerId = "local";
@@ -94,6 +97,10 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
   const agentsPath = path.join(StellaHome, "agents");
   const pluginsPath = path.join(StellaHome, "plugins");
   const statePath = path.join(StellaHome, "state");
+  const discoveryCategoriesPath = path.join(
+    statePath,
+    DISCOVERY_CATEGORIES_STATE_FILE,
+  );
 
   // External skill sources
   const claudeSkillsPath = path.join(os.homedir(), ".claude", "skills");
@@ -360,11 +367,43 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
 
   // Identity map cache for depseudonymizing tool arguments
   let identityMapCache: IdentityMap | null = null;
+  let messagesNotesEnabledCache:
+    | { value: boolean; checkedAt: number }
+    | null = null;
 
   const getIdentityMapCached = async (): Promise<IdentityMap> => {
     if (identityMapCache) return identityMapCache;
     identityMapCache = await loadIdentityMap(StellaHome);
     return identityMapCache;
+  };
+
+  const isMessagesNotesDiscoveryEnabled = async (): Promise<boolean> => {
+    const now = Date.now();
+    if (
+      messagesNotesEnabledCache &&
+      now - messagesNotesEnabledCache.checkedAt < DISCOVERY_CATEGORY_CACHE_TTL_MS
+    ) {
+      return messagesNotesEnabledCache.value;
+    }
+
+    try {
+      const raw = await fs.promises.readFile(discoveryCategoriesPath, "utf-8");
+      const parsed = JSON.parse(raw) as unknown;
+      const categories = Array.isArray(parsed)
+        ? parsed
+        : parsed &&
+            typeof parsed === "object" &&
+            Array.isArray((parsed as { categories?: unknown }).categories)
+          ? (parsed as { categories: unknown[] }).categories
+          : [];
+
+      const enabled = categories.includes(MESSAGES_NOTES_CATEGORY);
+      messagesNotesEnabledCache = { value: enabled, checkedAt: now };
+      return enabled;
+    } catch {
+      messagesNotesEnabledCache = { value: false, checkedAt: now };
+      return false;
+    }
   };
 
   const depseudonymizeArgs = (
@@ -450,9 +489,12 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
 
       // Depseudonymize tool args: replace alias names/identifiers with real values
       // so tools operate on actual data (e.g., real contact names for iMessage queries)
-      const idMap = await getIdentityMapCached();
-      if (idMap.mappings.length > 0) {
-        toolArgs = depseudonymizeArgs(toolArgs, idMap);
+      const messagesNotesEnabled = await isMessagesNotesDiscoveryEnabled();
+      if (messagesNotesEnabled) {
+        const idMap = await getIdentityMapCached();
+        if (idMap.mappings.length > 0) {
+          toolArgs = depseudonymizeArgs(toolArgs, idMap);
+        }
       }
 
       log(`Executing tool: ${toolName}`, {

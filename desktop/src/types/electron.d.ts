@@ -101,9 +101,16 @@ export type AllUserSignals = {
   apps: DiscoveredApp[]
 }
 
+export type DiscoveryCategory =
+  | "browsing_bookmarks"
+  | "dev_environment"
+  | "apps_system"
+  | "messages_notes"
+
 export type AllUserSignalsResult = {
   data: AllUserSignals | null
   formatted: string | null
+  formattedSections?: Partial<Record<DiscoveryCategory, string>> | null
   error?: string
 }
 

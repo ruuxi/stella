@@ -1,6 +1,20 @@
 import { useState, useEffect, useCallback } from "react";
 
 type Replacement = { pattern: RegExp; replacement: string };
+type DiscoveryCategory = "browsing_bookmarks" | "dev_environment" | "apps_system" | "messages_notes";
+
+const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
+
+function isMessagesNotesEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(DISCOVERY_CATEGORIES_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) && parsed.includes("messages_notes" satisfies DiscoveryCategory);
+  } catch {
+    return false;
+  }
+}
 
 // Module-level cache — survives component remounts, loaded once per session
 let cachedReplacements: Replacement[] | null = null;
@@ -16,6 +30,12 @@ async function loadReplacements(): Promise<Replacement[]> {
 
   loadPromise = (async () => {
     try {
+      // Depseudonymize only when Messages & Notes discovery category is enabled.
+      if (!isMessagesNotesEnabled()) {
+        cachedReplacements = [];
+        return [];
+      }
+
       const map = await window.electronAPI?.getIdentityMap?.();
       if (!map?.mappings?.length) {
         cachedReplacements = [];
@@ -73,6 +93,13 @@ export function useDepseudonymize(): (text: string) => string {
   );
 
   useEffect(() => {
+    if (!isMessagesNotesEnabled()) {
+      cachedReplacements = [];
+      loadPromise = null;
+      setReplacements([]);
+      return;
+    }
+
     if (cachedReplacements !== null) {
       setReplacements(cachedReplacements);
       return;
