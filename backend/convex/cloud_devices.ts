@@ -16,6 +16,133 @@ import { requireUserId } from "./auth";
 
 const SPRITES_API_BASE = "https://api.sprites.dev/v1";
 
+export type SpritesExecResult = {
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+};
+
+const toNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+
+const toString = (value: unknown): string => (typeof value === "string" ? value : "");
+
+const parseExecObject = (value: unknown): SpritesExecResult | null => {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  const directExitCode =
+    toNumber(record.exit_code) ??
+    toNumber(record.exitCode) ??
+    toNumber(record.code);
+  if (directExitCode !== null) {
+    return {
+      stdout: toString(record.stdout),
+      stderr: toString(record.stderr),
+      exit_code: directExitCode,
+    };
+  }
+
+  const nested = asRecord(record.data);
+  if (!nested) return null;
+
+  const nestedExitCode =
+    toNumber(nested.exit_code) ??
+    toNumber(nested.exitCode) ??
+    toNumber(nested.code);
+  if (nestedExitCode !== null) {
+    return {
+      stdout: toString(nested.stdout),
+      stderr: toString(nested.stderr),
+      exit_code: nestedExitCode,
+    };
+  }
+
+  return null;
+};
+
+const parseExecNdjson = (raw: string): SpritesExecResult | null => {
+  let stdout = "";
+  let stderr = "";
+  let exitCode: number | null = null;
+
+  const lines = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    const exec = parseExecObject(parsed);
+    if (exec) {
+      exitCode = exec.exit_code;
+      if (exec.stdout) stdout += exec.stdout;
+      if (exec.stderr) stderr += exec.stderr;
+      continue;
+    }
+
+    const record = asRecord(parsed);
+    if (!record) continue;
+
+    if (record.type === "error") {
+      const detail = toString(record.error) || toString(record.data) || line;
+      throw new Error(`Sprites exec failed: ${detail}`);
+    }
+
+    const maybeStdout = toString(record.stdout);
+    const maybeStderr = toString(record.stderr);
+    if (maybeStdout) stdout += maybeStdout;
+    if (maybeStderr) stderr += maybeStderr;
+  }
+
+  if (exitCode === null) return null;
+  return { stdout, stderr, exit_code: exitCode };
+};
+
+const parseExecResponse = (raw: string): SpritesExecResult => {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Sprites exec failed: empty response");
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    const direct = parseExecObject(parsed);
+    if (direct) return direct;
+
+    if (Array.isArray(parsed)) {
+      for (let i = parsed.length - 1; i >= 0; i--) {
+        const entry = parseExecObject(parsed[i]);
+        if (entry) return entry;
+      }
+    }
+  } catch {
+    // Not plain JSON object/array; try NDJSON.
+  }
+
+  const ndjson = parseExecNdjson(raw);
+  if (ndjson) return ndjson;
+
+  throw new Error(`Unexpected Sprites exec response: ${trimmed.slice(0, 240)}`);
+};
+
 export const spritesApi = async (path: string, method = "GET", body?: unknown) => {
   const token = process.env.SPRITES_TOKEN;
   if (!token) throw new Error("Missing SPRITES_TOKEN environment variable");
@@ -66,7 +193,7 @@ export const spritesApiText = async (path: string, method = "GET", body?: unknow
 export const spritesExec = async (
   spriteName: string,
   command: string,
-): Promise<{ stdout: string; stderr: string; exit_code: number }> => {
+): Promise<SpritesExecResult> => {
   const token = process.env.SPRITES_TOKEN;
   if (!token) throw new Error("Missing SPRITES_TOKEN environment variable");
 
@@ -88,7 +215,44 @@ export const spritesExec = async (
     throw new Error(`Sprites exec failed (${res.status}): ${text}`);
   }
 
-  return res.json();
+  const raw = await res.text();
+  return parseExecResponse(raw);
+};
+
+export const spritesExecChecked = async (
+  spriteName: string,
+  command: string,
+  context = "Sprites command",
+): Promise<SpritesExecResult> => {
+  const result = await spritesExec(spriteName, command);
+  if (result.exit_code !== 0) {
+    const stderr = result.stderr?.trim();
+    const stdout = result.stdout?.trim();
+    const details = stderr || stdout || "(no output)";
+    throw new Error(`${context} failed (exit ${result.exit_code}): ${details}`);
+  }
+  return result;
+};
+
+export const assertNdjsonNoError = (raw: string, context: string) => {
+  const lines = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line) as { type?: string; error?: string; data?: string };
+      if (parsed.type === "error") {
+        throw new Error(`${context} failed: ${parsed.error ?? parsed.data ?? line}`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith(`${context} failed:`)) {
+        throw error;
+      }
+      // Ignore non-JSON lines and continue scanning.
+    }
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -199,19 +363,25 @@ export const setupSprite = internalAction({
     try {
       // Install additional tools the base image may not have
       // Sprites already include: Node 22, Python 3.13, Git, sqlite3, ripgrep
-      await spritesExec(args.spriteName, "apt-get update -qq && apt-get install -y -qq jq > /dev/null 2>&1");
+      await spritesExecChecked(
+        args.spriteName,
+        "apt-get update -qq && apt-get install -y -qq jq curl > /dev/null 2>&1",
+        "Sprite package install",
+      );
 
       // Install Playwright Chromium for browser automation
-      await spritesExec(
+      await spritesExecChecked(
         args.spriteName,
         "npx playwright install chromium --with-deps > /dev/null 2>&1",
+        "Playwright install",
       );
 
       // Create a checkpoint after setup for rollback safety
       // Checkpoint creation returns streaming NDJSON, use text variant
-      await spritesApiText(`/sprites/${args.spriteName}/checkpoints`, "POST", {
+      const checkpointResponse = await spritesApiText(`/sprites/${args.spriteName}/checkpoint`, "POST", {
         comment: "initial-setup",
       });
+      assertNdjsonNoError(checkpointResponse, "Sprite checkpoint create");
 
       await ctx.runMutation(internal.cloud_devices.updateStatus, {
         id: args.deviceId,
