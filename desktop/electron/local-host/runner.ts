@@ -3,6 +3,8 @@ import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import { syncExternalSkills } from "./skill_import.js";
+import { loadIdentityMap, depseudonymize } from "./identity_map.js";
+import type { IdentityMap } from "./discovery_types.js";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -356,6 +358,40 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
     }
   };
 
+  // Identity map cache for depseudonymizing tool arguments
+  let identityMapCache: IdentityMap | null = null;
+
+  const getIdentityMapCached = async (): Promise<IdentityMap> => {
+    if (identityMapCache) return identityMapCache;
+    identityMapCache = await loadIdentityMap(StellaHome);
+    return identityMapCache;
+  };
+
+  const depseudonymizeArgs = (
+    args: Record<string, unknown>,
+    map: IdentityMap,
+  ): Record<string, unknown> => {
+    if (!map.mappings.length) return args;
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args)) {
+      if (typeof value === "string") {
+        result[key] = depseudonymize(value, map);
+      } else if (Array.isArray(value)) {
+        result[key] = value.map((v) =>
+          typeof v === "string" ? depseudonymize(v, map) : v,
+        );
+      } else if (value && typeof value === "object") {
+        result[key] = depseudonymizeArgs(
+          value as Record<string, unknown>,
+          map,
+        );
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  };
+
   const appendToolResult = async (
     request: ToolRequestEvent,
     result: { result?: unknown; error?: string },
@@ -404,12 +440,19 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
         return;
       }
 
-      const toolArgs = request.payload?.args ?? {};
+      let toolArgs = request.payload?.args ?? {};
       if (!toolName) {
         logError("Tool request missing toolName:", request);
         await appendToolResult(request, { error: "toolName missing on request." });
         processed.add(request.requestId);
         return;
+      }
+
+      // Depseudonymize tool args: replace alias names/identifiers with real values
+      // so tools operate on actual data (e.g., real contact names for iMessage queries)
+      const idMap = await getIdentityMapCached();
+      if (idMap.mappings.length > 0) {
+        toolArgs = depseudonymizeArgs(toolArgs, idMap);
       }
 
       log(`Executing tool: ${toolName}`, {

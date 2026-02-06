@@ -11,6 +11,7 @@ import {
   getCurrentRunningTool,
   getRunningTasks,
 } from "../hooks/use-conversation-events";
+import { useDepseudonymize } from "../hooks/use-depseudonymize";
 import { WorkingIndicator } from "../components/chat/WorkingIndicator";
 import { Markdown } from "../components/chat/Markdown";
 import { ReasoningSection } from "../components/chat/ReasoningSection";
@@ -522,6 +523,9 @@ export const ConversationEvents = memo(function ConversationEvents({
     return allTurns.slice(baseStart);
   }, [allTurns, maxTurns, pendingUserMessageId, showStreaming]);
 
+  // Depseudonymize alias names/identifiers back to real values for display
+  const depseudonymize = useDepseudonymize();
+
   const turnViewCacheRef = useRef<Map<string, TurnViewModel>>(new Map());
   const turns = useMemo(() => {
     const nextCache = new Map<string, TurnViewModel>();
@@ -530,7 +534,7 @@ export const ConversationEvents = memo(function ConversationEvents({
     for (const turn of slicedTurns) {
       const userText = getEventText(turn.userMessage);
       const userAttachments = getAttachments(turn.userMessage);
-      const assistantText = turn.assistantMessage ? getEventText(turn.assistantMessage) : "";
+      const assistantText = turn.assistantMessage ? depseudonymize(getEventText(turn.assistantMessage)) : "";
       const assistantMessageId = turn.assistantMessage?._id ?? null;
 
       const prev = turnViewCacheRef.current.get(turn.id);
@@ -559,7 +563,11 @@ export const ConversationEvents = memo(function ConversationEvents({
 
     turnViewCacheRef.current = nextCache;
     return viewModels;
-  }, [slicedTurns]);
+  }, [slicedTurns, depseudonymize]);
+
+  // Depseudonymize streaming and reasoning text for display
+  const processedStreamingText = streamingText ? depseudonymize(streamingText) : streamingText;
+  const processedReasoningText = reasoningText ? depseudonymize(reasoningText) : reasoningText;
 
   // Get running tool for streaming indicator
   const runningTool = getCurrentRunningTool(events);
@@ -596,8 +604,8 @@ export const ConversationEvents = memo(function ConversationEvents({
           turns={turns}
           showStreaming={showStreaming}
           showStandaloneStreaming={showStandaloneStreaming}
-          streamingText={streamingText}
-          reasoningText={reasoningText}
+          streamingText={processedStreamingText}
+          reasoningText={processedReasoningText}
           isStreaming={isStreaming}
           pendingUserMessageId={pendingUserMessageId}
           runningTasks={runningTasks}
@@ -610,8 +618,8 @@ export const ConversationEvents = memo(function ConversationEvents({
           turns={turns}
           showStreaming={showStreaming}
           showStandaloneStreaming={showStandaloneStreaming}
-          streamingText={streamingText}
-          reasoningText={reasoningText}
+          streamingText={processedStreamingText}
+          reasoningText={processedReasoningText}
           isStreaming={isStreaming}
           pendingUserMessageId={pendingUserMessageId}
           runningTasks={runningTasks}
