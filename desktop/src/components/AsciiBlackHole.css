@@ -25,6 +25,15 @@
   z-index: 2;
 }
 
+.ascii-eyes-canvas {
+  position: absolute;
+  top: 55%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  pointer-events: none;
+}
+
 /* Character color classes based on brightness and theme */
 .ascii-black-hole-container .char-dark {
   color: var(--primary, var(--foreground));

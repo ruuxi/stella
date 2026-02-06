@@ -2,8 +2,10 @@ import { ConvexClient } from "convex/browser";
 import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
+import { syncExternalSkills } from "./skill_import.js";
 import path from "path";
 import fs from "fs";
+import os from "os";
 const log = (...args) => console.log("[runner]", ...args);
 const logError = (...args) => console.error("[runner]", ...args);
 const SYNC_DEBOUNCE_MS = 500;
@@ -41,6 +43,10 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
     const skillsPath = path.join(StellaHome, "skills");
     const agentsPath = path.join(StellaHome, "agents");
     const pluginsPath = path.join(StellaHome, "plugins");
+    const statePath = path.join(StellaHome, "state");
+    // External skill sources
+    const claudeSkillsPath = path.join(os.homedir(), ".claude", "skills");
+    const agentsSkillsPath = path.join(os.homedir(), ".agents", "skills");
     const toConvexName = (name) => {
         // Convex expects "module:function" identifiers, not dot-separated paths.
         const firstDot = name.indexOf(".");
@@ -60,6 +66,24 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
         const convexName = toConvexName(name);
         return client.query(convexName, args);
     };
+    const generateMetadataViaBackend = async (markdown, dirName) => {
+        if (!convexUrl || !authToken) {
+            throw new Error("Convex not configured");
+        }
+        const httpBaseUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+        const response = await fetch(`${httpBaseUrl}/api/generate-skill-metadata`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ markdown, skillDirName: dirName }),
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to generate metadata: ${response.status}`);
+        }
+        return response.json();
+    };
     const syncManifests = async () => {
         if (!client)
             return;
@@ -69,6 +93,16 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
             try {
                 log("Syncing manifests...");
                 await callMutation("agents.ensureBuiltins", {});
+                // Import skills from external sources first
+                if (convexUrl && authToken) {
+                    try {
+                        await syncExternalSkills(claudeSkillsPath, agentsSkillsPath, skillsPath, statePath, generateMetadataViaBackend);
+                    }
+                    catch (error) {
+                        logError("External skill import failed:", error);
+                        // Continue with manifest sync even if import fails
+                    }
+                }
                 const pluginPayload = await toolHost.loadPlugins();
                 log("Loaded plugins:", {
                     pluginCount: pluginPayload.plugins.length,
@@ -113,7 +147,10 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
         }, SYNC_DEBOUNCE_MS);
     };
     const startWatchers = () => {
+        // Watch internal Stella directories
         const watchDirs = [skillsPath, agentsPath, pluginsPath];
+        // Also watch external skill sources (if they exist)
+        const externalDirs = [claudeSkillsPath, agentsSkillsPath];
         for (const dir of watchDirs) {
             // Ensure directory exists before watching
             if (!fs.existsSync(dir)) {
@@ -138,6 +175,26 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
             }
             catch (error) {
                 logError(`Failed to watch directory ${dir}:`, error);
+            }
+        }
+        // Watch external skill directories (don't create them if missing)
+        for (const dir of externalDirs) {
+            if (!fs.existsSync(dir)) {
+                continue;
+            }
+            try {
+                const watcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
+                    log(`External skill ${eventType}: ${filename} in ${path.basename(dir)}`);
+                    scheduleSyncManifests();
+                });
+                watcher.on("error", (error) => {
+                    logError(`Watcher error for external ${dir}:`, error);
+                });
+                watchers.push(watcher);
+                log(`Watching external skills: ${dir}`);
+            }
+            catch (error) {
+                logError(`Failed to watch external directory ${dir}:`, error);
             }
         }
     };

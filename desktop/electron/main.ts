@@ -18,6 +18,7 @@ import { initSelectedTextProcess, cleanupSelectedTextProcess } from './selected-
 import {
   createModifierOverlay,
   showModifierOverlay,
+  showModifierOverlayPreemptive,
   hideModifierOverlay,
   destroyModifierOverlay,
 } from './modifier-overlay.js'
@@ -336,8 +337,6 @@ const createMiniWindow = () => {
     frame: false,
     transparent: true,
     hasShadow: false,
-    vibrancy: 'under-window',
-    visualEffectState: 'active',
     skipTaskbar: true,
     show: false,
     backgroundColor: '#00000000',
@@ -704,12 +703,28 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
 // Initialize mouse hook
 const initMouseHook = () => {
   mouseHook = new MouseHookManager({
-    onModifierDown: () => {},
+    onModifierDown: () => {
+      if (process.platform === 'darwin') {
+        // On macOS, show the overlay preemptively when Cmd is pressed.
+        // macOS fires the context menu at the OS level on right-click before
+        // any window can intercept it. By placing the overlay before the
+        // right-click happens, the overlay receives (and suppresses) the
+        // context menu event instead of the app underneath.
+        showModifierOverlayPreemptive()
+      }
+    },
     onModifierUp: () => {
       // Clear any unused context, but not if the mini shell is already showing
       // (the user selected a wedge and the context is in use)
       if (!isMiniShowing()) {
         setPendingChatContext(null)
+      }
+      if (process.platform === 'darwin') {
+        // Hide preemptive overlay when modifier is released (unless radial is
+        // active — onRadialHide will handle cleanup in that case).
+        if (!mouseHook?.isRadialActive()) {
+          hideModifierOverlay()
+        }
       }
     },
     onLeftClick: (x: number, y: number) => {
@@ -718,7 +733,8 @@ const initMouseHook = () => {
       if (win && win.getOpacity() > 0.01) {
         const bounds = win.getBounds()
         const display = screen.getDisplayNearestPoint({ x, y })
-        const scaleFactor = display.scaleFactor ?? 1
+        // On macOS uiohook coords are already logical; on Windows/Linux divide to convert.
+        const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
         const clickX = x / scaleFactor
         const clickY = y / scaleFactor
         
@@ -770,7 +786,8 @@ const initMouseHook = () => {
     },
     onMouseUp: (x: number, y: number) => {
       const display = screen.getDisplayNearestPoint({ x, y })
-      const scaleFactor = display.scaleFactor ?? 1
+      // On macOS uiohook coords are already logical; on Windows/Linux divide to convert.
+      const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
       const cursorX = x / scaleFactor
       const cursorY = y / scaleFactor
 

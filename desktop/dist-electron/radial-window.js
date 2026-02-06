@@ -5,6 +5,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
 const RADIAL_SIZE = 280; // Diameter of the radial dial
+// On macOS, uiohook (libuiohook / CGEventGetLocation) returns logical (point) coordinates.
+// On Windows/Linux, uiohook returns physical pixel coordinates.
+// Electron's setBounds/getBounds always use logical (DIP) coordinates.
+// So we only need to divide by scaleFactor on Windows/Linux.
+const isMac = process.platform === 'darwin';
 let radialWindow = null;
 // Cache the bounds/scale used when the radial is shown.
 // Using getBounds() during the first few ms after setBounds() can return stale values on some systems.
@@ -61,10 +66,10 @@ export const showRadialWindow = (x, y) => {
     // Get the display where the cursor is
     const cursorPoint = { x, y };
     const display = screen.getDisplayNearestPoint(cursorPoint);
-    const scaleFactor = display.scaleFactor ?? 1;
+    // On macOS uiohook coords are already logical; on Windows/Linux divide to convert.
+    const scaleFactor = isMac ? 1 : (display.scaleFactor ?? 1);
     radialScaleFactor = scaleFactor;
     // Position window centered on cursor
-    // Account for display scaling
     const adjustedX = Math.round(x / scaleFactor - RADIAL_SIZE / 2);
     const adjustedY = Math.round(y / scaleFactor - RADIAL_SIZE / 2);
     radialBounds = { x: adjustedX, y: adjustedY };
@@ -103,7 +108,7 @@ export const updateRadialCursor = (x, y) => {
         return;
     // Use cached bounds/scale from show time for stable math (especially right after setBounds()).
     const bounds = radialBounds ?? radialWindow.getBounds();
-    const scaleFactor = radialBounds ? radialScaleFactor : (screen.getDisplayNearestPoint({ x, y }).scaleFactor ?? 1);
+    const scaleFactor = radialBounds ? radialScaleFactor : (isMac ? 1 : (screen.getDisplayNearestPoint({ x, y }).scaleFactor ?? 1));
     const relativeX = x / scaleFactor - bounds.x;
     const relativeY = y / scaleFactor - bounds.y;
     radialWindow.webContents.send('radial:cursor', {

@@ -2,6 +2,20 @@ import { promises as fs } from "fs";
 import path from "path";
 import { parse as parseYaml } from "yaml";
 const FRONTMATTER_DELIM = "---";
+const readStellaYaml = async (skillDir) => {
+    const stellaYamlPath = path.join(skillDir, "stella.yaml");
+    try {
+        const content = await fs.readFile(stellaYamlPath, "utf-8");
+        const parsed = parseYaml(content);
+        if (parsed && typeof parsed === "object") {
+            return parsed;
+        }
+    }
+    catch {
+        // stella.yaml doesn't exist or is invalid
+    }
+    return null;
+};
 const normalizeStringArray = (value) => {
     if (!value)
         return [];
@@ -165,11 +179,23 @@ export const parseSkillMarkdown = async (filePath, source) => {
     if (!raw)
         return null;
     const { metadata, body } = extractFrontmatter(raw);
-    const id = (typeof metadata.id === "string" && metadata.id.trim()) || deriveIdFromPath(filePath);
-    const name = (typeof metadata.name === "string" && metadata.name.trim()) || id;
-    const description = (typeof metadata.description === "string" && metadata.description.trim()) ||
+    // Check for stella.yaml alongside SKILL.md (takes precedence over frontmatter)
+    const skillDir = path.dirname(filePath);
+    const stellaYaml = await readStellaYaml(skillDir);
+    // Merge stella.yaml with frontmatter (stella.yaml wins)
+    const id = (stellaYaml?.id && stellaYaml.id.trim()) ||
+        (typeof metadata.id === "string" && metadata.id.trim()) ||
+        deriveIdFromPath(filePath);
+    const name = (stellaYaml?.name && stellaYaml.name.trim()) ||
+        (typeof metadata.name === "string" && metadata.name.trim()) ||
+        id;
+    const description = (stellaYaml?.description && stellaYaml.description.trim()) ||
+        (typeof metadata.description === "string" && metadata.description.trim()) ||
         "Skill instructions.";
-    const agentTypes = normalizeStringArray(metadata.agentTypes);
+    // Prefer stella.yaml agentTypes if present
+    const agentTypes = stellaYaml?.agentTypes && stellaYaml.agentTypes.length > 0
+        ? stellaYaml.agentTypes
+        : normalizeStringArray(metadata.agentTypes);
     const toolsAllowlist = normalizeStringArray(metadata.toolsAllowlist);
     const tags = normalizeStringArray(metadata.tags);
     const requiresSecrets = normalizeStringArray(metadata.requiresSecrets);
