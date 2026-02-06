@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { embed as aiEmbed, generateText } from "ai";
 import { getModelConfig } from "./model";
+import { DISCOVERY_FACT_EXTRACTION_PROMPT } from "./prompts/discovery_facts";
 
 const memoryValidator = v.object({
   _id: v.id("memories"),
@@ -589,5 +590,76 @@ export const deleteMemory = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.delete(args.memoryId);
     return null;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Seed from Discovery (populate ephemeral memory from discovery signals)
+// ---------------------------------------------------------------------------
+
+export const seedFromDiscovery = internalAction({
+  args: {
+    ownerId: v.string(),
+    formattedSignals: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Extract facts using discovery-specific prompt
+    const response = await cheapLLM(DISCOVERY_FACT_EXTRACTION_PROMPT, args.formattedSignals);
+    const { facts, parseOk } = parseFactResponse(response);
+
+    if (!parseOk || facts.length === 0) {
+      console.log("[memory] seedFromDiscovery: no facts extracted", { parseOk, factCount: facts.length });
+      return;
+    }
+
+    console.log(`[memory] seedFromDiscovery: extracted ${facts.length} facts, inserting...`);
+
+    for (const fact of facts) {
+      try {
+        // Check for existing memories in the same category/subcategory
+        const existing = await ctx.runQuery(internal.memory.getExistingMemories, {
+          ownerId: args.ownerId,
+          category: fact.category,
+          subcategory: fact.subcategory,
+        });
+
+        if (existing.length > 0) {
+          // Dedup against existing memories
+          const existingList = existing.map((m: Doc<"memories">, i: number) => `[${i}] ${m.content}`).join("\n");
+          const dedupInput = `New fact:\n${fact.content}\n\nExisting memories:\n${existingList}`;
+          const dedupResult = await cheapLLM(DEDUP_PROMPT, dedupInput);
+
+          try {
+            const parsed = JSON.parse(dedupResult.trim());
+            if (parsed.action === "SKIP") continue;
+            if (parsed.action === "MERGE" && parsed.content && existing[parsed.mergeTargetIndex]) {
+              const vec = await embed(parsed.content);
+              await ctx.runMutation(internal.memory.mergeMemory, {
+                memoryId: existing[parsed.mergeTargetIndex]._id,
+                content: parsed.content,
+                embedding: vec,
+              });
+              continue;
+            }
+          } catch {
+            // Fall through to insert on parse failure
+          }
+        }
+
+        // Insert new memory
+        const vec = await embed(fact.content);
+        await ctx.runMutation(internal.memory.insertMemory, {
+          ownerId: args.ownerId,
+          category: fact.category,
+          subcategory: fact.subcategory,
+          content: fact.content,
+          embedding: vec,
+        });
+      } catch (err) {
+        console.error(`[memory] seedFromDiscovery: error processing fact`, fact.category, fact.subcategory, err);
+      }
+    }
+
+    console.log("[memory] seedFromDiscovery: complete");
   },
 });

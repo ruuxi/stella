@@ -497,6 +497,64 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
+// Memory Seeding Endpoint (discovery → ephemeral memory)
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/seed-memories",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(request.headers.get("origin")),
+    });
+  }),
+});
+
+http.route({
+  path: "/api/seed-memories",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("origin");
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    try {
+      const body = (await request.json()) as { formattedSignals?: string };
+      if (!body?.formattedSignals) {
+        return withCors(
+          new Response("Missing formattedSignals", { status: 400 }),
+          origin,
+        );
+      }
+
+      // Schedule seeding as async action (non-blocking)
+      await ctx.scheduler.runAfter(0, internal.memory.seedFromDiscovery, {
+        ownerId: identity.subject,
+        formattedSignals: body.formattedSignals,
+      });
+
+      return withCors(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    } catch (error) {
+      console.error("[seed-memories] Error:", error);
+      return withCors(
+        new Response(`Seed failed: ${(error as Error).message}`, { status: 500 }),
+        origin,
+      );
+    }
+  }),
+});
+
+// ---------------------------------------------------------------------------
 // Skill Metadata Generation Endpoint
 // ---------------------------------------------------------------------------
 
