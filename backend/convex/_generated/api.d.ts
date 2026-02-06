@@ -36,6 +36,7 @@ import type * as plugins from "../plugins.js";
 import type * as preferences from "../preferences.js";
 import type * as prompt_builder from "../prompt_builder.js";
 import type * as prompts_browser from "../prompts/browser.js";
+import type * as prompts_discovery_facts from "../prompts/discovery_facts.js";
 import type * as prompts_explore from "../prompts/explore.js";
 import type * as prompts_general from "../prompts/general.js";
 import type * as prompts_index from "../prompts/index.js";
@@ -94,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   preferences: typeof preferences;
   prompt_builder: typeof prompt_builder;
   "prompts/browser": typeof prompts_browser;
+  "prompts/discovery_facts": typeof prompts_discovery_facts;
   "prompts/explore": typeof prompts_explore;
   "prompts/general": typeof prompts_general;
   "prompts/index": typeof prompts_index;
