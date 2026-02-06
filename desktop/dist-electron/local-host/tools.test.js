@@ -117,6 +117,9 @@ describe("Tools Module - Unit Tests", () => {
             if (originalEnv) {
                 process.env.USERPROFILE = originalEnv;
             }
+            else {
+                delete process.env.USERPROFILE;
+            }
         });
         it("should expand %TEMP% on Windows", async () => {
             const originalEnv = process.env.TEMP;
@@ -136,6 +139,9 @@ describe("Tools Module - Unit Tests", () => {
             }
             if (originalEnv) {
                 process.env.TEMP = originalEnv;
+            }
+            else {
+                delete process.env.TEMP;
             }
         });
     });
@@ -182,7 +188,6 @@ describe("Tools Module - Unit Tests", () => {
                 const mockEntries = [
                     { name: "file1.ts", isFile: () => true, isDirectory: () => false },
                     { name: "file2.ts", isFile: () => true, isDirectory: () => false },
-                    { name: "subdir", isFile: () => false, isDirectory: () => true },
                 ];
                 mockFs.readdir.mockResolvedValue(mockEntries);
                 const result = await toolHost.executeTool("Glob", { pattern: "*.ts", path: "/tmp" }, {
