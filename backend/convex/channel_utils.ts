@@ -14,6 +14,7 @@ type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
 const DM_POLICY_DEFAULT: DmPolicy = "pairing";
 const RATE_LIMIT_OWNER_ID = "__system_webhook_rate_limit__";
+const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 const getDmPolicyKey = (provider: string) => `${provider}_dm_policy`;
 const getDmAllowlistKey = (provider: string) => `${provider}_dm_allowlist`;
@@ -48,6 +49,15 @@ const parseStringList = (value: string | null | undefined): string[] => {
 const uniqueSorted = (values: string[]) => [...new Set(values)].sort();
 
 const rateLimitPrefKey = (scope: string, key: string) => `webhook_rate:${scope}:${key}`;
+
+const generateSecureLinkCode = (length = 6): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length]).join("");
+  }
+  throw new Error("Secure random generator unavailable for link code generation");
+};
 
 // ---------------------------------------------------------------------------
 // Internal Queries
@@ -176,6 +186,26 @@ export const createConnection = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const existing = await ctx.db
+      .query("channel_connections")
+      .withIndex("by_owner_provider_external", (q) =>
+        q
+          .eq("ownerId", args.ownerId)
+          .eq("provider", args.provider)
+          .eq("externalUserId", args.externalUserId),
+      )
+      .first();
+
+    if (existing) {
+      if (args.displayName && args.displayName !== existing.displayName) {
+        await ctx.db.patch(existing._id, {
+          displayName: args.displayName,
+          updatedAt: now,
+        });
+      }
+      return existing._id;
+    }
+
     return await ctx.db.insert("channel_connections", {
       ownerId: args.ownerId,
       provider: args.provider,
@@ -371,7 +401,7 @@ export const generateLinkCode = mutation({
   args: { provider: v.string() },
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const code = generateSecureLinkCode(6);
 
     await ctx.runMutation(internal.channel_utils.storeLinkCode, {
       ownerId,
