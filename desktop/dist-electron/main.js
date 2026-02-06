@@ -910,12 +910,37 @@ app.whenReady().then(async () => {
             return { ok: false, error: error.message };
         }
     });
-    // Comprehensive user signal collection
-    ipcMain.handle('signals:collectAll', async () => {
+    // Comprehensive user signal collection (with category support)
+    ipcMain.handle('signals:collectAll', async (_event, options) => {
         if (!StellaHomePath) {
             return { data: null, formatted: null, error: 'Stella home not initialized' };
         }
-        return collectAllSignals(StellaHomePath);
+        const categories = options?.categories;
+        return collectAllSignals(StellaHomePath, categories);
+    });
+    // Identity map for depseudonymization
+    ipcMain.handle('identity:getMap', async () => {
+        if (!StellaHomePath)
+            return { version: 1, mappings: [] };
+        const { loadIdentityMap } = await import('./local-host/identity_map.js');
+        return loadIdentityMap(StellaHomePath);
+    });
+    ipcMain.handle('identity:depseudonymize', async (_event, text) => {
+        if (!StellaHomePath || !text)
+            return text;
+        const { loadIdentityMap, depseudonymize } = await import('./local-host/identity_map.js');
+        const map = await loadIdentityMap(StellaHomePath);
+        if (map.mappings.length === 0)
+            return text;
+        return depseudonymize(text, map);
+    });
+    // Open Full Disk Access in System Preferences (macOS)
+    ipcMain.on('system:openFullDiskAccess', () => {
+        if (process.platform === 'darwin') {
+            import('child_process').then(({ exec: execCmd }) => {
+                execCmd('open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"');
+            });
+        }
     });
     ipcMain.handle('screenshot:capture', async (_event, point) => {
         const display = getDisplayForPoint(point);
