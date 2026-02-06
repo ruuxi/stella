@@ -45,6 +45,7 @@ import type * as prompts_orchestrator from "../prompts/orchestrator.js";
 import type * as prompts_self_mod from "../prompts/self_mod.js";
 import type * as prompts_skill_metadata from "../prompts/skill_metadata.js";
 import type * as prompts_synthesis from "../prompts/synthesis.js";
+import type * as retry_fetch from "../retry_fetch.js";
 import type * as secrets from "../secrets.js";
 import type * as secrets_crypto from "../secrets_crypto.js";
 import type * as signal from "../signal.js";
@@ -104,6 +105,7 @@ declare const fullApi: ApiFromModules<{
   "prompts/self_mod": typeof prompts_self_mod;
   "prompts/skill_metadata": typeof prompts_skill_metadata;
   "prompts/synthesis": typeof prompts_synthesis;
+  retry_fetch: typeof retry_fetch;
   secrets: typeof secrets;
   secrets_crypto: typeof secrets_crypto;
   signal: typeof signal;
