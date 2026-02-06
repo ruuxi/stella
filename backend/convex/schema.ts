@@ -166,7 +166,8 @@ export default defineSchema({
     value: v.string(),
     updatedAt: v.number(),
   })
-    .index("by_owner_key", ["ownerId", "key"]),
+    .index("by_owner_key", ["ownerId", "key"])
+    .index("by_key", ["key"]),
   tasks: defineTable({
     conversationId: v.id("conversations"),
     parentTaskId: v.optional(v.id("tasks")),
@@ -243,12 +244,14 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_provider_external", ["provider", "externalUserId"])
-    .index("by_owner_provider", ["ownerId", "provider"]),
+    .index("by_owner_provider", ["ownerId", "provider"])
+    .index("by_owner_provider_external", ["ownerId", "provider", "externalUserId"]),
   bridge_sessions: defineTable({
     ownerId: v.string(),
     provider: v.string(),
     spriteName: v.string(),
     status: v.string(),
+    webhookSecret: v.string(),
     authState: v.optional(v.any()),
     errorMessage: v.optional(v.string()),
     lastHeartbeatAt: v.optional(v.number()),

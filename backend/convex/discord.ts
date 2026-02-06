@@ -132,6 +132,18 @@ export const handleLinkCommand = internalAction({
         args.interactionToken,
         "Your Discord account is already linked to Stella!",
       );
+    } else if (result === "linking_disabled") {
+      await editInteractionResponse(
+        args.applicationId,
+        args.interactionToken,
+        "Discord linking is currently disabled.",
+      );
+    } else if (result === "not_allowed") {
+      await editInteractionResponse(
+        args.applicationId,
+        args.interactionToken,
+        "This Discord account is not allowed to link.",
+      );
     } else {
       await editInteractionResponse(
         args.applicationId,

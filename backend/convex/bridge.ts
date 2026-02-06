@@ -10,7 +10,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
 import { processIncomingMessage } from "./channel_utils";
-import { spritesApi, spritesApiText, spritesExec } from "./cloud_devices";
+import { spritesApi, spritesApiText, spritesExecChecked } from "./cloud_devices";
 
 // ---------------------------------------------------------------------------
 // Bridge service code templates
@@ -26,6 +26,13 @@ function getBridgeDependencies(provider: string): string {
   if (provider === "whatsapp") return "@whiskeysockets/baileys qrcode-terminal pino";
   if (provider === "signal") return ""; // signal-cli is a standalone binary
   return "";
+}
+
+function generateBridgeWebhookSecret(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${crypto.randomUUID()}-${crypto.randomUUID()}`;
+  }
+  return `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +71,7 @@ export const createBridgeSession = internalMutation({
       provider: args.provider,
       spriteName: args.spriteName,
       status: "initializing",
+      webhookSecret: generateBridgeWebhookSecret(),
       createdAt: now,
       updatedAt: now,
     });
@@ -127,46 +135,68 @@ export const deployBridge = internalAction({
   handler: async (ctx, args) => {
     try {
       // 1. Create bridge directory
-      await spritesExec(args.spriteName, "mkdir -p /home/sprite/stella-bridge");
+      await spritesExecChecked(
+        args.spriteName,
+        "mkdir -p /home/sprite/stella-bridge",
+        "Bridge directory creation",
+      );
 
       // 2. Write bridge service code
       const bridgeCode = getBridgeServiceCode(args.provider);
       const encodedCode = Buffer.from(bridgeCode).toString("base64");
-      await spritesExec(
+      await spritesExecChecked(
         args.spriteName,
         `echo '${encodedCode}' | base64 -d > /home/sprite/stella-bridge/bridge.js`,
+        "Bridge code write",
       );
 
       // 3. Write config
+      const bridgeSession = await ctx.runQuery(internal.bridge.getBridgeSession, {
+        ownerId: args.ownerId,
+        provider: args.provider,
+      });
+      if (!bridgeSession) {
+        throw new Error(`Missing bridge session for ${args.ownerId}/${args.provider}`);
+      }
+      const webhookSecret = bridgeSession.webhookSecret;
+      if (!webhookSecret) {
+        throw new Error("Missing bridge webhook secret");
+      }
+
       const config = {
         provider: args.provider,
         webhookUrl: `${process.env.CONVEX_SITE_URL}/api/webhooks/bridge`,
-        webhookSecret: process.env.BRIDGE_WEBHOOK_SECRET,
+        webhookSecret,
         ownerId: args.ownerId,
       };
       const encodedConfig = Buffer.from(JSON.stringify(config)).toString("base64");
-      await spritesExec(
+      await spritesExecChecked(
         args.spriteName,
         `echo '${encodedConfig}' | base64 -d > /home/sprite/stella-bridge/config.json`,
+        "Bridge config write",
       );
 
       // 4. Install dependencies
       const deps = getBridgeDependencies(args.provider);
       if (deps) {
-        await spritesExec(
+        await spritesExecChecked(
           args.spriteName,
           `cd /home/sprite/stella-bridge && npm install ${deps} 2>&1`,
+          "Bridge dependency install",
         );
       }
 
       // 5. Signal-specific: install signal-cli
       if (args.provider === "signal") {
-        await spritesExec(
+        await spritesExecChecked(
           args.spriteName,
-          `if ! command -v signal-cli &> /dev/null; then ` +
+          `if ! command -v java >/dev/null 2>&1 || ! command -v signal-cli >/dev/null 2>&1; then ` +
+            `apt-get update -qq && apt-get install -y -qq curl openjdk-21-jre-headless > /dev/null 2>&1; fi && ` +
+            `if ! command -v signal-cli >/dev/null 2>&1; then ` +
             `cd /tmp && curl -sLO https://github.com/AsamK/signal-cli/releases/download/v0.13.12/signal-cli-0.13.12-Linux.tar.gz && ` +
-            `tar xf signal-cli-*.tar.gz && mv signal-cli-*/bin/signal-cli /usr/local/bin/ && ` +
+            `tar xf signal-cli-*.tar.gz && mkdir -p /usr/local/lib/signal-cli && mv signal-cli-*/bin/signal-cli /usr/local/bin/ && ` +
             `mv signal-cli-*/lib /usr/local/lib/signal-cli && rm -rf /tmp/signal-cli*; fi`,
+          "Signal runtime install",
         );
       }
 
@@ -339,8 +369,12 @@ export const handleAuthUpdate = internalAction({
 
       if (externalId) {
         const existing = await ctx.runQuery(
-          internal.channel_utils.getConnectionByProviderAndExternalId,
-          { provider: args.provider, externalUserId: externalId },
+          internal.channel_utils.getConnectionByOwnerProviderAndExternalId,
+          {
+            ownerId: args.ownerId,
+            provider: args.provider,
+            externalUserId: externalId,
+          },
         );
         if (!existing) {
           await ctx.runMutation(internal.channel_utils.createConnection, {
@@ -365,8 +399,30 @@ export const handleBridgeMessage = internalAction({
     displayName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!args.externalUserId || !args.text.trim()) return;
+
+    // Bridge providers receive sender IDs that are not pre-linked via code.
+    // Ensure owner-scoped routing exists for this sender before processing.
+    const existing = await ctx.runQuery(
+      internal.channel_utils.getConnectionByOwnerProviderAndExternalId,
+      {
+        ownerId: args.ownerId,
+        provider: args.provider,
+        externalUserId: args.externalUserId,
+      },
+    );
+    if (!existing) {
+      await ctx.runMutation(internal.channel_utils.createConnection, {
+        ownerId: args.ownerId,
+        provider: args.provider,
+        externalUserId: args.externalUserId,
+        displayName: args.displayName,
+      });
+    }
+
     const result = await processIncomingMessage({
       ctx,
+      ownerId: args.ownerId,
       provider: args.provider,
       externalUserId: args.externalUserId,
       text: args.text,
@@ -393,9 +449,10 @@ export const handleBridgeMessage = internalAction({
         text: result.text,
       });
       const escapedPayload = payload.replace(/'/g, "'\\''");
-      await spritesExec(
+      await spritesExecChecked(
         session.spriteName,
-        `curl -s -X POST http://localhost:8080/reply -H 'Content-Type: application/json' -d '${escapedPayload}'`,
+        `curl -fsS -X POST http://localhost:8080/reply -H 'Content-Type: application/json' -d '${escapedPayload}'`,
+        `${args.provider} reply delivery`,
       );
     } catch (error) {
       console.error(`[bridge] Failed to deliver reply for ${args.provider}:`, error);
@@ -500,7 +557,17 @@ async function startWhatsApp() {
   sock.ev.on("messages.upsert", async ({ messages }) => {
     for (const msg of messages) {
       if (msg.key.fromMe) continue;
-      const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+      const message = msg.message || {};
+      const text =
+        message.conversation ||
+        message.extendedTextMessage?.text ||
+        message.imageMessage?.caption ||
+        message.videoMessage?.caption ||
+        message.documentMessage?.caption ||
+        (message.imageMessage ? "[Image message]" : "") ||
+        (message.videoMessage ? "[Video message]" : "") ||
+        (message.documentMessage ? "[Document message]" : "") ||
+        (message.audioMessage ? "[Audio message]" : "");
       if (!text) continue;
 
       const from = msg.key.remoteJid;
@@ -582,6 +649,7 @@ async function postWebhook(body) {
 }
 
 const SIGNAL_DATA = "/home/sprite/stella-bridge/signal-data";
+const SIGNAL_RPC_URL = "http://127.0.0.1:8081/api/v1/rpc";
 
 async function linkSignal() {
   return new Promise((resolve, reject) => {
@@ -594,8 +662,9 @@ async function linkSignal() {
 
     proc.stdout.on("data", (data) => {
       const line = data.toString().trim();
-      if (line.startsWith("tsdevice:")) {
-        linkUri = line;
+      const match = line.match(/tsdevice:[^\\s]+/);
+      if (match) {
+        linkUri = match[0];
         postWebhook({
           type: "auth_update",
           status: "awaiting_auth",
@@ -618,10 +687,61 @@ async function linkSignal() {
   });
 }
 
+function extractAccountId(output) {
+  const lines = output
+    .split(/\\r?\\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const phone = line.match(/\\+\\d{6,15}/);
+    if (phone) return phone[0];
+
+    const uuid = line.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuid) return \`uuid:\${uuid[0]}\`;
+
+    if (!line.includes(" ")) return line;
+  }
+
+  return "";
+}
+
+async function getLinkedAccountId() {
+  return new Promise((resolve) => {
+    const proc = spawn("signal-cli", [
+      "--config", SIGNAL_DATA,
+      "listAccounts",
+    ]);
+
+    let out = "";
+    proc.stdout.on("data", (data) => {
+      out += data.toString();
+    });
+
+    proc.on("error", () => resolve(""));
+    proc.on("close", () => resolve(extractAccountId(out)));
+  });
+}
+
+async function reportConnectedAndStart() {
+  const externalUserId = await getLinkedAccountId();
+  const authState = externalUserId
+    ? { externalUserId, phoneNumber: externalUserId }
+    : {};
+
+  await postWebhook({
+    type: "auth_update",
+    status: "connected",
+    authState,
+  });
+  startDaemon();
+}
+
 function startDaemon() {
   signalProcess = spawn("signal-cli", [
     "--config", SIGNAL_DATA,
     "daemon", "--json",
+    "--http", "127.0.0.1:8081",
   ]);
 
   let buffer = "";
@@ -662,6 +782,31 @@ function startDaemon() {
   });
 }
 
+async function sendSignalMessage(recipient, message) {
+  const res = await fetch(SIGNAL_RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "send",
+      params: {
+        recipient: [recipient],
+        message,
+      },
+      id: Date.now(),
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(\`Signal RPC send failed: HTTP \${res.status}\`);
+  }
+
+  const payload = await res.json().catch(() => null);
+  if (payload?.error) {
+    throw new Error(payload.error?.message || "Signal RPC send failed");
+  }
+}
+
 // HTTP server for receiving replies from Convex
 const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/reply") {
@@ -671,11 +816,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const data = JSON.parse(body);
         if (data.externalUserId && data.text) {
-          const send = spawn("signal-cli", [
-            "--config", SIGNAL_DATA,
-            "send", "-m", data.text, data.externalUserId,
-          ]);
-          send.on("close", () => {});
+          await sendSignalMessage(data.externalUserId, data.text);
         }
         res.writeHead(200);
         res.end("OK");
@@ -696,25 +837,22 @@ server.listen(8080, () => console.log("[bridge] Signal bridge listening on :8080
 // Heartbeat
 setInterval(() => postWebhook({ type: "heartbeat" }), 60000);
 
-// Check if already linked
-const fs = require("fs");
-const isLinked = fs.existsSync(SIGNAL_DATA + "/data");
+async function bootstrapSignal() {
+  const existingAccount = await getLinkedAccountId();
+  if (existingAccount) {
+    console.log("[bridge] Signal already linked, starting daemon...");
+    await reportConnectedAndStart();
+    return;
+  }
 
-if (isLinked) {
-  console.log("[bridge] Signal already linked, starting daemon...");
-  postWebhook({ type: "auth_update", status: "connected", authState: {} });
-  startDaemon();
-} else {
   console.log("[bridge] Signal not linked, starting link flow...");
-  linkSignal()
-    .then(() => {
-      console.log("[bridge] Signal linked successfully, starting daemon...");
-      postWebhook({ type: "auth_update", status: "connected", authState: {} });
-      startDaemon();
-    })
-    .catch((err) => {
-      console.error("[bridge] Signal link failed:", err);
-      postWebhook({ type: "error", error: err.message });
-    });
+  await linkSignal();
+  console.log("[bridge] Signal linked successfully, starting daemon...");
+  await reportConnectedAndStart();
 }
+
+bootstrapSignal().catch((err) => {
+  console.error("[bridge] Signal startup failed:", err);
+  postWebhook({ type: "error", error: err.message });
+});
 `.trim();

@@ -101,6 +101,25 @@ const withCors = (response: Response, origin: string | null) => {
   });
 };
 
+const WEBHOOK_RATE_WINDOW_MS = 60_000;
+
+const constantTimeEqual = (a: string, b: string): boolean => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+};
+
+const rateLimitResponse = (retryAfterMs: number) =>
+  new Response("Too Many Requests", {
+    status: 429,
+    headers: {
+      "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
+    },
+  });
+
 http.route({
   path: "/api/chat",
   method: "OPTIONS",
@@ -692,7 +711,7 @@ http.route({
     // Verify webhook secret
     const secret = request.headers.get("x-telegram-bot-api-secret-token");
     const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-    if (!expectedSecret || secret !== expectedSecret) {
+    if (!expectedSecret || !secret || !constantTimeEqual(secret, expectedSecret)) {
       return new Response("Unauthorized", { status: 401 });
     }
 
@@ -720,6 +739,17 @@ http.route({
     const telegramUserId = String(message.from.id);
     const text = message.text;
     const displayName = message.from.first_name ?? message.from.username ?? undefined;
+
+    const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+      scope: "telegram",
+      key: telegramUserId,
+      limit: 30,
+      windowMs: WEBHOOK_RATE_WINDOW_MS,
+      blockMs: WEBHOOK_RATE_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterMs);
+    }
 
     if (text.startsWith("/start")) {
       const codeArg = text.slice("/start".length).trim() || undefined;
@@ -840,6 +870,17 @@ http.route({
       if (commandName === "link") {
         const codeArg = options.find((o) => o.name === "code")?.value ?? "";
 
+        const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+          scope: "discord",
+          key: `${discordUserId}:link`,
+          limit: 30,
+          windowMs: WEBHOOK_RATE_WINDOW_MS,
+          blockMs: WEBHOOK_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return rateLimitResponse(rateLimit.retryAfterMs);
+        }
+
         // Defer response (shows "thinking...")
         // Schedule the actual work as an internal action
         await ctx.scheduler.runAfter(0, internal.discord.handleLinkCommand, {
@@ -867,6 +908,17 @@ http.route({
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
+        }
+
+        const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+          scope: "discord",
+          key: `${discordUserId}:ask`,
+          limit: 20,
+          windowMs: WEBHOOK_RATE_WINDOW_MS,
+          blockMs: WEBHOOK_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return rateLimitResponse(rateLimit.retryAfterMs);
         }
 
         // Defer response and process async
@@ -922,7 +974,23 @@ http.route({
       return new Response("Unauthorized", { status: 401 });
     }
 
-    const payload = JSON.parse(rawBody);
+    let payload: {
+      type?: string;
+      challenge?: string;
+      event?: {
+        type?: string;
+        bot_id?: string;
+        channel_type?: string;
+        text?: string;
+        user?: string;
+        channel?: string;
+      };
+    };
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
 
     // Handle URL verification challenge (Slack setup requirement)
     if (payload.type === "url_verification") {
@@ -941,6 +1009,20 @@ http.route({
         const text = (event.text ?? "").trim();
         const slackUserId = event.user;
         const channelId = event.channel;
+        if (!slackUserId || !channelId) {
+          return new Response("OK", { status: 200 });
+        }
+
+        const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+          scope: "slack",
+          key: slackUserId,
+          limit: 30,
+          windowMs: WEBHOOK_RATE_WINDOW_MS,
+          blockMs: WEBHOOK_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return rateLimitResponse(rateLimit.retryAfterMs);
+        }
 
         if (text.toLowerCase().startsWith("link ")) {
           await ctx.scheduler.runAfter(0, internal.slack.handleLinkCommand, {
@@ -1004,6 +1086,17 @@ http.route({
       const googleUserId = senderName.startsWith("users/") ? senderName.slice(6) : senderName;
       const displayName = event.message?.sender?.displayName;
       const spaceName = event.space?.name ?? "";
+
+      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        scope: "google_chat",
+        key: googleUserId || "unknown",
+        limit: 30,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
+      });
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
 
       if (text.toLowerCase().startsWith("link ")) {
         await ctx.scheduler.runAfter(0, internal.google_chat.handleLinkCommand, {
@@ -1071,6 +1164,17 @@ http.route({
       const serviceUrl = activity.serviceUrl ?? "";
       const conversationId = activity.conversation?.id ?? "";
 
+      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        scope: "teams",
+        key: teamsUserId || "unknown",
+        limit: 30,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
+      });
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
+
       if (text.toLowerCase().startsWith("link ")) {
         await ctx.scheduler.runAfter(0, internal.teams.handleLinkCommand, {
           serviceUrl,
@@ -1105,16 +1209,12 @@ http.route({
   path: "/api/webhooks/bridge",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = request.headers.get("x-bridge-secret");
-    const expectedSecret = process.env.BRIDGE_WEBHOOK_SECRET;
-    if (!expectedSecret || secret !== expectedSecret) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+    const secret = request.headers.get("x-bridge-secret") ?? "";
 
     let payload: {
       type: string;
-      provider: string;
-      ownerId: string;
+      provider?: string;
+      ownerId?: string;
       externalUserId?: string;
       text?: string;
       displayName?: string;
@@ -1129,12 +1229,46 @@ http.route({
       return new Response("Invalid JSON", { status: 400 });
     }
 
+    if (!payload.ownerId || !payload.provider) {
+      return new Response("Invalid payload", { status: 400 });
+    }
+
+    const session = await ctx.runQuery(internal.bridge.getBridgeSession, {
+      ownerId: payload.ownerId,
+      provider: payload.provider,
+    });
+    if (!session || !constantTimeEqual(secret, session.webhookSecret)) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
     if (payload.type === "heartbeat") {
+      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        scope: "bridge",
+        key: `${payload.ownerId}:${payload.provider}:heartbeat`,
+        limit: 120,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
+      });
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
+
       await ctx.scheduler.runAfter(0, internal.bridge.handleHeartbeat, {
         ownerId: payload.ownerId,
         provider: payload.provider,
       });
     } else if (payload.type === "auth_update") {
+      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        scope: "bridge",
+        key: `${payload.ownerId}:${payload.provider}:auth`,
+        limit: 30,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
+      });
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
+
       await ctx.scheduler.runAfter(0, internal.bridge.handleAuthUpdate, {
         ownerId: payload.ownerId,
         provider: payload.provider,
@@ -1142,6 +1276,17 @@ http.route({
         status: payload.status ?? "awaiting_auth",
       });
     } else if (payload.type === "message") {
+      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        scope: "bridge",
+        key: `${payload.ownerId}:${payload.provider}:${payload.externalUserId ?? "unknown"}`,
+        limit: 40,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
+      });
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
+
       await ctx.scheduler.runAfter(0, internal.bridge.handleBridgeMessage, {
         provider: payload.provider,
         ownerId: payload.ownerId,
@@ -1150,6 +1295,17 @@ http.route({
         displayName: payload.displayName,
       });
     } else if (payload.type === "error") {
+      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        scope: "bridge",
+        key: `${payload.ownerId}:${payload.provider}:error`,
+        limit: 20,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
+      });
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
+
       await ctx.scheduler.runAfter(0, internal.bridge.handleBridgeError, {
         ownerId: payload.ownerId,
         provider: payload.provider,
