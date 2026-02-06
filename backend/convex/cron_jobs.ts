@@ -514,6 +514,12 @@ export const execute = internalAction({
         (await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
           conversationId,
         })) ?? undefined;
+
+      // Cloud device fallback: if no local device, check for a Sprites cloud device
+      const spriteName = !targetDeviceId
+        ? await ctx.runQuery(internal.cloud_devices.resolveForOwner, { ownerId: job.ownerId })
+        : undefined;
+
       const includeHistory =
         job.sessionTarget === "main" ||
         (payloadResolved.kind === "agentTurn" && payloadResolved.includeHistory === true);
@@ -526,6 +532,7 @@ export const execute = internalAction({
         agentType,
         ownerId: job.ownerId,
         targetDeviceId: targetDeviceId ?? undefined,
+        spriteName: spriteName ?? undefined,
         includeHistory,
       });
       outputText = (result.text ?? "").trim();

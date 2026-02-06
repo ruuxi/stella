@@ -8,7 +8,8 @@ import {
 } from "../device_tools";
 import { jsonSchemaToZod } from "../plugins";
 import { createBackendTools } from "./backend";
-import { createOrchestrationTools } from "./orchestration";
+import { createCloudTools } from "./cloud";
+import { createOrchestrationTools, createOrchestrationToolsWithoutDevice } from "./orchestration";
 import { BASE_TOOL_NAMES, type PluginToolDescriptor, type ToolOptions } from "./types";
 
 export { BASE_TOOL_NAMES, type PluginToolDescriptor, type ToolOptions } from "./types";
@@ -28,31 +29,45 @@ const filterTools = (
 
 export const createTools = (
   ctx: ActionCtx,
-  context: DeviceToolContext,
-  options: ToolOptions,
+  context: DeviceToolContext | undefined,
+  options: ToolOptions & { spriteName?: string },
 ): ToolSet => {
-  const coreTools = createCoreDeviceTools(ctx, context);
-  const backendTools = createBackendTools(ctx, options);
-  const orchestrationTools = createOrchestrationTools(ctx, context, options);
+  // Tier 2: Local device tools (if Electron app running)
+  const coreTools = context ? createCoreDeviceTools(ctx, context) : {};
 
-  // Build plugin tools dynamically from descriptors
-  const pluginToolEntries = options.pluginTools.map((descriptor) => {
-    // Sanitize tool name for AI provider compatibility (no dots allowed)
-    const sanitizedName = sanitizeToolName(descriptor.name);
-    return [
-      sanitizedName,
-      tool({
-        description: descriptor.description,
-        inputSchema: jsonSchemaToZod(descriptor.inputSchema),
-        // Use original name for device dispatch
-        execute: (args) => executeDeviceTool(ctx, context, descriptor.name, args),
-      }),
-    ] as const;
-  });
-  const pluginTools = Object.fromEntries(pluginToolEntries);
+  // Tier 1: Cloud tools (if 24/7 mode enabled and no local device)
+  const cloudTools = !context && options.spriteName
+    ? createCloudTools(options.spriteName)
+    : {};
+
+  // Tier 0: Backend tools (always available)
+  const backendTools = createBackendTools(ctx, options);
+
+  // Orchestration tools (MemorySearch always works; Task/AgentInvoke need device context)
+  const orchestrationTools = context
+    ? createOrchestrationTools(ctx, context, options)
+    : createOrchestrationToolsWithoutDevice(ctx, options);
+
+  // Build plugin tools dynamically from descriptors (require device context)
+  const pluginTools = context
+    ? Object.fromEntries(
+        options.pluginTools.map((descriptor) => {
+          const sanitizedName = sanitizeToolName(descriptor.name);
+          return [
+            sanitizedName,
+            tool({
+              description: descriptor.description,
+              inputSchema: jsonSchemaToZod(descriptor.inputSchema),
+              execute: (args) => executeDeviceTool(ctx, context, descriptor.name, args),
+            }),
+          ] as const;
+        }),
+      )
+    : {};
 
   const allTools: ToolSet = {
     ...coreTools,
+    ...cloudTools,
     ...backendTools,
     ...pluginTools,
     ...orchestrationTools,

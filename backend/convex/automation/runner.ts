@@ -22,6 +22,7 @@ type RunAgentTurnArgs = {
   agentType: string;
   ownerId?: string;
   targetDeviceId?: string;
+  spriteName?: string;
   includeHistory?: boolean;
   historyLimit?: number;
 };
@@ -33,6 +34,7 @@ export async function runAgentTurn({
   agentType,
   ownerId,
   targetDeviceId,
+  spriteName,
   includeHistory = true,
   historyLimit = 80,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
@@ -56,24 +58,25 @@ export async function runAgentTurn({
     inputSchema: Record<string, unknown>;
   }>;
 
-  const tools = targetDeviceId
-    ? createTools(
-        ctx,
-        {
+  const tools = createTools(
+    ctx,
+    targetDeviceId
+      ? {
           conversationId,
           targetDeviceId,
           agentType,
           sourceDeviceId: targetDeviceId,
-        },
-        {
-          agentType,
-          toolsAllowlist: promptBuild.toolsAllowlist,
-          maxTaskDepth: promptBuild.maxTaskDepth,
-          pluginTools,
-          ownerId: resolvedOwnerId,
-        },
-      )
-    : undefined;
+        }
+      : undefined,
+    {
+      agentType,
+      toolsAllowlist: promptBuild.toolsAllowlist,
+      maxTaskDepth: promptBuild.maxTaskDepth,
+      pluginTools,
+      ownerId: resolvedOwnerId,
+      spriteName,
+    },
+  );
 
   const historyEvents =
     includeHistory && historyLimit > 0

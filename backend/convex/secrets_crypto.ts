@@ -47,16 +47,16 @@ const getKeyVersion = () => {
 };
 
 const importAesKey = (bytes: Uint8Array) =>
-  crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+  crypto.subtle.importKey("raw", bytes.buffer as ArrayBuffer, "AES-GCM", false, ["encrypt", "decrypt"]);
 
 const randomNonce = () => crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
 
 const encryptWithKey = async (key: CryptoKey, plaintext: Uint8Array) => {
   const nonce = randomNonce();
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: nonce },
+    { name: "AES-GCM", iv: nonce.buffer as ArrayBuffer },
     key,
-    plaintext,
+    plaintext.buffer as ArrayBuffer,
   );
   return {
     nonce: bytesToBase64(nonce),
@@ -71,9 +71,9 @@ const decryptWithKey = async (
   const nonce = base64ToBytes(payload.nonce);
   const ciphertext = base64ToBytes(payload.ciphertext);
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: nonce },
+    { name: "AES-GCM", iv: nonce.buffer as ArrayBuffer },
     key,
-    ciphertext,
+    ciphertext.buffer as ArrayBuffer,
   );
   return new Uint8Array(plaintext);
 };

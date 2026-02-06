@@ -15,6 +15,7 @@ import {
   SKILL_METADATA_PROMPT,
   buildSkillMetadataUserMessage,
 } from "./prompts/index";
+import { verifyDiscordSignature } from "./discord";
 
 type ChatRequest = {
   conversationId: string;
@@ -155,13 +156,7 @@ http.route({
       return withCors(new Response("Conversation mismatch", { status: 400 }), origin);
     }
 
-    const targetDeviceId = userEvent.deviceId;
-    if (!targetDeviceId) {
-      return withCors(
-        new Response("User message is missing deviceId", { status: 400 }),
-        origin,
-      );
-    }
+    const targetDeviceId = userEvent.deviceId ?? undefined;
 
     const userPayload =
       userEvent.payload && typeof userEvent.payload === "object"
@@ -273,13 +268,15 @@ http.route({
       system: systemPrompt,
       tools: createTools(
         ctx,
-        {
-          conversationId,
-          userMessageId,
-          targetDeviceId,
-          agentType,
-          sourceDeviceId: userEvent.deviceId,
-        },
+        targetDeviceId
+          ? {
+              conversationId,
+              userMessageId,
+              targetDeviceId,
+              agentType,
+              sourceDeviceId: userEvent.deviceId,
+            }
+          : undefined,
         {
           agentType,
           toolsAllowlist: promptBuild.toolsAllowlist,
@@ -620,6 +617,224 @@ http.route({
         origin,
       );
     }
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Telegram Webhook
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/webhooks/telegram",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    // Verify webhook secret
+    const secret = request.headers.get("x-telegram-bot-api-secret-token");
+    const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (!expectedSecret || secret !== expectedSecret) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    let update: {
+      message?: {
+        chat?: { id?: number };
+        from?: { id?: number; first_name?: string; username?: string };
+        text?: string;
+        message_id?: number;
+      };
+    };
+    try {
+      update = await request.json();
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    const message = update.message;
+    if (!message?.text || !message.chat?.id || !message.from?.id) {
+      // Ignore non-text messages (photos, stickers, etc.)
+      return new Response("OK", { status: 200 });
+    }
+
+    const chatId = String(message.chat.id);
+    const telegramUserId = String(message.from.id);
+    const text = message.text;
+    const displayName = message.from.first_name ?? message.from.username ?? undefined;
+
+    if (text.startsWith("/start")) {
+      const codeArg = text.slice("/start".length).trim() || undefined;
+      await ctx.scheduler.runAfter(0, internal.telegram.handleStartCommand, {
+        chatId,
+        telegramUserId,
+        codeArg,
+        displayName,
+      });
+    } else {
+      await ctx.scheduler.runAfter(0, internal.telegram.handleIncomingMessage, {
+        chatId,
+        telegramUserId,
+        text,
+        displayName,
+      });
+    }
+
+    // Return 200 immediately (non-blocking)
+    return new Response("OK", { status: 200 });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Discord Interactions Endpoint
+// ---------------------------------------------------------------------------
+
+// Discord interaction types
+const INTERACTION_PING = 1;
+const INTERACTION_APPLICATION_COMMAND = 2;
+
+// Discord interaction response types
+const RESPONSE_PONG = 1;
+const RESPONSE_CHANNEL_MESSAGE = 4;
+const RESPONSE_DEFERRED_CHANNEL_MESSAGE = 5;
+
+http.route({
+  path: "/api/discord/interactions",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const publicKey = process.env.DISCORD_PUBLIC_KEY;
+    if (!publicKey) {
+      console.error("[discord] Missing DISCORD_PUBLIC_KEY");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    // 1. Ed25519 signature verification
+    const signature = request.headers.get("x-signature-ed25519");
+    const timestamp = request.headers.get("x-signature-timestamp");
+    const rawBody = await request.text();
+
+    if (!signature || !timestamp) {
+      return new Response("Missing signature headers", { status: 401 });
+    }
+
+    const isValid = await verifyDiscordSignature(rawBody, signature, timestamp, publicKey);
+    if (!isValid) {
+      return new Response("Invalid signature", { status: 401 });
+    }
+
+    // 2. Parse the interaction
+    let interaction: {
+      type: number;
+      id: string;
+      token: string;
+      application_id: string;
+      data?: {
+        name?: string;
+        options?: Array<{ name: string; value: string }>;
+      };
+      user?: { id: string; username?: string; global_name?: string };
+      member?: { user?: { id: string; username?: string; global_name?: string } };
+    };
+    try {
+      interaction = JSON.parse(rawBody);
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    // 3. Handle PING (Discord verification check)
+    if (interaction.type === INTERACTION_PING) {
+      return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // 4. Handle slash commands
+    if (interaction.type === INTERACTION_APPLICATION_COMMAND) {
+      const commandName = interaction.data?.name;
+      const options = interaction.data?.options ?? [];
+      // User can be top-level (DM) or nested under member (guild)
+      const user = interaction.user ?? interaction.member?.user;
+      const discordUserId = user?.id ?? "";
+      const displayName = user?.global_name ?? user?.username ?? undefined;
+      const applicationId = interaction.application_id;
+      const interactionToken = interaction.token;
+
+      if (commandName === "status") {
+        // Status is fast enough to respond immediately
+        const connection = discordUserId
+          ? await ctx.runQuery(internal.discord.getConnectionByExternalId, {
+              provider: "discord",
+              externalUserId: discordUserId,
+            })
+          : null;
+
+        const statusText = connection
+          ? `Connected to Stella (linked ${new Date(connection.linkedAt).toLocaleDateString()}). Use \`/ask\` to chat.`
+          : "Not linked. Use `/link` with your 6-digit code from Stella Settings.";
+
+        return new Response(
+          JSON.stringify({ type: RESPONSE_CHANNEL_MESSAGE, data: { content: statusText } }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (commandName === "link") {
+        const codeArg = options.find((o) => o.name === "code")?.value ?? "";
+
+        // Defer response (shows "thinking...")
+        // Schedule the actual work as an internal action
+        await ctx.scheduler.runAfter(0, internal.discord.handleLinkCommand, {
+          applicationId,
+          interactionToken,
+          discordUserId,
+          codeArg,
+          displayName,
+        });
+
+        return new Response(
+          JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (commandName === "ask") {
+        const message = options.find((o) => o.name === "message")?.value ?? "";
+
+        if (!message.trim()) {
+          return new Response(
+            JSON.stringify({
+              type: RESPONSE_CHANNEL_MESSAGE,
+              data: { content: "Please provide a message. Usage: `/ask your question here`" },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        // Defer response and process async
+        await ctx.scheduler.runAfter(0, internal.discord.handleAskCommand, {
+          applicationId,
+          interactionToken,
+          discordUserId,
+          text: message,
+          displayName,
+        });
+
+        return new Response(
+          JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      // Unknown command
+      return new Response(
+        JSON.stringify({
+          type: RESPONSE_CHANNEL_MESSAGE,
+          data: { content: "Unknown command." },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Unhandled interaction type
+    return new Response("OK", { status: 200 });
   }),
 });
 
