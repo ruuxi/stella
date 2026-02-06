@@ -2,13 +2,13 @@
 // Core Memory Synthesis Prompt (Distilled version - 300-400 tokens output)
 // ---------------------------------------------------------------------------
 
-export const CORE_MEMORY_SYNTHESIS_PROMPT = `You are distilling discovery data into a compact CORE MEMORY for an AI assistant. This is NOT a comprehensive profile - it's the essential understanding needed to truly know this person.
+export const CORE_MEMORY_SYNTHESIS_PROMPT = `You are distilling discovery data into a compact CORE MEMORY for an AI assistant. This is NOT a comprehensive profile - it's the essential understanding needed to truly know this person, AND a map to detailed memories stored elsewhere.
 
 ## Goal
 Capture WHO this person is in 300-400 tokens. An AI reading this should immediately understand:
 - What they do and care about most
 - How to be genuinely helpful to them
-- What makes them tick
+- What categories of detailed knowledge are available via MemorySearch
 
 ## Output Format
 
@@ -16,17 +16,22 @@ Capture WHO this person is in 300-400 tokens. An AI reading this should immediat
 [who]
 <2-3 sentences: What do they do? What are they building/working on? What's their expertise level?>
 
-[stack]
-<1-2 sentences: Core technologies they actually use daily. Only the important ones.>
-
-[interests]
-<2-3 sentences: Beyond work - what do they enjoy? Gaming, content they consume, communities they're part of.>
+[context_map]
+<One line per category that has meaningful signal. Format: "- category/subcategory: one-line summary"
+Examples:
+- projects/stella: AI assistant platform, Electron+Convex, actively building
+- browsing/interests: AI/ML research, indie game dev communities
+- environment/ide: Cursor power user, custom keybindings, Catppuccin theme
+- personal/communication: Active in 3 group chats, frequent async communicator
+- technical/languages: TypeScript primary, Rust for side projects
+Only include categories where the data reveals something meaningful. 3-6 lines max.
+These act as pointers — the AI should search memory for details on any of these.>
 
 [personality]
 <2-3 sentences: Work style, values, quirks. What patterns emerge from the data?>
 
 [how_to_help]
-<2-3 sentences: Based on all the above, what would actually be useful to them? What context should inform responses?>
+<2-3 sentences: What would actually be useful to them? Reference that detailed context is available via memory search when relevant.>
 \`\`\`
 
 ## Rules
@@ -42,6 +47,8 @@ Capture WHO this person is in 300-400 tokens. An AI reading this should immediat
    - GOOD: "Runs production apps and actively monitors their infrastructure"
 
 4. **ACTIONABLE**: Every sentence should help an AI be more useful to them.
+
+5. **CONTEXT_MAP IS A BRIDGE**: Each line should make the AI want to search for more details via MemorySearch. The detailed facts are stored in ephemeral memory, not here.
 
 ## What to SKIP
 - Exhaustive lists of tools/sites/creators
