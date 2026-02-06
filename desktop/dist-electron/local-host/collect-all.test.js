@@ -183,7 +183,7 @@ describe("Collect All Signals", () => {
                     { name: "Cursor", executablePath: "/Applications/Cursor.app", source: "running" },
                 ],
             };
-            const result = formatAllSignalsForSynthesis(data);
+            const result = await formatAllSignalsForSynthesis(data, "/tmp/stella-test");
             expect(result).toContain("## Browser Data");
             expect(result).toContain("## Active Projects");
             expect(result).toContain("## Shell History");

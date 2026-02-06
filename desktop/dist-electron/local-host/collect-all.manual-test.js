@@ -171,7 +171,7 @@ const main = async () => {
     // ---------------------------------------------------------------------------
     console.log("📄 FORMATTED OUTPUT (for LLM synthesis)");
     console.log("─".repeat(40) + "\n");
-    const formatted = formatAllSignalsForSynthesis(data);
+    const formatted = await formatAllSignalsForSynthesis(data, testHome);
     console.log(formatted);
     console.log("\n" + "═".repeat(60) + "\n");
     // ---------------------------------------------------------------------------
