@@ -15,8 +15,6 @@ import type * as auth from "../auth.js";
 import type * as automation_index from "../automation/index.js";
 import type * as automation_runner from "../automation/runner.js";
 import type * as automation_utils from "../automation/utils.js";
-import type * as automation_runner from "../automation_runner.js";
-import type * as automation_utils from "../automation_utils.js";
 import type * as bridge from "../bridge.js";
 import type * as channel_utils from "../channel_utils.js";
 import type * as cloud_devices from "../cloud_devices.js";
@@ -75,8 +73,6 @@ declare const fullApi: ApiFromModules<{
   "automation/index": typeof automation_index;
   "automation/runner": typeof automation_runner;
   "automation/utils": typeof automation_utils;
-  automation_runner: typeof automation_runner;
-  automation_utils: typeof automation_utils;
   bridge: typeof bridge;
   channel_utils: typeof channel_utils;
   cloud_devices: typeof cloud_devices;
