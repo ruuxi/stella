@@ -818,6 +818,70 @@ export const createBackendTools = (
         }
       },
     }),
+    SelfModInstallBlueprint: tool({
+      description:
+        "Install a shared blueprint from the store. Fetches the blueprint and provides reference code and implementation notes for re-implementation.",
+      inputSchema: z.object({
+        package_id: z.string().min(1).describe("The store package ID to install"),
+      }),
+      execute: async (args) => {
+        const pkg = await ctx.runQuery(api.data.store_packages.getByPackageId, {
+          packageId: args.package_id,
+        });
+
+        if (!pkg) {
+          return `Blueprint not found: ${args.package_id}`;
+        }
+
+        if (!pkg.modPayload) {
+          return `Package "${pkg.name}" has no blueprint payload.`;
+        }
+
+        const blueprint = pkg.modPayload as {
+          format?: string;
+          name?: string;
+          description?: string;
+          implementation?: string;
+          referenceFiles?: Array<{
+            path: string;
+            action: string;
+            content: string;
+          }>;
+        };
+
+        const parts: string[] = [];
+        parts.push(`# Blueprint: ${blueprint.name ?? pkg.name}`);
+        parts.push("");
+        parts.push("## What it does");
+        parts.push(blueprint.description ?? pkg.description);
+        parts.push("");
+
+        if (blueprint.implementation) {
+          parts.push("## How it was implemented");
+          parts.push(blueprint.implementation);
+          parts.push("");
+        }
+
+        if (blueprint.referenceFiles && blueprint.referenceFiles.length > 0) {
+          parts.push(`## Reference files (${blueprint.referenceFiles.length})`);
+          parts.push("");
+          for (const file of blueprint.referenceFiles) {
+            parts.push(`### ${file.action.toUpperCase()}: ${file.path}`);
+            parts.push("```");
+            parts.push(file.content);
+            parts.push("```");
+            parts.push("");
+          }
+        }
+
+        parts.push("## Instructions");
+        parts.push("Re-implement this feature for the current codebase. Read the reference files to understand what was done, then use Write/Edit to implement it your way.");
+        parts.push("Use SelfModStart to create a feature, then SelfModApply when done.");
+        parts.push("You are NOT copying files — understand the blueprint's intent and adapt to the current codebase.");
+
+        return parts.join("\n");
+      },
+    }),
     GenerateApiSkill: tool({
       description:
         "Generate a reusable API skill from a discovered API map. Converts structured API discovery output into a persistent skill with endpoint documentation, auth configuration, and usage instructions.",

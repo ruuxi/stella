@@ -173,6 +173,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "SelfModRevert",
       "SelfModStatus",
       "SelfModPackage",
+      "SelfModInstallBlueprint",
     ],
     defaultSkills: [],
     maxTaskDepth: 2,

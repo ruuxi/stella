@@ -324,6 +324,7 @@ export default defineSchema({
     name: v.string(),
     author: v.string(),
     description: v.string(),
+    implementation: v.optional(v.string()),
     type: v.union(
       v.literal("skill"),
       v.literal("canvas"),

@@ -351,9 +351,11 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
     }),
     SelfModPackage: tool({
       description:
-        "Package a completed feature as a shareable mod that can be installed by others.",
+        "Package a completed feature as a shareable blueprint. Requires description and implementation notes for other AIs to re-implement the feature.",
       inputSchema: z.object({
         feature_id: z.string().optional().describe("Feature to package (defaults to active feature)"),
+        description: z.string().describe("User-facing summary of what the feature does"),
+        implementation: z.string().describe("Developer-facing explanation of how the feature was implemented — files changed, patterns used, architectural decisions"),
       }),
       execute: (args) => call("SelfModPackage", args),
     }),
