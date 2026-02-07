@@ -69,6 +69,7 @@ export function RadialDial() {
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
   const [animateIn, setAnimateIn] = useState(false)
   const visibleRef = useRef(false)
+  const animateFrameRef = useRef<number | null>(null)
   const api = getElectronApi()
   const { colors } = useTheme()
 
@@ -113,14 +114,25 @@ export function RadialDial() {
       } else {
         setSelectedWedge('dismiss')
       }
-      // Trigger entrance animation directly — uses CSS @keyframes (not transitions),
-      // so it carries its own "from" state and doesn't need a pre-committed frame.
-      setAnimateIn(true)
+      // Restart on the next frame so first-open paints don't skip the keyframe.
+      if (animateFrameRef.current !== null) {
+        cancelAnimationFrame(animateFrameRef.current)
+      }
+      setAnimateIn(false)
+      animateFrameRef.current = requestAnimationFrame(() => {
+        animateFrameRef.current = null
+        if (!visibleRef.current) return
+        setAnimateIn(true)
+      })
     }
 
     const handleHide = () => {
       visibleRef.current = false
       setSelectedWedge('dismiss')
+      if (animateFrameRef.current !== null) {
+        cancelAnimationFrame(animateFrameRef.current)
+        animateFrameRef.current = null
+      }
       // Reset immediately — the window is parked off-screen so the user won't
       // see this. Next show will start from the base state.
       setAnimateIn(false)
@@ -143,6 +155,10 @@ export function RadialDial() {
       const cleanupCursor = electronAPI.onRadialCursor(handleCursor)
 
       return () => {
+        if (animateFrameRef.current !== null) {
+          cancelAnimationFrame(animateFrameRef.current)
+          animateFrameRef.current = null
+        }
         cleanupShow()
         cleanupHide()
         cleanupCursor()
@@ -154,93 +170,94 @@ export function RadialDial() {
   // Window visibility is controlled by OS show()/hide() in the main process.
   return (
     <div className="radial-dial-container">
-      <svg
-        width={SIZE}
-        height={SIZE}
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
-        className={`radial-dial${animateIn ? ' radial-dial--visible' : ''}`}
-        style={{}}
-      >
-        {/* Wedges */}
-        {WEDGES.map((wedge, index) => {
-          const startAngle = index * WEDGE_ANGLE
-          const endAngle = (index + 1) * WEDGE_ANGLE
-          const isSelected = selectedWedge === wedge.id
-          const contentPos = getContentPosition(index)
-          const Icon = wedge.icon
-          
-          const fillColor = isSelected 
-            ? toRgba(colors.interactive, 0.9) 
-            : colors.card // Card often has transparency
-          
-          const strokeColor = isSelected
-            ? colors.interactive
-            : toRgba(colors.border, 0.2)
+      <div className={`radial-dial-frame${animateIn ? ' radial-dial-frame--visible' : ''}`}>
+        <svg
+          width={SIZE}
+          height={SIZE}
+          viewBox={`0 0 ${SIZE} ${SIZE}`}
+          className="radial-dial"
+        >
+          {/* Wedges */}
+          {WEDGES.map((wedge, index) => {
+            const startAngle = index * WEDGE_ANGLE
+            const endAngle = (index + 1) * WEDGE_ANGLE
+            const isSelected = selectedWedge === wedge.id
+            const contentPos = getContentPosition(index)
+            const Icon = wedge.icon
             
-          const iconColor = isSelected 
-            ? colors.primaryForeground 
-            : colors.mutedForeground
+            const fillColor = isSelected 
+              ? toRgba(colors.interactive, 0.9) 
+              : colors.card // Card often has transparency
+            
+            const strokeColor = isSelected
+              ? colors.interactive
+              : toRgba(colors.border, 0.2)
+              
+            const iconColor = isSelected 
+              ? colors.primaryForeground 
+              : colors.mutedForeground
 
-          return (
-            <g key={wedge.id}>
-              <path
-                d={createWedgePath(startAngle, endAngle)}
-                fill={fillColor}
-                stroke={strokeColor}
-                strokeWidth={1.5}
-                className="wedge-path"
-                style={{
-                  transition: 'fill 0.15s ease, stroke 0.15s ease',
-                  cursor: 'pointer'
-                }}
-              />
-              <foreignObject
-                x={contentPos.x - 28}
-                y={contentPos.y - 20}
-                width={56}
-                height={40}
-                style={{ pointerEvents: 'none' }}
-              >
-                <div className="flex flex-col items-center justify-center w-full h-full gap-0.5">
-                  <Icon
-                    style={{ 
-                      color: iconColor,
-                      width: '16px',
-                      height: '16px',
-                      transition: 'color 0.1s'
-                    }}
-                  />
-                  <span
-                    style={{ 
-                      color: iconColor,
-                      fontSize: '10px',
-                      fontWeight: 500,
-                      transition: 'color 0.1s'
-                    }}
-                  >
-                    {wedge.label}
-                  </span>
-                </div>
-              </foreignObject>
-            </g>
-          )
-        })}
+            return (
+              <g key={wedge.id}>
+                <path
+                  d={createWedgePath(startAngle, endAngle)}
+                  fill={fillColor}
+                  stroke={strokeColor}
+                  strokeWidth={1.5}
+                  className="wedge-path"
+                  style={{
+                    transition: 'fill 0.15s ease, stroke 0.15s ease',
+                    cursor: 'pointer'
+                  }}
+                />
+                <foreignObject
+                  x={contentPos.x - 28}
+                  y={contentPos.y - 20}
+                  width={56}
+                  height={40}
+                  style={{ pointerEvents: 'none' }}
+                >
+                  <div className="flex flex-col items-center justify-center w-full h-full gap-0.5">
+                    <Icon
+                      style={{ 
+                        color: iconColor,
+                        width: '16px',
+                        height: '16px',
+                        transition: 'color 0.1s'
+                      }}
+                    />
+                    <span
+                      style={{ 
+                        color: iconColor,
+                        fontSize: '10px',
+                        fontWeight: 500,
+                        transition: 'color 0.1s'
+                      }}
+                    >
+                      {wedge.label}
+                    </span>
+                  </div>
+                </foreignObject>
+              </g>
+            )
+          })}
 
-        {/* Center circle */}
-        <circle
-          cx={CENTER}
-          cy={CENTER}
-          r={CENTER_BG_RADIUS}
-          fill={toRgba(colors.background, 0.95)}
-          stroke={toRgba(colors.border, 0.5)}
-          strokeWidth={1}
-          style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
-        />
-      </svg>
+          {/* Center circle */}
+          <circle
+            cx={CENTER}
+            cy={CENTER}
+            r={CENTER_BG_RADIUS}
+            fill={toRgba(colors.background, 0.95)}
+            stroke={toRgba(colors.border, 0.5)}
+            strokeWidth={1}
+            style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
+          />
+        </svg>
 
-      {/* Center blackhole animation - outside SVG for WebGL compatibility */}
-      <div className="radial-center-blackhole">
-        <AsciiBlackHole width={20} height={20} initialBirthProgress={1} />
+        {/* Center blackhole animation - outside SVG for WebGL compatibility */}
+        <div className="radial-center-blackhole">
+          <AsciiBlackHole width={20} height={20} initialBirthProgress={1} />
+        </div>
       </div>
     </div>
   )

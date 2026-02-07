@@ -36,6 +36,7 @@ import './components/steps-container.css'
 import './components/auth-panel.css'
 
 // App-level layout + screen styles (kept in a separate folder)
+import './components/sidebar.css'
 import './styles/app-base.css'
 import './styles/full-shell.layout.css'
 import './styles/full-shell.panels.css'

@@ -1,7 +1,7 @@
-/* Composer - Aura-style prompt bar at bottom */
+/* Composer - single-row prompt bar at bottom */
 .composer {
   position: absolute;
-  bottom: 0;
+  bottom: 16px;
   left: 0;
   right: 0;
   z-index: 30;
@@ -16,33 +16,27 @@
   pointer-events: auto;
 }
 
+/* === Default: pill-shaped single row === */
 .composer-form {
-  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  max-width: 50rem;
-  background: var(--surface-raised-stronger-non-alpha, var(--card));
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-  box-shadow: var(--shadow-xs-border);
-  overflow: hidden;
+  max-width: 40rem;
+  background: var(--background);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  min-height: 48px;
+  padding: 8px;
 }
 
-.composer-form:focus-within {
-  box-shadow: var(--shadow-xs-border);
-}
-
-/* Scroll container for input */
-.composer-scroll {
-  position: relative;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-/* Multi-line input area */
 .composer-input {
-  width: 100%;
-  min-height: 44px;
-  padding: 12px 20px;
-  padding-right: 48px;
+  flex: 1;
+  field-sizing: content;
+  min-height: 30px;
+  max-height: 200px;
+  padding: 4px 4px;
   font-family: var(--font-family-sans, "Inter", sans-serif);
   font-size: 14px;
   line-height: 1.5;
@@ -50,6 +44,7 @@
   background: transparent;
   border: none;
   resize: none;
+  overflow-y: auto;
   outline: none;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -59,45 +54,91 @@
   color: var(--text-weaker);
 }
 
-/* Placeholder overlay for empty state */
-.composer-placeholder {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 48px;
-  padding: 12px 20px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-weaker);
-  pointer-events: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Bottom toolbar */
+/* Toolbar hidden in pill mode — buttons sit inline */
 .composer-toolbar {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 48px;
-  padding: 0 12px;
+  display: contents;
 }
 
 .composer-toolbar-left {
+  display: contents;
+}
+
+.composer-toolbar-right {
+  display: contents;
+}
+
+/* === Expanded: stacked rounded rectangle === */
+.composer-form.expanded {
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: 20px;
+  padding: 0;
+  min-height: auto;
+}
+
+.composer-form.expanded .composer-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 14px 18px 4px;
+  order: -1;
+}
+
+/* In expanded mode, the top-level add button moves into the toolbar visually */
+.composer-form.expanded > .composer-add-button {
+  display: none;
+}
+
+.composer-form.expanded .composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
+}
+
+.composer-form.expanded .composer-toolbar-left {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.composer-toolbar-right {
+.composer-form.expanded .composer-toolbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-/* Model/agent selector button */
+/* Add button - circular with border */
+.composer-add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--text-weaker);
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.composer-add-button:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  border-color: var(--text-base);
+}
+
+/* Toolbar add button — hidden in pill mode, shown in expanded */
+.composer-add-button--toolbar {
+  display: none;
+}
+
+.composer-form.expanded .composer-add-button--toolbar {
+  display: inline-flex;
+}
+
+/* Queue selector */
 .composer-selector {
   display: inline-flex;
   align-items: center;
@@ -111,6 +152,7 @@
   border: none;
   cursor: default;
   transition: background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
 }
 
 .composer-selector:hover {
@@ -123,45 +165,15 @@
   color: var(--text-strong);
 }
 
-.composer-selector-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--text-weaker);
-}
-
-/* Action buttons in toolbar */
-.composer-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  border: none;
-  color: var(--text-weak);
-  cursor: default;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.composer-action:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-strong);
-}
-
-.composer-action:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Submit button - uses primary variant */
+/* Submit button - circular */
 .composer-submit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
   background: var(--primary);
   border: none;
   color: var(--primary-foreground);
@@ -241,4 +253,3 @@
   font-size: 12px;
   color: #5a5248;
 }
-

@@ -14,7 +14,7 @@ import {
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js'
 import { captureChatContext, type ChatContext } from './chat-context.js'
 import { captureWindowAtPoint, prefetchWindowSources } from './window-capture.js'
-import { initSelectedTextProcess, cleanupSelectedTextProcess } from './selected-text.js'
+import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js'
 import {
   createModifierOverlay,
   showModifierOverlay,
@@ -851,6 +851,13 @@ app.whenReady().then(async () => {
   
   // Start persistent PowerShell process for fast selected text capture
   initSelectedTextProcess()
+  if (process.platform === 'win32') {
+    // Warm up the first UI Automation query so the first radial open doesn't pay
+    // the cold-call latency spike.
+    setTimeout(() => {
+      void getSelectedText()
+    }, 250)
+  }
   
   const initialAuthUrl = getDeepLinkUrl(process.argv)
   if (initialAuthUrl) {
