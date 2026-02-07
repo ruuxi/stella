@@ -1,0 +1,374 @@
+/* ============================================
+   CANVAS RENDERERS
+   Styles for data-table, chart, json-viewer,
+   proxy, generated, and webview renderers.
+   ============================================ */
+
+/* --- Shared empty state --- */
+
+.canvas-renderer-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  color: var(--text-weak);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ============================================
+   DATA TABLE
+   ============================================ */
+
+.canvas-data-table-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.canvas-data-table-caption {
+  padding: 12px 16px 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.canvas-data-table-scroll {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.canvas-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-data-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.canvas-data-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+  background: var(--surface-inset);
+  border-bottom: 1px solid var(--border-weak);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.1s ease;
+}
+
+.canvas-data-table th:hover {
+  color: var(--text-strong);
+}
+
+.canvas-data-table th.sorted-asc,
+.canvas-data-table th.sorted-desc {
+  color: var(--primary);
+}
+
+.canvas-data-table-sort-icon {
+  margin-left: 4px;
+  font-size: 9px;
+}
+
+.canvas-data-table td {
+  padding: 6px 12px;
+  color: var(--text-base);
+  border-bottom: 1px solid var(--border-weak);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-data-table tbody tr:hover {
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.canvas-data-table-footer {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--text-weaker);
+  border-top: 1px solid var(--border-weak);
+  flex-shrink: 0;
+}
+
+/* ============================================
+   CHART
+   ============================================ */
+
+.canvas-chart-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+  gap: 12px;
+}
+
+.canvas-chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.canvas-chart-container {
+  flex: 1;
+  min-height: 200px;
+}
+
+/* ============================================
+   JSON VIEWER
+   ============================================ */
+
+.canvas-json-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.canvas-json-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-weak);
+  flex-shrink: 0;
+}
+
+.canvas-json-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak);
+  background: transparent;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.canvas-json-btn:hover {
+  color: var(--text-strong);
+  border-color: var(--border-base);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.canvas-json-tree {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding: 8px 0;
+  font-family: var(--font-family-mono);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.json-node {
+  padding-left: calc(var(--json-depth, 0) * 16px + 8px);
+}
+
+.json-leaf {
+  padding-left: calc(var(--json-depth, 0) * 16px + 24px);
+}
+
+.json-bracket-row {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  user-select: none;
+}
+
+.json-bracket-row:hover {
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.json-bracket-close {
+  padding-left: calc(var(--json-depth, 0) * 16px + 20px);
+}
+
+.json-toggle {
+  font-size: 8px;
+  color: var(--text-weaker);
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.json-key {
+  color: var(--primary);
+}
+
+.json-bracket {
+  color: var(--text-weak);
+}
+
+.json-collapsed {
+  font-style: italic;
+  color: var(--text-weaker);
+  font-size: 11px;
+  margin: 0 4px;
+}
+
+.json-string { color: oklch(0.72 0.14 150); }
+.json-number { color: oklch(0.72 0.14 230); }
+.json-boolean { color: oklch(0.72 0.14 320); }
+.json-null,
+.json-undefined { color: var(--text-weaker); font-style: italic; }
+
+/* ============================================
+   PROXY (iframe)
+   ============================================ */
+
+.canvas-proxy-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-proxy-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* ============================================
+   GENERATED (runtime-compiled React)
+   ============================================ */
+
+.canvas-generated-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.canvas-generated-content {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.canvas-generated-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-weak);
+  font-size: 13px;
+}
+
+/* ============================================
+   ERROR BOUNDARY
+   ============================================ */
+
+.canvas-error {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+  height: 100%;
+  overflow: auto;
+}
+
+.canvas-error-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: oklch(0.65 0.18 25);
+}
+
+.canvas-error-message {
+  font-size: 12px;
+  color: var(--text-base);
+  font-family: var(--font-family-mono);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
+  background: color-mix(in oklch, oklch(0.65 0.18 25) 8%, transparent);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in oklch, oklch(0.65 0.18 25) 20%, transparent);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.canvas-error-retry {
+  align-self: flex-start;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-strong);
+  background: transparent;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.canvas-error-retry:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+/* ============================================
+   WEBVIEW (workspace mini-apps)
+   ============================================ */
+
+.canvas-webview-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-webview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-weak);
+  flex-shrink: 0;
+}
+
+.canvas-webview-url {
+  font-size: 11px;
+  color: var(--text-weak);
+  font-family: var(--font-family-mono);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-webview-reload {
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-weak);
+  background: transparent;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.canvas-webview-reload:hover {
+  color: var(--text-strong);
+  border-color: var(--border-base);
+}
+
+.canvas-webview-frame {
+  flex: 1;
+  border: none;
+}

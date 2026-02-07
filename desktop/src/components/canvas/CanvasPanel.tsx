@@ -2,6 +2,9 @@ import { useCallback, useRef, type JSX } from 'react'
 import { useCanvas, type CanvasPayload } from '@/app/state/canvas-state'
 import { ResizeHandle } from '@/components/resize-handle'
 
+// Register all canvas renderers (side-effect imports)
+import './renderers/index'
+
 /**
  * Registry of canvas components by their `component` key.
  * Skills/adaptors register here to provide their UI.
