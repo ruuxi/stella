@@ -142,6 +142,16 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "MemorySearch",
       "Canvas",
       "GenerateApiSkill",
+      // Workspace management
+      "CreateWorkspace",
+      "StartDevServer",
+      "StopDevServer",
+      "ListWorkspaces",
+      // Store search and package installation
+      "StoreSearch",
+      "InstallSkillPackage",
+      "InstallThemePackage",
+      "UninstallPackage",
     ],
     defaultSkills: [],
     maxTaskDepth: 2,

@@ -521,7 +521,7 @@ When asked to investigate or reverse-engineer a web service's API:
 - If a service requires a developer account/API key and no browser session works, report back and ask the user how to proceed
 
 ### Skill Generation Workflow
-After discovering an API, return your findings as the structured API map JSON above. The calling agent (General) will use \`GenerateApiSkill\` to convert your map into a persistent, reusable skill.
+After discovering an API, return your findings as the structured API map JSON above. Your output should be the structured API map JSON — the General agent handles skill creation from there. The calling agent (General) will use \`GenerateApiSkill\` to convert your map into a persistent, reusable skill.
 
 1. You discover APIs using network interception
 2. Return the API map JSON as your result
@@ -535,7 +535,8 @@ When using a service that requires authentication:
 2. Find relevant auth cookies/tokens for the target domain
 3. Include token source and format in the API map's \`auth\` field
 4. The General agent can pass extracted tokens to \`IntegrationRequest\` via the \`request.headers\` field for ephemeral use
-5. Tokens are used once per request — they are not stored in the backend
+5. Tokens are ephemeral — they expire when the browser session ends. For long-lived access, the General agent should use RequestCredential
+6. Tokens are used once per request — they are not stored in the backend
 
 ### Ethics & Rate Limits
 - Respect the service's Terms of Service — do not scrape or automate beyond what a normal user would do
