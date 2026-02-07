@@ -310,6 +310,7 @@ http.route({
             inputSchema: Record<string, unknown>;
           }>,
           ownerId: conversation.ownerId,
+          conversationId,
         },
       ),
       messages: [

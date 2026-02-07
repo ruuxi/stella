@@ -448,7 +448,7 @@ const body = await response.text();  // or response.json(), response.body()
 console.log(body);
 \`\`\`
 
-## capabilities
+## Capabilities
 
 Examples of what hera-browser can do:
 - Monitor console logs while user reproduces a bug
@@ -459,7 +459,92 @@ Examples of what hera-browser can do:
 - Debug issues by collecting logs and controlling the page simultaneously
 - Handle popups, downloads, iframes, and dialog boxes
 
-## debugging hera-browser issues
+## API Discovery Mode
+
+When asked to investigate or reverse-engineer a web service's API:
+
+### Process
+1. **Navigate** to the service's web app (use the user's existing browser session if possible)
+2. **Enable network interception** to capture all API calls:
+   \`\`\`javascript
+   state.apiCalls = [];
+   await page.route('**/*', async route => {
+     const req = route.request();
+     if (req.resourceType() === 'fetch' || req.resourceType() === 'xhr') {
+       state.apiCalls.push({
+         url: req.url(),
+         method: req.method(),
+         headers: Object.fromEntries(Object.entries(req.headers()).filter(([k]) =>
+           ['authorization', 'content-type', 'x-csrf-token', 'cookie'].includes(k.toLowerCase())
+         )),
+         postData: req.postData(),
+       });
+     }
+     await route.continue();
+   });
+   \`\`\`
+3. **Interact** with the UI to trigger API calls (browse, search, play, etc.)
+4. **Analyze** captured requests: group by base URL, identify auth patterns, map endpoints
+5. **Document** findings as a structured API map
+
+### Output Format (return this as your result)
+\`\`\`json
+{
+  "service": "Service Name",
+  "baseUrl": "https://api.example.com",
+  "auth": {
+    "type": "bearer|cookie|header|oauth",
+    "tokenSource": "Description of where the token comes from",
+    "headerName": "Authorization",
+    "notes": "How to refresh, expiry, etc."
+  },
+  "endpoints": [
+    {
+      "path": "/v1/resource",
+      "method": "GET",
+      "description": "What this endpoint does",
+      "params": { "query_param": "description" },
+      "responseShape": "Brief description of response structure",
+      "rateLimit": "If observed"
+    }
+  ],
+  "sessionNotes": "How to obtain/maintain a session"
+}
+\`\`\`
+
+### API Key Philosophy
+- **Prefer user's existing browser session** — extract cookies/tokens from the active session
+- **Use public/client-facing APIs first** — these are designed for browser use, no developer key needed
+- **Avoid developer API keys** unless no alternative exists
+- **Never sign up for paid APIs** without explicit user approval
+- **Respect rate limits and ToS** — you're a guest on their platform
+- If a service requires a developer account/API key and no browser session works, report back and ask the user how to proceed
+
+### Skill Generation Workflow
+After discovering an API, return your findings as the structured API map JSON above. The calling agent (General) will use \`GenerateApiSkill\` to convert your map into a persistent, reusable skill.
+
+1. You discover APIs using network interception
+2. Return the API map JSON as your result
+3. General agent calls \`GenerateApiSkill\` with your map
+4. A skill is created and available for all future conversations
+5. Next time the user asks about the service, agents activate the skill directly — no re-discovery needed
+
+### Session Token Extraction
+When using a service that requires authentication:
+1. Check if the user has an active browser session: \`const cookies = await page.context().cookies()\`
+2. Find relevant auth cookies/tokens for the target domain
+3. Include token source and format in the API map's \`auth\` field
+4. The General agent can pass extracted tokens to \`IntegrationRequest\` via the \`request.headers\` field for ephemeral use
+5. Tokens are used once per request — they are not stored in the backend
+
+### Ethics & Rate Limits
+- Respect the service's Terms of Service — do not scrape or automate beyond what a normal user would do
+- Honor rate limits observed in response headers (\`X-RateLimit-*\`, \`Retry-After\`)
+- Document any rate limits you observe in the API map
+- If you detect anti-automation measures (CAPTCHAs, fingerprinting), stop and report to the user
+- Never exfiltrate data beyond what the user explicitly requested
+
+## Debugging hera-browser issues
 
 If internal errors occur, read the relay server logs:
 

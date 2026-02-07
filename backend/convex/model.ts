@@ -98,7 +98,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Self-modification agent (if re-enabled)
+  // Self-modification agent
   self_mod: {
     model: "anthropic/claude-opus-4.6",
     temperature: 1.0,

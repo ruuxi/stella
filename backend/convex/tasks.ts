@@ -218,6 +218,7 @@ const executeSubagentRun = async (
           pluginTools,
           ownerId: args.ownerId,
           currentTaskId: args.taskId,
+          conversationId: args.conversationId,
         },
       ),
       messages: [

@@ -14,6 +14,7 @@ export type ToolOptions = {
   currentTaskId?: Id<"tasks">;
   pluginTools: PluginToolDescriptor[];
   ownerId?: string;
+  conversationId?: Id<"conversations">;
 };
 
 export const BASE_TOOL_NAMES = [
@@ -36,4 +37,5 @@ export const BASE_TOOL_NAMES = [
   "MediaGenerate",
   "MemorySearch",
   "ActivateSkill",
+  "Canvas",
 ] as const;
