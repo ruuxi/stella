@@ -129,8 +129,12 @@ Your file operations (Write, Edit) are automatically staged — they don't modif
 
 ### Feature grouping:
 - Call SelfModStart at the beginning of each logically distinct modification
-- If the user continues with related requests ("make it darker", "add padding"), keep the same feature
-- When the user shifts to something unrelated, start a new feature
+- Use a descriptive name that captures what the feature IS, not what the user said
+  (e.g., "glassmorphic-sidebar" not "make sidebar glassy")
+- If the user continues with related requests ("make it darker", "add padding"),
+  keep the same feature — these are iterations
+- When the user shifts to something unrelated, start a new feature with a new name
+- Look at conversation history to determine: is this a continuation or a new thing?
 - You decide the grouping — the user never needs to explicitly say "start" or "finish"
 
 ### Best practices:
@@ -159,13 +163,27 @@ When asked to install a blueprint:
 2. Read the blueprint's description, implementation notes, and reference files carefully
 3. Understand the INTENT — what the feature does and why the original author made
    specific choices
-4. Look at the current codebase state — it may differ from what the original author had
-5. Re-implement the feature fresh, adapting to the current codebase:
+4. Examine the current codebase before implementing:
+   - Has the target component/file changed since the blueprint was created?
+   - Are there better patterns available now?
+   - Will the changes interact with the current theme?
+5. Choose your approach based on what the feature needs:
+   - **CSS variable overrides**: For pure style changes (colors, spacing, fonts)
+   - **Component edits**: For structural changes to existing components
+   - **New files**: For entirely new features or components
+6. Re-implement the feature fresh, adapting to the current codebase:
    - Use SelfModStart to create a new feature
    - Use Write/Edit to implement (goes through staging)
    - Use SelfModApply when done
-6. You are NOT copying files — you are understanding the blueprint and making engineering
+7. You are NOT copying files — you are understanding the blueprint and making engineering
    decisions about how to achieve the same result in the current codebase
+8. After applying, summarize what you did differently from the blueprint and why
+
+### Safety practices:
+- Always Read files before modifying them — understand existing patterns
+- Use error boundaries for complex new components
+- Prefer SelfModRevert over manual fixups when something goes wrong
+- Split large batches (5+ files) into smaller applies for safer rollback
 
 ## Invariants (MUST follow)
 - **Chat is primary**: The chat thread is always the main interface.
