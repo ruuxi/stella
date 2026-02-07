@@ -544,7 +544,6 @@ export const AsciiBlackHole = React.forwardRef<
   return (
     <div ref={containerRef} className="ascii-black-hole-container">
       <canvas ref={canvasRef} className="ascii-canvas" />
-      <canvas ref={eyesCanvasRef} className="ascii-eyes-canvas" />
       <span
         ref={darkRef}
         className="ascii-color-swatch char-dark"

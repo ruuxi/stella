@@ -1,16 +1,32 @@
+import { Suspense, lazy, useMemo } from 'react'
 import { useUiState } from './app/state/ui-state'
 import { getElectronApi } from './services/electron'
-import { AppBootstrap } from './app/AppBootstrap'
-import { CredentialRequestLayer } from './app/CredentialRequestLayer'
-import { FullShell } from './screens/FullShell'
-import { MiniShell } from './screens/MiniShell'
-import { RadialShell } from './screens/RadialShell'
-import { RegionCapture } from './screens/RegionCapture'
 import { Authenticated } from 'convex/react'
 import { AuthTokenBridge } from './app/AuthTokenBridge'
 import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 
 type WindowType = 'full' | 'mini' | 'radial' | 'region'
+
+const AppBootstrap = lazy(() =>
+  import('./app/AppBootstrap').then((module) => ({ default: module.AppBootstrap })),
+)
+const CredentialRequestLayer = lazy(() =>
+  import('./app/CredentialRequestLayer').then((module) => ({
+    default: module.CredentialRequestLayer,
+  })),
+)
+const FullShell = lazy(() =>
+  import('./screens/FullShell').then((module) => ({ default: module.FullShell })),
+)
+const MiniShell = lazy(() =>
+  import('./screens/MiniShell').then((module) => ({ default: module.MiniShell })),
+)
+const RadialShell = lazy(() =>
+  import('./screens/RadialShell').then((module) => ({ default: module.RadialShell })),
+)
+const RegionCapture = lazy(() =>
+  import('./screens/RegionCapture').then((module) => ({ default: module.RegionCapture })),
+)
 
 function getWindowType(isElectron: boolean, windowParam: string | null, fallback: string): WindowType {
   if (!isElectron) {
@@ -29,9 +45,18 @@ function getWindowType(isElectron: boolean, windowParam: string | null, fallback
 function App() {
   const { state } = useUiState()
   const api = getElectronApi()
-  const params = new URLSearchParams(window.location.search)
+  const windowParam = useMemo(() => new URLSearchParams(window.location.search).get('window'), [])
   const isElectron = Boolean(api)
-  const windowType = getWindowType(isElectron, params.get('window'), state.window)
+  const windowType = getWindowType(isElectron, windowParam, state.window)
+
+  const shellFallback =
+    windowType === 'radial' ? (
+      <div className="app window-radial" />
+    ) : windowType === 'region' ? (
+      <div className="app window-region" />
+    ) : (
+      <div className={`app window-${windowType}`} />
+    )
 
   const shell =
     windowType === 'radial' ? (
@@ -57,7 +82,7 @@ function App() {
       <Authenticated>
         <AuthTokenBridge />
       </Authenticated>
-      {shell}
+      <Suspense fallback={shellFallback}>{shell}</Suspense>
     </>
   )
 }

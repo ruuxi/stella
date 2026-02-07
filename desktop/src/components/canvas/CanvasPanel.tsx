@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, type JSX } from 'react'
 import { useCanvas, type CanvasPayload } from '@/app/state/canvas-state'
 import { ResizeHandle } from '@/components/resize-handle'
 
