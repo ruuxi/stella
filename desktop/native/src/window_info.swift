@@ -7,6 +7,23 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+func parseExcludedPids(_ args: ArraySlice<String>) -> Set<Int> {
+    let prefix = "--exclude-pids="
+    var pids = Set<Int>()
+
+    for arg in args {
+        guard arg.hasPrefix(prefix) else { continue }
+        let payload = String(arg.dropFirst(prefix.count))
+        for rawValue in payload.split(separator: ",") {
+            let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let pid = Int(value), pid > 0 else { continue }
+            pids.insert(pid)
+        }
+    }
+
+    return pids
+}
+
 func escapeJson(_ s: String) -> String {
     var out = ""
     for ch in s {
@@ -30,6 +47,7 @@ guard CommandLine.arguments.count >= 3,
 }
 
 let point = CGPoint(x: x, y: y)
+let excludedPids = parseExcludedPids(CommandLine.arguments.dropFirst(3))
 
 // Get all on-screen windows (excluding desktop elements)
 guard let windowList = CGWindowListCopyWindowInfo(
@@ -58,6 +76,7 @@ for window in windowList {
     let title = (window[kCGWindowName as String] as? String) ?? ""
     let ownerName = (window[kCGWindowOwnerName as String] as? String) ?? ""
     let pid = (window[kCGWindowOwnerPID as String] as? Int) ?? 0
+    if excludedPids.contains(pid) { continue }
 
     let json = """
     {"title":"\(escapeJson(title))","process":"\(escapeJson(ownerName))","pid":\(pid),"bounds":{"x":\(Int(wx)),"y":\(Int(wy)),"width":\(Int(ww)),"height":\(Int(wh))}}
