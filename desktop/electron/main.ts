@@ -114,8 +114,10 @@ let miniShowRequestId = 0
 let pendingMiniBlurHideTimer: NodeJS.Timeout | null = null
 let suppressMiniBlurUntil = 0
 let pendingMiniOpacityHideTimer: NodeJS.Timeout | null = null
-let radialShowRequestId = 0
 let radialShowActive = false
+let radialSelectionCommitted = false
+let radialCaptureRequestId = 0
+let pendingRadialCapturePromise: Promise<void> | null = null
 let regionCaptureDisplay: Display | null = null
 let pendingRegionCaptureResolve: ((value: ScreenshotCapture | null) => void) | null = null
 let pendingRegionCapturePromise: Promise<ScreenshotCapture | null> | null = null
@@ -480,20 +482,68 @@ const showWindow = (target: WindowMode) => {
   }
 }
 
-const captureRadialContext = async (x: number, y: number) => {
+const cancelRadialContextCapture = () => {
+  radialCaptureRequestId += 1
+  pendingRadialCapturePromise = null
+}
+
+const captureRadialContext = (x: number, y: number) => {
+  const requestId = ++radialCaptureRequestId
   lastRadialPoint = { x, y }
-  try {
-    const fresh = await captureChatContext({ x, y })
-    // Preserve existing screenshots from prior captures
-    const existingScreenshots = pendingChatContext?.regionScreenshots ?? []
-    setPendingChatContext({
-      ...fresh,
-      regionScreenshots: existingScreenshots,
-    })
-  } catch (error) {
-    console.warn('Failed to capture chat context', error)
-    setPendingChatContext(null)
+
+  // Reset selected text immediately so the mini shell never shows stale content
+  // while the latest context capture is still in flight.
+  const existingScreenshots = pendingChatContext?.regionScreenshots ?? []
+  setPendingChatContext({
+    window: null,
+    browserUrl: null,
+    selectedText: null,
+    regionScreenshots: existingScreenshots,
+    capturePending: true,
+  })
+
+  // If mini is already visible, surface the pending state right away.
+  if (isMiniShowing()) {
+    broadcastChatContext()
   }
+
+  pendingRadialCapturePromise = (async () => {
+    try {
+      const fresh = await captureChatContext({ x, y })
+      if (requestId !== radialCaptureRequestId) {
+        return
+      }
+
+      // Preserve screenshots captured while text capture was running.
+      const screenshots = pendingChatContext?.regionScreenshots ?? existingScreenshots
+      setPendingChatContext({
+        ...fresh,
+        regionScreenshots: screenshots,
+        capturePending: false,
+      })
+    } catch (error) {
+      if (requestId !== radialCaptureRequestId) {
+        return
+      }
+      console.warn('Failed to capture chat context', error)
+      const screenshots = pendingChatContext?.regionScreenshots ?? existingScreenshots
+      setPendingChatContext({
+        window: null,
+        browserUrl: null,
+        selectedText: null,
+        regionScreenshots: screenshots,
+        capturePending: false,
+      })
+    } finally {
+      if (requestId === radialCaptureRequestId) {
+        pendingRadialCapturePromise = null
+        // Keep the mini shell synced when context lands after the shell is open.
+        if (isMiniShowing()) {
+          broadcastChatContext()
+        }
+      }
+    }
+  })()
 }
 
 
@@ -669,6 +719,7 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
   switch (wedge) {
     case 'dismiss':
       // Center/dismiss: clear context and do nothing else
+      cancelRadialContextCapture()
       setPendingChatContext(null)
       break
     case 'capture': {
@@ -694,6 +745,7 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
       if (!isMiniShowing()) showWindow('mini')
       break
     case 'full':
+      cancelRadialContextCapture()
       setPendingChatContext(null)
       showWindow('full')
       break
@@ -716,7 +768,7 @@ const initMouseHook = () => {
     onModifierUp: () => {
       // Clear any unused context, but not if the mini shell is already showing
       // (the user selected a wedge and the context is in use)
-      if (!isMiniShowing()) {
+      if (!isMiniShowing() && !pendingMiniShowTimer && !pendingRadialCapturePromise) {
         setPendingChatContext(null)
       }
       if (process.platform === 'darwin') {
@@ -749,7 +801,7 @@ const initMouseHook = () => {
         }
       }
     },
-    onRadialShow: async (x: number, y: number) => {
+    onRadialShow: (x: number, y: number) => {
       if (!appReady) return
       // Suppress mini blur so the radial overlay doesn't dismiss an already-open mini shell.
       suppressMiniBlurUntil = Date.now() + 2000
@@ -758,26 +810,26 @@ const initMouseHook = () => {
         miniWindow.webContents.send('mini:dismissPreview')
       }
       radialShowActive = true
-      const requestId = ++radialShowRequestId
-      // 1. Capture selected text first (while original app has focus, ~50ms)
-      await captureRadialContext(x, y)
-      // If the user released before capture finished, do nothing (prevents late "re-show" glitches).
-      if (!radialShowActive || requestId !== radialShowRequestId) {
-        return
-      }
-      // Prime the mini shell with the captured context while the radial is open.
-      // This prevents a brief flash of the previous context if the user releases quickly.
-      broadcastChatContext()
-      // 2. Show radial first — its compositor surface must be
-      //    presented before the overlay to avoid first-show delay
-      //    on Windows (DWM surface allocation for the fullscreen
-      //    overlay can block the radial's first paint).
+      radialSelectionCommitted = false
+      // 1. Show radial immediately so first-open latency is not gated by
+      // selected-text capture.
       showRadialWindow(x, y)
-      // 3. Show overlay to block context menu on mouseup
+      // 2. Show overlay to block context menu on mouseup.
       showModifierOverlay()
+      // 3. Capture context in the background.
+      captureRadialContext(x, y)
     },
     onRadialHide: () => {
       radialShowActive = false
+      // Modifier-up can end the gesture without a mouse-up selection.
+      // In that path, ignore any in-flight capture from this gesture.
+      if (!radialSelectionCommitted) {
+        cancelRadialContextCapture()
+        if (!isMiniShowing() && !pendingMiniShowTimer) {
+          setPendingChatContext(null)
+        }
+      }
+      radialSelectionCommitted = false
       hideRadialWindow()
       hideModifierOverlay()
     },
@@ -806,6 +858,7 @@ const initMouseHook = () => {
         )
 
         // Always a valid wedge (center = 'dismiss')
+        radialSelectionCommitted = true
         void handleRadialSelection(wedge)
       }
     },
