@@ -27,9 +27,16 @@ const packageValidator = v.object({
   sourceUrl: v.optional(v.string()),
   readme: v.optional(v.string()),
   modPayload: v.optional(jsonValueValidator),
+  searchText: v.optional(v.string()),
   createdAt: v.number(),
   updatedAt: v.number(),
 });
+
+const buildSearchText = (
+  name: string,
+  description: string,
+  tags: string[],
+): string => `${name} ${description} ${tags.join(" ")}`;
 
 const installValidator = v.object({
   _id: v.id("store_installs"),
@@ -83,16 +90,16 @@ export const search = query({
     if (!args.query.trim()) {
       return [];
     }
-    let searchQuery = ctx.db
+    const searchQ = ctx.db
       .query("store_packages")
       .withSearchIndex("search_packages", (q) => {
-        const base = q.search("name", args.query);
+        const base = q.search("searchText", args.query);
         if (args.type) {
           return base.eq("type", args.type);
         }
         return base;
       });
-    const results = await searchQuery.take(50);
+    const results = await searchQ.take(50);
     return results;
   },
 });
@@ -271,6 +278,7 @@ export const seed = mutation({
         await ctx.db.insert("store_packages", {
           ...pkg,
           downloads: 0,
+          searchText: buildSearchText(pkg.name, pkg.description, pkg.tags),
           createdAt: now,
           updatedAt: now,
         });
@@ -305,6 +313,8 @@ export const publishMod = mutation({
 
     const now = Date.now();
 
+    const searchText = buildSearchText(args.name, args.description, args.tags);
+
     if (existing) {
       await ctx.db.patch(existing._id, {
         name: args.name,
@@ -313,6 +323,7 @@ export const publishMod = mutation({
         version: args.version,
         tags: args.tags,
         modPayload: args.modPayload,
+        searchText,
         updatedAt: now,
       });
       return existing._id;
@@ -329,8 +340,31 @@ export const publishMod = mutation({
       tags: args.tags,
       downloads: 0,
       modPayload: args.modPayload,
+      searchText,
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+/**
+ * Backfill searchText for existing packages that don't have it yet.
+ * Run once after deploying the schema change.
+ */
+export const backfillSearchText = mutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const all = await ctx.db.query("store_packages").collect();
+    let updated = 0;
+    for (const pkg of all) {
+      if (!pkg.searchText) {
+        await ctx.db.patch(pkg._id, {
+          searchText: buildSearchText(pkg.name, pkg.description, pkg.tags),
+        });
+        updated++;
+      }
+    }
+    return updated;
   },
 });

@@ -340,6 +340,7 @@ export default defineSchema({
     icon: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),
     readme: v.optional(v.string()),
+    searchText: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -347,7 +348,7 @@ export default defineSchema({
     .index("by_type", ["type", "updatedAt"])
     .index("by_downloads", ["downloads"])
     .searchIndex("search_packages", {
-      searchField: "name",
+      searchField: "searchText",
       filterFields: ["type"],
     }),
   store_installs: defineTable({

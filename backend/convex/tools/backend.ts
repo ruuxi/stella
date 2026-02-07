@@ -818,6 +818,44 @@ export const createBackendTools = (
         }
       },
     }),
+    StoreSearch: tool({
+      description:
+        "Search the app store for packages matching a user need. Use when the user expresses a desire for functionality that might exist as a package.",
+      inputSchema: z.object({
+        query: z.string().describe("Search query"),
+        type: z
+          .enum(["skill", "mod", "theme", "canvas", "plugin"])
+          .optional()
+          .describe("Filter by package type"),
+      }),
+      execute: async (args) => {
+        const results = (await ctx.runQuery(api.data.store_packages.search, {
+          query: args.query,
+          type: args.type,
+        })) as Array<{
+          packageId: string;
+          name: string;
+          type: string;
+          description: string;
+          version: string;
+          downloads: number;
+        }>;
+
+        if (results.length === 0) {
+          return "No packages found in the store.";
+        }
+
+        const formatted = results
+          .slice(0, 10)
+          .map(
+            (r, i) =>
+              `${i + 1}. **${r.name}** (\`${r.packageId}\`) — ${r.type}\n   ${r.description}\n   v${r.version} | ${r.downloads} installs`,
+          )
+          .join("\n\n");
+
+        return `Found ${results.length} package(s) in the store:\n\n${formatted}`;
+      },
+    }),
     SelfModInstallBlueprint: tool({
       description:
         "Install a shared blueprint from the store. Fetches the blueprint and provides reference code and implementation notes for re-implementation.",
