@@ -58,20 +58,45 @@ export const collectSafariHistory = async (stellaHome) => {
         await fs.copyFile(historyPath, copyPath);
         // Open the copy readonly
         db = await openDatabase(copyPath);
-        // Query top domains by visit count
-        // Safari's visit_count is stored directly in history_items
+        // Query top domains by explicit visit rows in the last 7 days.
+        // Safari history_visits.visit_time is CFAbsoluteTime (seconds since 2001-01-01).
         const query = `
-      SELECT domain, visit_count
-      FROM history_items
-      WHERE domain IS NOT NULL
-        AND domain != ''
-      ORDER BY visit_count DESC
+      SELECT
+        hi.domain AS domain,
+        COUNT(*) AS visits
+      FROM history_visits hv
+      JOIN history_items hi ON hv.history_item = hi.id
+      WHERE hi.domain IS NOT NULL
+        AND hi.domain != ''
+        AND hv.visit_time > ((strftime('%s', 'now') - 978307200) - 604800)
+      GROUP BY hi.domain
+      ORDER BY visits DESC
       LIMIT 30
     `;
-        const rows = db.prepare(query).all();
+        let rows = [];
+        try {
+            rows = db.prepare(query).all();
+        }
+        catch (visitQueryError) {
+            // Fallback for schema variants where history_visits is unavailable.
+            const fallbackQuery = `
+        SELECT domain, visit_count
+        FROM history_items
+        WHERE domain IS NOT NULL
+          AND domain != ''
+        ORDER BY visit_count DESC
+        LIMIT 30
+      `;
+            const fallbackRows = db.prepare(fallbackQuery).all();
+            rows = fallbackRows.map((row) => ({
+                domain: row.domain,
+                visits: row.visit_count,
+            }));
+            log("Using Safari history fallback query:", visitQueryError);
+        }
         return rows.map((row) => ({
             domain: row.domain,
-            visits: row.visit_count,
+            visits: row.visits,
         }));
     }
     catch (error) {

@@ -2,6 +2,7 @@
  * Shared types for user signal collection
  */
 import type { BrowserData } from "./browser-data.js";
+import type { DiscoveryCategory } from "./discovery_types.js";
 export type DevProject = {
     name: string;
     path: string;
@@ -34,5 +35,6 @@ export type AllUserSignals = {
 export type AllUserSignalsResult = {
     data: AllUserSignals | null;
     formatted: string | null;
+    formattedSections?: Partial<Record<DiscoveryCategory, string>> | null;
     error?: string;
 };
