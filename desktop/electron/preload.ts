@@ -158,4 +158,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // System preferences (macOS FDA)
   openFullDiskAccess: () => ipcRenderer.send('system:openFullDiskAccess'),
+
+  // Open URL in user's default browser
+  openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
 })
