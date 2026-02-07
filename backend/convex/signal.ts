@@ -1,4 +1,5 @@
 import { query } from "./_generated/server";
+import { v } from "convex/values";
 
 // ---------------------------------------------------------------------------
 // Signal Connector (signal-cli bridge)
@@ -14,6 +15,7 @@ import { query } from "./_generated/server";
  */
 export const getLinkUri = query({
   args: {},
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -26,6 +28,7 @@ export const getLinkUri = query({
       .first();
 
     if (!session || session.status !== "awaiting_auth") return null;
-    return (session.authState as Record<string, unknown>)?.linkUri ?? null;
+    const linkUri = (session.authState as Record<string, unknown>)?.linkUri;
+    return typeof linkUri === "string" ? linkUri : null;
   },
 });

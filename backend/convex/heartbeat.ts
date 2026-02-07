@@ -323,6 +323,7 @@ export const recordRun = internalMutation({
 
 export const tick = internalAction({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
     const due = await ctx.runQuery(internal.heartbeat.listDue, { nowMs: now, limit: 100 });
@@ -342,6 +343,7 @@ export const tick = internalAction({
         reason: "interval",
       });
     }
+    return null;
   },
 });
 
@@ -350,12 +352,13 @@ export const run = internalAction({
     configId: v.id("heartbeat_configs"),
     reason: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const config = await ctx.runQuery(internal.heartbeat.getById, {
       id: args.configId,
     });
     if (!config || !config.enabled) {
-      return;
+      return null;
     }
 
     const now = Date.now();
@@ -364,7 +367,7 @@ export const run = internalAction({
         id: config._id,
         status: "skipped:quiet-hours",
       });
-      return;
+      return null;
     }
 
     const prompt = resolveHeartbeatPrompt({
@@ -376,7 +379,7 @@ export const run = internalAction({
         id: config._id,
         status: "skipped:empty-checklist",
       });
-      return;
+      return null;
     }
 
     const conversationId = config.conversationId;
@@ -415,7 +418,7 @@ export const run = internalAction({
         status: "failed",
         error: (error as Error).message ?? "Heartbeat failed",
       });
-      return;
+      return null;
     }
 
     const ackMaxChars = Math.max(
@@ -430,7 +433,7 @@ export const run = internalAction({
         id: config._id,
         status: HEARTBEAT_TOKEN,
       });
-      return;
+      return null;
     }
 
     const finalText = normalized.text.trim();
@@ -439,7 +442,7 @@ export const run = internalAction({
         id: config._id,
         status: "ok-empty",
       });
-      return;
+      return null;
     }
 
     const dedupeText = config.lastSentText?.trim() ?? "";
@@ -454,7 +457,7 @@ export const run = internalAction({
         id: config._id,
         status: "skipped:duplicate",
       });
-      return;
+      return null;
     }
 
     const deliver = config.deliver !== false;
@@ -478,6 +481,7 @@ export const run = internalAction({
       lastSentText: deliver ? finalText : undefined,
       lastSentAtMs: deliver ? now : undefined,
     });
+    return null;
   },
 });
 

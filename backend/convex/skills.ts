@@ -1,5 +1,17 @@
 import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { secretMountsValidator } from "./shared_validators";
+
+type SecretMountSpec = {
+  provider: string;
+  label?: string;
+  description?: string;
+  placeholder?: string;
+};
+
+type SecretMountBinding = string | SecretMountSpec;
+type SecretMountMap = Record<string, SecretMountBinding>;
+type SecretMounts = SecretMountMap | { env?: SecretMountMap; files?: SecretMountMap };
 
 const skillValidator = v.object({
   _id: v.id("skills"),
@@ -14,11 +26,28 @@ const skillValidator = v.object({
   execution: v.optional(v.string()),
   requiresSecrets: v.optional(v.array(v.string())),
   publicIntegration: v.optional(v.boolean()),
-  secretMounts: v.optional(v.any()),
+  secretMounts: secretMountsValidator,
   version: v.number(),
   source: v.string(),
   enabled: v.boolean(),
   updatedAt: v.number(),
+});
+
+const skillImportValidator = v.object({
+  id: v.string(),
+  name: v.optional(v.string()),
+  description: v.optional(v.string()),
+  markdown: v.optional(v.string()),
+  agentTypes: v.optional(v.union(v.array(v.string()), v.string())),
+  toolsAllowlist: v.optional(v.union(v.array(v.string()), v.string())),
+  tags: v.optional(v.union(v.array(v.string()), v.string())),
+  execution: v.optional(v.string()),
+  requiresSecrets: v.optional(v.union(v.array(v.string()), v.string())),
+  publicIntegration: v.optional(v.boolean()),
+  secretMounts: secretMountsValidator,
+  version: v.optional(v.number()),
+  source: v.optional(v.string()),
+  enabled: v.optional(v.boolean()),
 });
 
 type SkillRecord = {
@@ -32,7 +61,7 @@ type SkillRecord = {
   execution?: string;
   requiresSecrets?: string[];
   publicIntegration?: boolean;
-  secretMounts?: Record<string, unknown>;
+  secretMounts?: SecretMounts;
   version: number;
   source: string;
   enabled: boolean;
@@ -54,6 +83,54 @@ const coerceStringArray = (value: unknown) => {
       .filter((item) => item.length > 0);
   }
   return [String(value)];
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const normalizeSecretMountBinding = (value: unknown): SecretMountBinding | undefined => {
+  if (typeof value === "string") {
+    const provider = value.trim();
+    return provider.length > 0 ? provider : undefined;
+  }
+  if (!isObjectRecord(value)) return undefined;
+  const provider = typeof value.provider === "string" ? value.provider.trim() : "";
+  if (!provider) return undefined;
+  return {
+    provider,
+    label: typeof value.label === "string" ? value.label : undefined,
+    description: typeof value.description === "string" ? value.description : undefined,
+    placeholder: typeof value.placeholder === "string" ? value.placeholder : undefined,
+  };
+};
+
+const normalizeSecretMountMap = (value: unknown): SecretMountMap | undefined => {
+  if (!isObjectRecord(value)) return undefined;
+  const entries = Object.entries(value)
+    .map(([key, raw]) => {
+      const mountKey = key.trim();
+      if (!mountKey) return null;
+      const binding = normalizeSecretMountBinding(raw);
+      if (!binding) return null;
+      return [mountKey, binding] as const;
+    })
+    .filter((entry): entry is readonly [string, SecretMountBinding] => Boolean(entry));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+};
+
+const normalizeSecretMounts = (value: unknown): SecretMounts | undefined => {
+  if (!isObjectRecord(value)) return undefined;
+  const hasNestedMounts = "env" in value || "files" in value;
+  if (hasNestedMounts) {
+    const env = normalizeSecretMountMap(value.env);
+    const files = normalizeSecretMountMap(value.files);
+    if (!env && !files) return undefined;
+    return {
+      ...(env ? { env } : {}),
+      ...(files ? { files } : {}),
+    };
+  }
+  return normalizeSecretMountMap(value);
 };
 
 const normalizeSkill = (value: unknown): SkillRecord | null => {
@@ -78,10 +155,7 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
   const toolsAllowlist = coerceStringArray(record.toolsAllowlist);
   const tags = coerceStringArray(record.tags);
   const requiresSecrets = coerceStringArray(record.requiresSecrets);
-  const secretMounts =
-    record.secretMounts && typeof record.secretMounts === "object"
-      ? (record.secretMounts as Record<string, unknown>)
-      : undefined;
+  const secretMounts = normalizeSecretMounts(record.secretMounts);
 
   const versionNumber = Number(record.version ?? 1);
   const version = Number.isFinite(versionNumber) && versionNumber > 0 ? Math.floor(versionNumber) : 1;
@@ -129,7 +203,7 @@ const upsertSkill = async (ctx: MutationCtx, skill: SkillRecord) => {
 
 export const upsertMany = mutation({
   args: {
-    skills: v.array(v.any()),
+    skills: v.array(skillImportValidator),
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {

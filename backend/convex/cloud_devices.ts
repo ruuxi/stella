@@ -22,6 +22,41 @@ export type SpritesExecResult = {
   exit_code: number;
 };
 
+const cloudDeviceValidator = v.object({
+  _id: v.id("cloud_devices"),
+  _creationTime: v.number(),
+  ownerId: v.string(),
+  provider: v.string(),
+  spriteName: v.string(),
+  status: v.string(),
+  lastActiveAt: v.number(),
+  setupComplete: v.boolean(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
+const enable247ResultValidator = v.union(
+  v.object({
+    status: v.literal("already_enabled"),
+    spriteName: v.string(),
+  }),
+  v.object({
+    status: v.literal("provisioning"),
+    spriteName: v.string(),
+  }),
+);
+
+const disable247ResultValidator = v.union(
+  v.object({ status: v.literal("not_enabled") }),
+  v.object({ status: v.literal("disabled") }),
+);
+
+type Enable247Result =
+  | { status: "already_enabled"; spriteName: string }
+  | { status: "provisioning"; spriteName: string };
+
+type Disable247Result = { status: "not_enabled" } | { status: "disabled" };
+
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -261,6 +296,7 @@ export const assertNdjsonNoError = (raw: string, context: string) => {
 
 export const resolveForOwner = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("cloud_devices")
@@ -274,6 +310,7 @@ export const resolveForOwner = internalQuery({
 
 export const getForOwner = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.union(cloudDeviceValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("cloud_devices")
@@ -288,6 +325,7 @@ export const getForOwner = internalQuery({
 
 export const touchActivity = internalMutation({
   args: { ownerId: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("cloud_devices")
@@ -300,6 +338,7 @@ export const touchActivity = internalMutation({
         updatedAt: Date.now(),
       });
     }
+    return null;
   },
 });
 
@@ -309,6 +348,7 @@ export const updateStatus = internalMutation({
     status: v.string(),
     setupComplete: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = {
       status: args.status,
@@ -318,6 +358,7 @@ export const updateStatus = internalMutation({
       patch.setupComplete = args.setupComplete;
     }
     await ctx.db.patch(args.id, patch);
+    return null;
   },
 });
 
@@ -328,6 +369,7 @@ export const insertCloudDevice = internalMutation({
     spriteName: v.string(),
     status: v.string(),
   },
+  returns: v.id("cloud_devices"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("cloud_devices", {
@@ -345,8 +387,10 @@ export const insertCloudDevice = internalMutation({
 
 export const deleteCloudDevice = internalMutation({
   args: { id: v.id("cloud_devices") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
+    return null;
   },
 });
 
@@ -359,6 +403,7 @@ export const setupSprite = internalAction({
     deviceId: v.id("cloud_devices"),
     spriteName: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       // Install additional tools the base image may not have
@@ -395,6 +440,7 @@ export const setupSprite = internalAction({
         status: "error",
       });
     }
+    return null;
   },
 });
 
@@ -404,6 +450,7 @@ export const setupSprite = internalAction({
 
 export const getActive = query({
   args: {},
+  returns: v.union(cloudDeviceValidator, v.null()),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -422,7 +469,8 @@ export const getActive = query({
 
 export const enable247 = action({
   args: {},
-  handler: async (ctx): Promise<{ status: string; spriteName: string }> => {
+  returns: enable247ResultValidator,
+  handler: async (ctx): Promise<Enable247Result> => {
     const ownerId = await requireUserId(ctx);
 
     // Check if already enabled
@@ -459,7 +507,8 @@ export const enable247 = action({
 
 export const disable247 = action({
   args: {},
-  handler: async (ctx) => {
+  returns: disable247ResultValidator,
+  handler: async (ctx): Promise<Disable247Result> => {
     const ownerId = await requireUserId(ctx);
 
     const record = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });

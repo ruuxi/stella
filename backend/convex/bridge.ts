@@ -12,6 +12,56 @@ import { requireUserId } from "./auth";
 import { processIncomingMessage } from "./channel_utils";
 import { spritesApi, spritesApiText, spritesExecChecked } from "./cloud_devices";
 
+const bridgeAuthStateValidator = v.optional(
+  v.object({
+    qrCode: v.optional(v.string()),
+    linkUri: v.optional(v.string()),
+    generatedAt: v.optional(v.number()),
+    phoneNumber: v.optional(v.string()),
+    externalUserId: v.optional(v.string()),
+    displayName: v.optional(v.string()),
+    jid: v.optional(v.string()),
+    reason: v.optional(v.string()),
+  }),
+);
+
+const bridgeSessionValidator = v.object({
+  _id: v.id("bridge_sessions"),
+  _creationTime: v.number(),
+  ownerId: v.string(),
+  provider: v.string(),
+  spriteName: v.string(),
+  status: v.string(),
+  webhookSecret: v.string(),
+  authState: bridgeAuthStateValidator,
+  errorMessage: v.optional(v.string()),
+  lastHeartbeatAt: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
+const setupBridgeResultValidator = v.union(
+  v.object({
+    status: v.literal("already_running"),
+    sessionId: v.id("bridge_sessions"),
+  }),
+  v.object({
+    status: v.literal("initializing"),
+    sessionId: v.id("bridge_sessions"),
+  }),
+);
+
+const stopBridgeResultValidator = v.union(
+  v.object({ status: v.literal("not_running") }),
+  v.object({ status: v.literal("stopped") }),
+);
+
+type SetupBridgeResult =
+  | { status: "already_running"; sessionId: Id<"bridge_sessions"> }
+  | { status: "initializing"; sessionId: Id<"bridge_sessions"> };
+
+type StopBridgeResult = { status: "not_running" } | { status: "stopped" };
+
 // ---------------------------------------------------------------------------
 // Bridge service code templates
 // ---------------------------------------------------------------------------
@@ -54,6 +104,7 @@ export const getBridgeSession = internalQuery({
     ownerId: v.string(),
     provider: v.string(),
   },
+  returns: v.union(bridgeSessionValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("bridge_sessions")
@@ -74,6 +125,7 @@ export const createBridgeSession = internalMutation({
     provider: v.string(),
     spriteName: v.string(),
   },
+  returns: v.id("bridge_sessions"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("bridge_sessions", {
@@ -92,10 +144,11 @@ export const updateBridgeSession = internalMutation({
   args: {
     id: v.id("bridge_sessions"),
     status: v.optional(v.string()),
-    authState: v.optional(v.any()),
+    authState: bridgeAuthStateValidator,
     errorMessage: v.optional(v.string()),
     lastHeartbeatAt: v.optional(v.number()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.status !== undefined) patch.status = args.status;
@@ -103,13 +156,16 @@ export const updateBridgeSession = internalMutation({
     if (args.errorMessage !== undefined) patch.errorMessage = args.errorMessage;
     if (args.lastHeartbeatAt !== undefined) patch.lastHeartbeatAt = args.lastHeartbeatAt;
     await ctx.db.patch(args.id, patch);
+    return null;
   },
 });
 
 export const deleteBridgeSession = internalMutation({
   args: { id: v.id("bridge_sessions") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
+    return null;
   },
 });
 
@@ -119,6 +175,7 @@ export const deleteBridgeSession = internalMutation({
 
 export const getBridgeStatus = query({
   args: { provider: v.string() },
+  returns: v.union(bridgeSessionValidator, v.null()),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -142,6 +199,7 @@ export const deployBridge = internalAction({
     provider: v.string(),
     ownerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       // 1. Create bridge directory
@@ -238,6 +296,7 @@ export const deployBridge = internalAction({
         errorMessage: (error as Error).message,
       });
     }
+    return null;
   },
 });
 
@@ -247,7 +306,8 @@ export const deployBridge = internalAction({
 
 export const setupBridge = action({
   args: { provider: v.string() },
-  handler: async (ctx, args): Promise<{ status: string; sessionId?: Id<"bridge_sessions"> }> => {
+  returns: setupBridgeResultValidator,
+  handler: async (ctx, args): Promise<SetupBridgeResult> => {
     const ownerId = await requireUserId(ctx);
 
     // Check existing session
@@ -299,7 +359,8 @@ export const setupBridge = action({
 
 export const stopBridge = action({
   args: { provider: v.string() },
-  handler: async (ctx, args) => {
+  returns: stopBridgeResultValidator,
+  handler: async (ctx, args): Promise<StopBridgeResult> => {
     const ownerId = await requireUserId(ctx);
     const session = await ctx.runQuery(internal.bridge.getBridgeSession, {
       ownerId,
@@ -336,17 +397,19 @@ export const handleHeartbeat = internalAction({
     ownerId: v.string(),
     provider: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const session = await ctx.runQuery(internal.bridge.getBridgeSession, {
       ownerId: args.ownerId,
       provider: args.provider,
     });
-    if (!session) return;
+    if (!session) return null;
 
     await ctx.runMutation(internal.bridge.updateBridgeSession, {
       id: session._id,
       lastHeartbeatAt: Date.now(),
     });
+    return null;
   },
 });
 
@@ -354,15 +417,25 @@ export const handleAuthUpdate = internalAction({
   args: {
     ownerId: v.string(),
     provider: v.string(),
-    authState: v.any(),
+    authState: v.object({
+      qrCode: v.optional(v.string()),
+      linkUri: v.optional(v.string()),
+      generatedAt: v.optional(v.number()),
+      phoneNumber: v.optional(v.string()),
+      externalUserId: v.optional(v.string()),
+      displayName: v.optional(v.string()),
+      jid: v.optional(v.string()),
+      reason: v.optional(v.string()),
+    }),
     status: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const session = await ctx.runQuery(internal.bridge.getBridgeSession, {
       ownerId: args.ownerId,
       provider: args.provider,
     });
-    if (!session) return;
+    if (!session) return null;
 
     await ctx.runMutation(internal.bridge.updateBridgeSession, {
       id: session._id,
@@ -397,6 +470,7 @@ export const handleAuthUpdate = internalAction({
         }
       }
     }
+    return null;
   },
 });
 
@@ -408,8 +482,9 @@ export const handleBridgeMessage = internalAction({
     text: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
-    if (!args.externalUserId || !args.text.trim()) return;
+    if (!args.externalUserId || !args.text.trim()) return null;
 
     // Bridge providers receive sender IDs that are not pre-linked via code.
     // Ensure owner-scoped routing exists for this sender before processing.
@@ -438,7 +513,7 @@ export const handleBridgeMessage = internalAction({
       text: args.text,
     });
 
-    if (!result) return;
+    if (!result) return null;
 
     // Look up the bridge session to get the sprite name
     const session = await ctx.runQuery(internal.bridge.getBridgeSession, {
@@ -447,7 +522,7 @@ export const handleBridgeMessage = internalAction({
     });
     if (!session) {
       console.error(`[bridge] No session found for ${args.provider}/${args.ownerId}`);
-      return;
+      return null;
     }
 
     // Deliver reply by executing curl inside the sprite to hit the bridge's
@@ -467,6 +542,7 @@ export const handleBridgeMessage = internalAction({
     } catch (error) {
       console.error(`[bridge] Failed to deliver reply for ${args.provider}:`, error);
     }
+    return null;
   },
 });
 
@@ -476,12 +552,13 @@ export const handleBridgeError = internalAction({
     provider: v.string(),
     error: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const session = await ctx.runQuery(internal.bridge.getBridgeSession, {
       ownerId: args.ownerId,
       provider: args.provider,
     });
-    if (!session) return;
+    if (!session) return null;
 
     console.error(`[bridge] Error from ${args.provider} bridge:`, args.error);
     await ctx.runMutation(internal.bridge.updateBridgeSession, {
@@ -489,6 +566,7 @@ export const handleBridgeError = internalAction({
       status: "error",
       errorMessage: args.error,
     });
+    return null;
   },
 });
 

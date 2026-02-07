@@ -102,6 +102,7 @@ export const handleLinkCommand = internalAction({
     code: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const result = await processLinkCode({
       ctx,
@@ -122,6 +123,7 @@ export const handleLinkCommand = internalAction({
     } else {
       await sendSlackMessage(args.channelId, "Linked! You can now message Stella directly here.");
     }
+    return null;
   },
 });
 
@@ -132,6 +134,7 @@ export const handleIncomingMessage = internalAction({
     text: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       const result = await processIncomingMessage({
@@ -146,7 +149,7 @@ export const handleIncomingMessage = internalAction({
           args.channelId,
           "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
         );
-        return;
+        return null;
       }
 
       await sendSlackMessage(args.channelId, result.text);
@@ -154,5 +157,6 @@ export const handleIncomingMessage = internalAction({
       console.error("[slack] Agent turn failed:", error);
       await sendSlackMessage(args.channelId, "Sorry, something went wrong. Please try again.");
     }
+    return null;
   },
 });

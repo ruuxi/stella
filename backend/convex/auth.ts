@@ -14,7 +14,7 @@ import {
 import { components, internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import authConfig from "./auth.config";
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
@@ -98,16 +98,42 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
 export const createAuth = (ctx: GenericCtx<DataModel>) =>
   betterAuth(createAuthOptions(ctx));
 
+const currentUserValidator = v.object({
+  id: v.string(),
+  email: v.optional(v.string()),
+  name: v.optional(v.string()),
+  image: v.optional(v.string()),
+});
+
 export const getCurrentUser = query({
   args: {},
-  handler: async (ctx) => authComponent.getAuthUser(ctx),
+  returns: v.union(currentUserValidator, v.null()),
+  handler: async (ctx) => {
+    const user = await authComponent.getAuthUser(ctx);
+    if (!user || typeof user !== "object") {
+      return null;
+    }
+    const record = user as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id : "";
+    if (!id) {
+      return null;
+    }
+    return {
+      id,
+      email: typeof record.email === "string" ? record.email : undefined,
+      name: typeof record.name === "string" ? record.name : undefined,
+      image: typeof record.image === "string" ? record.image : undefined,
+    };
+  },
 });
 
 export const rotateKeys = internalAction({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const auth = createAuth(ctx);
-    return await auth.api.rotateKeys();
+    await auth.api.rotateKeys();
+    return null;
   },
 });
 

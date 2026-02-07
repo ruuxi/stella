@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireUserId } from "./auth";
+import { jsonObjectValidator } from "./shared_validators";
 
 export const listPublicIntegrations = query({
   args: {},
@@ -63,7 +64,7 @@ export const listUserIntegrations = query({
       provider: v.string(),
       mode: v.string(),
       externalId: v.optional(v.string()),
-      config: v.any(),
+      config: jsonObjectValidator,
       createdAt: v.number(),
       updatedAt: v.number(),
     }),
@@ -83,7 +84,7 @@ export const upsertUserIntegration = mutation({
     provider: v.string(),
     mode: v.string(),
     externalId: v.optional(v.string()),
-    config: v.any(),
+    config: jsonObjectValidator,
   },
   returns: v.null(),
   handler: async (ctx, args) => {

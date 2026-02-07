@@ -1,5 +1,58 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  jsonObjectValidator,
+  jsonSchemaValidator,
+  jsonValueValidator,
+  optionalJsonValueValidator,
+  secretMountsValidator,
+} from "./shared_validators";
+
+const bridgeAuthStateValidator = v.optional(
+  v.object({
+    qrCode: v.optional(v.string()),
+    linkUri: v.optional(v.string()),
+    generatedAt: v.optional(v.number()),
+    phoneNumber: v.optional(v.string()),
+    externalUserId: v.optional(v.string()),
+    displayName: v.optional(v.string()),
+    jid: v.optional(v.string()),
+    reason: v.optional(v.string()),
+  }),
+);
+
+const cronScheduleValidator = v.union(
+  v.object({
+    kind: v.literal("at"),
+    atMs: v.number(),
+  }),
+  v.object({
+    kind: v.literal("every"),
+    everyMs: v.number(),
+    anchorMs: v.optional(v.number()),
+  }),
+  v.object({
+    kind: v.literal("cron"),
+    expr: v.string(),
+    tz: v.optional(v.string()),
+  }),
+);
+
+const cronPayloadValidator = v.union(
+  v.object({
+    kind: v.literal("systemEvent"),
+    text: v.string(),
+    agentType: v.optional(v.string()),
+    deliver: v.optional(v.boolean()),
+  }),
+  v.object({
+    kind: v.literal("agentTurn"),
+    message: v.string(),
+    agentType: v.optional(v.string()),
+    deliver: v.optional(v.boolean()),
+    includeHistory: v.optional(v.boolean()),
+  }),
+);
 
 export default defineSchema({
   conversations: defineTable({
@@ -20,7 +73,7 @@ export default defineSchema({
     deviceId: v.optional(v.string()),
     requestId: v.optional(v.string()),
     targetDeviceId: v.optional(v.string()),
-    payload: v.any(),
+    payload: jsonValueValidator,
   })
     .index("by_conversation", ["conversationId", "timestamp"])
     .index("by_conversation_type", ["conversationId", "type", "timestamp"])
@@ -64,7 +117,7 @@ export default defineSchema({
     execution: v.optional(v.string()),
     requiresSecrets: v.optional(v.array(v.string())),
     publicIntegration: v.optional(v.boolean()),
-    secretMounts: v.optional(v.any()),
+    secretMounts: secretMountsValidator,
     version: v.number(),
     source: v.string(),
     enabled: v.boolean(),
@@ -80,7 +133,7 @@ export default defineSchema({
     encryptedValue: v.string(),
     keyVersion: v.number(),
     status: v.string(),
-    metadata: v.optional(v.any()),
+    metadata: optionalJsonValueValidator,
     createdAt: v.number(),
     updatedAt: v.number(),
     lastUsedAt: v.optional(v.number()),
@@ -110,7 +163,7 @@ export default defineSchema({
     provider: v.string(),
     mode: v.string(),
     externalId: v.optional(v.string()),
-    config: v.any(),
+    config: jsonObjectValidator,
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -153,7 +206,7 @@ export default defineSchema({
     pluginId: v.string(),
     name: v.string(),
     description: v.string(),
-    inputSchema: v.any(),
+    inputSchema: jsonSchemaValidator,
     source: v.string(),
     updatedAt: v.number(),
   })
@@ -252,7 +305,7 @@ export default defineSchema({
     spriteName: v.string(),
     status: v.string(),
     webhookSecret: v.string(),
-    authState: v.optional(v.any()),
+    authState: bridgeAuthStateValidator,
     errorMessage: v.optional(v.string()),
     lastHeartbeatAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -266,9 +319,9 @@ export default defineSchema({
     name: v.string(),
     description: v.optional(v.string()),
     enabled: v.boolean(),
-    schedule: v.any(),
+    schedule: cronScheduleValidator,
     sessionTarget: v.string(),
-    payload: v.any(),
+    payload: cronPayloadValidator,
     deleteAfterRun: v.optional(v.boolean()),
     nextRunAtMs: v.number(),
     runningAtMs: v.optional(v.number()),
