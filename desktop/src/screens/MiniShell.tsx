@@ -279,8 +279,13 @@ export const MiniShell = () => {
 
   const sendMessage = async () => {
     const selectedSnippet = selectedText?.trim() ?? "";
+    const windowSnippet = chatContext?.window
+      ? [chatContext.window.app, chatContext.window.title]
+          .filter((part) => Boolean(part && part.trim()))
+          .join(" - ")
+      : "";
     const rawText = message.trim();
-    if (!state.conversationId || (!rawText && !selectedSnippet)) {
+    if (!state.conversationId || (!rawText && !selectedSnippet && !windowSnippet)) {
       return;
     }
     const deviceId = await getOrCreateDeviceId();
@@ -288,9 +293,17 @@ export const MiniShell = () => {
 
     const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
     const cleanedText = followUpMatch ? rawText.slice(followUpMatch[0].length).trim() : rawText;
-    const combinedText = selectedSnippet
-      ? `"${selectedSnippet}"${cleanedText ? `\n\n${cleanedText}` : ""}`
-      : cleanedText;
+    const contextParts: string[] = [];
+    if (windowSnippet) {
+      contextParts.push(`[Window] ${windowSnippet}`);
+    }
+    if (selectedSnippet) {
+      contextParts.push(`"${selectedSnippet}"`);
+    }
+    if (cleanedText) {
+      contextParts.push(cleanedText);
+    }
+    const combinedText = contextParts.join("\n\n");
     if (!combinedText) {
       return;
     }
@@ -430,6 +443,27 @@ export const MiniShell = () => {
                   </button>
                 </div>
               )}
+              {chatContext?.window && (
+                <div className="raycast-window-chip">
+                  <span className="raycast-window-text">
+                    {chatContext.window.app}
+                    {chatContext.window.title ? ` - ${chatContext.window.title}` : ""}
+                  </span>
+                  <button
+                    type="button"
+                    className="raycast-screenshot-dismiss"
+                    aria-label="Remove window context"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setChatContext((prev) =>
+                        prev ? { ...prev, window: null } : prev,
+                      );
+                    }}
+                  >
+                    &times;
+                  </button>
+                </div>
+              )}
               <input
                 className="raycast-input"
                 placeholder={
@@ -437,6 +471,8 @@ export const MiniShell = () => {
                     ? "Capturing screen..."
                     : chatContext?.regionScreenshots?.length
                       ? "Ask about the capture..."
+                      : chatContext?.window
+                        ? "Ask about this window..."
                       : selectedText
                         ? "Ask about the selection..."
                         : "Ask about your screen..."

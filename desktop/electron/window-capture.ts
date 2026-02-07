@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-type WindowInfo = {
+export type WindowInfo = {
   title: string
   process: string
   pid: number
@@ -51,6 +51,10 @@ const queryWindowInfo = (x: number, y: number): Promise<WindowInfo | null> => {
       }
     })
   })
+}
+
+export const getWindowInfoAtPoint = (x: number, y: number): Promise<WindowInfo | null> => {
+  return queryWindowInfo(x, y)
 }
 
 /**
