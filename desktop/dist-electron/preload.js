@@ -127,4 +127,6 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     depseudonymize: (text) => electron_1.ipcRenderer.invoke('identity:depseudonymize', text),
     // System preferences (macOS FDA)
     openFullDiskAccess: () => electron_1.ipcRenderer.send('system:openFullDiskAccess'),
+    // Open URL in user's default browser
+    openExternal: (url) => electron_1.ipcRenderer.send('shell:openExternal', url),
 });

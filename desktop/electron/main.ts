@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen, type Display } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen, shell, type Display } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -282,6 +282,31 @@ const getFileTarget = (windowMode: WindowMode) => ({
   query: { window: windowMode },
 })
 
+const isAppUrl = (url: string) => {
+  if (url.startsWith('http://localhost:')) return true
+  if (url.startsWith('file://')) return true
+  if (url === 'about:blank') return true
+  return false
+}
+
+const setupExternalLinkHandlers = (window: BrowserWindow) => {
+  // Intercept target="_blank" / window.open — open in default browser
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (!isAppUrl(url)) {
+      shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+
+  // Prevent in-app navigation to external URLs
+  window.webContents.on('will-navigate', (event, url) => {
+    if (!isAppUrl(url)) {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+}
+
 const loadWindow = (window: BrowserWindow, windowMode: WindowMode) => {
   if (isDev) {
     window.loadURL(getDevUrl(windowMode))
@@ -314,6 +339,7 @@ const createFullWindow = () => {
     },
   })
 
+  setupExternalLinkHandlers(fullWindow)
   loadWindow(fullWindow, 'full')
   if (isDev) {
     fullWindow.webContents.openDevTools()
@@ -369,6 +395,7 @@ const createMiniWindow = () => {
   // Set higher alwaysOnTop level to appear above other floating windows
   miniWindow.setAlwaysOnTop(true, 'pop-up-menu')
 
+  setupExternalLinkHandlers(miniWindow)
   loadWindow(miniWindow, 'mini')
 
   miniWindow.on('closed', () => {
@@ -1215,6 +1242,13 @@ app.whenReady().then(async () => {
     const map = await loadIdentityMap(StellaHomePath)
     if (map.mappings.length === 0) return text
     return depseudonymize(text, map)
+  })
+
+  // Open URL in user's default browser
+  ipcMain.on('shell:openExternal', (_event, url: string) => {
+    if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+      shell.openExternal(url)
+    }
   })
 
   // Open Full Disk Access in System Preferences (macOS)
