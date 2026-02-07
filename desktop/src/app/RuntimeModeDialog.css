@@ -1,0 +1,36 @@
+.runtime-mode-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-muted, rgba(255, 255, 255, 0.02));
+}
+
+.runtime-mode-status-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.runtime-mode-status-value {
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.runtime-mode-status-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.runtime-mode-actions {
+  margin-top: 14px;
+}
+
+.runtime-mode-error {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--color-danger, #d73a49);
+}
