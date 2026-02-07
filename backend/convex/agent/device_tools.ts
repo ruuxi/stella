@@ -33,6 +33,9 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "SelfModRevert",
   "SelfModStatus",
   "SelfModPackage",
+  "InstallSkillPackage",
+  "InstallThemePackage",
+  "UninstallPackage",
 ] as const;
 
 type DeviceToolName = (typeof CORE_DEVICE_TOOL_NAMES)[number] | string;
@@ -358,6 +361,41 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         implementation: z.string().describe("Developer-facing explanation of how the feature was implemented — files changed, patterns used, architectural decisions"),
       }),
       execute: (args) => call("SelfModPackage", args),
+    }),
+    InstallSkillPackage: tool({
+      description:
+        "Install a skill package locally from the app store. Writes skill files to ~/.stella/skills/.",
+      inputSchema: z.object({
+        packageId: z.string().min(1).describe("Store package ID"),
+        skillId: z.string().min(1).describe("Local skill ID"),
+        name: z.string().min(1).describe("Skill name"),
+        markdown: z.string().min(1).describe("Skill markdown content"),
+        agentTypes: z.array(z.string()).optional().describe("Agent types this skill applies to"),
+        tags: z.array(z.string()).optional().describe("Tags for the skill"),
+      }),
+      execute: (args) => call("InstallSkillPackage", args),
+    }),
+    InstallThemePackage: tool({
+      description:
+        "Install a theme package locally from the app store. Writes theme JSON to ~/.stella/themes/.",
+      inputSchema: z.object({
+        packageId: z.string().min(1).describe("Store package ID"),
+        themeId: z.string().min(1).describe("Local theme ID"),
+        name: z.string().min(1).describe("Theme name"),
+        light: z.record(z.string()).describe("Light mode color palette"),
+        dark: z.record(z.string()).describe("Dark mode color palette"),
+      }),
+      execute: (args) => call("InstallThemePackage", args),
+    }),
+    UninstallPackage: tool({
+      description:
+        "Uninstall a package locally. Removes files from ~/.stella/ based on type.",
+      inputSchema: z.object({
+        packageId: z.string().min(1).describe("Store package ID"),
+        type: z.enum(["skill", "theme", "canvas", "plugin", "mod"]).describe("Package type"),
+        localId: z.string().min(1).describe("Local identifier (skillId, themeId, workspaceId)"),
+      }),
+      execute: (args) => call("UninstallPackage", args),
     }),
   };
 };
