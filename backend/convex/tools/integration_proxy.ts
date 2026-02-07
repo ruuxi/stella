@@ -1,0 +1,102 @@
+/**
+ * Thin Convex action exposing IntegrationRequest to authenticated frontend callers.
+ *
+ * This allows generated canvas components to make API calls via the
+ * useIntegrationRequest hook without needing a device tool round-trip.
+ */
+
+import { v } from "convex/values";
+import { action } from "../_generated/server";
+
+export const execute = action({
+  args: {
+    provider: v.string(),
+    request: v.object({
+      url: v.string(),
+      method: v.optional(v.string()),
+      headers: v.optional(v.any()),
+      query: v.optional(v.any()),
+      body: v.optional(v.any()),
+      timeoutMs: v.optional(v.number()),
+    }),
+    responseType: v.optional(v.string()),
+  },
+  returns: v.any(),
+  handler: async (_ctx, args) => {
+    const { request, responseType } = args;
+
+    let url: URL;
+    try {
+      url = new URL(request.url);
+    } catch {
+      return { error: "Invalid URL." };
+    }
+
+    if (request.query && typeof request.query === "object") {
+      for (const [name, value] of Object.entries(
+        request.query as Record<string, string | number | boolean>,
+      )) {
+        url.searchParams.set(name, String(value));
+      }
+    }
+
+    const headers = new Headers();
+    if (request.headers && typeof request.headers === "object") {
+      for (const [name, value] of Object.entries(
+        request.headers as Record<string, string>,
+      )) {
+        headers.set(name, value);
+      }
+    }
+
+    const method = (request.method ?? "GET").toUpperCase();
+    const timeoutMs = request.timeoutMs ?? 30_000;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const fetchOpts: RequestInit = {
+        method,
+        headers,
+        signal: controller.signal,
+      };
+
+      if (request.body && method !== "GET" && method !== "HEAD") {
+        if (typeof request.body === "string") {
+          fetchOpts.body = request.body;
+        } else {
+          fetchOpts.body = JSON.stringify(request.body);
+          if (!headers.has("content-type")) {
+            headers.set("content-type", "application/json");
+          }
+        }
+      }
+
+      const response = await fetch(url.toString(), fetchOpts);
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        return {
+          error: `HTTP ${response.status} ${response.statusText}`,
+          body: text.slice(0, 2000),
+        };
+      }
+
+      if (responseType === "text") {
+        return { data: await response.text() };
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        return { data: await response.json() };
+      }
+
+      return { data: await response.text() };
+    } catch (err) {
+      return { error: `Request failed: ${(err as Error).message}` };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+});

@@ -734,6 +734,18 @@ export const createBackendTools = (
                   description: "External app iframe or API facade",
                 },
                 {
+                  key: "generated",
+                  tier: "app",
+                  description:
+                    "Runtime-compiled React component. Send source code in data.source. Has access to react, recharts, and @stella/integration.",
+                },
+                {
+                  key: "webview",
+                  tier: "app",
+                  description:
+                    "Webview for workspace mini-apps. Set url to the dev server URL.",
+                },
+                {
                   key: "app",
                   tier: "app",
                   description: "Sandboxed HTML/React mini-app",
