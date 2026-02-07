@@ -32,7 +32,7 @@ import { log, logError } from "./tools-utils.js";
 
 // Tool handlers
 import { handleSqliteQuery } from "./tools-database.js";
-import { handleRead, handleWrite, handleEdit } from "./tools-file.js";
+import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./tools-file.js";
 import { handleGlob, handleGrep } from "./tools-search.js";
 import {
   createShellState,
@@ -55,13 +55,23 @@ import {
   handleStopDevServer,
   handleListWorkspaces,
 } from "./tools_workspace.js";
+import {
+  handleSelfModStart,
+  handleSelfModApply,
+  handleSelfModRevert,
+  handleSelfModStatus,
+  handleSelfModPackage,
+} from "./tools_self_mod.js";
 
 // Re-export types for external consumers
 export type { ToolContext, ToolResult, PluginSyncPayload };
 
-export const createToolHost = ({ StellaHome, requestCredential, resolveSecret }: ToolHostOptions) => {
+export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, resolveSecret }: ToolHostOptions) => {
   const stateRoot = path.join(StellaHome, "state");
   const pluginsRoot = path.join(StellaHome, "plugins");
+
+  // Configure file tools with frontend root for self-mod interception
+  setFileToolsConfig({ frontendRoot });
 
   // Plugin state
   const pluginHandlers = new Map<
@@ -150,10 +160,10 @@ export const createToolHost = ({ StellaHome, requestCredential, resolveSecret }:
     string,
     (args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>
   > = {
-    // File tools
-    Read: (args) => handleRead(args),
-    Write: (args) => handleWrite(args),
-    Edit: (args) => handleEdit(args),
+    // File tools (context passed for self-mod interception)
+    Read: (args, context) => handleRead(args, context),
+    Write: (args, context) => handleWrite(args, context),
+    Edit: (args, context) => handleEdit(args, context),
 
     // Search tools
     Glob: (args) => handleGlob(args),
@@ -182,6 +192,13 @@ export const createToolHost = ({ StellaHome, requestCredential, resolveSecret }:
     StartDevServer: (args) => handleStartDevServer(args),
     StopDevServer: (args) => handleStopDevServer(args),
     ListWorkspaces: () => handleListWorkspaces(),
+
+    // Self-mod tools
+    SelfModStart: (args, context) => handleSelfModStart(args, context, frontendRoot),
+    SelfModApply: (args, context) => handleSelfModApply(args, context, frontendRoot),
+    SelfModRevert: (args, context) => handleSelfModRevert(args, context, frontendRoot),
+    SelfModStatus: (args, context) => handleSelfModStatus(args, context),
+    SelfModPackage: (args, context) => handleSelfModPackage(args, context, frontendRoot),
   };
 
   const executeTool = async (
