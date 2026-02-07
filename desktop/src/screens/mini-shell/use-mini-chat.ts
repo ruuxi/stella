@@ -62,7 +62,7 @@ export function useMiniChat(opts: {
     });
   });
 
-  const createAttachment = useAction(api.attachments.createFromDataUrl);
+  const createAttachment = useAction(api.data.attachments.createFromDataUrl);
   const createConversation = useMutation(
     api.conversations.createConversation,
   );

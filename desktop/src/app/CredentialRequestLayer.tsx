@@ -13,7 +13,7 @@ export type PendingCredentialRequest = {
 };
 
 export const CredentialRequestLayer = () => {
-  const createSecret = useMutation(api.secrets.createSecret);
+  const createSecret = useMutation(api.data.secrets.createSecret);
   const [pending, setPending] = useState<PendingCredentialRequest | null>(null);
 
   const apiHandle = useMemo(() => getElectronApi(), []);
