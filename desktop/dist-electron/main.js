@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { MouseHookManager } from './mouse-hook.js';
@@ -187,6 +187,31 @@ const getFileTarget = (windowMode) => ({
     filePath: path.join(__dirname, '../dist/index.html'),
     query: { window: windowMode },
 });
+const isAppUrl = (url) => {
+    if (url.startsWith('http://localhost:'))
+        return true;
+    if (url.startsWith('file://'))
+        return true;
+    if (url === 'about:blank')
+        return true;
+    return false;
+};
+const setupExternalLinkHandlers = (window) => {
+    // Intercept target="_blank" / window.open — open in default browser
+    window.webContents.setWindowOpenHandler(({ url }) => {
+        if (!isAppUrl(url)) {
+            shell.openExternal(url);
+        }
+        return { action: 'deny' };
+    });
+    // Prevent in-app navigation to external URLs
+    window.webContents.on('will-navigate', (event, url) => {
+        if (!isAppUrl(url)) {
+            event.preventDefault();
+            shell.openExternal(url);
+        }
+    });
+};
 const loadWindow = (window, windowMode) => {
     if (isDev) {
         window.loadURL(getDevUrl(windowMode));
@@ -215,6 +240,7 @@ const createFullWindow = () => {
             partition: 'persist:Stella',
         },
     });
+    setupExternalLinkHandlers(fullWindow);
     loadWindow(fullWindow, 'full');
     if (isDev) {
         fullWindow.webContents.openDevTools();
@@ -263,6 +289,7 @@ const createMiniWindow = () => {
     });
     // Set higher alwaysOnTop level to appear above other floating windows
     miniWindow.setAlwaysOnTop(true, 'pop-up-menu');
+    setupExternalLinkHandlers(miniWindow);
     loadWindow(miniWindow, 'mini');
     miniWindow.on('closed', () => {
         miniWindow = null;
@@ -1018,6 +1045,12 @@ app.whenReady().then(async () => {
         if (map.mappings.length === 0)
             return text;
         return depseudonymize(text, map);
+    });
+    // Open URL in user's default browser
+    ipcMain.on('shell:openExternal', (_event, url) => {
+        if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+            shell.openExternal(url);
+        }
     });
     // Open Full Disk Access in System Preferences (macOS)
     ipcMain.on('system:openFullDiskAccess', () => {

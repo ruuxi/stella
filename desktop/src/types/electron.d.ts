@@ -177,6 +177,8 @@ export type ElectronApi = {
   depseudonymize: (text: string) => Promise<string>
   // System preferences (macOS FDA)
   openFullDiskAccess: () => void
+  // Open URL in user's default browser
+  openExternal: (url: string) => void
 }
 
 declare global {
