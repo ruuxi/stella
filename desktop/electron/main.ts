@@ -517,8 +517,28 @@ const showWindow = (target: WindowMode) => {
     if (!fullWindow) {
       createFullWindow()
     }
-    fullWindow?.show()
-    fullWindow?.focus()
+    const win = fullWindow
+    if (win) {
+      if (win.isMinimized()) {
+        win.restore()
+      }
+      if (process.platform === 'win32') {
+        app.focus({ steal: true })
+        win.show()
+        win.moveTop()
+        // Pulse always-on-top to reliably lift above other apps.
+        win.setAlwaysOnTop(true, 'screen-saver')
+        win.focus()
+        setTimeout(() => {
+          if (!win.isDestroyed()) {
+            win.setAlwaysOnTop(false)
+          }
+        }, 75)
+      } else {
+        win.show()
+        win.focus()
+      }
+    }
     hideMiniWindow(false)
     // Full view is always chat mode
     updateUiState({ window: target, mode: 'chat' })
