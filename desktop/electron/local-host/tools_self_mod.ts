@@ -5,7 +5,7 @@
  * SelfModApply  — apply staged changes atomically
  * SelfModRevert — undo a batch
  * SelfModStatus — show staging/history info
- * SelfModPackage — export as mod package
+ * SelfModPackage — export as blueprint
  */
 
 import type { ToolContext, ToolResult } from "./tools-types.js";
@@ -185,23 +185,32 @@ export const handleSelfModPackage = async (
     return { error: "No feature to package. Provide feature_id or have an active feature." };
   }
 
+  const description = args.description ? String(args.description) : "";
+  const implementation = args.implementation ? String(args.implementation) : "";
+
   try {
-    const modPackage = await packageFeature(featureId, frontendRoot);
-    if (!modPackage) {
+    const blueprint = await packageFeature(featureId, frontendRoot);
+    if (!blueprint) {
       return { error: `Feature ${featureId} not found.` };
     }
 
+    // Inject agent-provided description and implementation
+    blueprint.description = description;
+    blueprint.implementation = implementation;
+
     return {
       result: JSON.stringify({
-        format: modPackage.format,
-        name: modPackage.name,
-        description: modPackage.description,
-        fileCount: modPackage.files.length,
-        files: modPackage.files.map((f) => ({
+        format: blueprint.format,
+        name: blueprint.name,
+        description: blueprint.description,
+        implementation: blueprint.implementation,
+        fileCount: blueprint.referenceFiles.length,
+        files: blueprint.referenceFiles.map((f) => ({
           path: f.path,
           action: f.action,
         })),
-        message: `Packaged "${modPackage.name}" with ${modPackage.files.length} file(s).`,
+        blueprint,
+        message: `Packaged "${blueprint.name}" as blueprint with ${blueprint.referenceFiles.length} reference file(s).`,
       }),
     };
   } catch (error) {
