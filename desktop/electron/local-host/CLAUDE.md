@@ -5,7 +5,7 @@ This directory implements the local tool execution system that runs on the user'
 ## How It Works
 
 1. **Polling**: `runner.ts` polls Convex for `tool_request` events targeted at this device
-2. **Execution**: Tool handlers execute locally (file I/O, shell commands, web requests)
+2. **Execution**: Tool handlers execute locally (file I/O, shell commands, etc.)
 3. **Response**: Results are sent back to Convex as `tool_result` events
 
 ## File Organization
@@ -24,10 +24,14 @@ This directory implements the local tool execution system that runs on the user'
 | `tools-file.ts` | Read, Write, Edit |
 | `tools-search.ts` | Glob, Grep |
 | `tools-shell.ts` | Bash (incl. kill_shell_id), SkillBash |
-| `tools-web.ts` | WebFetch, WebSearch |
 | `tools-state.ts` | Task, TaskOutput |
 | `tools-user.ts` | AskUserQuestion, RequestCredential |
 | `tools-database.ts` | SqliteQuery |
+| `tools_workspace.ts` | CreateWorkspace, StartDevServer, StopDevServer, ListWorkspaces |
+| `tools_store.ts` | InstallSkillPackage, InstallThemePackage, UninstallPackage |
+| `tools_self_mod.ts` | SelfModStart, SelfModApply, SelfModRevert, SelfModStatus, SelfModPackage |
+
+Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and are no longer registered as device tools. The `tools-web.ts` file still exists but its handlers are commented out of the registry.
 
 ### Other Modules
 
@@ -38,11 +42,26 @@ This directory implements the local tool execution system that runs on the user'
 | `agents.ts` | Load agents from `~/.stella/agents/` |
 | `plugins.ts` | Load plugins from `~/.stella/plugins/` |
 | `stella-home.ts` | `~/.stella/` directory utilities |
-| `browser-data.ts` | Browser history/bookmark extraction |
+| `skill_import.ts` | Import skills from `~/.claude/skills/` into `~/.stella/skills/` |
+| `workspace_templates.ts` | Vite+React scaffold templates for workspaces |
+| `identity_map.ts` | Persistent pseudonymization (maps real names to aliases) |
+| `manifests.ts` | Manifest file parsing |
+
+### User Signal Collection
+
+| File | Purpose |
+|------|---------|
+| `collect-all.ts` | Orchestrates parallel collection of all signal sources |
+| `discovery_types.ts` | Type definitions for discovery categories |
+| `browser-data.ts` | Browser history extraction |
+| `browser_bookmarks.ts` | Browser bookmark extraction |
+| `safari_data.ts` | Safari history and bookmarks (macOS) |
 | `app-discovery.ts` | Installed app discovery |
 | `dev-projects.ts` | Development project discovery |
+| `dev_environment.ts` | IDE extensions, git config, dotfiles |
 | `shell-history.ts` | Shell history parsing |
-| `manifests.ts` | Manifest file parsing |
+| `messages_notes.ts` | iMessage, Notes, Reminders, Calendar |
+| `system_signals.ts` | Screen Time, Dock pins, filesystem signals |
 
 ## Adding a New Tool
 
@@ -53,14 +72,9 @@ This directory implements the local tool execution system that runs on the user'
 import type { ToolHandler } from "./tools-types";
 
 export const exampleHandler: ToolHandler = async (args, context) => {
-  // Validate args
   const { someParam } = args as { someParam: string };
-
-  // Execute tool logic
   const result = await doSomething(someParam);
-
-  // Return result (will be JSON serialized)
-  return { success: true, data: result };
+  return { result: { success: true, data: result } };
 };
 ```
 
@@ -69,34 +83,34 @@ export const exampleHandler: ToolHandler = async (args, context) => {
 ```typescript
 import { exampleHandler } from "./tools-example";
 
-// In createToolHost() or the handlers object:
+// In createToolHost() handler registry:
 handlers.set("Example", exampleHandler);
 ```
 
-3. **Backend must also define the tool** in `backend/convex/device_tools.ts`
+3. **Backend must also define the tool** in `backend/convex/agent/device_tools.ts`
 
 ## Tool Handler Interface
 
 ```typescript
+type ToolResult = { result?: unknown; error?: string };
+
 type ToolHandler = (
   args: Record<string, unknown>,
   context: ToolContext
-) => Promise<unknown>;
+) => Promise<ToolResult>;
 
-interface ToolContext {
-  deviceId: string;
+type ToolContext = {
   conversationId: string;
+  deviceId: string;
   requestId: string;
-  // IPC helpers for UI interaction
-  sendToRenderer: (channel: string, data: unknown) => void;
-}
+  agentType?: string;
+};
 ```
 
 ## Testing
 
-- Unit tests in `__tests__/` directory
+- Unit tests: `*.test.ts` files (run with `bun run test:electron` from frontend root)
 - Manual test files: `*.manual-test.ts` (not run in CI)
-- Run tests: `bun run test:run` from frontend root
 
 ## Key Patterns
 
@@ -107,4 +121,7 @@ Large outputs are truncated to prevent memory issues. See `tools-utils.ts` for l
 All file paths should be normalized. Use utilities from `tools-utils.ts`.
 
 ### Error Handling
-Tool handlers should catch errors and return structured error responses rather than throwing.
+Tool handlers should catch errors and return `{ error: "message" }` rather than throwing.
+
+### Self-Mod Interception
+When `agentType` is `self_mod`, file write/edit operations are redirected to staging via `tools_self_mod.ts`.
