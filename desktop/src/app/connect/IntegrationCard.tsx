@@ -11,7 +11,7 @@ import type { Integration } from "./integration-configs";
 // ---------------------------------------------------------------------------
 
 function ConnectedView({ integration }: { integration: Integration }) {
-  const deleteConnection = useMutation(api.channel_utils.deleteConnection);
+  const deleteConnection = useMutation(api.channels.utils.deleteConnection);
   const [disconnecting, setDisconnecting] = useState(false);
 
   const handleDisconnect = async () => {
@@ -51,7 +51,7 @@ function BotSetupView({
   integration: Integration;
   isExpanded: boolean;
 }) {
-  const generateCode = useMutation(api.channel_utils.generateLinkCode);
+  const generateCode = useMutation(api.channels.utils.generateLinkCode);
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,11 +121,11 @@ function BotSetupView({
 }
 
 function WhatsAppBridgeView({ isExpanded }: { isExpanded: boolean }) {
-  const setupBridge = useAction(api.bridge.setupBridge);
+  const setupBridge = useAction(api.channels.bridge.setupBridge);
   const [error, setError] = useState<string | null>(null);
 
   const qrCode = useQuery(
-    api.whatsapp.getQrCode,
+    api.channels.whatsapp.getQrCode,
     isExpanded ? {} : "skip",
   ) as string | null | undefined;
 
@@ -172,11 +172,11 @@ function WhatsAppBridgeView({ isExpanded }: { isExpanded: boolean }) {
 }
 
 function SignalBridgeView({ isExpanded }: { isExpanded: boolean }) {
-  const setupBridge = useAction(api.bridge.setupBridge);
+  const setupBridge = useAction(api.channels.bridge.setupBridge);
   const [error, setError] = useState<string | null>(null);
 
   const linkUri = useQuery(
-    api.signal.getLinkUri,
+    api.channels.signal.getLinkUri,
     isExpanded ? {} : "skip",
   ) as string | null | undefined;
 
@@ -239,7 +239,7 @@ export function IntegrationCard({
   integration: Integration;
   isExpanded: boolean;
 }) {
-  const connection = useQuery(api.channel_utils.getConnection, {
+  const connection = useQuery(api.channels.utils.getConnection, {
     provider: integration.provider,
   });
   const isConnected = connection !== null && connection !== undefined;

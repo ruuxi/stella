@@ -31,10 +31,10 @@ interface RuntimeModeDialogProps {
 
 export const RuntimeModeDialog = ({ open, onOpenChange }: RuntimeModeDialogProps) => {
   const runtimeStatus = useQuery(
-    api.cloud_devices.get247Status,
+    api.agent.cloud_devices.get247Status,
     open ? {} : "skip",
   ) as RuntimeStatus | undefined;
-  const set247Enabled = useAction(api.cloud_devices.set247Enabled);
+  const set247Enabled = useAction(api.agent.cloud_devices.set247Enabled);
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

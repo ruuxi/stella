@@ -55,7 +55,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       });
     },
   );
-  const createAttachment = useAction(api.attachments.createFromDataUrl);
+  const createAttachment = useAction(api.data.attachments.createFromDataUrl);
 
   const resetStreamingState = useCallback(
     (runId?: number) => {
