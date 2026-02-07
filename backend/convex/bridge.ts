@@ -78,7 +78,7 @@ function getBridgeServiceCode(provider: string): string {
 }
 
 function getBridgeDependencies(provider: string): string {
-  if (provider === "whatsapp") return "@whiskeysockets/baileys qrcode-terminal pino";
+  if (provider === "whatsapp") return "@whiskeysockets/baileys qrcode pino";
   if (provider === "signal") return ""; // signal-cli is a standalone binary
   return "";
 }
@@ -246,7 +246,8 @@ export const deleteBridgeSession = internalMutation({
   args: { id: v.id("bridge_sessions") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await ctx.db.delete(args.id);
+    const doc = await ctx.db.get(args.id);
+    if (doc) await ctx.db.delete(args.id);
     return null;
   },
 });
@@ -366,7 +367,7 @@ export const deployBridge = internalAction({
 
       // 2. Write bridge service code
       const bridgeCode = getBridgeServiceCode(args.provider);
-      const encodedCode = Buffer.from(bridgeCode).toString("base64");
+      const encodedCode = btoa(bridgeCode);
       await spritesExecChecked(
         args.spriteName,
         `echo '${encodedCode}' | base64 -d > /home/sprite/stella-bridge/bridge.js`,
@@ -392,7 +393,7 @@ export const deployBridge = internalAction({
         webhookSecret,
         ownerId: args.ownerId,
       };
-      const encodedConfig = Buffer.from(JSON.stringify(config)).toString("base64");
+      const encodedConfig = btoa(JSON.stringify(config));
       await spritesExecChecked(
         args.spriteName,
         `echo '${encodedConfig}' | base64 -d > /home/sprite/stella-bridge/config.json`,
@@ -411,10 +412,12 @@ export const deployBridge = internalAction({
 
       // 5. Signal-specific: install signal-cli
       if (args.provider === "signal") {
+        // Wait for any existing apt-get to finish, then install Java + signal-cli
         await spritesExecChecked(
           args.spriteName,
-          `if ! command -v java >/dev/null 2>&1 || ! command -v signal-cli >/dev/null 2>&1; then ` +
-            `apt-get update -qq && apt-get install -y -qq curl openjdk-21-jre-headless > /dev/null 2>&1; fi && ` +
+          `while fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done && ` +
+            `if ! command -v java >/dev/null 2>&1; then ` +
+            `apt-get update -qq && apt-get install -y -qq openjdk-21-jre-headless > /dev/null 2>&1; fi && ` +
             `if ! command -v signal-cli >/dev/null 2>&1; then ` +
             `cd /tmp && curl -sLO https://github.com/AsamK/signal-cli/releases/download/v0.13.12/signal-cli-0.13.12-Linux.tar.gz && ` +
             `tar xf signal-cli-*.tar.gz && mkdir -p /usr/local/lib/signal-cli && mv signal-cli-*/bin/signal-cli /usr/local/bin/ && ` +
@@ -423,19 +426,13 @@ export const deployBridge = internalAction({
         );
       }
 
-      // 6. Start as Sprites Service (auto-restarts on crash)
-      // PUT creates AND starts the service (response: service object with "starting" status)
-      // Fields per Sprites docs: cmd (string), args (string[]), needs (string[]), http_port (number?)
-      const serviceName = `stella-bridge-${args.provider}`;
-      await spritesApi(
-        `/sprites/${args.spriteName}/services/${serviceName}`,
-        "PUT",
-        {
-          cmd: "node",
-          args: ["/home/sprite/stella-bridge/bridge.js"],
-          needs: [],
-          http_port: 8080,
-        },
+      // 6. Start bridge process via exec (nohup + background so it survives the exec session)
+      // NOTE: Sprites Services API is broken in rc31 ("service name required" routing bug).
+      // Using exec as a workaround until the Services API is fixed.
+      await spritesExecChecked(
+        args.spriteName,
+        `cd /home/sprite/stella-bridge && nohup node bridge.js > bridge.log 2>&1 &`,
+        "Bridge process start",
       );
 
       // 7. Update session status
@@ -628,12 +625,12 @@ export const stopBridge = action({
     });
     if (!session) return { status: "not_running" };
 
-    // Stop the Sprites Service (returns streaming NDJSON)
-    const serviceName = `stella-bridge-${args.provider}`;
+    // Kill the bridge process
     try {
-      await spritesApiText(
-        `/sprites/${session.spriteName}/services/${serviceName}/stop`,
-        "POST",
+      await spritesExecChecked(
+        session.spriteName,
+        `pkill -f 'node.*bridge.js' || true`,
+        "Bridge process stop",
       );
     } catch {
       // May already be stopped
@@ -970,6 +967,7 @@ const WHATSAPP_BRIDGE_CODE = `
 const http = require("http");
 const config = require("./config.json");
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const QRCode = require("qrcode");
 const pino = require("pino");
 
 const logger = pino({ level: "silent" });
@@ -1005,10 +1003,11 @@ async function startWhatsApp() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
+      const qrDataUrl = await QRCode.toDataURL(qr, { width: 256, margin: 2 });
       await postWebhook({
         type: "auth_update",
         status: "awaiting_auth",
-        authState: { qrCode: qr, generatedAt: Date.now() },
+        authState: { qrCode: qrDataUrl, generatedAt: Date.now() },
       });
     }
 
