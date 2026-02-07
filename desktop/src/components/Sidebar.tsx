@@ -9,6 +9,7 @@ interface SidebarProps {
   onThemePickerOpenChange?: (open: boolean) => void;
   onThemeSelect?: () => void;
   onSignIn?: () => void;
+  onConnect?: () => void;
 }
 
 const navItems = [
@@ -117,6 +118,7 @@ export const Sidebar = ({
   onThemePickerOpenChange,
   onThemeSelect,
   onSignIn,
+  onConnect,
 }: SidebarProps) => {
   const { isAuthenticated } = useConvexAuth();
 
@@ -125,7 +127,12 @@ export const Sidebar = ({
       <div className="sidebar-header" />
       <nav className="sidebar-nav">
         {navItems.map((item) => (
-          <button key={item.label} className="sidebar-nav-item" type="button">
+          <button
+            key={item.label}
+            className="sidebar-nav-item"
+            type="button"
+            onClick={item.label === "Connect" ? onConnect : undefined}
+          >
             <span className="sidebar-nav-icon">{item.icon}</span>
             <span className="sidebar-nav-label">{item.label}</span>
           </button>

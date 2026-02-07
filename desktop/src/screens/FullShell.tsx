@@ -20,6 +20,7 @@ import { ShiftingGradient } from "../components/background/ShiftingGradient";
 import { useTheme } from "../theme/theme-context";
 import { Button } from "../components/button";
 import { AuthDialog } from "../app/AuthDialog";
+import { ConnectDialog } from "../app/ConnectDialog";
 import { CanvasPanel } from "../components/canvas/CanvasPanel";
 import { Sidebar } from "../components/Sidebar";
 import type { AllUserSignalsResult, ChatContext, ChatContextUpdate } from "../types/electron";
@@ -95,6 +96,7 @@ export const FullShell = () => {
     null,
   );
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
   const [onboardingKey, setOnboardingKey] = useState(0);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
@@ -675,6 +677,7 @@ export const FullShell = () => {
           onThemePickerOpenChange={setThemePickerOpen}
           onThemeSelect={handleThemeSelect}
           onSignIn={() => setAuthDialogOpen(true)}
+          onConnect={() => setConnectDialogOpen(true)}
         />
         <div className="full-body-main">
           <div
@@ -941,6 +944,7 @@ export const FullShell = () => {
       </div>
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
+      <ConnectDialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen} />
 
       {isDev && (
         <button className="onboarding-reset" onClick={handleResetOnboarding}>
