@@ -1,0 +1,102 @@
+/* ============================================
+   Sidebar — left navigation panel
+   Background matches the composer input bar
+   ============================================ */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  border-right: 1px solid var(--border-weak);
+  border-radius: 0 10px 10px 0;
+  position: relative;
+  z-index: 2;
+}
+
+/* Reserve space for the fixed title bar (32px) */
+.sidebar-header {
+  height: 32px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 12px;
+  flex: 1;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--text-base);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.sidebar-nav-item:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-nav-item:active {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.sidebar-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--text-weak);
+}
+
+.sidebar-nav-item:hover .sidebar-nav-icon {
+  color: var(--text-strong);
+}
+
+.sidebar-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Footer — pinned to bottom for theme + auth */
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-top: 1px solid var(--border-weak);
+}
+
+.sidebar-footer-item {
+  display: flex;
+  align-items: center;
+}
+
+/* Push the title bar to start after the sidebar */
+.window-shell.full .title-bar {
+  left: 260px;
+}
+
+/* On macOS, traffic lights sit inside the sidebar area — that's intentional */
+.window-shell.full .title-bar-mac {
+  padding-left: 12px;
+}

@@ -109,18 +109,31 @@ const getSelectedTextWindows = (): Promise<string | null> => {
       return
     }
 
+    // Only one in-flight query is supported against the persistent shell.
+    // Resolve any stale waiter before starting a new one.
+    if (pendingResolve) {
+      pendingResolve(null)
+      pendingResolve = null
+    }
+
+    let timeout: NodeJS.Timeout
+    const resolver = (result: string | null) => {
+      if (pendingResolve === resolver) {
+        pendingResolve = null
+      }
+      clearTimeout(timeout)
+      resolve(result)
+    }
+
     // Set a timeout in case PowerShell hangs
-    const timeout = setTimeout(() => {
-      if (pendingResolve === resolve) {
+    timeout = setTimeout(() => {
+      if (pendingResolve === resolver) {
         pendingResolve = null
         resolve(null)
       }
     }, 500)
 
-    pendingResolve = (result) => {
-      clearTimeout(timeout)
-      resolve(result)
-    }
+    pendingResolve = resolver
 
     // Send command to get selected text
     const cmd = `

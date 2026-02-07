@@ -120,7 +120,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
                 const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
                 toolHost.setSkills(skills);
                 await callMutation("skills.upsertMany", {
-                    skills,
+                    skills: skills.map(({ filePath, ...rest }) => rest),
                 });
                 await callMutation("agents.upsertMany", {
                     agents,
