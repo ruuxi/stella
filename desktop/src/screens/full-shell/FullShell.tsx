@@ -3,7 +3,7 @@
  * renders .full-body grid.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useUiState } from "../../app/state/ui-state";
 import { useCanvas } from "../../app/state/canvas-state";
 import { useTheme } from "../../theme/theme-context";
@@ -25,8 +25,10 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 
+const StoreView = lazy(() => import("./StoreView"));
+
 export const FullShell = () => {
-  const { state } = useUiState();
+  const { state, setView } = useUiState();
   const { state: canvasState } = useCanvas();
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
@@ -182,46 +184,55 @@ export const FullShell = () => {
           onSignIn={() => setAuthDialogOpen(true)}
           onConnect={() => setConnectDialogOpen(true)}
           onSettings={() => setRuntimeModeDialogOpen(true)}
+          onStore={() => setView(state.view === 'store' ? 'chat' : 'store')}
+          storeActive={state.view === 'store'}
         />
-        <ChatColumn
-          events={events}
-          streamingText={streaming.streamingText}
-          reasoningText={streaming.reasoningText}
-          isStreaming={streaming.isStreaming}
-          pendingUserMessageId={streaming.pendingUserMessageId}
-          message={message}
-          setMessage={setMessage}
-          chatContext={chatContext}
-          setChatContext={setChatContext}
-          selectedText={selectedText}
-          setSelectedText={setSelectedText}
-          queueNext={streaming.queueNext}
-          setQueueNext={streaming.setQueueNext}
-          scrollContainerRef={scroll.scrollContainerRef}
-          handleScroll={scroll.handleScroll}
-          showScrollButton={scroll.showScrollButton}
-          scrollToBottom={scroll.scrollToBottom}
-          conversationId={state.conversationId}
-          onboardingDone={onboarding.onboardingDone}
-          isAuthenticated={onboarding.isAuthenticated}
-          isAuthLoading={onboarding.isAuthLoading}
-          canSubmit={canSubmit}
-          onSend={handleSend}
-          hasExpanded={onboarding.hasExpanded}
-          onboardingKey={onboarding.onboardingKey}
-          blackHoleRef={onboarding.blackHoleRef}
-          triggerFlash={onboarding.triggerFlash}
-          startBirthAnimation={onboarding.startBirthAnimation}
-          completeOnboarding={onboarding.completeOnboarding}
-          handleOpenThemePicker={onboarding.handleOpenThemePicker}
-          handleConfirmTheme={onboarding.handleConfirmTheme}
-          themeConfirmed={onboarding.themeConfirmed}
-          hasSelectedTheme={onboarding.hasSelectedTheme}
-          onDiscoveryConfirm={handleDiscoveryConfirm}
-          onSignIn={() => setAuthDialogOpen(true)}
-        />
-
-        {canvasOpen && <CanvasPanel />}
+        {state.view === 'store' ? (
+          <Suspense fallback={<div className="store-loading">Loading Store...</div>}>
+            <StoreView onBack={() => setView('chat')} />
+          </Suspense>
+        ) : (
+          <>
+            <ChatColumn
+              events={events}
+              streamingText={streaming.streamingText}
+              reasoningText={streaming.reasoningText}
+              isStreaming={streaming.isStreaming}
+              pendingUserMessageId={streaming.pendingUserMessageId}
+              message={message}
+              setMessage={setMessage}
+              chatContext={chatContext}
+              setChatContext={setChatContext}
+              selectedText={selectedText}
+              setSelectedText={setSelectedText}
+              queueNext={streaming.queueNext}
+              setQueueNext={streaming.setQueueNext}
+              scrollContainerRef={scroll.scrollContainerRef}
+              handleScroll={scroll.handleScroll}
+              showScrollButton={scroll.showScrollButton}
+              scrollToBottom={scroll.scrollToBottom}
+              conversationId={state.conversationId}
+              onboardingDone={onboarding.onboardingDone}
+              isAuthenticated={onboarding.isAuthenticated}
+              isAuthLoading={onboarding.isAuthLoading}
+              canSubmit={canSubmit}
+              onSend={handleSend}
+              hasExpanded={onboarding.hasExpanded}
+              onboardingKey={onboarding.onboardingKey}
+              blackHoleRef={onboarding.blackHoleRef}
+              triggerFlash={onboarding.triggerFlash}
+              startBirthAnimation={onboarding.startBirthAnimation}
+              completeOnboarding={onboarding.completeOnboarding}
+              handleOpenThemePicker={onboarding.handleOpenThemePicker}
+              handleConfirmTheme={onboarding.handleConfirmTheme}
+              themeConfirmed={onboarding.themeConfirmed}
+              hasSelectedTheme={onboarding.hasSelectedTheme}
+              onDiscoveryConfirm={handleDiscoveryConfirm}
+              onSignIn={() => setAuthDialogOpen(true)}
+            />
+            {canvasOpen && <CanvasPanel />}
+          </>
+        )}
       </div>
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />

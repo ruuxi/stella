@@ -11,6 +11,8 @@ interface SidebarProps {
   onSignIn?: () => void;
   onConnect?: () => void;
   onSettings?: () => void;
+  onStore?: () => void;
+  storeActive?: boolean;
 }
 
 const navItems = [
@@ -121,8 +123,17 @@ export const Sidebar = ({
   onSignIn,
   onConnect,
   onSettings,
+  onStore,
+  storeActive,
 }: SidebarProps) => {
   const { isAuthenticated } = useConvexAuth();
+
+  const getClickHandler = (label: string) => {
+    if (label === "App Store") return onStore;
+    if (label === "Connect") return onConnect;
+    if (label === "Settings") return onSettings;
+    return undefined;
+  };
 
   return (
     <aside className="sidebar">
@@ -131,15 +142,9 @@ export const Sidebar = ({
         {navItems.map((item) => (
           <button
             key={item.label}
-            className="sidebar-nav-item"
+            className={`sidebar-nav-item${item.label === "App Store" && storeActive ? " sidebar-nav-item--active" : ""}`}
             type="button"
-            onClick={
-              item.label === "Connect"
-                ? onConnect
-                : item.label === "Settings"
-                  ? onSettings
-                  : undefined
-            }
+            onClick={getClickHandler(item.label)}
           >
             <span className="sidebar-nav-icon">{item.icon}</span>
             <span className="sidebar-nav-label">{item.label}</span>

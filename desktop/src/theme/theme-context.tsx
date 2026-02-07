@@ -7,7 +7,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { themes, getThemeById, defaultTheme, type Theme, type ThemeColors } from "./themes";
+import { themes, getThemeById, defaultTheme, registerTheme, type Theme, type ThemeColors } from "./themes";
 import { generateGradientTokens } from "./color";
 
 type ColorMode = "light" | "dark" | "system";
@@ -154,6 +154,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const resolvedColorMode = colorMode === "system" ? systemMode : colorMode;
 
   const colors = resolvedColorMode === "dark" ? theme.dark : theme.light;
+
+  // Load installed themes from ~/.stella/themes/ on mount
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.electronAPI) return;
+    const api = window.electronAPI as any;
+    if (!api.listInstalledThemes) return;
+    api.listInstalledThemes().then((installed: Theme[]) => {
+      if (Array.isArray(installed)) {
+        for (const t of installed) {
+          registerTheme(t);
+        }
+      }
+    }).catch(() => {
+      // Ignore — themes dir may not exist yet
+    });
+  }, []);
 
   // Listen for system color scheme changes
   useEffect(() => {
