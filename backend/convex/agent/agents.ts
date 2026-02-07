@@ -1,4 +1,4 @@
-import { mutation, query, MutationCtx } from "./_generated/server";
+import { mutation, query, MutationCtx } from "../_generated/server";
 import { v, Infer } from "convex/values";
 import {
   GENERAL_AGENT_SYSTEM_PROMPT,
@@ -7,7 +7,7 @@ import {
   SELF_MOD_AGENT_SYSTEM_PROMPT,
   EXPLORE_AGENT_SYSTEM_PROMPT,
   BROWSER_AGENT_SYSTEM_PROMPT,
-} from "./prompts/index";
+} from "../prompts/index";
 
 const agentValidator = v.object({
   _id: v.id("agents"),

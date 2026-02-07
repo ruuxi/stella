@@ -1,6 +1,6 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
-import { spritesExec } from "../cloud_devices";
+import { spritesExec } from "../agent/cloud_devices";
 
 const MAX_OUTPUT = 30_000;
 

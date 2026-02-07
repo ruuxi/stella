@@ -1,5 +1,5 @@
-import type { ActionCtx } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import type { ActionCtx } from "../_generated/server";
+import { api, internal } from "../_generated/api";
 
 export type PromptBuildResult = {
   systemPrompt: string;
@@ -46,11 +46,11 @@ export const buildSystemPrompt = async (
   agentType: string,
   options?: { ownerId?: string },
 ): Promise<PromptBuildResult> => {
-  const agent = await ctx.runQuery(api.agents.getAgentConfig, {
+  const agent = await ctx.runQuery(api.agent.agents.getAgentConfig, {
     agentType,
   });
 
-  const skills = await ctx.runQuery(api.skills.listEnabledSkills, {
+  const skills = await ctx.runQuery(api.data.skills.listEnabledSkills, {
     agentType,
   });
 
@@ -74,7 +74,7 @@ export const buildSystemPrompt = async (
   // Add CORE_MEMORY awareness for the general agent when trust level is basic or full
   if (agentType === "general" && options?.ownerId) {
     try {
-      const trustLevel = await ctx.runQuery(internal.preferences.getPreferenceForOwner, {
+      const trustLevel = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
         ownerId: options.ownerId,
         key: "trust_level",
       });

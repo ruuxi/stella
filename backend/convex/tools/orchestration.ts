@@ -3,7 +3,7 @@ import { z } from "zod";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import type { DeviceToolContext } from "../device_tools";
+import type { DeviceToolContext } from "../agent/device_tools";
 import { type ToolOptions } from "./types";
 
 const formatTaskResult = (task: {
@@ -61,7 +61,7 @@ export const createOrchestrationTools = (
         const taskId = args.task_id;
         if (!taskId) return "task_id is required for output action.";
         try {
-          const record = await ctx.runQuery(api.tasks.getOutputByExternalId, {
+          const record = await ctx.runQuery(api.agent.tasks.getOutputByExternalId, {
             taskId,
           });
           if (!record) return `Task not found: ${taskId}`;
@@ -74,7 +74,7 @@ export const createOrchestrationTools = (
       if (action === "cancel") {
         const taskId = args.task_id;
         if (!taskId) return "task_id is required for cancel action.";
-        const record = await ctx.runMutation(api.tasks.cancelTask, {
+        const record = await ctx.runMutation(api.agent.tasks.cancelTask, {
           taskId: taskId as Id<"tasks">,
           reason: args.reason,
         });
@@ -89,7 +89,7 @@ export const createOrchestrationTools = (
       if (!context.userMessageId) {
         return "Cannot create a task without a user message context.";
       }
-      const result = await ctx.runAction(api.tasks.runSubagent, {
+      const result = await ctx.runAction(api.agent.tasks.runSubagent, {
         conversationId: context.conversationId,
         userMessageId: context.userMessageId,
         targetDeviceId: context.targetDeviceId,
@@ -125,7 +125,7 @@ export const createOrchestrationTools = (
         return "AgentInvoke requires a user message context.";
       }
 
-      const result = await ctx.runAction(api.agent.invoke, {
+      const result = await ctx.runAction(api.agent.invoke.invoke, {
         agentType: args.agent_type,
         mode: args.mode,
         prompt: args.prompt,
@@ -154,8 +154,8 @@ export const createOrchestrationTools = (
       }
       try {
         const [categories, results] = await Promise.all([
-          ctx.runQuery(internal.memory.listCategories, { ownerId: options.ownerId }),
-          ctx.runAction(internal.memory.search, {
+          ctx.runQuery(internal.data.memory.listCategories, { ownerId: options.ownerId }),
+          ctx.runAction(internal.data.memory.search, {
             query: args.query,
             category: args.category,
             ownerId: options.ownerId,
@@ -206,8 +206,8 @@ export const createOrchestrationToolsWithoutDevice = (
       }
       try {
         const [categories, results] = await Promise.all([
-          ctx.runQuery(internal.memory.listCategories, { ownerId: options.ownerId }),
-          ctx.runAction(internal.memory.search, {
+          ctx.runQuery(internal.data.memory.listCategories, { ownerId: options.ownerId }),
+          ctx.runAction(internal.data.memory.search, {
             query: args.query,
             category: args.category,
             ownerId: options.ownerId,

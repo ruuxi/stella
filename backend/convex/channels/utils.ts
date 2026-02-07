@@ -3,13 +3,13 @@ import {
   internalQuery,
   mutation,
   query,
-} from "./_generated/server";
-import { components, internal } from "./_generated/api";
+} from "../_generated/server";
+import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { RateLimiter } from "@convex-dev/rate-limiter";
-import type { ActionCtx } from "./_generated/server";
-import { runAgentTurn } from "./automation/runner";
-import { requireUserId } from "./auth";
+import type { ActionCtx } from "../_generated/server";
+import { runAgentTurn } from "../automation/runner";
+import { requireUserId } from "../auth";
 
 type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
@@ -370,7 +370,7 @@ export const generateLinkCode = mutation({
     const ownerId = await requireUserId(ctx);
     const code = generateSecureLinkCode(6);
 
-    await ctx.runMutation(internal.channel_utils.storeLinkCode, {
+    await ctx.runMutation(internal.channels.utils.storeLinkCode, {
       ownerId,
       provider: args.provider,
       code,
@@ -574,7 +574,7 @@ export async function processIncomingMessage(args: {
 }): Promise<{ text: string } | null> {
   let connection = args.ownerId
     ? await args.ctx.runQuery(
-        internal.channel_utils.getConnectionByOwnerProviderAndExternalId,
+        internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
         {
           ownerId: args.ownerId,
           provider: args.provider,
@@ -582,14 +582,14 @@ export async function processIncomingMessage(args: {
         },
       )
     : await args.ctx.runQuery(
-        internal.channel_utils.getConnectionByProviderAndExternalId,
+        internal.channels.utils.getConnectionByProviderAndExternalId,
         { provider: args.provider, externalUserId: args.externalUserId },
       );
 
   const policyOwnerId = args.ownerId ?? connection?.ownerId;
   if (!policyOwnerId) return null;
 
-  const policy = await args.ctx.runQuery(internal.channel_utils.getDmPolicyConfig, {
+  const policy = await args.ctx.runQuery(internal.channels.utils.getDmPolicyConfig, {
     ownerId: policyOwnerId,
     provider: args.provider,
   });
@@ -602,14 +602,14 @@ export async function processIncomingMessage(args: {
   if (policy.policy === "pairing" && !connection) return null;
 
   if (!connection) {
-    await args.ctx.runMutation(internal.channel_utils.createConnection, {
+    await args.ctx.runMutation(internal.channels.utils.createConnection, {
       ownerId: policyOwnerId,
       provider: args.provider,
       externalUserId: args.externalUserId,
     });
 
     connection = await args.ctx.runQuery(
-      internal.channel_utils.getConnectionByOwnerProviderAndExternalId,
+      internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
       {
         ownerId: policyOwnerId,
         provider: args.provider,
@@ -623,10 +623,10 @@ export async function processIncomingMessage(args: {
   let conversationId = connection.conversationId;
   if (!conversationId) {
     conversationId = await args.ctx.runMutation(
-      internal.channel_utils.getOrCreateConversationForOwner,
+      internal.channels.utils.getOrCreateConversationForOwner,
       { ownerId: connection.ownerId, title: args.provider },
     );
-    await args.ctx.runMutation(internal.channel_utils.setConnectionConversation, {
+    await args.ctx.runMutation(internal.channels.utils.setConnectionConversation, {
       connectionId: connection._id,
       conversationId,
     });
@@ -644,13 +644,13 @@ export async function processIncomingMessage(args: {
     })) ?? undefined;
 
   const spriteName = !targetDeviceId
-    ? await args.ctx.runQuery(internal.cloud_devices.resolveForOwner, {
+    ? await args.ctx.runQuery(internal.agent.cloud_devices.resolveForOwner, {
         ownerId: connection.ownerId,
       })
     : null;
 
   if (spriteName) {
-    await args.ctx.runMutation(internal.cloud_devices.touchActivity, {
+    await args.ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
       ownerId: connection.ownerId,
     });
   }
@@ -680,18 +680,18 @@ export async function processLinkCode(args: {
   displayName?: string;
 }): Promise<"linked" | "already_linked" | "invalid_code" | "linking_disabled" | "not_allowed"> {
   const existing = await args.ctx.runQuery(
-    internal.channel_utils.getConnectionByProviderAndExternalId,
+    internal.channels.utils.getConnectionByProviderAndExternalId,
     { provider: args.provider, externalUserId: args.externalUserId },
   );
   if (existing) return "already_linked";
 
   const ownerId = await args.ctx.runQuery(
-    internal.channel_utils.peekLinkCodeOwner,
+    internal.channels.utils.peekLinkCodeOwner,
     { provider: args.provider, code: args.code },
   );
   if (!ownerId) return "invalid_code";
 
-  const policy = await args.ctx.runQuery(internal.channel_utils.getDmPolicyConfig, {
+  const policy = await args.ctx.runQuery(internal.channels.utils.getDmPolicyConfig, {
     ownerId,
     provider: args.provider,
   });
@@ -702,12 +702,12 @@ export async function processLinkCode(args: {
   }
 
   const consumedOwnerId = await args.ctx.runMutation(
-    internal.channel_utils.consumeLinkCode,
+    internal.channels.utils.consumeLinkCode,
     { provider: args.provider, code: args.code },
   );
   if (!consumedOwnerId || consumedOwnerId !== ownerId) return "invalid_code";
 
-  await args.ctx.runMutation(internal.channel_utils.createConnection, {
+  await args.ctx.runMutation(internal.channels.utils.createConnection, {
     ownerId,
     provider: args.provider,
     externalUserId: args.externalUserId,

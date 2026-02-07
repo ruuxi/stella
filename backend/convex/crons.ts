@@ -3,9 +3,9 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-crons.daily("decay memories", { hourUTC: 4, minuteUTC: 0 }, internal.memory.decayMemories);
-crons.interval("heartbeat tick", { minutes: 1 }, internal.heartbeat.tick);
-crons.interval("cron jobs tick", { minutes: 1 }, internal.cron_jobs.tick);
-crons.interval("bridge wake tick", { minutes: 1 }, internal.bridge.bridgeWakeTick);
+crons.daily("decay memories", { hourUTC: 4, minuteUTC: 0 }, internal.data.memory.decayMemories);
+crons.interval("heartbeat tick", { minutes: 1 }, internal.scheduling.heartbeat.tick);
+crons.interval("cron jobs tick", { minutes: 1 }, internal.scheduling.cron_jobs.tick);
+crons.interval("bridge wake tick", { minutes: 1 }, internal.channels.bridge.bridgeWakeTick);
 
 export default crons;
