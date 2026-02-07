@@ -6,7 +6,7 @@ import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCur
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow } from './region-capture-window.js';
 import { captureChatContext } from './chat-context.js';
 import { captureWindowAtPoint, prefetchWindowSources } from './window-capture.js';
-import { initSelectedTextProcess, cleanupSelectedTextProcess } from './selected-text.js';
+import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js';
 import { createModifierOverlay, showModifierOverlay, showModifierOverlayPreemptive, hideModifierOverlay, destroyModifierOverlay, } from './modifier-overlay.js';
 import { getOrCreateDeviceId } from './local-host/device.js';
 import { createLocalHostRunner } from './local-host/runner.js';
@@ -698,6 +698,13 @@ app.whenReady().then(async () => {
     registerAuthProtocol();
     // Start persistent PowerShell process for fast selected text capture
     initSelectedTextProcess();
+    if (process.platform === 'win32') {
+        // Warm up the first UI Automation query so the first radial open doesn't pay
+        // the cold-call latency spike.
+        setTimeout(() => {
+            void getSelectedText();
+        }, 250);
+    }
     const initialAuthUrl = getDeepLinkUrl(process.argv);
     if (initialAuthUrl) {
         pendingAuthCallback = initialAuthUrl;

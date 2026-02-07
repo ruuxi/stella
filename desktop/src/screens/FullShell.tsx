@@ -20,6 +20,7 @@ import { useTheme } from "../theme/theme-context";
 import { Button } from "../components/button";
 import { AuthDialog } from "../app/AuthDialog";
 import { CanvasPanel } from "../components/canvas/CanvasPanel";
+import { Sidebar } from "../components/Sidebar";
 import type { AllUserSignalsResult } from "../types/electron";
 
 type AttachmentRef = {
@@ -97,6 +98,8 @@ export const FullShell = () => {
   const [themeConfirmed, setThemeConfirmed] = useState(false);
   const [hasSelectedTheme, setHasSelectedTheme] = useState(false);
   const blackHoleRef = useRef<AsciiBlackHoleHandle | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [composerExpanded, setComposerExpanded] = useState(false);
 
   // Scroll management
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -500,6 +503,7 @@ export const FullShell = () => {
     const deviceId = await getOrCreateDeviceId();
     const rawText = message.trim();
     setMessage("");
+    setComposerExpanded(false);
 
     const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
     const cleanedText = followUpMatch ? rawText.slice(followUpMatch[0].length).trim() : rawText;
@@ -560,16 +564,18 @@ export const FullShell = () => {
 
   return (
     <div className={shellClassName} style={canvasWidthVar}>
-      <TitleBar
-        hideThemePicker={!onboardingDone}
-        themePickerOpen={themePickerOpen}
-        onThemePickerOpenChange={setThemePickerOpen}
-        onThemeSelect={handleThemeSelect}
-      />
+      <TitleBar />
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
 
-      {/* Main content area - row layout: chat + optional canvas */}
+      {/* Main content area - row layout: sidebar + chat + optional canvas */}
       <div className="full-body">
+        <Sidebar
+          hideThemePicker={!onboardingDone}
+          themePickerOpen={themePickerOpen}
+          onThemePickerOpenChange={setThemePickerOpen}
+          onThemeSelect={handleThemeSelect}
+          onSignIn={() => setAuthDialogOpen(true)}
+        />
         <div className="full-body-main">
           <div
             className="session-content"
@@ -659,40 +665,61 @@ export const FullShell = () => {
           {/* Composer - Aura-style prompt bar at bottom (only when authenticated) */}
           {isAuthenticated && onboardingDone && <div className="composer">
             <form
-              className="composer-form"
+              className={`composer-form${composerExpanded ? ' expanded' : ''}`}
               onSubmit={(event) => {
                 event.preventDefault();
                 void sendMessage();
               }}
             >
-              {/* Input scroll container */}
-              <div className="composer-scroll">
-                <textarea
-                  className="composer-input"
-                  placeholder="Type a message..."
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void sendMessage();
-                    }
-                  }}
-                  disabled={!state.conversationId}
-                  rows={1}
-                />
-              </div>
+              <button type="button" className="composer-add-button" title="Add">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
 
-              {/* Bottom toolbar */}
+              <textarea
+                ref={textareaRef}
+                className="composer-input"
+                placeholder="Ask anything"
+                value={message}
+                onChange={(event) => {
+                  setMessage(event.target.value);
+                  requestAnimationFrame(() => {
+                    const el = textareaRef.current;
+                    if (!el) return;
+                    const form = el.closest('.composer-form') as HTMLElement | null;
+                    if (!form) return;
+                    const isExpanded = form.classList.contains('expanded');
+
+                    if (!isExpanded) {
+                      if (el.scrollHeight > 44) setComposerExpanded(true);
+                    } else {
+                      // Measure pill-mode height to decide collapse
+                      form.classList.remove('expanded');
+                      const pillSh = el.scrollHeight;
+                      form.classList.add('expanded');
+                      if (pillSh <= 44) setComposerExpanded(false);
+                    }
+                  });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendMessage();
+                  }
+                }}
+                disabled={!state.conversationId}
+                rows={1}
+              />
+
               <div className="composer-toolbar">
                 <div className="composer-toolbar-left">
-                  {/* Placeholder for model/agent selector */}
-                  <button type="button" className="composer-selector">
-                    <svg className="composer-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 16v-4M12 8h.01" />
+                  <button type="button" className="composer-add-button composer-add-button--toolbar" title="Add">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
                     </svg>
-                    <span>Model</span>
                   </button>
                   {isStreaming && (
                     <button
@@ -708,16 +735,6 @@ export const FullShell = () => {
                 </div>
 
                 <div className="composer-toolbar-right">
-                  {/* Placeholder action buttons */}
-                  <button type="button" className="composer-action" title="Attach file">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                      <circle cx="8.5" cy="8.5" r="1.5" />
-                      <polyline points="21,15 16,10 5,21" />
-                    </svg>
-                  </button>
-
-                  {/* Submit button */}
                   <button
                     type="submit"
                     className="composer-submit"

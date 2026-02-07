@@ -1,26 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ThemePicker } from './ThemePicker';
-import { AuthStatus } from './AuthStatus';
 
-interface TitleBarProps {
-  hideThemePicker?: boolean;
-  themePickerOpen?: boolean;
-  onThemePickerOpenChange?: (open: boolean) => void;
-  onThemeSelect?: () => void;
-}
-
-export const TitleBar = ({ 
-  hideThemePicker = false,
-  themePickerOpen,
-  onThemePickerOpenChange,
-  onThemeSelect,
-}: TitleBarProps) => {
+export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const platform = window.electronAPI?.platform ?? 'unknown';
   const isMac = platform === 'darwin';
 
   useEffect(() => {
-    // Check initial maximized state
     window.electronAPI?.isMaximized?.().then(setIsMaximized);
   }, []);
 
@@ -30,7 +15,6 @@ export const TitleBar = ({
 
   const handleMaximize = async () => {
     window.electronAPI?.maximizeWindow?.();
-    // Update state after a short delay
     setTimeout(async () => {
       const maximized = await window.electronAPI?.isMaximized?.();
       setIsMaximized(maximized ?? false);
@@ -46,15 +30,6 @@ export const TitleBar = ({
     return (
       <div className="title-bar title-bar-mac">
         <div className="title-bar-drag-region" />
-        <div className="title-bar-left">
-          <AuthStatus />
-          <ThemePicker 
-            hideTrigger={hideThemePicker} 
-            open={themePickerOpen}
-            onOpenChange={onThemePickerOpenChange}
-            onThemeSelect={onThemeSelect}
-          />
-        </div>
       </div>
     );
   }
@@ -63,15 +38,6 @@ export const TitleBar = ({
   return (
     <div className="title-bar">
       <div className="title-bar-drag-region" />
-      <div className="title-bar-left">
-        <ThemePicker 
-          hideTrigger={hideThemePicker}
-          open={themePickerOpen}
-          onOpenChange={onThemePickerOpenChange}
-          onThemeSelect={onThemeSelect}
-        />
-        <AuthStatus />
-      </div>
       <div className="title-bar-controls">
         <button
           className="title-bar-button"

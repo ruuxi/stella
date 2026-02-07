@@ -189,7 +189,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
         toolHost.setSkills(skills);
 
         await callMutation("skills.upsertMany", {
-          skills,
+          skills: skills.map(({ filePath, ...rest }) => rest),
         });
         await callMutation("agents.upsertMany", {
           agents,
