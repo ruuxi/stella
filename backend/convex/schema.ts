@@ -329,7 +329,9 @@ export default defineSchema({
       v.literal("canvas"),
       v.literal("plugin"),
       v.literal("theme"),
+      v.literal("mod"),
     ),
+    modPayload: v.optional(jsonValueValidator),
     version: v.string(),
     tags: v.array(v.string()),
     downloads: v.number(),
@@ -368,6 +370,21 @@ export default defineSchema({
   })
     .index("by_owner_conversation", ["ownerId", "conversationId"])
     .index("by_owner_updated", ["ownerId", "updatedAt"]),
+  self_mod_features: defineTable({
+    featureId: v.string(),
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    status: v.string(),
+    batchCount: v.number(),
+    files: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_updated", ["ownerId", "updatedAt"])
+    .index("by_conversation", ["conversationId", "updatedAt"])
+    .index("by_feature_id", ["featureId"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),

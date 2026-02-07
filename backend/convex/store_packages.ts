@@ -1,11 +1,13 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { jsonValueValidator } from "./shared_validators";
 
 const packageTypeValidator = v.union(
   v.literal("skill"),
   v.literal("canvas"),
   v.literal("plugin"),
   v.literal("theme"),
+  v.literal("mod"),
 );
 
 const packageValidator = v.object({
@@ -23,6 +25,7 @@ const packageValidator = v.object({
   icon: v.optional(v.string()),
   sourceUrl: v.optional(v.string()),
   readme: v.optional(v.string()),
+  modPayload: v.optional(jsonValueValidator),
   createdAt: v.number(),
   updatedAt: v.number(),
 });
@@ -274,5 +277,56 @@ export const seed = mutation({
     }
 
     return null;
+  },
+});
+
+/**
+ * Publish a self-mod feature as a mod package in the store.
+ * Upserts by packageId so re-publishing updates the existing entry.
+ */
+export const publishMod = mutation({
+  args: {
+    packageId: v.string(),
+    name: v.string(),
+    author: v.string(),
+    description: v.string(),
+    version: v.string(),
+    tags: v.array(v.string()),
+    modPayload: jsonValueValidator,
+  },
+  returns: v.id("store_packages"),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("store_packages")
+      .withIndex("by_package_id", (q) => q.eq("packageId", args.packageId))
+      .first();
+
+    const now = Date.now();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        name: args.name,
+        description: args.description,
+        version: args.version,
+        tags: args.tags,
+        modPayload: args.modPayload,
+        updatedAt: now,
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("store_packages", {
+      packageId: args.packageId,
+      name: args.name,
+      author: args.author,
+      description: args.description,
+      type: "mod",
+      version: args.version,
+      tags: args.tags,
+      downloads: 0,
+      modPayload: args.modPayload,
+      createdAt: now,
+      updatedAt: now,
+    });
   },
 });
