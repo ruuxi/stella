@@ -13,7 +13,7 @@ import {
 } from './radial-window.js'
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js'
 import { captureChatContext, type ChatContext } from './chat-context.js'
-import { captureWindowAtPoint, prefetchWindowSources } from './window-capture.js'
+import { captureWindowAtPoint, prefetchWindowSources, type WindowInfo } from './window-capture.js'
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js'
 import {
   createModifierOverlay,
@@ -51,6 +51,11 @@ type ScreenshotCapture = {
   dataUrl: string
   width: number
   height: number
+}
+
+type RegionCaptureResult = {
+  screenshot: ScreenshotCapture | null
+  window: ChatContext['window']
 }
 
 type RegionSelection = {
@@ -119,8 +124,8 @@ let radialSelectionCommitted = false
 let radialCaptureRequestId = 0
 let pendingRadialCapturePromise: Promise<void> | null = null
 let regionCaptureDisplay: Display | null = null
-let pendingRegionCaptureResolve: ((value: ScreenshotCapture | null) => void) | null = null
-let pendingRegionCapturePromise: Promise<ScreenshotCapture | null> | null = null
+let pendingRegionCaptureResolve: ((value: RegionCaptureResult | null) => void) | null = null
+let pendingRegionCapturePromise: Promise<RegionCaptureResult | null> | null = null
 const pendingCredentialRequests = new Map<
   string,
   {
@@ -136,6 +141,17 @@ const emptyContext = (): ChatContext => ({
   selectedText: null,
   regionScreenshots: [],
 })
+
+const toChatContextWindow = (windowInfo: WindowInfo | null | undefined): ChatContext['window'] => {
+  if (!windowInfo || (!windowInfo.title && !windowInfo.process)) {
+    return null
+  }
+  return {
+    title: windowInfo.title,
+    app: windowInfo.process,
+    bounds: windowInfo.bounds,
+  }
+}
 
 const miniSize = {
   width: 680,
@@ -509,7 +525,10 @@ const captureRadialContext = (x: number, y: number) => {
 
   pendingRadialCapturePromise = (async () => {
     try {
-      const fresh = await captureChatContext({ x, y })
+      const fresh = await captureChatContext(
+        { x, y },
+        { excludeCurrentProcessWindows: process.platform === 'win32' },
+      )
       if (requestId !== radialCaptureRequestId) {
         return
       }
@@ -547,11 +566,7 @@ const captureRadialContext = (x: number, y: number) => {
 }
 
 
-const consumeChatContext = () => {
-  const context = pendingChatContext
-  setPendingChatContext(null)
-  return context
-}
+const getChatContextSnapshot = () => pendingChatContext
 
 const broadcastChatContext = () => {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -688,7 +703,7 @@ const startRegionCapture = async () => {
   regionCaptureDisplay = getDisplayForPoint(screen.getCursorScreenPoint())
   await showRegionCaptureWindow(regionCaptureDisplay, cancelRegionCapture)
 
-  pendingRegionCapturePromise = new Promise<ScreenshotCapture | null>((resolve) => {
+  pendingRegionCapturePromise = new Promise<RegionCaptureResult | null>((resolve) => {
     pendingRegionCaptureResolve = resolve
   })
 
@@ -703,7 +718,7 @@ const finalizeRegionCapture = async (selection: RegionSelection) => {
 
   const display = regionCaptureDisplay ?? getDisplayForPoint()
   const screenshot = await captureRegionScreenshot(display, selection)
-  pendingRegionCaptureResolve(screenshot)
+  pendingRegionCaptureResolve({ screenshot, window: null })
   resetRegionCapture()
 }
 
@@ -724,11 +739,18 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
       break
     case 'capture': {
       updateUiState({ mode: 'chat' })
-      const regionScreenshot = await startRegionCapture()
-      if (regionScreenshot) {
+      const regionCapture = await startRegionCapture()
+      if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
         const ctx = pendingChatContext ?? emptyContext()
         const existing = ctx.regionScreenshots ?? []
-        setPendingChatContext({ ...ctx, regionScreenshots: [...existing, regionScreenshot] })
+        const nextScreenshots = regionCapture.screenshot
+          ? [...existing, regionCapture.screenshot]
+          : existing
+        setPendingChatContext({
+          ...ctx,
+          window: regionCapture.window ?? ctx.window,
+          regionScreenshots: nextScreenshots,
+        })
       }
       if (!isMiniShowing()) showWindow('mini')
       else broadcastChatContext()
@@ -1032,7 +1054,7 @@ app.whenReady().then(async () => {
     showWindow(target)
   })
 
-  ipcMain.handle('chatContext:get', () => consumeChatContext())
+  ipcMain.handle('chatContext:get', () => getChatContextSnapshot())
 
   ipcMain.on('chatContext:removeScreenshot', (_event, index: number) => {
     if (!pendingChatContext?.regionScreenshots) return
@@ -1090,7 +1112,10 @@ app.whenReady().then(async () => {
     // Capture window at clicked point
     const capture = await captureWindowAtPoint(capturePoint.x, capturePoint.y, sources)
 
-    resolve(capture?.screenshot ?? null)
+    resolve({
+      screenshot: capture?.screenshot ?? null,
+      window: toChatContextWindow(capture?.windowInfo),
+    })
     pendingRegionCaptureResolve = null
     pendingRegionCapturePromise = null
     regionCaptureDisplay = null

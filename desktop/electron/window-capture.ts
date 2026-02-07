@@ -23,6 +23,9 @@ type WindowCapture = {
 }
 
 type DesktopSource = Awaited<ReturnType<typeof desktopCapturer.getSources>>[number]
+type QueryWindowInfoOptions = {
+  excludePids?: number[]
+}
 
 const DEFAULT_THUMB_SIZE = { width: 1280, height: 960 }
 
@@ -31,9 +34,14 @@ const getWindowInfoBin = () => {
   return path.join(__dirname, `../native/window_info${ext}`)
 }
 
-const queryWindowInfo = (x: number, y: number): Promise<WindowInfo | null> => {
+const queryWindowInfo = (x: number, y: number, options?: QueryWindowInfoOptions): Promise<WindowInfo | null> => {
   return new Promise((resolve) => {
-    execFile(getWindowInfoBin(), [String(x), String(y)], { timeout: 3000 }, (error, stdout) => {
+    const args = [String(x), String(y)]
+    if (options?.excludePids?.length) {
+      args.push(`--exclude-pids=${options.excludePids.join(',')}`)
+    }
+
+    execFile(getWindowInfoBin(), args, { timeout: 3000 }, (error, stdout) => {
       if (error) {
         console.warn('window_info failed', error)
         resolve(null)
@@ -53,8 +61,12 @@ const queryWindowInfo = (x: number, y: number): Promise<WindowInfo | null> => {
   })
 }
 
-export const getWindowInfoAtPoint = (x: number, y: number): Promise<WindowInfo | null> => {
-  return queryWindowInfo(x, y)
+export const getWindowInfoAtPoint = (
+  x: number,
+  y: number,
+  options?: QueryWindowInfoOptions,
+): Promise<WindowInfo | null> => {
+  return queryWindowInfo(x, y, options)
 }
 
 /**
@@ -77,8 +89,9 @@ export const captureWindowAtPoint = async (
   x: number,
   y: number,
   prefetchedSources?: DesktopSource[],
+  options?: QueryWindowInfoOptions,
 ): Promise<WindowCapture | null> => {
-  const info = await queryWindowInfo(x, y)
+  const info = await queryWindowInfo(x, y, options)
   if (!info || !info.title) return null
 
   const sources = prefetchedSources ?? await desktopCapturer.getSources({
