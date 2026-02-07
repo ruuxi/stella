@@ -151,7 +151,62 @@ const parseExecNdjson = (raw: string): SpritesExecResult | null => {
   return { stdout, stderr, exit_code: exitCode };
 };
 
-const parseExecResponse = (raw: string): SpritesExecResult => {
+/**
+ * Parse the binary multiplexed exec protocol.
+ * Format: sequence of (type_byte + payload) chunks:
+ *   0x01 … = stdout (until next type byte or end)
+ *   0x02 … = stderr
+ *   0x03 XX = exit code (single byte)
+ */
+const parseBinaryExecResponse = (
+  buf: ArrayBuffer,
+): SpritesExecResult | null => {
+  const bytes = new Uint8Array(buf);
+  if (bytes.length === 0) return null;
+
+  // Quick check: first byte must be a known type marker
+  if (bytes[0] !== 0x01 && bytes[0] !== 0x02 && bytes[0] !== 0x03) return null;
+
+  const decoder = new TextDecoder();
+  let stdout = "";
+  let stderr = "";
+  let exitCode: number | null = null;
+
+  let i = 0;
+  while (i < bytes.length) {
+    const marker = bytes[i];
+    if (marker === 0x03) {
+      // Exit code: single byte follows
+      exitCode = i + 1 < bytes.length ? bytes[i + 1] : 0;
+      i += 2;
+    } else if (marker === 0x01 || marker === 0x02) {
+      // Collect bytes until next marker or end
+      const start = i + 1;
+      let end = start;
+      while (end < bytes.length && bytes[end] !== 0x01 && bytes[end] !== 0x02 && bytes[end] !== 0x03) {
+        end++;
+      }
+      const chunk = decoder.decode(bytes.slice(start, end));
+      if (marker === 0x01) stdout += chunk;
+      else stderr += chunk;
+      i = end;
+    } else {
+      // Unknown marker — not binary protocol
+      return null;
+    }
+  }
+
+  if (exitCode === null) return null;
+  return { stdout, stderr, exit_code: exitCode };
+};
+
+const parseExecResponse = (raw: string, rawBuffer?: ArrayBuffer): SpritesExecResult => {
+  // Try binary protocol first if we have the buffer
+  if (rawBuffer) {
+    const binary = parseBinaryExecResponse(rawBuffer);
+    if (binary) return binary;
+  }
+
   const trimmed = raw.trim();
   if (!trimmed) {
     throw new Error("Sprites exec failed: empty response");
@@ -250,8 +305,9 @@ export const spritesExec = async (
     throw new Error(`Sprites exec failed (${res.status}): ${text}`);
   }
 
-  const raw = await res.text();
-  return parseExecResponse(raw);
+  const rawBuffer = await res.arrayBuffer();
+  const raw = new TextDecoder().decode(rawBuffer);
+  return parseExecResponse(raw, rawBuffer);
 };
 
 export const spritesExecChecked = async (
