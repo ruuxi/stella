@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireUserId } from "./auth";
 
@@ -42,6 +42,21 @@ export const getPreference = query({
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", args.key))
+      .first();
+    return record?.value ?? null;
+  },
+});
+
+export const getPreferenceForOwner = internalQuery({
+  args: {
+    ownerId: v.string(),
+    key: v.string(),
+  },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_owner_key", (q) => q.eq("ownerId", args.ownerId).eq("key", args.key))
       .first();
     return record?.value ?? null;
   },
