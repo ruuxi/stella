@@ -193,6 +193,7 @@ export const handleLinkCommand = internalAction({
     code: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const result = await processLinkCode({
       ctx,
@@ -213,6 +214,7 @@ export const handleLinkCommand = internalAction({
     } else {
       await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Linked! You can now message Stella directly here.");
     }
+    return null;
   },
 });
 
@@ -224,6 +226,7 @@ export const handleIncomingMessage = internalAction({
     text: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       const result = await processIncomingMessage({
@@ -239,7 +242,7 @@ export const handleIncomingMessage = internalAction({
           args.conversationIdTeams,
           "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
         );
-        return;
+        return null;
       }
 
       await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, result.text);
@@ -247,5 +250,6 @@ export const handleIncomingMessage = internalAction({
       console.error("[teams] Agent turn failed:", error);
       await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Sorry, something went wrong. Please try again.");
     }
+    return null;
   },
 });

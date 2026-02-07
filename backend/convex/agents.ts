@@ -58,6 +58,19 @@ const agentConfigValidator = v.object({
   updatedAt: v.number(),
 });
 
+const agentImportValidator = v.object({
+  id: v.string(),
+  name: v.optional(v.string()),
+  description: v.optional(v.string()),
+  systemPrompt: v.optional(v.string()),
+  agentTypes: v.optional(v.union(v.array(v.string()), v.string())),
+  toolsAllowlist: v.optional(v.union(v.array(v.string()), v.string())),
+  defaultSkills: v.optional(v.union(v.array(v.string()), v.string())),
+  maxTaskDepth: v.optional(v.number()),
+  version: v.optional(v.number()),
+  source: v.optional(v.string()),
+});
+
 // Inferred types from validators for type-safe sanitization
 type AgentClient = Infer<typeof agentClientValidator>;
 type AgentConfig = Infer<typeof agentConfigValidator>;
@@ -305,7 +318,7 @@ export const ensureBuiltins = mutation({
 
 export const upsertMany = mutation({
   args: {
-    agents: v.array(v.any()),
+    agents: v.array(agentImportValidator),
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {

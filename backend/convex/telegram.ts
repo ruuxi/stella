@@ -90,6 +90,7 @@ export const handleStartCommand = internalAction({
     codeArg: v.optional(v.string()),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     if (!args.codeArg) {
       await sendTelegramMessage(
@@ -100,7 +101,7 @@ export const handleStartCommand = internalAction({
           "3. Copy the 6-digit code\n" +
           "4. Send it here: /start CODE",
       );
-      return;
+      return null;
     }
 
     const result = await processLinkCode({
@@ -128,6 +129,7 @@ export const handleStartCommand = internalAction({
         "Linked! You can now message Stella directly here.",
       );
     }
+    return null;
   },
 });
 
@@ -138,6 +140,7 @@ export const handleIncomingMessage = internalAction({
     text: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       const result = await processIncomingMessage({
@@ -152,7 +155,7 @@ export const handleIncomingMessage = internalAction({
           args.chatId,
           "Your account isn't linked yet. Send /start to get started.",
         );
-        return;
+        return null;
       }
 
       await sendTelegramMessage(args.chatId, result.text);
@@ -163,6 +166,7 @@ export const handleIncomingMessage = internalAction({
         "Sorry, something went wrong. Please try again.",
       );
     }
+    return null;
   },
 });
 
@@ -172,6 +176,10 @@ export const handleIncomingMessage = internalAction({
 
 export const registerWebhook = internalAction({
   args: {},
+  returns: v.object({
+    ok: v.boolean(),
+    description: v.optional(v.string()),
+  }),
   handler: async () => {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -196,8 +204,14 @@ export const registerWebhook = internalAction({
       },
     );
 
-    const result = await response.json();
-    console.log("[telegram] Webhook registered:", result);
-    return result;
+    const result = await response.json().catch(() => null) as
+      | { ok?: boolean; description?: string }
+      | null;
+    const normalized = {
+      ok: Boolean(result?.ok ?? response.ok),
+      description: typeof result?.description === "string" ? result.description : undefined,
+    };
+    console.log("[telegram] Webhook registered:", normalized);
+    return normalized;
   },
 });

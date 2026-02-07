@@ -1,6 +1,7 @@
 import { mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { z } from "zod";
+import { jsonSchemaValidator } from "./shared_validators";
 
 const pluginValidator = v.object({
   _id: v.id("plugins"),
@@ -20,9 +21,25 @@ const pluginToolValidator = v.object({
   pluginId: v.string(),
   name: v.string(),
   description: v.string(),
-  inputSchema: v.any(),
+  inputSchema: jsonSchemaValidator,
   source: v.string(),
   updatedAt: v.number(),
+});
+
+const pluginImportValidator = v.object({
+  id: v.string(),
+  name: v.optional(v.string()),
+  version: v.optional(v.string()),
+  description: v.optional(v.string()),
+  source: v.optional(v.string()),
+});
+
+const pluginToolImportValidator = v.object({
+  pluginId: v.string(),
+  name: v.string(),
+  description: v.optional(v.string()),
+  inputSchema: v.optional(jsonSchemaValidator),
+  source: v.optional(v.string()),
 });
 
 type PluginRecord = {
@@ -143,8 +160,8 @@ const upsertPluginTool = async (ctx: MutationCtx, tool: ToolDescriptor) => {
 
 export const upsertMany = mutation({
   args: {
-    plugins: v.array(v.any()),
-    tools: v.array(v.any()),
+    plugins: v.array(pluginImportValidator),
+    tools: v.array(pluginToolImportValidator),
   },
   returns: v.object({
     pluginsUpserted: v.number(),

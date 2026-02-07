@@ -3,12 +3,13 @@ import { v, ConvexError } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
 import type { Id } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
+import { optionalJsonValueValidator } from "./shared_validators";
 
 const secretPublicFields = {
   provider: v.string(),
   label: v.string(),
   status: v.string(),
-  metadata: v.optional(v.any()),
+  metadata: optionalJsonValueValidator,
   createdAt: v.number(),
   updatedAt: v.number(),
   lastUsedAt: v.optional(v.number()),
@@ -19,7 +20,7 @@ export const createSecret = mutation({
     provider: v.string(),
     label: v.string(),
     plaintext: v.string(),
-    metadata: v.optional(v.any()),
+    metadata: optionalJsonValueValidator,
   },
   returns: v.object({
     secretId: v.id("secrets"),
@@ -100,7 +101,7 @@ export const updateSecret = mutation({
     secretId: v.id("secrets"),
     plaintext: v.string(),
     label: v.optional(v.string()),
-    metadata: v.optional(v.any()),
+    metadata: optionalJsonValueValidator,
   },
   returns: v.object({
     secretId: v.id("secrets"),
@@ -257,7 +258,7 @@ export const getSecretForTool = internalQuery({
     label: v.string(),
     plaintext: v.string(),
     status: v.string(),
-    metadata: v.optional(v.any()),
+    metadata: optionalJsonValueValidator,
   }),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.secretId);

@@ -37,6 +37,13 @@ export const createFromDataUrl = action({
     deviceId: v.string(),
     dataUrl: v.string(),
   },
+  returns: v.object({
+    _id: v.id("attachments"),
+    storageKey: v.id("_storage"),
+    url: v.union(v.string(), v.null()),
+    mimeType: v.string(),
+    size: v.number(),
+  }),
   handler: async (ctx, args): Promise<{
     _id: Id<"attachments">;
     storageKey: Id<"_storage">;

@@ -111,6 +111,7 @@ export const handleLinkCommand = internalAction({
     codeArg: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const result = await processLinkCode({
       ctx,
@@ -151,6 +152,7 @@ export const handleLinkCommand = internalAction({
         "Linked! You can now use `/ask` to message Stella.",
       );
     }
+    return null;
   },
 });
 
@@ -162,6 +164,7 @@ export const handleAskCommand = internalAction({
     text: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       const result = await processIncomingMessage({
@@ -177,7 +180,7 @@ export const handleAskCommand = internalAction({
           args.interactionToken,
           "Your account isn't linked yet. Use `/link` with your 6-digit code from Stella Settings.",
         );
-        return;
+        return null;
       }
 
       await editInteractionResponse(
@@ -193,6 +196,7 @@ export const handleAskCommand = internalAction({
         "Sorry, something went wrong. Please try again.",
       );
     }
+    return null;
   },
 });
 
@@ -202,6 +206,10 @@ export const handleAskCommand = internalAction({
 
 export const registerCommands = internalAction({
   args: {},
+  returns: v.object({
+    ok: v.boolean(),
+    commandCount: v.number(),
+  }),
   handler: async () => {
     const applicationId = process.env.DISCORD_APPLICATION_ID;
     if (!applicationId) {
@@ -260,7 +268,8 @@ export const registerCommands = internalAction({
     }
 
     const result = await res.json();
-    console.log("[discord] Commands registered:", result);
-    return result;
+    const commandCount = Array.isArray(result) ? result.length : 0;
+    console.log("[discord] Commands registered:", { ok: true, commandCount });
+    return { ok: true, commandCount };
   },
 });

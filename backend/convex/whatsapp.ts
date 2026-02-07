@@ -1,4 +1,5 @@
 import { query } from "./_generated/server";
+import { v } from "convex/values";
 
 // ---------------------------------------------------------------------------
 // WhatsApp Connector (Baileys bridge)
@@ -14,6 +15,7 @@ import { query } from "./_generated/server";
  */
 export const getQrCode = query({
   args: {},
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -26,6 +28,7 @@ export const getQrCode = query({
       .first();
 
     if (!session || session.status !== "awaiting_auth") return null;
-    return (session.authState as Record<string, unknown>)?.qrCode ?? null;
+    const qrCode = (session.authState as Record<string, unknown>)?.qrCode;
+    return typeof qrCode === "string" ? qrCode : null;
   },
 });

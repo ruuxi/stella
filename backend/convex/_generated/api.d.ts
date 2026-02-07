@@ -46,6 +46,7 @@ import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as retry_fetch from "../retry_fetch.js";
 import type * as secrets from "../secrets.js";
 import type * as secrets_crypto from "../secrets_crypto.js";
+import type * as shared_validators from "../shared_validators.js";
 import type * as signal from "../signal.js";
 import type * as skills from "../skills.js";
 import type * as slack from "../slack.js";
@@ -104,6 +105,7 @@ declare const fullApi: ApiFromModules<{
   retry_fetch: typeof retry_fetch;
   secrets: typeof secrets;
   secrets_crypto: typeof secrets_crypto;
+  shared_validators: typeof shared_validators;
   signal: typeof signal;
   skills: typeof skills;
   slack: typeof slack;

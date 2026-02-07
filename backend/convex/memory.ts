@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { embed as aiEmbed, generateText } from "ai";
 import { getModelConfig } from "./model";
 import { DISCOVERY_FACT_EXTRACTION_PROMPT } from "./prompts/discovery_facts";
@@ -18,6 +18,24 @@ const memoryValidator = v.object({
   accessedAt: v.number(),
   createdAt: v.number(),
   decay: v.number(),
+});
+
+const memoryFactValidator = v.object({
+  category: v.string(),
+  subcategory: v.string(),
+  content: v.string(),
+});
+
+const factExtractionResultValidator = v.object({
+  facts: v.array(memoryFactValidator),
+  parseOk: v.boolean(),
+});
+
+const memorySearchResultValidator = v.object({
+  category: v.string(),
+  subcategory: v.string(),
+  content: v.string(),
+  score: v.number(),
 });
 
 // ---------------------------------------------------------------------------
@@ -160,6 +178,7 @@ const DECAY_SUMMARIZE_PROMPT = `Compress this memory into a shorter, more abstra
 
 export const extractFacts = internalAction({
   args: { summary: v.string() },
+  returns: factExtractionResultValidator,
   handler: async (_ctx, args): Promise<FactExtractionResult> => {
     const response = await cheapLLM(FACT_EXTRACTION_PROMPT, args.summary);
     return parseFactResponse(response);
@@ -250,6 +269,7 @@ export const ingestSummary = internalAction({
     events: v.array(v.object({ type: v.string(), text: v.string() })),
     ingestedThroughTimestamp: v.optional(v.number()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const markIngested = async () => {
       if (args.conversationId && typeof args.ingestedThroughTimestamp === "number") {
@@ -268,17 +288,17 @@ export const ingestSummary = internalAction({
 
     if (summary.trim().length === 0) {
       await markIngested();
-      return;
+      return null;
     }
 
     // 1. Extract facts
     const { facts, parseOk } = await ctx.runAction(internal.memory.extractFacts, { summary });
     if (!parseOk) {
-      return;
+      return null;
     }
     if (facts.length === 0) {
       await markIngested();
-      return;
+      return null;
     }
 
     // 2. For each fact: dedup → embed → insert/merge
@@ -290,7 +310,7 @@ export const ingestSummary = internalAction({
       });
 
       let shouldInsert = true;
-      let mergeTarget: { _id: string; content: string } | null = null;
+      let mergeTarget: { _id: Id<"memories">; content: string } | null = null;
       let mergedContent = "";
 
       if (existing.length > 0) {
@@ -310,7 +330,7 @@ export const ingestSummary = internalAction({
             const target = existing[targetIdx];
             if (target && parsedContent.length > 0) {
               shouldInsert = false;
-              mergeTarget = { _id: target._id as string, content: target.content };
+              mergeTarget = { _id: target._id, content: target.content };
               mergedContent = parsedContent;
             } else {
               shouldInsert = true;
@@ -324,7 +344,7 @@ export const ingestSummary = internalAction({
       if (mergeTarget && mergedContent) {
         const vector = await embed(mergedContent);
         await ctx.runMutation(internal.memory.mergeMemory, {
-          memoryId: mergeTarget._id as any,
+          memoryId: mergeTarget._id,
           content: mergedContent,
           embedding: vector,
         });
@@ -342,6 +362,7 @@ export const ingestSummary = internalAction({
     }
 
     await markIngested();
+    return null;
   },
 });
 
@@ -355,6 +376,7 @@ export const search = internalAction({
     category: v.optional(v.string()),
     ownerId: v.string(),
   },
+  returns: v.array(memorySearchResultValidator),
   handler: async (ctx, args): Promise<Array<{ category: string; subcategory: string; content: string; score: number }>> => {
     const vector = await embed(args.query);
 
@@ -393,7 +415,7 @@ export const search = internalAction({
 
     // Fetch full docs
     type MemoryDoc = {
-      _id: string;
+      _id: Id<"memories">;
       ownerId: string;
       category: string;
       subcategory: string;
@@ -421,7 +443,7 @@ export const search = internalAction({
     // Touch only the returned memories (reset decay + accessedAt)
     for (const entry of matched) {
       await ctx.runMutation(internal.memory.touchMemory, {
-        memoryId: entry.doc._id as any,
+        memoryId: entry.doc._id,
       });
     }
 
@@ -498,6 +520,7 @@ export const listCategories = internalQuery({
 
 export const decayMemories = internalAction({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const stale = await ctx.runQuery(internal.memory.listStaleMemories, {
@@ -520,6 +543,7 @@ export const decayMemories = internalAction({
         });
       }
     }
+    return null;
   },
 });
 
@@ -602,6 +626,7 @@ export const seedFromDiscovery = internalAction({
     ownerId: v.string(),
     formattedSignals: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     // Extract facts using discovery-specific prompt
     const response = await cheapLLM(DISCOVERY_FACT_EXTRACTION_PROMPT, args.formattedSignals);
@@ -609,7 +634,7 @@ export const seedFromDiscovery = internalAction({
 
     if (!parseOk || facts.length === 0) {
       console.log("[memory] seedFromDiscovery: no facts extracted", { parseOk, factCount: facts.length });
-      return;
+      return null;
     }
 
     console.log(`[memory] seedFromDiscovery: extracted ${facts.length} facts, inserting...`);
@@ -661,5 +686,6 @@ export const seedFromDiscovery = internalAction({
     }
 
     console.log("[memory] seedFromDiscovery: complete");
+    return null;
   },
 });

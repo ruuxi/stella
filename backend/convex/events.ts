@@ -2,6 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireConversationOwner, requireUserId } from "./auth";
+import { jsonValueValidator } from "./shared_validators";
 
 const eventValidator = v.object({
   _id: v.id("events"),
@@ -12,7 +13,7 @@ const eventValidator = v.object({
   deviceId: v.optional(v.string()),
   requestId: v.optional(v.string()),
   targetDeviceId: v.optional(v.string()),
-  payload: v.any(),
+  payload: jsonValueValidator,
 });
 
 const usageSummaryValidator = v.object({
@@ -177,7 +178,7 @@ export const enqueueToolRequest = internalMutation({
     requestId: v.string(),
     targetDeviceId: v.string(),
     toolName: v.string(),
-    toolArgs: v.any(),
+    toolArgs: jsonValueValidator,
     sourceDeviceId: v.optional(v.string()),
     userMessageId: v.optional(v.id("events")),
     agentType: v.optional(v.string()),
@@ -283,7 +284,7 @@ export const appendEvent = mutation({
     deviceId: v.optional(v.string()),
     requestId: v.optional(v.string()),
     targetDeviceId: v.optional(v.string()),
-    payload: v.any(),
+    payload: jsonValueValidator,
   },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
@@ -332,7 +333,7 @@ export const appendInternalEvent = internalMutation({
     deviceId: v.optional(v.string()),
     requestId: v.optional(v.string()),
     targetDeviceId: v.optional(v.string()),
-    payload: v.any(),
+    payload: jsonValueValidator,
   },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
