@@ -489,7 +489,7 @@ export const AsciiBlackHole = React.forwardRef<
           requestRef.current = undefined;
           return;
         }
-        timeRef.current += 0.015;
+        timeRef.current += 0.008;
         const now = performance.now();
 
         const birthAnimation = birthAnimationRef.current;
