@@ -36,12 +36,13 @@ Note: The preload script uses CommonJS (`tsconfig.preload.json`) while main proc
 
 ### Multi-Window Architecture
 
-The app has three window types, determined by `?window=` query parameter:
+The app has four window types, determined by `?window=` query parameter:
 - **Full** (`FullShell.tsx`): Main application window with full chat interface
 - **Mini** (`MiniShell.tsx`): Spotlight-style overlay for quick interactions (frameless, always-on-top, hides on blur)
 - **Radial** (`RadialShell.tsx`): Transparent overlay for the radial menu
+- **Region** (`RegionCapture.tsx`): Region capture overlay window
 
-UI state (`UiState`) with `mode` (ask/chat/voice) and `window` (full/mini) is synchronized across windows via IPC broadcast.
+UI state (`UiState`) with `mode` (chat/voice), `view` (chat/store), and `window` (full/mini) is synchronized across windows via IPC broadcast.
 
 ### Backend Integration
 
@@ -72,6 +73,23 @@ Custom theme system in `src/theme/`:
 Components in `src/components/` are built on Radix UI primitives with custom styling. Component index at `src/components/index.ts`.
 
 See `src/components/CLAUDE.md` for component conventions.
+
+### Canvas System
+
+Side panel for rendering AI-generated content alongside chat:
+- **State**: `src/app/state/canvas-state.tsx` — `CanvasProvider`, `useCanvas` hook
+- **Panel**: `src/components/canvas/CanvasPanel.tsx` — panel with resize handle, header, close button
+- **6 renderers** in `src/components/canvas/renderers/`: data_table, chart, json_viewer, proxy, generated, webview
+- **Runtime compiler** in `src/components/canvas/compiler/`: esbuild-wasm JSX compilation for generated renderer
+- **Event bridge**: `src/hooks/use-canvas-commands.ts` — processes canvas events from Convex
+- **CSS**: `src/styles/canvas-panel.css` + `src/styles/canvas-renderers.css`
+
+### Store
+
+App store for browsing, installing, and managing skills and themes:
+- **UI**: `src/screens/full-shell/StoreView.tsx` — lazy-loaded from FullShell
+- **View routing**: `ViewType = 'chat' | 'store'` in UiState, toggled from sidebar
+- **CSS**: `src/styles/store.css`
 
 ### Build Output
 

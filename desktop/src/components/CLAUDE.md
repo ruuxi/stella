@@ -14,17 +14,20 @@ button.css      # Component styles
 
 ### Naming
 
-- Files: lowercase with hyphens (`dropdown-menu.tsx`)
+- Reusable primitives: lowercase with hyphens (`dropdown-menu.tsx`)
+- App-level components: PascalCase (`Sidebar.tsx`, `ThemePicker.tsx`)
 - Components: PascalCase (`DropdownMenu`)
 - CSS classes: lowercase with hyphens (`.dropdown-menu-item`)
 
 ### Exports
 
-All public components are re-exported from `index.ts`:
+All public reusable components are re-exported from `index.ts`:
 ```typescript
 export { Button } from "./button"
 export { Dialog, DialogContent, DialogTitle } from "./dialog"
 ```
+
+App-level components (Sidebar, ThemePicker, AuthStatus, etc.) are imported directly.
 
 ## Component Categories
 
@@ -37,24 +40,44 @@ Built on Radix UI with custom styling:
 - `select.tsx` - Select inputs
 - `tabs.tsx` - Tab navigation
 - `tooltip.tsx` - Tooltips
+- `accordion.tsx` - Accordion panels
+- `collapsible.tsx` - Collapsible sections
+- `hover-card.tsx` - Hover cards
+- `radio-group.tsx` - Radio button groups
+- `toast.tsx` - Toast notifications
 
 ### Layout
 - `card.tsx` - Card containers
-- `separator.tsx` - Visual separators
-- `scroll-area.tsx` - Custom scrollbars
+- `list.tsx` - List containers
+- `steps-container.tsx` - Step-based layouts
 
 ### Form
-- `input.tsx` - Text inputs
+- `text-field.tsx` - Text inputs
 - `checkbox.tsx` - Checkboxes
 - `switch.tsx` - Toggle switches
 - `slider.tsx` - Range sliders
+- `radio-group.tsx` - Radio groups
+- `icon-button.tsx` - Icon buttons
+- `inline-input.tsx` - Inline editable text
 
-### Chat-Specific (`chat/`)
+### Chat (`chat/`)
 - `Markdown.tsx` - Message rendering with syntax highlighting
 - `MessageGroup.tsx` - Message grouping by author
 - `ReasoningSection.tsx` - AI reasoning display
 - `TaskIndicator.tsx` - Task progress indicators
 - `WorkingIndicator.tsx` - Loading states
+
+### Canvas (`canvas/`)
+Side panel system for rendering AI-generated content:
+- `CanvasPanel.tsx` - Main panel with resize handle and header
+- `CanvasErrorBoundary.tsx` - Error boundary for renderer crashes
+- `renderers/` - 6 renderers: data_table, chart, json_viewer, proxy, generated, webview
+- `compiler/` - Runtime esbuild-wasm JSX compilation (compile, evaluate, scope, worker)
+
+### Other Subdirectories
+- `background/` - `ShiftingGradient.tsx` animated background
+- `ascii-creature/` - WebGL ASCII art rendering
+- `onboarding/` - Onboarding flow components
 
 ## Styling Patterns
 
@@ -63,28 +86,21 @@ Built on Radix UI with custom styling:
 Use design tokens from `src/index.css`:
 ```css
 .my-component {
-  color: var(--color-foreground);
-  background: var(--color-background);
+  color: var(--foreground);
+  background: var(--background);
   border-radius: var(--radius-md);
 }
 ```
 
-### Class Variance Authority
+### Data Attribute Variants
 
-Complex components use `cva` for variants:
+Components use `data-*` attributes for variant styling:
 ```typescript
-const buttonVariants = cva("button-base", {
-  variants: {
-    variant: {
-      default: "button-default",
-      destructive: "button-destructive",
-    },
-    size: {
-      sm: "button-sm",
-      md: "button-md",
-    },
-  },
-});
+<button data-variant="default" data-size="md" />
+```
+```css
+.button[data-variant="destructive"] { ... }
+.button[data-size="sm"] { ... }
 ```
 
 ### Tailwind
