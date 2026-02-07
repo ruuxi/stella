@@ -992,6 +992,7 @@ app.whenReady().then(async () => {
   localHostRunner = createLocalHostRunner({
     deviceId,
     StellaHome: StellaHome.homePath,
+    frontendRoot: path.resolve(__dirname, '..'),
     requestCredential,
   })
   if (pendingConvexUrl) {
