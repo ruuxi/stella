@@ -1,6 +1,6 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { jsonValueValidator } from "./shared_validators";
+import { jsonValueValidator } from "../shared_validators";
 
 const packageTypeValidator = v.union(
   v.literal("skill"),

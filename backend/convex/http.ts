@@ -4,9 +4,9 @@ import { internal } from "./_generated/api";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
-import { buildSystemPrompt } from "./prompt_builder";
+import { buildSystemPrompt } from "./agent/prompt_builder";
 import { createTools } from "./tools/index";
-import { getModelConfig } from "./model";
+import { getModelConfig } from "./agent/model";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
 import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
@@ -15,10 +15,10 @@ import {
   SKILL_METADATA_PROMPT,
   buildSkillMetadataUserMessage,
 } from "./prompts/index";
-import { verifyDiscordSignature } from "./discord";
-import { verifySlackSignature } from "./slack";
-import { verifyGoogleChatJwt } from "./google_chat";
-import { verifyTeamsToken } from "./teams";
+import { verifyDiscordSignature } from "./channels/discord";
+import { verifySlackSignature } from "./channels/slack";
+import { verifyGoogleChatJwt } from "./channels/google_chat";
+import { verifyTeamsToken } from "./channels/teams";
 
 type ChatRequest = {
   conversationId: string;
@@ -219,7 +219,7 @@ http.route({
     const resolvedImages: Array<{ url: string; mimeType?: string }> = [];
     for (const attachment of attachments) {
       if (attachment.id) {
-        const record = await ctx.runQuery(internal.attachments.getById, {
+        const record = await ctx.runQuery(internal.data.attachments.getById, {
           id: attachment.id as Id<"attachments">,
         });
         if (record) {
@@ -243,7 +243,7 @@ http.route({
       }
     }
 
-    await ctx.runMutation(api.agents.ensureBuiltins, {});
+    await ctx.runMutation(api.agent.agents.ensureBuiltins, {});
 
     const agentType =
       body.agent === "self_mod"
@@ -256,7 +256,7 @@ http.route({
     // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);
 
-    const pluginTools = await ctx.runQuery(api.plugins.listToolDescriptors, {});
+    const pluginTools = await ctx.runQuery(api.data.plugins.listToolDescriptors, {});
 
     const contentParts: Array<
       { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }
@@ -376,7 +376,7 @@ http.route({
             if (olderEvents.length > 0) {
               const latestTimestamp = olderEvents[olderEvents.length - 1]?.timestamp ?? Date.now();
               // Schedule ingestion as a separate job so it runs independently
-              await ctx.scheduler.runAfter(0, internal.memory.ingestSummary, {
+              await ctx.scheduler.runAfter(0, internal.data.memory.ingestSummary, {
                 conversationId,
                 ownerId: conversation.ownerId,
                 ingestedThroughTimestamp: latestTimestamp,
@@ -552,7 +552,7 @@ http.route({
       }
 
       // Schedule seeding as async action (non-blocking)
-      await ctx.scheduler.runAfter(0, internal.memory.seedFromDiscovery, {
+      await ctx.scheduler.runAfter(0, internal.data.memory.seedFromDiscovery, {
         ownerId: identity.subject,
         formattedSignals: body.formattedSignals,
       });
@@ -741,7 +741,7 @@ http.route({
     const text = message.text;
     const displayName = message.from.first_name ?? message.from.username ?? undefined;
 
-    const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
       scope: "telegram",
       key: telegramUserId,
       limit: 30,
@@ -754,14 +754,14 @@ http.route({
 
     if (text.startsWith("/start")) {
       const codeArg = text.slice("/start".length).trim() || undefined;
-      await ctx.scheduler.runAfter(0, internal.telegram.handleStartCommand, {
+      await ctx.scheduler.runAfter(0, internal.channels.telegram.handleStartCommand, {
         chatId,
         telegramUserId,
         codeArg,
         displayName,
       });
     } else {
-      await ctx.scheduler.runAfter(0, internal.telegram.handleIncomingMessage, {
+      await ctx.scheduler.runAfter(0, internal.channels.telegram.handleIncomingMessage, {
         chatId,
         telegramUserId,
         text,
@@ -852,7 +852,7 @@ http.route({
       if (commandName === "status") {
         // Status is fast enough to respond immediately
         const connection = discordUserId
-          ? await ctx.runQuery(internal.channel_utils.getConnectionByProviderAndExternalId, {
+          ? await ctx.runQuery(internal.channels.utils.getConnectionByProviderAndExternalId, {
               provider: "discord",
               externalUserId: discordUserId,
             })
@@ -871,7 +871,7 @@ http.route({
       if (commandName === "link") {
         const codeArg = options.find((o) => o.name === "code")?.value ?? "";
 
-        const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
           scope: "discord",
           key: `${discordUserId}:link`,
           limit: 30,
@@ -884,7 +884,7 @@ http.route({
 
         // Defer response (shows "thinking...")
         // Schedule the actual work as an internal action
-        await ctx.scheduler.runAfter(0, internal.discord.handleLinkCommand, {
+        await ctx.scheduler.runAfter(0, internal.channels.discord.handleLinkCommand, {
           applicationId,
           interactionToken,
           discordUserId,
@@ -911,7 +911,7 @@ http.route({
           );
         }
 
-        const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
           scope: "discord",
           key: `${discordUserId}:ask`,
           limit: 20,
@@ -923,7 +923,7 @@ http.route({
         }
 
         // Defer response and process async
-        await ctx.scheduler.runAfter(0, internal.discord.handleAskCommand, {
+        await ctx.scheduler.runAfter(0, internal.channels.discord.handleAskCommand, {
           applicationId,
           interactionToken,
           discordUserId,
@@ -1014,7 +1014,7 @@ http.route({
           return new Response("OK", { status: 200 });
         }
 
-        const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
           scope: "slack",
           key: slackUserId,
           limit: 30,
@@ -1026,13 +1026,13 @@ http.route({
         }
 
         if (text.toLowerCase().startsWith("link ")) {
-          await ctx.scheduler.runAfter(0, internal.slack.handleLinkCommand, {
+          await ctx.scheduler.runAfter(0, internal.channels.slack.handleLinkCommand, {
             slackUserId,
             channelId,
             code: text.slice(5).trim(),
           });
         } else {
-          await ctx.scheduler.runAfter(0, internal.slack.handleIncomingMessage, {
+          await ctx.scheduler.runAfter(0, internal.channels.slack.handleIncomingMessage, {
             slackUserId,
             channelId,
             text,
@@ -1088,7 +1088,7 @@ http.route({
       const displayName = event.message?.sender?.displayName;
       const spaceName = event.space?.name ?? "";
 
-      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "google_chat",
         key: googleUserId || "unknown",
         limit: 30,
@@ -1100,14 +1100,14 @@ http.route({
       }
 
       if (text.toLowerCase().startsWith("link ")) {
-        await ctx.scheduler.runAfter(0, internal.google_chat.handleLinkCommand, {
+        await ctx.scheduler.runAfter(0, internal.channels.google_chat.handleLinkCommand, {
           spaceName,
           googleUserId,
           code: text.slice(5).trim(),
           displayName,
         });
       } else {
-        await ctx.scheduler.runAfter(0, internal.google_chat.handleIncomingMessage, {
+        await ctx.scheduler.runAfter(0, internal.channels.google_chat.handleIncomingMessage, {
           spaceName,
           googleUserId,
           text,
@@ -1165,7 +1165,7 @@ http.route({
       const serviceUrl = activity.serviceUrl ?? "";
       const conversationId = activity.conversation?.id ?? "";
 
-      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "teams",
         key: teamsUserId || "unknown",
         limit: 30,
@@ -1177,7 +1177,7 @@ http.route({
       }
 
       if (text.toLowerCase().startsWith("link ")) {
-        await ctx.scheduler.runAfter(0, internal.teams.handleLinkCommand, {
+        await ctx.scheduler.runAfter(0, internal.channels.teams.handleLinkCommand, {
           serviceUrl,
           conversationIdTeams: conversationId,
           teamsUserId,
@@ -1185,7 +1185,7 @@ http.route({
           displayName,
         });
       } else {
-        await ctx.scheduler.runAfter(0, internal.teams.handleIncomingMessage, {
+        await ctx.scheduler.runAfter(0, internal.channels.teams.handleIncomingMessage, {
           serviceUrl,
           conversationIdTeams: conversationId,
           teamsUserId,
@@ -1234,7 +1234,7 @@ http.route({
       return new Response("Invalid payload", { status: 400 });
     }
 
-    const session = await ctx.runQuery(internal.bridge.getBridgeSession, {
+    const session = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId: payload.ownerId,
       provider: payload.provider,
     });
@@ -1243,7 +1243,7 @@ http.route({
     }
 
     if (payload.type === "heartbeat") {
-      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "bridge",
         key: `${payload.ownerId}:${payload.provider}:heartbeat`,
         limit: 120,
@@ -1254,12 +1254,12 @@ http.route({
         return rateLimitResponse(rateLimit.retryAfterMs);
       }
 
-      await ctx.scheduler.runAfter(0, internal.bridge.handleHeartbeat, {
+      await ctx.scheduler.runAfter(0, internal.channels.bridge.handleHeartbeat, {
         ownerId: payload.ownerId,
         provider: payload.provider,
       });
     } else if (payload.type === "auth_update") {
-      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "bridge",
         key: `${payload.ownerId}:${payload.provider}:auth`,
         limit: 30,
@@ -1270,14 +1270,14 @@ http.route({
         return rateLimitResponse(rateLimit.retryAfterMs);
       }
 
-      await ctx.scheduler.runAfter(0, internal.bridge.handleAuthUpdate, {
+      await ctx.scheduler.runAfter(0, internal.channels.bridge.handleAuthUpdate, {
         ownerId: payload.ownerId,
         provider: payload.provider,
         authState: payload.authState ?? {},
         status: payload.status ?? "awaiting_auth",
       });
     } else if (payload.type === "message") {
-      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "bridge",
         key: `${payload.ownerId}:${payload.provider}:${payload.externalUserId ?? "unknown"}`,
         limit: 40,
@@ -1288,7 +1288,7 @@ http.route({
         return rateLimitResponse(rateLimit.retryAfterMs);
       }
 
-      await ctx.scheduler.runAfter(0, internal.bridge.handleBridgeMessage, {
+      await ctx.scheduler.runAfter(0, internal.channels.bridge.handleBridgeMessage, {
         provider: payload.provider,
         ownerId: payload.ownerId,
         externalUserId: payload.externalUserId ?? "",
@@ -1296,7 +1296,7 @@ http.route({
         displayName: payload.displayName,
       });
     } else if (payload.type === "error") {
-      const rateLimit = await ctx.runMutation(internal.channel_utils.consumeWebhookRateLimit, {
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "bridge",
         key: `${payload.ownerId}:${payload.provider}:error`,
         limit: 20,
@@ -1307,7 +1307,7 @@ http.route({
         return rateLimitResponse(rateLimit.retryAfterMs);
       }
 
-      await ctx.scheduler.runAfter(0, internal.bridge.handleBridgeError, {
+      await ctx.scheduler.runAfter(0, internal.channels.bridge.handleBridgeError, {
         ownerId: payload.ownerId,
         provider: payload.provider,
         error: payload.error ?? "Unknown error",

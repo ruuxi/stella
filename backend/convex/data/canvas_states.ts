@@ -1,6 +1,6 @@
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
-import { jsonValueValidator } from "./shared_validators";
+import { jsonValueValidator } from "../shared_validators";
 
 const canvasStateValidator = v.object({
   _id: v.id("canvas_states"),

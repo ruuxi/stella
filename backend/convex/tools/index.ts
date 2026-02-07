@@ -5,15 +5,15 @@ import {
   executeDeviceTool,
   sanitizeToolName,
   type DeviceToolContext,
-} from "../device_tools";
-import { jsonSchemaToZod } from "../plugins";
+} from "../agent/device_tools";
+import { jsonSchemaToZod } from "../data/plugins";
 import { createBackendTools } from "./backend";
 import { createCloudTools } from "./cloud";
 import { createOrchestrationTools, createOrchestrationToolsWithoutDevice } from "./orchestration";
 import { BASE_TOOL_NAMES, type PluginToolDescriptor, type ToolOptions } from "./types";
 
 export { BASE_TOOL_NAMES, type PluginToolDescriptor, type ToolOptions } from "./types";
-export type { DeviceToolContext } from "../device_tools";
+export type { DeviceToolContext } from "../agent/device_tools";
 
 const filterTools = (
   tools: ToolSet,

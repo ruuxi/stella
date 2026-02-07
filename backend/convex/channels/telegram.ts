@@ -1,7 +1,7 @@
-import { internalAction } from "./_generated/server";
+import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage, processLinkCode } from "./channel_utils";
-import { retryFetch } from "./retry_fetch";
+import { processIncomingMessage, processLinkCode } from "./utils";
+import { retryFetch } from "../lib/retry_fetch";
 
 // ---------------------------------------------------------------------------
 // Telegram API Helpers

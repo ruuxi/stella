@@ -341,15 +341,15 @@ export const createBackendTools = (
     const ownerId = options.ownerId as string;
     const requestId = crypto.randomUUID();
     try {
-      const secret = await ctx.runQuery(internal.secrets.getSecretForTool, {
+      const secret = await ctx.runQuery(internal.data.secrets.getSecretForTool, {
         ownerId,
         secretId: secretId as Id<"secrets">,
       });
-      await ctx.runMutation(internal.secrets.touchSecretUsage, {
+      await ctx.runMutation(internal.data.secrets.touchSecretUsage, {
         ownerId,
         secretId: secretId as Id<"secrets">,
       });
-      await ctx.runMutation(internal.secrets.auditSecretAccess, {
+      await ctx.runMutation(internal.data.secrets.auditSecretAccess, {
         ownerId,
         secretId: secretId as Id<"secrets">,
         toolName,
@@ -359,7 +359,7 @@ export const createBackendTools = (
       return await handler(secret.plaintext);
     } catch (error) {
       try {
-        await ctx.runMutation(internal.secrets.auditSecretAccess, {
+        await ctx.runMutation(internal.data.secrets.auditSecretAccess, {
           ownerId,
           secretId: secretId as Id<"secrets">,
           toolName,
@@ -500,7 +500,7 @@ export const createBackendTools = (
         skill_id: z.string().min(1),
       }),
       execute: async (args) => {
-        const skill = await ctx.runQuery(api.skills.getSkillById, {
+        const skill = await ctx.runQuery(api.data.skills.getSkillById, {
           skillId: args.skill_id,
         });
         if (!skill) {
@@ -536,7 +536,7 @@ export const createBackendTools = (
         switch (args.action) {
           case "heartbeat.get": {
             const conversationId = readString(params, "conversationId");
-            const result = await ctx.runQuery(api.heartbeat.getConfig, {
+            const result = await ctx.runQuery(api.scheduling.heartbeat.getConfig, {
               ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
             });
             return formatResult(result);
@@ -563,18 +563,18 @@ export const createBackendTools = (
             if (activeHours !== undefined) upsertArgs.activeHours = activeHours;
             const targetDeviceId = readString(params, "targetDeviceId");
             if (targetDeviceId !== undefined) upsertArgs.targetDeviceId = targetDeviceId;
-            const result = await ctx.runMutation(api.heartbeat.upsertConfig, upsertArgs);
+            const result = await ctx.runMutation(api.scheduling.heartbeat.upsertConfig, upsertArgs);
             return formatResult(result);
           }
           case "heartbeat.run": {
             const conversationId = readString(params, "conversationId");
-            const result = await ctx.runMutation(api.heartbeat.runNow, {
+            const result = await ctx.runMutation(api.scheduling.heartbeat.runNow, {
               ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
             });
             return formatResult(result);
           }
           case "cron.list": {
-            const result = await ctx.runQuery(api.cron_jobs.list, {});
+            const result = await ctx.runQuery(api.scheduling.cron_jobs.list, {});
             return formatResult(result);
           }
           case "cron.add": {
@@ -586,7 +586,7 @@ export const createBackendTools = (
             const description = readString(params, "description");
             const enabled = readBoolean(params, "enabled");
             const deleteAfterRun = readBoolean(params, "deleteAfterRun");
-            const result = await ctx.runMutation(api.cron_jobs.add, {
+            const result = await ctx.runMutation(api.scheduling.cron_jobs.add, {
               name,
               schedule,
               payload,
@@ -603,7 +603,7 @@ export const createBackendTools = (
             const patch = coerceCronPatch(params.patch);
             const resolvedJobId = requireValue(jobId, "jobId");
             const resolvedPatch = requireValue(patch, "patch");
-            const result = await ctx.runMutation(api.cron_jobs.update, {
+            const result = await ctx.runMutation(api.scheduling.cron_jobs.update, {
               jobId: resolvedJobId as Id<"cron_jobs">,
               patch: resolvedPatch,
             });
@@ -612,7 +612,7 @@ export const createBackendTools = (
           case "cron.remove": {
             const jobId = readString(params, "jobId") ?? readString(params, "id");
             const resolvedJobId = requireValue(jobId, "jobId");
-            await ctx.runMutation(api.cron_jobs.remove, {
+            await ctx.runMutation(api.scheduling.cron_jobs.remove, {
               jobId: resolvedJobId as Id<"cron_jobs">,
             });
             return "Cron job removed.";
@@ -620,7 +620,7 @@ export const createBackendTools = (
           case "cron.run": {
             const jobId = readString(params, "jobId") ?? readString(params, "id");
             const resolvedJobId = requireValue(jobId, "jobId");
-            const result = await ctx.runMutation(api.cron_jobs.run, {
+            const result = await ctx.runMutation(api.scheduling.cron_jobs.run, {
               jobId: resolvedJobId as Id<"cron_jobs">,
             });
             return formatResult(result);
@@ -771,7 +771,7 @@ export const createBackendTools = (
             if (!args.tier) {
               return "Canvas save requires a tier.";
             }
-            await ctx.runMutation(internal.canvas_states.save, {
+            await ctx.runMutation(internal.data.canvas_states.save, {
               ownerId,
               conversationId: conversationId as Id<"conversations">,
               component: args.component,
@@ -785,7 +785,7 @@ export const createBackendTools = (
           }
           case "restore": {
             const saved = await ctx.runQuery(
-              internal.canvas_states.getForConversationInternal,
+              internal.data.canvas_states.getForConversationInternal,
               {
                 conversationId: conversationId as Id<"conversations">,
               },
@@ -972,7 +972,7 @@ export const createBackendTools = (
           requiresSecrets.push(skillId);
         }
 
-        await ctx.runMutation(api.skills.upsertMany, {
+        await ctx.runMutation(api.data.skills.upsertMany, {
           skills: [
             {
               id: skillId,

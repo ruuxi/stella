@@ -5,11 +5,11 @@ import {
   internalQuery,
   query,
   type ActionCtx,
-} from "./_generated/server";
-import { api, internal } from "./_generated/api";
+} from "../_generated/server";
+import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
-import { requireUserId } from "./auth";
+import type { Doc, Id } from "../_generated/dataModel";
+import { requireUserId } from "../auth";
 
 // ---------------------------------------------------------------------------
 // Sprites REST API Helpers
@@ -511,14 +511,14 @@ export const setupSprite = internalAction({
       });
       assertNdjsonNoError(checkpointResponse, "Sprite checkpoint create");
 
-      await ctx.runMutation(internal.cloud_devices.updateStatus, {
+      await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
         id: args.deviceId,
         status: "running",
         setupComplete: true,
       });
     } catch (error) {
       console.error("[cloud_devices] Setup failed:", error);
-      await ctx.runMutation(internal.cloud_devices.updateStatus, {
+      await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
         id: args.deviceId,
         status: "error",
       });
@@ -586,9 +586,9 @@ const ensure247ForOwner = async (
   ctx: ActionCtx,
   ownerId: string,
 ): Promise<Enable247Result> => {
-  const existing = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });
+  const existing = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, { ownerId });
   if (existing) {
-    await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+    await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
       ownerId,
       key: RUNTIME_MODE_KEY,
       value: "cloud_247",
@@ -602,19 +602,19 @@ const ensure247ForOwner = async (
 
   await spritesApi("/sprites", "POST", { name: spriteName });
 
-  const deviceId = await ctx.runMutation(internal.cloud_devices.insertCloudDevice, {
+  const deviceId = await ctx.runMutation(internal.agent.cloud_devices.insertCloudDevice, {
     ownerId,
     provider: "sprites",
     spriteName,
     status: "provisioning",
   });
 
-  await ctx.scheduler.runAfter(0, internal.cloud_devices.setupSprite, {
+  await ctx.scheduler.runAfter(0, internal.agent.cloud_devices.setupSprite, {
     deviceId,
     spriteName,
   });
 
-  await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+  await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
     ownerId,
     key: RUNTIME_MODE_KEY,
     value: "cloud_247",
@@ -627,9 +627,9 @@ const disable247ForOwner = async (
   ctx: ActionCtx,
   ownerId: string,
 ): Promise<Disable247Result> => {
-  const record = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });
+  const record = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, { ownerId });
   if (!record) {
-    await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+    await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
       ownerId,
       key: RUNTIME_MODE_KEY,
       value: "local",
@@ -643,11 +643,11 @@ const disable247ForOwner = async (
     console.error("[cloud_devices] Sprite deletion error (continuing):", error);
   }
 
-  await ctx.runMutation(internal.cloud_devices.deleteCloudDevice, {
+  await ctx.runMutation(internal.agent.cloud_devices.deleteCloudDevice, {
     id: record._id,
   });
 
-  await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+  await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
     ownerId,
     key: RUNTIME_MODE_KEY,
     value: "local",
@@ -667,25 +667,25 @@ export const set247Enabled = action({
     if (args.enabled) {
       await ensure247ForOwner(ctx, ownerId);
     } else {
-      await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+      await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
         ownerId,
         key: RUNTIME_MODE_KEY,
         value: "local",
       });
       try {
-        await ctx.runAction(api.bridge.stopBridge, { provider: "whatsapp" });
+        await ctx.runAction(api.channels.bridge.stopBridge, { provider: "whatsapp" });
       } catch {
         // Best effort: bridge may already be stopped.
       }
       try {
-        await ctx.runAction(api.bridge.stopBridge, { provider: "signal" });
+        await ctx.runAction(api.channels.bridge.stopBridge, { provider: "signal" });
       } catch {
         // Best effort: bridge may already be stopped.
       }
       await disable247ForOwner(ctx, ownerId);
     }
 
-    const cloudDevice = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });
+    const cloudDevice = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, { ownerId });
     return {
       mode: args.enabled ? "cloud_247" : "local",
       enabled: args.enabled,

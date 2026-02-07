@@ -2,9 +2,9 @@ import { streamText } from "ai";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
-import { buildSystemPrompt } from "../prompt_builder";
+import { buildSystemPrompt } from "../agent/prompt_builder";
 import { createTools } from "../tools/index";
-import { getModelConfig } from "../model";
+import { getModelConfig } from "../agent/model";
 
 export type RunAgentTurnResult = {
   text: string;
@@ -38,7 +38,7 @@ export async function runAgentTurn({
   includeHistory = true,
   historyLimit = 80,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
-  await ctx.runMutation(api.agents.ensureBuiltins, {});
+  await ctx.runMutation(api.agent.agents.ensureBuiltins, {});
 
   const conversation = await ctx.runQuery(internal.conversations.getById, {
     id: conversationId,
@@ -51,7 +51,7 @@ export async function runAgentTurn({
   const promptBuild = await buildSystemPrompt(ctx, agentType, {
     ownerId: resolvedOwnerId,
   });
-  const pluginTools = (await ctx.runQuery(api.plugins.listToolDescriptors, {})) as Array<{
+  const pluginTools = (await ctx.runQuery(api.data.plugins.listToolDescriptors, {})) as Array<{
     pluginId: string;
     name: string;
     description: string;

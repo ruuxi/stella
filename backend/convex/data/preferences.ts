@@ -1,6 +1,6 @@
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireUserId } from "./auth";
+import { requireUserId } from "../auth";
 
 const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"));
 const RUNTIME_MODE_KEY = "runtime_mode";
