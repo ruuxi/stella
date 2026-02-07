@@ -21,6 +21,7 @@ import { useTheme } from "../theme/theme-context";
 import { Button } from "../components/button";
 import { AuthDialog } from "../app/AuthDialog";
 import { ConnectDialog } from "../app/ConnectDialog";
+import { RuntimeModeDialog } from "../app/RuntimeModeDialog";
 import { CanvasPanel } from "../components/canvas/CanvasPanel";
 import { Sidebar } from "../components/Sidebar";
 import type { AllUserSignalsResult, ChatContext, ChatContextUpdate } from "../types/electron";
@@ -97,6 +98,7 @@ export const FullShell = () => {
   );
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [runtimeModeDialogOpen, setRuntimeModeDialogOpen] = useState(false);
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
   const [onboardingKey, setOnboardingKey] = useState(0);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
@@ -678,6 +680,7 @@ export const FullShell = () => {
           onThemeSelect={handleThemeSelect}
           onSignIn={() => setAuthDialogOpen(true)}
           onConnect={() => setConnectDialogOpen(true)}
+          onSettings={() => setRuntimeModeDialogOpen(true)}
         />
         <div className="full-body-main">
           <div
@@ -945,6 +948,10 @@ export const FullShell = () => {
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
       <ConnectDialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen} />
+      <RuntimeModeDialog
+        open={runtimeModeDialogOpen}
+        onOpenChange={setRuntimeModeDialogOpen}
+      />
 
       {isDev && (
         <button className="onboarding-reset" onClick={handleResetOnboarding}>
