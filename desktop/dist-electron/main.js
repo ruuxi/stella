@@ -408,7 +408,7 @@ const captureRadialContext = (x, y) => {
     }
     pendingRadialCapturePromise = (async () => {
         try {
-            const fresh = await captureChatContext({ x, y }, { excludeCurrentProcessWindows: process.platform === 'win32' });
+            const fresh = await captureChatContext({ x, y }, { excludeCurrentProcessWindows: process.platform === 'win32' || process.platform === 'darwin' });
             if (requestId !== radialCaptureRequestId) {
                 return;
             }
