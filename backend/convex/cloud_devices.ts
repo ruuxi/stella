@@ -4,10 +4,11 @@ import {
   internalMutation,
   internalQuery,
   query,
+  type ActionCtx,
 } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,23 @@ type Enable247Result =
   | { status: "provisioning"; spriteName: string };
 
 type Disable247Result = { status: "not_enabled" } | { status: "disabled" };
+
+const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"));
+const runtimeStatusValidator = v.object({
+  mode: runtimeModeValidator,
+  enabled: v.boolean(),
+  cloudDevice: v.union(cloudDeviceValidator, v.null()),
+});
+
+const RUNTIME_MODE_KEY = "runtime_mode";
+const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
+  value === "cloud_247" ? "cloud_247" : "local";
+
+type RuntimeStatus = {
+  mode: "local" | "cloud_247";
+  enabled: boolean;
+  cloudDevice: Doc<"cloud_devices"> | null;
+};
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -354,6 +372,15 @@ export const resolveForOwner = internalQuery({
   args: { ownerId: v.string() },
   returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
+    const runtimePreference = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_owner_key", (q) => q.eq("ownerId", args.ownerId).eq("key", RUNTIME_MODE_KEY))
+      .first();
+    const runtimeMode = normalizeRuntimeMode(runtimePreference?.value ?? null);
+    if (runtimeMode !== "cloud_247") {
+      return null;
+    }
+
     const record = await ctx.db
       .query("cloud_devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
@@ -504,6 +531,38 @@ export const setupSprite = internalAction({
 // Public Queries (for frontend)
 // ---------------------------------------------------------------------------
 
+export const get247Status = query({
+  args: {},
+  returns: runtimeStatusValidator,
+  handler: async (ctx): Promise<RuntimeStatus> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return {
+        mode: "local",
+        enabled: false,
+        cloudDevice: null,
+      };
+    }
+
+    const ownerId = identity.subject;
+    const runtimePreference = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
+      .first();
+    const mode = normalizeRuntimeMode(runtimePreference?.value ?? null);
+    const cloudDevice = await ctx.db
+      .query("cloud_devices")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .first();
+
+    return {
+      mode,
+      enabled: mode === "cloud_247",
+      cloudDevice: cloudDevice ?? null,
+    };
+  },
+});
+
 export const getActive = query({
   args: {},
   returns: v.union(cloudDeviceValidator, v.null()),
@@ -523,41 +582,124 @@ export const getActive = query({
 // Public Actions (for frontend)
 // ---------------------------------------------------------------------------
 
+const ensure247ForOwner = async (
+  ctx: ActionCtx,
+  ownerId: string,
+): Promise<Enable247Result> => {
+  const existing = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });
+  if (existing) {
+    await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+      ownerId,
+      key: RUNTIME_MODE_KEY,
+      value: "cloud_247",
+    });
+    return { status: "already_enabled", spriteName: existing.spriteName };
+  }
+
+  const suffix = ownerId.slice(-8);
+  const rand = Math.random().toString(36).slice(2, 6);
+  const spriteName = `stella-${suffix}-${rand}`;
+
+  await spritesApi("/sprites", "POST", { name: spriteName });
+
+  const deviceId = await ctx.runMutation(internal.cloud_devices.insertCloudDevice, {
+    ownerId,
+    provider: "sprites",
+    spriteName,
+    status: "provisioning",
+  });
+
+  await ctx.scheduler.runAfter(0, internal.cloud_devices.setupSprite, {
+    deviceId,
+    spriteName,
+  });
+
+  await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+    ownerId,
+    key: RUNTIME_MODE_KEY,
+    value: "cloud_247",
+  });
+
+  return { status: "provisioning", spriteName };
+};
+
+const disable247ForOwner = async (
+  ctx: ActionCtx,
+  ownerId: string,
+): Promise<Disable247Result> => {
+  const record = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });
+  if (!record) {
+    await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+      ownerId,
+      key: RUNTIME_MODE_KEY,
+      value: "local",
+    });
+    return { status: "not_enabled" };
+  }
+
+  try {
+    await spritesApi(`/sprites/${record.spriteName}`, "DELETE");
+  } catch (error) {
+    console.error("[cloud_devices] Sprite deletion error (continuing):", error);
+  }
+
+  await ctx.runMutation(internal.cloud_devices.deleteCloudDevice, {
+    id: record._id,
+  });
+
+  await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+    ownerId,
+    key: RUNTIME_MODE_KEY,
+    value: "local",
+  });
+
+  return { status: "disabled" };
+};
+
+export const set247Enabled = action({
+  args: {
+    enabled: v.boolean(),
+  },
+  returns: runtimeStatusValidator,
+  handler: async (ctx, args): Promise<RuntimeStatus> => {
+    const ownerId = await requireUserId(ctx);
+
+    if (args.enabled) {
+      await ensure247ForOwner(ctx, ownerId);
+    } else {
+      await ctx.runMutation(internal.preferences.setPreferenceForOwner, {
+        ownerId,
+        key: RUNTIME_MODE_KEY,
+        value: "local",
+      });
+      try {
+        await ctx.runAction(api.bridge.stopBridge, { provider: "whatsapp" });
+      } catch {
+        // Best effort: bridge may already be stopped.
+      }
+      try {
+        await ctx.runAction(api.bridge.stopBridge, { provider: "signal" });
+      } catch {
+        // Best effort: bridge may already be stopped.
+      }
+      await disable247ForOwner(ctx, ownerId);
+    }
+
+    const cloudDevice = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });
+    return {
+      mode: args.enabled ? "cloud_247" : "local",
+      enabled: args.enabled,
+      cloudDevice: cloudDevice ?? null,
+    };
+  },
+});
+
 export const enable247 = action({
   args: {},
   returns: enable247ResultValidator,
   handler: async (ctx): Promise<Enable247Result> => {
     const ownerId = await requireUserId(ctx);
-
-    // Check if already enabled
-    const existing = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });
-    if (existing) {
-      return { status: "already_enabled", spriteName: existing.spriteName };
-    }
-
-    // Generate a unique sprite name
-    const suffix = ownerId.slice(-8);
-    const rand = Math.random().toString(36).slice(2, 6);
-    const spriteName = `stella-${suffix}-${rand}`;
-
-    // Create the sprite
-    await spritesApi("/sprites", "POST", { name: spriteName });
-
-    // Insert the record
-    const deviceId = await ctx.runMutation(internal.cloud_devices.insertCloudDevice, {
-      ownerId,
-      provider: "sprites",
-      spriteName,
-      status: "provisioning",
-    });
-
-    // Schedule setup (installs tools, creates checkpoint)
-    await ctx.scheduler.runAfter(0, internal.cloud_devices.setupSprite, {
-      deviceId,
-      spriteName,
-    });
-
-    return { status: "provisioning", spriteName };
+    return await ensure247ForOwner(ctx, ownerId);
   },
 });
 
@@ -566,25 +708,6 @@ export const disable247 = action({
   returns: disable247ResultValidator,
   handler: async (ctx): Promise<Disable247Result> => {
     const ownerId = await requireUserId(ctx);
-
-    const record = await ctx.runQuery(internal.cloud_devices.getForOwner, { ownerId });
-    if (!record) {
-      return { status: "not_enabled" };
-    }
-
-    // Destroy the sprite (irreversible — all data lost)
-    try {
-      await spritesApi(`/sprites/${record.spriteName}`, "DELETE");
-    } catch (error) {
-      // If already deleted or 404, continue with cleanup
-      console.error("[cloud_devices] Sprite deletion error (continuing):", error);
-    }
-
-    // Delete the record
-    await ctx.runMutation(internal.cloud_devices.deleteCloudDevice, {
-      id: record._id,
-    });
-
-    return { status: "disabled" };
+    return await disable247ForOwner(ctx, ownerId);
   },
 });
