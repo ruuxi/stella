@@ -74,6 +74,7 @@ export async function runAgentTurn({
       maxTaskDepth: promptBuild.maxTaskDepth,
       pluginTools,
       ownerId: resolvedOwnerId,
+      conversationId,
       spriteName,
     },
   );

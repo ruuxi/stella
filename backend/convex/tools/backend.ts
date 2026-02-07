@@ -628,5 +628,357 @@ export const createBackendTools = (
         }
       },
     }),
+    Canvas: tool({
+      description:
+        "Control the canvas panel to display rich content (charts, tables, apps, proxies). Actions: open (display content), close (hide panel), update (change data), resize (set width), list (available components), save (persist state), restore (load saved state).",
+      inputSchema: z.object({
+        action: z.enum(["open", "close", "update", "resize", "list", "save", "restore"]),
+        component: z
+          .string()
+          .optional()
+          .describe(
+            "Canvas component key (e.g. 'data-table', 'chart', 'json-viewer', 'proxy')",
+          ),
+        title: z.string().optional().describe("Panel header title"),
+        tier: z
+          .enum(["data", "proxy", "app"])
+          .optional()
+          .describe("Canvas tier"),
+        data: z.any().optional().describe("Structured data for the canvas"),
+        url: z
+          .string()
+          .optional()
+          .describe("URL for proxy/app tier canvases"),
+        width: z.number().optional().describe("Panel width in pixels"),
+      }),
+      execute: async (args) => {
+        const conversationId = options.conversationId;
+        if (!conversationId) {
+          return "Canvas requires a conversation context.";
+        }
+
+        switch (args.action) {
+          case "open": {
+            if (!args.component) {
+              return "Canvas open requires a component key.";
+            }
+            if (!args.tier) {
+              return "Canvas open requires a tier (data, proxy, or app).";
+            }
+            await ctx.runMutation(internal.events.appendInternalEvent, {
+              conversationId: conversationId as Id<"conversations">,
+              type: "canvas_command",
+              payload: {
+                action: "open",
+                component: args.component,
+                title: args.title ?? args.component,
+                tier: args.tier,
+                ...(args.data !== undefined ? { data: args.data } : {}),
+                ...(args.url ? { url: args.url } : {}),
+              },
+            });
+            return `Canvas opened: ${args.component} (${args.tier})`;
+          }
+          case "close": {
+            await ctx.runMutation(internal.events.appendInternalEvent, {
+              conversationId: conversationId as Id<"conversations">,
+              type: "canvas_command",
+              payload: { action: "close" },
+            });
+            return "Canvas closed.";
+          }
+          case "update": {
+            if (args.data === undefined) {
+              return "Canvas update requires data.";
+            }
+            await ctx.runMutation(internal.events.appendInternalEvent, {
+              conversationId: conversationId as Id<"conversations">,
+              type: "canvas_command",
+              payload: { action: "update", data: args.data },
+            });
+            return "Canvas updated.";
+          }
+          case "resize": {
+            if (args.width === undefined) {
+              return "Canvas resize requires a width in pixels.";
+            }
+            await ctx.runMutation(internal.events.appendInternalEvent, {
+              conversationId: conversationId as Id<"conversations">,
+              type: "canvas_command",
+              payload: { action: "resize", width: args.width },
+            });
+            return `Canvas resized to ${args.width}px.`;
+          }
+          case "list": {
+            return JSON.stringify(
+              [
+                {
+                  key: "data-table",
+                  tier: "data",
+                  description: "Sortable table from JSON array",
+                },
+                {
+                  key: "chart",
+                  tier: "data",
+                  description:
+                    "Charts via recharts (bar, line, pie, area, scatter)",
+                },
+                {
+                  key: "json-viewer",
+                  tier: "data",
+                  description: "Structured JSON tree viewer",
+                },
+                {
+                  key: "proxy",
+                  tier: "proxy",
+                  description: "External app iframe or API facade",
+                },
+                {
+                  key: "app",
+                  tier: "app",
+                  description: "Sandboxed HTML/React mini-app",
+                },
+                {
+                  key: "store",
+                  tier: "app",
+                  description: "App store browser",
+                },
+              ],
+              null,
+              2,
+            );
+          }
+          case "save": {
+            const ownerId = options.ownerId;
+            if (!ownerId) {
+              return "Canvas save requires an authenticated owner.";
+            }
+            if (!args.component) {
+              return "Canvas save requires a component key.";
+            }
+            if (!args.tier) {
+              return "Canvas save requires a tier.";
+            }
+            await ctx.runMutation(internal.canvas_states.save, {
+              ownerId,
+              conversationId: conversationId as Id<"conversations">,
+              component: args.component,
+              tier: args.tier,
+              title: args.title,
+              data: args.data,
+              url: args.url,
+              width: args.width,
+            });
+            return `Canvas state saved for ${args.component}.`;
+          }
+          case "restore": {
+            const saved = await ctx.runQuery(
+              internal.canvas_states.getForConversationInternal,
+              {
+                conversationId: conversationId as Id<"conversations">,
+              },
+            );
+            if (!saved) {
+              return "No saved canvas state found for this conversation.";
+            }
+            // Re-open the canvas with the saved state
+            await ctx.runMutation(internal.events.appendInternalEvent, {
+              conversationId: conversationId as Id<"conversations">,
+              type: "canvas_command",
+              payload: {
+                action: "open",
+                component: saved.component,
+                title: saved.title ?? saved.component,
+                tier: saved.tier,
+                ...(saved.data !== undefined ? { data: saved.data } : {}),
+                ...(saved.url ? { url: saved.url } : {}),
+              },
+            });
+            if (saved.width) {
+              await ctx.runMutation(internal.events.appendInternalEvent, {
+                conversationId: conversationId as Id<"conversations">,
+                type: "canvas_command",
+                payload: { action: "resize", width: saved.width },
+              });
+            }
+            return `Canvas restored: ${saved.component} (${saved.tier})`;
+          }
+        }
+      },
+    }),
+    GenerateApiSkill: tool({
+      description:
+        "Generate a reusable API skill from a discovered API map. Converts structured API discovery output into a persistent skill with endpoint documentation, auth configuration, and usage instructions.",
+      inputSchema: z.object({
+        service: z.string().describe("Service name (e.g. 'Spotify')"),
+        baseUrl: z.string().describe("API base URL"),
+        auth: z
+          .object({
+            type: z
+              .string()
+              .describe("Auth type: bearer, cookie, header, oauth"),
+            tokenSource: z
+              .string()
+              .optional()
+              .describe("Where the token comes from"),
+            headerName: z
+              .string()
+              .optional()
+              .describe("Header name for auth"),
+            notes: z
+              .string()
+              .optional()
+              .describe("Refresh, expiry, etc."),
+          })
+          .optional(),
+        endpoints: z.array(
+          z.object({
+            path: z.string(),
+            method: z.string().optional(),
+            description: z.string().optional(),
+            params: z.record(z.string()).optional(),
+            responseShape: z.string().optional(),
+            rateLimit: z.string().optional(),
+          }),
+        ),
+        sessionNotes: z.string().optional(),
+        skillId: z
+          .string()
+          .optional()
+          .describe(
+            "Custom skill ID (auto-generated from service name if omitted)",
+          ),
+        tags: z.array(z.string()).optional(),
+        canvasHint: z
+          .string()
+          .optional()
+          .describe(
+            "Suggested canvas for results: table, chart, feed, player, dashboard",
+          ),
+      }),
+      execute: async (args) => {
+        const skillId =
+          args.skillId ??
+          args.service
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "") +
+            "-api";
+
+        const lines: string[] = [];
+        lines.push(`# ${args.service} API`);
+        lines.push("");
+        lines.push(`Discovered API integration for ${args.service}.`);
+        lines.push("");
+        lines.push("## Base URL");
+        lines.push(`\`${args.baseUrl}\``);
+        lines.push("");
+
+        if (args.auth) {
+          lines.push("## Authentication");
+          lines.push(`- **Type**: ${args.auth.type}`);
+          if (args.auth.headerName)
+            lines.push(`- **Header**: ${args.auth.headerName}`);
+          if (args.auth.tokenSource)
+            lines.push(`- **Source**: ${args.auth.tokenSource}`);
+          if (args.auth.notes)
+            lines.push(`- **Notes**: ${args.auth.notes}`);
+          lines.push("");
+        }
+
+        lines.push("## Endpoints");
+        lines.push("");
+        for (const ep of args.endpoints) {
+          const method = (ep.method ?? "GET").toUpperCase();
+          lines.push(`### ${method} ${ep.path}`);
+          if (ep.description) lines.push(ep.description);
+          if (ep.params && Object.keys(ep.params).length > 0) {
+            lines.push("**Parameters:**");
+            for (const [key, desc] of Object.entries(ep.params)) {
+              lines.push(`- \`${key}\`: ${desc}`);
+            }
+          }
+          if (ep.responseShape)
+            lines.push(`**Response:** ${ep.responseShape}`);
+          if (ep.rateLimit)
+            lines.push(`**Rate limit:** ${ep.rateLimit}`);
+          lines.push("");
+        }
+
+        lines.push("## Usage");
+        lines.push("");
+        lines.push("Call endpoints using `IntegrationRequest`:");
+        lines.push("```");
+        lines.push("IntegrationRequest({");
+        lines.push(`  provider: "${skillId}",`);
+        if (args.auth) {
+          const authType =
+            args.auth.type === "cookie" ? "header" : args.auth.type;
+          lines.push(
+            `  auth: { type: "${authType}"${args.auth.headerName ? `, header: "${args.auth.headerName}"` : ""} },`,
+          );
+        }
+        lines.push("  request: {");
+        lines.push(`    url: "${args.baseUrl}<endpoint_path>",`);
+        lines.push('    method: "GET",');
+        lines.push("  }");
+        lines.push("})");
+        lines.push("```");
+        lines.push("");
+        lines.push(
+          "If no credentials are stored, use `RequestCredential` to obtain them, or delegate to the browser agent to extract tokens from an active session.",
+        );
+
+        if (args.sessionNotes) {
+          lines.push("");
+          lines.push("## Session Notes");
+          lines.push(args.sessionNotes);
+        }
+
+        if (args.canvasHint) {
+          lines.push("");
+          lines.push("## Display");
+          lines.push(
+            `Suggested canvas for results: **${args.canvasHint}**`,
+          );
+          const canvasMap: Record<string, string> = {
+            table: "data-table",
+            chart: "chart",
+            feed: "json-viewer",
+            player: "proxy",
+            dashboard: "proxy",
+          };
+          const component = canvasMap[args.canvasHint] ?? "data-table";
+          lines.push(
+            `Use \`Canvas(action="open", component="${component}", tier="data", data={...})\` to display results.`,
+          );
+        }
+
+        const markdown = lines.join("\n");
+        const requiresSecrets: string[] = [];
+        if (args.auth && args.auth.type !== "cookie") {
+          requiresSecrets.push(skillId);
+        }
+
+        await ctx.runMutation(api.skills.upsertMany, {
+          skills: [
+            {
+              id: skillId,
+              name: `${args.service} API`,
+              description: `API integration for ${args.service} — ${args.endpoints.length} endpoints`,
+              markdown,
+              agentTypes: ["general"],
+              tags: args.tags ?? ["api", "integration", "generated"],
+              requiresSecrets:
+                requiresSecrets.length > 0 ? requiresSecrets : undefined,
+              source: "generated",
+              enabled: true,
+            },
+          ],
+        });
+
+        return `Skill "${skillId}" created with ${args.endpoints.length} endpoints.\n\nAgents can now use ActivateSkill("${skillId}") to load the ${args.service} API documentation and call endpoints via IntegrationRequest.`;
+      },
+    }),
   };
 };

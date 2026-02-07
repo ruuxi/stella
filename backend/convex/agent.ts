@@ -361,6 +361,7 @@ export const invoke = action({
             maxTaskDepth: Math.min(promptBuild.maxTaskDepth, 2),
             pluginTools,
             ownerId,
+            conversationId: args.conversationId,
           },
         )
       : undefined;

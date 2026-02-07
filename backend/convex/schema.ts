@@ -319,6 +319,55 @@ export default defineSchema({
     .index("by_owner_provider", ["ownerId", "provider"])
     .index("by_sprite", ["spriteName", "provider"])
     .index("by_next_wake", ["nextWakeAtMs"]),
+  store_packages: defineTable({
+    packageId: v.string(),
+    name: v.string(),
+    author: v.string(),
+    description: v.string(),
+    type: v.union(
+      v.literal("skill"),
+      v.literal("canvas"),
+      v.literal("plugin"),
+      v.literal("theme"),
+    ),
+    version: v.string(),
+    tags: v.array(v.string()),
+    downloads: v.number(),
+    rating: v.optional(v.number()),
+    icon: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    readme: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_package_id", ["packageId"])
+    .index("by_type", ["type", "updatedAt"])
+    .index("by_downloads", ["downloads"])
+    .searchIndex("search_packages", {
+      searchField: "name",
+      filterFields: ["type"],
+    }),
+  store_installs: defineTable({
+    ownerId: v.string(),
+    packageId: v.string(),
+    installedVersion: v.string(),
+    installedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId", "installedAt"])
+    .index("by_owner_package", ["ownerId", "packageId"]),
+  canvas_states: defineTable({
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    component: v.string(),
+    tier: v.string(),
+    title: v.optional(v.string()),
+    data: v.optional(jsonValueValidator),
+    url: v.optional(v.string()),
+    width: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_conversation", ["ownerId", "conversationId"])
+    .index("by_owner_updated", ["ownerId", "updatedAt"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
