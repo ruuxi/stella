@@ -566,6 +566,14 @@ export const setupBridge = action({
   returns: setupBridgeResultValidator,
   handler: async (ctx, args): Promise<SetupBridgeResult> => {
     const ownerId = await requireUserId(ctx);
+    const runtimeMode = await ctx.runQuery(internal.preferences.getRuntimeModeForOwner, {
+      ownerId,
+    });
+    if (runtimeMode !== "cloud_247") {
+      throw new Error(
+        "24/7 mode is disabled. Enable 24/7 in Settings before connecting WhatsApp or Signal.",
+      );
+    }
 
     // Check existing session
     const existing = await ctx.runQuery(internal.bridge.getBridgeSession, {

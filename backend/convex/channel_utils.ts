@@ -638,10 +638,16 @@ export async function processIncomingMessage(args: {
     payload: { text: args.text },
   });
 
-  const spriteName = await args.ctx.runQuery(
-    internal.cloud_devices.resolveForOwner,
-    { ownerId: connection.ownerId },
-  );
+  const targetDeviceId =
+    (await args.ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
+      conversationId,
+    })) ?? undefined;
+
+  const spriteName = !targetDeviceId
+    ? await args.ctx.runQuery(internal.cloud_devices.resolveForOwner, {
+        ownerId: connection.ownerId,
+      })
+    : null;
 
   if (spriteName) {
     await args.ctx.runMutation(internal.cloud_devices.touchActivity, {
@@ -655,7 +661,7 @@ export async function processIncomingMessage(args: {
     prompt: args.text,
     agentType: "orchestrator",
     ownerId: connection.ownerId,
-    targetDeviceId: undefined,
+    targetDeviceId,
     spriteName: spriteName ?? undefined,
   });
 
