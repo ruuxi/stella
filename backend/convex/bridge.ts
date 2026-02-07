@@ -10,7 +10,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
 import { processIncomingMessage } from "./channel_utils";
-import { spritesApi, spritesApiText, spritesExecChecked } from "./cloud_devices";
+import { spritesApi, spritesApiText, spritesExec, spritesExecChecked } from "./cloud_devices";
 
 const bridgeAuthStateValidator = v.optional(
   v.object({
@@ -36,6 +36,11 @@ const bridgeSessionValidator = v.object({
   authState: bridgeAuthStateValidator,
   errorMessage: v.optional(v.string()),
   lastHeartbeatAt: v.optional(v.number()),
+  lastMessageAtMs: v.optional(v.number()),
+  nextWakeAtMs: v.optional(v.number()),
+  wakeIntervalMs: v.optional(v.number()),
+  wakeTier: v.optional(v.string()),
+  consecutiveEmptyWakes: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.number(),
 });
@@ -96,6 +101,56 @@ function generateBridgeWebhookSecret(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Adaptive Wake — AIMD with recency-based tiers
+// ---------------------------------------------------------------------------
+
+const WAKE_TIERS = [
+  { name: "HOT",    maxAgeMs: 2 * 60_000,     floorMs: 15_000,  ceilingMs: 20_000  },
+  { name: "WARM",   maxAgeMs: 10 * 60_000,    floorMs: 30_000,  ceilingMs: 60_000  },
+  { name: "COOL",   maxAgeMs: 60 * 60_000,    floorMs: 60_000,  ceilingMs: 120_000 },
+  { name: "COLD",   maxAgeMs: 4 * 3_600_000,  floorMs: 120_000, ceilingMs: 300_000 },
+  { name: "FROZEN", maxAgeMs: Infinity,        floorMs: 300_000, ceilingMs: 600_000 },
+] as const;
+
+const WAKE_ADDITIVE_STEP_MS = 10_000;
+const WAKE_NIGHT_MULTIPLIER = 2;
+const HEARTBEAT_STALE_AFTER_MS = 3 * 60_000;
+const HEARTBEAT_STALE_REASON = "Bridge heartbeat timed out";
+
+type WakeTierName = (typeof WAKE_TIERS)[number]["name"];
+
+function computeWakeInterval(
+  lastMessageAtMs: number | undefined,
+  consecutiveEmptyWakes: number,
+  nowMs: number,
+): { intervalMs: number; tier: WakeTierName } {
+  const sinceLastMsg = lastMessageAtMs ? nowMs - lastMessageAtMs : Infinity;
+
+  // Determine tier from recency
+  const tier =
+    WAKE_TIERS.find((t) => sinceLastMsg < t.maxAgeMs) ?? WAKE_TIERS[WAKE_TIERS.length - 1];
+
+  // AIMD: additive increase from tier floor based on consecutive empty wakes
+  let intervalMs = tier.floorMs + consecutiveEmptyWakes * WAKE_ADDITIVE_STEP_MS;
+  intervalMs = Math.max(tier.floorMs, Math.min(tier.ceilingMs, intervalMs));
+
+  // Time-of-day: stretch COOL/COLD/FROZEN during night hours (1am–6am UTC)
+  const hour = new Date(nowMs).getUTCHours();
+  if (hour >= 1 && hour < 6 && (tier.name === "COOL" || tier.name === "COLD" || tier.name === "FROZEN")) {
+    intervalMs = Math.min(tier.ceilingMs * WAKE_NIGHT_MULTIPLIER, intervalMs * WAKE_NIGHT_MULTIPLIER);
+  }
+
+  // Jitter ±15%
+  const jitter = 1 + (Math.random() * 0.3 - 0.15);
+  intervalMs = Math.round(intervalMs * jitter);
+
+  // Final clamp
+  intervalMs = Math.max(WAKE_TIERS[0].floorMs, Math.min(WAKE_TIERS[WAKE_TIERS.length - 1].ceilingMs * WAKE_NIGHT_MULTIPLIER, intervalMs));
+
+  return { intervalMs, tier: tier.name };
+}
+
+// ---------------------------------------------------------------------------
 // Internal Queries
 // ---------------------------------------------------------------------------
 
@@ -112,6 +167,29 @@ export const getBridgeSession = internalQuery({
         q.eq("ownerId", args.ownerId).eq("provider", args.provider),
       )
       .first();
+  },
+});
+
+export const getBridgeSessionById = internalQuery({
+  args: { id: v.id("bridge_sessions") },
+  returns: v.union(bridgeSessionValidator, v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+
+export const hasActiveBridgeForOwner = internalQuery({
+  args: { ownerId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const sessions = await ctx.db.query("bridge_sessions").collect();
+    return sessions.some(
+      (session) =>
+        session.ownerId === args.ownerId &&
+        (session.status === "connected" ||
+          session.status === "awaiting_auth" ||
+          session.status === "initializing"),
+    );
   },
 });
 
@@ -147,6 +225,8 @@ export const updateBridgeSession = internalMutation({
     authState: bridgeAuthStateValidator,
     errorMessage: v.optional(v.string()),
     lastHeartbeatAt: v.optional(v.number()),
+    lastMessageAtMs: v.optional(v.number()),
+    consecutiveEmptyWakes: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -155,6 +235,8 @@ export const updateBridgeSession = internalMutation({
     if (args.authState !== undefined) patch.authState = args.authState;
     if (args.errorMessage !== undefined) patch.errorMessage = args.errorMessage;
     if (args.lastHeartbeatAt !== undefined) patch.lastHeartbeatAt = args.lastHeartbeatAt;
+    if (args.lastMessageAtMs !== undefined) patch.lastMessageAtMs = args.lastMessageAtMs;
+    if (args.consecutiveEmptyWakes !== undefined) patch.consecutiveEmptyWakes = args.consecutiveEmptyWakes;
     await ctx.db.patch(args.id, patch);
     return null;
   },
@@ -166,6 +248,79 @@ export const deleteBridgeSession = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
     return null;
+  },
+});
+
+export const clearWakeSchedule = internalMutation({
+  args: { id: v.id("bridge_sessions") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      nextWakeAtMs: undefined,
+      wakeIntervalMs: undefined,
+      wakeTier: undefined,
+      consecutiveEmptyWakes: undefined,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const listDueWakes = internalQuery({
+  args: { nowMs: v.number() },
+  returns: v.array(bridgeSessionValidator),
+  handler: async (ctx, args) => {
+    const sessions = await ctx.db
+      .query("bridge_sessions")
+      .withIndex("by_next_wake", (q) => q.lte("nextWakeAtMs", args.nowMs))
+      .take(100);
+    return sessions.filter((s) => s.status === "connected");
+  },
+});
+
+export const listAllBridgeSessions = internalQuery({
+  args: {},
+  returns: v.array(bridgeSessionValidator),
+  handler: async (ctx) => {
+    return await ctx.db.query("bridge_sessions").collect();
+  },
+});
+
+export const scheduleNextWake = internalMutation({
+  args: {
+    id: v.id("bridge_sessions"),
+    consecutiveEmptyWakes: v.number(),
+  },
+  returns: v.object({
+    intervalMs: v.number(),
+    dueAtMs: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.id);
+    if (!session) {
+      return {
+        intervalMs: 300_000,
+        dueAtMs: Date.now() + 300_000,
+      };
+    }
+
+    const now = Date.now();
+    const { intervalMs, tier } = computeWakeInterval(
+      session.lastMessageAtMs ?? undefined,
+      args.consecutiveEmptyWakes,
+      now,
+    );
+    const dueAtMs = now + intervalMs;
+
+    await ctx.db.patch(args.id, {
+      nextWakeAtMs: dueAtMs,
+      wakeIntervalMs: intervalMs,
+      wakeTier: tier,
+      consecutiveEmptyWakes: args.consecutiveEmptyWakes,
+      updatedAt: now,
+    });
+
+    return { intervalMs, dueAtMs };
   },
 });
 
@@ -300,6 +455,111 @@ export const deployBridge = internalAction({
   },
 });
 
+export const wakeSprite = internalAction({
+  args: {
+    sessionId: v.id("bridge_sessions"),
+    dueAtMs: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const session = await ctx.runQuery(internal.bridge.getBridgeSessionById, {
+      id: args.sessionId,
+    });
+    if (!session || session.status !== "connected") return null;
+    if (args.dueAtMs !== undefined && session.nextWakeAtMs !== args.dueAtMs) return null;
+
+    const now = Date.now();
+
+    // Dedup: if heartbeat arrived within 20s, sprite is already awake
+    const recentHeartbeat = session.lastHeartbeatAt && now - session.lastHeartbeatAt < 20_000;
+    if (!recentHeartbeat) {
+      try {
+        await spritesExec(session.spriteName, "echo ok");
+        await ctx.runMutation(internal.cloud_devices.touchActivity, {
+          ownerId: session.ownerId,
+        });
+        const device = await ctx.runQuery(internal.cloud_devices.getForOwner, {
+          ownerId: session.ownerId,
+        });
+        if (device && device.status !== "running" && device.status !== "error") {
+          await ctx.runMutation(internal.cloud_devices.updateStatus, {
+            id: device._id,
+            status: "running",
+          });
+        }
+      } catch (error) {
+        console.error("[bridge] Wake exec failed:", error);
+      }
+    }
+
+    // Schedule next wake
+    const emptyWakes = (session.consecutiveEmptyWakes ?? 0) + 1;
+    const nextWake = await ctx.runMutation(internal.bridge.scheduleNextWake, {
+      id: args.sessionId,
+      consecutiveEmptyWakes: emptyWakes,
+    });
+
+    await ctx.scheduler.runAfter(nextWake.intervalMs, internal.bridge.wakeSprite, {
+      sessionId: args.sessionId,
+      dueAtMs: nextWake.dueAtMs,
+    });
+
+    return null;
+  },
+});
+
+export const bridgeWakeTick = internalAction({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    const sessions = await ctx.runQuery(internal.bridge.listAllBridgeSessions, {});
+    const staleThreshold = now - HEARTBEAT_STALE_AFTER_MS;
+    for (const session of sessions) {
+      if (session.status !== "connected") continue;
+      const lastHeartbeatAt = session.lastHeartbeatAt ?? session.updatedAt;
+      if (lastHeartbeatAt >= staleThreshold) continue;
+
+      await ctx.runMutation(internal.bridge.updateBridgeSession, {
+        id: session._id,
+        status: "disconnected",
+        errorMessage: HEARTBEAT_STALE_REASON,
+      });
+      await ctx.runMutation(internal.bridge.clearWakeSchedule, { id: session._id });
+
+      const hasActiveBridge = await ctx.runQuery(internal.bridge.hasActiveBridgeForOwner, {
+        ownerId: session.ownerId,
+      });
+      if (!hasActiveBridge) {
+        const device = await ctx.runQuery(internal.cloud_devices.getForOwner, {
+          ownerId: session.ownerId,
+        });
+        if (device && device.status !== "sleeping" && device.status !== "error") {
+          await ctx.runMutation(internal.cloud_devices.updateStatus, {
+            id: device._id,
+            status: "sleeping",
+          });
+        }
+      }
+    }
+
+    const due = await ctx.runQuery(internal.bridge.listDueWakes, { nowMs: now });
+
+    for (const session of due) {
+      const dueAtMs = session.nextWakeAtMs;
+      if (!dueAtMs) continue;
+
+      await ctx.scheduler.runAfter(0, internal.bridge.wakeSprite, {
+        sessionId: session._id,
+        dueAtMs,
+      });
+    }
+
+    return null;
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Public Actions — Setup/teardown
 // ---------------------------------------------------------------------------
@@ -383,6 +643,22 @@ export const stopBridge = action({
       id: session._id,
       status: "stopped",
     });
+    // Clear wake schedule
+    await ctx.runMutation(internal.bridge.clearWakeSchedule, { id: session._id });
+    const hasActiveBridge = await ctx.runQuery(internal.bridge.hasActiveBridgeForOwner, {
+      ownerId,
+    });
+    if (!hasActiveBridge) {
+      const device = await ctx.runQuery(internal.cloud_devices.getForOwner, {
+        ownerId,
+      });
+      if (device && device.status !== "sleeping" && device.status !== "error") {
+        await ctx.runMutation(internal.cloud_devices.updateStatus, {
+          id: device._id,
+          status: "sleeping",
+        });
+      }
+    }
 
     return { status: "stopped" };
   },
@@ -408,7 +684,29 @@ export const handleHeartbeat = internalAction({
     await ctx.runMutation(internal.bridge.updateBridgeSession, {
       id: session._id,
       lastHeartbeatAt: Date.now(),
+      ...(session.status === "disconnected" ? { status: "connected" } : {}),
     });
+
+    const device = await ctx.runQuery(internal.cloud_devices.getForOwner, {
+      ownerId: args.ownerId,
+    });
+    if (device && device.status !== "running" && device.status !== "error") {
+      await ctx.runMutation(internal.cloud_devices.updateStatus, {
+        id: device._id,
+        status: "running",
+      });
+    }
+
+    if (session.status === "disconnected") {
+      const nextWake = await ctx.runMutation(internal.bridge.scheduleNextWake, {
+        id: session._id,
+        consecutiveEmptyWakes: 0,
+      });
+      await ctx.scheduler.runAfter(nextWake.intervalMs, internal.bridge.wakeSprite, {
+        sessionId: session._id,
+        dueAtMs: nextWake.dueAtMs,
+      });
+    }
     return null;
   },
 });
@@ -466,6 +764,51 @@ export const handleAuthUpdate = internalAction({
             externalUserId: externalId,
             displayName:
               (args.authState as Record<string, string>)?.displayName,
+          });
+        }
+      }
+
+      const nextWake = await ctx.runMutation(internal.bridge.scheduleNextWake, {
+        id: session._id,
+        consecutiveEmptyWakes: 0,
+      });
+      await ctx.scheduler.runAfter(nextWake.intervalMs, internal.bridge.wakeSprite, {
+        sessionId: session._id,
+        dueAtMs: nextWake.dueAtMs,
+      });
+    }
+
+    const shouldMarkRunning =
+      args.status === "connected" ||
+      args.status === "awaiting_auth" ||
+      args.status === "initializing";
+    const shouldMarkSleeping =
+      args.status === "error" ||
+      args.status === "disconnected" ||
+      args.status === "stopped" ||
+      args.status === "logged_out";
+
+    if (shouldMarkSleeping) {
+      await ctx.runMutation(internal.bridge.clearWakeSchedule, { id: session._id });
+    }
+
+    const device = await ctx.runQuery(internal.cloud_devices.getForOwner, {
+      ownerId: args.ownerId,
+    });
+    if (device && device.status !== "error") {
+      if (shouldMarkRunning && device.status !== "running") {
+        await ctx.runMutation(internal.cloud_devices.updateStatus, {
+          id: device._id,
+          status: "running",
+        });
+      } else if (shouldMarkSleeping && device.status !== "sleeping") {
+        const hasActiveBridge = await ctx.runQuery(internal.bridge.hasActiveBridgeForOwner, {
+          ownerId: args.ownerId,
+        });
+        if (!hasActiveBridge) {
+          await ctx.runMutation(internal.cloud_devices.updateStatus, {
+            id: device._id,
+            status: "sleeping",
           });
         }
       }
@@ -528,20 +871,53 @@ export const handleBridgeMessage = internalAction({
     // Deliver reply by executing curl inside the sprite to hit the bridge's
     // local HTTP server. This avoids the sprite's internal hostname being
     // unreachable from Convex's network.
-    try {
-      const payload = JSON.stringify({
-        externalUserId: args.externalUserId,
-        text: result.text,
-      });
-      const escapedPayload = payload.replace(/'/g, "'\\''");
-      await spritesExecChecked(
-        session.spriteName,
-        `curl -fsS -X POST http://localhost:8080/reply -H 'Content-Type: application/json' -d '${escapedPayload}'`,
-        `${args.provider} reply delivery`,
-      );
-    } catch (error) {
-      console.error(`[bridge] Failed to deliver reply for ${args.provider}:`, error);
+    const payload = JSON.stringify({
+      externalUserId: args.externalUserId,
+      text: result.text,
+    });
+    const escapedPayload = payload.replace(/'/g, "'\\''");
+    let deliveryError: unknown = null;
+    let delivered = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await spritesExecChecked(
+          session.spriteName,
+          `curl -fsS -X POST http://localhost:8080/reply -H 'Content-Type: application/json' -d '${escapedPayload}'`,
+          `${args.provider} reply delivery (attempt ${attempt}/3)`,
+        );
+        delivered = true;
+        break;
+      } catch (error) {
+        deliveryError = error;
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
     }
+    if (!delivered) {
+      console.error(`[bridge] Failed to deliver reply for ${args.provider}:`, deliveryError);
+    }
+
+    // Update message activity and reset empty-wake counter
+    await ctx.runMutation(internal.bridge.updateBridgeSession, {
+      id: session._id,
+      lastMessageAtMs: Date.now(),
+      consecutiveEmptyWakes: 0,
+    });
+
+    // Instant promotion: if tier was COOL/COLD/FROZEN, reschedule aggressively
+    const currentTier = session.wakeTier;
+    if (currentTier === "COOL" || currentTier === "COLD" || currentTier === "FROZEN") {
+      const nextWake = await ctx.runMutation(internal.bridge.scheduleNextWake, {
+        id: session._id,
+        consecutiveEmptyWakes: 0,
+      });
+      await ctx.scheduler.runAfter(nextWake.intervalMs, internal.bridge.wakeSprite, {
+        sessionId: session._id,
+        dueAtMs: nextWake.dueAtMs,
+      });
+    }
+
     return null;
   },
 });
@@ -566,6 +942,22 @@ export const handleBridgeError = internalAction({
       status: "error",
       errorMessage: args.error,
     });
+    // Clear wake schedule on error
+    await ctx.runMutation(internal.bridge.clearWakeSchedule, { id: session._id });
+    const hasActiveBridge = await ctx.runQuery(internal.bridge.hasActiveBridgeForOwner, {
+      ownerId: args.ownerId,
+    });
+    if (!hasActiveBridge) {
+      const device = await ctx.runQuery(internal.cloud_devices.getForOwner, {
+        ownerId: args.ownerId,
+      });
+      if (device && device.status !== "sleeping" && device.status !== "error") {
+        await ctx.runMutation(internal.cloud_devices.updateStatus, {
+          id: device._id,
+          status: "sleeping",
+        });
+      }
+    }
     return null;
   },
 });

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.10.0",
+    "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/resend": "^0.1.0",
     "ai": "^6.0.49",
     "better-auth": "1.4.9",

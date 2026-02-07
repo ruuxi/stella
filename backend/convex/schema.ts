@@ -308,11 +308,17 @@ export default defineSchema({
     authState: bridgeAuthStateValidator,
     errorMessage: v.optional(v.string()),
     lastHeartbeatAt: v.optional(v.number()),
+    lastMessageAtMs: v.optional(v.number()),
+    nextWakeAtMs: v.optional(v.number()),
+    wakeIntervalMs: v.optional(v.number()),
+    wakeTier: v.optional(v.string()),
+    consecutiveEmptyWakes: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_owner_provider", ["ownerId", "provider"])
-    .index("by_sprite", ["spriteName", "provider"]),
+    .index("by_sprite", ["spriteName", "provider"])
+    .index("by_next_wake", ["nextWakeAtMs"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),

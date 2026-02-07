@@ -4,8 +4,9 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import { v } from "convex/values";
+import { RateLimiter } from "@convex-dev/rate-limiter";
 import type { ActionCtx } from "./_generated/server";
 import { runAgentTurn } from "./automation/runner";
 import { requireUserId } from "./auth";
@@ -13,7 +14,6 @@ import { requireUserId } from "./auth";
 type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
 const DM_POLICY_DEFAULT: DmPolicy = "pairing";
-const RATE_LIMIT_OWNER_ID = "__system_webhook_rate_limit__";
 const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const channelConnectionValidator = v.object({
   _id: v.id("channel_connections"),
@@ -59,7 +59,7 @@ const parseStringList = (value: string | null | undefined): string[] => {
 
 const uniqueSorted = (values: string[]) => [...new Set(values)].sort();
 
-const rateLimitPrefKey = (scope: string, key: string) => `webhook_rate:${scope}:${key}`;
+const webhookRateLimiter = new RateLimiter(components.rateLimiter);
 
 const generateSecureLinkCode = (length = 6): string => {
   if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
@@ -346,75 +346,16 @@ export const consumeWebhookRateLimit = internalMutation({
     retryAfterMs: v.number(),
   }),
   handler: async (ctx, args) => {
-    const now = Date.now();
-    const prefKey = rateLimitPrefKey(args.scope, args.key);
-    const record = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_owner_key", (q) =>
-        q.eq("ownerId", RATE_LIMIT_OWNER_ID).eq("key", prefKey),
-      )
-      .first();
+    const limit = Math.max(1, Math.floor(args.limit));
+    const periodMs = Math.max(1_000, Math.floor(args.windowMs), Math.floor(args.blockMs ?? 0));
+    const status = await webhookRateLimiter.limit(ctx, `webhook:${args.scope}:${limit}:${periodMs}`, {
+      key: args.key,
+      config: { kind: "fixed window", rate: limit, period: periodMs },
+    });
 
-    let windowStartMs = now;
-    let count = 0;
-    let blockedUntilMs = 0;
-
-    if (record) {
-      try {
-        const parsed = JSON.parse(record.value) as {
-          windowStartMs?: number;
-          count?: number;
-          blockedUntilMs?: number;
-        };
-        if (typeof parsed.windowStartMs === "number") windowStartMs = parsed.windowStartMs;
-        if (typeof parsed.count === "number") count = parsed.count;
-        if (typeof parsed.blockedUntilMs === "number") blockedUntilMs = parsed.blockedUntilMs;
-      } catch {
-        // Ignore malformed previous state and reset below.
-      }
-    }
-
-    if (blockedUntilMs > now) {
-      return { allowed: false, retryAfterMs: blockedUntilMs - now };
-    }
-
-    if (now - windowStartMs >= args.windowMs) {
-      windowStartMs = now;
-      count = 0;
-    }
-
-    count += 1;
-    if (count > args.limit) {
-      blockedUntilMs = now + Math.max(1_000, args.blockMs ?? args.windowMs);
-      const value = JSON.stringify({ windowStartMs, count, blockedUntilMs });
-
-      if (record) {
-        await ctx.db.patch(record._id, { value, updatedAt: now });
-      } else {
-        await ctx.db.insert("user_preferences", {
-          ownerId: RATE_LIMIT_OWNER_ID,
-          key: prefKey,
-          value,
-          updatedAt: now,
-        });
-      }
-
-      return { allowed: false, retryAfterMs: blockedUntilMs - now };
-    }
-
-    const value = JSON.stringify({ windowStartMs, count, blockedUntilMs: 0 });
-    if (record) {
-      await ctx.db.patch(record._id, { value, updatedAt: now });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId: RATE_LIMIT_OWNER_ID,
-        key: prefKey,
-        value,
-        updatedAt: now,
-      });
-    }
-
-    return { allowed: true, retryAfterMs: 0 };
+    return status.ok
+      ? { allowed: true, retryAfterMs: 0 }
+      : { allowed: false, retryAfterMs: Math.max(1_000, status.retryAfter ?? periodMs) };
   },
 });
 

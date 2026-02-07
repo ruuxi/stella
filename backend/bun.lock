@@ -6,6 +6,7 @@
       "name": "stella-backend",
       "dependencies": {
         "@convex-dev/better-auth": "^0.10.0",
+        "@convex-dev/rate-limiter": "^0.3.2",
         "@convex-dev/resend": "^0.1.0",
         "ai": "^6.0.49",
         "better-auth": "1.4.9",
@@ -38,7 +39,7 @@
 
     "@convex-dev/better-auth": ["@convex-dev/better-auth@0.10.10", "", { "dependencies": { "@better-auth/passkey": "1.4.9", "@better-fetch/fetch": "^1.1.18", "common-tags": "^1.8.2", "convex-helpers": "^0.1.95", "jose": "^6.1.0", "remeda": "^2.32.0", "semver": "^7.7.3", "type-fest": "^4.39.1", "zod": "^4.0.0" }, "peerDependencies": { "better-auth": "1.4.9", "convex": "^1.25.0", "react": "^18.3.1 || ^19.0.0", "react-dom": "^18.3.1 || ^19.0.0" } }, "sha512-BpwQ2kph43O7hmtGQAJ+ie3KrjONp83659QDjKDdH+X8yIdGevgehaqS5GHB0iJo7zQTtvs687GnAeLZ4Xx3/w=="],
 
-    "@convex-dev/rate-limiter": ["@convex-dev/rate-limiter@0.2.14", "", { "peerDependencies": { "convex": ">=1.17.0 <1.35.0", "react": "^18.2.0 || ^19.0.0" }, "optionalPeers": ["react"] }, "sha512-6dQ2ceHFcU8HVXT0QdcgWXCahasMcjne/bWvLZ6qyyk5gZDP4JtjZyidy9HflAOCo1Nc428pgrROnbQBM0QPCQ=="],
+    "@convex-dev/rate-limiter": ["@convex-dev/rate-limiter@0.3.2", "", { "peerDependencies": { "convex": "^1.24.8", "react": "^18.2.0 || ^19.0.0" }, "optionalPeers": ["react"] }, "sha512-+oBPsBfFbzdxiF/9XaaTQmVnvDlvEfg/c69/v8LxTbw4VLuiflIKlfnPQL8OS0azXQQ11hcPWHmU8ytFmHKDXA=="],
 
     "@convex-dev/resend": ["@convex-dev/resend@0.1.13", "", { "dependencies": { "@convex-dev/rate-limiter": "^0.2.10", "@convex-dev/workpool": "^0.2.17", "remeda": "^2.26.0", "svix": "^1.70.0" }, "peerDependencies": { "convex": "^1.23.0", "convex-helpers": "^0.1.99" } }, "sha512-caVvN3o1XgLti7ieo2fAlfgR7oK+WEVag/FS3P5tf5l4+u7ewxd414u+PftxbsUMb3liY4fdsH0QNgbTr8o9DA=="],
 
@@ -219,6 +220,8 @@
     "@better-auth/passkey/zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
 
     "@convex-dev/better-auth/zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
+
+    "@convex-dev/resend/@convex-dev/rate-limiter": ["@convex-dev/rate-limiter@0.2.14", "", { "peerDependencies": { "convex": ">=1.17.0 <1.35.0", "react": "^18.2.0 || ^19.0.0" }, "optionalPeers": ["react"] }, "sha512-6dQ2ceHFcU8HVXT0QdcgWXCahasMcjne/bWvLZ6qyyk5gZDP4JtjZyidy9HflAOCo1Nc428pgrROnbQBM0QPCQ=="],
 
     "better-auth/zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
 
