@@ -7,6 +7,7 @@ import { createTools } from "./tools/index";
 import { getModelConfig } from "./model";
 import type { Id } from "./_generated/dataModel";
 import { requireConversationOwner } from "./auth";
+import { jsonSchemaValidator, jsonValueValidator } from "./shared_validators";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
@@ -95,6 +96,95 @@ type JsonSchema = Record<string, unknown>;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const semanticMergeResolutionValidator = v.object({
+  virtualPath: v.string(),
+  strategy: v.union(
+    v.literal("keep_local"),
+    v.literal("use_upstream"),
+    v.literal("merged"),
+  ),
+  encoding: v.optional(v.union(v.literal("utf8"), v.literal("base64"))),
+  content: v.optional(v.string()),
+});
+
+const agentInvokeResultValidator = v.union(
+  v.object({
+    ok: v.literal(false),
+    reason: v.string(),
+    rawText: v.string(),
+  }),
+  v.object({
+    ok: v.literal(true),
+    rawText: v.string(),
+    outputJson: v.string(),
+    resolutions: v.optional(v.array(semanticMergeResolutionValidator)),
+  }),
+);
+
+type AgentInvokeResult =
+  | {
+      ok: false;
+      reason: string;
+      rawText: string;
+    }
+  | {
+      ok: true;
+      rawText: string;
+      outputJson: string;
+      resolutions?: Array<{
+        virtualPath: string;
+        strategy: "keep_local" | "use_upstream" | "merged";
+        encoding?: "utf8" | "base64";
+        content?: string;
+      }>;
+    };
+
+const extractSemanticMergeResolutions = (
+  value: unknown,
+):
+  | Array<{
+      virtualPath: string;
+      strategy: "keep_local" | "use_upstream" | "merged";
+      encoding?: "utf8" | "base64";
+      content?: string;
+    }>
+  | undefined => {
+  if (!isPlainObject(value) || !Array.isArray(value.resolutions)) {
+    return undefined;
+  }
+
+  const results: Array<{
+    virtualPath: string;
+    strategy: "keep_local" | "use_upstream" | "merged";
+    encoding?: "utf8" | "base64";
+    content?: string;
+  }> = [];
+
+  for (const item of value.resolutions) {
+    if (!isPlainObject(item)) return undefined;
+    const virtualPath = item.virtualPath;
+    const strategy = item.strategy;
+    const encoding = item.encoding;
+    const content = item.content;
+    if (typeof virtualPath !== "string") return undefined;
+    if (strategy !== "keep_local" && strategy !== "use_upstream" && strategy !== "merged") {
+      return undefined;
+    }
+    if (encoding !== undefined && encoding !== "utf8" && encoding !== "base64") {
+      return undefined;
+    }
+    if (content !== undefined && typeof content !== "string") return undefined;
+    results.push({
+      virtualPath,
+      strategy,
+      ...(encoding !== undefined ? { encoding } : {}),
+      ...(content !== undefined ? { content } : {}),
+    });
+  }
+
+  return results;
+};
 
 const validateAgainstSchema = (
   schema: JsonSchema | undefined,
@@ -226,14 +316,15 @@ export const invoke = action({
     agentType: v.string(),
     mode: v.optional(v.string()),
     prompt: v.optional(v.string()),
-    input: v.optional(v.any()),
-    resultSchema: v.optional(v.any()),
+    input: v.optional(jsonValueValidator),
+    resultSchema: v.optional(jsonSchemaValidator),
     maxSteps: v.optional(v.number()),
     conversationId: v.optional(v.id("conversations")),
     userMessageId: v.optional(v.id("events")),
     targetDeviceId: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  returns: agentInvokeResultValidator,
+  handler: async (ctx, args): Promise<AgentInvokeResult> => {
     await ctx.runMutation(api.agents.ensureBuiltins, {});
 
     const promptBuild = await buildSystemPrompt(ctx, args.agentType);
@@ -317,7 +408,7 @@ export const invoke = action({
       rawText = scrubProviderTerms(truncate(await result.text));
     } catch (error) {
       return {
-        ok: false,
+        ok: false as const,
         reason: scrubProviderTerms(
           (error as Error)?.message || "agent.invoke failed to run the model.",
         ),
@@ -328,7 +419,7 @@ export const invoke = action({
     const jsonBlock = extractJsonBlock(rawText);
     if (!jsonBlock) {
       return {
-        ok: false,
+        ok: false as const,
         reason: "agent.invoke did not return valid JSON.",
         rawText,
       };
@@ -339,7 +430,7 @@ export const invoke = action({
       parsed = JSON.parse(jsonBlock);
     } catch (error) {
       return {
-        ok: false,
+        ok: false as const,
         reason: `Failed to parse JSON: ${(error as Error).message}`,
         rawText,
       };
@@ -352,7 +443,7 @@ export const invoke = action({
     );
     if (!validation.ok) {
       return {
-        ok: false,
+        ok: false as const,
         reason: validation.reason,
         rawText,
       };
@@ -360,16 +451,17 @@ export const invoke = action({
 
     if (isPlainObject(scrubbed)) {
       return {
-        ok: true,
+        ok: true as const,
         rawText,
-        ...(scrubbed as Record<string, unknown>),
+        outputJson: stableStringify(scrubbed),
+        resolutions: extractSemanticMergeResolutions(scrubbed),
       };
     }
 
     return {
-      ok: true,
+      ok: true as const,
       rawText,
-      output: scrubbed,
+      outputJson: stableStringify(scrubbed),
     };
   },
 });

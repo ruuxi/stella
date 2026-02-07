@@ -24,6 +24,50 @@ type CronPayload =
       includeHistory?: boolean;
     };
 
+const cronScheduleValidator = v.union(
+  v.object({
+    kind: v.literal("at"),
+    atMs: v.number(),
+  }),
+  v.object({
+    kind: v.literal("every"),
+    everyMs: v.number(),
+    anchorMs: v.optional(v.number()),
+  }),
+  v.object({
+    kind: v.literal("cron"),
+    expr: v.string(),
+    tz: v.optional(v.string()),
+  }),
+);
+
+const cronPayloadValidator = v.union(
+  v.object({
+    kind: v.literal("systemEvent"),
+    text: v.string(),
+    agentType: v.optional(v.string()),
+    deliver: v.optional(v.boolean()),
+  }),
+  v.object({
+    kind: v.literal("agentTurn"),
+    message: v.string(),
+    agentType: v.optional(v.string()),
+    deliver: v.optional(v.boolean()),
+    includeHistory: v.optional(v.boolean()),
+  }),
+);
+
+const cronPatchValidator = v.object({
+  name: v.optional(v.string()),
+  schedule: v.optional(cronScheduleValidator),
+  payload: v.optional(cronPayloadValidator),
+  sessionTarget: v.optional(v.string()),
+  conversationId: v.optional(v.id("conversations")),
+  description: v.optional(v.string()),
+  enabled: v.optional(v.boolean()),
+  deleteAfterRun: v.optional(v.boolean()),
+});
+
 const cronJobValidator = v.object({
   _id: v.id("cron_jobs"),
   _creationTime: v.number(),
@@ -32,9 +76,9 @@ const cronJobValidator = v.object({
   name: v.string(),
   description: v.optional(v.string()),
   enabled: v.boolean(),
-  schedule: v.any(),
+  schedule: cronScheduleValidator,
   sessionTarget: v.string(),
-  payload: v.any(),
+  payload: cronPayloadValidator,
   deleteAfterRun: v.optional(v.boolean()),
   nextRunAtMs: v.number(),
   runningAtMs: v.optional(v.number()),
@@ -176,8 +220,8 @@ export const list = query({
 export const add = mutation({
   args: {
     name: v.string(),
-    schedule: v.any(),
-    payload: v.any(),
+    schedule: cronScheduleValidator,
+    payload: cronPayloadValidator,
     sessionTarget: v.string(),
     conversationId: v.optional(v.id("conversations")),
     description: v.optional(v.string()),
@@ -240,7 +284,7 @@ export const add = mutation({
 export const update = mutation({
   args: {
     jobId: v.id("cron_jobs"),
-    patch: v.any(),
+    patch: cronPatchValidator,
   },
   returns: v.union(cronJobValidator, v.null()),
   handler: async (ctx, args) => {
@@ -428,6 +472,7 @@ export const finishRun = internalMutation({
 
 export const tick = internalAction({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
     const due = await ctx.runQuery(internal.cron_jobs.listDue, { nowMs: now, limit: 100 });
@@ -446,6 +491,7 @@ export const tick = internalAction({
         jobId: job._id,
       });
     }
+    return null;
   },
 });
 
@@ -454,10 +500,11 @@ export const execute = internalAction({
     jobId: v.id("cron_jobs"),
     forced: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const job = await ctx.runQuery(internal.cron_jobs.getById, { id: args.jobId });
     if (!job || (!job.enabled && !args.forced)) {
-      return;
+      return null;
     }
 
     const now = Date.now();
@@ -467,7 +514,7 @@ export const execute = internalAction({
         runningAtMs: undefined,
         lastStatus: "skipped:not-due",
       });
-      return;
+      return null;
     }
 
     let status: "ok" | "error" | "skipped" = "ok";
@@ -486,7 +533,7 @@ export const execute = internalAction({
         lastStatus: "error",
         lastError: (err as Error).message ?? "invalid cron job",
       });
-      return;
+      return null;
     }
     const conversationId = job.conversationId as Id<"conversations"> | undefined;
     if (!conversationId) {
@@ -496,7 +543,7 @@ export const execute = internalAction({
         lastStatus: "error",
         lastError: "cron job missing conversationId",
       });
-      return;
+      return null;
     }
 
     const scheduleResolved = schedule as CronSchedule;
@@ -593,5 +640,6 @@ export const execute = internalAction({
         },
       });
     }
+    return null;
   },
 });

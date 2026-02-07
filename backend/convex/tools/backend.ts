@@ -80,6 +80,122 @@ const readObject = (params: Record<string, unknown>, key: string) => {
   return undefined;
 };
 
+type CronScheduleArg =
+  | { kind: "at"; atMs: number }
+  | { kind: "every"; everyMs: number; anchorMs?: number }
+  | { kind: "cron"; expr: string; tz?: string };
+
+type CronPayloadArg =
+  | { kind: "systemEvent"; text: string; agentType?: string; deliver?: boolean }
+  | {
+      kind: "agentTurn";
+      message: string;
+      agentType?: string;
+      deliver?: boolean;
+      includeHistory?: boolean;
+    };
+
+type CronPatchArg = {
+  name?: string;
+  schedule?: CronScheduleArg;
+  payload?: CronPayloadArg;
+  sessionTarget?: string;
+  conversationId?: Id<"conversations">;
+  description?: string;
+  enabled?: boolean;
+  deleteAfterRun?: boolean;
+};
+
+const coerceCronSchedule = (value: unknown): CronScheduleArg | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const kind = typeof record.kind === "string" ? record.kind.trim() : "";
+  if (kind === "at") {
+    const atMs = typeof record.atMs === "number" && Number.isFinite(record.atMs) ? record.atMs : undefined;
+    return atMs !== undefined ? { kind: "at", atMs } : undefined;
+  }
+  if (kind === "every") {
+    const everyMs =
+      typeof record.everyMs === "number" && Number.isFinite(record.everyMs)
+        ? record.everyMs
+        : undefined;
+    if (everyMs === undefined) return undefined;
+    const anchorMs =
+      typeof record.anchorMs === "number" && Number.isFinite(record.anchorMs)
+        ? record.anchorMs
+        : undefined;
+    return anchorMs !== undefined ? { kind: "every", everyMs, anchorMs } : { kind: "every", everyMs };
+  }
+  if (kind === "cron") {
+    const expr = typeof record.expr === "string" ? record.expr.trim() : "";
+    if (!expr) return undefined;
+    const tz = typeof record.tz === "string" && record.tz.trim() ? record.tz.trim() : undefined;
+    return tz ? { kind: "cron", expr, tz } : { kind: "cron", expr };
+  }
+  return undefined;
+};
+
+const coerceCronPayload = (value: unknown): CronPayloadArg | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const kind = typeof record.kind === "string" ? record.kind.trim() : "";
+  const agentType =
+    typeof record.agentType === "string" && record.agentType.trim()
+      ? record.agentType.trim()
+      : undefined;
+  const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
+
+  if (kind === "systemEvent") {
+    const text = typeof record.text === "string" ? record.text.trim() : "";
+    if (!text) return undefined;
+    return { kind: "systemEvent", text, ...(agentType ? { agentType } : {}), ...(deliver !== undefined ? { deliver } : {}) };
+  }
+
+  if (kind === "agentTurn") {
+    const message = typeof record.message === "string" ? record.message.trim() : "";
+    if (!message) return undefined;
+    const includeHistory =
+      typeof record.includeHistory === "boolean" ? record.includeHistory : undefined;
+    return {
+      kind: "agentTurn",
+      message,
+      ...(agentType ? { agentType } : {}),
+      ...(deliver !== undefined ? { deliver } : {}),
+      ...(includeHistory !== undefined ? { includeHistory } : {}),
+    };
+  }
+
+  return undefined;
+};
+
+const coerceCronPatch = (value: unknown): CronPatchArg | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const patch: CronPatchArg = {};
+
+  if (typeof record.name === "string") patch.name = record.name;
+  if (typeof record.description === "string") patch.description = record.description;
+  if (typeof record.sessionTarget === "string") patch.sessionTarget = record.sessionTarget;
+  if (typeof record.enabled === "boolean") patch.enabled = record.enabled;
+  if (typeof record.deleteAfterRun === "boolean") patch.deleteAfterRun = record.deleteAfterRun;
+  if (typeof record.conversationId === "string" && record.conversationId.trim()) {
+    patch.conversationId = record.conversationId as Id<"conversations">;
+  }
+
+  const schedule = coerceCronSchedule(record.schedule);
+  if (schedule) patch.schedule = schedule;
+  const payload = coerceCronPayload(record.payload);
+  if (payload) patch.payload = payload;
+
+  return patch;
+};
+
 const requireValue = <T,>(value: T | undefined, label: string): T => {
   if (value === undefined) {
     throw new Error(`${label} is required.`);
@@ -463,8 +579,8 @@ export const createBackendTools = (
           }
           case "cron.add": {
             const name = requireValue(readString(params, "name"), "name");
-            const schedule = requireValue(readObject(params, "schedule"), "schedule");
-            const payload = requireValue(readObject(params, "payload"), "payload");
+            const schedule = requireValue(coerceCronSchedule(params.schedule), "schedule");
+            const payload = requireValue(coerceCronPayload(params.payload), "payload");
             const sessionTarget = requireValue(readString(params, "sessionTarget"), "sessionTarget");
             const conversationId = readString(params, "conversationId");
             const description = readString(params, "description");
@@ -484,7 +600,7 @@ export const createBackendTools = (
           }
           case "cron.update": {
             const jobId = readString(params, "jobId") ?? readString(params, "id");
-            const patch = readObject(params, "patch");
+            const patch = coerceCronPatch(params.patch);
             const resolvedJobId = requireValue(jobId, "jobId");
             const resolvedPatch = requireValue(patch, "patch");
             const result = await ctx.runMutation(api.cron_jobs.update, {
