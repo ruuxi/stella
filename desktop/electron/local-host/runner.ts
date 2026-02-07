@@ -15,6 +15,7 @@ const logError = (...args: unknown[]) => console.error("[runner]", ...args);
 type HostRunnerOptions = {
   deviceId: string;
   StellaHome: string;
+  frontendRoot?: string;
   requestCredential?: (payload: {
     provider: string;
     label?: string;
@@ -48,10 +49,11 @@ const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
 const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
 
-export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential }: HostRunnerOptions) => {
+export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requestCredential }: HostRunnerOptions) => {
   const ownerId = "local";
   const toolHost = createToolHost({
     StellaHome,
+    frontendRoot,
     requestCredential,
     resolveSecret: async ({ provider, secretId }) => {
       if (!client) return null;
