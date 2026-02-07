@@ -28,6 +28,11 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "StartDevServer",
   "StopDevServer",
   "ListWorkspaces",
+  "SelfModStart",
+  "SelfModApply",
+  "SelfModRevert",
+  "SelfModStatus",
+  "SelfModPackage",
 ] as const;
 
 type DeviceToolName = (typeof CORE_DEVICE_TOOL_NAMES)[number] | string;
@@ -309,6 +314,48 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         "List all workspaces under ~/.stella/workspaces/ with their running status.",
       inputSchema: z.object({}),
       execute: (args) => call("ListWorkspaces", args),
+    }),
+    SelfModStart: tool({
+      description:
+        "Start a new self-modification feature. Groups related file changes under a named feature for atomic apply and revert.",
+      inputSchema: z.object({
+        name: z.string().min(1).describe("Descriptive name for this modification"),
+        description: z.string().optional().describe("What this modification does"),
+      }),
+      execute: (args) => call("SelfModStart", args),
+    }),
+    SelfModApply: tool({
+      description:
+        "Apply all staged file changes atomically. Vite HMR will update the UI in one batch. Creates a revert point.",
+      inputSchema: z.object({
+        message: z.string().optional().describe("Description of what this batch changes"),
+      }),
+      execute: (args) => call("SelfModApply", args),
+    }),
+    SelfModRevert: tool({
+      description:
+        "Revert the last applied batch of changes, restoring source files to their previous state.",
+      inputSchema: z.object({
+        feature_id: z.string().optional().describe("Feature to revert (defaults to active feature)"),
+        steps: z.number().optional().describe("Number of batches to revert (default 1)"),
+      }),
+      execute: (args) => call("SelfModRevert", args),
+    }),
+    SelfModStatus: tool({
+      description:
+        "Check the status of the current self-modification feature: staged files, applied batches, revert points.",
+      inputSchema: z.object({
+        feature_id: z.string().optional().describe("Feature to check (defaults to active feature)"),
+      }),
+      execute: (args) => call("SelfModStatus", args),
+    }),
+    SelfModPackage: tool({
+      description:
+        "Package a completed feature as a shareable mod that can be installed by others.",
+      inputSchema: z.object({
+        feature_id: z.string().optional().describe("Feature to package (defaults to active feature)"),
+      }),
+      execute: (args) => call("SelfModPackage", args),
     }),
   };
 };

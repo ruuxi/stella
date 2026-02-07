@@ -34,7 +34,15 @@ frontend/src/
 │   ├── button.tsx / .css       # Button component (pattern for all primitives)
 │   └── ...                     # 30+ component files (each with paired .css)
 ├── screens/
-│   ├── FullShell.tsx           # Main window (sidebar + chat + canvas panel)
+│   ├── FullShell.tsx           # Re-export from full-shell/
+│   ├── full-shell/
+│   │   ├── FullShell.tsx       # Layout shell (sidebar + chat + canvas)
+│   │   ├── ChatColumn.tsx      # Chat area (messages + composer)
+│   │   ├── Composer.tsx        # Input bar, attachments, submit
+│   │   ├── OnboardingOverlay.tsx # Onboarding state + view
+│   │   ├── DiscoveryFlow.tsx   # Discovery categories + signals
+│   │   ├── use-streaming-chat.ts # Streaming state machine hook
+│   │   └── use-full-shell.ts   # Scroll management hook
 │   ├── MiniShell.tsx           # Spotlight overlay
 │   ├── RadialDial.tsx          # Radial menu
 │   └── RegionCapture.tsx       # Screenshot region selector
@@ -107,19 +115,41 @@ import { registerCanvas } from '@/components/canvas/CanvasPanel'
 registerCanvas('my-canvas', ({ canvas }) => <MyCanvas data={canvas.data} />)
 \`\`\`
 
-## Workflow
+## Staging Workflow
 
-1. **Read first**: Always read the files you'll modify. Understand existing patterns.
-2. **Git safety**: Run \`git stash\` before multi-file changes so they're reversible.
-3. **Incremental**: Make one change at a time. Vite HMR will update the UI in ~200ms.
-4. **Test visually**: After changes, ask the user if it looks right.
-5. **CSS imports**: New CSS files MUST be imported in \`src/main.tsx\` (no auto-import).
+Your file operations (Write, Edit) are automatically staged — they don't modify the live UI until you apply them.
+
+### How it works:
+1. **Start a feature**: Call SelfModStart with a descriptive name when beginning a new modification
+2. **Make changes**: Use Write/Edit normally. Files within \`frontend/src/\` are staged, not applied yet
+3. **Read staged files**: Read works transparently — you see your staged changes
+4. **Apply atomically**: Call SelfModApply when your changes are complete. All files update at once via HMR
+5. **Check status**: Call SelfModStatus to see what's staged and applied
+6. **Revert if needed**: Call SelfModRevert to undo the last batch
+
+### Feature grouping:
+- Call SelfModStart at the beginning of each logically distinct modification
+- If the user continues with related requests ("make it darker", "add padding"), keep the same feature
+- When the user shifts to something unrelated, start a new feature
+- You decide the grouping — the user never needs to explicitly say "start" or "finish"
+
+### Best practices:
+- Always SelfModStart before your first Write/Edit
+- Read files before modifying them — understand existing patterns
+- Apply after each logically complete set of changes (don't wait too long)
+- Multiple small applies > one huge batch — each creates a revert point
+- CSS imports: New CSS files MUST be imported in \`src/main.tsx\` (no auto-import)
+- Test visually: After applying, ask the user if it looks right
+
+### Packaging:
+- Call SelfModPackage to export a completed feature as a shareable mod
+- Packaged mods can be published to the Stella store
 
 ## Invariants (MUST follow)
 - **Chat is primary**: The chat thread is always the main interface.
 - **Canvas in right panel only**: Rich content goes in the canvas panel, not pop-out windows.
 - **Theme compatibility**: Use CSS custom properties, never hardcoded colors.
-- **Reversibility**: Prefer edits over rewrites. Use git stash before large changes.
+- **Reversibility**: Use staging + SelfModRevert. Never make irreversible changes.
 - **No model/provider exposure**: Never show model names or infrastructure details in UI.
 
 ## What You Can Do
