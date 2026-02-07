@@ -1,0 +1,202 @@
+/* ============================================
+   ConnectDialog — integration accordion rows
+   ============================================ */
+
+/* Opaque dialog background */
+.connect-dialog {
+  background: var(--card);
+}
+
+/* Override default accordion trigger for richer layout */
+.connect-trigger {
+  gap: 12px;
+  height: auto !important;
+  min-height: 44px;
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.connect-trigger-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.connect-trigger-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.connect-trigger-name {
+  flex: 1;
+  text-align: left;
+}
+
+.connect-trigger-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-weak);
+}
+
+.connect-trigger-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7fd1ae;
+}
+
+/* Expanded content area */
+.connect-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.connect-instructions {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Link code display (bot-based) */
+.connect-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.connect-code {
+  font-family: var(--font-family-mono, "JetBrains Mono", monospace);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: var(--foreground);
+  padding: 6px 14px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid var(--border-weak);
+  user-select: all;
+}
+
+/* Bot link */
+.connect-bot-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-weak);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+}
+
+.connect-bot-link:hover {
+  color: var(--foreground);
+}
+
+/* QR code (bridge-based, WhatsApp) */
+.connect-qr {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.connect-qr img {
+  width: 200px;
+  height: 200px;
+  border-radius: var(--radius-md, 6px);
+  background: white;
+  padding: 8px;
+}
+
+/* Link URI (bridge-based, Signal) */
+.connect-link-uri {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.connect-link-uri-value {
+  font-family: var(--font-family-mono, "JetBrains Mono", monospace);
+  font-size: 11px;
+  color: var(--text-weak);
+  word-break: break-all;
+  padding: 6px 10px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid var(--border-weak);
+}
+
+/* Status + disconnect row */
+.connect-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.connect-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #7fd1ae;
+}
+
+.connect-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7fd1ae;
+}
+
+/* Skeleton loading */
+.connect-skeleton {
+  border-radius: var(--radius-md, 6px);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.connect-skeleton-code {
+  width: 140px;
+  height: 38px;
+}
+
+.connect-skeleton-qr {
+  width: 200px;
+  height: 200px;
+  margin: 0 auto;
+}
+
+.connect-skeleton-link {
+  width: 100%;
+  height: 32px;
+}
+
+/* Error state */
+.connect-error {
+  font-size: 12px;
+  color: #ff8f8f;
+  background: rgba(255, 143, 143, 0.1);
+  padding: 8px 12px;
+  border-radius: var(--radius-md, 6px);
+}
+
+/* Bridge status text */
+.connect-bridge-status {
+  font-size: 12px;
+  color: var(--text-weak);
+}
