@@ -19,7 +19,7 @@ export const MiniShell = () => {
   const [chatContext, setChatContext] = useState<ChatContext | null>(null);
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [shellVisible, setShellVisible] = useState(false);
-  const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
+  const [streamingText, appendStreamingDelta, resetStreamingText] = useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
@@ -221,16 +221,6 @@ export const MiniShell = () => {
     };
   }, []);
 
-  useEffect(() => {
-    window.electronAPI?.setMiniPreviewOpen?.(previewIndex !== null);
-  }, [previewIndex]);
-
-  useEffect(() => {
-    return () => {
-      window.electronAPI?.setMiniPreviewOpen?.(false);
-    };
-  }, []);
-
   // Auto-create conversation if none exists
   useEffect(() => {
     if (!state.conversationId) {
@@ -308,22 +298,32 @@ export const MiniShell = () => {
     const attachments: AttachmentRef[] = [];
 
     if (chatContext?.regionScreenshots?.length) {
-      for (const screenshot of chatContext.regionScreenshots) {
-        try {
-          const attachment = await createAttachment({
-            conversationId: state.conversationId,
-            deviceId,
-            dataUrl: screenshot.dataUrl,
-          });
-          if (attachment?._id) {
-            attachments.push({
+      const uploadedAttachments: Array<AttachmentRef | null> = await Promise.all(
+        chatContext.regionScreenshots.map(async (screenshot) => {
+          try {
+            const attachment = await createAttachment({
+              conversationId: state.conversationId,
+              deviceId,
+              dataUrl: screenshot.dataUrl,
+            });
+            if (!attachment?._id) {
+              return null;
+            }
+            return {
               id: attachment._id as string,
               url: attachment.url,
               mimeType: attachment.mimeType,
-            });
+            };
+          } catch (error) {
+            console.error("Screenshot upload failed", error);
+            return null;
           }
-        } catch (error) {
-          console.error("Screenshot upload failed", error);
+        }),
+      );
+
+      for (const attachment of uploadedAttachments) {
+        if (attachment) {
+          attachments.push(attachment);
         }
       }
     }
@@ -349,7 +349,6 @@ export const MiniShell = () => {
       }
       setSelectedText(null);
       setChatContext(null);
-      window.electronAPI?.clearSelectedText?.();
       setExpanded(true);
       startStream({ userMessageId: event._id, attachments });
     }
@@ -425,7 +424,6 @@ export const MiniShell = () => {
                       setChatContext((prev) =>
                         prev ? { ...prev, selectedText: null } : prev,
                       );
-                      window.electronAPI?.clearSelectedText?.();
                     }}
                   >
                     &times;
@@ -451,7 +449,6 @@ export const MiniShell = () => {
                     setChatContext((prev) =>
                       prev ? { ...prev, selectedText: null } : prev,
                     );
-                    window.electronAPI?.clearSelectedText?.();
                   }
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();

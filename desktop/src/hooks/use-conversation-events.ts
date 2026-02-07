@@ -190,60 +190,67 @@ function getRequestId(event: EventRecord): string | undefined {
 
 // Extract steps from events
 export function extractStepsFromEvents(events: EventRecord[]): StepItem[] {
-  const requests = events.filter(isToolRequest);
-  const resultEvents = events.filter(isToolResult);
-  
-  // Build a map of requestId -> result for direct matching
-  const resultsByRequestId = new Map<string, EventRecord & { payload: ToolResultPayload }>();
-  for (const event of resultEvents) {
-    const reqId = getRequestId(event);
-    if (reqId && !resultsByRequestId.has(reqId)) {
-      resultsByRequestId.set(reqId, event as EventRecord & { payload: ToolResultPayload });
-    }
-  }
-  
-  // Also track results by position for fallback matching
-  // We'll match each tool_request to the next tool_result with matching toolName
-  const usedResultIndices = new Set<number>();
+  const steps: StepItem[] = [];
+  const stepIndexByRequestId = new Map<string, number>();
+  const pendingByTool = new Map<string, number[]>();
 
-  return requests.map((req) => {
-    const requestId = getRequestId(req) || req._id;
-    const toolName = req.payload.toolName;
-    
-    // Try to find matching result
-    let result: (EventRecord & { payload: ToolResultPayload }) | undefined;
-    
-    // First, try direct requestId matching
-    result = resultsByRequestId.get(requestId);
-    
-    // If no direct match, try position-based matching with same toolName
-    if (!result) {
-      const reqEventIndex = events.indexOf(req);
-      for (let i = 0; i < resultEvents.length; i++) {
-        if (usedResultIndices.has(i)) continue;
-        const resultEvent = resultEvents[i] as EventRecord & { payload: ToolResultPayload };
-        const resultEventIndex = events.indexOf(resultEvent);
-        // Result must come after request and have same toolName
-        if (resultEventIndex > reqEventIndex && resultEvent.payload.toolName === toolName) {
-          result = resultEvent;
-          usedResultIndices.add(i);
-          break;
-        }
+  for (const event of events) {
+    if (isToolRequest(event)) {
+      const requestId = getRequestId(event) ?? event._id;
+      const toolName = event.payload.toolName;
+      const stepIndex = steps.length;
+      steps.push({
+        id: requestId,
+        tool: toolName,
+        title: extractToolTitle(event),
+        status: "running",
+      });
+      stepIndexByRequestId.set(requestId, stepIndex);
+
+      const queue = pendingByTool.get(toolName);
+      if (queue) {
+        queue.push(stepIndex);
+      } else {
+        pendingByTool.set(toolName, [stepIndex]);
+      }
+      continue;
+    }
+
+    if (!isToolResult(event)) {
+      continue;
+    }
+
+    const toolName = event.payload.toolName;
+    const status: StepItem["status"] = event.payload.error ? "error" : "completed";
+    const requestId = getRequestId(event);
+
+    if (requestId) {
+      const directIndex = stepIndexByRequestId.get(requestId);
+      if (directIndex !== undefined && steps[directIndex]?.status === "running") {
+        steps[directIndex] = { ...steps[directIndex], status };
+        continue;
       }
     }
 
-    let status: StepItem["status"] = "running";
-    if (result) {
-      status = result.payload.error ? "error" : "completed";
+    const queue = pendingByTool.get(toolName);
+    if (!queue || queue.length === 0) {
+      continue;
     }
 
-    return {
-      id: requestId,
-      tool: toolName,
-      title: extractToolTitle(req),
-      status,
-    };
-  });
+    // Fallback for results without request IDs: consume the oldest pending step with the same tool.
+    while (queue.length > 0) {
+      const pendingIndex = queue.shift();
+      if (pendingIndex === undefined) {
+        break;
+      }
+      if (steps[pendingIndex]?.status === "running") {
+        steps[pendingIndex] = { ...steps[pendingIndex], status };
+        break;
+      }
+    }
+  }
+
+  return steps;
 }
 
 // Message turn grouping

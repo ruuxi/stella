@@ -538,19 +538,19 @@ export const FullShell = () => {
 
   const hasMessages = events.length > 0 || isStreaming;
 
-  // Auto-scroll when new content arrives (if user is near bottom)
+  // Auto-scroll when persisted conversation content arrives.
   useEffect(() => {
     if (isNearBottom) {
       scrollToBottom("smooth");
     }
-  }, [events.length, streamingText, isNearBottom, scrollToBottom]);
+  }, [events.length, isNearBottom, scrollToBottom]);
 
-  // Scroll to bottom immediately when streaming starts
+  // Keep the viewport pinned during streaming without replaying smooth animations.
   useEffect(() => {
     if (isStreaming && isNearBottom) {
-      scrollToBottom("smooth");
+      scrollToBottom("auto");
     }
-  }, [isStreaming, isNearBottom, scrollToBottom]);
+  }, [streamingText, reasoningText, isStreaming, isNearBottom, scrollToBottom]);
 
   const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
   const shellClassName = `window-shell full${canvasOpen ? ' has-canvas' : ''}`;

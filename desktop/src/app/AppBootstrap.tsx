@@ -13,12 +13,13 @@ export const AppBootstrap = () => {
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      await configureLocalHost();
-      await getOrCreateDeviceId();
+      const hostPromise = configureLocalHost();
+      const devicePromise = getOrCreateDeviceId();
       const conversation = await getOrCreateDefaultConversation({});
       if (!cancelled && conversation?._id) {
         setConversationId(conversation._id);
       }
+      await Promise.allSettled([hostPromise, devicePromise]);
     };
     void run();
     return () => {

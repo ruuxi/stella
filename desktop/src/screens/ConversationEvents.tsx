@@ -1,4 +1,4 @@
-import { useMemo, memo, useRef, useCallback } from "react";
+import { useMemo, memo, useRef, useCallback, useDeferredValue } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   EventRecord,
@@ -565,12 +565,27 @@ export const ConversationEvents = memo(function ConversationEvents({
     return viewModels;
   }, [slicedTurns, depseudonymize]);
 
-  // Depseudonymize streaming and reasoning text for display
-  const processedStreamingText = streamingText ? depseudonymize(streamingText) : streamingText;
-  const processedReasoningText = reasoningText ? depseudonymize(reasoningText) : reasoningText;
+  const deferredStreamingText = useDeferredValue(streamingText);
+  const deferredReasoningText = useDeferredValue(reasoningText);
+
+  // Depseudonymize streaming text at deferred priority to keep render work responsive.
+  const processedStreamingText = useMemo(
+    () =>
+      deferredStreamingText
+        ? depseudonymize(deferredStreamingText)
+        : deferredStreamingText,
+    [deferredStreamingText, depseudonymize],
+  );
+  const processedReasoningText = useMemo(
+    () =>
+      deferredReasoningText
+        ? depseudonymize(deferredReasoningText)
+        : deferredReasoningText,
+    [deferredReasoningText, depseudonymize],
+  );
 
   // Get running tool for streaming indicator
-  const runningTool = getCurrentRunningTool(events);
+  const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
 
   // Get running tasks for task indicator
   const runningTasks = useMemo(() => getRunningTasks(events), [events]);
