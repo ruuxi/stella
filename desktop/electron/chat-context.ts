@@ -1,4 +1,5 @@
 import { getSelectedText } from './selected-text.js'
+import { getWindowInfoAtPoint } from './window-capture.js'
 
 export type WindowBounds = { x: number; y: number; width: number; height: number }
 
@@ -18,12 +19,23 @@ export type ChatContext = {
   capturePending?: boolean
 }
 
-export const captureChatContext = async (_point: { x: number; y: number }): Promise<ChatContext> => {
-  // Get selected text via platform-native API (UI Automation on Windows, Accessibility on macOS)
-  const selectedText = await getSelectedText()
+export const captureChatContext = async (point: { x: number; y: number }): Promise<ChatContext> => {
+  // Capture selected text and window metadata in parallel.
+  const [selectedText, windowInfo] = await Promise.all([
+    getSelectedText(),
+    getWindowInfoAtPoint(point.x, point.y),
+  ])
+
+  const window = windowInfo && (windowInfo.title || windowInfo.process)
+    ? {
+        title: windowInfo.title,
+        app: windowInfo.process,
+        bounds: windowInfo.bounds,
+      }
+    : null
 
   return {
-    window: null,
+    window,
     browserUrl: null,
     selectedText,
     regionScreenshots: [],
