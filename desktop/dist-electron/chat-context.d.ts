@@ -19,7 +19,11 @@ export type ChatContext = {
     }[];
     capturePending?: boolean;
 };
-export declare const captureChatContext: (_point: {
+type CaptureChatContextOptions = {
+    excludeCurrentProcessWindows?: boolean;
+};
+export declare const captureChatContext: (point: {
     x: number;
     y: number;
-}) => Promise<ChatContext>;
+}, options?: CaptureChatContextOptions) => Promise<ChatContext>;
+export {};

@@ -9,9 +9,13 @@ const getWindowInfoBin = () => {
     const ext = process.platform === 'win32' ? '.exe' : '';
     return path.join(__dirname, `../native/window_info${ext}`);
 };
-const queryWindowInfo = (x, y) => {
+const queryWindowInfo = (x, y, options) => {
     return new Promise((resolve) => {
-        execFile(getWindowInfoBin(), [String(x), String(y)], { timeout: 3000 }, (error, stdout) => {
+        const args = [String(x), String(y)];
+        if (options?.excludePids?.length) {
+            args.push(`--exclude-pids=${options.excludePids.join(',')}`);
+        }
+        execFile(getWindowInfoBin(), args, { timeout: 3000 }, (error, stdout) => {
             if (error) {
                 console.warn('window_info failed', error);
                 resolve(null);
@@ -31,6 +35,9 @@ const queryWindowInfo = (x, y) => {
         });
     });
 };
+export const getWindowInfoAtPoint = (x, y, options) => {
+    return queryWindowInfo(x, y, options);
+};
 /**
  * Pre-fetch desktop capturer sources before showing any overlay windows.
  * Call this while the screen is still clean, then pass the result to captureWindowAtPoint.
@@ -47,8 +54,8 @@ export const prefetchWindowSources = (excludeSourceIds) => {
         return sources.filter((s) => !excluded.has(s.id));
     });
 };
-export const captureWindowAtPoint = async (x, y, prefetchedSources) => {
-    const info = await queryWindowInfo(x, y);
+export const captureWindowAtPoint = async (x, y, prefetchedSources, options) => {
+    const info = await queryWindowInfo(x, y, options);
     if (!info || !info.title)
         return null;
     const sources = prefetchedSources ?? await desktopCapturer.getSources({

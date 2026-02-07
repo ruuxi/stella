@@ -5,7 +5,7 @@ import {
   useCallback,
 } from "react";
 import { useRafStringAccumulator } from "../hooks/use-raf-state";
-import { useMutation, useConvexAuth } from "convex/react";
+import { useAction, useMutation, useConvexAuth } from "convex/react";
 import { Spinner } from "../components/spinner";
 import { useUiState } from "../app/state/ui-state";
 import { useCanvas } from "../app/state/canvas-state";
@@ -14,6 +14,7 @@ import { api } from "../convex/api";
 import { useConversationEvents, type EventRecord } from "../hooks/use-conversation-events";
 import { getOrCreateDeviceId } from "../services/device";
 import { streamChat } from "../services/model-gateway";
+import { getElectronApi } from "../services/electron";
 import { synthesizeCoreMemory, seedDiscoveryMemories } from "../services/synthesis";
 import { ShiftingGradient } from "../components/background/ShiftingGradient";
 import { useTheme } from "../theme/theme-context";
@@ -21,7 +22,7 @@ import { Button } from "../components/button";
 import { AuthDialog } from "../app/AuthDialog";
 import { CanvasPanel } from "../components/canvas/CanvasPanel";
 import { Sidebar } from "../components/Sidebar";
-import type { AllUserSignalsResult } from "../types/electron";
+import type { AllUserSignalsResult, ChatContext, ChatContextUpdate } from "../types/electron";
 
 type AttachmentRef = {
   id?: string;
@@ -82,6 +83,8 @@ export const FullShell = () => {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const isDev = import.meta.env.DEV;
   const [message, setMessage] = useState("");
+  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
+  const [selectedText, setSelectedText] = useState<string | null>(null);
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
@@ -178,6 +181,7 @@ export const FullShell = () => {
       });
     }
   );
+  const createAttachment = useAction(api.attachments.createFromDataUrl);
 
   const resetStreamingState = useCallback((runId?: number) => {
     if (typeof runId === "number" && runId !== streamRunIdRef.current) {
@@ -234,6 +238,38 @@ export const FullShell = () => {
     const ready = isAuthenticated && onboardingDone;
     window.electronAPI?.setAppReady?.(ready);
   }, [isAuthenticated, onboardingDone]);
+
+  useEffect(() => {
+    const electronApi = getElectronApi();
+    if (!electronApi) return;
+
+    electronApi.getChatContext?.()
+      .then((context) => {
+        if (!context) return;
+        setChatContext(context);
+        setSelectedText(context.selectedText ?? null);
+      })
+      .catch((error) => {
+        console.warn("Failed to load chat context", error);
+      });
+
+    if (!electronApi.onChatContext) return;
+
+    const unsubscribe = electronApi.onChatContext((payload) => {
+      let context: ChatContext | null = null;
+      if (payload && typeof payload === "object" && "context" in payload) {
+        context = (payload as ChatContextUpdate).context ?? null;
+      } else {
+        context = (payload as ChatContext | null) ?? null;
+      }
+      setChatContext(context);
+      setSelectedText(context?.selectedText ?? null);
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Background Discovery System
@@ -497,21 +533,74 @@ export const FullShell = () => {
   }, [isStreaming, queueNext]);
 
   const sendMessage = async () => {
-    if (!state.conversationId || !message.trim()) {
+    const selectedSnippet = selectedText?.trim() ?? "";
+    const windowSnippet = chatContext?.window
+      ? [chatContext.window.app, chatContext.window.title]
+          .filter((part) => Boolean(part && part.trim()))
+          .join(" - ")
+      : "";
+    const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
+
+    if (!state.conversationId || (!message.trim() && !selectedSnippet && !windowSnippet && !hasScreenshotContext)) {
       return;
     }
     const deviceId = await getOrCreateDeviceId();
     const rawText = message.trim();
     setMessage("");
-    setComposerExpanded(false);
+    if (!chatContext?.regionScreenshots?.length && !selectedSnippet && !windowSnippet) {
+      setComposerExpanded(false);
+    }
 
     const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
     const cleanedText = followUpMatch ? rawText.slice(followUpMatch[0].length).trim() : rawText;
-    if (!cleanedText) {
+
+    const contextParts: string[] = [];
+    if (windowSnippet) {
+      contextParts.push(`[Window] ${windowSnippet}`);
+    }
+    if (selectedSnippet) {
+      contextParts.push(`"${selectedSnippet}"`);
+    }
+    if (cleanedText) {
+      contextParts.push(cleanedText);
+    }
+    const combinedText = contextParts.join("\n\n");
+
+    if (!combinedText && !hasScreenshotContext) {
       return;
     }
 
     let attachments: AttachmentRef[] = [];
+    if (chatContext?.regionScreenshots?.length) {
+      const uploadedAttachments: Array<AttachmentRef | null> = await Promise.all(
+        chatContext.regionScreenshots.map(async (screenshot) => {
+          try {
+            const attachment = await createAttachment({
+              conversationId: state.conversationId,
+              deviceId,
+              dataUrl: screenshot.dataUrl,
+            });
+            if (!attachment?._id) {
+              return null;
+            }
+            return {
+              id: attachment._id as string,
+              url: attachment.url,
+              mimeType: attachment.mimeType,
+            };
+          } catch (error) {
+            console.error("Screenshot upload failed", error);
+            return null;
+          }
+        }),
+      );
+
+      for (const attachment of uploadedAttachments) {
+        if (attachment) {
+          attachments.push(attachment);
+        }
+      }
+    }
 
     const platform = window.electronAPI?.platform ?? "unknown";
     const shouldQueue =
@@ -527,7 +616,7 @@ export const FullShell = () => {
       conversationId: state.conversationId,
       type: "user_message",
       deviceId,
-      payload: { text: cleanedText, attachments, platform, ...(mode && { mode }) },
+      payload: { text: combinedText, attachments, platform, ...(mode && { mode }) },
     });
 
     if (event?._id) {
@@ -536,6 +625,8 @@ export const FullShell = () => {
         return;
       }
       setQueueNext(false);
+      setSelectedText(null);
+      setChatContext(null);
       startStream({ userMessageId: event._id, attachments });
     }
   };
@@ -557,6 +648,15 @@ export const FullShell = () => {
   }, [streamingText, reasoningText, isStreaming, isNearBottom, scrollToBottom]);
 
   const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
+  const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
+  const hasWindowContext = Boolean(chatContext?.window);
+  const hasSelectedTextContext = Boolean(selectedText);
+  const hasComposerContext = Boolean(
+    hasScreenshotContext || hasWindowContext || hasSelectedTextContext || chatContext?.capturePending,
+  );
+  const canSubmit = Boolean(
+    state.conversationId && (message.trim() || hasComposerContext),
+  );
   const shellClassName = `window-shell full${canvasOpen ? ' has-canvas' : ''}`;
   const canvasWidthVar = canvasOpen
     ? { '--canvas-panel-width': `${canvasState.width}px` } as React.CSSProperties
@@ -665,7 +765,7 @@ export const FullShell = () => {
           {/* Composer - Aura-style prompt bar at bottom (only when authenticated) */}
           {isAuthenticated && onboardingDone && <div className="composer">
             <form
-              className={`composer-form${composerExpanded ? ' expanded' : ''}`}
+              className={`composer-form${(composerExpanded || hasComposerContext) ? ' expanded' : ''}`}
               onSubmit={(event) => {
                 event.preventDefault();
                 void sendMessage();
@@ -678,10 +778,96 @@ export const FullShell = () => {
                 </svg>
               </button>
 
+              {hasComposerContext && (
+                <div className="composer-context-row">
+                  {chatContext?.regionScreenshots?.map((screenshot, index) => (
+                    <div key={index} className="composer-context-chip composer-context-chip--screenshot">
+                      <img
+                        src={screenshot.dataUrl}
+                        className="composer-context-thumb"
+                        alt={`Screenshot ${index + 1}`}
+                      />
+                      <button
+                        type="button"
+                        className="composer-context-remove"
+                        aria-label="Remove screenshot"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          window.electronAPI?.removeScreenshot?.(index);
+                          setChatContext((prev) => {
+                            if (!prev) return prev;
+                            const next = [...(prev.regionScreenshots ?? [])];
+                            next.splice(index, 1);
+                            return { ...prev, regionScreenshots: next };
+                          });
+                        }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                  {chatContext?.capturePending && (
+                    <div className="composer-context-chip composer-context-chip--pending">
+                      <div className="composer-context-pending-inner" />
+                    </div>
+                  )}
+                  {selectedText && (
+                    <div className="composer-context-chip composer-context-chip--text">
+                      <span className="composer-context-text">"{selectedText}"</span>
+                      <button
+                        type="button"
+                        className="composer-context-remove"
+                        aria-label="Remove selected text"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedText(null);
+                          setChatContext((prev) =>
+                            prev ? { ...prev, selectedText: null } : prev,
+                          );
+                        }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  )}
+                  {chatContext?.window && (
+                    <div className="composer-context-chip composer-context-chip--window">
+                      <span className="composer-context-window">
+                        {chatContext.window.app}
+                        {chatContext.window.title ? ` - ${chatContext.window.title}` : ""}
+                      </span>
+                      <button
+                        type="button"
+                        className="composer-context-remove"
+                        aria-label="Remove window context"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setChatContext((prev) =>
+                            prev ? { ...prev, window: null } : prev,
+                          );
+                        }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <textarea
                 ref={textareaRef}
                 className="composer-input"
-                placeholder="Ask anything"
+                placeholder={
+                  chatContext?.capturePending
+                    ? "Capturing screen..."
+                    : hasScreenshotContext
+                      ? "Ask about the capture..."
+                      : hasWindowContext
+                        ? "Ask about this window..."
+                        : hasSelectedTextContext
+                          ? "Ask about the selection..."
+                          : "Ask anything"
+                }
                 value={message}
                 onChange={(event) => {
                   setMessage(event.target.value);
@@ -738,7 +924,7 @@ export const FullShell = () => {
                   <button
                     type="submit"
                     className="composer-submit"
-                    disabled={!state.conversationId || !message.trim()}
+                    disabled={!canSubmit}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <path d="M12 19V5M5 12l7-7 7 7" />

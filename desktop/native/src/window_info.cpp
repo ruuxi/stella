@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <vector>
+#include <cstring>
 
 static std::string escapeJson(const char* s)
 {
@@ -27,6 +29,93 @@ static std::string escapeJson(const char* s)
     return out;
 }
 
+static bool isPidExcluded(DWORD pid, const std::vector<DWORD>& excluded)
+{
+    for (DWORD value : excluded)
+    {
+        if (value == pid)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void parseExcludePidsArg(const char* arg, std::vector<DWORD>& excluded)
+{
+    const char* prefix = "--exclude-pids=";
+    const size_t prefixLen = strlen(prefix);
+    if (strncmp(arg, prefix, prefixLen) != 0)
+    {
+        return;
+    }
+
+    const char* p = arg + prefixLen;
+    while (*p)
+    {
+        while (*p == ',' || *p == ' ')
+        {
+            ++p;
+        }
+        if (!*p)
+        {
+            break;
+        }
+
+        char* end = nullptr;
+        unsigned long pid = strtoul(p, &end, 10);
+        if (end == p)
+        {
+            break;
+        }
+        if (pid > 0)
+        {
+            excluded.push_back(static_cast<DWORD>(pid));
+        }
+        p = end;
+        while (*p && *p != ',')
+        {
+            ++p;
+        }
+    }
+}
+
+static HWND findTopLevelWindowAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
+{
+    for (HWND hwnd = GetTopWindow(NULL); hwnd; hwnd = GetWindow(hwnd, GW_HWNDNEXT))
+    {
+        if (!IsWindowVisible(hwnd))
+        {
+            continue;
+        }
+
+        RECT rect = {};
+        if (!GetWindowRect(hwnd, &rect))
+        {
+            continue;
+        }
+        if (rect.right <= rect.left || rect.bottom <= rect.top)
+        {
+            continue;
+        }
+        if (pt.x < rect.left || pt.x >= rect.right || pt.y < rect.top || pt.y >= rect.bottom)
+        {
+            continue;
+        }
+
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (isPidExcluded(pid, excludedPids))
+        {
+            continue;
+        }
+
+        return hwnd;
+    }
+
+    return NULL;
+}
+
 int main(int argc, char* argv[])
 {
     if (argc < 3)
@@ -39,7 +128,17 @@ int main(int argc, char* argv[])
     pt.x = atol(argv[1]);
     pt.y = atol(argv[2]);
 
-    HWND hwnd = WindowFromPoint(pt);
+    std::vector<DWORD> excludedPids;
+    for (int i = 3; i < argc; ++i)
+    {
+        parseExcludePidsArg(argv[i], excludedPids);
+    }
+
+    HWND hwnd = findTopLevelWindowAtPoint(pt, excludedPids);
+    if (!hwnd)
+    {
+        hwnd = WindowFromPoint(pt);
+    }
     if (!hwnd)
     {
         printf("{\"error\":\"no window at point\"}\n");
@@ -50,6 +149,14 @@ int main(int argc, char* argv[])
     HWND root = GetAncestor(hwnd, GA_ROOT);
     if (root) hwnd = root;
 
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (isPidExcluded(pid, excludedPids))
+    {
+        printf("{\"error\":\"no non-excluded window at point\"}\n");
+        return 0;
+    }
+
     // Title
     char title[512] = {};
     GetWindowTextA(hwnd, title, sizeof(title));
@@ -59,9 +166,6 @@ int main(int argc, char* argv[])
     GetWindowRect(hwnd, &rect);
 
     // PID + process name
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-
     char processName[MAX_PATH] = {};
     if (pid)
     {
