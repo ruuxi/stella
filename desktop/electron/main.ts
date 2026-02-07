@@ -1073,8 +1073,22 @@ app.whenReady().then(async () => {
     // Pre-fetch sources (overlay and mini shell should now be hidden)
     const sources = await prefetchWindowSources([])
 
+    // Convert overlay-local click coordinates into global desktop coordinates.
+    // regionWindow bounds are DIP; the native picker expects global coordinates.
+    const regionBounds = getRegionCaptureWindow()?.getBounds()
+    let capturePoint = { x: point.x, y: point.y }
+    if (regionBounds) {
+      const dipX = regionBounds.x + point.x
+      const dipY = regionBounds.y + point.y
+      const scaleFactor = process.platform === 'darwin' ? 1 : (regionCaptureDisplay?.scaleFactor ?? 1)
+      capturePoint = {
+        x: Math.round(dipX * scaleFactor),
+        y: Math.round(dipY * scaleFactor),
+      }
+    }
+
     // Capture window at clicked point
-    const capture = await captureWindowAtPoint(point.x, point.y, sources)
+    const capture = await captureWindowAtPoint(capturePoint.x, capturePoint.y, sources)
 
     resolve(capture?.screenshot ?? null)
     pendingRegionCaptureResolve = null
