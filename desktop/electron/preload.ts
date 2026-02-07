@@ -161,4 +161,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Open URL in user's default browser
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
+
+  // Store package management
+  storeInstallSkill: (payload: {
+    packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]
+  }) => ipcRenderer.invoke('store:installSkill', payload),
+  storeInstallTheme: (payload: {
+    packageId: string; themeId: string; name: string; light: Record<string, string>; dark: Record<string, string>
+  }) => ipcRenderer.invoke('store:installTheme', payload),
+  storeUninstall: (payload: {
+    packageId: string; type: string; localId: string
+  }) => ipcRenderer.invoke('store:uninstall', payload),
+
+  // Theme loading from installed themes
+  listInstalledThemes: () => ipcRenderer.invoke('theme:listInstalled'),
 })

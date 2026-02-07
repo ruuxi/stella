@@ -57,6 +57,15 @@
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
+.sidebar-nav-item--active {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-nav-item--active .sidebar-nav-icon {
+  color: var(--interactive);
+}
+
 .sidebar-nav-icon {
   display: flex;
   align-items: center;

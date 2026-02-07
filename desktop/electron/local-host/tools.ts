@@ -62,6 +62,11 @@ import {
   handleSelfModStatus,
   handleSelfModPackage,
 } from "./tools_self_mod.js";
+import {
+  handleInstallSkill,
+  handleInstallTheme,
+  handleUninstallPackage,
+} from "./tools_store.js";
 
 // Re-export types for external consumers
 export type { ToolContext, ToolResult, PluginSyncPayload };
@@ -199,6 +204,11 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     SelfModRevert: (args, context) => handleSelfModRevert(args, context, frontendRoot),
     SelfModStatus: (args, context) => handleSelfModStatus(args, context),
     SelfModPackage: (args, context) => handleSelfModPackage(args, context, frontendRoot),
+
+    // Store tools
+    InstallSkillPackage: (args) => handleInstallSkill(args),
+    InstallThemePackage: (args) => handleInstallTheme(args),
+    UninstallPackage: (args) => handleUninstallPackage(args),
   };
 
   const executeTool = async (

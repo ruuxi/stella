@@ -49,6 +49,7 @@ import './styles/indicators.css'
 import './styles/credential-modal.css'
 import './styles/canvas-panel.css'
 import './styles/canvas-renderers.css'
+import './styles/store.css'
 
 import App from './App.tsx'
 import { UiStateProvider } from './app/state/ui-state'
