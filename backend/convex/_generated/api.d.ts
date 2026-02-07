@@ -58,6 +58,7 @@ import type * as telegram from "../telegram.js";
 import type * as tools_backend from "../tools/backend.js";
 import type * as tools_cloud from "../tools/cloud.js";
 import type * as tools_index from "../tools/index.js";
+import type * as tools_integration_proxy from "../tools/integration_proxy.js";
 import type * as tools_orchestration from "../tools/orchestration.js";
 import type * as tools_types from "../tools/types.js";
 import type * as whatsapp from "../whatsapp.js";
@@ -119,6 +120,7 @@ declare const fullApi: ApiFromModules<{
   "tools/backend": typeof tools_backend;
   "tools/cloud": typeof tools_cloud;
   "tools/index": typeof tools_index;
+  "tools/integration_proxy": typeof tools_integration_proxy;
   "tools/orchestration": typeof tools_orchestration;
   "tools/types": typeof tools_types;
   whatsapp: typeof whatsapp;
