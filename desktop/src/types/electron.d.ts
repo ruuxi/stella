@@ -179,6 +179,31 @@ export type ElectronApi = {
   openFullDiskAccess: () => void
   // Open URL in user's default browser
   openExternal: (url: string) => void
+
+  // Store package management
+  storeInstallSkill: (payload: {
+    packageId: string
+    skillId: string
+    name: string
+    markdown: string
+    agentTypes?: string[]
+    tags?: string[]
+  }) => Promise<{ installed: boolean; path?: string }>
+  storeInstallTheme: (payload: {
+    packageId: string
+    themeId: string
+    name: string
+    light: Record<string, string>
+    dark: Record<string, string>
+  }) => Promise<{ installed: boolean; themeId?: string }>
+  storeUninstall: (payload: {
+    packageId: string
+    type: string
+    localId: string
+  }) => Promise<{ uninstalled: boolean }>
+
+  // Theme loading from installed themes
+  listInstalledThemes: () => Promise<Array<{ id: string; name: string; light: Record<string, string>; dark: Record<string, string> }>>
 }
 
 declare global {

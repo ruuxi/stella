@@ -44,6 +44,7 @@ type WindowMode = 'full' | 'mini'
 type UiState = {
   mode: UiMode
   window: WindowMode
+  view: 'chat' | 'store'
   conversationId: string | null
 }
 
@@ -92,6 +93,7 @@ let pendingAuthCallback: string | null = null
 const uiState: UiState = {
   mode: 'chat',
   window: 'full',
+  view: 'chat',
   conversationId: null,
 }
 
@@ -1279,6 +1281,85 @@ app.whenReady().then(async () => {
       import('child_process').then(({ exec: execCmd }) => {
         execCmd('open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"')
       })
+    }
+  })
+
+  // Store package install/uninstall IPC handlers
+  ipcMain.handle('store:installSkill', async (_event, payload: {
+    packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]
+  }) => {
+    const { promises: fs } = await import('fs')
+    const os = await import('os')
+    const skillDir = path.join(os.homedir(), '.stella', 'skills', payload.skillId)
+    await fs.mkdir(skillDir, { recursive: true })
+    await fs.writeFile(path.join(skillDir, 'SKILL.md'), payload.markdown, 'utf-8')
+    const agentTypes = payload.agentTypes ?? ['general']
+    const tags = payload.tags ?? []
+    const yaml = [
+      `name: ${payload.name}`,
+      `description: "Installed from App Store"`,
+      `agent_types: [${agentTypes.map(t => `"${t}"`).join(', ')}]`,
+      tags.length > 0 ? `tags: [${tags.map(t => `"${t}"`).join(', ')}]` : '',
+      'enabled: true',
+    ].filter(Boolean).join('\n')
+    await fs.writeFile(path.join(skillDir, 'stella.yaml'), yaml, 'utf-8')
+    return { installed: true, path: skillDir }
+  })
+
+  ipcMain.handle('store:installTheme', async (_event, payload: {
+    packageId: string; themeId: string; name: string; light: Record<string, string>; dark: Record<string, string>
+  }) => {
+    const { promises: fs } = await import('fs')
+    const os = await import('os')
+    const themesDir = path.join(os.homedir(), '.stella', 'themes')
+    await fs.mkdir(themesDir, { recursive: true })
+    const themeData = { id: payload.themeId, name: payload.name, light: payload.light, dark: payload.dark }
+    await fs.writeFile(path.join(themesDir, `${payload.themeId}.json`), JSON.stringify(themeData, null, 2), 'utf-8')
+    return { installed: true, themeId: payload.themeId }
+  })
+
+  ipcMain.handle('store:uninstall', async (_event, payload: {
+    packageId: string; type: string; localId: string
+  }) => {
+    const { promises: fs } = await import('fs')
+    const os = await import('os')
+    const stellaRoot = path.join(os.homedir(), '.stella')
+    switch (payload.type) {
+      case 'skill':
+        await fs.rm(path.join(stellaRoot, 'skills', payload.localId), { recursive: true, force: true })
+        break
+      case 'theme':
+        await fs.rm(path.join(stellaRoot, 'themes', `${payload.localId}.json`), { force: true })
+        break
+      case 'canvas':
+        await fs.rm(path.join(stellaRoot, 'workspaces', payload.localId), { recursive: true, force: true })
+        break
+    }
+    return { uninstalled: true }
+  })
+
+  ipcMain.handle('theme:listInstalled', async () => {
+    const { promises: fs } = await import('fs')
+    const os = await import('os')
+    const themesDir = path.join(os.homedir(), '.stella', 'themes')
+    try {
+      const files = await fs.readdir(themesDir)
+      const themes = []
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue
+        try {
+          const raw = await fs.readFile(path.join(themesDir, file), 'utf-8')
+          const theme = JSON.parse(raw)
+          if (theme.id && theme.name && theme.light && theme.dark) {
+            themes.push(theme)
+          }
+        } catch {
+          // Skip invalid theme files
+        }
+      }
+      return themes
+    } catch {
+      return []
     }
   })
 

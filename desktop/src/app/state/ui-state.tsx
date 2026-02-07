@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { UiMode, UiState, WindowMode } from '../../types/ui'
+import type { UiMode, UiState, ViewType, WindowMode } from '../../types/ui'
 import { getElectronApi } from '../../services/electron'
 
 type UiStateContextValue = {
   state: UiState
   setMode: (mode: UiMode) => void
+  setView: (view: ViewType) => void
   setConversationId: (id: string | null) => void
   setWindow: (windowMode: WindowMode) => void
   updateState: (partial: Partial<UiState>) => void
@@ -14,6 +15,7 @@ type UiStateContextValue = {
 const defaultState: UiState = {
   mode: 'chat',
   window: 'full',
+  view: 'chat',
   conversationId: null,
 }
 
@@ -61,6 +63,13 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
     [updateState],
   )
 
+  const setView = useCallback(
+    (view: ViewType) => {
+      updateState({ view })
+    },
+    [updateState],
+  )
+
   const setConversationId = useCallback(
     (conversationId: string | null) => {
       updateState({ conversationId })
@@ -88,11 +97,12 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
     () => ({
       state,
       setMode,
+      setView,
       setConversationId,
       setWindow,
       updateState,
     }),
-    [state, setMode, setConversationId, setWindow, updateState],
+    [state, setMode, setView, setConversationId, setWindow, updateState],
   )
 
   return <UiStateContext.Provider value={value}>{children}</UiStateContext.Provider>

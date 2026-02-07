@@ -27,3 +27,19 @@ export const getThemeById = (id: string): Theme | undefined => {
 };
 
 export const defaultTheme = themes.find((t) => t.id === "tokyonight")!;
+
+export const registerTheme = (theme: Theme) => {
+  const existing = themes.findIndex((t) => t.id === theme.id);
+  if (existing >= 0) {
+    themes[existing] = theme;
+  } else {
+    themes.push(theme);
+  }
+};
+
+export const unregisterTheme = (id: string) => {
+  const index = themes.findIndex((t) => t.id === id);
+  if (index >= 0) {
+    themes.splice(index, 1);
+  }
+};
