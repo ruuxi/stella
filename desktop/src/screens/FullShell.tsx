@@ -12,6 +12,7 @@ import { useCanvas } from "../app/state/canvas-state";
 import { ConversationEvents } from "./ConversationEvents";
 import { api } from "../convex/api";
 import { useConversationEvents, type EventRecord } from "../hooks/use-conversation-events";
+import { useCanvasCommands } from "../hooks/use-canvas-commands";
 import { getOrCreateDeviceId } from "../services/device";
 import { streamChat } from "../services/model-gateway";
 import { getElectronApi } from "../services/electron";
@@ -405,6 +406,7 @@ export const FullShell = () => {
   }, [isAuthenticated, onboardingDone, state.conversationId, appendEvent]);
 
   const events = useConversationEvents(state.conversationId ?? undefined);
+  useCanvasCommands(events);
 
   const startStream = useCallback(
     (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
