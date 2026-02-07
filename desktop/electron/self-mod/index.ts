@@ -35,11 +35,6 @@ export {
 
 export {
   packageFeature,
-  installMod,
-  detectConflicts,
-  installModWithConflictCheck,
-  type ModPackage,
-  type ModFileEntry,
-  type ConflictInfo,
-  type ConflictReport,
+  type Blueprint,
+  type BlueprintFile,
 } from "./packaging.js";
