@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { MouseHookManager } from './mouse-hook.js';
 import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCursor, getRadialWindow, calculateSelectedWedge, } from './radial-window.js';
-import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow } from './region-capture-window.js';
+import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js';
 import { captureChatContext } from './chat-context.js';
 import { captureWindowAtPoint, prefetchWindowSources } from './window-capture.js';
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js';
@@ -62,6 +62,16 @@ const emptyContext = () => ({
     selectedText: null,
     regionScreenshots: [],
 });
+const toChatContextWindow = (windowInfo) => {
+    if (!windowInfo || (!windowInfo.title && !windowInfo.process)) {
+        return null;
+    }
+    return {
+        title: windowInfo.title,
+        app: windowInfo.process,
+        bounds: windowInfo.bounds,
+    };
+};
 const miniSize = {
     width: 680,
     height: 420,
@@ -398,7 +408,7 @@ const captureRadialContext = (x, y) => {
     }
     pendingRadialCapturePromise = (async () => {
         try {
-            const fresh = await captureChatContext({ x, y });
+            const fresh = await captureChatContext({ x, y }, { excludeCurrentProcessWindows: process.platform === 'win32' });
             if (requestId !== radialCaptureRequestId) {
                 return;
             }
@@ -435,11 +445,7 @@ const captureRadialContext = (x, y) => {
         }
     })();
 };
-const consumeChatContext = () => {
-    const context = pendingChatContext;
-    setPendingChatContext(null);
-    return context;
-};
+const getChatContextSnapshot = () => pendingChatContext;
 const broadcastChatContext = () => {
     for (const window of BrowserWindow.getAllWindows()) {
         window.webContents.send('chatContext:updated', {
@@ -565,7 +571,7 @@ const finalizeRegionCapture = async (selection) => {
     }
     const display = regionCaptureDisplay ?? getDisplayForPoint();
     const screenshot = await captureRegionScreenshot(display, selection);
-    pendingRegionCaptureResolve(screenshot);
+    pendingRegionCaptureResolve({ screenshot, window: null });
     resetRegionCapture();
 };
 const cancelRegionCapture = () => {
@@ -584,11 +590,18 @@ const handleRadialSelection = async (wedge) => {
             break;
         case 'capture': {
             updateUiState({ mode: 'chat' });
-            const regionScreenshot = await startRegionCapture();
-            if (regionScreenshot) {
+            const regionCapture = await startRegionCapture();
+            if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
                 const ctx = pendingChatContext ?? emptyContext();
                 const existing = ctx.regionScreenshots ?? [];
-                setPendingChatContext({ ...ctx, regionScreenshots: [...existing, regionScreenshot] });
+                const nextScreenshots = regionCapture.screenshot
+                    ? [...existing, regionCapture.screenshot]
+                    : existing;
+                setPendingChatContext({
+                    ...ctx,
+                    window: regionCapture.window ?? ctx.window,
+                    regionScreenshots: nextScreenshots,
+                });
             }
             if (!isMiniShowing())
                 showWindow('mini');
@@ -862,7 +875,7 @@ app.whenReady().then(async () => {
         }
         showWindow(target);
     });
-    ipcMain.handle('chatContext:get', () => consumeChatContext());
+    ipcMain.handle('chatContext:get', () => getChatContextSnapshot());
     ipcMain.on('chatContext:removeScreenshot', (_event, index) => {
         if (!pendingChatContext?.regionScreenshots)
             return;
@@ -894,9 +907,25 @@ app.whenReady().then(async () => {
         await new Promise((r) => setTimeout(r, 50));
         // Pre-fetch sources (overlay and mini shell should now be hidden)
         const sources = await prefetchWindowSources([]);
+        // Convert overlay-local click coordinates into global desktop coordinates.
+        // regionWindow bounds are DIP; the native picker expects global coordinates.
+        const regionBounds = getRegionCaptureWindow()?.getBounds();
+        let capturePoint = { x: point.x, y: point.y };
+        if (regionBounds) {
+            const dipX = regionBounds.x + point.x;
+            const dipY = regionBounds.y + point.y;
+            const scaleFactor = process.platform === 'darwin' ? 1 : (regionCaptureDisplay?.scaleFactor ?? 1);
+            capturePoint = {
+                x: Math.round(dipX * scaleFactor),
+                y: Math.round(dipY * scaleFactor),
+            };
+        }
         // Capture window at clicked point
-        const capture = await captureWindowAtPoint(point.x, point.y, sources);
-        resolve(capture?.screenshot ?? null);
+        const capture = await captureWindowAtPoint(capturePoint.x, capturePoint.y, sources);
+        resolve({
+            screenshot: capture?.screenshot ?? null,
+            window: toChatContextWindow(capture?.windowInfo),
+        });
         pendingRegionCaptureResolve = null;
         pendingRegionCapturePromise = null;
         regionCaptureDisplay = null;

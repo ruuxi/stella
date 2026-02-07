@@ -1,5 +1,5 @@
 import { desktopCapturer } from 'electron';
-type WindowInfo = {
+export type WindowInfo = {
     title: string;
     process: string;
     pid: number;
@@ -19,11 +19,15 @@ type WindowCapture = {
     };
 };
 type DesktopSource = Awaited<ReturnType<typeof desktopCapturer.getSources>>[number];
+type QueryWindowInfoOptions = {
+    excludePids?: number[];
+};
+export declare const getWindowInfoAtPoint: (x: number, y: number, options?: QueryWindowInfoOptions) => Promise<WindowInfo | null>;
 /**
  * Pre-fetch desktop capturer sources before showing any overlay windows.
  * Call this while the screen is still clean, then pass the result to captureWindowAtPoint.
  * Pass excludeSourceIds to filter out known windows (e.g. the mini shell).
  */
 export declare const prefetchWindowSources: (excludeSourceIds?: string[]) => Promise<DesktopSource[]>;
-export declare const captureWindowAtPoint: (x: number, y: number, prefetchedSources?: DesktopSource[]) => Promise<WindowCapture | null>;
+export declare const captureWindowAtPoint: (x: number, y: number, prefetchedSources?: DesktopSource[], options?: QueryWindowInfoOptions) => Promise<WindowCapture | null>;
 export {};
