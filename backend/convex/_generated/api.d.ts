@@ -43,6 +43,7 @@ import type * as data_skills from "../data/skills.js";
 import type * as data_store_packages from "../data/store_packages.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as lib_redaction from "../lib/redaction.js";
 import type * as lib_retry_fetch from "../lib/retry_fetch.js";
 import type * as prompts_browser from "../prompts/browser.js";
 import type * as prompts_builtin_skills from "../prompts/builtin_skills.js";
@@ -107,6 +108,7 @@ declare const fullApi: ApiFromModules<{
   "data/store_packages": typeof data_store_packages;
   events: typeof events;
   http: typeof http;
+  "lib/redaction": typeof lib_redaction;
   "lib/retry_fetch": typeof lib_retry_fetch;
   "prompts/browser": typeof prompts_browser;
   "prompts/builtin_skills": typeof prompts_builtin_skills;

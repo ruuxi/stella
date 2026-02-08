@@ -271,7 +271,8 @@ When the Browser agent returns an API map from investigation, convert it into a 
 
 ## Session Token Forwarding
 When the Browser agent extracts auth tokens from an active session:
-- Pass them to \`IntegrationRequest\` via the \`request.headers\` field for immediate use
+- Pass them to \`IntegrationRequest\` via the \`request.headers\` field for immediate use only
+- Never include raw token/cookie values in task outputs, generated skills, or other persisted artifacts
 - Tokens are ephemeral — not stored in the backend secrets table
 - For persistent access, use \`RequestCredential\` to ask the user to store tokens properly
 
@@ -470,13 +471,23 @@ When asked to investigate or reverse-engineer a web service's API.
    await page.route('**/*', async route => {
      const req = route.request();
      if (req.resourceType() === 'fetch' || req.resourceType() === 'xhr') {
+       const headers = req.headers();
+       const authHeader = headers['authorization'];
+       const cookieHeader = headers['cookie'];
        state.apiCalls.push({
          url: req.url(),
          method: req.method(),
-         headers: Object.fromEntries(Object.entries(req.headers()).filter(([k]) =>
-           ['authorization', 'content-type', 'x-csrf-token', 'cookie'].includes(k.toLowerCase())
-         )),
-         postData: req.postData(),
+         authMeta: {
+           hasAuthorization: Boolean(authHeader),
+           authorizationScheme: authHeader ? authHeader.split(' ')[0] : null,
+           hasCookie: Boolean(cookieHeader),
+           cookieNames: cookieHeader
+             ? cookieHeader.split(';').map((pair) => pair.split('=')[0]?.trim()).filter(Boolean)
+             : [],
+           hasCsrfHeader: Boolean(headers['x-csrf-token']),
+         },
+         contentType: headers['content-type'] ?? null,
+         postDataShape: req.postData() ? 'present' : 'none',
        });
      }
      await route.continue();
@@ -522,8 +533,8 @@ When asked to investigate or reverse-engineer a web service's API.
 ## Session Token Extraction
 1. Check for active session: \`const cookies = await page.context().cookies()\`
 2. Find relevant auth cookies/tokens for the target domain
-3. Include token source and format in the API map's \`auth\` field
-4. The General agent passes tokens to \`IntegrationRequest\` via \`request.headers\` (ephemeral)
+3. Include token source and format in the API map's \`auth\` field (never raw values)
+4. The General agent may pass tokens to \`IntegrationRequest\` via \`request.headers\` for immediate use, but values must not appear in persisted logs/results
 5. Tokens expire when the browser session ends — for long-lived access, General uses RequestCredential
 
 ## Skill Generation Workflow
@@ -701,8 +712,24 @@ Intercept requests instead of scrolling DOM:
 \`\`\`js
 state.requests = []; state.responses = [];
 page.on('request', req => {
-  if (req.url().includes('/api/'))
-    state.requests.push({ url: req.url(), method: req.method(), headers: req.headers() });
+  if (req.url().includes('/api/')) {
+    const headers = req.headers();
+    const authHeader = headers['authorization'];
+    const cookieHeader = headers['cookie'];
+    state.requests.push({
+      url: req.url(),
+      method: req.method(),
+      authMeta: {
+        hasAuthorization: Boolean(authHeader),
+        authorizationScheme: authHeader ? authHeader.split(' ')[0] : null,
+        hasCookie: Boolean(cookieHeader),
+        cookieNames: cookieHeader
+          ? cookieHeader.split(';').map((pair) => pair.split('=')[0]?.trim()).filter(Boolean)
+          : [],
+      },
+      contentType: headers['content-type'] ?? null,
+    });
+  }
 });
 page.on('response', async res => {
   if (res.url().includes('/api/')) {
@@ -719,11 +746,12 @@ state.responses.forEach(r => console.log(r.status, r.url.slice(0, 80)));
 
 Replay API directly (useful for pagination):
 \`\`\`js
-const { url, headers } = state.requests.find(r => r.url.includes('feed'));
-const data = await page.evaluate(async ({ url, headers }) => {
-  const res = await fetch(url, { headers });
+const { url } = state.requests.find(r => r.url.includes('feed'));
+const data = await page.evaluate(async ({ url }) => {
+  // Browser applies current session auth automatically when appropriate.
+  const res = await fetch(url);
   return res.json();
-}, { url, headers });
+}, { url });
 \`\`\`
 
 Clean up: \`page.removeAllListeners('request'); page.removeAllListeners('response');\``,
