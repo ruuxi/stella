@@ -250,9 +250,13 @@ export const createBackendTools = (
   return {
     WebSearch: tool({
       description:
-        "Search the web for up-to-date information using semantic search.",
+        "Search the web for current information.\n\n" +
+        "Usage:\n" +
+        "- Returns up to 6 results with title, URL, and text snippet.\n" +
+        "- Use for questions requiring up-to-date information beyond training data.\n" +
+        "- query should be a natural language search phrase.",
       inputSchema: z.object({
-        query: z.string().min(2),
+        query: z.string().min(2).describe("Search query (natural language)"),
       }),
       execute: async (args) => {
         const apiKey = process.env.EXA_API_KEY;
@@ -303,10 +307,16 @@ export const createBackendTools = (
       },
     }),
     WebFetch: tool({
-      description: "Fetch content from a URL.",
+      description:
+        "Fetch and read content from a URL.\n\n" +
+        "Usage:\n" +
+        "- Fetches the page content, strips HTML tags, and returns plain text.\n" +
+        "- HTTP URLs are auto-upgraded to HTTPS.\n" +
+        "- prompt describes what information you want to extract — it's returned alongside the content for context.\n" +
+        "- Content is truncated to 15,000 characters.",
       inputSchema: z.object({
-        url: z.string(),
-        prompt: z.string(),
+        url: z.string().describe("URL to fetch (HTTP auto-upgrades to HTTPS)"),
+        prompt: z.string().describe("What information you want from this page"),
       }),
       execute: async (args) => {
         const secureUrl = args.url.replace(/^http:/, "https:");
@@ -328,7 +338,12 @@ export const createBackendTools = (
     }),
     IntegrationRequest: tool({
       description:
-        "Send a request to an external integration using a stella-managed public key or a user secret.",
+        "Send an HTTP request to an external API using stored credentials.\n\n" +
+        "Usage:\n" +
+        "- Two modes: \"public\" (uses a Stella-managed env var) or \"private\" (uses a user's secretId from RequestCredential).\n" +
+        "- Auth types: \"bearer\" (default, adds Authorization: Bearer header), \"header\" (custom header), \"query\" (adds to URL params), \"basic\" (HTTP Basic Auth).\n" +
+        "- For ephemeral session tokens (e.g. from browser extraction), pass them directly in request.headers instead of using secretId.\n" +
+        "- Response is returned as JSON with status, ok, and data fields.",
       inputSchema: integrationRequestSchema,
       execute: async (args) => {
         const mode =
@@ -357,9 +372,14 @@ export const createBackendTools = (
     }),
     ActivateSkill: tool({
       description:
-        "Load the full instructions for a skill by its ID. Call this before using a skill.",
+        "Load a skill's full instructions into context.\n\n" +
+        "Usage:\n" +
+        "- Skills are listed in the system prompt by name and description. Call this to load the full markdown instructions.\n" +
+        "- Always activate a skill before following its workflow or using its tools.\n" +
+        "- Returns the skill's complete documentation including required credentials and execution context.\n" +
+        "- If the skill has secretMounts, use SkillBash (not Bash) for commands that need those secrets.",
       inputSchema: z.object({
-        skill_id: z.string().min(1),
+        skill_id: z.string().min(1).describe("Skill ID from the skills listing in the system prompt"),
       }),
       execute: async (args) => {
         const skill = await ctx.runQuery(api.data.skills.getSkillById, {
@@ -390,7 +410,9 @@ export const createBackendTools = (
       },
     }),
     HeartbeatGet: tool({
-      description: "Get the current heartbeat configuration.",
+      description:
+        "Get the current heartbeat configuration for a conversation.\n\n" +
+        "Returns the full config (interval, checklist, active hours, enabled status, last run info) or null if no heartbeat is configured.",
       inputSchema: z.object({
         conversationId: z.string().optional(),
       }),
@@ -402,7 +424,15 @@ export const createBackendTools = (
       },
     }),
     HeartbeatUpsert: tool({
-      description: "Create or update the heartbeat configuration.",
+      description:
+        "Create or update the heartbeat configuration for periodic monitoring.\n\n" +
+        "Usage:\n" +
+        "- One heartbeat per conversation. Creates a new config or updates the existing one.\n" +
+        "- intervalMs: how often to poll (minimum 60000ms = 1 min, default 30 min).\n" +
+        "- checklist: markdown checklist you'll read on each poll. Write as instructions to yourself.\n" +
+        "- activeHours: quiet hours window (start/end in HH:MM, with optional timezone). Heartbeats outside this window are silently skipped.\n" +
+        "- deliver: set to false to run silently without posting to conversation (default true).\n" +
+        "- Only specified fields are changed on update — omitted fields are preserved.",
       inputSchema: z.object({
         conversationId: z.string().optional(),
         enabled: z.boolean().optional(),
@@ -429,7 +459,9 @@ export const createBackendTools = (
       },
     }),
     HeartbeatRun: tool({
-      description: "Trigger an immediate heartbeat run.",
+      description:
+        "Trigger an immediate heartbeat run without waiting for the next interval.\n\n" +
+        "Useful for testing a heartbeat config or when the user says \"check now\".",
       inputSchema: z.object({
         conversationId: z.string().optional(),
       }),
@@ -441,7 +473,9 @@ export const createBackendTools = (
       },
     }),
     CronList: tool({
-      description: "List all cron jobs.",
+      description:
+        "List all cron jobs for the current user.\n\n" +
+        "Returns up to 200 jobs (newest first) with their schedule, payload, status, and next run time.",
       inputSchema: z.object({}),
       execute: async () => {
         const result = await ctx.runQuery(api.scheduling.cron_jobs.list, {});
@@ -449,7 +483,14 @@ export const createBackendTools = (
       },
     }),
     CronAdd: tool({
-      description: "Add a new cron job.",
+      description:
+        "Create a new scheduled cron job.\n\n" +
+        "Usage:\n" +
+        "- Schedule types: { kind: \"at\", atMs } for one-shot, { kind: \"every\", everyMs } for interval, { kind: \"cron\", expr, tz? } for cron expressions.\n" +
+        "- Payload types: { kind: \"systemEvent\", text } for lightweight events, { kind: \"agentTurn\", message } for full agent execution.\n" +
+        "- CONSTRAINT: sessionTarget=\"main\" requires systemEvent payload. sessionTarget=\"isolated\" requires agentTurn payload.\n" +
+        "- deleteAfterRun=true auto-deletes \"at\" jobs after successful execution.\n" +
+        "- Write text/message so it reads naturally at fire time (e.g. \"Reminder: You wanted to call the dentist today.\").",
       inputSchema: z.object({
         name: z.string(),
         schedule: cronScheduleSchema,
@@ -475,7 +516,11 @@ export const createBackendTools = (
       },
     }),
     CronUpdate: tool({
-      description: "Update an existing cron job.",
+      description:
+        "Update an existing cron job.\n\n" +
+        "Usage:\n" +
+        "- Only include fields you want to change in the patch — omitted fields are preserved.\n" +
+        "- Recomputes the next run time on any update.",
       inputSchema: z.object({
         jobId: z.string(),
         patch: cronPatchSchema,
@@ -493,7 +538,7 @@ export const createBackendTools = (
       },
     }),
     CronRemove: tool({
-      description: "Remove a cron job.",
+      description: "Permanently delete a cron job.",
       inputSchema: z.object({
         jobId: z.string(),
       }),
@@ -505,7 +550,9 @@ export const createBackendTools = (
       },
     }),
     CronRun: tool({
-      description: "Trigger an immediate run of a cron job.",
+      description:
+        "Trigger an immediate run of a cron job, ignoring its schedule.\n\n" +
+        "The job executes now regardless of enabled status or next run time.",
       inputSchema: z.object({
         jobId: z.string(),
       }),
@@ -569,7 +616,12 @@ export const createBackendTools = (
     }),
     StoreSearch: tool({
       description:
-        "Search the app store for packages matching a user need. Use when the user expresses a desire for functionality that might exist as a package.",
+        "Search the app store for packages.\n\n" +
+        "Usage:\n" +
+        "- Search proactively when the user asks for something that might exist as a package.\n" +
+        "- Returns up to 10 results with name, packageId, type, description, and install count.\n" +
+        "- Filter by type: skill, mod, theme, canvas, plugin.\n" +
+        "- Suggest packages conversationally — don't force installation.",
       inputSchema: z.object({
         query: z.string().describe("Search query"),
         type: z
@@ -607,7 +659,11 @@ export const createBackendTools = (
     }),
     SelfModInstallBlueprint: tool({
       description:
-        "Install a shared blueprint from the store. Fetches the blueprint and provides reference code and implementation notes for re-implementation.",
+        "Fetch a blueprint from the store for re-implementation.\n\n" +
+        "Usage:\n" +
+        "- Returns the blueprint's description, implementation notes, and reference files.\n" +
+        "- You are NOT copying files — read the blueprint to understand the intent, then reimplement for the current codebase.\n" +
+        "- Use SelfModStart to create a feature, implement with Write/Edit, then SelfModApply.",
       inputSchema: z.object({
         package_id: z.string().min(1).describe("The store package ID to install"),
       }),
@@ -671,7 +727,13 @@ export const createBackendTools = (
     }),
     GenerateApiSkill: tool({
       description:
-        "Generate a reusable API skill from a discovered API map. Converts structured API discovery output into a persistent skill with endpoint documentation, auth configuration, and usage instructions.",
+        "Convert a browser-discovered API map into a reusable skill.\n\n" +
+        "Usage:\n" +
+        "- Called after the Browser agent returns a structured API map from network interception.\n" +
+        "- Creates a persistent skill with endpoint docs, auth config, and usage instructions.\n" +
+        "- The skill can be activated in future conversations via ActivateSkill.\n" +
+        "- canvasHint suggests how to visualize API data: \"table\", \"chart\", \"feed\", \"player\", \"dashboard\".\n" +
+        "- Use IntegrationRequest to actually call the discovered endpoints.",
       inputSchema: z.object({
         service: z.string().describe("Service name (e.g. 'Spotify')"),
         baseUrl: z.string().describe("API base URL"),
