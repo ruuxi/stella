@@ -3,7 +3,7 @@
  *
  * Skills: ~/.stella/skills/{skillId}/
  * Themes: ~/.stella/themes/{themeId}.json
- * Mini-apps: workspace root/{workspaceId}/ (default ~/workspaces, with legacy fallback)
+ * Mini-apps: ~/.stella/apps/{appName}/
  * Plugins: ~/.stella/plugins/{pluginId}/
  */
 
@@ -12,6 +12,7 @@ import os from "os";
 import path from "path";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
+
 import type { ToolResult } from "./tools-types.js";
 
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
@@ -130,7 +131,7 @@ export const handleInstallCanvas = async (
   // Locate create-app.js relative to this file (local-host/ → ../../workspace/)
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const createAppScript = path.resolve(__dirname, "..", "..", "workspace", "create-app.js");
-  const appsDir = path.resolve(__dirname, "..", "..", "workspace", "apps");
+  const appsDir = path.join(os.homedir(), ".stella", "apps");
   const appPath = path.join(appsDir, appName);
 
   try {
@@ -251,8 +252,7 @@ export const handleUninstallPackage = async (
         break;
       }
       case "canvas": {
-        const __dir = path.dirname(fileURLToPath(import.meta.url));
-        const appsRoot = path.resolve(__dir, "..", "..", "workspace", "apps");
+        const appsRoot = path.join(os.homedir(), ".stella", "apps");
         await fs.rm(path.join(appsRoot, localId), {
           recursive: true,
           force: true,
