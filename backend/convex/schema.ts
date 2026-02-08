@@ -403,6 +403,12 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_thread", ["threadId", "stepIndex"]),
+  linq_chats: defineTable({
+    phoneNumber: v.string(),
+    linqChatId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_phone", ["phoneNumber"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
