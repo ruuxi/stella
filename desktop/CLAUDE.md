@@ -76,13 +76,13 @@ See `src/components/CLAUDE.md` for component conventions.
 
 ### Canvas System
 
-Side panel for rendering AI-generated content alongside chat:
-- **State**: `src/app/state/canvas-state.tsx` — `CanvasProvider`, `useCanvas` hook
-- **Panel**: `src/components/canvas/CanvasPanel.tsx` — panel with resize handle, header, close button
-- **6 renderers** in `src/components/canvas/renderers/`: data_table, chart, json_viewer, proxy, panel, appframe
-- **Panel renderer**: Vite-compiled single-file TSX from `workspace/panels/` via dynamic import
+Side panel for rendering interactive content alongside chat:
+- **State**: `src/app/state/canvas-state.tsx` — `CanvasProvider`, `useCanvas` hook, `CanvasPayload = { name, title?, url? }`
+- **Panel**: `src/components/canvas/CanvasPanel.tsx` — panel with resize handle, header, close button. Routes by URL: url present → AppframeRenderer (iframe), absent → PanelRenderer (Vite dynamic import)
+- **2 renderers**: `renderers/panel.tsx` (Vite-compiled single-file TSX from `workspace/panels/`), `renderers/appframe.tsx` (sandboxed iframe for workspace apps)
 - **Workspace apps**: Full Vite+React projects in `~/.stella/apps/`, scaffolded via `workspace/create-app.js`
-- **Event bridge**: `src/hooks/use-canvas-commands.ts` — processes canvas events from Convex
+- **Backend tools**: `OpenCanvas(name, title?, url?)` and `CloseCanvas()` — emit canvas_command events
+- **Event bridge**: `src/hooks/use-canvas-commands.ts` — processes open/close canvas events from Convex
 - **CSS**: `src/styles/canvas-panel.css` + `src/styles/canvas-renderers.css`
 
 ### Store

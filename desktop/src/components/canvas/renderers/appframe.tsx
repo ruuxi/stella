@@ -1,5 +1,4 @@
 import { useRef, useCallback, useState } from 'react'
-import { registerCanvas } from '../canvas-registry'
 import type { CanvasPayload } from '@/app/state/canvas-state'
 
 const AppframeRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
@@ -50,7 +49,5 @@ const AppframeRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
     </div>
   )
 }
-
-registerCanvas('appframe', AppframeRenderer)
 
 export default AppframeRenderer

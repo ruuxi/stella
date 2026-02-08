@@ -3,19 +3,12 @@ import type { ReactNode } from 'react'
 
 // --- Types ---
 
-/** Canvas tiers: data (charts/tables), proxy (facade over external API), app (sandboxed mini-app) */
-export type CanvasTier = 'data' | 'proxy' | 'app'
-
 export type CanvasPayload = {
-  /** Identifies the canvas component to render (e.g. 'spreadsheet', 'chart', 'comfyui-proxy') */
-  component: string
+  /** Name of the panel or app */
+  name: string
   /** Display title for the panel header */
   title?: string
-  /** Which tier this canvas belongs to */
-  tier: CanvasTier
-  /** Structured data passed to the canvas component */
-  data?: unknown
-  /** URL for app-tier canvases (iframe src) */
+  /** Dev server URL for workspace apps (iframe). If absent, loads as panel via dynamic import. */
   url?: string
 }
 
@@ -34,8 +27,6 @@ type CanvasContextValue = {
   closeCanvas: () => void
   /** Update the panel width (called by resize handle) */
   setWidth: (width: number) => void
-  /** Replace just the data in the current canvas without closing/reopening */
-  updateCanvasData: (data: unknown) => void
 }
 
 const DEFAULT_WIDTH = 480
@@ -74,19 +65,9 @@ export const CanvasProvider = ({ children }: { children: ReactNode }) => {
     setState((prev) => ({ ...prev, width: clamped }))
   }, [])
 
-  const updateCanvasData = useCallback((data: unknown) => {
-    setState((prev) => {
-      if (!prev.canvas) return prev
-      return {
-        ...prev,
-        canvas: { ...prev.canvas, data },
-      }
-    })
-  }, [])
-
   const value = useMemo<CanvasContextValue>(
-    () => ({ state, openCanvas, closeCanvas, setWidth, updateCanvasData }),
-    [state, openCanvas, closeCanvas, setWidth, updateCanvasData],
+    () => ({ state, openCanvas, closeCanvas, setWidth }),
+    [state, openCanvas, closeCanvas, setWidth],
   )
 
   return <CanvasContext.Provider value={value}>{children}</CanvasContext.Provider>

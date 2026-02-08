@@ -1,30 +1,10 @@
-import { useCallback, useRef } from 'react'
-import { useCanvas, type CanvasPayload } from '@/app/state/canvas-state'
+import { useCallback, useRef, lazy, Suspense } from 'react'
+import { useCanvas } from '@/app/state/canvas-state'
 import { ResizeHandle } from '@/components/resize-handle'
-import { canvasRegistry } from './canvas-registry'
+import { Spinner } from '@/components/spinner'
 
-// Register all canvas renderers (side-effect imports)
-import './renderers/index'
-
-/** Placeholder shown when no renderer is registered for a canvas type */
-const CanvasPlaceholder = ({ canvas }: { canvas: CanvasPayload }) => (
-  <div className="canvas-placeholder">
-    <div className="canvas-placeholder-icon">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M3 9h18M9 3v18" />
-      </svg>
-    </div>
-    <div className="canvas-placeholder-title">
-      {canvas.component}
-    </div>
-    <div className="canvas-placeholder-description">
-      No renderer registered for this canvas type.
-      <br />
-      Tier: {canvas.tier}
-    </div>
-  </div>
-)
+const PanelRenderer = lazy(() => import('./renderers/panel'))
+const AppframeRenderer = lazy(() => import('./renderers/appframe'))
 
 export const CanvasPanel = () => {
   const { state, closeCanvas, setWidth } = useCanvas()
@@ -41,8 +21,6 @@ export const CanvasPanel = () => {
 
   if (!isOpen || !canvas) return null
 
-  const Renderer = canvasRegistry.get(canvas.component)
-
   return (
     <>
       <ResizeHandle
@@ -57,8 +35,7 @@ export const CanvasPanel = () => {
       >
         <div className="canvas-panel-header">
           <div className="canvas-panel-header-left">
-            <span className="canvas-panel-tier">{canvas.tier}</span>
-            <span className="canvas-panel-title">{canvas.title ?? canvas.component}</span>
+            <span className="canvas-panel-title">{canvas.title ?? canvas.name}</span>
           </div>
           <div className="canvas-panel-header-right">
             <button
@@ -73,7 +50,12 @@ export const CanvasPanel = () => {
           </div>
         </div>
         <div className="canvas-panel-content">
-          {Renderer ? <Renderer canvas={canvas} /> : <CanvasPlaceholder canvas={canvas} />}
+          <Suspense fallback={<div className="canvas-generated-loading"><Spinner size="md" /></div>}>
+            {canvas.url
+              ? <AppframeRenderer canvas={canvas} />
+              : <PanelRenderer canvas={canvas} />
+            }
+          </Suspense>
         </div>
       </div>
     </>

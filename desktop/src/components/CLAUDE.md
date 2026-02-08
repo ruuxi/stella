@@ -68,11 +68,11 @@ Built on Radix UI with custom styling:
 - `WorkingIndicator.tsx` - Loading states
 
 ### Canvas (`canvas/`)
-Side panel system for rendering AI-generated content:
-- `CanvasPanel.tsx` - Main panel with resize handle and header
+Side panel system for rendering interactive content:
+- `CanvasPanel.tsx` - Main panel with resize handle and header. Routes by URL: url → iframe, else → Vite dynamic import
 - `CanvasErrorBoundary.tsx` - Error boundary for renderer crashes
-- `renderers/` - 6 renderers: data_table, chart, json_viewer, proxy, panel, appframe
-- Panel renderer uses Vite dynamic import from `workspace/panels/`
+- `renderers/panel.tsx` - Vite-compiled single-file TSX from `workspace/panels/`
+- `renderers/appframe.tsx` - Sandboxed iframe for workspace apps (`~/.stella/apps/`)
 
 ### Other Subdirectories
 - `background/` - `ShiftingGradient.tsx` animated background
