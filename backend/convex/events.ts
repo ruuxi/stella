@@ -3,6 +3,10 @@ import { mutation, query, internalQuery, internalMutation } from "./_generated/s
 import { v, ConvexError } from "convex/values";
 import { requireConversationOwner, requireUserId } from "./auth";
 import { jsonValueValidator } from "./shared_validators";
+import {
+  sanitizeForToolResultPersistence,
+  sanitizeSensitiveData,
+} from "./lib/redaction";
 
 const eventValidator = v.object({
   _id: v.id("events"),
@@ -21,6 +25,32 @@ const usageSummaryValidator = v.object({
   outputTokens: v.optional(v.number()),
   totalTokens: v.optional(v.number()),
 });
+
+const sanitizeEventPayloadForStorage = (type: string, payload: unknown) => {
+  if (type === "tool_result") {
+    return sanitizeForToolResultPersistence(payload);
+  }
+  return payload;
+};
+
+const sanitizeEventPayloadForRead = (type: string, payload: unknown) => {
+  if (type === "tool_request" || type === "tool_result") {
+    return sanitizeSensitiveData(payload, { redactFreeformStrings: true });
+  }
+  return payload;
+};
+
+const sanitizeEventForRead = <T extends { type: string; payload: unknown } | null>(
+  event: T,
+): T => {
+  if (!event) {
+    return event;
+  }
+  return {
+    ...event,
+    payload: sanitizeEventPayloadForRead(event.type, event.payload ?? {}),
+  } as T;
+};
 
 export const countByConversation = internalQuery({
   args: { conversationId: v.id("conversations") },
@@ -70,7 +100,7 @@ export const getById = internalQuery({
   args: { id: v.id("events") },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    return sanitizeEventForRead(await ctx.db.get(args.id));
   },
 });
 
@@ -219,7 +249,7 @@ export const getToolResultByRequestId = internalQuery({
       .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
       .order("desc")
       .take(20);
-    return (
+    const match =
       results.find((event) => {
         if (event.type !== "tool_result") {
           return false;
@@ -228,8 +258,8 @@ export const getToolResultByRequestId = internalQuery({
           return false;
         }
         return true;
-      }) ?? null
-    );
+      }) ?? null;
+    return sanitizeEventForRead(match);
   },
 });
 
@@ -266,7 +296,7 @@ export const getToolResult = query({
       return null;
     }
 
-    return match;
+    return sanitizeEventForRead(match);
   },
 });
 
@@ -297,9 +327,10 @@ export const appendEvent = mutation({
       throw new ConvexError({ code: "INVALID_ARGUMENT", message: "tool_result requires requestId" });
     }
 
+    const sanitizedPayload = sanitizeEventPayloadForStorage(args.type, args.payload ?? {});
     const payloadTargetDeviceId =
-      args.payload && typeof args.payload === "object"
-        ? (args.payload as { targetDeviceId?: string }).targetDeviceId
+      sanitizedPayload && typeof sanitizedPayload === "object"
+        ? (sanitizedPayload as { targetDeviceId?: string }).targetDeviceId
         : undefined;
     const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceId;
 
@@ -316,12 +347,12 @@ export const appendEvent = mutation({
       deviceId: args.deviceId,
       requestId: args.requestId,
       targetDeviceId: resolvedTargetDeviceId,
-      payload: args.payload ?? {},
+      payload: sanitizedPayload,
     });
 
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
 
-    return await ctx.db.get(eventId);
+    return sanitizeEventForRead(await ctx.db.get(eventId));
   },
 });
 
@@ -345,9 +376,10 @@ export const appendInternalEvent = internalMutation({
       throw new ConvexError({ code: "INVALID_ARGUMENT", message: "tool_result requires requestId" });
     }
 
+    const sanitizedPayload = sanitizeEventPayloadForStorage(args.type, args.payload ?? {});
     const payloadTargetDeviceId =
-      args.payload && typeof args.payload === "object"
-        ? (args.payload as { targetDeviceId?: string }).targetDeviceId
+      sanitizedPayload && typeof sanitizedPayload === "object"
+        ? (sanitizedPayload as { targetDeviceId?: string }).targetDeviceId
         : undefined;
     const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceId;
 
@@ -364,12 +396,12 @@ export const appendInternalEvent = internalMutation({
       deviceId: args.deviceId,
       requestId: args.requestId,
       targetDeviceId: resolvedTargetDeviceId,
-      payload: args.payload ?? {},
+      payload: sanitizedPayload,
     });
 
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
 
-    return await ctx.db.get(eventId);
+    return sanitizeEventForRead(await ctx.db.get(eventId));
   },
 });
 
@@ -387,13 +419,17 @@ export const listEvents = query({
   }),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
-    return await ctx.db
+    const page = await ctx.db
       .query("events")
       .withIndex("by_conversation", (q) =>
         q.eq("conversationId", args.conversationId),
       )
       .order("desc")
       .paginate(args.paginationOpts);
+    return {
+      ...page,
+      page: page.page.map((event) => sanitizeEventForRead(event)),
+    };
   },
 });
 

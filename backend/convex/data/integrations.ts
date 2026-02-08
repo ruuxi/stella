@@ -55,6 +55,33 @@ export const upsertPublicIntegration = mutation({
   },
 });
 
+export const getPublicIntegrationById = query({
+  args: {
+    id: v.string(),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      _id: v.id("integrations_public"),
+      id: v.string(),
+      provider: v.string(),
+      enabled: v.boolean(),
+      usagePolicy: v.string(),
+      updatedAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("integrations_public")
+      .withIndex("by_integration_id", (q) => q.eq("id", args.id))
+      .first();
+    if (!record || !record.enabled) {
+      return null;
+    }
+    return record;
+  },
+});
+
 export const listUserIntegrations = query({
   args: {},
   returns: v.array(

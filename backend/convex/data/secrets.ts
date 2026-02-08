@@ -2,6 +2,7 @@ import { mutation, query, internalQuery, internalMutation } from "../_generated/
 import { v, ConvexError } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
 import type { Id } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
 import { requireUserId } from "../auth";
 import { optionalJsonValueValidator } from "../shared_validators";
 
@@ -13,6 +14,62 @@ const secretPublicFields = {
   createdAt: v.number(),
   updatedAt: v.number(),
   lastUsedAt: v.optional(v.number()),
+};
+
+const SECRET_READ_ALLOWED_TOOLS = new Set(["SkillBash"]);
+const SECRET_READ_REQUEST_MAX_AGE_MS = 5 * 60 * 1000;
+
+const assertSecretReadToolContext = async (
+  ctx: QueryCtx,
+  ownerId: string,
+  args: { requestId: string; toolName: string; deviceId?: string },
+) => {
+  if (!SECRET_READ_ALLOWED_TOOLS.has(args.toolName)) {
+    throw new ConvexError({
+      code: "UNAUTHORIZED",
+      message: `Secret plaintext access is not allowed for tool "${args.toolName}".`,
+    });
+  }
+
+  const now = Date.now();
+  const events = await ctx.db
+    .query("events")
+    .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
+    .order("desc")
+    .take(20);
+
+  const requestEvent =
+    events.find((event) => {
+      if (event.type !== "tool_request") {
+        return false;
+      }
+      if (now - event.timestamp > SECRET_READ_REQUEST_MAX_AGE_MS) {
+        return false;
+      }
+      if (args.deviceId && event.targetDeviceId !== args.deviceId) {
+        return false;
+      }
+      const payload =
+        event.payload && typeof event.payload === "object"
+          ? (event.payload as { toolName?: string })
+          : {};
+      return payload.toolName === args.toolName;
+    }) ?? null;
+
+  if (!requestEvent) {
+    throw new ConvexError({
+      code: "UNAUTHORIZED",
+      message: "Secret plaintext access requires an active matching tool request.",
+    });
+  }
+
+  const conversation = await ctx.db.get(requestEvent.conversationId);
+  if (!conversation || conversation.ownerId !== ownerId) {
+    throw new ConvexError({
+      code: "UNAUTHORIZED",
+      message: "Secret plaintext access denied for this conversation context.",
+    });
+  }
 };
 
 export const createSecret = mutation({
@@ -186,6 +243,9 @@ export const getSecretHandle = query({
 export const getSecretValueForProvider = query({
   args: {
     provider: v.string(),
+    requestId: v.string(),
+    toolName: v.string(),
+    deviceId: v.optional(v.string()),
   },
   returns: v.union(
     v.null(),
@@ -198,6 +258,11 @@ export const getSecretValueForProvider = query({
   ),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await assertSecretReadToolContext(ctx, ownerId, {
+      requestId: args.requestId,
+      toolName: args.toolName,
+      deviceId: args.deviceId,
+    });
     const record = await ctx.db
       .query("secrets")
       .withIndex("by_owner_and_provider_and_updated", (q) =>
@@ -221,6 +286,9 @@ export const getSecretValueForProvider = query({
 export const getSecretValueById = query({
   args: {
     secretId: v.id("secrets"),
+    requestId: v.string(),
+    toolName: v.string(),
+    deviceId: v.optional(v.string()),
   },
   returns: v.union(
     v.null(),
@@ -233,6 +301,11 @@ export const getSecretValueById = query({
   ),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    await assertSecretReadToolContext(ctx, ownerId, {
+      requestId: args.requestId,
+      toolName: args.toolName,
+      deviceId: args.deviceId,
+    });
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== ownerId) {
       return null;

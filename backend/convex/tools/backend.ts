@@ -176,6 +176,128 @@ const runIntegrationRequest = async (
   }
 };
 
+type PublicIntegrationPolicy = {
+  envVar: string;
+  allowedHosts: string[];
+};
+
+const normalizeHostPattern = (value: string) =>
+  value.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
+
+const parseAllowedHosts = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === "string" ? entry : String(entry)))
+      .map(normalizeHostPattern)
+      .filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map(normalizeHostPattern)
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const parsePublicPolicyCandidate = (value: unknown): PublicIntegrationPolicy | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const envVar =
+    (typeof record.envVar === "string" && record.envVar.trim()) ||
+    (typeof record.publicKeyEnv === "string" && record.publicKeyEnv.trim()) ||
+    "";
+  if (!envVar) {
+    return null;
+  }
+
+  const allowedHosts = parseAllowedHosts(
+    record.allowedHosts ?? record.hosts ?? record.domains,
+  );
+  if (allowedHosts.length === 0) {
+    return null;
+  }
+
+  return { envVar, allowedHosts };
+};
+
+const parsePublicPoliciesEnv = () => {
+  const raw = process.env.STELLA_PUBLIC_INTEGRATION_RULES?.trim();
+  if (!raw) {
+    return {} as Partial<Record<string, PublicIntegrationPolicy>>;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const result: Partial<Record<string, PublicIntegrationPolicy>> = {};
+    for (const [provider, candidate] of Object.entries(parsed)) {
+      const normalized = provider.trim().toLowerCase();
+      if (!normalized) continue;
+      const policy = parsePublicPolicyCandidate(candidate);
+      if (policy) {
+        result[normalized] = policy;
+      }
+    }
+    return result;
+  } catch {
+    return {} as Partial<Record<string, PublicIntegrationPolicy>>;
+  }
+};
+
+const publicPoliciesFromEnv = parsePublicPoliciesEnv();
+
+const hostAllowed = (hostname: string, allowedHosts: string[]) => {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) return false;
+
+  return allowedHosts.some((pattern) => {
+    const host = normalizeHostPattern(pattern);
+    if (!host) return false;
+    if (host.startsWith("*.")) {
+      const suffix = host.slice(2);
+      if (!suffix) return false;
+      return normalized === suffix || normalized.endsWith(`.${suffix}`);
+    }
+    return normalized === host;
+  });
+};
+
+const parseLegacyPublicPolicy = (envName: string): PublicIntegrationPolicy | null => {
+  const allowedEnvsRaw = process.env.STELLA_PUBLIC_ENV_ALLOWLIST ?? "";
+  const allowlistedEnvs = new Set(
+    allowedEnvsRaw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+  if (!allowlistedEnvs.has(envName)) {
+    return null;
+  }
+
+  const hostEnvKey = `STELLA_PUBLIC_ENV_HOSTS_${envName.replace(/[^A-Za-z0-9]/g, "_")}`;
+  const allowedHosts = parseAllowedHosts(process.env[hostEnvKey] ?? "");
+  if (allowedHosts.length === 0) {
+    return null;
+  }
+
+  return {
+    envVar: envName,
+    allowedHosts,
+  };
+};
+
+const parsePublicPolicyFromUsagePolicy = (usagePolicy: string): PublicIntegrationPolicy | null => {
+  try {
+    const parsed = JSON.parse(usagePolicy) as unknown;
+    return parsePublicPolicyCandidate(parsed);
+  } catch {
+    return null;
+  }
+};
+
 export const createBackendTools = (
   ctx: ActionCtx,
   options: ToolOptions,
@@ -340,7 +462,7 @@ export const createBackendTools = (
       description:
         "Send an HTTP request to an external API using stored credentials.\n\n" +
         "Usage:\n" +
-        "- Two modes: \"public\" (uses a Stella-managed env var) or \"private\" (uses a user's secretId from RequestCredential).\n" +
+        "- Two modes: \"public\" (uses a provider-scoped Stella-managed env var + allowed hosts policy) or \"private\" (uses a user's secretId from RequestCredential).\n" +
         "- Auth types: \"bearer\" (default, adds Authorization: Bearer header), \"header\" (custom header), \"query\" (adds to URL params), \"basic\" (HTTP Basic Auth).\n" +
         "- For ephemeral session tokens (e.g. from browser extraction), pass them directly in request.headers instead of using secretId.\n" +
         "- Response is returned as JSON with status, ok, and data fields.",
@@ -350,14 +472,52 @@ export const createBackendTools = (
           args.mode ?? (args.secretId ? "private" : args.publicKeyEnv ? "public" : "private");
 
         if (mode === "public") {
-          const envName = args.publicKeyEnv?.trim();
-          if (!envName) {
-            return "IntegrationRequest requires publicKeyEnv when mode is public.";
+          let requestUrl: URL;
+          try {
+            requestUrl = new URL(args.request.url);
+          } catch {
+            return "IntegrationRequest requires a valid URL.";
           }
-          const key = process.env[envName];
+
+          const providerKey = args.provider.trim().toLowerCase();
+          let policy = publicPoliciesFromEnv[providerKey] ?? null;
+
+          if (!policy) {
+            const publicIntegration = await ctx.runQuery(
+              api.data.integrations.getPublicIntegrationById,
+              { id: args.provider },
+            );
+            if (publicIntegration?.usagePolicy) {
+              policy = parsePublicPolicyFromUsagePolicy(publicIntegration.usagePolicy);
+            }
+          }
+
+          const requestedEnvName = args.publicKeyEnv?.trim();
+          if (!policy && requestedEnvName) {
+            policy = parseLegacyPublicPolicy(requestedEnvName);
+          }
+
+          if (!policy) {
+            return `Public integration policy is not configured for provider "${args.provider}". Configure STELLA_PUBLIC_INTEGRATION_RULES or an allowlisted legacy env policy.`;
+          }
+
+          if (
+            requestedEnvName &&
+            requestedEnvName.length > 0 &&
+            requestedEnvName !== policy.envVar
+          ) {
+            return `publicKeyEnv does not match the configured env for provider "${args.provider}".`;
+          }
+
+          if (!hostAllowed(requestUrl.hostname, policy.allowedHosts)) {
+            return `Public integration host "${requestUrl.hostname}" is not allowed for provider "${args.provider}".`;
+          }
+
+          const key = process.env[policy.envVar];
           if (!key) {
-            return `Public integration is missing env var: ${envName}.`;
+            return `Public integration is missing env var: ${policy.envVar}.`;
           }
+
           return await runIntegrationRequest(args, key);
         }
 
