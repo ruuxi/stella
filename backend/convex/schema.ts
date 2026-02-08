@@ -302,7 +302,8 @@ export default defineSchema({
   bridge_sessions: defineTable({
     ownerId: v.string(),
     provider: v.string(),
-    spriteName: v.string(),
+    spriteName: v.optional(v.string()),
+    mode: v.optional(v.string()),
     status: v.string(),
     webhookSecret: v.string(),
     authState: bridgeAuthStateValidator,
@@ -319,6 +320,15 @@ export default defineSchema({
     .index("by_owner_provider", ["ownerId", "provider"])
     .index("by_sprite", ["spriteName", "provider"])
     .index("by_next_wake", ["nextWakeAtMs"]),
+  bridge_outbound: defineTable({
+    sessionId: v.id("bridge_sessions"),
+    ownerId: v.string(),
+    provider: v.string(),
+    externalUserId: v.string(),
+    text: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_session", ["sessionId", "createdAt"]),
   store_packages: defineTable({
     packageId: v.string(),
     name: v.string(),

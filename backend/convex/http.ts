@@ -1299,6 +1299,46 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
+// Bridge Poll Endpoint (bridge.js polls for outbound replies)
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/bridge/poll",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = request.headers.get("x-bridge-secret") ?? "";
+
+    let body: { provider?: string; ownerId?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    if (!body.ownerId || !body.provider) {
+      return new Response("Invalid payload", { status: 400 });
+    }
+
+    const session = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
+      ownerId: body.ownerId,
+      provider: body.provider,
+    });
+    if (!session || !constantTimeEqual(secret, session.webhookSecret)) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const messages = await ctx.runMutation(internal.channels.bridge_outbound.claim, {
+      sessionId: session._id,
+    });
+
+    return new Response(JSON.stringify({ messages }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// ---------------------------------------------------------------------------
 // Bridge Webhook (WhatsApp, Signal — persistent processes in Sprites)
 // ---------------------------------------------------------------------------
 
