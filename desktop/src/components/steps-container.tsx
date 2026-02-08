@@ -35,10 +35,13 @@ function StepItemDisplay({ step, hideDetails }: { step: StepItem; hideDetails?: 
       case "list":
         return "🔍";
       case "bash":
+      case "killshell":
         return "⌨️";
       case "webfetch":
         return "🌐";
-      case "task":
+      case "taskcreate":
+      case "taskoutput":
+      case "taskcancel":
         return "🤖";
       default:
         return "🔧";
@@ -62,10 +65,16 @@ function StepItemDisplay({ step, hideDetails }: { step: StepItem; hideDetails?: 
         return "List";
       case "bash":
         return "Terminal";
+      case "killshell":
+        return "Kill Shell";
       case "webfetch":
         return "Fetch";
-      case "task":
+      case "taskcreate":
         return "Task";
+      case "taskoutput":
+        return "Task Output";
+      case "taskcancel":
+        return "Task Cancel";
       default:
         return tool;
     }

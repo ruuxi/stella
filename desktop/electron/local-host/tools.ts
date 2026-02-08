@@ -37,6 +37,7 @@ import { handleGlob, handleGrep } from "./tools-search.js";
 import {
   createShellState,
   handleBash,
+  handleKillShell,
   handleSkillBash,
   type ShellState,
 } from "./tools-shell.js";
@@ -172,6 +173,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
 
     // Shell tools
     Bash: (args, context) => handleBash(shellState, args, context),
+    KillShell: (args) => handleKillShell(shellState, args),
     SkillBash: (args) => handleSkillBash(shellState, args),
 
     // State tools
