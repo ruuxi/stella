@@ -628,184 +628,55 @@ export const createBackendTools = (
         }
       },
     }),
-    Canvas: tool({
+    OpenCanvas: tool({
       description:
-        "Control the canvas panel to display rich content (charts, tables, apps, proxies). Actions: open (display content), close (hide panel), update (change data), resize (set width), list (available components), save (persist state), restore (load saved state).",
+        "Display content in the canvas side panel. For panels (single-file TSX), write the file first then call this. For workspace apps, start the dev server first then pass the url.",
       inputSchema: z.object({
-        action: z.enum(["open", "close", "update", "resize", "list", "save", "restore"]),
-        component: z
+        name: z
           .string()
-          .optional()
           .describe(
-            "Canvas component key: 'panel' (Vite-compiled TSX panel), 'appframe' (workspace app iframe), 'proxy' (external URL), 'data-table', 'chart', 'json-viewer'. Deprecated: 'generated' (use 'panel'), 'webview' (use 'appframe').",
+            "Name of the panel or app. For panels, matches the file at frontend/workspace/panels/{name}.tsx. For apps, matches the directory at ~/.stella/apps/{name}/.",
           ),
-        title: z.string().optional().describe("Panel header title"),
-        tier: z
-          .enum(["data", "proxy", "app"])
-          .optional()
-          .describe("Canvas tier"),
-        data: z.any().optional().describe("Structured data for the canvas"),
+        title: z.string().optional().describe("Panel header title. Defaults to name."),
         url: z
           .string()
           .optional()
-          .describe("URL for proxy/app tier canvases"),
-        width: z.number().optional().describe("Panel width in pixels"),
+          .describe(
+            "Dev server URL for workspace apps (e.g. http://localhost:5180). If provided, renders in an iframe. If omitted, loads as a panel via Vite dynamic import.",
+          ),
       }),
       execute: async (args) => {
         const conversationId = options.conversationId;
         if (!conversationId) {
-          return "Canvas requires a conversation context.";
+          return "OpenCanvas requires a conversation context.";
         }
-
-        switch (args.action) {
-          case "open": {
-            if (!args.component) {
-              return "Canvas open requires a component key.";
-            }
-            if (!args.tier) {
-              return "Canvas open requires a tier (data, proxy, or app).";
-            }
-            await ctx.runMutation(internal.events.appendInternalEvent, {
-              conversationId: conversationId as Id<"conversations">,
-              type: "canvas_command",
-              payload: {
-                action: "open",
-                component: args.component,
-                title: args.title ?? args.component,
-                tier: args.tier,
-                ...(args.data !== undefined ? { data: args.data } : {}),
-                ...(args.url ? { url: args.url } : {}),
-              },
-            });
-            return `Canvas opened: ${args.component} (${args.tier})`;
-          }
-          case "close": {
-            await ctx.runMutation(internal.events.appendInternalEvent, {
-              conversationId: conversationId as Id<"conversations">,
-              type: "canvas_command",
-              payload: { action: "close" },
-            });
-            return "Canvas closed.";
-          }
-          case "update": {
-            if (args.data === undefined) {
-              return "Canvas update requires data.";
-            }
-            await ctx.runMutation(internal.events.appendInternalEvent, {
-              conversationId: conversationId as Id<"conversations">,
-              type: "canvas_command",
-              payload: { action: "update", data: args.data },
-            });
-            return "Canvas updated.";
-          }
-          case "resize": {
-            if (args.width === undefined) {
-              return "Canvas resize requires a width in pixels.";
-            }
-            await ctx.runMutation(internal.events.appendInternalEvent, {
-              conversationId: conversationId as Id<"conversations">,
-              type: "canvas_command",
-              payload: { action: "resize", width: args.width },
-            });
-            return `Canvas resized to ${args.width}px.`;
-          }
-          case "list": {
-            return JSON.stringify(
-              [
-                {
-                  key: "data-table",
-                  tier: "data",
-                  description: "Sortable table from JSON array",
-                },
-                {
-                  key: "chart",
-                  tier: "data",
-                  description:
-                    "Charts via recharts (bar, line, pie, area, scatter)",
-                },
-                {
-                  key: "json-viewer",
-                  tier: "data",
-                  description: "Structured JSON tree viewer",
-                },
-                {
-                  key: "proxy",
-                  tier: "proxy",
-                  description: "External app iframe or API facade",
-                },
-                {
-                  key: "panel",
-                  tier: "app",
-                  description:
-                    "Single-file TSX panel compiled by Vite on demand. Write the component to frontend/workspace/panels/{name}.tsx using Write, then open with data.file set to the filename. Can import any installed dep (react, radix, recharts, tailwind, @/hooks/*).",
-                },
-                {
-                  key: "appframe",
-                  tier: "app",
-                  description:
-                    "Iframe for workspace apps. Create with: Bash('node frontend/workspace/create-app.js my-app') which scaffolds to ~/.stella/apps/my-app/, then write/edit files, run 'bun install' and 'bunx vite --port 5180' via Bash (run_in_background), then open with url set to the dev server URL.",
-                },
-              ],
-              null,
-              2,
-            );
-          }
-          case "save": {
-            const ownerId = options.ownerId;
-            if (!ownerId) {
-              return "Canvas save requires an authenticated owner.";
-            }
-            if (!args.component) {
-              return "Canvas save requires a component key.";
-            }
-            if (!args.tier) {
-              return "Canvas save requires a tier.";
-            }
-            await ctx.runMutation(internal.data.canvas_states.save, {
-              ownerId,
-              conversationId: conversationId as Id<"conversations">,
-              component: args.component,
-              tier: args.tier,
-              title: args.title,
-              data: args.data,
-              url: args.url,
-              width: args.width,
-            });
-            return `Canvas state saved for ${args.component}.`;
-          }
-          case "restore": {
-            const saved = await ctx.runQuery(
-              internal.data.canvas_states.getForConversationInternal,
-              {
-                conversationId: conversationId as Id<"conversations">,
-              },
-            );
-            if (!saved) {
-              return "No saved canvas state found for this conversation.";
-            }
-            // Re-open the canvas with the saved state
-            await ctx.runMutation(internal.events.appendInternalEvent, {
-              conversationId: conversationId as Id<"conversations">,
-              type: "canvas_command",
-              payload: {
-                action: "open",
-                component: saved.component,
-                title: saved.title ?? saved.component,
-                tier: saved.tier,
-                ...(saved.data !== undefined ? { data: saved.data } : {}),
-                ...(saved.url ? { url: saved.url } : {}),
-              },
-            });
-            if (saved.width) {
-              await ctx.runMutation(internal.events.appendInternalEvent, {
-                conversationId: conversationId as Id<"conversations">,
-                type: "canvas_command",
-                payload: { action: "resize", width: saved.width },
-              });
-            }
-            return `Canvas restored: ${saved.component} (${saved.tier})`;
-          }
+        await ctx.runMutation(internal.events.appendInternalEvent, {
+          conversationId: conversationId as Id<"conversations">,
+          type: "canvas_command",
+          payload: {
+            action: "open",
+            name: args.name,
+            title: args.title ?? args.name,
+            ...(args.url ? { url: args.url } : {}),
+          },
+        });
+        return `Canvas opened: ${args.name}`;
+      },
+    }),
+    CloseCanvas: tool({
+      description: "Close the canvas side panel.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const conversationId = options.conversationId;
+        if (!conversationId) {
+          return "CloseCanvas requires a conversation context.";
         }
+        await ctx.runMutation(internal.events.appendInternalEvent, {
+          conversationId: conversationId as Id<"conversations">,
+          type: "canvas_command",
+          payload: { action: "close" },
+        });
+        return "Canvas closed.";
       },
     }),
     StoreSearch: tool({

@@ -95,12 +95,12 @@ App store:
 
 | Agent | Purpose | Key Tools |
 |-------|---------|-----------|
-| `orchestrator` | Default entry point, delegates to subagents | Task, Scheduler, Canvas |
+| `orchestrator` | Default entry point, delegates to subagents | Task, Scheduler, OpenCanvas, CloseCanvas |
 | `memory` | Memory search and retrieval | MemorySearch, Read |
-| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch, Canvas, GenerateApiSkill, store tools |
-| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, Canvas, SelfMod* tools |
+| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch, OpenCanvas, CloseCanvas, GenerateApiSkill, store tools |
+| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, OpenCanvas, CloseCanvas, SelfMod* tools |
 | `explore` | Lightweight read-only exploration | Read, Glob, Grep, WebFetch, WebSearch |
-| `browser` | Browser automation | Bash, Read, Canvas |
+| `browser` | Browser automation | Bash, Read, OpenCanvas, CloseCanvas |
 
 Per-agent model configuration in `agent/model.ts`.
 
@@ -108,7 +108,7 @@ Per-agent model configuration in `agent/model.ts`.
 
 Tools are assembled in `tools/index.ts`:
 
-1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, Scheduler, Canvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint
+1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, Scheduler, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint
 2. **Cloud tools** (when no local device, but cloud sandbox available): Bash, Read, Write, Edit, Glob, Grep, SqliteQuery via Sprites
 3. **Device tools** (`agent/device_tools.ts`): When Electron app is running — 22+ tools executed locally via request/response through the events table
 

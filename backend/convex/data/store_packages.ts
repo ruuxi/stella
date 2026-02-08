@@ -234,38 +234,7 @@ export const seed = mutation({
       description: string;
       tags: string[];
       version: string;
-    }> = [
-      {
-        packageId: "canvas-data-table",
-        name: "Data Table",
-        type: "canvas",
-        author: "Stella",
-        description:
-          "Display tabular data with sorting, filtering, and CSV export.",
-        tags: ["data", "table", "csv"],
-        version: "1.0.0",
-      },
-      {
-        packageId: "canvas-chart",
-        name: "Charts",
-        type: "canvas",
-        author: "Stella",
-        description:
-          "Visualize data with bar, line, pie, area, and scatter charts.",
-        tags: ["data", "chart", "visualization"],
-        version: "1.0.0",
-      },
-      {
-        packageId: "canvas-json-viewer",
-        name: "JSON Viewer",
-        type: "canvas",
-        author: "Stella",
-        description:
-          "Explore JSON data with a collapsible tree viewer.",
-        tags: ["data", "json", "viewer"],
-        version: "1.0.0",
-      },
-    ];
+    }> = [];
 
     for (const pkg of seedPackages) {
       const existing = await ctx.db

@@ -37,5 +37,6 @@ export const BASE_TOOL_NAMES = [
   "MediaGenerate",
   "MemorySearch",
   "ActivateSkill",
-  "Canvas",
+  "OpenCanvas",
+  "CloseCanvas",
 ] as const;
