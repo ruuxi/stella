@@ -97,7 +97,7 @@ App store:
 |-------|---------|-----------|
 | `orchestrator` | Default entry point, delegates to subagents | Task, Scheduler, Canvas |
 | `memory` | Memory search and retrieval | MemorySearch, Read |
-| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch, Canvas, GenerateApiSkill, workspace tools, store tools |
+| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch, Canvas, GenerateApiSkill, store tools |
 | `self_mod` | Platform self-modification | Read, Write, Edit, Bash, Canvas, SelfMod* tools |
 | `explore` | Lightweight read-only exploration | Read, Glob, Grep, WebFetch, WebSearch |
 | `browser` | Browser automation | Bash, Read, Canvas |

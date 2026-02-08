@@ -244,6 +244,7 @@ http.route({
     }
 
     await ctx.runMutation(api.agent.agents.ensureBuiltins, {});
+    await ctx.runMutation(api.data.skills.ensureBuiltinSkills, {});
 
     const agentType =
       body.agent === "self_mod"
