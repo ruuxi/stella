@@ -14,6 +14,7 @@ import { resolveStellaHome } from './local-host/stella-home.js';
 import { collectBrowserData, coreMemoryExists, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
 import { collectAllSignals } from './local-host/collect-all.js';
 import { handleInstallCanvas, handleInstallPlugin, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from './local-host/tools_store.js';
+import * as bridgeManager from './local-host/bridge_manager.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -1106,6 +1107,19 @@ app.whenReady().then(async () => {
     ipcMain.handle('store:uninstall', async (_event, payload) => {
         return unwrapStoreResult(await handleUninstallPackage(payload));
     });
+    // Bridge manager IPC handlers
+    ipcMain.handle('bridge:deploy', async (_event, payload) => {
+        return bridgeManager.deploy(payload);
+    });
+    ipcMain.handle('bridge:start', async (_event, payload) => {
+        return bridgeManager.start(payload.provider);
+    });
+    ipcMain.handle('bridge:stop', async (_event, payload) => {
+        return bridgeManager.stop(payload.provider);
+    });
+    ipcMain.handle('bridge:status', async (_event, payload) => {
+        return { running: bridgeManager.isRunning(payload.provider) };
+    });
     ipcMain.handle('theme:listInstalled', async () => {
         const { promises: fs } = await import('fs');
         const os = await import('os');
@@ -1152,6 +1166,7 @@ app.on('window-all-closed', () => {
 });
 app.on('before-quit', () => {
     isQuitting = true;
+    bridgeManager.stopAll();
     cleanupSelectedTextProcess();
     destroyModifierOverlay();
 });

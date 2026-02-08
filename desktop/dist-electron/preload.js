@@ -137,4 +137,9 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     storeUninstall: (payload) => electron_1.ipcRenderer.invoke('store:uninstall', payload),
     // Theme loading from installed themes
     listInstalledThemes: () => electron_1.ipcRenderer.invoke('theme:listInstalled'),
+    // Bridge manager
+    bridgeDeploy: (payload) => electron_1.ipcRenderer.invoke('bridge:deploy', payload),
+    bridgeStart: (payload) => electron_1.ipcRenderer.invoke('bridge:start', payload),
+    bridgeStop: (payload) => electron_1.ipcRenderer.invoke('bridge:stop', payload),
+    bridgeStatus: (payload) => electron_1.ipcRenderer.invoke('bridge:status', payload),
 });
