@@ -50,7 +50,7 @@ export const CanvasPanel = () => {
           </div>
         </div>
         <div className="canvas-panel-content">
-          <Suspense fallback={<div className="canvas-generated-loading"><Spinner size="md" /></div>}>
+          <Suspense fallback={<div className="canvas-vite-loading"><Spinner size="md" /></div>}>
             {canvas.url
               ? <AppframeRenderer canvas={canvas} />
               : <PanelRenderer canvas={canvas} />

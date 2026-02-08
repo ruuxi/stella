@@ -112,10 +112,8 @@ export const FullShell = () => {
       : "skip",
   ) as
     | {
-        component: string;
+        name: string;
         title?: string;
-        tier: "data" | "proxy" | "app";
-        data?: unknown;
         url?: string;
         width?: number;
       }
@@ -143,10 +141,8 @@ export const FullShell = () => {
     }
 
     openCanvas({
-      component: savedCanvasState.component,
+      name: savedCanvasState.name,
       title: savedCanvasState.title,
-      tier: savedCanvasState.tier,
-      data: savedCanvasState.data,
       url: savedCanvasState.url,
     });
 
