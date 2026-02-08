@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { cpSync, readFileSync, writeFileSync } from 'fs'
+import { cpSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { homedir } from 'os'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const name = process.argv[2]
@@ -11,7 +12,9 @@ if (!name) {
 }
 
 const src = join(__dirname, 'apps', '_template')
-const dest = join(__dirname, 'apps', name)
+const appsDir = join(homedir(), '.stella', 'apps')
+mkdirSync(appsDir, { recursive: true })
+const dest = join(appsDir, name)
 
 cpSync(src, dest, { recursive: true })
 
