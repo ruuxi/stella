@@ -26,6 +26,7 @@ import { useOnboardingOverlay } from "./OnboardingOverlay";
 import { useDiscoveryFlow } from "./DiscoveryFlow";
 import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
+import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 
 const StoreView = lazy(() => import("./StoreView"));
 
@@ -42,6 +43,9 @@ export const FullShell = () => {
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [runtimeModeDialogOpen, setRuntimeModeDialogOpen] = useState(false);
+
+  // Auto-reconnect local bridges on launch
+  useBridgeAutoReconnect();
 
   // Onboarding
   const onboarding = useOnboardingOverlay();

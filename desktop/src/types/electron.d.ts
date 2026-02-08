@@ -221,6 +221,14 @@ export type ElectronApi = {
   // Theme loading from installed themes
   listInstalledThemes: () => Promise<Array<{ id: string; name: string; light: Record<string, string>; dark: Record<string, string> }>>
 
+  // Bridge manager
+  bridgeDeploy: (payload: {
+    provider: string; code: string; config: string; dependencies: string
+  }) => Promise<{ ok: boolean; error?: string }>
+  bridgeStart: (payload: { provider: string }) => Promise<{ ok: boolean; error?: string }>
+  bridgeStop: (payload: { provider: string }) => Promise<{ ok: boolean }>
+  bridgeStatus: (payload: { provider: string }) => Promise<{ running: boolean }>
+
 }
 
 declare global {

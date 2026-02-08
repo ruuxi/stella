@@ -41,6 +41,7 @@ import {
   handleInstallTheme,
   handleUninstallPackage,
 } from './local-host/tools_store.js'
+import * as bridgeManager from './local-host/bridge_manager.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1338,6 +1339,25 @@ app.whenReady().then(async () => {
     return unwrapStoreResult(await handleUninstallPackage(payload as unknown as Record<string, unknown>))
   })
 
+  // Bridge manager IPC handlers
+  ipcMain.handle('bridge:deploy', async (_event, payload: {
+    provider: string; code: string; config: string; dependencies: string
+  }) => {
+    return bridgeManager.deploy(payload)
+  })
+
+  ipcMain.handle('bridge:start', async (_event, payload: { provider: string }) => {
+    return bridgeManager.start(payload.provider)
+  })
+
+  ipcMain.handle('bridge:stop', async (_event, payload: { provider: string }) => {
+    return bridgeManager.stop(payload.provider)
+  })
+
+  ipcMain.handle('bridge:status', async (_event, payload: { provider: string }) => {
+    return { running: bridgeManager.isRunning(payload.provider) }
+  })
+
   ipcMain.handle('theme:listInstalled', async () => {
     const { promises: fs } = await import('fs')
     const os = await import('os')
@@ -1385,6 +1405,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true
+  bridgeManager.stopAll()
   cleanupSelectedTextProcess()
   destroyModifierOverlay()
 })
