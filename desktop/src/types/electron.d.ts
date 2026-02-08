@@ -221,11 +221,6 @@ export type ElectronApi = {
   // Theme loading from installed themes
   listInstalledThemes: () => Promise<Array<{ id: string; name: string; light: Record<string, string>; dark: Record<string, string> }>>
 
-  // Canvas file reading — generated renderer reads source from ~/.stella/canvas/
-  readCanvasFile: (filename: string) => Promise<{ content?: string; error?: string }>
-  watchCanvasFile: (filename: string) => Promise<{ ok: boolean }>
-  unwatchCanvasFile: (filename: string) => Promise<{ ok: boolean }>
-  onCanvasFileChanged: (callback: (filename: string) => void) => () => void
 }
 
 declare global {

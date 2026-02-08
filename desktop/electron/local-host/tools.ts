@@ -50,12 +50,6 @@ import {
 } from "./tools-state.js";
 import { handleAskUser, handleRequestCredential, type UserToolsConfig } from "./tools-user.js";
 import {
-  handleCreateWorkspace,
-  handleStartDevServer,
-  handleStopDevServer,
-  handleListWorkspaces,
-} from "./tools_workspace.js";
-import {
   handleSelfModStart,
   handleSelfModApply,
   handleSelfModRevert,
@@ -193,12 +187,6 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
 
     // Media tools (not yet implemented)
     MediaGenerate: async () => notConfigured("MediaGenerate"),
-
-    // Workspace tools
-    CreateWorkspace: (args) => handleCreateWorkspace(args),
-    StartDevServer: (args) => handleStartDevServer(args),
-    StopDevServer: (args) => handleStopDevServer(args),
-    ListWorkspaces: () => handleListWorkspaces(),
 
     // Self-mod tools
     SelfModStart: (args, context) => handleSelfModStart(args, context, frontendRoot),
