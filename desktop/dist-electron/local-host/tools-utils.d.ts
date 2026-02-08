@@ -5,6 +5,7 @@ export declare const MAX_OUTPUT = 30000;
 export declare const MAX_FILE_BYTES = 1000000;
 export declare const log: (...args: unknown[]) => void;
 export declare const logError: (...args: unknown[]) => void;
+export declare const sanitizeForLogs: (value: unknown) => unknown;
 export declare const ensureAbsolutePath: (filePath: string) => {
     ok: false;
     error: string;

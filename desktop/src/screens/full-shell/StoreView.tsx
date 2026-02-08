@@ -26,6 +26,26 @@ const TYPE_ICONS: Record<string, string> = {
   mod: "\u2699\uFE0F",
 };
 
+const TYPE_GRADIENTS: Record<string, string> = {
+  skill: "linear-gradient(135deg, #ff6b35 0%, #f7c948 100%)",
+  canvas: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  plugin: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+  theme: "linear-gradient(135deg, #ee5a6f 0%, #f093fb 100%)",
+  mod: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+};
+
+function getAuthorColor(name: string): string {
+  const colors = [
+    "#e74c3c", "#e67e22", "#2ecc71", "#1abc9c",
+    "#3498db", "#9b59b6", "#e84393", "#6c5ce7",
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
 interface StoreViewProps {
   onBack: () => void;
   onComposePrompt: (text: string) => void;
@@ -129,6 +149,20 @@ function StoreView({ onBack: _onBack, onComposePrompt }: StoreViewProps) {
         } => Boolean(value),
       );
   }, [installedRecords, packageLookup]);
+
+  const featured = useMemo(() => {
+    if (!allPackages || allPackages.length === 0) return null;
+    return [...allPackages].sort((a, b) => (b.downloads || 0) - (a.downloads || 0))[0];
+  }, [allPackages]);
+
+  const gridPackages = useMemo(() => {
+    if (!packages) return packages;
+    if (searchQuery || !featured) return packages;
+    return packages.filter((p) => p.packageId !== featured.packageId);
+  }, [packages, featured, searchQuery]);
+
+  const totalPackageCount = allPackages?.length ?? 0;
+  const installedCount = installedRecords?.length ?? 0;
 
   const openDetail = useCallback((packageId: string) => {
     setSelectedPackageId(packageId);
@@ -267,27 +301,43 @@ function StoreView({ onBack: _onBack, onComposePrompt }: StoreViewProps) {
       />
 
       {page === "browse" && (
-        <>
-          <div className="store-tabs">
-            {CATEGORY_TABS.map((tab) => (
+        <div className="store-browse">
+          {!searchQuery && featured && (
+            <FeaturedHero
+              featured={featured}
+              installed={installedSet.has(featured.packageId)}
+              installing={installingIds.has(featured.packageId)}
+              onDetail={() => openDetail(featured.packageId)}
+              onInstall={() => handleInstall(featured)}
+              onUninstall={() => handleUninstall(featured)}
+              totalCount={totalPackageCount}
+              installedCount={installedCount}
+              updatesCount={updates.length}
+              onCategorySelect={setCategory}
+            />
+          )}
+          {category !== "all" && (
+            <div className="store-filter-bar">
+              <span className="store-filter-label">
+                {CATEGORY_TABS.find((t) => t.value === category)?.label}
+              </span>
               <button
-                key={tab.value}
                 type="button"
-                className={`store-tab${category === tab.value ? " store-tab--active" : ""}`}
-                onClick={() => setCategory(tab.value)}
+                className="store-filter-clear"
+                onClick={() => setCategory("all")}
               >
-                {tab.label}
+                Show all
               </button>
-            ))}
-          </div>
-          <div className="store-content">
-            {!packages || packages.length === 0 ? (
-              <div className="store-empty">
-                {packages === undefined ? "Loading packages..." : "No packages found"}
-              </div>
-            ) : (
+            </div>
+          )}
+          {!gridPackages || gridPackages.length === 0 ? (
+            <div className="store-empty">
+              {gridPackages === undefined ? "Loading packages..." : "No packages found"}
+            </div>
+          ) : (
+            <div className="store-grid-section">
               <div className="store-grid">
-                {packages.map((pkg) => (
+                {gridPackages.map((pkg) => (
                   <PackageCard
                     key={pkg.packageId}
                     pkg={pkg}
@@ -299,9 +349,9 @@ function StoreView({ onBack: _onBack, onComposePrompt }: StoreViewProps) {
                   />
                 ))}
               </div>
-            )}
-          </div>
-        </>
+            </div>
+          )}
+        </div>
       )}
 
       {page === "detail" && (
@@ -319,6 +369,7 @@ function StoreView({ onBack: _onBack, onComposePrompt }: StoreViewProps) {
         <div className="store-content">
           <InstalledList
             installedRecords={installedRecords}
+            packageLookup={packageLookup}
             installingIds={installingIds}
             onDetail={openDetail}
             onUninstall={(packageId) => {
@@ -360,14 +411,34 @@ function StoreHeader({
 }) {
   return (
     <div className="store-header">
-      <span className="store-header-title">App Store</span>
-      <div className="store-search">
-        <span className="store-search-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-        </span>
+      <div className="store-header-tabs">
+        <button
+          type="button"
+          className={`store-header-tab${page === "browse" ? " store-header-tab--active" : ""}`}
+          onClick={() => onPageChange("browse")}
+        >
+          Browse
+        </button>
+        <button
+          type="button"
+          className={`store-header-tab${page === "installed" ? " store-header-tab--active" : ""}`}
+          onClick={() => onPageChange("installed")}
+        >
+          Installed
+        </button>
+        <button
+          type="button"
+          className={`store-header-tab${page === "updates" ? " store-header-tab--active" : ""}`}
+          onClick={() => onPageChange("updates")}
+        >
+          Updates
+        </button>
+      </div>
+      <div className="store-header-search">
+        <svg className="store-header-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
         <input
           type="text"
           placeholder="Search packages..."
@@ -375,28 +446,121 @@ function StoreHeader({
           onChange={(e) => onSearchChange(e.target.value)}
         />
       </div>
-      <div className="store-header-nav">
-        <button
-          type="button"
-          className={`store-nav-btn${page === "browse" ? " store-nav-btn--active" : ""}`}
-          onClick={() => onPageChange("browse")}
-        >
-          Browse
-        </button>
-        <button
-          type="button"
-          className={`store-nav-btn${page === "installed" ? " store-nav-btn--active" : ""}`}
-          onClick={() => onPageChange("installed")}
-        >
-          Installed
-        </button>
-        <button
-          type="button"
-          className={`store-nav-btn${page === "updates" ? " store-nav-btn--active" : ""}`}
-          onClick={() => onPageChange("updates")}
-        >
-          Updates
-        </button>
+    </div>
+  );
+}
+
+function FeaturedHero({
+  featured,
+  installed,
+  installing,
+  onDetail,
+  onInstall,
+  onUninstall,
+  totalCount,
+  installedCount,
+  updatesCount,
+  onCategorySelect,
+}: {
+  featured: StorePackage;
+  installed: boolean;
+  installing: boolean;
+  onDetail: () => void;
+  onInstall: () => void;
+  onUninstall: () => void;
+  totalCount: number;
+  installedCount: number;
+  updatesCount: number;
+  onCategorySelect: (cat: CategoryTab) => void;
+}) {
+  return (
+    <div className="store-hero">
+      <div
+        className="store-hero-card"
+        style={{ background: TYPE_GRADIENTS[featured.type] || TYPE_GRADIENTS.skill }}
+        onClick={onDetail}
+      >
+        <div className="store-hero-card-inner">
+          <div className="store-hero-card-header">
+            <div className="store-hero-card-left">
+              <h2 className="store-hero-title">{featured.name}</h2>
+              <div className="store-status">
+                <span className="store-status-dot" />
+                {featured.downloads > 0 ? `${featured.downloads} installs` : featured.type}
+              </div>
+            </div>
+            <div className="store-hero-card-right">
+              <div className="store-author-row">
+                <span className="store-author-avatar" style={{ background: getAuthorColor(featured.author) }}>
+                  {featured.author.charAt(0).toUpperCase()}
+                </span>
+                <span className="store-author-name">{featured.author}</span>
+              </div>
+              <span className="store-hero-version">v{featured.version}</span>
+            </div>
+          </div>
+          <div className="store-hero-card-center">
+            <span className="store-hero-icon">
+              {featured.icon ?? TYPE_ICONS[featured.type] ?? "\u{1F4E6}"}
+            </span>
+          </div>
+          <div className="store-hero-card-footer">
+            <p className="store-hero-desc">{featured.description}</p>
+            <div className="store-hero-actions" onClick={(e) => e.stopPropagation()}>
+              {installed ? (
+                <button
+                  type="button"
+                  className={`store-hero-btn store-hero-btn--installed${installing ? " store-hero-btn--loading" : ""}`}
+                  onClick={onUninstall}
+                >
+                  {installing ? "..." : "Installed"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={`store-hero-btn${installing ? " store-hero-btn--loading" : ""}`}
+                  onClick={onInstall}
+                >
+                  {installing ? "..." : "Get"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="store-hero-panel">
+        <h2 className="store-hero-panel-greeting">Discover</h2>
+        <p className="store-hero-panel-sub">{totalCount} packages available</p>
+        <div className="store-hero-panel-section">
+          <h3 className="store-hero-panel-section-title">Overview</h3>
+          <div className="store-hero-panel-stats">
+            <div className="store-hero-stat-tile">
+              <span className="store-hero-stat-val">{installedCount}</span>
+              <span className="store-hero-stat-lbl">Installed</span>
+            </div>
+            <div className="store-hero-stat-tile">
+              <span className="store-hero-stat-val">{updatesCount}</span>
+              <span className="store-hero-stat-lbl">Updates</span>
+            </div>
+          </div>
+        </div>
+        <div className="store-hero-panel-section">
+          <h3 className="store-hero-panel-section-title">Categories</h3>
+          <div className="store-hero-panel-cats">
+            {CATEGORY_TABS.filter((t) => t.value !== "all").map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                className="store-hero-cat"
+                onClick={() => onCategorySelect(tab.value as CategoryTab)}
+              >
+                <span className="store-hero-cat-icon">{TYPE_ICONS[tab.value] ?? ""}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -418,40 +582,55 @@ function PackageCard({
   onUninstall: () => void;
 }) {
   return (
-    <div className="store-card" onClick={onDetail}>
-      <div className="store-card-header">
-        <div className="store-card-icon">
-          {pkg.icon ?? TYPE_ICONS[pkg.type] ?? "\u{1F4E6}"}
+    <div
+      className="store-card"
+      style={{ background: TYPE_GRADIENTS[pkg.type] || TYPE_GRADIENTS.skill }}
+      onClick={onDetail}
+    >
+      <div className="store-card-inner">
+        <div className="store-card-header">
+          <div className="store-card-left">
+            <div className="store-card-title">{pkg.name}</div>
+            <div className="store-card-status">
+              <span className="store-status-dot" />
+              {pkg.downloads > 0 ? `${pkg.downloads} installs` : pkg.type}
+            </div>
+          </div>
+          <div className="store-card-right">
+            <div className="store-author-row">
+              <span className="store-author-avatar store-author-avatar--sm" style={{ background: getAuthorColor(pkg.author) }}>
+                {pkg.author.charAt(0).toUpperCase()}
+              </span>
+              <span className="store-card-author-name">{pkg.author}</span>
+            </div>
+          </div>
         </div>
-        <div className="store-card-meta">
-          <div className="store-card-name">{pkg.name}</div>
-          <div className="store-card-author">{pkg.author}</div>
+        <div className="store-card-center">
+          <span className="store-card-icon">
+            {pkg.icon ?? TYPE_ICONS[pkg.type] ?? "\u{1F4E6}"}
+          </span>
         </div>
-      </div>
-      <div className="store-card-desc">{pkg.description}</div>
-      <div className="store-card-footer">
-        <span className="store-card-badge">{pkg.type}</span>
-        <span className="store-card-downloads">
-          {pkg.downloads > 0 ? `${pkg.downloads} installs` : ""}
-        </span>
-        <div className="store-card-action" onClick={(e) => e.stopPropagation()}>
-          {installed ? (
-            <button
-              type="button"
-              className={`store-install-btn store-install-btn--installed${installing ? " store-install-btn--installing" : ""}`}
-              onClick={onUninstall}
-            >
-              {installing ? "..." : "Installed"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`store-install-btn${installing ? " store-install-btn--installing" : ""}`}
-              onClick={onInstall}
-            >
-              {installing ? "..." : "Install"}
-            </button>
-          )}
+        <div className="store-card-footer">
+          <p className="store-card-desc">{pkg.description}</p>
+          <div className="store-card-action" onClick={(e) => e.stopPropagation()}>
+            {installed ? (
+              <button
+                type="button"
+                className={`store-card-btn store-card-btn--installed${installing ? " store-card-btn--loading" : ""}`}
+                onClick={onUninstall}
+              >
+                {installing ? "..." : "Installed"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`store-card-btn${installing ? " store-card-btn--loading" : ""}`}
+                onClick={onInstall}
+              >
+                {installing ? "..." : "Get"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -490,10 +669,16 @@ function PackageDetail({
         &larr; Back
       </button>
 
-      <div className="store-detail-header">
-        <div className="store-detail-icon">
+      <div
+        className="store-detail-banner"
+        style={{ background: TYPE_GRADIENTS[pkg.type] || TYPE_GRADIENTS.skill }}
+      >
+        <span className="store-detail-banner-icon">
           {pkg.icon ?? TYPE_ICONS[pkg.type] ?? "\u{1F4E6}"}
-        </div>
+        </span>
+      </div>
+
+      <div className="store-detail-header">
         <div className="store-detail-info">
           <div className="store-detail-name">{pkg.name}</div>
           <div className="store-detail-author">by {pkg.author}</div>
@@ -503,26 +688,25 @@ function PackageDetail({
             {pkg.downloads > 0 && <span>{pkg.downloads} installs</span>}
           </div>
         </div>
-      </div>
-
-      <div className="store-detail-actions">
-        {installed ? (
-          <button
-            type="button"
-            className={`store-detail-install-btn store-detail-install-btn--installed${installing ? " store-detail-install-btn--installing" : ""}`}
-            onClick={onUninstall}
-          >
-            {installing ? "Uninstalling..." : "Installed"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={`store-detail-install-btn${installing ? " store-detail-install-btn--installing" : ""}`}
-            onClick={onInstall}
-          >
-            {installing ? "Installing..." : "Install"}
-          </button>
-        )}
+        <div className="store-detail-actions">
+          {installed ? (
+            <button
+              type="button"
+              className={`store-detail-btn store-detail-btn--installed${installing ? " store-detail-btn--loading" : ""}`}
+              onClick={onUninstall}
+            >
+              {installing ? "Uninstalling..." : "Installed"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`store-detail-btn${installing ? " store-detail-btn--loading" : ""}`}
+              onClick={onInstall}
+            >
+              {installing ? "Installing..." : "Get"}
+            </button>
+          )}
+        </div>
       </div>
 
       {pkg.tags.length > 0 && (
@@ -544,11 +728,13 @@ function PackageDetail({
 
 function InstalledList({
   installedRecords,
+  packageLookup,
   installingIds,
   onDetail,
   onUninstall,
 }: {
   installedRecords?: { packageId: string; installedVersion: string }[];
+  packageLookup: Map<string, StorePackage>;
   installingIds: Set<string>;
   onDetail: (packageId: string) => void;
   onUninstall: (packageId: string) => void;
@@ -559,26 +745,35 @@ function InstalledList({
 
   return (
     <div className="store-installed-list">
-      {installedRecords.map((rec) => (
-        <div
-          key={rec.packageId}
-          className="store-installed-item"
-          onClick={() => onDetail(rec.packageId)}
-        >
-          <div className="store-installed-info">
-            <div className="store-installed-name">{rec.packageId}</div>
-            <div className="store-installed-version">v{rec.installedVersion}</div>
-          </div>
-          <button
-            type="button"
-            className="store-uninstall-btn"
-            onClick={(e) => { e.stopPropagation(); onUninstall(rec.packageId); }}
-            disabled={installingIds.has(rec.packageId)}
+      {installedRecords.map((rec) => {
+        const pkg = packageLookup.get(rec.packageId);
+        return (
+          <div
+            key={rec.packageId}
+            className="store-installed-item"
+            onClick={() => onDetail(rec.packageId)}
           >
-            {installingIds.has(rec.packageId) ? "..." : "Uninstall"}
-          </button>
-        </div>
-      ))}
+            <div
+              className="store-installed-icon"
+              style={{ background: TYPE_GRADIENTS[pkg?.type ?? "skill"] || TYPE_GRADIENTS.skill }}
+            >
+              {pkg?.icon ?? TYPE_ICONS[pkg?.type ?? "skill"] ?? "\u{1F4E6}"}
+            </div>
+            <div className="store-installed-info">
+              <div className="store-installed-name">{pkg?.name ?? rec.packageId}</div>
+              <div className="store-installed-version">v{rec.installedVersion}</div>
+            </div>
+            <button
+              type="button"
+              className="store-uninstall-btn"
+              onClick={(e) => { e.stopPropagation(); onUninstall(rec.packageId); }}
+              disabled={installingIds.has(rec.packageId)}
+            >
+              {installingIds.has(rec.packageId) ? "..." : "Uninstall"}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -606,15 +801,21 @@ function UpdatesList({
           className="store-installed-item"
           onClick={() => onDetail(pkg.packageId)}
         >
+          <div
+            className="store-installed-icon"
+            style={{ background: TYPE_GRADIENTS[pkg.type] || TYPE_GRADIENTS.skill }}
+          >
+            {pkg.icon ?? TYPE_ICONS[pkg.type] ?? "\u{1F4E6}"}
+          </div>
           <div className="store-installed-info">
             <div className="store-installed-name">{pkg.name}</div>
             <div className="store-installed-version">
-              Installed v{pkg.installedVersion} {"->"} Latest v{pkg.version}
+              v{pkg.installedVersion} &rarr; v{pkg.version}
             </div>
           </div>
           <button
             type="button"
-            className="store-uninstall-btn"
+            className="store-update-btn"
             onClick={(e) => {
               e.stopPropagation();
               onUpdate(pkg.packageId);

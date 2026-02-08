@@ -4,33 +4,39 @@ import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import { syncExternalSkills } from "./skill_import.js";
 import { loadIdentityMap, depseudonymize } from "./identity_map.js";
+import { sanitizeForLogs } from "./tools-utils.js";
 import path from "path";
 import fs from "fs";
 import os from "os";
-const log = (...args) => console.log("[runner]", ...args);
-const logError = (...args) => console.error("[runner]", ...args);
+const log = (...args) => console.log("[runner]", ...args.map((entry) => sanitizeForLogs(entry)));
+const logError = (...args) => console.error("[runner]", ...args.map((entry) => sanitizeForLogs(entry)));
 const SYNC_DEBOUNCE_MS = 500;
 const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
 const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
 export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requestCredential }) => {
-    const ownerId = "local";
     const toolHost = createToolHost({
         StellaHome,
         frontendRoot,
         requestCredential,
-        resolveSecret: async ({ provider, secretId }) => {
+        resolveSecret: async ({ provider, secretId, requestId, toolName, deviceId: contextDeviceId }) => {
             if (!client)
+                return null;
+            if (!requestId || !toolName)
                 return null;
             if (secretId) {
                 return (await callQuery("data/secrets.getSecretValueById", {
-                    ownerId,
                     secretId,
+                    requestId,
+                    toolName,
+                    deviceId: contextDeviceId ?? deviceId,
                 }));
             }
             return (await callQuery("data/secrets.getSecretValueForProvider", {
-                ownerId,
                 provider,
+                requestId,
+                toolName,
+                deviceId: contextDeviceId ?? deviceId,
             }));
         },
     });
@@ -336,6 +342,10 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     const appendToolResult = async (request, result) => {
         if (!client || !request.requestId)
             return;
+        const sanitizedResult = sanitizeForLogs(result.result);
+        const sanitizedError = typeof result.error === "string"
+            ? String(sanitizeForLogs(result.error))
+            : result.error;
         await callMutation("events.appendEvent", {
             conversationId: request.conversationId,
             type: "tool_result",
@@ -344,8 +354,8 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             targetDeviceId: request.targetDeviceId,
             payload: {
                 toolName: request.payload?.toolName,
-                result: result.result,
-                error: result.error,
+                result: sanitizedResult,
+                error: sanitizedError,
                 requestId: request.requestId,
                 targetDeviceId: request.targetDeviceId,
             },
@@ -391,7 +401,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
                 }
             }
             log(`Executing tool: ${toolName}`, {
-                argsPreview: JSON.stringify(toolArgs).slice(0, 200),
+                argsPreview: JSON.stringify(sanitizeForLogs(toolArgs)).slice(0, 200),
             });
             const startTime = Date.now();
             const toolResult = await toolHost.executeTool(toolName, toolArgs, {

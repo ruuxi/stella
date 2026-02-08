@@ -1,5 +1,5 @@
 /**
- * Shell tools: Bash, SkillBash handlers. KillShell is handled via Bash's kill_shell_id param.
+ * Shell tools: Bash, SkillBash, KillShell handlers.
  */
 import { spawn } from "child_process";
 import { truncate, writeSecretFile } from "./tools-utils.js";
@@ -95,11 +95,6 @@ export const runShell = async (command, cwd, timeoutMs, envOverrides) => {
 };
 export const handleBash = async (state, args, context) => {
     void context; // Unused but kept for interface consistency
-    // Kill a background shell if kill_shell_id is provided
-    const killId = typeof args.kill_shell_id === "string" ? args.kill_shell_id.trim() : "";
-    if (killId) {
-        return handleKillShell(state, { shell_id: killId });
-    }
     const command = String(args.command ?? "");
     const timeout = Math.min(Number(args.timeout ?? 120000), 600000);
     const cwd = String(args.working_directory ?? process.cwd());
@@ -113,7 +108,7 @@ export const handleBash = async (state, args, context) => {
     const output = await runShell(command, cwd, timeout);
     return { result: truncate(output) };
 };
-export const handleSkillBash = async (state, args) => {
+export const handleSkillBash = async (state, args, context) => {
     const skillId = String(args.skill_id ?? "").trim();
     if (!skillId) {
         return { error: "skill_id is required." };
@@ -132,7 +127,7 @@ export const handleSkillBash = async (state, args) => {
         for (const [envName, spec] of Object.entries(skill.secretMounts.env)) {
             if (!envName.trim())
                 continue;
-            const value = await state.resolveSecretValue(spec, providerCache);
+            const value = await state.resolveSecretValue(spec, providerCache, context, "SkillBash");
             if (!value) {
                 return {
                     error: `Missing secret for ${spec.provider}.`,
@@ -145,7 +140,7 @@ export const handleSkillBash = async (state, args) => {
         for (const [filePath, spec] of Object.entries(skill.secretMounts.files)) {
             if (!filePath.trim())
                 continue;
-            const value = await state.resolveSecretValue(spec, providerCache);
+            const value = await state.resolveSecretValue(spec, providerCache, context, "SkillBash");
             if (!value) {
                 return {
                     error: `Missing secret for ${spec.provider}.`,

@@ -3,7 +3,7 @@
  *
  * Skills: ~/.stella/skills/{skillId}/
  * Themes: ~/.stella/themes/{themeId}.json
- * Mini-apps: workspace root/{workspaceId}/ (default ~/workspaces, with legacy fallback)
+ * Mini-apps: ~/.stella/apps/{appName}/
  * Plugins: ~/.stella/plugins/{pluginId}/
  */
 import type { ToolResult } from "./tools-types.js";
