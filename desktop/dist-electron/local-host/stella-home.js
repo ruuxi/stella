@@ -10,12 +10,14 @@ export const resolveStellaHome = async (app) => {
     const pluginsPath = path.join(homePath, "plugins");
     const statePath = path.join(homePath, "state");
     const logsPath = path.join(homePath, "logs");
+    const canvasPath = path.join(homePath, "canvas");
     await ensureDir(homePath);
     await ensureDir(agentsPath);
     await ensureDir(skillsPath);
     await ensureDir(pluginsPath);
     await ensureDir(statePath);
     await ensureDir(logsPath);
+    await ensureDir(canvasPath);
     return {
         homePath,
         agentsPath,
@@ -23,5 +25,6 @@ export const resolveStellaHome = async (app) => {
         pluginsPath,
         statePath,
         logsPath,
+        canvasPath,
     };
 };

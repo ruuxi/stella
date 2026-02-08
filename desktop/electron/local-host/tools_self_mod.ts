@@ -14,9 +14,11 @@ import {
   getActiveFeature,
   setActiveFeature,
   getFeature,
+  updateFeature,
   listStagedFiles,
   applyBatch,
   getHistory,
+  removeLastHistoryEntries,
   restoreSnapshot,
   listSnapshots,
   packageFeature,
@@ -118,11 +120,20 @@ export const handleSelfModRevert = async (
     revertedFiles.push(...files);
   }
 
+  const remainingHistory = await removeLastHistoryEntries(
+    featureId,
+    batchesToRevert,
+  );
+  await updateFeature(featureId, {
+    status: remainingHistory.length > 0 ? "applied" : "reverted",
+  });
+
   return {
     result: JSON.stringify({
       revertedBatches: batchesToRevert,
       revertedFiles: revertedFiles.length,
       files: [...new Set(revertedFiles)],
+      remainingBatches: remainingHistory.length,
       message: `Reverted ${batchesToRevert} batch(es), restoring ${revertedFiles.length} file(s). HMR will update the UI.`,
     }),
   };

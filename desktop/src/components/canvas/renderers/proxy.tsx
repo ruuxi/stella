@@ -1,4 +1,4 @@
-import { registerCanvas } from '../CanvasPanel'
+import { registerCanvas } from '../canvas-registry'
 import type { CanvasPayload } from '@/app/state/canvas-state'
 
 const ProxyRenderer = ({ canvas }: { canvas: CanvasPayload }) => {

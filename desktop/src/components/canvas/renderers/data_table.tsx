@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { registerCanvas } from '../CanvasPanel'
+import { registerCanvas } from '../canvas-registry'
 import type { CanvasPayload } from '@/app/state/canvas-state'
 
 type SortDirection = 'asc' | 'desc'

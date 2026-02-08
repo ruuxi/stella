@@ -18,7 +18,11 @@ import {
   readStaged,
   getActiveFeature,
   createFeature,
+  getFeature,
+  getHistory,
+  listStagedFiles,
   setActiveFeature,
+  updateFeature,
 } from "../self-mod/index.js";
 
 /** Options bag passed from tools.ts */
@@ -27,6 +31,9 @@ export type FileToolsConfig = {
 };
 
 let _config: FileToolsConfig = {};
+
+const FEATURE_IDLE_MS = 15 * 60 * 1000;
+const FEATURE_TOPIC_SHIFT_MS = 90 * 1000;
 
 export function setFileToolsConfig(config: FileToolsConfig) {
   _config = config;
@@ -48,20 +55,107 @@ function getSrcRelativePath(filePath: string): string | null {
 
 /**
  * Ensure an active feature exists for the conversation.
- * Auto-creates one if needed.
+ * Auto-creates one when needed and auto-groups related edits.
  */
-async function ensureActiveFeature(context: ToolContext): Promise<string> {
+const splitSegments = (value: string) =>
+  value
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+const normalizeTopic = (relativePath: string): string => {
+  const segments = splitSegments(relativePath);
+  const trimmed = segments[0] === "src" ? segments.slice(1) : segments;
+  return trimmed.slice(0, 2).join("/");
+};
+
+const isRelatedPath = (targetPath: string, paths: string[]): boolean => {
+  const targetTopic = normalizeTopic(targetPath);
+  return paths.some((candidate) => normalizeTopic(candidate) === targetTopic);
+};
+
+const buildFeatureName = (relativePath: string): string => {
+  const topic = normalizeTopic(relativePath);
+  if (!topic) {
+    return `Modification ${new Date().toLocaleString()}`;
+  }
+  return `Update ${topic}`;
+};
+
+const createAndActivateFeature = async (
+  context: ToolContext,
+  relativePath: string,
+  reason: string,
+): Promise<string> => {
+  const featureId = `mod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const topic = normalizeTopic(relativePath);
+  await createFeature(
+    featureId,
+    buildFeatureName(relativePath),
+    topic
+      ? `Auto-created self-mod feature (${reason}) for ${topic}`
+      : `Auto-created self-mod feature (${reason})`,
+    context.conversationId,
+  );
+  await setActiveFeature(context.conversationId, featureId);
+  return featureId;
+};
+
+async function ensureActiveFeature(
+  context: ToolContext,
+  relativePath: string,
+): Promise<string> {
+  const now = Date.now();
   let featureId = await getActiveFeature(context.conversationId);
   if (!featureId) {
-    featureId = `mod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    await createFeature(
-      featureId,
-      `Modification ${new Date().toLocaleString()}`,
-      "Auto-created self-mod feature",
-      context.conversationId,
-    );
-    await setActiveFeature(context.conversationId, featureId);
+    return createAndActivateFeature(context, relativePath, "no active feature");
   }
+
+  const feature = await getFeature(featureId);
+  if (!feature) {
+    return createAndActivateFeature(context, relativePath, "missing feature metadata");
+  }
+
+  if (feature.status === "reverted" || feature.status === "packaged") {
+    return createAndActivateFeature(context, relativePath, `status=${feature.status}`);
+  }
+
+  const stagedFiles = await listStagedFiles(featureId);
+  if (stagedFiles.length > 0) {
+    if (isRelatedPath(relativePath, stagedFiles)) {
+      return featureId;
+    }
+    if (now - feature.updatedAt > FEATURE_TOPIC_SHIFT_MS) {
+      return createAndActivateFeature(
+        context,
+        relativePath,
+        "staged changes are from a different topic",
+      );
+    }
+    return featureId;
+  }
+
+  const history = await getHistory(featureId);
+  const lastBatchFiles = history.length > 0 ? history[history.length - 1].files : [];
+  const idleForMs = now - feature.updatedAt;
+
+  if (idleForMs > FEATURE_IDLE_MS) {
+    return createAndActivateFeature(context, relativePath, "idle timeout");
+  }
+
+  if (
+    lastBatchFiles.length > 0 &&
+    !isRelatedPath(relativePath, lastBatchFiles) &&
+    idleForMs > FEATURE_TOPIC_SHIFT_MS
+  ) {
+    return createAndActivateFeature(
+      context,
+      relativePath,
+      "topic shift detected",
+    );
+  }
+
   return featureId;
 }
 
@@ -126,8 +220,9 @@ export const handleWrite = async (
   if (context?.agentType === "self_mod") {
     const relativePath = getSrcRelativePath(filePath);
     if (relativePath) {
-      const featureId = await ensureActiveFeature(context);
+      const featureId = await ensureActiveFeature(context, relativePath);
       await stageFile(featureId, relativePath, content);
+      await updateFeature(featureId, { status: "active" });
       const lines = content.split("\n").length;
       return {
         result: `Staged ${content.length} characters (${lines} lines) to ${filePath} [feature: ${featureId}]. Call SelfModApply to apply changes.`,
@@ -162,7 +257,7 @@ export const handleEdit = async (
   if (context?.agentType === "self_mod") {
     const relativePath = getSrcRelativePath(filePath);
     if (relativePath) {
-      const featureId = await ensureActiveFeature(context);
+      const featureId = await ensureActiveFeature(context, relativePath);
 
       // Try to read from staging first, fall back to source
       let content = await readStaged(featureId, relativePath);
@@ -191,6 +286,7 @@ export const handleEdit = async (
         : content.replace(oldString, newString);
 
       await stageFile(featureId, relativePath, next);
+      await updateFeature(featureId, { status: "active" });
       return {
         result: `Staged ${replaceAll ? occurrences : 1} replacement(s) in ${filePath} [feature: ${featureId}]. Call SelfModApply to apply changes.`,
       };

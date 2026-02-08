@@ -1,16 +1,47 @@
 /**
  * Store install/uninstall handlers for local package management.
  *
- * Skills are written to ~/.stella/skills/{skillId}/
- * Themes are written to ~/.stella/themes/{themeId}.json
+ * Skills: ~/.stella/skills/{skillId}/
+ * Themes: ~/.stella/themes/{themeId}.json
+ * Mini-apps: workspace root/{workspaceId}/ (default ~/workspaces, with legacy fallback)
+ * Plugins: ~/.stella/plugins/{pluginId}/
  */
 
-import path from "path";
 import fs from "fs/promises";
 import os from "os";
+import path from "path";
 import type { ToolResult } from "./tools-types.js";
+import { handleCreateWorkspace, getWorkspaceRoots } from "./tools_workspace.js";
 
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
+
+const sanitizeRelativePath = (relativePath: string): string | null => {
+  const normalized = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!normalized || normalized.includes("..")) {
+    return null;
+  }
+  return normalized;
+};
+
+const readResultObject = (result: ToolResult): Record<string, unknown> => {
+  if (result.error) {
+    throw new Error(result.error);
+  }
+  if (!result.result) {
+    return {};
+  }
+  if (typeof result.result === "string") {
+    try {
+      return JSON.parse(result.result) as Record<string, unknown>;
+    } catch {
+      return { value: result.result };
+    }
+  }
+  if (typeof result.result === "object") {
+    return result.result as Record<string, unknown>;
+  }
+  return { value: result.result };
+};
 
 /**
  * Install a skill package locally.
@@ -32,10 +63,8 @@ export const handleInstallSkill = async (
   const skillDir = path.join(getStellaRoot(), "skills", skillId);
   await fs.mkdir(skillDir, { recursive: true });
 
-  // Write SKILL.md
   await fs.writeFile(path.join(skillDir, "SKILL.md"), markdown, "utf-8");
 
-  // Write stella.yaml metadata
   const yaml = [
     `name: ${name}`,
     `description: "Installed from App Store"`,
@@ -81,6 +110,106 @@ export const handleInstallTheme = async (
 };
 
 /**
+ * Install a mini-app/canvas package as a workspace.
+ * Expects source/dependencies in payload.
+ */
+export const handleInstallCanvas = async (
+  args: Record<string, unknown>,
+): Promise<ToolResult> => {
+  const packageId = String(args.packageId ?? "").trim();
+  const workspaceId = String(args.workspaceId ?? packageId).trim();
+  const workspaceName = String(args.name ?? workspaceId).trim();
+  const source = typeof args.source === "string" ? args.source : undefined;
+  const dependencies =
+    args.dependencies && typeof args.dependencies === "object"
+      ? (args.dependencies as Record<string, string>)
+      : undefined;
+
+  if (!packageId) {
+    return { error: "InstallCanvasPackage requires packageId." };
+  }
+  if (!workspaceName) {
+    return { error: "InstallCanvasPackage requires a workspace name." };
+  }
+
+  const createResult = await handleCreateWorkspace({
+    name: workspaceId || workspaceName,
+    dependencies,
+    source,
+  });
+  if (createResult.error) {
+    return createResult;
+  }
+
+  const parsed = readResultObject(createResult);
+  return {
+    result: {
+      installed: true,
+      packageId,
+      workspaceId:
+        typeof parsed.workspaceId === "string" ? parsed.workspaceId : workspaceId,
+      path: typeof parsed.path === "string" ? parsed.path : undefined,
+    },
+  };
+};
+
+/**
+ * Install a plugin package locally.
+ * Supports plugin manifest + arbitrary file map.
+ */
+export const handleInstallPlugin = async (
+  args: Record<string, unknown>,
+): Promise<ToolResult> => {
+  const pluginId = String(args.pluginId ?? args.packageId ?? "").trim();
+  const name = String(args.name ?? pluginId).trim();
+  const version = String(args.version ?? "0.0.0").trim();
+  const description = String(args.description ?? "Installed from App Store");
+  const manifest =
+    args.manifest && typeof args.manifest === "object"
+      ? (args.manifest as Record<string, unknown>)
+      : null;
+  const files =
+    args.files && typeof args.files === "object"
+      ? (args.files as Record<string, string>)
+      : {};
+
+  if (!pluginId) {
+    return { error: "InstallPluginPackage requires pluginId or packageId." };
+  }
+
+  const pluginDir = path.join(getStellaRoot(), "plugins", pluginId);
+  await fs.mkdir(pluginDir, { recursive: true });
+
+  const pluginJson =
+    manifest ?? ({
+      id: pluginId,
+      name,
+      version,
+      description,
+      tools: [],
+      skills: [],
+      agents: [],
+    } satisfies Record<string, unknown>);
+
+  await fs.writeFile(
+    path.join(pluginDir, "plugin.json"),
+    JSON.stringify(pluginJson, null, 2),
+    "utf-8",
+  );
+
+  for (const [relativePath, content] of Object.entries(files)) {
+    if (typeof content !== "string") continue;
+    const safePath = sanitizeRelativePath(relativePath);
+    if (!safePath) continue;
+    const filePath = path.join(pluginDir, safePath);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, content, "utf-8");
+  }
+
+  return { result: { installed: true, pluginId, path: pluginDir } };
+};
+
+/**
  * Uninstall a package locally by removing its files.
  */
 export const handleUninstallPackage = async (
@@ -108,12 +237,32 @@ export const handleUninstallPackage = async (
         break;
       }
       case "canvas": {
-        const workspaceDir = path.join(stellaRoot, "workspaces", localId);
-        await fs.rm(workspaceDir, { recursive: true, force: true });
+        await Promise.all(
+          getWorkspaceRoots().map(async (root) => {
+            await fs.rm(path.join(root, localId), {
+              recursive: true,
+              force: true,
+            });
+          }),
+        );
         break;
       }
+      case "plugin": {
+        const pluginDir = path.join(stellaRoot, "plugins", localId);
+        await fs.rm(pluginDir, { recursive: true, force: true });
+        break;
+      }
+      case "mod": {
+        return {
+          result: {
+            uninstalled: false,
+            requiresRevert: true,
+            note: "Mod uninstall must be handled via SelfModRevert of the applied feature.",
+          },
+        };
+      }
       default:
-        return { result: { uninstalled: true, note: `Type "${type}" does not require local file removal.` } };
+        return { error: `Unsupported package type: ${type}` };
     }
   } catch (err) {
     return { error: `Failed to uninstall: ${(err as Error).message}` };

@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState } from 'react'
-import { registerCanvas } from '../CanvasPanel'
+import { registerCanvas } from '../canvas-registry'
 import type { CanvasPayload } from '@/app/state/canvas-state'
 
 const WebviewRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
@@ -26,16 +26,14 @@ const WebviewRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
       {loading && (
         <div className="canvas-renderer-empty">Loading...</div>
       )}
-      {/* @ts-expect-error webview is an Electron-specific tag */}
       <webview
         ref={webviewRef}
         className="canvas-webview-frame"
         src={canvas.url}
         style={{ display: loading ? 'none' : 'flex', flex: 1 }}
         // eslint-disable-next-line react/no-unknown-property
-        allowpopups=""
-        onDidFinishLoad={() => setLoading(false)}
-        onDomReady={() => setLoading(false)}
+        allowpopups
+        onLoad={() => setLoading(false)}
       />
     </div>
   )

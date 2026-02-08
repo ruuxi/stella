@@ -7,6 +7,7 @@ type CanvasCommandPayload = {
   component?: string
   title?: string
   tier?: CanvasTier
+  mode?: 'generated' | 'workspace'
   data?: unknown
   url?: string
   width?: number
@@ -44,6 +45,7 @@ export const useCanvasCommands = (events: EventRecord[]) => {
             component: payload.component,
             title: payload.title,
             tier: payload.tier,
+            mode: payload.mode,
             data: payload.data,
             url: payload.url,
           })

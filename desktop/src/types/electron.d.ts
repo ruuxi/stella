@@ -196,14 +196,36 @@ export type ElectronApi = {
     light: Record<string, string>
     dark: Record<string, string>
   }) => Promise<{ installed: boolean; themeId?: string }>
+  storeInstallCanvas: (payload: {
+    packageId: string
+    workspaceId?: string
+    name: string
+    dependencies?: Record<string, string>
+    source?: string
+  }) => Promise<{ installed: boolean; workspaceId?: string; path?: string }>
+  storeInstallPlugin: (payload: {
+    packageId: string
+    pluginId?: string
+    name?: string
+    version?: string
+    description?: string
+    manifest?: Record<string, unknown>
+    files?: Record<string, string>
+  }) => Promise<{ installed: boolean; pluginId?: string; path?: string }>
   storeUninstall: (payload: {
     packageId: string
     type: string
     localId: string
-  }) => Promise<{ uninstalled: boolean }>
+  }) => Promise<{ uninstalled: boolean; requiresRevert?: boolean; note?: string }>
 
   // Theme loading from installed themes
   listInstalledThemes: () => Promise<Array<{ id: string; name: string; light: Record<string, string>; dark: Record<string, string> }>>
+
+  // Canvas file reading — generated renderer reads source from ~/.stella/canvas/
+  readCanvasFile: (filename: string) => Promise<{ content?: string; error?: string }>
+  watchCanvasFile: (filename: string) => Promise<{ ok: boolean }>
+  unwatchCanvasFile: (filename: string) => Promise<{ ok: boolean }>
+  onCanvasFileChanged: (callback: (filename: string) => void) => () => void
 }
 
 declare global {

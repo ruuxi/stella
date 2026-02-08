@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { registerCanvas } from '../CanvasPanel'
+import { registerCanvas } from '../canvas-registry'
 import type { CanvasPayload } from '@/app/state/canvas-state'
 
 const JsonViewerRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
