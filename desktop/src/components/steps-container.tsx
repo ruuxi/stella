@@ -43,6 +43,15 @@ function StepItemDisplay({ step, hideDetails }: { step: StepItem; hideDetails?: 
       case "taskoutput":
       case "taskcancel":
         return "🤖";
+      case "heartbeatget":
+      case "heartbeatupsert":
+      case "heartbeatrun":
+      case "cronlist":
+      case "cronadd":
+      case "cronupdate":
+      case "cronremove":
+      case "cronrun":
+        return "⏰";
       default:
         return "🔧";
     }
@@ -75,6 +84,22 @@ function StepItemDisplay({ step, hideDetails }: { step: StepItem; hideDetails?: 
         return "Task Output";
       case "taskcancel":
         return "Task Cancel";
+      case "heartbeatget":
+        return "Heartbeat";
+      case "heartbeatupsert":
+        return "Heartbeat";
+      case "heartbeatrun":
+        return "Heartbeat";
+      case "cronlist":
+        return "Schedule";
+      case "cronadd":
+        return "Schedule";
+      case "cronupdate":
+        return "Schedule";
+      case "cronremove":
+        return "Schedule";
+      case "cronrun":
+        return "Schedule";
       default:
         return tool;
     }
