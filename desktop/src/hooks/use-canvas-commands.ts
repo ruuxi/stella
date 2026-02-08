@@ -1,23 +1,20 @@
 import { useEffect, useRef } from 'react'
-import { useCanvas, type CanvasTier } from '@/app/state/canvas-state'
+import { useCanvas } from '@/app/state/canvas-state'
 import type { EventRecord } from './use-conversation-events'
 
 type CanvasCommandPayload = {
-  action: 'open' | 'close' | 'update' | 'resize'
-  component?: string
+  action: 'open' | 'close'
+  name?: string
   title?: string
-  tier?: CanvasTier
-  data?: unknown
   url?: string
-  width?: number
 }
 
 /**
  * Watches conversation events for `canvas_command` type and dispatches
- * to the canvas state (open/close/update/resize).
+ * to the canvas state (open/close).
  */
 export const useCanvasCommands = (events: EventRecord[]) => {
-  const { openCanvas, closeCanvas, updateCanvasData, setWidth } = useCanvas()
+  const { openCanvas, closeCanvas } = useCanvas()
   const processedRef = useRef<Set<string>>(new Set())
 
   // Reset processed set when conversation changes (events array identity changes)
@@ -39,12 +36,10 @@ export const useCanvasCommands = (events: EventRecord[]) => {
 
       switch (payload.action) {
         case 'open': {
-          if (!payload.component || !payload.tier) break
+          if (!payload.name) break
           openCanvas({
-            component: payload.component,
+            name: payload.name,
             title: payload.title,
-            tier: payload.tier,
-            data: payload.data,
             url: payload.url,
           })
           break
@@ -53,19 +48,7 @@ export const useCanvasCommands = (events: EventRecord[]) => {
           closeCanvas()
           break
         }
-        case 'update': {
-          if (payload.data !== undefined) {
-            updateCanvasData(payload.data)
-          }
-          break
-        }
-        case 'resize': {
-          if (payload.width !== undefined) {
-            setWidth(payload.width)
-          }
-          break
-        }
       }
     }
-  }, [events, openCanvas, closeCanvas, updateCanvasData, setWidth])
+  }, [events, openCanvas, closeCanvas])
 }
