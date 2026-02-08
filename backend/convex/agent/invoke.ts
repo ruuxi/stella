@@ -97,17 +97,6 @@ type JsonSchema = Record<string, unknown>;
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-const semanticMergeResolutionValidator = v.object({
-  virtualPath: v.string(),
-  strategy: v.union(
-    v.literal("keep_local"),
-    v.literal("use_upstream"),
-    v.literal("merged"),
-  ),
-  encoding: v.optional(v.union(v.literal("utf8"), v.literal("base64"))),
-  content: v.optional(v.string()),
-});
-
 const agentInvokeResultValidator = v.union(
   v.object({
     ok: v.literal(false),
@@ -118,7 +107,6 @@ const agentInvokeResultValidator = v.union(
     ok: v.literal(true),
     rawText: v.string(),
     outputJson: v.string(),
-    resolutions: v.optional(v.array(semanticMergeResolutionValidator)),
   }),
 );
 
@@ -132,59 +120,7 @@ type AgentInvokeResult =
       ok: true;
       rawText: string;
       outputJson: string;
-      resolutions?: Array<{
-        virtualPath: string;
-        strategy: "keep_local" | "use_upstream" | "merged";
-        encoding?: "utf8" | "base64";
-        content?: string;
-      }>;
     };
-
-const extractSemanticMergeResolutions = (
-  value: unknown,
-):
-  | Array<{
-      virtualPath: string;
-      strategy: "keep_local" | "use_upstream" | "merged";
-      encoding?: "utf8" | "base64";
-      content?: string;
-    }>
-  | undefined => {
-  if (!isPlainObject(value) || !Array.isArray(value.resolutions)) {
-    return undefined;
-  }
-
-  const results: Array<{
-    virtualPath: string;
-    strategy: "keep_local" | "use_upstream" | "merged";
-    encoding?: "utf8" | "base64";
-    content?: string;
-  }> = [];
-
-  for (const item of value.resolutions) {
-    if (!isPlainObject(item)) return undefined;
-    const virtualPath = item.virtualPath;
-    const strategy = item.strategy;
-    const encoding = item.encoding;
-    const content = item.content;
-    if (typeof virtualPath !== "string") return undefined;
-    if (strategy !== "keep_local" && strategy !== "use_upstream" && strategy !== "merged") {
-      return undefined;
-    }
-    if (encoding !== undefined && encoding !== "utf8" && encoding !== "base64") {
-      return undefined;
-    }
-    if (content !== undefined && typeof content !== "string") return undefined;
-    results.push({
-      virtualPath,
-      strategy,
-      ...(encoding !== undefined ? { encoding } : {}),
-      ...(content !== undefined ? { content } : {}),
-    });
-  }
-
-  return results;
-};
 
 const validateAgainstSchema = (
   schema: JsonSchema | undefined,
@@ -448,15 +384,6 @@ export const invoke = action({
         ok: false as const,
         reason: validation.reason,
         rawText,
-      };
-    }
-
-    if (isPlainObject(scrubbed)) {
-      return {
-        ok: true as const,
-        rawText,
-        outputJson: stableStringify(scrubbed),
-        resolutions: extractSemanticMergeResolutions(scrubbed),
       };
     }
 

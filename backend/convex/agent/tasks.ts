@@ -479,7 +479,6 @@ export const runSubagent = action({
     prompt: v.string(),
     subagentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
-    runInBackground: v.optional(v.boolean()),
     includeHistory: v.optional(v.boolean()),
   },
   returns: v.string(),
@@ -529,22 +528,7 @@ export const runSubagent = action({
       taskId,
     });
 
-    if (args.runInBackground) {
-      await ctx.scheduler.runAfter(0, internal.agent.tasks.executeSubagent, {
-        conversationId: args.conversationId,
-        userMessageId: args.userMessageId,
-        targetDeviceId: args.targetDeviceId,
-        prompt: args.prompt,
-        subagentType: args.subagentType,
-        taskId,
-        ownerId: conversation.ownerId,
-        includeHistory: args.includeHistory,
-      });
-
-      return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
-    }
-
-    return await executeSubagentRun(ctx, {
+    await ctx.scheduler.runAfter(0, internal.agent.tasks.executeSubagent, {
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
       targetDeviceId: args.targetDeviceId,
@@ -554,6 +538,8 @@ export const runSubagent = action({
       ownerId: conversation.ownerId,
       includeHistory: args.includeHistory,
     });
+
+    return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
   },
 });
 
