@@ -15,6 +15,118 @@ type BuiltinSkill = {
 };
 
 // ---------------------------------------------------------------------------
+// Orchestrator Skills
+// ---------------------------------------------------------------------------
+
+const SCHEDULING: BuiltinSkill = {
+  id: "scheduling",
+  name: "Scheduling & Reminders",
+  description:
+    "Set up reminders, recurring checks, and scheduled tasks using heartbeats and cron jobs.",
+  agentTypes: ["orchestrator"],
+  tags: ["scheduling", "reminders", "heartbeat", "cron", "automation"],
+  source: "builtin",
+  enabled: true,
+  markdown: `# Scheduling & Reminders
+
+Two systems for scheduled automation. Pick the right one based on what the user needs.
+
+## Heartbeats — Periodic Monitoring
+
+A heartbeat is a recurring check-in on the current conversation. Use it when the user wants you to "keep an eye on" something or periodically run through a checklist.
+
+\`\`\`
+HeartbeatUpsert(
+  intervalMs=1800000,           // 30 minutes (minimum 60000 = 1 min)
+  checklist="- Check PR status\\n- Check build pipeline",
+  activeHours={ start: "09:00", end: "18:00", timezone: "America/New_York" },
+  enabled=true
+)
+\`\`\`
+
+- One heartbeat per conversation.
+- \`checklist\`: Markdown checklist you'll read on each poll. Write it as instructions to yourself.
+- \`activeHours\`: Quiet hours so it doesn't fire overnight. Omit to run 24/7.
+- \`deliver\`: Set to false to run silently (no message posted). Default true.
+- When the heartbeat fires, you receive the checklist as a message. Delegate the actual work to subagents, then report results or reply HEARTBEAT_OK if nothing needs attention.
+
+### Managing Heartbeats
+\`HeartbeatGet()\` — view current config
+\`HeartbeatRun()\` — trigger immediately (don't wait for next interval)
+
+## Cron Jobs — Scheduled Tasks
+
+Use cron for precise timing: one-time reminders, recurring schedules, or cron expressions.
+
+### Schedule Types
+- **One-time**: \`schedule={ kind: "at", atMs: 1700000000000 }\` — fires once at that epoch timestamp
+- **Interval**: \`schedule={ kind: "every", everyMs: 3600000 }\` — every N milliseconds
+- **Cron expression**: \`schedule={ kind: "cron", expr: "0 9 * * MON-FRI", tz: "America/New_York" }\` — standard 5-field cron
+
+### Payload Types
+Two modes, linked to sessionTarget:
+
+**Main session** (\`sessionTarget="main"\`) — lightweight event in the conversation:
+\`\`\`
+CronAdd(
+  name="morning-reminder",
+  schedule={ kind: "cron", expr: "0 9 * * *", tz: "America/New_York" },
+  payload={ kind: "systemEvent", text: "Good morning! Time for your daily standup." },
+  sessionTarget="main"
+)
+\`\`\`
+
+**Isolated session** (\`sessionTarget="isolated"\`) — full agent turn with tools:
+\`\`\`
+CronAdd(
+  name="weekly-report",
+  schedule={ kind: "cron", expr: "0 9 * * MON" },
+  payload={ kind: "agentTurn", message: "Generate the weekly project summary." },
+  sessionTarget="isolated"
+)
+\`\`\`
+
+**Rules**: main requires systemEvent, isolated requires agentTurn. Don't mix them.
+
+### One-time Reminders
+For "remind me at 3pm":
+\`\`\`
+CronAdd(
+  name="dentist-reminder",
+  schedule={ kind: "at", atMs: <epoch_ms> },
+  payload={ kind: "systemEvent", text: "Reminder: Call the dentist!" },
+  sessionTarget="main",
+  deleteAfterRun=true
+)
+\`\`\`
+
+### Managing Cron Jobs
+\`CronList()\` — list all jobs
+\`CronUpdate(jobId, patch={ enabled: false })\` — modify a job
+\`CronRemove(jobId)\` — delete a job
+\`CronRun(jobId)\` — trigger immediately
+
+## When to Use Which
+
+| User says | Use |
+|-----------|-----|
+| "Remind me at 3pm" | Cron (at, one-shot) |
+| "Every Monday morning, summarize X" | Cron (cron expression) |
+| "Check on my project every 30 minutes" | Heartbeat (checklist) |
+| "Keep an eye on the build" | Heartbeat (checklist) |
+| "Every 2 hours, check if the API is up" | Cron (every, isolated agentTurn) |
+
+## Writing Good Reminder Text
+Write the \`text\` or checklist so it reads naturally when it fires later:
+- Good: "Reminder: You wanted to call the dentist today."
+- Bad: "Call dentist"
+- Good: "- Check if PR #42 has been reviewed\\n- Check build status"
+- Bad: "PR and build"
+
+Include enough context that future-you (receiving this at fire time) knows what to do.`,
+};
+
+// ---------------------------------------------------------------------------
 // General Agent Skills
 // ---------------------------------------------------------------------------
 
@@ -622,6 +734,8 @@ Clean up: \`page.removeAllListeners('request'); page.removeAllListeners('respons
 // ---------------------------------------------------------------------------
 
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
+  // Orchestrator
+  SCHEDULING,
   // General agent
   WORKSPACE,
   STORE_MANAGEMENT,

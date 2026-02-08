@@ -95,9 +95,9 @@ App store:
 
 | Agent | Purpose | Key Tools |
 |-------|---------|-----------|
-| `orchestrator` | Default entry point, delegates to subagents | TaskCreate, TaskOutput, TaskCancel, OpenCanvas, CloseCanvas |
+| `orchestrator` | Default entry point, delegates to subagents, handles scheduling | TaskCreate, TaskOutput, TaskCancel, OpenCanvas, CloseCanvas, Heartbeat*, Cron* |
 | `memory` | Memory search and retrieval | MemorySearch, Read |
-| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, KillShell, Glob, Grep, WebFetch, WebSearch, Heartbeat*, Cron*, OpenCanvas, CloseCanvas, GenerateApiSkill, store tools |
+| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, KillShell, Glob, Grep, WebFetch, WebSearch, OpenCanvas, CloseCanvas, GenerateApiSkill, store tools |
 | `self_mod` | Platform self-modification | Read, Write, Edit, Bash, KillShell, OpenCanvas, CloseCanvas, SelfMod* tools |
 | `explore` | Lightweight read-only exploration | Read, Glob, Grep, WebFetch, WebSearch |
 | `browser` | Browser automation | Bash, KillShell, Read, OpenCanvas, CloseCanvas |
