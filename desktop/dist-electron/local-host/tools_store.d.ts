@@ -1,0 +1,33 @@
+/**
+ * Store install/uninstall handlers for local package management.
+ *
+ * Skills: ~/.stella/skills/{skillId}/
+ * Themes: ~/.stella/themes/{themeId}.json
+ * Mini-apps: workspace root/{workspaceId}/ (default ~/workspaces, with legacy fallback)
+ * Plugins: ~/.stella/plugins/{pluginId}/
+ */
+import type { ToolResult } from "./tools-types.js";
+/**
+ * Install a skill package locally.
+ * Writes SKILL.md and stella.yaml to ~/.stella/skills/{skillId}/
+ */
+export declare const handleInstallSkill: (args: Record<string, unknown>) => Promise<ToolResult>;
+/**
+ * Install a theme package locally.
+ * Writes to ~/.stella/themes/{themeId}.json
+ */
+export declare const handleInstallTheme: (args: Record<string, unknown>) => Promise<ToolResult>;
+/**
+ * Install a mini-app/canvas package as a workspace.
+ * Expects source/dependencies in payload.
+ */
+export declare const handleInstallCanvas: (args: Record<string, unknown>) => Promise<ToolResult>;
+/**
+ * Install a plugin package locally.
+ * Supports plugin manifest + arbitrary file map.
+ */
+export declare const handleInstallPlugin: (args: Record<string, unknown>) => Promise<ToolResult>;
+/**
+ * Uninstall a package locally by removing its files.
+ */
+export declare const handleUninstallPackage: (args: Record<string, unknown>) => Promise<ToolResult>;

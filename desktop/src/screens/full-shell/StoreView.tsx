@@ -5,7 +5,7 @@ import { useUiState } from "@/app/state/ui-state";
 import { registerTheme, unregisterTheme } from "@/theme/themes";
 import type { Theme } from "@/theme/themes/types";
 
-type StorePage = "browse" | "detail" | "installed";
+type StorePage = "browse" | "detail" | "installed" | "updates";
 type PackageType = "skill" | "canvas" | "plugin" | "theme" | "mod";
 type CategoryTab = "all" | PackageType;
 
@@ -28,6 +28,7 @@ const TYPE_ICONS: Record<string, string> = {
 
 interface StoreViewProps {
   onBack: () => void;
+  onComposePrompt: (text: string) => void;
 }
 
 type StorePackage = {
@@ -47,8 +48,8 @@ type StorePackage = {
   implementation?: string;
 };
 
-function StoreView({ onBack }: StoreViewProps) {
-  const { state, setView } = useUiState();
+function StoreView({ onBack: _onBack, onComposePrompt }: StoreViewProps) {
+  const { setView } = useUiState();
   const [page, setPage] = useState<StorePage>("browse");
   const [category, setCategory] = useState<CategoryTab>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -76,6 +77,10 @@ function StoreView({ onBack }: StoreViewProps) {
     api.data.store_packages.getByPackageId as any,
     selectedPackageId ? { packageId: selectedPackageId } : "skip",
   ) as StorePackage | null | undefined;
+  const allPackages = useQuery(
+    api.data.store_packages.list as any,
+    { type: undefined },
+  ) as StorePackage[] | undefined;
 
   const installMutation = useMutation(api.data.store_packages.install as any);
   const uninstallMutation = useMutation(api.data.store_packages.uninstall as any);
@@ -91,37 +96,57 @@ function StoreView({ onBack }: StoreViewProps) {
   }, [installedRecords]);
 
   const packages = searchQuery ? searchResults : browsePackages;
+  const packageLookup = useMemo(() => {
+    const byId = new Map<string, StorePackage>();
+    for (const pkg of allPackages ?? []) {
+      byId.set(pkg.packageId, pkg);
+    }
+    for (const pkg of browsePackages ?? []) {
+      byId.set(pkg.packageId, pkg);
+    }
+    for (const pkg of searchResults ?? []) {
+      byId.set(pkg.packageId, pkg);
+    }
+    return byId;
+  }, [allPackages, browsePackages, searchResults]);
+  const updates = useMemo(() => {
+    if (!installedRecords) return [];
+    return installedRecords
+      .map((rec) => {
+        const pkg = packageLookup.get(rec.packageId);
+        if (!pkg) return null;
+        if (pkg.version === rec.installedVersion) return null;
+        return {
+          ...pkg,
+          installedVersion: rec.installedVersion,
+        };
+      })
+      .filter(
+        (
+          value,
+        ): value is StorePackage & {
+          installedVersion: string;
+        } => Boolean(value),
+      );
+  }, [installedRecords, packageLookup]);
 
   const openDetail = useCallback((packageId: string) => {
     setSelectedPackageId(packageId);
     setPage("detail");
   }, []);
 
-  const goBack = useCallback(() => {
-    if (page === "detail") {
-      setPage("browse");
-      setSelectedPackageId(null);
-    } else {
-      onBack();
-    }
-  }, [page, onBack]);
-
   const handleInstall = useCallback(
     async (pkg: StorePackage) => {
       if (installingIds.has(pkg.packageId)) return;
-
-      // Mod packages: switch to chat with a prompt
-      if (pkg.type === "mod") {
-        setView("chat");
-        // TODO: pre-fill chat message
-        return;
-      }
-
       setInstallingIds((prev) => new Set(prev).add(pkg.packageId));
 
       try {
-        // Install locally via IPC
-        if (pkg.type === "skill" && window.electronAPI) {
+        if (pkg.type === "mod") {
+          setView("chat");
+          onComposePrompt(
+            `Install the "${pkg.name}" mod from package "${pkg.packageId}". Use SelfModInstallBlueprint with this package ID, adapt it to the current codebase, then apply the feature.`,
+          );
+        } else if (pkg.type === "skill" && window.electronAPI) {
           const payload = pkg.modPayload as { markdown?: string; agentTypes?: string[]; tags?: string[] } | undefined;
           await (window.electronAPI as any).storeInstallSkill({
             packageId: pkg.packageId,
@@ -143,6 +168,41 @@ function StoreView({ onBack }: StoreViewProps) {
             });
             registerTheme({ id: pkg.packageId, name: pkg.name, light: payload.light, dark: payload.dark });
           }
+        } else if (pkg.type === "canvas" && window.electronAPI) {
+          const payload = pkg.modPayload as
+            | {
+                workspaceId?: string;
+                workspaceName?: string;
+                dependencies?: Record<string, string>;
+                source?: string;
+              }
+            | undefined;
+          await (window.electronAPI as any).storeInstallCanvas({
+            packageId: pkg.packageId,
+            workspaceId: payload?.workspaceId ?? pkg.packageId,
+            name: payload?.workspaceName ?? pkg.name,
+            dependencies: payload?.dependencies,
+            source: payload?.source,
+          });
+        } else if (pkg.type === "plugin" && window.electronAPI) {
+          const payload = pkg.modPayload as
+            | {
+                pluginId?: string;
+                version?: string;
+                description?: string;
+                manifest?: Record<string, unknown>;
+                files?: Record<string, string>;
+              }
+            | undefined;
+          await (window.electronAPI as any).storeInstallPlugin({
+            packageId: pkg.packageId,
+            pluginId: payload?.pluginId ?? pkg.packageId,
+            name: pkg.name,
+            version: payload?.version ?? pkg.version,
+            description: payload?.description ?? pkg.description,
+            manifest: payload?.manifest,
+            files: payload?.files,
+          });
         }
 
         // Record install in backend
@@ -157,7 +217,7 @@ function StoreView({ onBack }: StoreViewProps) {
         });
       }
     },
-    [installingIds, installMutation, ownerId, setView],
+    [installingIds, installMutation, onComposePrompt, ownerId, setView],
   );
 
   const handleUninstall = useCallback(
@@ -166,7 +226,12 @@ function StoreView({ onBack }: StoreViewProps) {
       setInstallingIds((prev) => new Set(prev).add(pkg.packageId));
 
       try {
-        if (window.electronAPI) {
+        if (pkg.type === "mod") {
+          setView("chat");
+          onComposePrompt(
+            `Uninstall the "${pkg.name}" mod (package "${pkg.packageId}") by reverting its applied self-mod feature batches, then confirm cleanup.`,
+          );
+        } else if (window.electronAPI) {
           await (window.electronAPI as any).storeUninstall({
             packageId: pkg.packageId,
             type: pkg.type,
@@ -189,7 +254,7 @@ function StoreView({ onBack }: StoreViewProps) {
         });
       }
     },
-    [installingIds, uninstallMutation, ownerId],
+    [installingIds, onComposePrompt, ownerId, setView, uninstallMutation],
   );
 
   return (
@@ -257,8 +322,21 @@ function StoreView({ onBack }: StoreViewProps) {
             installingIds={installingIds}
             onDetail={openDetail}
             onUninstall={(packageId) => {
-              const pkg = packages?.find((p) => p.packageId === packageId);
+              const pkg = packageLookup.get(packageId);
               if (pkg) handleUninstall(pkg);
+            }}
+          />
+        </div>
+      )}
+      {page === "updates" && (
+        <div className="store-content">
+          <UpdatesList
+            updates={updates}
+            installingIds={installingIds}
+            onDetail={openDetail}
+            onUpdate={(packageId) => {
+              const pkg = packageLookup.get(packageId);
+              if (pkg) handleInstall(pkg);
             }}
           />
         </div>
@@ -311,6 +389,13 @@ function StoreHeader({
           onClick={() => onPageChange("installed")}
         >
           Installed
+        </button>
+        <button
+          type="button"
+          className={`store-nav-btn${page === "updates" ? " store-nav-btn--active" : ""}`}
+          onClick={() => onPageChange("updates")}
+        >
+          Updates
         </button>
       </div>
     </div>
@@ -491,6 +576,52 @@ function InstalledList({
             disabled={installingIds.has(rec.packageId)}
           >
             {installingIds.has(rec.packageId) ? "..." : "Uninstall"}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UpdatesList({
+  updates,
+  installingIds,
+  onDetail,
+  onUpdate,
+}: {
+  updates: Array<StorePackage & { installedVersion: string }>;
+  installingIds: Set<string>;
+  onDetail: (packageId: string) => void;
+  onUpdate: (packageId: string) => void;
+}) {
+  if (updates.length === 0) {
+    return <div className="store-empty">All packages are up to date</div>;
+  }
+
+  return (
+    <div className="store-installed-list">
+      {updates.map((pkg) => (
+        <div
+          key={pkg.packageId}
+          className="store-installed-item"
+          onClick={() => onDetail(pkg.packageId)}
+        >
+          <div className="store-installed-info">
+            <div className="store-installed-name">{pkg.name}</div>
+            <div className="store-installed-version">
+              Installed v{pkg.installedVersion} {"->"} Latest v{pkg.version}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="store-uninstall-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdate(pkg.packageId);
+            }}
+            disabled={installingIds.has(pkg.packageId)}
+          >
+            {installingIds.has(pkg.packageId) ? "..." : "Update"}
           </button>
         </div>
       ))}

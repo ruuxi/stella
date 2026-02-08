@@ -3,13 +3,15 @@
  * renders .full-body grid.
  */
 
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
 import { useCanvas } from "../../app/state/canvas-state";
 import { useTheme } from "../../theme/theme-context";
 import { useConversationEvents } from "../../hooks/use-conversation-events";
 import { useCanvasCommands } from "../../hooks/use-canvas-commands";
 import { getElectronApi } from "../../services/electron";
+import { api } from "@/convex/api";
 import { ShiftingGradient } from "../../components/background/ShiftingGradient";
 import { TitleBar } from "../../components/TitleBar";
 import { Sidebar } from "../../components/Sidebar";
@@ -29,9 +31,10 @@ const StoreView = lazy(() => import("./StoreView"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
-  const { state: canvasState } = useCanvas();
+  const { state: canvasState, openCanvas, closeCanvas, setWidth } = useCanvas();
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
+  const restoredCanvasConversationRef = useRef<string | null>(null);
 
   const [message, setMessage] = useState("");
   const [chatContext, setChatContext] = useState<ChatContext | null>(null);
@@ -101,6 +104,58 @@ export const FullShell = () => {
   // Events
   const events = useConversationEvents(state.conversationId ?? undefined);
   useCanvasCommands(events);
+
+  const savedCanvasState = useQuery(
+    api.data.canvas_states.getForConversation as any,
+    state.conversationId
+      ? { conversationId: state.conversationId as any }
+      : "skip",
+  ) as
+    | {
+        component: string;
+        title?: string;
+        tier: "data" | "proxy" | "app";
+        data?: unknown;
+        url?: string;
+        width?: number;
+      }
+    | null
+    | undefined;
+
+  useEffect(() => {
+    if (!state.conversationId) {
+      restoredCanvasConversationRef.current = null;
+      return;
+    }
+
+    if (savedCanvasState === undefined) {
+      return;
+    }
+
+    if (restoredCanvasConversationRef.current === state.conversationId) {
+      return;
+    }
+
+    if (!savedCanvasState) {
+      closeCanvas();
+      restoredCanvasConversationRef.current = state.conversationId;
+      return;
+    }
+
+    openCanvas({
+      component: savedCanvasState.component,
+      title: savedCanvasState.title,
+      tier: savedCanvasState.tier,
+      data: savedCanvasState.data,
+      url: savedCanvasState.url,
+    });
+
+    if (typeof savedCanvasState.width === "number") {
+      setWidth(savedCanvasState.width);
+    }
+
+    restoredCanvasConversationRef.current = state.conversationId;
+  }, [state.conversationId, savedCanvasState, openCanvas, closeCanvas, setWidth]);
 
   // Sync streaming with events
   useEffect(() => {
@@ -189,7 +244,13 @@ export const FullShell = () => {
         />
         {state.view === 'store' ? (
           <Suspense fallback={<div className="store-loading">Loading Store...</div>}>
-            <StoreView onBack={() => setView('chat')} />
+            <StoreView
+              onBack={() => setView('chat')}
+              onComposePrompt={(text) => {
+                setView("chat");
+                setMessage(text);
+              }}
+            />
           </Suspense>
         ) : (
           <>

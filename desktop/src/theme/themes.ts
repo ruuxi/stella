@@ -1,1 +1,9 @@
-export { themes, getThemeById, defaultTheme, type Theme, type ThemeColors } from "./themes/index";
+export {
+  themes,
+  getThemeById,
+  defaultTheme,
+  registerTheme,
+  unregisterTheme,
+  type Theme,
+  type ThemeColors,
+} from "./themes/index";

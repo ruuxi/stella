@@ -13,21 +13,22 @@ const SYNC_DEBOUNCE_MS = 500;
 const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
 const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
-export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential }) => {
+export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requestCredential }) => {
     const ownerId = "local";
     const toolHost = createToolHost({
         StellaHome,
+        frontendRoot,
         requestCredential,
         resolveSecret: async ({ provider, secretId }) => {
             if (!client)
                 return null;
             if (secretId) {
-                return (await callQuery("secrets.getSecretValueById", {
+                return (await callQuery("data/secrets.getSecretValueById", {
                     ownerId,
                     secretId,
                 }));
             }
-            return (await callQuery("secrets.getSecretValueForProvider", {
+            return (await callQuery("data/secrets.getSecretValueForProvider", {
                 ownerId,
                 provider,
             }));
@@ -97,7 +98,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
         syncPromise = (async () => {
             try {
                 log("Syncing manifests...");
-                await callMutation("agents.ensureBuiltins", {});
+                await callMutation("agent/agents.ensureBuiltins", {});
                 // Import skills from external sources first
                 if (convexUrl && authToken) {
                     try {
@@ -119,13 +120,13 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, requestCredential 
                 const skills = await loadSkillsFromHome(skillsPath, pluginPayload.skills);
                 const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
                 toolHost.setSkills(skills);
-                await callMutation("skills.upsertMany", {
+                await callMutation("data/skills.upsertMany", {
                     skills: skills.map(({ filePath, ...rest }) => rest),
                 });
-                await callMutation("agents.upsertMany", {
+                await callMutation("agent/agents.upsertMany", {
                     agents,
                 });
-                await callMutation("plugins.upsertMany", {
+                await callMutation("data/plugins.upsertMany", {
                     plugins: pluginPayload.plugins,
                     tools: pluginPayload.tools,
                 });

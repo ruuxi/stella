@@ -112,8 +112,25 @@ const compile = async (source: string): Promise<{ code: string } | { error: stri
       (_m, names: string) => `const {${names}} = __scope['react/jsx-runtime'];`,
     )
 
-    // Remove any remaining import/export statements
+    // Rewrite export statements to __exports assignments
+    // 1. export default X  →  __exports.default = X
     code = code.replace(/^export\s+default\s+/m, '__exports.default = ')
+    // 2. export { X as default }  →  __exports.default = X
+    code = code.replace(
+      /export\s*\{([^}]*)\}\s*;?/g,
+      (_match, inner: string) => {
+        const parts = inner.split(',').map((s: string) => s.trim()).filter(Boolean)
+        const assignments: string[] = []
+        for (const part of parts) {
+          const asDefault = part.match(/^(\w+)\s+as\s+default$/)
+          if (asDefault) {
+            assignments.push(`__exports.default = ${asDefault[1]};`)
+          }
+        }
+        return assignments.join(' ')
+      },
+    )
+    // 3. Strip any remaining export keywords
     code = code.replace(/^export\s+/gm, '')
 
     return { code }

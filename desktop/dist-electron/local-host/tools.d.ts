@@ -16,7 +16,7 @@
  */
 import type { ToolContext, ToolResult, ToolHostOptions, PluginSyncPayload } from "./tools-types.js";
 export type { ToolContext, ToolResult, PluginSyncPayload };
-export declare const createToolHost: ({ StellaHome, requestCredential, resolveSecret }: ToolHostOptions) => {
+export declare const createToolHost: ({ StellaHome, frontendRoot, requestCredential, resolveSecret }: ToolHostOptions) => {
     executeTool: (toolName: string, toolArgs: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>;
     getShells: () => import("./tools-types.js").ShellRecord[];
     loadPlugins: () => Promise<PluginSyncPayload>;

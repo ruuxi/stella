@@ -6,5 +6,6 @@ export type StellaHome = {
     pluginsPath: string;
     statePath: string;
     logsPath: string;
+    canvasPath: string;
 };
 export declare const resolveStellaHome: (app: App) => Promise<StellaHome>;
