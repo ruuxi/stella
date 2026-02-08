@@ -1,7 +1,7 @@
 /* ============================================
    CANVAS RENDERERS
    Styles for data-table, chart, json-viewer,
-   proxy, generated, and webview renderers.
+   proxy, panel, and appframe renderers.
    ============================================ */
 
 /* --- Shared empty state --- */
@@ -322,17 +322,17 @@
 }
 
 /* ============================================
-   WEBVIEW (workspace mini-apps)
+   APPFRAME (workspace mini-apps)
    ============================================ */
 
-.canvas-webview-wrap {
+.canvas-appframe-wrap {
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
 }
 
-.canvas-webview-toolbar {
+.canvas-appframe-toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -341,7 +341,7 @@
   flex-shrink: 0;
 }
 
-.canvas-webview-url {
+.canvas-appframe-url {
   font-size: 11px;
   color: var(--text-weak);
   font-family: var(--font-family-mono);
@@ -352,7 +352,7 @@
   white-space: nowrap;
 }
 
-.canvas-webview-reload {
+.canvas-appframe-reload {
   padding: 3px 8px;
   font-size: 11px;
   color: var(--text-weak);
@@ -363,12 +363,12 @@
   transition: all 0.12s ease;
 }
 
-.canvas-webview-reload:hover {
+.canvas-appframe-reload:hover {
   color: var(--text-strong);
   border-color: var(--border-base);
 }
 
-.canvas-webview-frame {
+.canvas-appframe-frame {
   flex: 1;
   border: none;
 }

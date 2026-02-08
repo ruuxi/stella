@@ -71,7 +71,7 @@ Built on Radix UI with custom styling:
 Side panel system for rendering AI-generated content:
 - `CanvasPanel.tsx` - Main panel with resize handle and header
 - `CanvasErrorBoundary.tsx` - Error boundary for renderer crashes
-- `renderers/` - 6 renderers: data_table, chart, json_viewer, proxy, panel, webview
+- `renderers/` - 6 renderers: data_table, chart, json_viewer, proxy, panel, appframe
 - Panel renderer uses Vite dynamic import from `workspace/panels/`
 
 ### Other Subdirectories

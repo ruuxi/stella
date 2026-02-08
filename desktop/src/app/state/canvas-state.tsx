@@ -15,7 +15,7 @@ export type CanvasPayload = {
   tier: CanvasTier
   /** Structured data passed to the canvas component */
   data?: unknown
-  /** URL for app-tier canvases (iframe/webview src) */
+  /** URL for app-tier canvases (iframe src) */
   url?: string
 }
 

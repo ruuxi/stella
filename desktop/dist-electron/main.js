@@ -1085,57 +1085,6 @@ app.whenReady().then(async () => {
             });
         }
     });
-    // Canvas file reading — generated renderer reads source from ~/.stella/canvas/
-    ipcMain.handle('canvas:readFile', async (_event, filename) => {
-        if (!StellaHomePath) {
-            return { error: 'Stella home not initialized' };
-        }
-        const { default: path } = await import('path');
-        const { promises: fs } = await import('fs');
-        // Sanitize: no path traversal
-        const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '');
-        const filePath = path.join(StellaHomePath, 'canvas', safe);
-        try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            return { content };
-        }
-        catch {
-            return { error: `Canvas file not found: ${safe}` };
-        }
-    });
-    // Canvas file watching — notify renderer when a canvas file changes
-    const canvasWatchers = new Map();
-    ipcMain.handle('canvas:watchFile', async (_event, filename) => {
-        if (!StellaHomePath)
-            return { ok: false };
-        const { default: path } = await import('path');
-        const { watch } = await import('fs');
-        const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '');
-        const filePath = path.join(StellaHomePath, 'canvas', safe);
-        // Don't double-watch
-        if (canvasWatchers.has(safe))
-            return { ok: true };
-        try {
-            const watcher = watch(filePath, () => {
-                fullWindow?.webContents.send('canvas:fileChanged', safe);
-            });
-            canvasWatchers.set(safe, watcher);
-            return { ok: true };
-        }
-        catch {
-            return { ok: false };
-        }
-    });
-    ipcMain.handle('canvas:unwatchFile', async (_event, filename) => {
-        const { default: path } = await import('path');
-        const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '');
-        const watcher = canvasWatchers.get(safe);
-        if (watcher) {
-            watcher.close();
-            canvasWatchers.delete(safe);
-        }
-        return { ok: true };
-    });
     // Store package install/uninstall IPC handlers
     const unwrapStoreResult = (result) => {
         if (result.error) {
