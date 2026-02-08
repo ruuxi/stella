@@ -94,13 +94,20 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
   const resolveSecretValue = async (
     spec: SecretMountSpec,
     cache: Map<string, string>,
+    context?: ToolContext,
+    toolName?: string,
   ): Promise<string | null> => {
     if (cache.has(spec.provider)) {
       return cache.get(spec.provider) ?? null;
     }
     if (!resolveSecret) return null;
 
-    let resolved = await resolveSecret({ provider: spec.provider });
+    let resolved = await resolveSecret({
+      provider: spec.provider,
+      requestId: context?.requestId,
+      toolName,
+      deviceId: context?.deviceId,
+    });
     if (!resolved && requestCredential) {
       const response = await requestCredential({
         provider: spec.provider,
@@ -111,6 +118,9 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
       resolved = await resolveSecret({
         provider: spec.provider,
         secretId: response.secretId,
+        requestId: context?.requestId,
+        toolName,
+        deviceId: context?.deviceId,
       });
     }
 
@@ -174,7 +184,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     // Shell tools
     Bash: (args, context) => handleBash(shellState, args, context),
     KillShell: (args) => handleKillShell(shellState, args),
-    SkillBash: (args) => handleSkillBash(shellState, args),
+    SkillBash: (args, context) => handleSkillBash(shellState, args, context),
 
     // State tools
     Task: (args) => handleTask(stateContext, args),
