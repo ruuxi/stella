@@ -169,10 +169,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   storeInstallTheme: (payload: {
     packageId: string; themeId: string; name: string; light: Record<string, string>; dark: Record<string, string>
   }) => ipcRenderer.invoke('store:installTheme', payload),
+  storeInstallCanvas: (payload: {
+    packageId: string; workspaceId?: string; name: string; dependencies?: Record<string, string>; source?: string
+  }) => ipcRenderer.invoke('store:installCanvas', payload),
+  storeInstallPlugin: (payload: {
+    packageId: string; pluginId?: string; name?: string; version?: string; description?: string; manifest?: Record<string, unknown>; files?: Record<string, string>
+  }) => ipcRenderer.invoke('store:installPlugin', payload),
   storeUninstall: (payload: {
     packageId: string; type: string; localId: string
   }) => ipcRenderer.invoke('store:uninstall', payload),
 
   // Theme loading from installed themes
   listInstalledThemes: () => ipcRenderer.invoke('theme:listInstalled'),
+
+  // Canvas file reading — generated renderer reads source from ~/.stella/canvas/
+  readCanvasFile: (filename: string) => ipcRenderer.invoke('canvas:readFile', filename),
+  watchCanvasFile: (filename: string) => ipcRenderer.invoke('canvas:watchFile', filename),
+  unwatchCanvasFile: (filename: string) => ipcRenderer.invoke('canvas:unwatchFile', filename),
+  onCanvasFileChanged: (callback: (filename: string) => void) => {
+    const handler = (_event: IpcRendererEvent, filename: string) => {
+      callback(filename)
+    }
+    ipcRenderer.on('canvas:fileChanged', handler)
+    return () => {
+      ipcRenderer.removeListener('canvas:fileChanged', handler)
+    }
+  },
 })

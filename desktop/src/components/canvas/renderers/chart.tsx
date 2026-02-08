@@ -7,7 +7,7 @@ import {
   ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import { registerCanvas } from '../CanvasPanel'
+import { registerCanvas } from '../canvas-registry'
 import type { CanvasPayload } from '@/app/state/canvas-state'
 
 type ChartData = {

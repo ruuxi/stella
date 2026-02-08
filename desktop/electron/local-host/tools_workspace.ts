@@ -1,8 +1,9 @@
 /**
  * Workspace CRUD and dev server process management.
  *
- * Workspaces live at ~/.stella/workspaces/{name}/ and are scaffolded
- * as Vite+React projects. The dev server is spawned via `bunx vite`.
+ * Workspaces live at $STELLA_WORKSPACES_ROOT/{name}/ (default: ~/workspaces,
+ * with legacy ~/.stella fallback) and are scaffolded as Vite+React projects.
+ * The dev server is spawned via `bunx vite`.
  */
 
 import path from 'path'
@@ -31,7 +32,27 @@ type WorkspaceRecord = {
 const workspaces = new Map<string, WorkspaceRecord>()
 const processes = new Map<string, ChildProcess>()
 
-const getWorkspacesRoot = () => path.join(os.homedir(), '.stella', 'workspaces')
+const getPrimaryWorkspacesRoot = () =>
+  process.env.STELLA_WORKSPACES_ROOT?.trim() || path.join(os.homedir(), 'workspaces')
+const getLegacyWorkspacesRoot = () => path.join(os.homedir(), '.stella', 'workspaces')
+
+export const getWorkspaceRoots = () => [
+  getPrimaryWorkspacesRoot(),
+  getLegacyWorkspacesRoot(),
+]
+
+const findExistingWorkspacePath = async (workspaceId: string): Promise<string | null> => {
+  for (const root of getWorkspaceRoots()) {
+    const candidate = path.join(root, workspaceId)
+    try {
+      await fs.access(candidate)
+      return candidate
+    } catch {
+      // Continue checking fallback roots.
+    }
+  }
+  return null
+}
 
 const toId = (name: string) => name.toLowerCase().replace(/[^a-z0-9_-]/g, '-')
 
@@ -64,7 +85,7 @@ export const handleCreateWorkspace = async (
   if (!name) return { error: 'Workspace name is required.' }
 
   const id = toId(name)
-  const root = getWorkspacesRoot()
+  const root = getPrimaryWorkspacesRoot()
   const wsPath = path.join(root, id)
 
   try {
@@ -134,10 +155,8 @@ export const handleStartDevServer = async (
 
   const record = workspaces.get(id)
   if (!record) {
-    const wsPath = path.join(getWorkspacesRoot(), id)
-    try {
-      await fs.access(wsPath)
-    } catch {
+    const wsPath = await findExistingWorkspacePath(id)
+    if (!wsPath) {
       return { error: `Workspace ${id} not found.` }
     }
     workspaces.set(id, {
@@ -240,19 +259,25 @@ export const handleStopDevServer = async (
 }
 
 export const handleListWorkspaces = async (): Promise<ToolResult> => {
-  const root = getWorkspacesRoot()
-
   try {
-    await fs.mkdir(root, { recursive: true })
-    const entries = await fs.readdir(root, { withFileTypes: true })
-    const dirs = entries.filter(e => e.isDirectory())
-
+    const seen = new Set<string>()
     const list: WorkspaceRecord[] = []
-    for (const dir of dirs) {
-      const existing = workspaces.get(dir.name)
-      if (existing) {
-        list.push(existing)
-      } else {
+
+    for (const root of getWorkspaceRoots()) {
+      await fs.mkdir(root, { recursive: true })
+      const entries = await fs.readdir(root, { withFileTypes: true })
+      const dirs = entries.filter(e => e.isDirectory())
+
+      for (const dir of dirs) {
+        if (seen.has(dir.name)) continue
+        seen.add(dir.name)
+
+        const existing = workspaces.get(dir.name)
+        if (existing) {
+          list.push(existing)
+          continue
+        }
+
         list.push({
           id: dir.name,
           name: dir.name,

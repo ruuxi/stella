@@ -58,7 +58,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     resolveSecret: async ({ provider, secretId }) => {
       if (!client) return null;
       if (secretId) {
-        return (await callQuery("secrets.getSecretValueById", {
+        return (await callQuery("data/secrets.getSecretValueById", {
           ownerId,
           secretId,
         })) as
@@ -70,7 +70,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             }
           | null;
       }
-      return (await callQuery("secrets.getSecretValueForProvider", {
+      return (await callQuery("data/secrets.getSecretValueForProvider", {
         ownerId,
         provider,
       })) as
@@ -158,7 +158,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     syncPromise = (async () => {
       try {
         log("Syncing manifests...");
-        await callMutation("agents.ensureBuiltins", {});
+        await callMutation("agent/agents.ensureBuiltins", {});
 
         // Import skills from external sources first
         if (convexUrl && authToken) {
@@ -190,13 +190,13 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
 
         toolHost.setSkills(skills);
 
-        await callMutation("skills.upsertMany", {
+        await callMutation("data/skills.upsertMany", {
           skills: skills.map(({ filePath, ...rest }) => rest),
         });
-        await callMutation("agents.upsertMany", {
+        await callMutation("agent/agents.upsertMany", {
           agents,
         });
-        await callMutation("plugins.upsertMany", {
+        await callMutation("data/plugins.upsertMany", {
           plugins: pluginPayload.plugins,
           tools: pluginPayload.tools,
         });

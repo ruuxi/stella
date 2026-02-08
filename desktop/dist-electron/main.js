@@ -13,6 +13,7 @@ import { createLocalHostRunner } from './local-host/runner.js';
 import { resolveStellaHome } from './local-host/stella-home.js';
 import { collectBrowserData, coreMemoryExists, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
 import { collectAllSignals } from './local-host/collect-all.js';
+import { handleInstallCanvas, handleInstallPlugin, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from './local-host/tools_store.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -24,6 +25,7 @@ let pendingAuthCallback = null;
 const uiState = {
     mode: 'chat',
     window: 'full',
+    view: 'chat',
     conversationId: null,
 };
 let fullWindow = null;
@@ -237,6 +239,7 @@ const createFullWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            webviewTag: true,
             partition: 'persist:Stella',
         },
     });
@@ -405,8 +408,29 @@ const showWindow = (target) => {
         if (!fullWindow) {
             createFullWindow();
         }
-        fullWindow?.show();
-        fullWindow?.focus();
+        const win = fullWindow;
+        if (win) {
+            if (win.isMinimized()) {
+                win.restore();
+            }
+            if (process.platform === 'win32') {
+                app.focus({ steal: true });
+                win.show();
+                win.moveTop();
+                // Pulse always-on-top to reliably lift above other apps.
+                win.setAlwaysOnTop(true, 'screen-saver');
+                win.focus();
+                setTimeout(() => {
+                    if (!win.isDestroyed()) {
+                        win.setAlwaysOnTop(false);
+                    }
+                }, 75);
+            }
+            else {
+                win.show();
+                win.focus();
+            }
+        }
         hideMiniWindow(false);
         // Full view is always chat mode
         updateUiState({ window: target, mode: 'chat' });
@@ -804,6 +828,7 @@ app.whenReady().then(async () => {
     localHostRunner = createLocalHostRunner({
         deviceId,
         StellaHome: StellaHome.homePath,
+        frontendRoot: path.resolve(__dirname, '..'),
         requestCredential,
     });
     if (pendingConvexUrl) {
@@ -1058,6 +1083,106 @@ app.whenReady().then(async () => {
             import('child_process').then(({ exec: execCmd }) => {
                 execCmd('open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"');
             });
+        }
+    });
+    // Canvas file reading — generated renderer reads source from ~/.stella/canvas/
+    ipcMain.handle('canvas:readFile', async (_event, filename) => {
+        if (!StellaHomePath) {
+            return { error: 'Stella home not initialized' };
+        }
+        const { default: path } = await import('path');
+        const { promises: fs } = await import('fs');
+        // Sanitize: no path traversal
+        const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '');
+        const filePath = path.join(StellaHomePath, 'canvas', safe);
+        try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            return { content };
+        }
+        catch {
+            return { error: `Canvas file not found: ${safe}` };
+        }
+    });
+    // Canvas file watching — notify renderer when a canvas file changes
+    const canvasWatchers = new Map();
+    ipcMain.handle('canvas:watchFile', async (_event, filename) => {
+        if (!StellaHomePath)
+            return { ok: false };
+        const { default: path } = await import('path');
+        const { watch } = await import('fs');
+        const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '');
+        const filePath = path.join(StellaHomePath, 'canvas', safe);
+        // Don't double-watch
+        if (canvasWatchers.has(safe))
+            return { ok: true };
+        try {
+            const watcher = watch(filePath, () => {
+                fullWindow?.webContents.send('canvas:fileChanged', safe);
+            });
+            canvasWatchers.set(safe, watcher);
+            return { ok: true };
+        }
+        catch {
+            return { ok: false };
+        }
+    });
+    ipcMain.handle('canvas:unwatchFile', async (_event, filename) => {
+        const { default: path } = await import('path');
+        const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '');
+        const watcher = canvasWatchers.get(safe);
+        if (watcher) {
+            watcher.close();
+            canvasWatchers.delete(safe);
+        }
+        return { ok: true };
+    });
+    // Store package install/uninstall IPC handlers
+    const unwrapStoreResult = (result) => {
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        return result.result ?? {};
+    };
+    ipcMain.handle('store:installSkill', async (_event, payload) => {
+        return unwrapStoreResult(await handleInstallSkill(payload));
+    });
+    ipcMain.handle('store:installTheme', async (_event, payload) => {
+        return unwrapStoreResult(await handleInstallTheme(payload));
+    });
+    ipcMain.handle('store:installCanvas', async (_event, payload) => {
+        return unwrapStoreResult(await handleInstallCanvas(payload));
+    });
+    ipcMain.handle('store:installPlugin', async (_event, payload) => {
+        return unwrapStoreResult(await handleInstallPlugin(payload));
+    });
+    ipcMain.handle('store:uninstall', async (_event, payload) => {
+        return unwrapStoreResult(await handleUninstallPackage(payload));
+    });
+    ipcMain.handle('theme:listInstalled', async () => {
+        const { promises: fs } = await import('fs');
+        const os = await import('os');
+        const themesDir = path.join(os.homedir(), '.stella', 'themes');
+        try {
+            const files = await fs.readdir(themesDir);
+            const themes = [];
+            for (const file of files) {
+                if (!file.endsWith('.json'))
+                    continue;
+                try {
+                    const raw = await fs.readFile(path.join(themesDir, file), 'utf-8');
+                    const theme = JSON.parse(raw);
+                    if (theme.id && theme.name && theme.light && theme.dark) {
+                        themes.push(theme);
+                    }
+                }
+                catch {
+                    // Skip invalid theme files
+                }
+            }
+            return themes;
+        }
+        catch {
+            return [];
         }
     });
     ipcMain.handle('screenshot:capture', async (_event, point) => {

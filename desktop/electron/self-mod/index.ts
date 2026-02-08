@@ -29,6 +29,7 @@ export {
 export {
   applyBatch,
   getHistory,
+  removeLastHistoryEntries,
   type BatchResult,
   type HistoryEntry,
 } from "./apply.js";

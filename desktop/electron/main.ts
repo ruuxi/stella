@@ -34,6 +34,13 @@ import {
 } from './local-host/browser-data.js'
 import { collectAllSignals } from './local-host/collect-all.js'
 import type { AllUserSignalsResult } from './local-host/types.js'
+import {
+  handleInstallCanvas,
+  handleInstallPlugin,
+  handleInstallSkill,
+  handleInstallTheme,
+  handleUninstallPackage,
+} from './local-host/tools_store.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1284,58 +1291,105 @@ app.whenReady().then(async () => {
     }
   })
 
+  // Canvas file reading — generated renderer reads source from ~/.stella/canvas/
+  ipcMain.handle('canvas:readFile', async (_event, filename: string) => {
+    if (!StellaHomePath) {
+      return { error: 'Stella home not initialized' }
+    }
+    const { default: path } = await import('path')
+    const { promises: fs } = await import('fs')
+    // Sanitize: no path traversal
+    const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '')
+    const filePath = path.join(StellaHomePath, 'canvas', safe)
+    try {
+      const content = await fs.readFile(filePath, 'utf-8')
+      return { content }
+    } catch {
+      return { error: `Canvas file not found: ${safe}` }
+    }
+  })
+
+  // Canvas file watching — notify renderer when a canvas file changes
+  const canvasWatchers = new Map<string, import('fs').FSWatcher>()
+
+  ipcMain.handle('canvas:watchFile', async (_event, filename: string) => {
+    if (!StellaHomePath) return { ok: false }
+    const { default: path } = await import('path')
+    const { watch } = await import('fs')
+    const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '')
+    const filePath = path.join(StellaHomePath, 'canvas', safe)
+
+    // Don't double-watch
+    if (canvasWatchers.has(safe)) return { ok: true }
+
+    try {
+      const watcher = watch(filePath, () => {
+        fullWindow?.webContents.send('canvas:fileChanged', safe)
+      })
+      canvasWatchers.set(safe, watcher)
+      return { ok: true }
+    } catch {
+      return { ok: false }
+    }
+  })
+
+  ipcMain.handle('canvas:unwatchFile', async (_event, filename: string) => {
+    const { default: path } = await import('path')
+    const safe = path.normalize(filename).replace(/^(\.\.[/\\])+/, '')
+    const watcher = canvasWatchers.get(safe)
+    if (watcher) {
+      watcher.close()
+      canvasWatchers.delete(safe)
+    }
+    return { ok: true }
+  })
+
   // Store package install/uninstall IPC handlers
+  const unwrapStoreResult = (result: { result?: unknown; error?: string }) => {
+    if (result.error) {
+      throw new Error(result.error)
+    }
+    return result.result ?? {}
+  }
+
   ipcMain.handle('store:installSkill', async (_event, payload: {
     packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]
   }) => {
-    const { promises: fs } = await import('fs')
-    const os = await import('os')
-    const skillDir = path.join(os.homedir(), '.stella', 'skills', payload.skillId)
-    await fs.mkdir(skillDir, { recursive: true })
-    await fs.writeFile(path.join(skillDir, 'SKILL.md'), payload.markdown, 'utf-8')
-    const agentTypes = payload.agentTypes ?? ['general']
-    const tags = payload.tags ?? []
-    const yaml = [
-      `name: ${payload.name}`,
-      `description: "Installed from App Store"`,
-      `agent_types: [${agentTypes.map(t => `"${t}"`).join(', ')}]`,
-      tags.length > 0 ? `tags: [${tags.map(t => `"${t}"`).join(', ')}]` : '',
-      'enabled: true',
-    ].filter(Boolean).join('\n')
-    await fs.writeFile(path.join(skillDir, 'stella.yaml'), yaml, 'utf-8')
-    return { installed: true, path: skillDir }
+    return unwrapStoreResult(await handleInstallSkill(payload as unknown as Record<string, unknown>))
   })
 
   ipcMain.handle('store:installTheme', async (_event, payload: {
     packageId: string; themeId: string; name: string; light: Record<string, string>; dark: Record<string, string>
   }) => {
-    const { promises: fs } = await import('fs')
-    const os = await import('os')
-    const themesDir = path.join(os.homedir(), '.stella', 'themes')
-    await fs.mkdir(themesDir, { recursive: true })
-    const themeData = { id: payload.themeId, name: payload.name, light: payload.light, dark: payload.dark }
-    await fs.writeFile(path.join(themesDir, `${payload.themeId}.json`), JSON.stringify(themeData, null, 2), 'utf-8')
-    return { installed: true, themeId: payload.themeId }
+    return unwrapStoreResult(await handleInstallTheme(payload as unknown as Record<string, unknown>))
+  })
+
+  ipcMain.handle('store:installCanvas', async (_event, payload: {
+    packageId: string
+    workspaceId?: string
+    name: string
+    dependencies?: Record<string, string>
+    source?: string
+  }) => {
+    return unwrapStoreResult(await handleInstallCanvas(payload as unknown as Record<string, unknown>))
+  })
+
+  ipcMain.handle('store:installPlugin', async (_event, payload: {
+    packageId: string
+    pluginId?: string
+    name?: string
+    version?: string
+    description?: string
+    manifest?: Record<string, unknown>
+    files?: Record<string, string>
+  }) => {
+    return unwrapStoreResult(await handleInstallPlugin(payload as unknown as Record<string, unknown>))
   })
 
   ipcMain.handle('store:uninstall', async (_event, payload: {
     packageId: string; type: string; localId: string
   }) => {
-    const { promises: fs } = await import('fs')
-    const os = await import('os')
-    const stellaRoot = path.join(os.homedir(), '.stella')
-    switch (payload.type) {
-      case 'skill':
-        await fs.rm(path.join(stellaRoot, 'skills', payload.localId), { recursive: true, force: true })
-        break
-      case 'theme':
-        await fs.rm(path.join(stellaRoot, 'themes', `${payload.localId}.json`), { force: true })
-        break
-      case 'canvas':
-        await fs.rm(path.join(stellaRoot, 'workspaces', payload.localId), { recursive: true, force: true })
-        break
-    }
-    return { uninstalled: true }
+    return unwrapStoreResult(await handleUninstallPackage(payload as unknown as Record<string, unknown>))
   })
 
   ipcMain.handle('theme:listInstalled', async () => {

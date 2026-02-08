@@ -1,6 +1,7 @@
 type HostRunnerOptions = {
     deviceId: string;
     StellaHome: string;
+    frontendRoot?: string;
     requestCredential?: (payload: {
         provider: string;
         label?: string;
@@ -12,7 +13,7 @@ type HostRunnerOptions = {
         label: string;
     }>;
 };
-export declare const createLocalHostRunner: ({ deviceId, StellaHome, requestCredential }: HostRunnerOptions) => {
+export declare const createLocalHostRunner: ({ deviceId, StellaHome, frontendRoot, requestCredential }: HostRunnerOptions) => {
     deviceId: string;
     setConvexUrl: (url: string) => void;
     setAuthToken: (token: string | null) => void;

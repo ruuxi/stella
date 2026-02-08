@@ -129,4 +129,25 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     openFullDiskAccess: () => electron_1.ipcRenderer.send('system:openFullDiskAccess'),
     // Open URL in user's default browser
     openExternal: (url) => electron_1.ipcRenderer.send('shell:openExternal', url),
+    // Store package management
+    storeInstallSkill: (payload) => electron_1.ipcRenderer.invoke('store:installSkill', payload),
+    storeInstallTheme: (payload) => electron_1.ipcRenderer.invoke('store:installTheme', payload),
+    storeInstallCanvas: (payload) => electron_1.ipcRenderer.invoke('store:installCanvas', payload),
+    storeInstallPlugin: (payload) => electron_1.ipcRenderer.invoke('store:installPlugin', payload),
+    storeUninstall: (payload) => electron_1.ipcRenderer.invoke('store:uninstall', payload),
+    // Theme loading from installed themes
+    listInstalledThemes: () => electron_1.ipcRenderer.invoke('theme:listInstalled'),
+    // Canvas file reading — generated renderer reads source from ~/.stella/canvas/
+    readCanvasFile: (filename) => electron_1.ipcRenderer.invoke('canvas:readFile', filename),
+    watchCanvasFile: (filename) => electron_1.ipcRenderer.invoke('canvas:watchFile', filename),
+    unwatchCanvasFile: (filename) => electron_1.ipcRenderer.invoke('canvas:unwatchFile', filename),
+    onCanvasFileChanged: (callback) => {
+        const handler = (_event, filename) => {
+            callback(filename);
+        };
+        electron_1.ipcRenderer.on('canvas:fileChanged', handler);
+        return () => {
+            electron_1.ipcRenderer.removeListener('canvas:fileChanged', handler);
+        };
+    },
 });

@@ -1,22 +1,10 @@
-import { useCallback, useRef, type JSX } from 'react'
+import { useCallback, useRef } from 'react'
 import { useCanvas, type CanvasPayload } from '@/app/state/canvas-state'
 import { ResizeHandle } from '@/components/resize-handle'
+import { canvasRegistry } from './canvas-registry'
 
 // Register all canvas renderers (side-effect imports)
 import './renderers/index'
-
-/**
- * Registry of canvas components by their `component` key.
- * Skills/adaptors register here to provide their UI.
- */
-type CanvasRenderer = (props: { canvas: CanvasPayload }) => JSX.Element | null
-
-const canvasRegistry = new Map<string, CanvasRenderer>()
-
-/** Register a canvas component for a given key */
-export const registerCanvas = (key: string, renderer: CanvasRenderer) => {
-  canvasRegistry.set(key, renderer)
-}
 
 /** Placeholder shown when no renderer is registered for a canvas type */
 const CanvasPlaceholder = ({ canvas }: { canvas: CanvasPayload }) => (
