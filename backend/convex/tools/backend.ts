@@ -32,176 +32,38 @@ const integrationRequestSchema = z.object({
   responseType: z.enum(["json", "text"]).optional(),
 });
 
-const schedulerSchema = z.object({
-  action: z.enum([
-    "heartbeat.get",
-    "heartbeat.upsert",
-    "heartbeat.run",
-    "cron.list",
-    "cron.add",
-    "cron.update",
-    "cron.remove",
-    "cron.run",
-  ]),
-  params: z.record(z.any()).optional(),
+const cronScheduleSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("at"), atMs: z.number() }),
+  z.object({ kind: z.literal("every"), everyMs: z.number(), anchorMs: z.number().optional() }),
+  z.object({ kind: z.literal("cron"), expr: z.string(), tz: z.string().optional() }),
+]);
+
+const cronPayloadSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("systemEvent"),
+    text: z.string(),
+    agentType: z.string().optional(),
+    deliver: z.boolean().optional(),
+  }),
+  z.object({
+    kind: z.literal("agentTurn"),
+    message: z.string(),
+    agentType: z.string().optional(),
+    deliver: z.boolean().optional(),
+    includeHistory: z.boolean().optional(),
+  }),
+]);
+
+const cronPatchSchema = z.object({
+  name: z.string().optional(),
+  schedule: cronScheduleSchema.optional(),
+  payload: cronPayloadSchema.optional(),
+  sessionTarget: z.string().optional(),
+  conversationId: z.string().optional(),
+  description: z.string().optional(),
+  enabled: z.boolean().optional(),
+  deleteAfterRun: z.boolean().optional(),
 });
-
-const normalizeParams = (value: unknown) => {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-};
-
-const readString = (params: Record<string, unknown>, key: string) => {
-  const value = params[key];
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
-};
-
-const readBoolean = (params: Record<string, unknown>, key: string) => {
-  const value = params[key];
-  return typeof value === "boolean" ? value : undefined;
-};
-
-const readNumber = (params: Record<string, unknown>, key: string) => {
-  const value = params[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-};
-
-const readObject = (params: Record<string, unknown>, key: string) => {
-  const value = params[key];
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return undefined;
-};
-
-type CronScheduleArg =
-  | { kind: "at"; atMs: number }
-  | { kind: "every"; everyMs: number; anchorMs?: number }
-  | { kind: "cron"; expr: string; tz?: string };
-
-type CronPayloadArg =
-  | { kind: "systemEvent"; text: string; agentType?: string; deliver?: boolean }
-  | {
-      kind: "agentTurn";
-      message: string;
-      agentType?: string;
-      deliver?: boolean;
-      includeHistory?: boolean;
-    };
-
-type CronPatchArg = {
-  name?: string;
-  schedule?: CronScheduleArg;
-  payload?: CronPayloadArg;
-  sessionTarget?: string;
-  conversationId?: Id<"conversations">;
-  description?: string;
-  enabled?: boolean;
-  deleteAfterRun?: boolean;
-};
-
-const coerceCronSchedule = (value: unknown): CronScheduleArg | undefined => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  const kind = typeof record.kind === "string" ? record.kind.trim() : "";
-  if (kind === "at") {
-    const atMs = typeof record.atMs === "number" && Number.isFinite(record.atMs) ? record.atMs : undefined;
-    return atMs !== undefined ? { kind: "at", atMs } : undefined;
-  }
-  if (kind === "every") {
-    const everyMs =
-      typeof record.everyMs === "number" && Number.isFinite(record.everyMs)
-        ? record.everyMs
-        : undefined;
-    if (everyMs === undefined) return undefined;
-    const anchorMs =
-      typeof record.anchorMs === "number" && Number.isFinite(record.anchorMs)
-        ? record.anchorMs
-        : undefined;
-    return anchorMs !== undefined ? { kind: "every", everyMs, anchorMs } : { kind: "every", everyMs };
-  }
-  if (kind === "cron") {
-    const expr = typeof record.expr === "string" ? record.expr.trim() : "";
-    if (!expr) return undefined;
-    const tz = typeof record.tz === "string" && record.tz.trim() ? record.tz.trim() : undefined;
-    return tz ? { kind: "cron", expr, tz } : { kind: "cron", expr };
-  }
-  return undefined;
-};
-
-const coerceCronPayload = (value: unknown): CronPayloadArg | undefined => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  const kind = typeof record.kind === "string" ? record.kind.trim() : "";
-  const agentType =
-    typeof record.agentType === "string" && record.agentType.trim()
-      ? record.agentType.trim()
-      : undefined;
-  const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
-
-  if (kind === "systemEvent") {
-    const text = typeof record.text === "string" ? record.text.trim() : "";
-    if (!text) return undefined;
-    return { kind: "systemEvent", text, ...(agentType ? { agentType } : {}), ...(deliver !== undefined ? { deliver } : {}) };
-  }
-
-  if (kind === "agentTurn") {
-    const message = typeof record.message === "string" ? record.message.trim() : "";
-    if (!message) return undefined;
-    const includeHistory =
-      typeof record.includeHistory === "boolean" ? record.includeHistory : undefined;
-    return {
-      kind: "agentTurn",
-      message,
-      ...(agentType ? { agentType } : {}),
-      ...(deliver !== undefined ? { deliver } : {}),
-      ...(includeHistory !== undefined ? { includeHistory } : {}),
-    };
-  }
-
-  return undefined;
-};
-
-const coerceCronPatch = (value: unknown): CronPatchArg | undefined => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  const patch: CronPatchArg = {};
-
-  if (typeof record.name === "string") patch.name = record.name;
-  if (typeof record.description === "string") patch.description = record.description;
-  if (typeof record.sessionTarget === "string") patch.sessionTarget = record.sessionTarget;
-  if (typeof record.enabled === "boolean") patch.enabled = record.enabled;
-  if (typeof record.deleteAfterRun === "boolean") patch.deleteAfterRun = record.deleteAfterRun;
-  if (typeof record.conversationId === "string" && record.conversationId.trim()) {
-    patch.conversationId = record.conversationId as Id<"conversations">;
-  }
-
-  const schedule = coerceCronSchedule(record.schedule);
-  if (schedule) patch.schedule = schedule;
-  const payload = coerceCronPayload(record.payload);
-  if (payload) patch.payload = payload;
-
-  return patch;
-};
-
-const requireValue = <T,>(value: T | undefined, label: string): T => {
-  if (value === undefined) {
-    throw new Error(`${label} is required.`);
-  }
-  return value;
-};
 
 const formatResult = (value: unknown) =>
   typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
@@ -527,105 +389,131 @@ export const createBackendTools = (
         return parts.join("\n\n");
       },
     }),
-    Scheduler: tool({
-      description:
-        "Manage heartbeat + cron schedules. action: heartbeat.get|heartbeat.upsert|heartbeat.run|cron.list|cron.add|cron.update|cron.remove|cron.run.",
-      inputSchema: schedulerSchema,
+    HeartbeatGet: tool({
+      description: "Get the current heartbeat configuration.",
+      inputSchema: z.object({
+        conversationId: z.string().optional(),
+      }),
       execute: async (args) => {
-        const params = normalizeParams(args.params);
-        switch (args.action) {
-          case "heartbeat.get": {
-            const conversationId = readString(params, "conversationId");
-            const result = await ctx.runQuery(api.scheduling.heartbeat.getConfig, {
-              ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
-            });
-            return formatResult(result);
-          }
-          case "heartbeat.upsert": {
-            const conversationId = readString(params, "conversationId");
-            const upsertArgs: Record<string, unknown> = {};
-            if (conversationId) upsertArgs.conversationId = conversationId;
-            const enabled = readBoolean(params, "enabled");
-            if (enabled !== undefined) upsertArgs.enabled = enabled;
-            const intervalMs = readNumber(params, "intervalMs");
-            if (intervalMs !== undefined) upsertArgs.intervalMs = intervalMs;
-            const prompt = readString(params, "prompt");
-            if (prompt !== undefined) upsertArgs.prompt = prompt;
-            const checklist = readString(params, "checklist");
-            if (checklist !== undefined) upsertArgs.checklist = checklist;
-            const ackMaxChars = readNumber(params, "ackMaxChars");
-            if (ackMaxChars !== undefined) upsertArgs.ackMaxChars = ackMaxChars;
-            const deliver = readBoolean(params, "deliver");
-            if (deliver !== undefined) upsertArgs.deliver = deliver;
-            const agentType = readString(params, "agentType");
-            if (agentType !== undefined) upsertArgs.agentType = agentType;
-            const activeHours = readObject(params, "activeHours");
-            if (activeHours !== undefined) upsertArgs.activeHours = activeHours;
-            const targetDeviceId = readString(params, "targetDeviceId");
-            if (targetDeviceId !== undefined) upsertArgs.targetDeviceId = targetDeviceId;
-            const result = await ctx.runMutation(api.scheduling.heartbeat.upsertConfig, upsertArgs);
-            return formatResult(result);
-          }
-          case "heartbeat.run": {
-            const conversationId = readString(params, "conversationId");
-            const result = await ctx.runMutation(api.scheduling.heartbeat.runNow, {
-              ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
-            });
-            return formatResult(result);
-          }
-          case "cron.list": {
-            const result = await ctx.runQuery(api.scheduling.cron_jobs.list, {});
-            return formatResult(result);
-          }
-          case "cron.add": {
-            const name = requireValue(readString(params, "name"), "name");
-            const schedule = requireValue(coerceCronSchedule(params.schedule), "schedule");
-            const payload = requireValue(coerceCronPayload(params.payload), "payload");
-            const sessionTarget = requireValue(readString(params, "sessionTarget"), "sessionTarget");
-            const conversationId = readString(params, "conversationId");
-            const description = readString(params, "description");
-            const enabled = readBoolean(params, "enabled");
-            const deleteAfterRun = readBoolean(params, "deleteAfterRun");
-            const result = await ctx.runMutation(api.scheduling.cron_jobs.add, {
-              name,
-              schedule,
-              payload,
-              sessionTarget,
-              ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
-              ...(description ? { description } : {}),
-              ...(enabled !== undefined ? { enabled } : {}),
-              ...(deleteAfterRun !== undefined ? { deleteAfterRun } : {}),
-            });
-            return formatResult(result);
-          }
-          case "cron.update": {
-            const jobId = readString(params, "jobId") ?? readString(params, "id");
-            const patch = coerceCronPatch(params.patch);
-            const resolvedJobId = requireValue(jobId, "jobId");
-            const resolvedPatch = requireValue(patch, "patch");
-            const result = await ctx.runMutation(api.scheduling.cron_jobs.update, {
-              jobId: resolvedJobId as Id<"cron_jobs">,
-              patch: resolvedPatch,
-            });
-            return formatResult(result);
-          }
-          case "cron.remove": {
-            const jobId = readString(params, "jobId") ?? readString(params, "id");
-            const resolvedJobId = requireValue(jobId, "jobId");
-            await ctx.runMutation(api.scheduling.cron_jobs.remove, {
-              jobId: resolvedJobId as Id<"cron_jobs">,
-            });
-            return "Cron job removed.";
-          }
-          case "cron.run": {
-            const jobId = readString(params, "jobId") ?? readString(params, "id");
-            const resolvedJobId = requireValue(jobId, "jobId");
-            const result = await ctx.runMutation(api.scheduling.cron_jobs.run, {
-              jobId: resolvedJobId as Id<"cron_jobs">,
-            });
-            return formatResult(result);
-          }
-        }
+        const result = await ctx.runQuery(api.scheduling.heartbeat.getConfig, {
+          ...(args.conversationId ? { conversationId: args.conversationId as Id<"conversations"> } : {}),
+        });
+        return formatResult(result);
+      },
+    }),
+    HeartbeatUpsert: tool({
+      description: "Create or update the heartbeat configuration.",
+      inputSchema: z.object({
+        conversationId: z.string().optional(),
+        enabled: z.boolean().optional(),
+        intervalMs: z.number().optional(),
+        prompt: z.string().optional(),
+        checklist: z.string().optional(),
+        ackMaxChars: z.number().optional(),
+        deliver: z.boolean().optional(),
+        agentType: z.string().optional(),
+        activeHours: z.object({
+          start: z.string(),
+          end: z.string(),
+          timezone: z.string().optional(),
+        }).optional(),
+        targetDeviceId: z.string().optional(),
+      }),
+      execute: async (args) => {
+        const { conversationId, ...rest } = args;
+        const result = await ctx.runMutation(api.scheduling.heartbeat.upsertConfig, {
+          ...rest,
+          ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
+        });
+        return formatResult(result);
+      },
+    }),
+    HeartbeatRun: tool({
+      description: "Trigger an immediate heartbeat run.",
+      inputSchema: z.object({
+        conversationId: z.string().optional(),
+      }),
+      execute: async (args) => {
+        const result = await ctx.runMutation(api.scheduling.heartbeat.runNow, {
+          ...(args.conversationId ? { conversationId: args.conversationId as Id<"conversations"> } : {}),
+        });
+        return formatResult(result);
+      },
+    }),
+    CronList: tool({
+      description: "List all cron jobs.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const result = await ctx.runQuery(api.scheduling.cron_jobs.list, {});
+        return formatResult(result);
+      },
+    }),
+    CronAdd: tool({
+      description: "Add a new cron job.",
+      inputSchema: z.object({
+        name: z.string(),
+        schedule: cronScheduleSchema,
+        payload: cronPayloadSchema,
+        sessionTarget: z.string(),
+        conversationId: z.string().optional(),
+        description: z.string().optional(),
+        enabled: z.boolean().optional(),
+        deleteAfterRun: z.boolean().optional(),
+      }),
+      execute: async (args) => {
+        const result = await ctx.runMutation(api.scheduling.cron_jobs.add, {
+          name: args.name,
+          schedule: args.schedule,
+          payload: args.payload,
+          sessionTarget: args.sessionTarget,
+          ...(args.conversationId ? { conversationId: args.conversationId as Id<"conversations"> } : {}),
+          ...(args.description ? { description: args.description } : {}),
+          ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
+          ...(args.deleteAfterRun !== undefined ? { deleteAfterRun: args.deleteAfterRun } : {}),
+        });
+        return formatResult(result);
+      },
+    }),
+    CronUpdate: tool({
+      description: "Update an existing cron job.",
+      inputSchema: z.object({
+        jobId: z.string(),
+        patch: cronPatchSchema,
+      }),
+      execute: async (args) => {
+        const { conversationId, ...restPatch } = args.patch;
+        const result = await ctx.runMutation(api.scheduling.cron_jobs.update, {
+          jobId: args.jobId as Id<"cron_jobs">,
+          patch: {
+            ...restPatch,
+            ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
+          },
+        });
+        return formatResult(result);
+      },
+    }),
+    CronRemove: tool({
+      description: "Remove a cron job.",
+      inputSchema: z.object({
+        jobId: z.string(),
+      }),
+      execute: async (args) => {
+        await ctx.runMutation(api.scheduling.cron_jobs.remove, {
+          jobId: args.jobId as Id<"cron_jobs">,
+        });
+        return "Cron job removed.";
+      },
+    }),
+    CronRun: tool({
+      description: "Trigger an immediate run of a cron job.",
+      inputSchema: z.object({
+        jobId: z.string(),
+      }),
+      execute: async (args) => {
+        const result = await ctx.runMutation(api.scheduling.cron_jobs.run, {
+          jobId: args.jobId as Id<"cron_jobs">,
+        });
+        return formatResult(result);
       },
     }),
     OpenCanvas: tool({

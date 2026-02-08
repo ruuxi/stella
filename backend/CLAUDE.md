@@ -95,12 +95,12 @@ App store:
 
 | Agent | Purpose | Key Tools |
 |-------|---------|-----------|
-| `orchestrator` | Default entry point, delegates to subagents | Task, Scheduler, OpenCanvas, CloseCanvas |
+| `orchestrator` | Default entry point, delegates to subagents | TaskCreate, TaskOutput, TaskCancel, OpenCanvas, CloseCanvas |
 | `memory` | Memory search and retrieval | MemorySearch, Read |
-| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch, OpenCanvas, CloseCanvas, GenerateApiSkill, store tools |
-| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, OpenCanvas, CloseCanvas, SelfMod* tools |
+| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, KillShell, Glob, Grep, WebFetch, WebSearch, Heartbeat*, Cron*, OpenCanvas, CloseCanvas, GenerateApiSkill, store tools |
+| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, KillShell, OpenCanvas, CloseCanvas, SelfMod* tools |
 | `explore` | Lightweight read-only exploration | Read, Glob, Grep, WebFetch, WebSearch |
-| `browser` | Browser automation | Bash, Read, OpenCanvas, CloseCanvas |
+| `browser` | Browser automation | Bash, KillShell, Read, OpenCanvas, CloseCanvas |
 
 Per-agent model configuration in `agent/model.ts`.
 
@@ -108,7 +108,7 @@ Per-agent model configuration in `agent/model.ts`.
 
 Tools are assembled in `tools/index.ts`:
 
-1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, Scheduler, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint
+1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, HeartbeatGet, HeartbeatUpsert, HeartbeatRun, CronList, CronAdd, CronUpdate, CronRemove, CronRun, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint
 2. **Cloud tools** (when no local device, but cloud sandbox available): Bash, Read, Write, Edit, Glob, Grep, SqliteQuery via Sprites
 3. **Device tools** (`agent/device_tools.ts`): When Electron app is running — 22+ tools executed locally via request/response through the events table
 
@@ -118,12 +118,12 @@ Device tool pattern:
 3. Client inserts `tool_result` event with same requestId
 4. Backend polls for result (750ms interval, 120s timeout)
 
-**Orchestration tools** (Task, AgentInvoke, MemorySearch) are created separately via `tools/orchestration.ts`.
+**Orchestration tools** (TaskCreate, TaskOutput, TaskCancel, AgentInvoke, MemorySearch) are created separately via `tools/orchestration.ts`.
 
 ### Task/Subagent System
 
 Tasks (`agent/tasks.ts`) enable agent-to-agent delegation:
-- Unified `Task` tool with `action` parameter: `create`, `output`, `cancel`
+- Three tools: `TaskCreate` (delegate), `TaskOutput` (poll result), `TaskCancel` (stop)
 - Depth limiting via `maxTaskDepth` (default 2) prevents infinite recursion
 - Background execution with `run_in_background` option
 - Task events track lifecycle (task_started, task_completed, task_failed, task_checkin)
