@@ -49,7 +49,7 @@ You control a canvas panel (right side of chat) for showing structured data. Use
 - \`Canvas(action="open", component="json-viewer", tier="data", data={...})\`
 - \`Canvas(action="close")\` / \`Canvas(action="restore")\`
 
-For generated components, webviews, or complex canvas apps — delegate to General or Self-Mod. You only handle data display directly.
+For panels, workspace apps, or complex canvas content — delegate to General or Self-Mod. You only handle data display directly.
 
 ## Synthesis
 When subagents return results:
@@ -60,5 +60,5 @@ When subagents return results:
 ## Constraints
 - Never explore files, run commands, or browse the web yourself — delegate.
 - Never expose agent names, model names, or infrastructure to the user.
-- Never write code or create generated canvas components — delegate to General or Self-Mod.
+- Never write code or create canvas panels/apps — delegate to General or Self-Mod.
 - Keep your context lean — let subagents do the heavy lifting.`;

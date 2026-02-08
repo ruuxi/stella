@@ -637,7 +637,7 @@ export const createBackendTools = (
           .string()
           .optional()
           .describe(
-            "Canvas component key: 'panel' (Vite-compiled TSX panel), 'webview' (workspace app), 'proxy' (external URL), 'data-table', 'chart', 'json-viewer'. Deprecated: 'generated' (use 'panel' instead).",
+            "Canvas component key: 'panel' (Vite-compiled TSX panel), 'appframe' (workspace app iframe), 'proxy' (external URL), 'data-table', 'chart', 'json-viewer'. Deprecated: 'generated' (use 'panel'), 'webview' (use 'appframe').",
           ),
         title: z.string().optional().describe("Panel header title"),
         tier: z
@@ -740,10 +740,10 @@ export const createBackendTools = (
                     "Single-file TSX panel compiled by Vite on demand. Write the component to frontend/workspace/panels/{name}.tsx using Write, then open with data.file set to the filename. Can import any installed dep (react, radix, recharts, tailwind, @/hooks/*).",
                 },
                 {
-                  key: "webview",
+                  key: "appframe",
                   tier: "app",
                   description:
-                    "Webview for workspace apps. Create with: Bash('node frontend/workspace/create-app.js my-app'), then write/edit files, run 'bun install' and 'bunx vite --port 5180' via Bash (run_in_background), then open with url set to the dev server URL.",
+                    "Iframe for workspace apps. Create with: Bash('node frontend/workspace/create-app.js my-app') which scaffolds to ~/.stella/apps/my-app/, then write/edit files, run 'bun install' and 'bunx vite --port 5180' via Bash (run_in_background), then open with url set to the dev server URL.",
                 },
               ],
               null,
