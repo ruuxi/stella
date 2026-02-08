@@ -182,4 +182,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Theme loading from installed themes
   listInstalledThemes: () => ipcRenderer.invoke('theme:listInstalled'),
 
+  // Bridge manager
+  bridgeDeploy: (payload: {
+    provider: string; code: string; config: string; dependencies: string
+  }) => ipcRenderer.invoke('bridge:deploy', payload),
+  bridgeStart: (payload: { provider: string }) => ipcRenderer.invoke('bridge:start', payload),
+  bridgeStop: (payload: { provider: string }) => ipcRenderer.invoke('bridge:stop', payload),
+  bridgeStatus: (payload: { provider: string }) => ipcRenderer.invoke('bridge:status', payload),
+
 })
