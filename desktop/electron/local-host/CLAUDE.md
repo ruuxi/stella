@@ -27,8 +27,7 @@ This directory implements the local tool execution system that runs on the user'
 | `tools-state.ts` | Task, TaskOutput |
 | `tools-user.ts` | AskUserQuestion, RequestCredential |
 | `tools-database.ts` | SqliteQuery |
-| `tools_workspace.ts` | CreateWorkspace, StartDevServer, StopDevServer, ListWorkspaces |
-| `tools_store.ts` | InstallSkillPackage, InstallThemePackage, UninstallPackage |
+| `tools_store.ts` | InstallSkillPackage, InstallThemePackage, InstallCanvasPackage, InstallPluginPackage, UninstallPackage |
 | `tools_self_mod.ts` | SelfModStart, SelfModApply, SelfModRevert, SelfModStatus, SelfModPackage |
 
 Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and are no longer registered as device tools. The `tools-web.ts` file still exists but its handlers are commented out of the registry.
@@ -43,7 +42,6 @@ Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and
 | `plugins.ts` | Load plugins from `~/.stella/plugins/` |
 | `stella-home.ts` | `~/.stella/` directory utilities |
 | `skill_import.ts` | Import skills from `~/.claude/skills/` into `~/.stella/skills/` |
-| `workspace_templates.ts` | Vite+React scaffold templates for workspaces |
 | `identity_map.ts` | Persistent pseudonymization (maps real names to aliases) |
 | `manifests.ts` | Manifest file parsing |
 

@@ -182,17 +182,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Theme loading from installed themes
   listInstalledThemes: () => ipcRenderer.invoke('theme:listInstalled'),
 
-  // Canvas file reading — generated renderer reads source from ~/.stella/canvas/
-  readCanvasFile: (filename: string) => ipcRenderer.invoke('canvas:readFile', filename),
-  watchCanvasFile: (filename: string) => ipcRenderer.invoke('canvas:watchFile', filename),
-  unwatchCanvasFile: (filename: string) => ipcRenderer.invoke('canvas:unwatchFile', filename),
-  onCanvasFileChanged: (callback: (filename: string) => void) => {
-    const handler = (_event: IpcRendererEvent, filename: string) => {
-      callback(filename)
-    }
-    ipcRenderer.on('canvas:fileChanged', handler)
-    return () => {
-      ipcRenderer.removeListener('canvas:fileChanged', handler)
-    }
-  },
 })
