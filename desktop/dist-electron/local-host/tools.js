@@ -22,7 +22,7 @@ import { log, logError } from "./tools-utils.js";
 import { handleSqliteQuery } from "./tools-database.js";
 import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./tools-file.js";
 import { handleGlob, handleGrep } from "./tools-search.js";
-import { createShellState, handleBash, handleSkillBash, } from "./tools-shell.js";
+import { createShellState, handleBash, handleKillShell, handleSkillBash, } from "./tools-shell.js";
 // WebFetch and WebSearch have been promoted to backend tools (Convex actions).
 // import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import { createStateContext, handleTask, handleTaskOutput, } from "./tools-state.js";
@@ -45,13 +45,18 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     // User tools config
     const userConfig = { requestCredential };
     // Secret resolution helper for shell tools
-    const resolveSecretValue = async (spec, cache) => {
+    const resolveSecretValue = async (spec, cache, context, toolName) => {
         if (cache.has(spec.provider)) {
             return cache.get(spec.provider) ?? null;
         }
         if (!resolveSecret)
             return null;
-        let resolved = await resolveSecret({ provider: spec.provider });
+        let resolved = await resolveSecret({
+            provider: spec.provider,
+            requestId: context?.requestId,
+            toolName,
+            deviceId: context?.deviceId,
+        });
         if (!resolved && requestCredential) {
             const response = await requestCredential({
                 provider: spec.provider,
@@ -62,6 +67,9 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
             resolved = await resolveSecret({
                 provider: spec.provider,
                 secretId: response.secretId,
+                requestId: context?.requestId,
+                toolName,
+                deviceId: context?.deviceId,
             });
         }
         if (!resolved)
@@ -112,7 +120,8 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
         Grep: (args) => handleGrep(args),
         // Shell tools
         Bash: (args, context) => handleBash(shellState, args, context),
-        SkillBash: (args) => handleSkillBash(shellState, args),
+        KillShell: (args) => handleKillShell(shellState, args),
+        SkillBash: (args, context) => handleSkillBash(shellState, args, context),
         // State tools
         Task: (args) => handleTask(stateContext, args),
         TaskOutput: (args) => handleTaskOutput(stateContext, args),
