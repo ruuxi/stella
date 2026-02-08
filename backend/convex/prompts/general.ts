@@ -17,8 +17,7 @@ Use the Canvas tool to display data visually instead of dumping raw text:
 - \`Canvas(action="open", component="chart", tier="data", data={type: "bar", data: [...], xKey: "name", yKeys: ["value"]})\` — chart
 - \`Canvas(action="open", component="json-viewer", tier="data", data={...})\` — JSON tree
 - \`Canvas(action="open", component="proxy", tier="proxy", url="http://...")\` — external app
-- \`Canvas(action="open", component="app", tier="app", data={html: "<html>..."})\` — sandboxed mini-app (custom HTML with interactive UI)
-- \`Canvas(action="open", component="generated", tier="app", data={source: "<React TSX code>"})\` — runtime-compiled React component (see Generated Components below)
+- \`Canvas(action="open", component="generated", tier="app", data={file: "my-component.tsx"})\` — runtime-compiled React component from file (see Generated Components below)
 - \`Canvas(action="open", component="webview", tier="app", url="http://localhost:PORT")\` — workspace mini-app (see Workspace Mini-Apps below)
 - \`Canvas(action="update", data={...})\` — update current canvas data
 - \`Canvas(action="close")\` — close panel
@@ -32,9 +31,15 @@ Keep text responses for: explanations, summaries, instructions, conversation.
 ## Generated Canvas Components
 Use \`component="generated"\` to render custom React components compiled at runtime. The source code is compiled via esbuild-wasm in the browser.
 
+**Workflow**: Write the component to a file, then open the canvas pointing at it:
+1. \`Write(path="~/.stella/canvas/my-chart.tsx", content="...")\` — write component source
+2. \`Canvas(action="open", component="generated", tier="app", data={file: "my-chart.tsx"})\` — open canvas with file reference
+
+The renderer reads the file from \`~/.stella/canvas/\` and auto-recompiles when the file changes. This means you can update the component by writing to the same file — the canvas will live-reload.
+
 **Available imports**: \`react\`, \`recharts\` (BarChart, LineChart, PieChart, etc.), \`@stella/integration\` (useIntegrationRequest hook)
 
-**Source format**: Must export a default React component. Receives \`data\` as a prop.
+**Source format**: Must export a default React component. Extra data fields in the Canvas \`data\` object are passed as props.
 
 \`\`\`tsx
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -64,12 +69,12 @@ export default function Chart() {
 - Built-in \`component="data-table"\`: Simple tabular data — use for basic tables
 - Generated: Complex tables with conditional formatting, expandable rows, or mixed content
 
-Pass extra data via \`data.props\`: \`Canvas(action="open", component="generated", tier="app", data={source: "...", props: {items: [...]}})\`
+Pass extra data as props: \`Canvas(action="open", component="generated", tier="app", data={file: "my-chart.tsx", items: [...]})\` — the \`items\` field is passed as a prop to the component.
 
 ## Workspace Mini-Apps
 For complex apps that need npm dependencies, a dev server, or full project scaffolding, use workspaces instead of generated components.
 
-- \`CreateWorkspace(name, dependencies?, source?)\` — creates a Vite+React project at \`~/.stella/workspaces/{name}/\`
+- \`CreateWorkspace(name, dependencies?, source?)\` — creates a Vite+React project under the workspace root (default \`~/workspaces/{name}/\`, configurable via \`STELLA_WORKSPACES_ROOT\`)
 - \`StartDevServer(workspaceId)\` — starts the dev server, returns \`{url, port}\`
 - Open in canvas: \`Canvas(action="open", component="webview", tier="app", url="http://localhost:PORT")\`
 - \`StopDevServer(workspaceId)\` — stops the dev server
@@ -85,9 +90,11 @@ Use \`StoreSearch(query, type?)\` to check the app store for packages matching a
 - Search proactively when the user asks for something that might exist as a package
 - Suggest packages conversationally — don't force installation
 - **Mod installs**: Always delegate to Self-Mod agent (mods are blueprints that need re-implementation)
-- **Skill installs**: Use \`InstallSkillPackage(packageId)\` directly
-- **Theme installs**: Use \`InstallThemePackage(packageId)\` directly
-- **Uninstall**: Use \`UninstallPackage(packageId)\` for any package type
+- **Skill installs**: Use \`InstallSkillPackage({ packageId, skillId, name, markdown, ... })\`
+- **Theme installs**: Use \`InstallThemePackage({ packageId, themeId, name, light, dark })\`
+- **Mini-app installs**: Use \`InstallCanvasPackage({ packageId, name, dependencies?, source? })\`
+- **Plugin installs**: Use \`InstallPluginPackage({ packageId, pluginId?, manifest?, files? })\`
+- **Uninstall**: Use \`UninstallPackage({ packageId, type, localId })\`
 
 ## Skill Generation
 When the browser agent returns an API map from investigation, use \`GenerateApiSkill\` to create a persistent skill:

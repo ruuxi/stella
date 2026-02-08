@@ -1,6 +1,7 @@
 import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { jsonValueValidator } from "../shared_validators";
+import { requireUserId } from "../auth";
 
 const canvasStateValidator = v.object({
   _id: v.id("canvas_states"),
@@ -26,25 +27,14 @@ export const getForConversation = query({
   },
   returns: v.union(canvasStateValidator, v.null()),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const result = await ctx.db
       .query("canvas_states")
       .withIndex("by_owner_conversation", (q) =>
-        q.eq("ownerId", "").eq("conversationId", args.conversationId),
+        q.eq("ownerId", ownerId).eq("conversationId", args.conversationId),
       )
       .first();
-
-    // Fallback: query without owner filter since we may not have ownerId
-    if (!result) {
-      const all = await ctx.db
-        .query("canvas_states")
-        .withIndex("by_owner_conversation")
-        .take(500);
-      return (
-        all.find((s) => s.conversationId === args.conversationId) ?? null
-      );
-    }
-
-    return result;
+    return result ?? null;
   },
 });
 

@@ -181,6 +181,7 @@ When asked to install a blueprint:
 
 ### Safety practices:
 - Always Read files before modifying them — understand existing patterns
+- Before risky multi-file edits, run \`Bash("git stash push -u -m 'self-mod-prep'")\` if the working tree is dirty and you need a safety checkpoint
 - Use error boundaries for complex new components
 - Prefer SelfModRevert over manual fixups when something goes wrong
 - Split large batches (5+ files) into smaller applies for safer rollback

@@ -35,6 +35,8 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "SelfModPackage",
   "InstallSkillPackage",
   "InstallThemePackage",
+  "InstallCanvasPackage",
+  "InstallPluginPackage",
   "UninstallPackage",
 ] as const;
 
@@ -283,7 +285,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
     }),
     CreateWorkspace: tool({
       description:
-        "Create a new workspace mini-app at ~/.stella/workspaces/{name}/ with Vite+React scaffold. Installs dependencies.",
+        "Create a new workspace mini-app under the workspace root (default ~/workspaces/{name}, configurable via STELLA_WORKSPACES_ROOT) with legacy fallback. Installs dependencies.",
       inputSchema: z.object({
         name: z.string().min(1).describe("Workspace name"),
         dependencies: z
@@ -314,7 +316,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
     }),
     ListWorkspaces: tool({
       description:
-        "List all workspaces under ~/.stella/workspaces/ with their running status.",
+        "List all workspaces under the workspace root (default ~/workspaces, plus legacy fallback) with their running status.",
       inputSchema: z.object({}),
       execute: (args) => call("ListWorkspaces", args),
     }),
@@ -386,6 +388,32 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         dark: z.record(z.string()).describe("Dark mode color palette"),
       }),
       execute: (args) => call("InstallThemePackage", args),
+    }),
+    InstallCanvasPackage: tool({
+      description:
+        "Install a mini-app/canvas package locally as a workspace under /workspaces/{name}/ (legacy fallback supported).",
+      inputSchema: z.object({
+        packageId: z.string().min(1).describe("Store package ID"),
+        workspaceId: z.string().optional().describe("Preferred workspace ID"),
+        name: z.string().min(1).describe("Workspace name"),
+        dependencies: z.record(z.string()).optional().describe("Extra npm dependencies"),
+        source: z.string().optional().describe("Initial App.tsx source"),
+      }),
+      execute: (args) => call("InstallCanvasPackage", args),
+    }),
+    InstallPluginPackage: tool({
+      description:
+        "Install a plugin package locally to ~/.stella/plugins/ from store payload files and manifest.",
+      inputSchema: z.object({
+        packageId: z.string().min(1).describe("Store package ID"),
+        pluginId: z.string().optional().describe("Local plugin ID"),
+        name: z.string().optional().describe("Plugin display name"),
+        version: z.string().optional().describe("Plugin version"),
+        description: z.string().optional().describe("Plugin description"),
+        manifest: z.record(z.any()).optional().describe("plugin.json object"),
+        files: z.record(z.string()).optional().describe("Relative file map to write"),
+      }),
+      execute: (args) => call("InstallPluginPackage", args),
     }),
     UninstallPackage: tool({
       description:

@@ -69,8 +69,8 @@ You have a rich content panel (right side of the chat) for displaying data, apps
 - \`Canvas(action="open", component="chart", tier="data", data={...})\` — show charts
 - \`Canvas(action="open", component="json-viewer", tier="data", data={...})\` — show JSON
 - \`Canvas(action="open", component="proxy", tier="proxy", url="...")\` — show external app
-- \`Canvas(action="open", component="app", tier="app", data={html: "..."})\` — show interactive mini-app
-- \`Canvas(action="open", component="store", tier="app")\` — open app store
+- \`Canvas(action="open", component="generated", tier="app", data={source: "<React TSX code>"})\` — show runtime-generated UI
+- \`Canvas(action="open", component="webview", tier="app", url="http://localhost:PORT")\` — show workspace mini-app
 - \`Canvas(action="close")\` — close the panel
 - \`Canvas(action="list")\` — see all available components
 - \`Canvas(action="save", component="...", tier="...", data={...})\` — persist canvas state
