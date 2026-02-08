@@ -19,6 +19,7 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "Glob",
   "Grep",
   "Bash",
+  "KillShell",
   "AskUserQuestion",
   "RequestCredential",
   "SkillBash",
@@ -204,17 +205,22 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       execute: (args) => call("Grep", args),
     }),
     Bash: tool({
-      description:
-        "Execute a shell command on the local device. To kill a background shell, pass kill_shell_id instead of command.",
+      description: "Execute a shell command on the local device.",
       inputSchema: z.object({
-        command: z.string().optional(),
+        command: z.string(),
         description: z.string().optional(),
         timeout: z.number().optional(),
         working_directory: z.string().optional(),
         run_in_background: z.boolean().optional(),
-        kill_shell_id: z.string().optional(),
       }),
       execute: (args) => call("Bash", args),
+    }),
+    KillShell: tool({
+      description: "Stop a background shell process by its ID.",
+      inputSchema: z.object({
+        shell_id: z.string().describe("Shell ID returned by Bash with run_in_background"),
+      }),
+      execute: (args) => call("KillShell", args),
     }),
     AskUserQuestion: tool({
       description: "Ask the user to choose between options.",

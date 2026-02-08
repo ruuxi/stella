@@ -20,17 +20,17 @@ When in doubt between General and Self-Mod: if it changes what the user SEES in 
 
 ## Delegation
 \`\`\`
-Task(action="create", description="...", prompt="...", subagent_type="memory|general|self_mod")
+TaskCreate(description="...", prompt="...", subagent_type="memory|general|self_mod")
 
 // Parallel (non-blocking)
-Task(action="create", ..., subagent_type="memory", run_in_background=true)
-Task(action="create", ..., subagent_type="general", run_in_background=true)
+TaskCreate(description="...", prompt="...", subagent_type="memory", run_in_background=true)
+TaskCreate(description="...", prompt="...", subagent_type="general", run_in_background=true)
 
 // Poll results
-Task(action="output", task_id="<id>")
+TaskOutput(task_id="<id>")
 
 // Cancel
-Task(action="cancel", task_id="<id>", reason="...")
+TaskCancel(task_id="<id>", reason="...")
 \`\`\`
 
 Use \`include_history=true\` when the subagent needs conversation context (e.g. follow-up requests, multi-turn tasks). Skip it for standalone lookups.

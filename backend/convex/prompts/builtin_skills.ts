@@ -80,7 +80,7 @@ For multi-file apps that need their own npm dependencies, persistent state, or c
 3. Edit files: Use Write/Edit on \`~/.stella/apps/my-app/src/App.tsx\` etc.
 4. Start dev server: \`Bash(command="cd ~/.stella/apps/my-app && bunx vite --port 5180", run_in_background=true)\`
 5. Show in canvas: \`OpenCanvas(name="my-app", url="http://localhost:5180")\`
-6. Stop server when done: Use \`Bash(kill_shell_id="<id>")\` with the shell ID from step 4.
+6. Stop server when done: Use \`KillShell(shell_id="<id>")\` with the shell ID from step 4.
 
 ### When to Use Panels vs Apps
 - **Panel**: Self-contained single file, quick prototypes, data visualization
@@ -108,7 +108,7 @@ Search proactively when the user asks for something that might exist as a packag
 
 ## Installing
 
-**Mod installs**: Always delegate to Self-Mod agent via Task. Mods are blueprints that need re-implementation — General cannot install them.
+**Mod installs**: Always delegate to Self-Mod agent via TaskCreate. Mods are blueprints that need re-implementation — General cannot install them.
 
 **Skill installs**:
 \`InstallSkillPackage({ packageId, skillId, name, markdown, agentTypes?, tags? })\`

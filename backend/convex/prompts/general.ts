@@ -19,8 +19,8 @@ Use the canvas panel to show interactive content visually. Write a panel or work
 For panels (single-file TSX in \`frontend/workspace/panels/\`) or workspace apps (full projects in \`~/.stella/apps/\`), activate the **workspace** skill first.
 
 ## Delegation
-- **Explore**: Use Task(subagent_type="explore") for file/codebase search. Keeps your context small.
-- **Browser**: Use Task(subagent_type="browser") for web automation, screenshots, form filling, API discovery.
+- **Explore**: Use TaskCreate(subagent_type="explore") for file/codebase search. Keeps your context small.
+- **Browser**: Use TaskCreate(subagent_type="browser") for web automation, screenshots, form filling, API discovery.
 
 ## Error Handling
 When a tool call fails:

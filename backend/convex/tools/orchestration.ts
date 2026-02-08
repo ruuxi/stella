@@ -38,54 +38,16 @@ export const createOrchestrationTools = (
   context: DeviceToolContext,
   options: ToolOptions,
 ): ToolSet => {
-  const Task = tool({
-    description:
-      "Manage subagent tasks. action: create (delegate a task), output (retrieve result), cancel (stop a running task).",
+  const TaskCreate = tool({
+    description: "Delegate a task to a subagent.",
     inputSchema: z.object({
-      action: z.enum(["create", "output", "cancel"]).default("create"),
-      // create params
-      description: z.string().optional(),
-      prompt: z.string().optional(),
-      subagent_type: z.string().optional(),
+      description: z.string(),
+      prompt: z.string(),
+      subagent_type: z.string(),
       run_in_background: z.boolean().optional(),
       include_history: z.boolean().optional(),
-      resume: z.string().optional(),
-      // output/cancel params
-      task_id: z.string().optional(),
-      reason: z.string().optional(),
     }),
     execute: async (args) => {
-      const action = args.action ?? "create";
-
-      if (action === "output") {
-        const taskId = args.task_id;
-        if (!taskId) return "task_id is required for output action.";
-        try {
-          const record = await ctx.runQuery(api.agent.tasks.getOutputByExternalId, {
-            taskId,
-          });
-          if (!record) return `Task not found: ${taskId}`;
-          return formatTaskResult(record as any);
-        } catch {
-          return `Failed to load task: ${taskId}`;
-        }
-      }
-
-      if (action === "cancel") {
-        const taskId = args.task_id;
-        if (!taskId) return "task_id is required for cancel action.";
-        const record = await ctx.runMutation(api.agent.tasks.cancelTask, {
-          taskId: taskId as Id<"tasks">,
-          reason: args.reason,
-        });
-        if (!record) return `Task not found: ${taskId}`;
-        return formatTaskResult(record as any);
-      }
-
-      // action === "create"
-      if (!args.description || !args.prompt || !args.subagent_type) {
-        return "description, prompt, and subagent_type are required for create action.";
-      }
       if (!context.userMessageId) {
         return "Cannot create a task without a user message context.";
       }
@@ -100,8 +62,41 @@ export const createOrchestrationTools = (
         runInBackground: args.run_in_background,
         includeHistory: args.include_history,
       });
-
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
+    },
+  });
+
+  const TaskOutput = tool({
+    description: "Get the result of a subagent task.",
+    inputSchema: z.object({
+      task_id: z.string(),
+    }),
+    execute: async (args) => {
+      try {
+        const record = await ctx.runQuery(api.agent.tasks.getOutputByExternalId, {
+          taskId: args.task_id,
+        });
+        if (!record) return `Task not found: ${args.task_id}`;
+        return formatTaskResult(record as any);
+      } catch {
+        return `Failed to load task: ${args.task_id}`;
+      }
+    },
+  });
+
+  const TaskCancel = tool({
+    description: "Cancel a running subagent task.",
+    inputSchema: z.object({
+      task_id: z.string(),
+      reason: z.string().optional(),
+    }),
+    execute: async (args) => {
+      const record = await ctx.runMutation(api.agent.tasks.cancelTask, {
+        taskId: args.task_id as Id<"tasks">,
+        reason: args.reason,
+      });
+      if (!record) return `Task not found: ${args.task_id}`;
+      return formatTaskResult(record as any);
     },
   });
 
@@ -142,7 +137,9 @@ export const createOrchestrationTools = (
   });
 
   return {
-    Task,
+    TaskCreate,
+    TaskOutput,
+    TaskCancel,
     AgentInvoke,
     MemorySearch: createMemorySearchTool(ctx, options),
   };
