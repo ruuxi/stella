@@ -39,6 +39,7 @@ export async function runAgentTurn({
   historyLimit = 80,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
   await ctx.runMutation(api.agent.agents.ensureBuiltins, {});
+  await ctx.runMutation(api.data.skills.ensureBuiltinSkills, {});
 
   const conversation = await ctx.runQuery(internal.conversations.getById, {
     id: conversationId,

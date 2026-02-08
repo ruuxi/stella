@@ -24,10 +24,6 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "SkillBash",
   "SqliteQuery",
   "MediaGenerate",
-  "CreateWorkspace",
-  "StartDevServer",
-  "StopDevServer",
-  "ListWorkspaces",
   "SelfModStart",
   "SelfModApply",
   "SelfModRevert",
@@ -282,43 +278,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         source_url: z.string().optional(),
       }),
       execute: (args) => call("MediaGenerate", args),
-    }),
-    CreateWorkspace: tool({
-      description:
-        "Create a new workspace mini-app under the workspace root (default ~/workspaces/{name}, configurable via STELLA_WORKSPACES_ROOT) with legacy fallback. Installs dependencies.",
-      inputSchema: z.object({
-        name: z.string().min(1).describe("Workspace name"),
-        dependencies: z
-          .record(z.string())
-          .optional()
-          .describe("Extra npm dependencies, e.g. { 'three': '^0.170.0' }"),
-        source: z
-          .string()
-          .optional()
-          .describe("Initial App.tsx source code"),
-      }),
-      execute: (args) => call("CreateWorkspace", args),
-    }),
-    StartDevServer: tool({
-      description:
-        "Start the Vite dev server for a workspace. Returns { url, port }.",
-      inputSchema: z.object({
-        workspaceId: z.string().min(1).describe("Workspace ID"),
-      }),
-      execute: (args) => call("StartDevServer", args),
-    }),
-    StopDevServer: tool({
-      description: "Stop a running workspace dev server.",
-      inputSchema: z.object({
-        workspaceId: z.string().min(1).describe("Workspace ID"),
-      }),
-      execute: (args) => call("StopDevServer", args),
-    }),
-    ListWorkspaces: tool({
-      description:
-        "List all workspaces under the workspace root (default ~/workspaces, plus legacy fallback) with their running status.",
-      inputSchema: z.object({}),
-      execute: (args) => call("ListWorkspaces", args),
     }),
     SelfModStart: tool({
       description:

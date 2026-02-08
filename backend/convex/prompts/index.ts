@@ -13,3 +13,4 @@ export {
   SKILL_METADATA_PROMPT,
   buildSkillMetadataUserMessage,
 } from "./skill_metadata";
+export { BUILTIN_SKILLS } from "./builtin_skills";

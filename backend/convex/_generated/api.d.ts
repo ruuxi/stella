@@ -45,6 +45,7 @@ import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as lib_retry_fetch from "../lib/retry_fetch.js";
 import type * as prompts_browser from "../prompts/browser.js";
+import type * as prompts_builtin_skills from "../prompts/builtin_skills.js";
 import type * as prompts_discovery_facts from "../prompts/discovery_facts.js";
 import type * as prompts_explore from "../prompts/explore.js";
 import type * as prompts_general from "../prompts/general.js";
@@ -108,6 +109,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/retry_fetch": typeof lib_retry_fetch;
   "prompts/browser": typeof prompts_browser;
+  "prompts/builtin_skills": typeof prompts_builtin_skills;
   "prompts/discovery_facts": typeof prompts_discovery_facts;
   "prompts/explore": typeof prompts_explore;
   "prompts/general": typeof prompts_general;

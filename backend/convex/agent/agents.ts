@@ -96,7 +96,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     description: "Coordinates subagents and responds to the user.",
     systemPrompt: ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
     agentTypes: ["orchestrator"],
-    toolsAllowlist: ["Task", "Scheduler", "Canvas"],
+    toolsAllowlist: ["Task", "Canvas"],
     defaultSkills: [],
     maxTaskDepth: 2,
     version: 1,
@@ -142,11 +142,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "MemorySearch",
       "Canvas",
       "GenerateApiSkill",
-      // Workspace management
-      "CreateWorkspace",
-      "StartDevServer",
-      "StopDevServer",
-      "ListWorkspaces",
       // Store search and package installation
       "StoreSearch",
       "InstallSkillPackage",

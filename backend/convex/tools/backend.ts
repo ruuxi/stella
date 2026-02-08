@@ -637,19 +637,13 @@ export const createBackendTools = (
           .string()
           .optional()
           .describe(
-            "Canvas component key: 'generated' (AI-generated React component), 'proxy' (external URL), 'webview' (workspace mini-app), 'data-table', 'chart', 'json-viewer'",
+            "Canvas component key: 'panel' (Vite-compiled TSX panel), 'webview' (workspace app), 'proxy' (external URL), 'data-table', 'chart', 'json-viewer'. Deprecated: 'generated' (use 'panel' instead).",
           ),
         title: z.string().optional().describe("Panel header title"),
         tier: z
           .enum(["data", "proxy", "app"])
           .optional()
           .describe("Canvas tier"),
-        mode: z
-          .enum(["generated", "workspace"])
-          .optional()
-          .describe(
-            "Optional rendering mode hint for app-tier canvases: generated React component vs workspace webview.",
-          ),
         data: z.any().optional().describe("Structured data for the canvas"),
         url: z
           .string()
@@ -679,7 +673,6 @@ export const createBackendTools = (
                 component: args.component,
                 title: args.title ?? args.component,
                 tier: args.tier,
-                ...(args.mode ? { mode: args.mode } : {}),
                 ...(args.data !== undefined ? { data: args.data } : {}),
                 ...(args.url ? { url: args.url } : {}),
               },
@@ -741,16 +734,16 @@ export const createBackendTools = (
                   description: "External app iframe or API facade",
                 },
                 {
-                  key: "generated",
+                  key: "panel",
                   tier: "app",
                   description:
-                    "Mode 1: runtime-compiled React component. Write component to ~/.stella/canvas/{name}.tsx using the Write tool, then open with data.file set to the filename. Has access to react, recharts, and @stella/integration. Fallback: pass source inline via data.source.",
+                    "Single-file TSX panel compiled by Vite on demand. Write the component to frontend/workspace/panels/{name}.tsx using Write, then open with data.file set to the filename. Can import any installed dep (react, radix, recharts, tailwind, @/hooks/*).",
                 },
                 {
                   key: "webview",
                   tier: "app",
                   description:
-                    "Mode 2: webview for workspace mini-apps. Set url to the dev server URL.",
+                    "Webview for workspace apps. Create with: Bash('node frontend/workspace/create-app.js my-app'), then write/edit files, run 'bun install' and 'bunx vite --port 5180' via Bash (run_in_background), then open with url set to the dev server URL.",
                 },
               ],
               null,

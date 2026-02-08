@@ -141,47 +141,10 @@ export const createOrchestrationTools = (
     },
   });
 
-  const MemorySearch = tool({
-    description:
-      "Search episodic memories for relevant past context. Use when the user references past conversations, previous tasks, or you need historical context.",
-    inputSchema: z.object({
-      query: z.string().min(1).describe("What to search for in memory"),
-      category: z.string().optional().describe("Optional category filter"),
-    }),
-    execute: async (args) => {
-      if (!options.ownerId) {
-        return "MemorySearch requires an authenticated owner context.";
-      }
-      try {
-        const [categories, results] = await Promise.all([
-          ctx.runQuery(internal.data.memory.listCategories, { ownerId: options.ownerId }),
-          ctx.runAction(internal.data.memory.search, {
-            query: args.query,
-            category: args.category,
-            ownerId: options.ownerId,
-          }),
-        ]);
-        const categoryTree = categories
-          .map((c: { category: string; subcategory: string; count: number }) =>
-            `${c.category}/${c.subcategory} (${c.count})`,
-          )
-          .join("\n");
-        const memories = results
-          .map((r: { category: string; subcategory: string; content: string }) =>
-            `[${r.category}/${r.subcategory}] ${r.content}`,
-          )
-          .join("\n\n");
-        return `Available categories:\n${categoryTree}\n\n---\nMatched memories:\n${memories || "(none)"}`;
-      } catch (error) {
-        return `MemorySearch failed: ${(error as Error).message}`;
-      }
-    },
-  });
-
   return {
     Task,
     AgentInvoke,
-    MemorySearch,
+    MemorySearch: createMemorySearchTool(ctx, options),
   };
 };
 
@@ -193,7 +156,13 @@ export const createOrchestrationToolsWithoutDevice = (
   ctx: ActionCtx,
   options: ToolOptions,
 ): ToolSet => {
-  const MemorySearch = tool({
+  return {
+    MemorySearch: createMemorySearchTool(ctx, options),
+  };
+};
+
+const createMemorySearchTool = (ctx: ActionCtx, options: ToolOptions) =>
+  tool({
     description:
       "Search episodic memories for relevant past context. Use when the user references past conversations, previous tasks, or you need historical context.",
     inputSchema: z.object({
@@ -229,8 +198,3 @@ export const createOrchestrationToolsWithoutDevice = (
       }
     },
   });
-
-  return {
-    MemorySearch,
-  };
-};

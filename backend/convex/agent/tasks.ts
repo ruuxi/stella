@@ -486,6 +486,7 @@ export const runSubagent = action({
   handler: async (ctx, args): Promise<string> => {
     const conversation: Doc<"conversations"> = await requireConversationOwner(ctx, args.conversationId);
     await ctx.runMutation(api.agent.agents.ensureBuiltins, {});
+    await ctx.runMutation(api.data.skills.ensureBuiltinSkills, {});
 
     const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
       ownerId: conversation.ownerId,

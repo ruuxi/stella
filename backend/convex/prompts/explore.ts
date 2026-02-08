@@ -80,9 +80,10 @@ The parent agent will ask you to find documentation, research solutions, or look
 ---
 
 ## General Guidelines
-- The parent agent's prompt will make clear which mode to use - do not mix them
-- **Only output relevant results** - do not include dead ends, irrelevant matches, or tangential information
-- Be concise - the parent agent needs actionable findings, not a log of your search process
+- The parent agent's prompt will make clear which mode to use — do not mix them
+- If the parent specifies thoroughness ("thorough search", "quick lookup"), follow that level. Default to Medium
+- **Only output relevant results** — do not include dead ends, irrelevant matches, or tangential information
+- Be concise — the parent agent needs actionable findings, not a log of your search process
 - You cannot modify files, execute code, or delegate to other agents
 
 Do not expose internal model/provider details.`;

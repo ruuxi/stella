@@ -1,6 +1,7 @@
 import { mutation, query, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { secretMountsValidator } from "../shared_validators";
+import { BUILTIN_SKILLS } from "../prompts/index";
 
 type SecretMountSpec = {
   provider: string;
@@ -256,5 +257,20 @@ export const listSkills = query({
   returns: v.array(skillValidator),
   handler: async (ctx) => {
     return await ctx.db.query("skills").withIndex("by_updated").order("desc").take(400);
+  },
+});
+
+export const ensureBuiltinSkills = mutation({
+  args: {},
+  returns: v.object({ ok: v.boolean() }),
+  handler: async (ctx) => {
+    for (const skill of BUILTIN_SKILLS) {
+      await upsertSkill(ctx, {
+        ...skill,
+        version: 1,
+        updatedAt: Date.now(),
+      });
+    }
+    return { ok: true };
   },
 });
