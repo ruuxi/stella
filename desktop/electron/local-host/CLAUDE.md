@@ -23,7 +23,7 @@ This directory implements the local tool execution system that runs on the user'
 |------|-------|
 | `tools-file.ts` | Read, Write, Edit |
 | `tools-search.ts` | Glob, Grep |
-| `tools-shell.ts` | Bash (incl. kill_shell_id), SkillBash |
+| `tools-shell.ts` | Bash, KillShell, SkillBash |
 | `tools-state.ts` | Task, TaskOutput |
 | `tools-user.ts` | AskUserQuestion, RequestCredential |
 | `tools-database.ts` | SqliteQuery |

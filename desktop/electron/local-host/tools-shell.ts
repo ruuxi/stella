@@ -1,5 +1,5 @@
 /**
- * Shell tools: Bash, SkillBash handlers. KillShell is handled via Bash's kill_shell_id param.
+ * Shell tools: Bash, SkillBash, KillShell handlers.
  */
 
 import { spawn } from "child_process";
@@ -132,12 +132,6 @@ export const handleBash = async (
   context?: ToolContext,
 ): Promise<ToolResult> => {
   void context; // Unused but kept for interface consistency
-
-  // Kill a background shell if kill_shell_id is provided
-  const killId = typeof args.kill_shell_id === "string" ? args.kill_shell_id.trim() : "";
-  if (killId) {
-    return handleKillShell(state, { shell_id: killId });
-  }
 
   const command = String(args.command ?? "");
   const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
