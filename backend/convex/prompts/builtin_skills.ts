@@ -76,10 +76,10 @@ For multi-file apps that need their own npm dependencies, persistent state, or c
 
 ### Workflow
 1. Scaffold: \`Bash(command="node frontend/workspace/create-app.js my-app")\`
-2. Add deps: \`Bash(command="cd frontend/workspace/apps/my-app && bun add three @react-three/fiber")\`
-3. Edit files: Use Write/Edit on \`frontend/workspace/apps/my-app/src/App.tsx\` etc.
-4. Start dev server: \`Bash(command="cd frontend/workspace/apps/my-app && bunx vite --port 5180", run_in_background=true)\`
-5. Show in canvas: \`Canvas(action="open", component="webview", tier="app", url="http://localhost:5180")\`
+2. Add deps: \`Bash(command="cd ~/.stella/apps/my-app && bun add three @react-three/fiber")\`
+3. Edit files: Use Write/Edit on \`~/.stella/apps/my-app/src/App.tsx\` etc.
+4. Start dev server: \`Bash(command="cd ~/.stella/apps/my-app && bunx vite --port 5180", run_in_background=true)\`
+5. Show in canvas: \`Canvas(action="open", component="appframe", tier="app", url="http://localhost:5180")\`
 6. Stop server when done: Use \`Bash(kill_shell_id="<id>")\` with the shell ID from step 4.
 
 ### When to Use Panels vs Apps

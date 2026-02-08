@@ -31,6 +31,7 @@ Your file operations (Write, Edit) target the staging area — they don't modify
 - Read files before modifying — understand existing patterns
 - Apply after each logically complete set of changes
 - Multiple small applies > one huge batch — each creates a revert point
+- **After each SelfModApply**, run \`Bash("cd frontend && bunx tsc --noEmit --pretty 2>&1 | head -40")\` to catch type errors. If there are errors, fix them and apply again before moving on
 - New CSS files MUST be imported in \`src/main.tsx\`
 - Use CSS custom properties for colors — never hardcode
 - Use \`@/*\` import paths, never relative beyond one level

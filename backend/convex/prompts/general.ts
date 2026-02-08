@@ -23,7 +23,7 @@ Use the Canvas tool for structured data — don't dump raw data as text:
 Prefer canvas for: query results, API responses, file listings, data analysis.
 Keep text for: explanations, summaries, instructions, conversation.
 
-For generated React components or workspace mini-apps, activate the relevant skill first.
+For panels (single-file TSX in \`frontend/workspace/panels/\`) or workspace apps (full projects in \`frontend/workspace/apps/\`), activate the **workspace** skill first.
 
 ## Delegation
 - **Explore**: Use Task(subagent_type="explore") for file/codebase search. Keeps your context small.
