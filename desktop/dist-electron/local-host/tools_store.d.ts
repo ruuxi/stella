@@ -18,8 +18,8 @@ export declare const handleInstallSkill: (args: Record<string, unknown>) => Prom
  */
 export declare const handleInstallTheme: (args: Record<string, unknown>) => Promise<ToolResult>;
 /**
- * Install a mini-app/canvas package as a workspace.
- * Expects source/dependencies in payload.
+ * Install a mini-app/canvas package as a workspace app.
+ * Uses create-app.js to scaffold from the committed template.
  */
 export declare const handleInstallCanvas: (args: Record<string, unknown>) => Promise<ToolResult>;
 /**
