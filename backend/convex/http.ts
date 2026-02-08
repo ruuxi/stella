@@ -19,6 +19,7 @@ import { verifyDiscordSignature } from "./channels/discord";
 import { verifySlackSignature } from "./channels/slack";
 import { verifyGoogleChatJwt } from "./channels/google_chat";
 import { verifyTeamsToken } from "./channels/teams";
+import { verifyLinqSignature } from "./channels/linq";
 
 type ChatRequest = {
   conversationId: string;
@@ -1200,6 +1201,100 @@ http.route({
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Linq Webhook (iMessage/RCS/SMS via Linq Partner API)
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/webhooks/linq",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const webhookSecret = process.env.LINQ_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error("[linq] Missing LINQ_WEBHOOK_SECRET");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    const signature = request.headers.get("x-webhook-signature") ?? "";
+    const timestamp = request.headers.get("x-webhook-timestamp") ?? "";
+    const rawBody = await request.text();
+
+    const isValid = await verifyLinqSignature(rawBody, signature, timestamp, webhookSecret);
+    if (!isValid) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    let envelope: {
+      event_type?: string;
+      data?: {
+        chat?: { id?: string; owner_handle?: { handle?: string } };
+        sender_handle?: { handle?: string };
+        parts?: Array<{ type?: string; value?: string }>;
+      };
+    };
+    try {
+      envelope = JSON.parse(rawBody);
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    // Only handle incoming messages
+    if (envelope.event_type !== "message.received") {
+      return new Response("OK", { status: 200 });
+    }
+
+    const senderPhone = envelope.data?.sender_handle?.handle ?? "";
+    const fromNumber = process.env.LINQ_FROM_NUMBER ?? "";
+
+    // Skip self-messages (our own outgoing messages echoed back)
+    if (!senderPhone || senderPhone === fromNumber) {
+      return new Response("OK", { status: 200 });
+    }
+
+    // Extract text from message parts
+    const parts = envelope.data?.parts ?? [];
+    const text = parts
+      .filter((p) => p.type === "text")
+      .map((p) => p.value ?? "")
+      .join("\n")
+      .trim();
+
+    if (!text) {
+      return new Response("OK", { status: 200 });
+    }
+
+    const incomingChatId = envelope.data?.chat?.id ?? "";
+
+    // Rate limit
+    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: "linq",
+      key: senderPhone,
+      limit: 30,
+      windowMs: WEBHOOK_RATE_WINDOW_MS,
+      blockMs: WEBHOOK_RATE_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterMs);
+    }
+
+    if (text.toLowerCase().startsWith("link ")) {
+      await ctx.scheduler.runAfter(0, internal.channels.linq.handleStartCommand, {
+        senderPhone,
+        text: text.slice(5).trim(),
+        incomingChatId,
+      });
+    } else {
+      await ctx.scheduler.runAfter(0, internal.channels.linq.handleIncomingMessage, {
+        senderPhone,
+        text,
+        incomingChatId,
+      });
+    }
+
+    return new Response("OK", { status: 200 });
   }),
 });
 
