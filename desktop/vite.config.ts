@@ -15,6 +15,11 @@ export default defineConfig({
       },
     },
   },
+  server: {
+    watch: {
+      ignored: ['**/workspace/**'],
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

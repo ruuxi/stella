@@ -10,8 +10,9 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { execSync } from "child_process";
+import { fileURLToPath } from "url";
 import type { ToolResult } from "./tools-types.js";
-import { handleCreateWorkspace, getWorkspaceRoots } from "./tools_workspace.js";
 
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
 
@@ -110,47 +111,60 @@ export const handleInstallTheme = async (
 };
 
 /**
- * Install a mini-app/canvas package as a workspace.
- * Expects source/dependencies in payload.
+ * Install a mini-app/canvas package as a workspace app.
+ * Uses create-app.js to scaffold from the committed template.
  */
 export const handleInstallCanvas = async (
   args: Record<string, unknown>,
 ): Promise<ToolResult> => {
   const packageId = String(args.packageId ?? "").trim();
-  const workspaceId = String(args.workspaceId ?? packageId).trim();
-  const workspaceName = String(args.name ?? workspaceId).trim();
-  const source = typeof args.source === "string" ? args.source : undefined;
-  const dependencies =
-    args.dependencies && typeof args.dependencies === "object"
-      ? (args.dependencies as Record<string, string>)
-      : undefined;
+  const appName = String(args.workspaceId ?? args.name ?? packageId).trim();
 
   if (!packageId) {
     return { error: "InstallCanvasPackage requires packageId." };
   }
-  if (!workspaceName) {
-    return { error: "InstallCanvasPackage requires a workspace name." };
+  if (!appName) {
+    return { error: "InstallCanvasPackage requires a name." };
   }
 
-  const createResult = await handleCreateWorkspace({
-    name: workspaceId || workspaceName,
-    dependencies,
-    source,
-  });
-  if (createResult.error) {
-    return createResult;
-  }
+  // Locate create-app.js relative to this file (local-host/ → ../../workspace/)
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const createAppScript = path.resolve(__dirname, "..", "..", "workspace", "create-app.js");
+  const appsDir = path.resolve(__dirname, "..", "..", "workspace", "apps");
+  const appPath = path.join(appsDir, appName);
 
-  const parsed = readResultObject(createResult);
-  return {
-    result: {
-      installed: true,
-      packageId,
-      workspaceId:
-        typeof parsed.workspaceId === "string" ? parsed.workspaceId : workspaceId,
-      path: typeof parsed.path === "string" ? parsed.path : undefined,
-    },
-  };
+  try {
+    execSync(`node "${createAppScript}" "${appName}"`, { stdio: "pipe" });
+
+    // Write custom App.tsx if provided
+    const source = typeof args.source === "string" ? args.source : undefined;
+    if (source) {
+      await fs.writeFile(path.join(appPath, "src", "App.tsx"), source, "utf-8");
+    }
+
+    // Add extra dependencies if provided
+    const dependencies =
+      args.dependencies && typeof args.dependencies === "object"
+        ? (args.dependencies as Record<string, string>)
+        : undefined;
+    if (dependencies && Object.keys(dependencies).length > 0) {
+      const pkgPath = path.join(appPath, "package.json");
+      const pkg = JSON.parse(await fs.readFile(pkgPath, "utf-8"));
+      pkg.dependencies = { ...pkg.dependencies, ...dependencies };
+      await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2), "utf-8");
+    }
+
+    return {
+      result: {
+        installed: true,
+        packageId,
+        workspaceId: appName,
+        path: appPath,
+      },
+    };
+  } catch (err) {
+    return { error: `Failed to install canvas package: ${(err as Error).message}` };
+  }
 };
 
 /**
@@ -237,14 +251,12 @@ export const handleUninstallPackage = async (
         break;
       }
       case "canvas": {
-        await Promise.all(
-          getWorkspaceRoots().map(async (root) => {
-            await fs.rm(path.join(root, localId), {
-              recursive: true,
-              force: true,
-            });
-          }),
-        );
+        const __dir = path.dirname(fileURLToPath(import.meta.url));
+        const appsRoot = path.resolve(__dir, "..", "..", "workspace", "apps");
+        await fs.rm(path.join(appsRoot, localId), {
+          recursive: true,
+          force: true,
+        });
         break;
       }
       case "plugin": {

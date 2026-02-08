@@ -13,8 +13,6 @@ export type CanvasPayload = {
   title?: string
   /** Which tier this canvas belongs to */
   tier: CanvasTier
-  /** Optional rendering mode hint for app-tier canvases */
-  mode?: 'generated' | 'workspace'
   /** Structured data passed to the canvas component */
   data?: unknown
   /** URL for app-tier canvases (iframe/webview src) */

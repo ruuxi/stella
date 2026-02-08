@@ -79,8 +79,9 @@ See `src/components/CLAUDE.md` for component conventions.
 Side panel for rendering AI-generated content alongside chat:
 - **State**: `src/app/state/canvas-state.tsx` — `CanvasProvider`, `useCanvas` hook
 - **Panel**: `src/components/canvas/CanvasPanel.tsx` — panel with resize handle, header, close button
-- **6 renderers** in `src/components/canvas/renderers/`: data_table, chart, json_viewer, proxy, generated, webview
-- **Runtime compiler** in `src/components/canvas/compiler/`: esbuild-wasm JSX compilation for generated renderer
+- **6 renderers** in `src/components/canvas/renderers/`: data_table, chart, json_viewer, proxy, panel, webview
+- **Panel renderer**: Vite-compiled single-file TSX from `workspace/panels/` via dynamic import
+- **Workspace apps**: Full Vite+React projects in `workspace/apps/`, scaffolded via `workspace/create-app.js`
 - **Event bridge**: `src/hooks/use-canvas-commands.ts` — processes canvas events from Convex
 - **CSS**: `src/styles/canvas-panel.css` + `src/styles/canvas-renderers.css`
 

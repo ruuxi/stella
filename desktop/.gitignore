@@ -25,3 +25,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Workspace — keep templates, ignore generated content
+workspace/panels/*
+!workspace/panels/.gitkeep
+workspace/apps/*
+!workspace/apps/_template/
