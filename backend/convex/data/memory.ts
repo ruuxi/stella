@@ -689,3 +689,30 @@ export const seedFromDiscovery = internalAction({
     return null;
   },
 });
+
+// ---------------------------------------------------------------------------
+// insertMemoryWithEmbedding (internal action) — embed + insert in one call
+// ---------------------------------------------------------------------------
+
+export const insertMemoryWithEmbedding = internalAction({
+  args: {
+    ownerId: v.string(),
+    category: v.string(),
+    subcategory: v.string(),
+    content: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const vector = await embed(args.content);
+    await ctx.runMutation(internal.data.memory.insertMemory, {
+      ownerId: args.ownerId,
+      conversationId: args.conversationId,
+      category: args.category,
+      subcategory: args.subcategory,
+      content: args.content,
+      embedding: vector,
+    });
+    return null;
+  },
+});

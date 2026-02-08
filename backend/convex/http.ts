@@ -252,7 +252,7 @@ http.route({
         : body.agent === "general"
           ? "general"
           : "orchestrator";
-    const promptBuild = await buildSystemPrompt(ctx, agentType, { ownerId: conversation.ownerId });
+    const promptBuild = await buildSystemPrompt(ctx, agentType, { ownerId: conversation.ownerId, conversationId });
 
     // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);

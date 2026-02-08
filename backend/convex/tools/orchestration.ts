@@ -46,18 +46,40 @@ export const createOrchestrationTools = (
       "- description: short summary for logging (e.g. \"Search for React components\").\n" +
       "- prompt: the full instructions the subagent will follow. Be specific — the subagent only sees this prompt.\n" +
       "- subagent_type: which agent to use — \"memory\" (context lookup), \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
-      "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.\n\n" +
+      "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.\n" +
+      "- thread_id: continue an existing thread (pass thread ID from active threads list). The subagent resumes with full prior context.\n" +
+      "- thread_title: create a new thread with this title (for general/self_mod only). Short and descriptive, e.g. \"Fix sidebar color\".\n\n" +
+      "Threads preserve subagent context across invocations — use thread_id to continue, thread_title to start new. Only general and self_mod support threads.\n\n" +
       "Multiple tasks can run in parallel — call TaskCreate multiple times, then poll each with TaskOutput.",
     inputSchema: z.object({
       description: z.string().describe("Short summary for logging"),
       prompt: z.string().describe("Full instructions for the subagent"),
       subagent_type: z.string().describe("Agent type: memory, general, self_mod, explore, or browser"),
       include_history: z.boolean().optional().describe("Pass conversation context to the subagent"),
+      thread_id: z.string().optional().describe("Continue an existing thread (pass thread ID from active threads list)"),
+      thread_title: z.string().optional().describe("Create a new thread with this title (for general/self_mod only)"),
     }),
     execute: async (args) => {
       if (!context.userMessageId) {
         return "Cannot create a task without a user message context.";
       }
+
+      let threadId: string | undefined;
+      const supportsThreads = args.subagent_type === "general" || args.subagent_type === "self_mod";
+
+      if (args.thread_id && supportsThreads) {
+        threadId = args.thread_id;
+      } else if (args.thread_title && supportsThreads) {
+        // Create a new thread
+        const newThreadId = await ctx.runMutation(internal.data.threads.createThread, {
+          conversationId: context.conversationId,
+          agentType: args.subagent_type,
+          title: args.thread_title,
+          ownerId: options.ownerId ?? "",
+        });
+        threadId = newThreadId;
+      }
+
       const result = await ctx.runAction(api.agent.tasks.runSubagent, {
         conversationId: context.conversationId,
         userMessageId: context.userMessageId,
@@ -67,6 +89,7 @@ export const createOrchestrationTools = (
         subagentType: args.subagent_type,
         parentTaskId: options.currentTaskId,
         includeHistory: args.include_history,
+        threadId: threadId as Id<"threads"> | undefined,
       });
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
     },
