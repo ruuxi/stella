@@ -29,5 +29,3 @@ dist-ssr
 # Workspace — keep templates, ignore generated content
 workspace/panels/*
 !workspace/panels/.gitkeep
-workspace/apps/*
-!workspace/apps/_template/
