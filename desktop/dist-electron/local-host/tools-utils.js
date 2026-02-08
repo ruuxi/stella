@@ -7,9 +7,45 @@ import os from "os";
 // Constants
 export const MAX_OUTPUT = 30000;
 export const MAX_FILE_BYTES = 1000000;
+const SENSITIVE_KEY_RE = /(authorization|proxy-authorization|cookie|set-cookie|token|secret|password|passwd|api[-_]?key|client[-_]?secret|session|csrf|x[-_]api[-_]key)/i;
+const URL_SECRET_RE = /([?&](?:api[-_]?key|token|access_token|refresh_token|session|secret|password)=)([^&#\s]+)/gi;
+const BEARER_RE = /\b(Bearer)\s+[A-Za-z0-9\-._~+/]+=*\b/gi;
+const BASIC_RE = /\b(Basic)\s+[A-Za-z0-9+/=]+\b/gi;
+const COOKIE_INLINE_RE = /\b(cookie|set-cookie)\s*:\s*([^\n\r;]+)/gi;
+const JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
+const redactString = (input) => input
+    .replace(URL_SECRET_RE, "$1[REDACTED]")
+    .replace(BEARER_RE, "$1 [REDACTED]")
+    .replace(BASIC_RE, "$1 [REDACTED]")
+    .replace(COOKIE_INLINE_RE, "$1: [REDACTED]")
+    .replace(JWT_RE, "[REDACTED]");
+const sanitizeSensitiveData = (value, depth = 0, seen = new WeakSet()) => {
+    if (depth > 8)
+        return "[TRUNCATED]";
+    if (typeof value === "string")
+        return redactString(value);
+    if (typeof value !== "object" || value === null)
+        return value;
+    if (seen.has(value))
+        return "[CIRCULAR]";
+    seen.add(value);
+    if (Array.isArray(value)) {
+        return value.map((entry) => sanitizeSensitiveData(entry, depth + 1, seen));
+    }
+    const output = {};
+    for (const [key, entry] of Object.entries(value)) {
+        if (SENSITIVE_KEY_RE.test(key)) {
+            output[key] = "[REDACTED]";
+            continue;
+        }
+        output[key] = sanitizeSensitiveData(entry, depth + 1, seen);
+    }
+    return output;
+};
 // Logging
-export const log = (...args) => console.log("[tools]", ...args);
-export const logError = (...args) => console.error("[tools]", ...args);
+export const log = (...args) => console.log("[tools]", ...args.map((entry) => sanitizeSensitiveData(entry)));
+export const logError = (...args) => console.error("[tools]", ...args.map((entry) => sanitizeSensitiveData(entry)));
+export const sanitizeForLogs = (value) => sanitizeSensitiveData(value);
 // Path utilities
 export const ensureAbsolutePath = (filePath) => {
     if (!path.isAbsolute(filePath)) {
