@@ -7,6 +7,7 @@
 
 import { v } from "convex/values";
 import { action } from "../_generated/server";
+import { requireUserId } from "../auth";
 
 export const execute = action({
   args: {
@@ -22,7 +23,9 @@ export const execute = action({
     responseType: v.optional(v.string()),
   },
   returns: v.any(),
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+
     const { request, responseType } = args;
 
     let url: URL;
@@ -30,6 +33,10 @@ export const execute = action({
       url = new URL(request.url);
     } catch {
       return { error: "Invalid URL." };
+    }
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return { error: "Only http(s) URLs are allowed." };
     }
 
     if (request.query && typeof request.query === "object") {
@@ -50,7 +57,13 @@ export const execute = action({
     }
 
     const method = (request.method ?? "GET").toUpperCase();
-    const timeoutMs = request.timeoutMs ?? 30_000;
+    if (!/^[A-Z]+$/.test(method)) {
+      return { error: "Invalid HTTP method." };
+    }
+    const timeoutMs =
+      typeof request.timeoutMs === "number"
+        ? Math.max(1_000, Math.min(request.timeoutMs, 120_000))
+        : 30_000;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);

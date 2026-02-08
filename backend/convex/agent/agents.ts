@@ -151,6 +151,8 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "StoreSearch",
       "InstallSkillPackage",
       "InstallThemePackage",
+      "InstallCanvasPackage",
+      "InstallPluginPackage",
       "UninstallPackage",
     ],
     defaultSkills: [],

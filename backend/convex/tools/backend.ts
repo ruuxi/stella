@@ -637,13 +637,19 @@ export const createBackendTools = (
           .string()
           .optional()
           .describe(
-            "Canvas component key (e.g. 'data-table', 'chart', 'json-viewer', 'proxy')",
+            "Canvas component key: 'generated' (AI-generated React component), 'proxy' (external URL), 'webview' (workspace mini-app), 'data-table', 'chart', 'json-viewer'",
           ),
         title: z.string().optional().describe("Panel header title"),
         tier: z
           .enum(["data", "proxy", "app"])
           .optional()
           .describe("Canvas tier"),
+        mode: z
+          .enum(["generated", "workspace"])
+          .optional()
+          .describe(
+            "Optional rendering mode hint for app-tier canvases: generated React component vs workspace webview.",
+          ),
         data: z.any().optional().describe("Structured data for the canvas"),
         url: z
           .string()
@@ -673,6 +679,7 @@ export const createBackendTools = (
                 component: args.component,
                 title: args.title ?? args.component,
                 tier: args.tier,
+                ...(args.mode ? { mode: args.mode } : {}),
                 ...(args.data !== undefined ? { data: args.data } : {}),
                 ...(args.url ? { url: args.url } : {}),
               },
@@ -737,23 +744,13 @@ export const createBackendTools = (
                   key: "generated",
                   tier: "app",
                   description:
-                    "Runtime-compiled React component. Send source code in data.source. Has access to react, recharts, and @stella/integration.",
+                    "Mode 1: runtime-compiled React component. Write component to ~/.stella/canvas/{name}.tsx using the Write tool, then open with data.file set to the filename. Has access to react, recharts, and @stella/integration. Fallback: pass source inline via data.source.",
                 },
                 {
                   key: "webview",
                   tier: "app",
                   description:
-                    "Webview for workspace mini-apps. Set url to the dev server URL.",
-                },
-                {
-                  key: "app",
-                  tier: "app",
-                  description: "Sandboxed HTML/React mini-app",
-                },
-                {
-                  key: "store",
-                  tier: "app",
-                  description: "App store browser",
+                    "Mode 2: webview for workspace mini-apps. Set url to the dev server URL.",
                 },
               ],
               null,
