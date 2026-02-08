@@ -48,7 +48,7 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
 
   if (loading) {
     return (
-      <div className="canvas-generated-loading">
+      <div className="canvas-vite-loading">
         <Spinner size="md" />
         <span>Loading panel...</span>
       </div>
@@ -72,9 +72,9 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
   }
 
   return (
-    <div className="canvas-generated-wrap">
+    <div className="canvas-vite-wrap">
       <CanvasErrorBoundary key={retryKeyRef.current} onRetry={handleRetry}>
-        <div className="canvas-generated-content">
+        <div className="canvas-vite-content">
           <Component />
         </div>
       </CanvasErrorBoundary>
