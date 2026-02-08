@@ -12,6 +12,8 @@ export type ShellState = {
   resolveSecretValue: (
     spec: SecretMountSpec,
     cache: Map<string, string>,
+    context?: ToolContext,
+    toolName?: string,
   ) => Promise<string | null>;
 };
 
@@ -154,6 +156,7 @@ export const handleBash = async (
 export const handleSkillBash = async (
   state: ShellState,
   args: Record<string, unknown>,
+  context?: ToolContext,
 ): Promise<ToolResult> => {
   const skillId = String(args.skill_id ?? "").trim();
   if (!skillId) {
@@ -176,7 +179,12 @@ export const handleSkillBash = async (
   if (skill.secretMounts.env) {
     for (const [envName, spec] of Object.entries(skill.secretMounts.env)) {
       if (!envName.trim()) continue;
-      const value = await state.resolveSecretValue(spec, providerCache);
+      const value = await state.resolveSecretValue(
+        spec,
+        providerCache,
+        context,
+        "SkillBash",
+      );
       if (!value) {
         return {
           error: `Missing secret for ${spec.provider}.`,
@@ -189,7 +197,12 @@ export const handleSkillBash = async (
   if (skill.secretMounts.files) {
     for (const [filePath, spec] of Object.entries(skill.secretMounts.files)) {
       if (!filePath.trim()) continue;
-      const value = await state.resolveSecretValue(spec, providerCache);
+      const value = await state.resolveSecretValue(
+        spec,
+        providerCache,
+        context,
+        "SkillBash",
+      );
       if (!value) {
         return {
           error: `Missing secret for ${spec.provider}.`,

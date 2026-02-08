@@ -67,6 +67,9 @@ export type ToolHostOptions = {
   resolveSecret?: (payload: {
     provider: string;
     secretId?: string;
+    requestId?: string;
+    toolName?: string;
+    deviceId?: string;
   }) => Promise<ResolvedSecret | null>;
 };
 
