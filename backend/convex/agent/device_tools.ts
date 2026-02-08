@@ -350,7 +350,7 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
     }),
     InstallCanvasPackage: tool({
       description:
-        "Install a mini-app/canvas package locally as a workspace under /workspaces/{name}/ (legacy fallback supported).",
+        "Install a mini-app/canvas package locally as a workspace app under ~/.stella/apps/{name}/.",
       inputSchema: z.object({
         packageId: z.string().min(1).describe("Store package ID"),
         workspaceId: z.string().optional().describe("Preferred workspace ID"),

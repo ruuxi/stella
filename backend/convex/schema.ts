@@ -362,10 +362,8 @@ export default defineSchema({
   canvas_states: defineTable({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
-    component: v.string(),
-    tier: v.string(),
+    name: v.string(),
     title: v.optional(v.string()),
-    data: v.optional(jsonValueValidator),
     url: v.optional(v.string()),
     width: v.optional(v.number()),
     updatedAt: v.number(),
