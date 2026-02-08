@@ -27,7 +27,6 @@ import { createShellState, handleBash, handleSkillBash, } from "./tools-shell.js
 // import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import { createStateContext, handleTask, handleTaskOutput, } from "./tools-state.js";
 import { handleAskUser, handleRequestCredential } from "./tools-user.js";
-import { handleCreateWorkspace, handleStartDevServer, handleStopDevServer, handleListWorkspaces, } from "./tools_workspace.js";
 import { handleSelfModStart, handleSelfModApply, handleSelfModRevert, handleSelfModStatus, handleSelfModPackage, } from "./tools_self_mod.js";
 import { handleInstallCanvas, handleInstallPlugin, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from "./tools_store.js";
 export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, resolveSecret }) => {
@@ -124,11 +123,6 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
         SqliteQuery: (args, context) => handleSqliteQuery(args, context),
         // Media tools (not yet implemented)
         MediaGenerate: async () => notConfigured("MediaGenerate"),
-        // Workspace tools
-        CreateWorkspace: (args) => handleCreateWorkspace(args),
-        StartDevServer: (args) => handleStartDevServer(args),
-        StopDevServer: (args) => handleStopDevServer(args),
-        ListWorkspaces: () => handleListWorkspaces(),
         // Self-mod tools
         SelfModStart: (args, context) => handleSelfModStart(args, context, frontendRoot),
         SelfModApply: (args, context) => handleSelfModApply(args, context, frontendRoot),
