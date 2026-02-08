@@ -30,7 +30,8 @@ const bridgeSessionValidator = v.object({
   _creationTime: v.number(),
   ownerId: v.string(),
   provider: v.string(),
-  spriteName: v.string(),
+  spriteName: v.optional(v.string()),
+  mode: v.optional(v.string()),
   status: v.string(),
   webhookSecret: v.string(),
   authState: bridgeAuthStateValidator,
@@ -201,7 +202,8 @@ export const createBridgeSession = internalMutation({
   args: {
     ownerId: v.string(),
     provider: v.string(),
-    spriteName: v.string(),
+    spriteName: v.optional(v.string()),
+    mode: v.optional(v.string()),
   },
   returns: v.id("bridge_sessions"),
   handler: async (ctx, args) => {
@@ -210,6 +212,7 @@ export const createBridgeSession = internalMutation({
       ownerId: args.ownerId,
       provider: args.provider,
       spriteName: args.spriteName,
+      mode: args.mode,
       status: "initializing",
       webhookSecret: generateBridgeWebhookSecret(),
       createdAt: now,
@@ -464,6 +467,8 @@ export const wakeSprite = internalAction({
     });
     if (!session || session.status !== "connected") return null;
     if (args.dueAtMs !== undefined && session.nextWakeAtMs !== args.dueAtMs) return null;
+    // wakeSprite is cloud-only; skip if no sprite
+    if (!session.spriteName) return null;
 
     const now = Date.now();
 
@@ -518,6 +523,8 @@ export const bridgeWakeTick = internalAction({
       const lastHeartbeatAt = session.lastHeartbeatAt ?? session.updatedAt;
       if (lastHeartbeatAt >= staleThreshold) continue;
 
+      const sessionMode = session.mode ?? "cloud";
+
       await ctx.runMutation(internal.channels.bridge.updateBridgeSession, {
         id: session._id,
         status: "disconnected",
@@ -525,18 +532,20 @@ export const bridgeWakeTick = internalAction({
       });
       await ctx.runMutation(internal.channels.bridge.clearWakeSchedule, { id: session._id });
 
-      const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
-        ownerId: session.ownerId,
-      });
-      if (!hasActiveBridge) {
-        const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
+      if (sessionMode === "cloud") {
+        const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
           ownerId: session.ownerId,
         });
-        if (device && device.status !== "sleeping" && device.status !== "error") {
-          await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-            id: device._id,
-            status: "sleeping",
+        if (!hasActiveBridge) {
+          const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
+            ownerId: session.ownerId,
           });
+          if (device && device.status !== "sleeping" && device.status !== "error") {
+            await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
+              id: device._id,
+              status: "sleeping",
+            });
+          }
         }
       }
     }
@@ -552,6 +561,9 @@ export const bridgeWakeTick = internalAction({
         dueAtMs,
       });
     }
+
+    // Garbage-collect orphaned outbound messages
+    await ctx.runMutation(internal.channels.bridge_outbound.gc, {});
 
     return null;
   },
@@ -569,11 +581,7 @@ export const setupBridge = action({
     const runtimeMode = await ctx.runQuery(internal.data.preferences.getRuntimeModeForOwner, {
       ownerId,
     });
-    if (runtimeMode !== "cloud_247") {
-      throw new Error(
-        "24/7 mode is disabled. Enable 24/7 in Settings before connecting WhatsApp or Signal.",
-      );
-    }
+    const bridgeMode = runtimeMode === "cloud_247" ? "cloud" : "local";
 
     // Check existing session
     const existing = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
@@ -589,34 +597,46 @@ export const setupBridge = action({
       await ctx.runMutation(internal.channels.bridge.deleteBridgeSession, { id: existing._id });
     }
 
-    // Ensure user has a sprite
-    let spriteName: string | null = await ctx.runQuery(
-      internal.agent.cloud_devices.resolveForOwner,
-      { ownerId },
-    );
-    if (!spriteName) {
-      // Auto-provision a sprite (enable247 is a public action)
-      const result = await ctx.runAction(api.agent.cloud_devices.enable247, {});
-      spriteName = result.spriteName;
+    if (bridgeMode === "cloud") {
+      // Cloud path: provision sprite and deploy remotely
+      let spriteName: string | null = await ctx.runQuery(
+        internal.agent.cloud_devices.resolveForOwner,
+        { ownerId },
+      );
+      if (!spriteName) {
+        const result = await ctx.runAction(api.agent.cloud_devices.enable247, {});
+        spriteName = result.spriteName;
+      }
+
+      const sessionId: Id<"bridge_sessions"> = await ctx.runMutation(
+        internal.channels.bridge.createBridgeSession,
+        {
+          ownerId,
+          provider: args.provider,
+          spriteName,
+          mode: "cloud",
+        },
+      );
+
+      await ctx.scheduler.runAfter(0, internal.channels.bridge.deployBridge, {
+        sessionId,
+        spriteName,
+        provider: args.provider,
+        ownerId,
+      });
+
+      return { status: "initializing", sessionId };
     }
 
-    // Create session record
+    // Local path: create session, no sprite, frontend will deploy via IPC
     const sessionId: Id<"bridge_sessions"> = await ctx.runMutation(
       internal.channels.bridge.createBridgeSession,
       {
         ownerId,
         provider: args.provider,
-        spriteName,
+        mode: "local",
       },
     );
-
-    // Deploy bridge code
-    await ctx.scheduler.runAfter(0, internal.channels.bridge.deployBridge, {
-      sessionId,
-      spriteName,
-      provider: args.provider,
-      ownerId,
-    });
 
     return { status: "initializing", sessionId };
   },
@@ -633,16 +653,21 @@ export const stopBridge = action({
     });
     if (!session) return { status: "not_running" };
 
-    // Kill the bridge process
-    try {
-      await spritesExecChecked(
-        session.spriteName,
-        `pkill -f 'node.*bridge.js' || true`,
-        "Bridge process stop",
-      );
-    } catch {
-      // May already be stopped
+    const sessionMode = session.mode ?? "cloud";
+
+    if (sessionMode === "cloud" && session.spriteName) {
+      // Kill the bridge process on the sprite
+      try {
+        await spritesExecChecked(
+          session.spriteName,
+          `pkill -f 'node.*bridge.js' || true`,
+          "Bridge process stop",
+        );
+      } catch {
+        // May already be stopped
+      }
     }
+    // Local mode: just update status — Electron detects and kills process
 
     await ctx.runMutation(internal.channels.bridge.updateBridgeSession, {
       id: session._id,
@@ -650,22 +675,56 @@ export const stopBridge = action({
     });
     // Clear wake schedule
     await ctx.runMutation(internal.channels.bridge.clearWakeSchedule, { id: session._id });
-    const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
-      ownerId,
-    });
-    if (!hasActiveBridge) {
-      const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
+
+    if (sessionMode === "cloud") {
+      const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
         ownerId,
       });
-      if (device && device.status !== "sleeping" && device.status !== "error") {
-        await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-          id: device._id,
-          status: "sleeping",
+      if (!hasActiveBridge) {
+        const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
+          ownerId,
         });
+        if (device && device.status !== "sleeping" && device.status !== "error") {
+          await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
+            id: device._id,
+            status: "sleeping",
+          });
+        }
       }
     }
 
     return { status: "stopped" };
+  },
+});
+
+export const getBridgeBundle = action({
+  args: { provider: v.string() },
+  returns: v.object({
+    code: v.string(),
+    config: v.string(),
+    dependencies: v.string(),
+  }),
+  handler: async (ctx, args): Promise<{ code: string; config: string; dependencies: string }> => {
+    const ownerId = await requireUserId(ctx);
+    const session: { webhookSecret: string } | null = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
+      ownerId,
+      provider: args.provider,
+    });
+    if (!session) {
+      throw new Error(`No bridge session found for ${args.provider}`);
+    }
+
+    const code: string = getBridgeServiceCode(args.provider);
+    const configStr: string = JSON.stringify({
+      provider: args.provider,
+      webhookUrl: `${process.env.CONVEX_SITE_URL}/api/webhooks/bridge`,
+      pollUrl: `${process.env.CONVEX_SITE_URL}/api/bridge/poll`,
+      webhookSecret: session.webhookSecret,
+      ownerId,
+    });
+    const dependencies: string = getBridgeDependencies(args.provider);
+
+    return { code, config: configStr, dependencies };
   },
 });
 
@@ -686,31 +745,35 @@ export const handleHeartbeat = internalAction({
     });
     if (!session) return null;
 
+    const sessionMode = session.mode ?? "cloud";
+
     await ctx.runMutation(internal.channels.bridge.updateBridgeSession, {
       id: session._id,
       lastHeartbeatAt: Date.now(),
       ...(session.status === "disconnected" ? { status: "connected" } : {}),
     });
 
-    const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
-      ownerId: args.ownerId,
-    });
-    if (device && device.status !== "running" && device.status !== "error") {
-      await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-        id: device._id,
-        status: "running",
+    if (sessionMode === "cloud") {
+      const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
+        ownerId: args.ownerId,
       });
-    }
+      if (device && device.status !== "running" && device.status !== "error") {
+        await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
+          id: device._id,
+          status: "running",
+        });
+      }
 
-    if (session.status === "disconnected") {
-      const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
-        id: session._id,
-        consecutiveEmptyWakes: 0,
-      });
-      await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
-        sessionId: session._id,
-        dueAtMs: nextWake.dueAtMs,
-      });
+      if (session.status === "disconnected") {
+        const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
+          id: session._id,
+          consecutiveEmptyWakes: 0,
+        });
+        await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
+          sessionId: session._id,
+          dueAtMs: nextWake.dueAtMs,
+        });
+      }
     }
     return null;
   },
@@ -746,6 +809,8 @@ export const handleAuthUpdate = internalAction({
       authState: args.authState,
     });
 
+    const sessionMode = session.mode ?? "cloud";
+
     // Auto-create channel_connections when bridge reports connected
     if (args.status === "connected") {
       const externalId =
@@ -773,20 +838,18 @@ export const handleAuthUpdate = internalAction({
         }
       }
 
-      const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
-        id: session._id,
-        consecutiveEmptyWakes: 0,
-      });
-      await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
-        sessionId: session._id,
-        dueAtMs: nextWake.dueAtMs,
-      });
+      if (sessionMode === "cloud") {
+        const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
+          id: session._id,
+          consecutiveEmptyWakes: 0,
+        });
+        await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
+          sessionId: session._id,
+          dueAtMs: nextWake.dueAtMs,
+        });
+      }
     }
 
-    const shouldMarkRunning =
-      args.status === "connected" ||
-      args.status === "awaiting_auth" ||
-      args.status === "initializing";
     const shouldMarkSleeping =
       args.status === "error" ||
       args.status === "disconnected" ||
@@ -797,24 +860,31 @@ export const handleAuthUpdate = internalAction({
       await ctx.runMutation(internal.channels.bridge.clearWakeSchedule, { id: session._id });
     }
 
-    const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
-      ownerId: args.ownerId,
-    });
-    if (device && device.status !== "error") {
-      if (shouldMarkRunning && device.status !== "running") {
-        await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-          id: device._id,
-          status: "running",
-        });
-      } else if (shouldMarkSleeping && device.status !== "sleeping") {
-        const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
-          ownerId: args.ownerId,
-        });
-        if (!hasActiveBridge) {
+    if (sessionMode === "cloud") {
+      const shouldMarkRunning =
+        args.status === "connected" ||
+        args.status === "awaiting_auth" ||
+        args.status === "initializing";
+
+      const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
+        ownerId: args.ownerId,
+      });
+      if (device && device.status !== "error") {
+        if (shouldMarkRunning && device.status !== "running") {
           await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
             id: device._id,
-            status: "sleeping",
+            status: "running",
           });
+        } else if (shouldMarkSleeping && device.status !== "sleeping") {
+          const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
+            ownerId: args.ownerId,
+          });
+          if (!hasActiveBridge) {
+            await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
+              id: device._id,
+              status: "sleeping",
+            });
+          }
         }
       }
     }
@@ -863,7 +933,7 @@ export const handleBridgeMessage = internalAction({
 
     if (!result) return null;
 
-    // Look up the bridge session to get the sprite name
+    // Look up the bridge session
     const session = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId: args.ownerId,
       provider: args.provider,
@@ -873,35 +943,14 @@ export const handleBridgeMessage = internalAction({
       return null;
     }
 
-    // Deliver reply by executing curl inside the sprite to hit the bridge's
-    // local HTTP server. This avoids the sprite's internal hostname being
-    // unreachable from Convex's network.
-    const payload = JSON.stringify({
+    // Enqueue reply for bridge.js to poll
+    await ctx.runMutation(internal.channels.bridge_outbound.enqueue, {
+      sessionId: session._id,
+      ownerId: args.ownerId,
+      provider: args.provider,
       externalUserId: args.externalUserId,
       text: result.text,
     });
-    const escapedPayload = payload.replace(/'/g, "'\\''");
-    let deliveryError: unknown = null;
-    let delivered = false;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        await spritesExecChecked(
-          session.spriteName,
-          `curl -fsS -X POST http://localhost:8080/reply -H 'Content-Type: application/json' -d '${escapedPayload}'`,
-          `${args.provider} reply delivery (attempt ${attempt}/3)`,
-        );
-        delivered = true;
-        break;
-      } catch (error) {
-        deliveryError = error;
-        if (attempt < 3) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-    }
-    if (!delivered) {
-      console.error(`[bridge] Failed to deliver reply for ${args.provider}:`, deliveryError);
-    }
 
     // Update message activity and reset empty-wake counter
     await ctx.runMutation(internal.channels.bridge.updateBridgeSession, {
@@ -910,17 +959,20 @@ export const handleBridgeMessage = internalAction({
       consecutiveEmptyWakes: 0,
     });
 
-    // Instant promotion: if tier was COOL/COLD/FROZEN, reschedule aggressively
-    const currentTier = session.wakeTier;
-    if (currentTier === "COOL" || currentTier === "COLD" || currentTier === "FROZEN") {
-      const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
-        id: session._id,
-        consecutiveEmptyWakes: 0,
-      });
-      await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
-        sessionId: session._id,
-        dueAtMs: nextWake.dueAtMs,
-      });
+    // Instant promotion: if tier was COOL/COLD/FROZEN, reschedule aggressively (cloud only)
+    const sessionMode = session.mode ?? "cloud";
+    if (sessionMode === "cloud") {
+      const currentTier = session.wakeTier;
+      if (currentTier === "COOL" || currentTier === "COLD" || currentTier === "FROZEN") {
+        const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
+          id: session._id,
+          consecutiveEmptyWakes: 0,
+        });
+        await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
+          sessionId: session._id,
+          dueAtMs: nextWake.dueAtMs,
+        });
+      }
     }
 
     return null;
@@ -972,7 +1024,7 @@ export const handleBridgeError = internalAction({
 // ---------------------------------------------------------------------------
 
 const WHATSAPP_BRIDGE_CODE = `
-const http = require("http");
+const path = require("path");
 const config = require("./config.json");
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const QRCode = require("qrcode");
@@ -996,8 +1048,41 @@ async function postWebhook(body) {
   }
 }
 
+async function pollForReplies() {
+  while (true) {
+    try {
+      const res = await fetch(config.pollUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-bridge-secret": config.webhookSecret,
+        },
+        body: JSON.stringify({ provider: "whatsapp", ownerId: config.ownerId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          for (const msg of data.messages) {
+            try {
+              if (sock && msg.externalUserId && msg.text) {
+                await sock.sendMessage(msg.externalUserId, { text: msg.text });
+              }
+            } catch (err) {
+              console.error("[bridge] Reply delivery error:", err.message);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[bridge] Poll error:", err.message);
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
 async function startWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState("/home/sprite/stella-bridge/auth_state");
+  const authStatePath = path.join(__dirname, "auth_state");
+  const { state, saveCreds } = await useMultiFileAuthState(authStatePath);
 
   sock = makeWASocket({
     auth: state,
@@ -1060,44 +1145,15 @@ async function startWhatsApp() {
       const from = msg.key.remoteJid;
       const pushName = msg.pushName || "";
 
-      const spriteHost = process.env.HOSTNAME || "localhost";
       await postWebhook({
         type: "message",
         externalUserId: from,
         text,
         displayName: pushName,
-        replyCallback: \`http://\${spriteHost}:8080/reply\`,
       });
     }
   });
 }
-
-// HTTP server for receiving replies from Convex
-const server = http.createServer(async (req, res) => {
-  if (req.method === "POST" && req.url === "/reply") {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", async () => {
-      try {
-        const data = JSON.parse(body);
-        if (sock && data.externalUserId && data.text) {
-          await sock.sendMessage(data.externalUserId, { text: data.text });
-        }
-        res.writeHead(200);
-        res.end("OK");
-      } catch (err) {
-        console.error("[bridge] Reply handler error:", err.message);
-        res.writeHead(500);
-        res.end("Error");
-      }
-    });
-  } else {
-    res.writeHead(404);
-    res.end();
-  }
-});
-
-server.listen(8080, () => console.log("[bridge] WhatsApp bridge listening on :8080"));
 
 // Heartbeat
 setInterval(() => postWebhook({ type: "heartbeat" }), 60000);
@@ -1107,6 +1163,9 @@ startWhatsApp().catch((err) => {
   console.error("[bridge] WhatsApp startup failed:", err);
   postWebhook({ type: "error", error: err.message });
 });
+
+// Start reply poll loop
+pollForReplies();
 `.trim();
 
 // ---------------------------------------------------------------------------
@@ -1114,7 +1173,7 @@ startWhatsApp().catch((err) => {
 // ---------------------------------------------------------------------------
 
 const SIGNAL_BRIDGE_CODE = `
-const http = require("http");
+const path = require("path");
 const { spawn } = require("child_process");
 const config = require("./config.json");
 
@@ -1135,8 +1194,40 @@ async function postWebhook(body) {
   }
 }
 
-const SIGNAL_DATA = "/home/sprite/stella-bridge/signal-data";
+const SIGNAL_DATA = path.join(__dirname, "signal-data");
 const SIGNAL_RPC_URL = "http://127.0.0.1:8081/api/v1/rpc";
+
+async function pollForReplies() {
+  while (true) {
+    try {
+      const res = await fetch(config.pollUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-bridge-secret": config.webhookSecret,
+        },
+        body: JSON.stringify({ provider: "signal", ownerId: config.ownerId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          for (const msg of data.messages) {
+            try {
+              if (msg.externalUserId && msg.text) {
+                await sendSignalMessage(msg.externalUserId, msg.text);
+              }
+            } catch (err) {
+              console.error("[bridge] Reply delivery error:", err.message);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[bridge] Poll error:", err.message);
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
 
 async function linkSignal() {
   return new Promise((resolve, reject) => {
@@ -1246,13 +1337,11 @@ function startDaemon() {
           const text = msg.envelope.dataMessage.message;
           const displayName = msg.envelope.sourceName || "";
 
-          const spriteHost = process.env.HOSTNAME || "localhost";
           postWebhook({
             type: "message",
             externalUserId: from,
             text,
             displayName,
-            replyCallback: \`http://\${spriteHost}:8080/reply\`,
           });
         }
       } catch {}
@@ -1294,33 +1383,6 @@ async function sendSignalMessage(recipient, message) {
   }
 }
 
-// HTTP server for receiving replies from Convex
-const server = http.createServer(async (req, res) => {
-  if (req.method === "POST" && req.url === "/reply") {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", async () => {
-      try {
-        const data = JSON.parse(body);
-        if (data.externalUserId && data.text) {
-          await sendSignalMessage(data.externalUserId, data.text);
-        }
-        res.writeHead(200);
-        res.end("OK");
-      } catch (err) {
-        console.error("[bridge] Reply handler error:", err.message);
-        res.writeHead(500);
-        res.end("Error");
-      }
-    });
-  } else {
-    res.writeHead(404);
-    res.end();
-  }
-});
-
-server.listen(8080, () => console.log("[bridge] Signal bridge listening on :8080"));
-
 // Heartbeat
 setInterval(() => postWebhook({ type: "heartbeat" }), 60000);
 
@@ -1342,4 +1404,7 @@ bootstrapSignal().catch((err) => {
   console.error("[bridge] Signal startup failed:", err);
   postWebhook({ type: "error", error: err.message });
 });
+
+// Start reply poll loop
+pollForReplies();
 `.trim();

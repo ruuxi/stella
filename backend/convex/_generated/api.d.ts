@@ -21,6 +21,7 @@ import type * as automation_index from "../automation/index.js";
 import type * as automation_runner from "../automation/runner.js";
 import type * as automation_utils from "../automation/utils.js";
 import type * as channels_bridge from "../channels/bridge.js";
+import type * as channels_bridge_outbound from "../channels/bridge_outbound.js";
 import type * as channels_discord from "../channels/discord.js";
 import type * as channels_google_chat from "../channels/google_chat.js";
 import type * as channels_linq from "../channels/linq.js";
@@ -88,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   "automation/runner": typeof automation_runner;
   "automation/utils": typeof automation_utils;
   "channels/bridge": typeof channels_bridge;
+  "channels/bridge_outbound": typeof channels_bridge_outbound;
   "channels/discord": typeof channels_discord;
   "channels/google_chat": typeof channels_google_chat;
   "channels/linq": typeof channels_linq;
