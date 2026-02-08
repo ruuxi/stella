@@ -33,17 +33,17 @@ Two ways to show interactive content in the canvas panel.
 
 ## Panels (single-file TSX)
 
-For custom visualizations, interactive controls, and anything beyond built-in charts/tables.
-Vite compiles the file on demand — can import any installed dep (react, radix, recharts, tailwind, @/hooks/*).
+For visualizations, interactive controls, data display, and anything you want to show visually.
+Vite compiles the file on demand — can import any installed frontend dep (react, radix, recharts, tailwind, @/hooks/*).
 
 ### Workflow
 1. Write the component:
    \`Write(file_path="frontend/workspace/panels/my-chart.tsx", content="...")\`
 2. Open canvas:
-   \`Canvas(action="open", component="panel", tier="app", data={file: "my-chart.tsx"})\`
+   \`OpenCanvas(name="my-chart")\`
 
 ### Source Format
-Must export a default React component. Extra fields in the Canvas \`data\` object are passed as props.
+Must export a default React component.
 
 \`\`\`tsx
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -68,7 +68,7 @@ export default function Chart() {
 \`\`\`
 
 ### Updating a Panel
-Write to the same file again, then call Canvas open again — Vite recompiles on the fresh import.
+Write to the same file again, then call OpenCanvas again — Vite recompiles on the fresh import.
 
 ## Apps (full Vite+React projects)
 
@@ -79,18 +79,15 @@ For multi-file apps that need their own npm dependencies, persistent state, or c
 2. Add deps: \`Bash(command="cd ~/.stella/apps/my-app && bun add three @react-three/fiber")\`
 3. Edit files: Use Write/Edit on \`~/.stella/apps/my-app/src/App.tsx\` etc.
 4. Start dev server: \`Bash(command="cd ~/.stella/apps/my-app && bunx vite --port 5180", run_in_background=true)\`
-5. Show in canvas: \`Canvas(action="open", component="appframe", tier="app", url="http://localhost:5180")\`
+5. Show in canvas: \`OpenCanvas(name="my-app", url="http://localhost:5180")\`
 6. Stop server when done: Use \`Bash(kill_shell_id="<id>")\` with the shell ID from step 4.
 
 ### When to Use Panels vs Apps
 - **Panel**: Self-contained single file, quick prototypes, data visualization
 - **App**: Multi-file projects, npm dependencies (three.js, tone.js, etc.), persistent projects
 
-### When to Use Panels vs Built-in
-- **Built-in \`chart\`**: Simple charts from structured data — faster, no code
-- **Panel**: Custom layouts, interactive controls, combined visualizations
-- **Built-in \`data-table\`**: Simple tabular data
-- **Panel**: Conditional formatting, expandable rows, mixed content`,
+### Closing
+\`CloseCanvas()\` — closes the canvas panel.`,
 };
 
 const STORE_MANAGEMENT: BuiltinSkill = {
@@ -203,10 +200,9 @@ frontend/src/
 │   └── canvas-state.tsx        # CanvasProvider (isOpen, canvas, width)
 ├── components/
 │   ├── canvas/
-│   │   ├── CanvasPanel.tsx     # Canvas panel + registry
-│   │   ├── DataTableCanvas.tsx # Sortable data table
-│   │   ├── ChartCanvas.tsx     # Recharts wrapper
-│   │   └── JsonViewerCanvas.tsx# JSON tree viewer
+│   │   ├── CanvasPanel.tsx     # Canvas panel (url → iframe, else → panel)
+│   │   ├── CanvasErrorBoundary.tsx # Error boundary for renderers
+│   │   └── renderers/          # panel.tsx (Vite dynamic), appframe.tsx (iframe)
 │   ├── chat/                   # Message rendering (Markdown, MessageGroup, etc.)
 │   ├── Sidebar.tsx             # Left navigation
 │   ├── button.tsx / .css       # Button component (pattern for all primitives)
@@ -282,16 +278,11 @@ overrideSlot('sidebar', MyCustomSidebar, { priority: 10, source: 'self-mod' })
 \`\`\`
 
 ## Canvas System
-Three tiers of canvas components:
-- **data**: Charts, tables, JSON viewers — structured data display
-- **proxy**: Facade over external app APIs (iframe or custom React UI)
-- **app**: Sandboxed mini-applications
+Side panel for rendering interactive content alongside chat:
+- **Panels**: Single-file TSX in \`workspace/panels/\` — Vite-compiled on demand via dynamic import
+- **Apps**: Full Vite+React projects in \`~/.stella/apps/\` — rendered via sandboxed iframe
 
-Register new canvas renderers:
-\`\`\`typescript
-import { registerCanvas } from '@/components/canvas/CanvasPanel'
-registerCanvas('my-canvas', ({ canvas }) => <MyCanvas data={canvas.data} />)
-\`\`\``,
+\`CanvasPanel.tsx\` routes by URL: if \`canvas.url\` is set → iframe (AppframeRenderer), otherwise → Vite dynamic import (PanelRenderer).`,
 };
 
 const BLUEPRINT_MANAGEMENT: BuiltinSkill = {
