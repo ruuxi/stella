@@ -1,5 +1,6 @@
 import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 
 export type PromptBuildResult = {
   systemPrompt: string;
@@ -41,10 +42,32 @@ const buildSkillsSection = (
   ].join("\n");
 };
 
+const buildCategoryTree = (
+  categories: Array<{ category: string; subcategory: string }>,
+): string => {
+  const grouped = new Map<string, string[]>();
+  for (const c of categories) {
+    const subs = grouped.get(c.category) ?? [];
+    subs.push(c.subcategory);
+    grouped.set(c.category, subs);
+  }
+
+  const lines: string[] = [];
+  const entries = Array.from(grouped.entries());
+  for (const [category, subcategories] of entries) {
+    lines.push(`${category}/`);
+    for (let i = 0; i < subcategories.length; i++) {
+      const isLast = i === subcategories.length - 1;
+      lines.push(`${isLast ? "└──" : "├──"} ${subcategories[i]}`);
+    }
+  }
+  return lines.join("\n");
+};
+
 export const buildSystemPrompt = async (
   ctx: ActionCtx,
   agentType: string,
-  options?: { ownerId?: string },
+  options?: { ownerId?: string; conversationId?: Id<"conversations"> },
 ): Promise<PromptBuildResult> => {
   const agent = await ctx.runQuery(api.agent.agents.getAgentConfig, {
     agentType,
@@ -85,6 +108,49 @@ export const buildSystemPrompt = async (
       }
     } catch {
       // Preference not found or auth issue — skip
+    }
+  }
+
+  // Inject active threads for orchestrator
+  if (agentType === "orchestrator" && options?.conversationId) {
+    try {
+      const activeThreads = await ctx.runQuery(
+        internal.data.threads.listActiveThreads,
+        { conversationId: options.conversationId },
+      );
+      if (activeThreads.length > 0) {
+        const threadLines = activeThreads.map(
+          (t: { _id: Id<"threads">; title: string; agentType: string }) =>
+            `- [${t._id}] "${t.title}" (${t.agentType})`,
+        );
+        systemParts.push(
+          [
+            "# Active Threads",
+            "These are ongoing work sessions. Use thread_id in TaskCreate to continue one, or thread_title to start new.",
+            "",
+            ...threadLines,
+          ].join("\n"),
+        );
+      }
+    } catch {
+      // Thread query failed — skip
+    }
+  }
+
+  // Inject category tree for orchestrator
+  if (agentType === "orchestrator" && options?.ownerId) {
+    try {
+      const categories = await ctx.runQuery(internal.data.memory.listCategories, {
+        ownerId: options.ownerId,
+      });
+      if (categories.length > 0) {
+        const tree = buildCategoryTree(
+          categories as Array<{ category: string; subcategory: string; count: number }>,
+        );
+        systemParts.push(`# Memory Categories\n${tree}`);
+      }
+    } catch {
+      // Category query failed — skip
     }
   }
 

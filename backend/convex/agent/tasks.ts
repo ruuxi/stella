@@ -112,6 +112,7 @@ type SubagentExecutionArgs = {
   taskId: Id<"tasks">;
   ownerId?: string;
   includeHistory?: boolean;
+  threadId?: Id<"threads">;
 };
 
 const buildHistoryMessages = async (
@@ -162,14 +163,51 @@ const executeSubagentRun = async (
   });
   const pluginTools = (await ctx.runQuery(api.data.plugins.listToolDescriptors, {})) as PluginToolDescriptor[];
 
-  const historyMessages = args.includeHistory
-    ? await buildHistoryMessages(
-        ctx,
-        args.conversationId,
-        args.userMessageId,
-        SUBAGENT_HISTORY_LIMIT,
-      )
-    : [];
+  // Load thread history if continuing a thread
+  let threadMessages: Array<{ role: "user"; content: string } | { role: "assistant"; content: string }> = [];
+  let nextStepIndex = 0;
+  if (args.threadId) {
+    const steps = await ctx.runQuery(internal.data.threads.loadSteps, {
+      threadId: args.threadId,
+    });
+    for (const step of steps) {
+      threadMessages.push({ role: "user" as const, content: step.prompt });
+      try {
+        const parsed = JSON.parse(step.response);
+        if (Array.isArray(parsed)) {
+          for (const msg of parsed) {
+            if (msg.role === "assistant" && typeof msg.content === "string") {
+              threadMessages.push({ role: "assistant" as const, content: msg.content });
+            } else if (msg.role === "assistant" && Array.isArray(msg.content)) {
+              // Extract text parts from structured content
+              const textParts = msg.content
+                .filter((p: { type: string; text?: string }) => p.type === "text" && p.text)
+                .map((p: { text: string }) => p.text)
+                .join("");
+              if (textParts) {
+                threadMessages.push({ role: "assistant" as const, content: textParts });
+              }
+            }
+          }
+        }
+      } catch {
+        // Skip unparseable responses
+      }
+    }
+    nextStepIndex = steps.length;
+  }
+
+  // When continuing a thread, skip conversation history — thread has its own context
+  const historyMessages = args.threadId
+    ? []
+    : args.includeHistory
+      ? await buildHistoryMessages(
+          ctx,
+          args.conversationId,
+          args.userMessageId,
+          SUBAGENT_HISTORY_LIMIT,
+        )
+      : [];
 
   const toolContext: DeviceToolContext = {
     conversationId: args.conversationId,
@@ -222,6 +260,7 @@ const executeSubagentRun = async (
         },
       ),
       messages: [
+        ...threadMessages,
         ...historyMessages,
         {
           role: "user",
@@ -234,6 +273,21 @@ const executeSubagentRun = async (
     const text: string = await result.text;
     finished = true;
     await cancelWatcher;
+
+    // Save thread step if this is a threaded execution
+    if (args.threadId) {
+      const response = await result.response;
+      const responseMessages = response?.messages ?? [];
+      await ctx.runMutation(internal.data.threads.appendStep, {
+        threadId: args.threadId,
+        stepIndex: nextStepIndex,
+        prompt: args.prompt,
+        response: JSON.stringify(responseMessages),
+      });
+      await ctx.runMutation(internal.data.threads.touchThread, {
+        threadId: args.threadId,
+      });
+    }
 
     const postStatus = await ctx.runQuery(internal.agent.tasks.getTaskStatus, {
       taskId: args.taskId,
@@ -480,6 +534,7 @@ export const runSubagent = action({
     subagentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
     includeHistory: v.optional(v.boolean()),
+    threadId: v.optional(v.id("threads")),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -537,6 +592,7 @@ export const runSubagent = action({
       taskId,
       ownerId: conversation.ownerId,
       includeHistory: args.includeHistory,
+      threadId: args.threadId,
     });
 
     return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
@@ -553,6 +609,7 @@ export const executeSubagent = internalAction({
     taskId: v.id("tasks"),
     ownerId: v.string(),
     includeHistory: v.optional(v.boolean()),
+    threadId: v.optional(v.id("threads")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -565,6 +622,7 @@ export const executeSubagent = internalAction({
       taskId: args.taskId,
       ownerId: args.ownerId,
       includeHistory: args.includeHistory,
+      threadId: args.threadId,
     });
     return null;
   },

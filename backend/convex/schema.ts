@@ -385,6 +385,24 @@ export default defineSchema({
     .index("by_owner_updated", ["ownerId", "updatedAt"])
     .index("by_conversation", ["conversationId", "updatedAt"])
     .index("by_feature_id", ["featureId"]),
+  threads: defineTable({
+    conversationId: v.id("conversations"),
+    agentType: v.string(),
+    title: v.string(),
+    status: v.string(),
+    createdAt: v.number(),
+    lastActiveAt: v.number(),
+  })
+    .index("by_conversation_status", ["conversationId", "status", "lastActiveAt"])
+    .index("by_conversation_active", ["conversationId", "status"]),
+  thread_messages: defineTable({
+    threadId: v.id("threads"),
+    stepIndex: v.number(),
+    prompt: v.string(),
+    response: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_thread", ["threadId", "stepIndex"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
