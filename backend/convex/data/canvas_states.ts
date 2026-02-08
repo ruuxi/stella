@@ -1,6 +1,5 @@
 import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
-import { jsonValueValidator } from "../shared_validators";
 import { requireUserId } from "../auth";
 
 const canvasStateValidator = v.object({
@@ -8,10 +7,8 @@ const canvasStateValidator = v.object({
   _creationTime: v.number(),
   ownerId: v.string(),
   conversationId: v.id("conversations"),
-  component: v.string(),
-  tier: v.string(),
+  name: v.string(),
   title: v.optional(v.string()),
-  data: v.optional(jsonValueValidator),
   url: v.optional(v.string()),
   width: v.optional(v.number()),
   updatedAt: v.number(),
@@ -39,16 +36,14 @@ export const getForConversation = query({
 });
 
 /**
- * Save canvas state for a conversation (internal, called by Canvas tool).
+ * Save canvas state for a conversation.
  */
 export const save = internalMutation({
   args: {
     ownerId: v.string(),
     conversationId: v.id("conversations"),
-    component: v.string(),
-    tier: v.string(),
+    name: v.string(),
     title: v.optional(v.string()),
-    data: v.optional(jsonValueValidator),
     url: v.optional(v.string()),
     width: v.optional(v.number()),
   },
@@ -64,10 +59,8 @@ export const save = internalMutation({
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        component: args.component,
-        tier: args.tier,
+        name: args.name,
         title: args.title,
-        data: args.data,
         url: args.url,
         width: args.width,
         updatedAt: Date.now(),
@@ -78,10 +71,8 @@ export const save = internalMutation({
     return await ctx.db.insert("canvas_states", {
       ownerId: args.ownerId,
       conversationId: args.conversationId,
-      component: args.component,
-      tier: args.tier,
+      name: args.name,
       title: args.title,
-      data: args.data,
       url: args.url,
       width: args.width,
       updatedAt: Date.now(),
@@ -90,7 +81,7 @@ export const save = internalMutation({
 });
 
 /**
- * Get saved canvas state (internal, for Canvas tool restore action).
+ * Get saved canvas state (internal).
  */
 export const getForConversationInternal = internalQuery({
   args: {

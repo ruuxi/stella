@@ -914,18 +914,10 @@ export const createBackendTools = (
           lines.push("");
           lines.push("## Display");
           lines.push(
-            `Suggested canvas for results: **${args.canvasHint}**`,
+            `Suggested visualization: **${args.canvasHint}**`,
           );
-          const canvasMap: Record<string, string> = {
-            table: "data-table",
-            chart: "chart",
-            feed: "json-viewer",
-            player: "proxy",
-            dashboard: "proxy",
-          };
-          const component = canvasMap[args.canvasHint] ?? "data-table";
           lines.push(
-            `Use \`Canvas(action="open", component="${component}", tier="data", data={...})\` to display results.`,
+            `Write a panel TSX file to \`frontend/workspace/panels/\` that visualizes the data, then call \`OpenCanvas(name="...")\` to display it.`,
           );
         }
 

@@ -154,7 +154,7 @@ When the Browser agent returns an API map from investigation, convert it into a 
 - \`auth\`: { type, tokenSource?, headerName?, notes? }
 - \`endpoints\`: [{ path, method?, description?, params?, responseShape?, rateLimit? }]
 - \`sessionNotes\`: How to obtain/maintain a session
-- \`canvasHint\`: Suggested display — "table", "chart", "feed", "player", "dashboard"
+- \`canvasHint\`: Suggested visualization type — "table", "chart", "feed", "player", "dashboard"
 - \`tags\`: Optional tags for discovery
 
 ## Session Token Forwarding
@@ -164,7 +164,7 @@ When the Browser agent extracts auth tokens from an active session:
 - For persistent access, use \`RequestCredential\` to ask the user to store tokens properly
 
 ## Canvas Display
-Include \`canvasHint\` to suggest how to display results. The generated skill will include Canvas usage instructions matching the hint.`,
+Include \`canvasHint\` to suggest how to display results. The generated skill will include instructions for writing a panel TSX file and calling \`OpenCanvas(name="...")\`.`,
 };
 
 // ---------------------------------------------------------------------------
