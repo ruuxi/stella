@@ -27,7 +27,6 @@ export const BASE_TOOL_NAMES = [
   "KillShell",
   "WebFetch",
   "WebSearch",
-  "AgentInvoke",
   "TaskCreate",
   "TaskOutput",
   "TaskCancel",

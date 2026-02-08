@@ -41,17 +41,17 @@ export const createOrchestrationTools = (
   const TaskCreate = tool({
     description:
       "Delegate a task to a subagent for execution.\n\n" +
+      "The task runs in the background and returns immediately with a task_id. Use TaskOutput to poll for results.\n\n" +
       "Usage:\n" +
       "- description: short summary for logging (e.g. \"Search for React components\").\n" +
       "- prompt: the full instructions the subagent will follow. Be specific — the subagent only sees this prompt.\n" +
       "- subagent_type: which agent to use — \"memory\" (context lookup), \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
-      "- run_in_background=true: returns immediately with a task_id. Poll with TaskOutput later. Use for parallel tasks.\n" +
-      "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.",
+      "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.\n\n" +
+      "Multiple tasks can run in parallel — call TaskCreate multiple times, then poll each with TaskOutput.",
     inputSchema: z.object({
       description: z.string().describe("Short summary for logging"),
       prompt: z.string().describe("Full instructions for the subagent"),
       subagent_type: z.string().describe("Agent type: memory, general, self_mod, explore, or browser"),
-      run_in_background: z.boolean().optional().describe("Return immediately and poll later with TaskOutput"),
       include_history: z.boolean().optional().describe("Pass conversation context to the subagent"),
     }),
     execute: async (args) => {
@@ -66,7 +66,6 @@ export const createOrchestrationTools = (
         prompt: args.prompt,
         subagentType: args.subagent_type,
         parentTaskId: options.currentTaskId,
-        runInBackground: args.run_in_background,
         includeHistory: args.include_history,
       });
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
@@ -76,14 +75,14 @@ export const createOrchestrationTools = (
   const TaskOutput = tool({
     description:
       "Get the result of a background subagent task.\n\n" +
-      "Use after TaskCreate with run_in_background=true to poll for completion.\n\n" +
+      "Poll for the result of a subagent task.\n\n" +
       "Returns one of:\n" +
       "- Task completed: includes the subagent's full result text and duration.\n" +
       "- Task running: the task is still in progress. Wait and poll again.\n" +
       "- Task failed/canceled: includes the error or cancellation reason.\n\n" +
       "Tips:\n" +
-      "- If running multiple background tasks, poll them in sequence or batch — avoid tight polling loops.\n" +
-      "- The task_id is returned by TaskCreate when run_in_background=true.",
+      "- If running multiple tasks, poll them in sequence — avoid tight polling loops.\n" +
+      "- The task_id is returned by TaskCreate.",
     inputSchema: z.object({
       task_id: z.string().describe("Task ID returned by TaskCreate"),
     }),
@@ -121,68 +120,17 @@ export const createOrchestrationTools = (
     },
   });
 
-  const AgentInvoke = tool({
-    description:
-      "Invoke a subagent synchronously and get structured JSON back.\n\n" +
-      "Unlike TaskCreate (async, freeform text result), AgentInvoke runs inline, blocks until done, " +
-      "and returns structured data conforming to result_schema.\n\n" +
-      "Use cases:\n" +
-      "- Extract structured information (e.g. parse a page into a typed object).\n" +
-      "- Get a JSON result you can process programmatically.\n" +
-      "- Bounded operations that should complete quickly (max 8 steps).\n\n" +
-      "Parameters:\n" +
-      "- agent_type: which agent to invoke (e.g. \"general\", \"explore\", \"memory\").\n" +
-      "- prompt: instructions for the subagent (what to do and return).\n" +
-      "- input: optional structured data to pass to the subagent as context.\n" +
-      "- result_schema: JSON Schema describing the expected return shape. The subagent is forced to output JSON matching this schema.\n" +
-      "- max_steps: limit on tool-calling rounds (1-8, default varies). Lower = faster but less capable.\n" +
-      "- mode: optional execution mode hint.\n\n" +
-      "Prefer TaskCreate for long-running work, parallel execution, or when you don't need structured output.",
-    inputSchema: z.object({
-      agent_type: z.string().min(1).describe("Agent type to invoke (e.g. general, explore, memory)"),
-      mode: z.string().optional().describe("Execution mode hint"),
-      prompt: z.string().optional().describe("Instructions for the subagent"),
-      input: z.any().optional().describe("Structured data to pass as context"),
-      result_schema: z.any().optional().describe("JSON Schema for the expected return shape"),
-      max_steps: z.number().int().positive().max(8).optional().describe("Max tool-calling rounds (1-8)"),
-      target_device_id: z.string().optional().describe("Device to target (defaults to current)"),
-    }),
-    execute: async (args) => {
-      if (args.target_device_id && args.target_device_id !== context.targetDeviceId) {
-        return "agent.invoke must target the current device.";
-      }
-      if (!context.userMessageId) {
-        return "AgentInvoke requires a user message context.";
-      }
-
-      const result = await ctx.runAction(api.agent.invoke.invoke, {
-        agentType: args.agent_type,
-        mode: args.mode,
-        prompt: args.prompt,
-        input: args.input,
-        resultSchema: args.result_schema,
-        maxSteps: args.max_steps,
-        conversationId: context.conversationId,
-        userMessageId: context.userMessageId,
-        targetDeviceId: context.targetDeviceId,
-      });
-
-      return typeof result === "string" ? result : JSON.stringify(result, null, 2);
-    },
-  });
-
   return {
     TaskCreate,
     TaskOutput,
     TaskCancel,
-    AgentInvoke,
     MemorySearch: createMemorySearchTool(ctx, options),
   };
 };
 
 /**
  * Deviceless orchestration tools — includes MemorySearch (pure DB query)
- * but excludes Task/AgentInvoke (which need device context for subagent tools).
+ * but excludes Task tools (which need device context for subagent tools).
  */
 export const createOrchestrationToolsWithoutDevice = (
   ctx: ActionCtx,
