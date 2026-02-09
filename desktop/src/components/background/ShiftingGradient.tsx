@@ -86,7 +86,7 @@ function generateBlobs(
       size: Math.round(rand(1020, 1280) * sizeScale),
       scale: rand(0.9, 1.15),
       blur: Math.round(baseBlur * blurMultiplier),
-      alpha: rand(0.88, 1.0),
+      alpha: rand(0.65, 0.8),
       color: colors[i % colors.length],
     };
   });
@@ -140,7 +140,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         tokens.surfaceWarningStrong,
         tokens.surfaceBrandBase,
       ];
-      const strength = isDark ? 0.35 : 0.4;
+      const strength = isDark ? 0.22 : 0.28;
       return tokenColors.map((token) => {
         const color = parseColor(token) ?? fallback;
         return mixRgb(bg, color, strength);
@@ -153,7 +153,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       parseColor(tokens.textInteractive) ??
       parseColor(colors.interactive) ??
       brandColor;
-    const strength = isDark ? 0.65 : 0.75;
+    const strength = isDark ? 0.45 : 0.55;
 
     return [
       mixRgb(bg, brandColor, strength),
@@ -224,10 +224,20 @@ export const ShiftingGradient = memo(function ShiftingGradient({
             willChange: "left, top, transform",
             filter: `blur(${blob.blur}px)`,
             borderRadius: "9999px",
-            background: `radial-gradient(circle at center, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha}) 0%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.95}) 12%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${Math.max(0, blob.alpha - 0.18)}) 26%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${Math.max(0, blob.alpha - 0.35)}) 45%, transparent 72%)`,
+            background: `radial-gradient(circle at center, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha}) 0%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.93}) 8%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.82}) 16%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.68}) 25%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.52}) 35%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.35}) 46%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.18}) 58%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.06}) 68%, transparent 78%)`,
           } as CSSProperties}
         />
       ))}
+
+      {/* Backdrop blur to smooth banding */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          zIndex: 9,
+          backdropFilter: 'blur(60px)',
+          WebkitBackdropFilter: 'blur(60px)',
+        }}
+      />
 
       {/* Backdrop + Grain overlay (matching Aura) */}
       <div
@@ -235,7 +245,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         style={{
           zIndex: 10,
           backgroundColor: colors.background
-            ? `color-mix(in srgb, ${colors.background} 25%, transparent)`
+            ? `color-mix(in srgb, ${colors.background} 35%, transparent)`
             : 'transparent',
         }}
       >
@@ -243,7 +253,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
           className="gradient-grain"
           style={{
             backgroundImage: `url("${GRAIN_DATA_URI}")`,
-            opacity: mode === "soft" ? 0.4 : 1,
+            opacity: mode === "soft" ? 0.55 : 1,
           }}
         />
       </div>
