@@ -18,6 +18,7 @@ import { verifyDiscordSignature } from "./channels/discord";
 import { verifySlackSignature } from "./channels/slack";
 import { verifyGoogleChatJwt } from "./channels/google_chat";
 import { verifyTeamsToken } from "./channels/teams";
+import { verifyLinqSignature } from "./channels/linq";
 
 type ChatRequest = {
   conversationId: string;
@@ -1330,7 +1331,22 @@ http.route({
   path: "/api/webhooks/linq",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const webhookSecret = process.env.LINQ_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error("[linq] Missing LINQ_WEBHOOK_SECRET");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    const signature = request.headers.get("x-webhook-signature") ?? "";
+    const timestamp = request.headers.get("x-webhook-timestamp") ?? "";
     const rawBody = await request.text();
+
+    const isValid = await verifyLinqSignature(rawBody, signature, timestamp, webhookSecret);
+    if (!isValid) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    console.log("[linq] Webhook hit, body:", rawBody.slice(0, 500));
 
     let envelope: {
       event_type?: string;
@@ -1346,16 +1362,22 @@ http.route({
       return new Response("Invalid JSON", { status: 400 });
     }
 
+    console.log("[linq] event_type:", envelope.event_type);
+
     // Only handle incoming messages
     if (envelope.event_type !== "message.received") {
+      console.log("[linq] Ignoring non-message event");
       return new Response("OK", { status: 200 });
     }
 
     const senderPhone = envelope.data?.sender_handle?.handle ?? "";
     const fromNumber = process.env.LINQ_FROM_NUMBER ?? "";
 
+    console.log("[linq] senderPhone:", senderPhone, "fromNumber:", fromNumber);
+
     // Skip self-messages (our own outgoing messages echoed back)
     if (!senderPhone || senderPhone === fromNumber) {
+      console.log("[linq] Skipping: no sender or self-message");
       return new Response("OK", { status: 200 });
     }
 
@@ -1382,13 +1404,20 @@ http.route({
       blockMs: WEBHOOK_RATE_WINDOW_MS,
     });
     if (!rateLimit.allowed) {
+      console.log("[linq] Rate limited:", senderPhone);
       return rateLimitResponse(rateLimit.retryAfterMs);
     }
 
-    if (text.toLowerCase().startsWith("link ")) {
+    console.log("[linq] Dispatching message from", senderPhone, "text:", text.slice(0, 100), "chatId:", incomingChatId);
+
+    // Detect link code: bare 6-digit alphanumeric code, or "link CODE"
+    const linkPrefix = text.toLowerCase().startsWith("link ") ? text.slice(5).trim() : text.trim();
+    const isLinkCode = /^[A-Z0-9]{6}$/i.test(linkPrefix);
+
+    if (isLinkCode) {
       await ctx.scheduler.runAfter(0, internal.channels.linq.handleStartCommand, {
         senderPhone,
-        text: text.slice(5).trim(),
+        text: linkPrefix,
         incomingChatId,
       });
     } else {
@@ -1399,6 +1428,7 @@ http.route({
       });
     }
 
+    console.log("[linq] Handler scheduled, returning 200");
     return new Response("OK", { status: 200 });
   }),
 });

@@ -44,10 +44,15 @@ const linqFetch = async (
 const linqCreateChat = async (
   from: string,
   to: string[],
+  text: string,
 ): Promise<string> => {
   const res = await linqFetch("/v3/chats", {
     method: "POST",
-    body: JSON.stringify({ from, to }),
+    body: JSON.stringify({
+      from,
+      to,
+      message: { parts: [{ type: "text", value: text }] },
+    }),
   });
 
   if (!res.ok) {
@@ -68,7 +73,7 @@ const linqSendMessage = async (
   const res = await linqFetch(`/v3/chats/${chatId}/messages`, {
     method: "POST",
     body: JSON.stringify({
-      parts: [{ type: "text", value: text }],
+      message: { parts: [{ type: "text", value: text }] },
     }),
   });
 
@@ -176,9 +181,10 @@ const sendLinqReply = async (
   text: string,
   incomingChatId?: string,
 ): Promise<void> => {
+  console.log("[linq] sendLinqReply called — to:", phoneNumber, "chatId:", incomingChatId, "text:", text.slice(0, 80));
   const fromNumber = process.env.LINQ_FROM_NUMBER;
   if (!fromNumber) {
-    console.error("[linq] Missing LINQ_FROM_NUMBER");
+    console.error("[linq] Missing LINQ_FROM_NUMBER — cannot send reply!");
     return;
   }
 
@@ -211,13 +217,12 @@ const sendLinqReply = async (
     }
   }
 
-  // Create new chat
-  const newChatId = await linqCreateChat(fromNumber, [phoneNumber]);
+  // Create new chat (sends initial message as part of creation)
+  const newChatId = await linqCreateChat(fromNumber, [phoneNumber], text);
   await ctx.runMutation(internal.channels.linq.cacheChatId, {
     phoneNumber,
     linqChatId: newChatId,
   });
-  await linqSendMessage(newChatId, text);
 };
 
 // ---------------------------------------------------------------------------
@@ -240,11 +245,11 @@ export const handleStartCommand = internalAction({
       await sendLinqReply(
         ctx,
         args.senderPhone,
-        "Welcome to Stella! To link your account:\n\n" +
+        "Welcome to Stella! To link your number:\n\n" +
           "1. Open Stella desktop app\n" +
-          "2. Go to Settings \u2192 Link Linq\n" +
+          "2. Go to Settings \u2192 Text Stella\n" +
           "3. Copy the 6-digit code\n" +
-          "4. Text it here: link CODE",
+          "4. Text it here",
         args.incomingChatId,
       );
       return null;
@@ -275,6 +280,7 @@ export const handleIncomingMessage = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    console.log("[linq] handleIncomingMessage called:", args.senderPhone, args.text.slice(0, 100));
     try {
       const result = await processIncomingMessage({
         ctx,
@@ -283,16 +289,20 @@ export const handleIncomingMessage = internalAction({
         text: args.text,
       });
 
+      console.log("[linq] processIncomingMessage result:", result ? "got response" : "null (not linked)");
+
       if (!result) {
+        console.log("[linq] Sending 'not linked' reply");
         await sendLinqReply(
           ctx,
           args.senderPhone,
-          "Your number isn't linked yet. Text \"link\" followed by your 6-digit code to get started.",
+          "Your number isn't linked yet. Open Stella \u2192 Settings \u2192 Text Stella, then text your 6-digit code here.",
           args.incomingChatId,
         );
         return null;
       }
 
+      console.log("[linq] Sending agent reply:", result.text.slice(0, 100));
       await sendLinqReply(ctx, args.senderPhone, result.text, args.incomingChatId);
     } catch (error) {
       console.error("[linq] Agent turn failed:", error);
