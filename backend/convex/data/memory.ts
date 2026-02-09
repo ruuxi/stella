@@ -446,10 +446,10 @@ export const search = internalAction({
       })
       .slice(0, 10);
 
-    // Touch only the returned memories (reset decay + accessedAt)
-    for (const entry of matched) {
-      await ctx.runMutation(internal.data.memory.touchMemory, {
-        memoryId: entry.doc._id,
+    // Touch all returned memories in a single mutation (reset decay + accessedAt)
+    if (matched.length > 0) {
+      await ctx.runMutation(internal.data.memory.touchMemories, {
+        memoryIds: matched.map((entry) => entry.doc._id),
       });
     }
 
@@ -474,6 +474,20 @@ export const touchMemory = internalMutation({
       accessedAt: Date.now(),
       decay: 0,
     });
+    return null;
+  },
+});
+
+export const touchMemories = internalMutation({
+  args: { memoryIds: v.array(v.id("memories")) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await Promise.all(
+      args.memoryIds.map((id) =>
+        ctx.db.patch(id, { accessedAt: now, decay: 0 }),
+      ),
+    );
     return null;
   },
 });

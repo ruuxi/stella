@@ -1,7 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./agent/prompt_builder";
@@ -244,8 +243,8 @@ http.route({
       }
     }
 
-    await ctx.runMutation(api.agent.agents.ensureBuiltins, {});
-    await ctx.runMutation(api.data.skills.ensureBuiltinSkills, {});
+    await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
+    await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
 
     const agentType =
       body.agent === "self_mod"
@@ -258,7 +257,7 @@ http.route({
     // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);
 
-    const pluginTools = await ctx.runQuery(api.data.plugins.listToolDescriptors, {});
+    const pluginTools = await ctx.runQuery(internal.data.plugins.listToolDescriptorsInternal, {});
 
     const contentParts: Array<
       { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }

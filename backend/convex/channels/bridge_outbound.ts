@@ -61,7 +61,7 @@ export const gc = internalMutation({
     const cutoff = Date.now() - OUTBOUND_GC_MAX_AGE_MS;
     const stale = await ctx.db
       .query("bridge_outbound")
-      .filter((q) => q.lt(q.field("createdAt"), cutoff))
+      .withIndex("by_createdAt", (q) => q.lt("createdAt", cutoff))
       .take(200);
 
     for (const row of stale) {

@@ -1,4 +1,4 @@
-import { mutation, query, MutationCtx } from "../_generated/server";
+import { mutation, query, internalQuery, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { z } from "zod";
 import { jsonSchemaValidator } from "../shared_validators";
@@ -117,14 +117,14 @@ const upsertPlugin = async (ctx: MutationCtx, plugin: PluginRecord) => {
   const existing = await ctx.db
     .query("plugins")
     .withIndex("by_plugin_key", (q) => q.eq("id", plugin.id))
-    .take(1);
+    .first();
 
-  if (existing[0]) {
-    await ctx.db.patch(existing[0]._id, {
+  if (existing) {
+    await ctx.db.patch(existing._id, {
       ...plugin,
       updatedAt: Date.now(),
     });
-    return existing[0]._id;
+    return existing._id;
   }
 
   return await ctx.db.insert("plugins", {
@@ -138,7 +138,7 @@ const upsertPluginTool = async (ctx: MutationCtx, tool: ToolDescriptor) => {
   const existing = await ctx.db
     .query("plugin_tools")
     .withIndex("by_tool_key", (q) => q.eq("id", id))
-    .take(1);
+    .first();
 
   const payload = {
     id,
@@ -150,9 +150,9 @@ const upsertPluginTool = async (ctx: MutationCtx, tool: ToolDescriptor) => {
     updatedAt: Date.now(),
   };
 
-  if (existing[0]) {
-    await ctx.db.patch(existing[0]._id, payload);
-    return existing[0]._id;
+  if (existing) {
+    await ctx.db.patch(existing._id, payload);
+    return existing._id;
   }
 
   return await ctx.db.insert("plugin_tools", payload);
@@ -200,6 +200,14 @@ export const listPlugins = query({
 });
 
 export const listToolDescriptors = query({
+  args: {},
+  returns: v.array(pluginToolValidator),
+  handler: async (ctx) => {
+    return await ctx.db.query("plugin_tools").withIndex("by_name").order("asc").take(400);
+  },
+});
+
+export const listToolDescriptorsInternal = internalQuery({
   args: {},
   returns: v.array(pluginToolValidator),
   handler: async (ctx) => {

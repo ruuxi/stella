@@ -1,4 +1,4 @@
-import { mutation, query } from "../_generated/server";
+import { mutation, internalMutation, query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { jsonValueValidator } from "../shared_validators";
 
@@ -118,6 +118,42 @@ export const getByPackageId = query({
       .withIndex("by_package_id", (q) => q.eq("packageId", args.packageId))
       .first();
     return result;
+  },
+});
+
+export const searchInternal = internalQuery({
+  args: {
+    query: v.string(),
+    type: v.optional(packageTypeValidator),
+  },
+  returns: v.array(packageValidator),
+  handler: async (ctx, args) => {
+    if (!args.query.trim()) {
+      return [];
+    }
+    const searchQ = ctx.db
+      .query("store_packages")
+      .withSearchIndex("search_packages", (q) => {
+        const base = q.search("searchText", args.query);
+        if (args.type) {
+          return base.eq("type", args.type);
+        }
+        return base;
+      });
+    return await searchQ.take(50);
+  },
+});
+
+export const getByPackageIdInternal = internalQuery({
+  args: {
+    packageId: v.string(),
+  },
+  returns: v.union(packageValidator, v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("store_packages")
+      .withIndex("by_package_id", (q) => q.eq("packageId", args.packageId))
+      .first();
   },
 });
 
@@ -324,7 +360,7 @@ export const publishMod = mutation({
  * Backfill searchText for existing packages that don't have it yet.
  * Run once after deploying the schema change.
  */
-export const backfillSearchText = mutation({
+export const backfillSearchText = internalMutation({
   args: {},
   returns: v.number(),
   handler: async (ctx) => {

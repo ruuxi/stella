@@ -1,4 +1,4 @@
-import { mutation, query } from "../_generated/server";
+import { mutation, query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { requireUserId } from "../auth";
 import { jsonObjectValidator } from "../shared_validators";
@@ -55,30 +55,46 @@ export const upsertPublicIntegration = mutation({
   },
 });
 
+const getPublicIntegrationByIdHandler = async (ctx: { db: any }, args: { id: string }) => {
+  const record = await ctx.db
+    .query("integrations_public")
+    .withIndex("by_integration_id", (q: any) => q.eq("id", args.id))
+    .first();
+  if (!record || !record.enabled) {
+    return null;
+  }
+  return record;
+};
+
+const publicIntegrationReturnValidator = v.union(
+  v.null(),
+  v.object({
+    _id: v.id("integrations_public"),
+    id: v.string(),
+    provider: v.string(),
+    enabled: v.boolean(),
+    usagePolicy: v.string(),
+    updatedAt: v.number(),
+  }),
+);
+
 export const getPublicIntegrationById = query({
   args: {
     id: v.string(),
   },
-  returns: v.union(
-    v.null(),
-    v.object({
-      _id: v.id("integrations_public"),
-      id: v.string(),
-      provider: v.string(),
-      enabled: v.boolean(),
-      usagePolicy: v.string(),
-      updatedAt: v.number(),
-    }),
-  ),
+  returns: publicIntegrationReturnValidator,
   handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("integrations_public")
-      .withIndex("by_integration_id", (q) => q.eq("id", args.id))
-      .first();
-    if (!record || !record.enabled) {
-      return null;
-    }
-    return record;
+    return await getPublicIntegrationByIdHandler(ctx, args);
+  },
+});
+
+export const getPublicIntegrationByIdInternal = internalQuery({
+  args: {
+    id: v.string(),
+  },
+  returns: publicIntegrationReturnValidator,
+  handler: async (ctx, args) => {
+    return await getPublicIntegrationByIdHandler(ctx, args);
   },
 });
 
