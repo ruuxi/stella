@@ -1,7 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import { exec } from "child_process";
 import type {
   MessagesNotesSignals,
   ContactFrequency,
@@ -167,7 +166,7 @@ async function collectAppleNotes(stellaHome: string): Promise<NoteFolder[]> {
 
       try {
         rows = db.prepare(query).all() as Array<{ folder_name: string; note_count: number }>;
-      } catch (err) {
+      } catch {
         // Try fallback with alternative column names
         log("Primary Notes query failed, trying fallback");
         query = `
@@ -184,7 +183,7 @@ async function collectAppleNotes(stellaHome: string): Promise<NoteFolder[]> {
 
         try {
           rows = db.prepare(query).all() as Array<{ folder_name: string; note_count: number }>;
-        } catch (err2) {
+        } catch {
           // Final fallback - just count notes
           log("Alternative Notes query failed, using simple fallback");
           query = `

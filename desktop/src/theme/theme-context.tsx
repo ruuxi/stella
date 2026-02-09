@@ -158,9 +158,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Load installed themes from ~/.stella/themes/ on mount
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return;
-    const api = window.electronAPI as any;
-    if (!api.listInstalledThemes) return;
-    api.listInstalledThemes().then((installed: Theme[]) => {
+    if (!window.electronAPI.listInstalledThemes) return;
+    window.electronAPI.listInstalledThemes().then((installed) => {
       if (Array.isArray(installed)) {
         for (const t of installed) {
           registerTheme(t);

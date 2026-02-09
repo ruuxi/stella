@@ -184,7 +184,7 @@ export async function collectBrowserBookmarks(): Promise<BrowserBookmarks | null
           bookmarks: allEntries,
           folders: Array.from(folders),
         };
-      } catch (err) {
+      } catch {
         // Silently continue to next browser/profile
         continue;
       }

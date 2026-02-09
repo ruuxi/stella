@@ -10,7 +10,6 @@ import path from "path";
 import { createHash } from "crypto";
 import type {
   IdentityMap,
-  IdentityMapping,
   IdentityMappingSource,
 } from "./discovery_types";
 

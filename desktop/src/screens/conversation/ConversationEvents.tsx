@@ -132,6 +132,7 @@ function VirtualizedList({
     [turns],
   );
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => scrollContainerRef.current,

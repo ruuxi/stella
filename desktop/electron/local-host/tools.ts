@@ -201,7 +201,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     MediaGenerate: async () => notConfigured("MediaGenerate"),
 
     // Self-mod tools
-    SelfModStart: (args, context) => handleSelfModStart(args, context, frontendRoot),
+    SelfModStart: (args, context) => handleSelfModStart(args, context),
     SelfModApply: (args, context) => handleSelfModApply(args, context, frontendRoot),
     SelfModRevert: (args, context) => handleSelfModRevert(args, context, frontendRoot),
     SelfModStatus: (args, context) => handleSelfModStatus(args, context),
