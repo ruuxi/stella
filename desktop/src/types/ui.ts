@@ -2,7 +2,7 @@ export type UiMode = 'chat' | 'voice'
 
 export type WindowMode = 'full' | 'mini'
 
-export type ViewType = 'chat' | 'store' | 'settings'
+export type ViewType = 'chat' | 'store'
 
 export type UiState = {
   mode: UiMode

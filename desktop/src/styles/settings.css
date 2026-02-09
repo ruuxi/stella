@@ -1,66 +1,85 @@
 /* ============================================
-   Settings View
+   Settings Dialog
    ============================================ */
 
-.settings-view {
+[data-component="dialog"] [data-slot="dialog-content"].settings-dialog {
+  background: var(--background);
+  height: 100%;
+}
+
+/* ---- Layout: sidebar + panel ---- */
+
+.settings-layout {
+  display: flex;
   flex: 1;
+  min-height: 0;
+}
+
+/* ---- Sidebar Tabs ---- */
+
+.settings-sidebar {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  min-width: 0;
-  overflow: hidden;
+  gap: 2px;
+  padding: 4px 0 16px 16px;
+  width: 120px;
+  flex-shrink: 0;
+  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
-/* ---- Header ---- */
-
-.settings-header {
+.settings-sidebar-tab {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 16px 24px 8px;
-  flex-shrink: 0;
-  width: 100%;
-  max-width: 640px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: default;
+  transition: background 0.12s ease, color 0.12s ease;
+  text-align: left;
 }
 
-.settings-header-title {
-  font-size: 17px;
-  font-weight: 700;
+.settings-sidebar-tab:hover {
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.settings-sidebar-tab--active {
   color: var(--text-strong);
-  margin: 0;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
-/* ---- Content ---- */
+/* ---- Panel Content ---- */
 
-.settings-content {
+.settings-panel {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 12px 24px 48px;
-  width: 100%;
-  max-width: 640px;
-  position: relative;
-  mask-image: linear-gradient(to bottom, black calc(100% - 48px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 48px), transparent 100%);
+  padding: 4px 20px 16px;
 }
 
-.settings-content::-webkit-scrollbar {
+.settings-panel::-webkit-scrollbar {
   display: none;
 }
 
-.settings-content--at-bottom {
-  mask-image: none;
-  -webkit-mask-image: none;
+.settings-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* ---- Section Card ---- */
 
 .settings-card {
-  background: var(--card);
-  border: 1px solid var(--border-weak);
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 16px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-radius: 12px;
+  padding: 16px;
 }
 
 .settings-card-header {
@@ -71,16 +90,16 @@
 }
 
 .settings-card-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-strong);
   margin: 0;
 }
 
 .settings-card-desc {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-weak);
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 /* ---- Rows (inside cards) ---- */
@@ -123,8 +142,8 @@
 /* ---- Model Select ---- */
 
 .settings-model-select {
-  width: 240px;
-  height: 32px;
+  width: 220px;
+  height: 30px;
   padding: 0 10px;
   border: 1px solid var(--border-weak);
   border-radius: var(--radius-full);
@@ -230,8 +249,8 @@
 }
 
 .settings-key-input input {
-  width: 200px;
-  height: 32px;
+  width: 180px;
+  height: 30px;
   padding: 0 10px;
   border: 1px solid var(--border-weak);
   border-radius: var(--radius-full);
