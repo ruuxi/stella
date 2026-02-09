@@ -380,17 +380,18 @@ export const run = internalAction({
     }
 
     const conversationId = config.conversationId;
-    const targetDeviceId =
-      config.targetDeviceId ??
-      (await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
-        conversationId,
-      })) ??
-      undefined;
 
-    // Cloud device fallback: if no local device, check for a Sprites cloud device
-    const spriteName = !targetDeviceId
-      ? await ctx.runQuery(internal.agent.cloud_devices.resolveForOwner, { ownerId: config.ownerId })
-      : undefined;
+    let targetDeviceId: string | undefined = config.targetDeviceId ?? undefined;
+    let spriteName: string | undefined;
+
+    if (!targetDeviceId) {
+      const target = await ctx.runQuery(
+        internal.agent.device_resolver.resolveExecutionTarget,
+        { ownerId: config.ownerId },
+      );
+      targetDeviceId = target.targetDeviceId ?? undefined;
+      spriteName = target.spriteName ?? undefined;
+    }
 
     const agentType = config.agentType ?? "orchestrator";
 

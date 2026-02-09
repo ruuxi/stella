@@ -111,31 +111,37 @@ export const buildSystemPrompt = async (
     }
   }
 
-  // Threads disabled for now
-  // if (agentType === "orchestrator" && options?.conversationId) {
-  //   try {
-  //     const activeThreads = await ctx.runQuery(
-  //       internal.data.threads.listActiveThreads,
-  //       { conversationId: options.conversationId },
-  //     );
-  //     if (activeThreads.length > 0) {
-  //       const threadLines = activeThreads.map(
-  //         (t: { _id: Id<"threads">; title: string; agentType: string }) =>
-  //           `- [${t._id}] "${t.title}" (${t.agentType})`,
-  //       );
-  //       systemParts.push(
-  //         [
-  //           "# Active Threads",
-  //           "These are ongoing work sessions. Use thread_id in TaskCreate to continue one, or thread_title to start new.",
-  //           "",
-  //           ...threadLines,
-  //         ].join("\n"),
-  //       );
-  //     }
-  //   } catch {
-  //     // Thread query failed — skip
-  //   }
-  // }
+  // Inject device status for orchestrator
+  if (agentType === "orchestrator" && options?.ownerId) {
+    try {
+      const deviceStatus = await ctx.runQuery(
+        internal.agent.device_resolver.getDeviceStatus,
+        { ownerId: options.ownerId },
+      );
+      const lines = ["# Device Status"];
+      lines.push(
+        `- Local device (desktop app): ${deviceStatus.localOnline ? "online" : "offline"}`,
+      );
+      if (deviceStatus.cloudAvailable) {
+        lines.push(`- Remote machine: ${deviceStatus.cloudStatus}`);
+      } else {
+        lines.push("- Remote machine: not provisioned");
+      }
+      if (!deviceStatus.localOnline) {
+        lines.push(
+          "\nThe user's desktop is offline. You cannot access their local files, apps, or shell.",
+        );
+        if (!deviceStatus.cloudAvailable) {
+          lines.push(
+            "No remote machine is available. Use SpawnRemoteMachine if the user needs tool execution.",
+          );
+        }
+      }
+      systemParts.push(lines.join("\n"));
+    } catch {
+      // Device status query failed — skip
+    }
+  }
 
   // Inject category tree for orchestrator
   if (agentType === "orchestrator" && options?.ownerId) {

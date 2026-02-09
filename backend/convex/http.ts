@@ -1346,12 +1346,10 @@ http.route({
       return new Response("Unauthorized", { status: 401 });
     }
 
-    console.log("[linq] Webhook hit, body:", rawBody.slice(0, 500));
-
     let envelope: {
       event_type?: string;
       data?: {
-        chat?: { id?: string; owner_handle?: { handle?: string } };
+        chat?: { id?: string; is_group?: boolean; owner_handle?: { handle?: string } };
         sender_handle?: { handle?: string };
         parts?: Array<{ type?: string; value?: string }>;
       };
@@ -1362,22 +1360,17 @@ http.route({
       return new Response("Invalid JSON", { status: 400 });
     }
 
-    console.log("[linq] event_type:", envelope.event_type);
-
     // Only handle incoming messages
     if (envelope.event_type !== "message.received") {
-      console.log("[linq] Ignoring non-message event");
       return new Response("OK", { status: 200 });
     }
 
     const senderPhone = envelope.data?.sender_handle?.handle ?? "";
     const fromNumber = process.env.LINQ_FROM_NUMBER ?? "";
-
-    console.log("[linq] senderPhone:", senderPhone, "fromNumber:", fromNumber);
+    const isGroup = envelope.data?.chat?.is_group ?? false;
 
     // Skip self-messages (our own outgoing messages echoed back)
     if (!senderPhone || senderPhone === fromNumber) {
-      console.log("[linq] Skipping: no sender or self-message");
       return new Response("OK", { status: 200 });
     }
 
@@ -1425,6 +1418,7 @@ http.route({
         senderPhone,
         text,
         incomingChatId,
+        groupId: isGroup ? incomingChatId : undefined,
       });
     }
 

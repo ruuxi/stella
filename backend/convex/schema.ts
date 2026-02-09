@@ -179,6 +179,15 @@ export default defineSchema({
   })
     .index("by_owner_and_updated", ["ownerId", "updatedAt"])
     .index("by_railway_service", ["railwayServiceId"]),
+  devices: defineTable({
+    ownerId: v.string(),
+    deviceId: v.string(),
+    online: v.boolean(),
+    lastSeenAt: v.number(),
+    platform: v.optional(v.string()),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_device", ["deviceId"]),
   cloud_devices: defineTable({
     ownerId: v.string(),
     provider: v.string(),

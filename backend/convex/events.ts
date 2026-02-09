@@ -179,40 +179,6 @@ export const getLatestDeviceIdForConversation = internalQuery({
   },
 });
 
-/**
- * Find the owner's most recent local (non-channel) device ID across all their
- * conversations. Used by channel integrations to route tool requests to the
- * Electron desktop app when it's active.
- */
-export const getLatestLocalDeviceIdForOwner = internalQuery({
-  args: { ownerId: v.string() },
-  returns: v.union(v.string(), v.null()),
-  handler: async (ctx, args) => {
-    // Get the owner's most recently updated conversations
-    const conversations = await ctx.db
-      .query("conversations")
-      .withIndex("by_owner_updated", (q) => q.eq("ownerId", args.ownerId))
-      .order("desc")
-      .take(10);
-
-    for (const convo of conversations) {
-      const event = await ctx.db
-        .query("events")
-        .withIndex("by_conversation_type", (q) =>
-          q.eq("conversationId", convo._id).eq("type", "user_message"),
-        )
-        .order("desc")
-        .first();
-
-      const deviceId = typeof event?.deviceId === "string" ? event.deviceId.trim() : "";
-      if (deviceId && !deviceId.startsWith("channel:")) {
-        return deviceId;
-      }
-    }
-    return null;
-  },
-});
-
 export const saveAssistantMessage = internalMutation({
   args: {
     conversationId: v.id("conversations"),

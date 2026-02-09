@@ -100,6 +100,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "TaskCreate", "TaskOutput", "TaskCancel", "OpenCanvas", "CloseCanvas",
       "HeartbeatGet", "HeartbeatUpsert", "HeartbeatRun",
       "CronList", "CronAdd", "CronUpdate", "CronRemove", "CronRun",
+      "SpawnRemoteMachine",
       "NoResponse",
     ],
     defaultSkills: [],
