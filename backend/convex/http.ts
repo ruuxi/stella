@@ -18,7 +18,6 @@ import { verifyDiscordSignature } from "./channels/discord";
 import { verifySlackSignature } from "./channels/slack";
 import { verifyGoogleChatJwt } from "./channels/google_chat";
 import { verifyTeamsToken } from "./channels/teams";
-import { verifyLinqSignature } from "./channels/linq";
 
 type ChatRequest = {
   conversationId: string;
@@ -1331,20 +1330,7 @@ http.route({
   path: "/api/webhooks/linq",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const webhookSecret = process.env.LINQ_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-      console.error("[linq] Missing LINQ_WEBHOOK_SECRET");
-      return new Response("Server configuration error", { status: 500 });
-    }
-
-    const signature = request.headers.get("x-webhook-signature") ?? "";
-    const timestamp = request.headers.get("x-webhook-timestamp") ?? "";
     const rawBody = await request.text();
-
-    const isValid = await verifyLinqSignature(rawBody, signature, timestamp, webhookSecret);
-    if (!isValid) {
-      return new Response("Unauthorized", { status: 401 });
-    }
 
     let envelope: {
       event_type?: string;
