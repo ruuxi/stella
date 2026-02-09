@@ -14,6 +14,7 @@ import type * as agent_cloud_devices from "../agent/cloud_devices.js";
 import type * as agent_device_tools from "../agent/device_tools.js";
 import type * as agent_invoke from "../agent/invoke.js";
 import type * as agent_model from "../agent/model.js";
+import type * as agent_model_resolver from "../agent/model_resolver.js";
 import type * as agent_prompt_builder from "../agent/prompt_builder.js";
 import type * as agent_self_mod_features from "../agent/self_mod_features.js";
 import type * as agent_tasks from "../agent/tasks.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   "agent/device_tools": typeof agent_device_tools;
   "agent/invoke": typeof agent_invoke;
   "agent/model": typeof agent_model;
+  "agent/model_resolver": typeof agent_model_resolver;
   "agent/prompt_builder": typeof agent_prompt_builder;
   "agent/self_mod_features": typeof agent_self_mod_features;
   "agent/tasks": typeof agent_tasks;

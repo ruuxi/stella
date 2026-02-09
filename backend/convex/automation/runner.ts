@@ -4,7 +4,7 @@ import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "../agent/prompt_builder";
 import { createTools } from "../tools/index";
-import { getModelConfig } from "../agent/model";
+import { resolveModelConfig } from "../agent/model_resolver";
 
 export type RunAgentTurnResult = {
   text: string;
@@ -113,8 +113,9 @@ export async function runAgentTurn({
       }
     | undefined;
 
+  const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
   const result = await streamText({
-    ...getModelConfig(agentType),
+    ...resolvedConfig,
     system: promptBuild.systemPrompt,
     tools,
     messages: [

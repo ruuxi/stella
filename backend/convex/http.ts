@@ -5,7 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./agent/prompt_builder";
 import { createTools } from "./tools/index";
-import { getModelConfig } from "./agent/model";
+import { resolveModelConfig } from "./agent/model_resolver";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
 import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
@@ -286,8 +286,9 @@ http.route({
       ? `${promptBuild.systemPrompt}\n\n${platformGuidance}`
       : promptBuild.systemPrompt;
 
+    const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
     const result = await streamText({
-      ...getModelConfig(agentType),
+      ...resolvedConfig,
       system: systemPrompt,
       tools: createTools(
         ctx,
@@ -464,11 +465,14 @@ http.route({
     const gateway = createGateway({ apiKey });
 
     try {
-      const synthesisConfig = getModelConfig("synthesis");
+      const synthesisConfig = await resolveModelConfig(ctx, "synthesis", identity.subject);
       const userMessage = buildCoreSynthesisUserMessage(body.formattedSignals);
 
+      const synthesisModel = typeof synthesisConfig.model === "string"
+        ? gateway(synthesisConfig.model)
+        : synthesisConfig.model;
       const synthesisResult = await generateText({
-        model: gateway(synthesisConfig.model),
+        model: synthesisModel,
         system: CORE_MEMORY_SYNTHESIS_PROMPT,
         messages: [{ role: "user", content: userMessage }],
         maxOutputTokens: synthesisConfig.maxOutputTokens,
@@ -484,11 +488,14 @@ http.route({
         );
       }
 
-      const welcomeConfig = getModelConfig("welcome");
+      const welcomeConfig = await resolveModelConfig(ctx, "welcome", identity.subject);
       const welcomePrompt = buildWelcomeMessagePrompt(coreMemory);
 
+      const welcomeModel = typeof welcomeConfig.model === "string"
+        ? gateway(welcomeConfig.model)
+        : welcomeConfig.model;
       const welcomeResult = await generateText({
-        model: gateway(welcomeConfig.model),
+        model: welcomeModel,
         messages: [{ role: "user", content: welcomePrompt }],
         maxOutputTokens: welcomeConfig.maxOutputTokens,
         temperature: welcomeConfig.temperature,
