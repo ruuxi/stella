@@ -14,7 +14,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
 import type { DeviceToolContext } from "./device_tools";
 import { createTools } from "../tools/index";
-import { getModelConfig } from "./model";
+import { resolveModelConfig } from "./model_resolver";
 import { requireConversationOwner } from "../auth";
 
 const taskValidator = v.object({
@@ -244,8 +244,9 @@ const executeSubagentRun = async (
   })();
 
   try {
+    const resolvedConfig = await resolveModelConfig(ctx, args.subagentType, args.ownerId);
     const result = await streamText({
-      ...getModelConfig(args.subagentType),
+      ...resolvedConfig,
       system: promptBuild.systemPrompt,
       tools: createTools(
         ctx,

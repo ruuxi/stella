@@ -4,7 +4,7 @@ import { streamText, stepCountIs } from "ai";
 import { api, internal } from "../_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "../tools/index";
-import { getModelConfig } from "./model";
+import { resolveModelConfig } from "./model_resolver";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwner } from "../auth";
 import { jsonSchemaValidator, jsonValueValidator } from "../shared_validators";
@@ -330,8 +330,9 @@ export const invoke = action({
 
     let rawText = "";
     try {
+      const resolvedConfig = await resolveModelConfig(ctx, args.agentType, ownerId);
       const result = await streamText({
-        ...getModelConfig(args.agentType),
+        ...resolvedConfig,
         system: `${promptBuild.systemPrompt}\n\n${invocationInstructions}`.trim(),
         tools,
         stopWhen: stepCountIs(maxSteps),

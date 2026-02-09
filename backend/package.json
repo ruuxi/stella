@@ -7,6 +7,9 @@
     "deploy": "convex deploy"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.39",
+    "@ai-sdk/google": "^3.0.22",
+    "@ai-sdk/openai": "^3.0.26",
     "@convex-dev/better-auth": "^0.10.0",
     "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/resend": "^0.1.0",

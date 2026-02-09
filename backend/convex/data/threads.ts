@@ -8,7 +8,7 @@ import {
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateText } from "ai";
-import { getModelConfig } from "../agent/model";
+import { resolveModelConfig } from "../agent/model_resolver";
 import { requireConversationOwner } from "../auth";
 
 const MAX_ACTIVE_THREADS = 8;
@@ -342,8 +342,9 @@ export const archiveAndSummarize = internalAction({
     const truncated = summaryText.slice(0, 4000);
 
     try {
+      const resolvedConfig = await resolveModelConfig(ctx, "memory_ops", args.ownerId);
       const { text: summary } = await generateText({
-        ...getModelConfig("memory_ops"),
+        ...resolvedConfig,
         prompt: `Summarize this work session titled "${thread.title}" into 2-3 sentences of key facts and outcomes:\n\n${truncated}`,
       });
 
