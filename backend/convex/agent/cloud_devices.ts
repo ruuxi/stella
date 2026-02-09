@@ -477,6 +477,21 @@ export const listForOwner = internalQuery({
   },
 });
 
+export const listInactiveBefore = internalQuery({
+  args: {
+    cutoffMs: v.number(),
+    limit: v.number(),
+  },
+  returns: cloudDeviceListValidator,
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("cloud_devices")
+      .withIndex("by_last_active", (q) => q.lt("lastActiveAt", args.cutoffMs))
+      .order("asc")
+      .take(args.limit);
+  },
+});
+
 export const getForOwner = internalQuery({
   args: { ownerId: v.string() },
   returns: v.union(cloudDeviceValidator, v.null()),
@@ -743,6 +758,7 @@ const ensure247ForOwner = async (
 ): Promise<Enable247Result> => {
   const existing = await ensureSingleCloudDeviceForOwner(ctx, ownerId);
   if (existing && existing.status !== "error") {
+    await ctx.runMutation(internal.agent.cloud_devices.touchActivity, { ownerId });
     await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
       ownerId,
       key: RUNTIME_MODE_KEY,
@@ -808,14 +824,9 @@ const disable247ForOwner = async (
     return { status: "not_enabled" };
   }
 
-  try {
-    await spritesApi(`/sprites/${record.spriteName}`, "DELETE");
-  } catch (error) {
-    console.error("[cloud_devices] Sprite deletion error (continuing):", error);
-  }
-
-  await ctx.runMutation(internal.agent.cloud_devices.deleteCloudDevice, {
+  await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
     id: record._id,
+    status: "stopped",
   });
 
   await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
