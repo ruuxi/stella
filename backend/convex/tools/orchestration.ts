@@ -11,6 +11,7 @@ const formatTaskResult = (task: {
   status: string;
   result?: string;
   error?: string;
+  statusUpdates?: Array<{ text: string; timestamp: number }>;
   createdAt: number;
   completedAt?: number;
 }) => {
@@ -29,6 +30,12 @@ const formatTaskResult = (task: {
     return `Task failed.\nTask ID: ${task._id}\nDuration: ${duration}ms\n\n--- Error ---\n${
       task.error ?? "(no error)"
     }`;
+  }
+  // Running — include recent activity if available
+  const updates = task.statusUpdates ?? [];
+  if (updates.length > 0) {
+    const activity = updates.map((u) => `- ${u.text}`).join("\n");
+    return `Task running.\nTask ID: ${task._id}\nElapsed: ${duration}ms\n\nRecent activity:\n${activity}`;
   }
   return `Task running.\nTask ID: ${task._id}\nElapsed: ${duration}ms`;
 };
