@@ -29,12 +29,15 @@ export const getOrCreateDefaultConversation = mutation({
   returns: v.union(conversationValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const existing = await ctx.db
+    const allDefaults = await ctx.db
       .query("conversations")
       .withIndex("by_owner_default", (q) =>
         q.eq("ownerId", ownerId).eq("isDefault", true),
       )
-      .first();
+      .collect();
+    console.log("[conv-debug] getOrCreateDefaultConversation — ownerId:", ownerId, "found", allDefaults.length, "default conversations:", allDefaults.map(c => ({ id: c._id, isDefault: c.isDefault, owner: c.ownerId })));
+
+    const existing = allDefaults[0] ?? null;
 
     if (existing) {
       return existing;

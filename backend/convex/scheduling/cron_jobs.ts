@@ -557,15 +557,12 @@ export const execute = internalAction({
         : promptBase;
 
     try {
-      const targetDeviceId =
-        (await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
-          conversationId,
-        })) ?? undefined;
-
-      // Cloud device fallback: if no local device, check for a Sprites cloud device
-      const spriteName = !targetDeviceId
-        ? await ctx.runQuery(internal.agent.cloud_devices.resolveForOwner, { ownerId: job.ownerId })
-        : undefined;
+      const target = await ctx.runQuery(
+        internal.agent.device_resolver.resolveExecutionTarget,
+        { ownerId: job.ownerId },
+      );
+      const targetDeviceId = target.targetDeviceId ?? undefined;
+      const spriteName = target.spriteName ?? undefined;
 
       const includeHistory =
         job.sessionTarget === "main" ||

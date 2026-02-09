@@ -277,6 +277,7 @@ export const handleIncomingMessage = internalAction({
     senderPhone: v.string(),
     text: v.string(),
     incomingChatId: v.string(),
+    groupId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -287,6 +288,7 @@ export const handleIncomingMessage = internalAction({
         provider: "linq",
         externalUserId: args.senderPhone,
         text: args.text,
+        groupId: args.groupId,
       });
 
       console.log("[linq] processIncomingMessage result:", result ? "got response" : "null (not linked)");

@@ -1057,6 +1057,35 @@ export const createBackendTools = (
         return `Skill "${skillId}" created with ${args.endpoints.length} endpoints.\n\nAgents can now use ActivateSkill("${skillId}") to load the ${args.service} API documentation and call endpoints via IntegrationRequest.`;
       },
     }),
+    SpawnRemoteMachine: tool({
+      description:
+        "Provision a remote cloud machine for the user.\n\n" +
+        "Usage:\n" +
+        "- Call when the user needs tool execution (Bash, file ops, browser) but their desktop app is offline.\n" +
+        "- Provisions a cloud sandbox with Node, Python, Git, and Playwright pre-installed.\n" +
+        "- Returns status: \"already_enabled\" if a machine exists, or \"provisioning\" if a new one is being set up.\n" +
+        "- After provisioning, subsequent tool calls will automatically route to the cloud machine.\n" +
+        "- Do NOT call if the user's local device is already online.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const ownerCheck = requireOwnerId("SpawnRemoteMachine");
+        if (ownerCheck) return ownerCheck;
+
+        const ownerId = options.ownerId as string;
+        try {
+          const result = await ctx.runAction(
+            internal.agent.cloud_devices.spawnForOwner,
+            { ownerId },
+          );
+          if (result.status === "already_enabled") {
+            return `Remote machine is already running (${result.spriteName}). Tools will route there automatically.`;
+          }
+          return `Remote machine is provisioning (${result.spriteName}). It will be ready in ~1-2 minutes. Tools will route there once setup completes.`;
+        } catch (error) {
+          return `Failed to spawn remote machine: ${(error as Error).message}`;
+        }
+      },
+    }),
     NoResponse: tool({
       description:
         "Signal that you have nothing to say to the user right now. " +

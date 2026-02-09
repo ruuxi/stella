@@ -239,12 +239,16 @@ export const getOrCreateConversationForOwner = internalMutation({
   },
   returns: v.id("conversations"),
   handler: async (ctx, args) => {
-    const existing = await ctx.db
+    // Debug: count ALL default conversations for this owner
+    const allDefaults = await ctx.db
       .query("conversations")
       .withIndex("by_owner_default", (q) =>
         q.eq("ownerId", args.ownerId).eq("isDefault", true),
       )
-      .first();
+      .collect();
+    console.log("[channel-debug] getOrCreateConversationForOwner — ownerId:", args.ownerId, "found", allDefaults.length, "default conversations:", allDefaults.map(c => c._id));
+
+    const existing = allDefaults[0] ?? null;
 
     if (existing) return existing._id;
 
@@ -253,6 +257,24 @@ export const getOrCreateConversationForOwner = internalMutation({
       ownerId: args.ownerId,
       title: args.title ?? "Chat",
       isDefault: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const createGroupConversation = internalMutation({
+  args: {
+    ownerId: v.string(),
+    title: v.optional(v.string()),
+  },
+  returns: v.id("conversations"),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    return await ctx.db.insert("conversations", {
+      ownerId: args.ownerId,
+      title: args.title ?? "Group",
+      isDefault: false,
       createdAt: now,
       updatedAt: now,
     });
@@ -563,7 +585,11 @@ export const setDmDenylist = mutation({
 
 /**
  * Common message handling: lookup connection → resolve conversation →
- * append event → resolve cloud device → run agent turn → return response.
+ * append event → resolve execution target → run agent turn → return response.
+ *
+ * Conversation routing:
+ *  - DMs (groupId absent): route to the owner's default conversation
+ *  - Groups (groupId present): route to a per-group conversation
  */
 export async function processIncomingMessage(args: {
   ctx: ActionCtx;
@@ -571,6 +597,7 @@ export async function processIncomingMessage(args: {
   provider: string;
   externalUserId: string;
   text: string;
+  groupId?: string;
 }): Promise<{ text: string } | null> {
   let connection = args.ownerId
     ? await args.ctx.runQuery(
@@ -620,16 +647,50 @@ export async function processIncomingMessage(args: {
 
   if (!connection) return null;
 
-  let conversationId = connection.conversationId;
-  if (!conversationId) {
+  // Conversation routing: DMs → default conversation, groups → per-group
+  let conversationId: typeof connection.conversationId;
+
+  if (args.groupId) {
+    // Groups use a separate connection keyed by group ID to track per-group conversations
+    const groupKey = `group:${args.groupId}`;
+    let groupConnection = await args.ctx.runQuery(
+      internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
+      { ownerId: connection.ownerId, provider: args.provider, externalUserId: groupKey },
+    );
+
+    if (!groupConnection) {
+      await args.ctx.runMutation(internal.channels.utils.createConnection, {
+        ownerId: connection.ownerId,
+        provider: args.provider,
+        externalUserId: groupKey,
+      });
+      groupConnection = await args.ctx.runQuery(
+        internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
+        { ownerId: connection.ownerId, provider: args.provider, externalUserId: groupKey },
+      );
+    }
+
+    if (groupConnection?.conversationId) {
+      conversationId = groupConnection.conversationId;
+    } else {
+      conversationId = await args.ctx.runMutation(
+        internal.channels.utils.createGroupConversation,
+        { ownerId: connection.ownerId, title: `${args.provider} group` },
+      );
+      if (groupConnection) {
+        await args.ctx.runMutation(internal.channels.utils.setConnectionConversation, {
+          connectionId: groupConnection._id,
+          conversationId,
+        });
+      }
+    }
+  } else {
+    // DMs always go to the owner's default conversation
     conversationId = await args.ctx.runMutation(
       internal.channels.utils.getOrCreateConversationForOwner,
-      { ownerId: connection.ownerId, title: args.provider },
+      { ownerId: connection.ownerId },
     );
-    await args.ctx.runMutation(internal.channels.utils.setConnectionConversation, {
-      connectionId: connection._id,
-      conversationId,
-    });
+    console.log("[channel-debug] DM routing — connection.ownerId:", connection.ownerId, "conversationId:", conversationId);
   }
 
   await args.ctx.runMutation(internal.events.appendInternalEvent, {
@@ -639,21 +700,11 @@ export async function processIncomingMessage(args: {
     payload: { text: args.text },
   });
 
-  // For channel messages, find the owner's local device (Electron app) across
-  // all conversations — not the channel's own "channel:provider" device ID.
-  const targetDeviceId =
-    (await args.ctx.runQuery(internal.events.getLatestLocalDeviceIdForOwner, {
-      ownerId: connection.ownerId,
-    })) ?? undefined;
-
-  // If no local device, fall back to cloud device (no runtime_mode gate —
-  // channel messages should always have a tool execution environment if one
-  // exists).
-  const spriteName = !targetDeviceId
-    ? await args.ctx.runQuery(internal.agent.cloud_devices.resolveForOwnerUngated, {
-        ownerId: connection.ownerId,
-      })
-    : null;
+  // Resolve execution target: local device if online, else cloud, else backend-only
+  const { targetDeviceId, spriteName } = await args.ctx.runQuery(
+    internal.agent.device_resolver.resolveExecutionTarget,
+    { ownerId: connection.ownerId },
+  );
 
   if (spriteName) {
     await args.ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
@@ -667,11 +718,26 @@ export async function processIncomingMessage(args: {
     prompt: args.text,
     agentType: "orchestrator",
     ownerId: connection.ownerId,
-    targetDeviceId,
+    targetDeviceId: targetDeviceId ?? undefined,
     spriteName: spriteName ?? undefined,
   });
 
-  return { text: result.text.trim() || "(Stella had nothing to say.)" };
+  const responseText = result.text.trim() || "(Stella had nothing to say.)";
+
+  // Persist the assistant response so it appears in the desktop conversation
+  if (!result.silent) {
+    await args.ctx.runMutation(internal.events.appendInternalEvent, {
+      conversationId,
+      type: "assistant_message",
+      payload: {
+        text: responseText,
+        source: `channel:${args.provider}`,
+        ...(result.usage ? { usage: result.usage } : {}),
+      },
+    });
+  }
+
+  return { text: responseText };
 }
 
 /**
