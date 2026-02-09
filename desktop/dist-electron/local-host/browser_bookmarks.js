@@ -140,7 +140,7 @@ export async function collectBrowserBookmarks() {
                     folders: Array.from(folders),
                 };
             }
-            catch (err) {
+            catch {
                 // Silently continue to next browser/profile
                 continue;
             }

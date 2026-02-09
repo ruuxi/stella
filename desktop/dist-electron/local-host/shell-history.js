@@ -147,6 +147,7 @@ const isValidPath = (p) => {
     if (/^\/[a-zA-Z]:/.test(p))
         return false;
     // Reject paths with unusual characters that suggest corruption
+    // eslint-disable-next-line no-control-regex
     if (/[\x00-\x1F]/.test(p))
         return false;
     return true;

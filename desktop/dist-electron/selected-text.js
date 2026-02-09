@@ -100,6 +100,7 @@ const getSelectedTextWindows = () => {
             pendingResolve(null);
             pendingResolve = null;
         }
+        // eslint-disable-next-line prefer-const -- timeout and resolver are mutually referential
         let timeout;
         const resolver = (result) => {
             if (pendingResolve === resolver) {
