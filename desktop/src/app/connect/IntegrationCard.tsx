@@ -5,30 +5,46 @@ import { Accordion } from "@/components/accordion";
 import { Button } from "@/components/button";
 import { showToast } from "@/components/toast";
 import type { Integration } from "./integration-configs";
+import {
+  deployAndStartLocalBridge,
+  type BridgeProvider,
+} from "@/lib/bridge-local";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Shared hooks
 // ---------------------------------------------------------------------------
 
-async function deployBridgeLocally(provider: string, getBridgeBundle: (args: { provider: string }) => Promise<{ code: string; config: string; dependencies: string }>) {
-  const electronApi = window.electronAPI;
-  if (!electronApi) return;
+function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
+  const setupBridge = useAction(api.channels.bridge.setupBridge);
+  const getBridgeBundle = useAction(api.channels.bridge.getBridgeBundle);
+  const runtimeMode = useQuery(api.data.preferences.getRuntimeMode);
+  const [error, setError] = useState<string | null>(null);
 
-  const bundle = await getBridgeBundle({ provider });
-  const deployResult = await electronApi.bridgeDeploy({
-    provider,
-    code: bundle.code,
-    config: bundle.config,
-    dependencies: bundle.dependencies,
-  });
-  if (!deployResult.ok) {
-    throw new Error(deployResult.error ?? "Failed to deploy bridge locally");
-  }
+  useEffect(() => {
+    if (!isExpanded) return;
 
-  const startResult = await electronApi.bridgeStart({ provider });
-  if (!startResult.ok) {
-    throw new Error(startResult.error ?? "Failed to start bridge locally");
-  }
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await setupBridge({ provider });
+        if (cancelled) return;
+
+        if (result.status === "initializing" && runtimeMode !== "cloud_247") {
+          await deployAndStartLocalBridge(provider, getBridgeBundle);
+        }
+        if (!cancelled) setError(null);
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message ?? "Failed to start bridge");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [provider, isExpanded, runtimeMode, setupBridge, getBridgeBundle]);
+
+  return error;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,42 +174,12 @@ function BotSetupView({
 }
 
 function WhatsAppBridgeView({ isExpanded }: { isExpanded: boolean }) {
-  const setupBridge = useAction(api.channels.bridge.setupBridge);
-  const getBridgeBundle = useAction(api.channels.bridge.getBridgeBundle);
-  const runtimeMode = useQuery(api.data.preferences.getRuntimeMode);
-  const [error, setError] = useState<string | null>(null);
+  const error = useBridgeSetup("whatsapp", isExpanded);
 
   const qrCode = useQuery(
     api.channels.whatsapp.getQrCode,
     isExpanded ? {} : "skip",
   ) as string | null | undefined;
-
-  useEffect(() => {
-    if (!isExpanded) {
-      setError(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const result = await setupBridge({ provider: "whatsapp" });
-        if (cancelled) return;
-
-        // Local mode: deploy bridge via Electron IPC
-        if (result.status === "initializing" && runtimeMode !== "cloud_247") {
-          await deployBridgeLocally("whatsapp", getBridgeBundle);
-        }
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message ?? "Failed to start bridge");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isExpanded, setupBridge, getBridgeBundle, runtimeMode]);
 
   return (
     <>
@@ -220,42 +206,12 @@ function WhatsAppBridgeView({ isExpanded }: { isExpanded: boolean }) {
 }
 
 function SignalBridgeView({ isExpanded }: { isExpanded: boolean }) {
-  const setupBridge = useAction(api.channels.bridge.setupBridge);
-  const getBridgeBundle = useAction(api.channels.bridge.getBridgeBundle);
-  const runtimeMode = useQuery(api.data.preferences.getRuntimeMode);
-  const [error, setError] = useState<string | null>(null);
+  const error = useBridgeSetup("signal", isExpanded);
 
   const linkUri = useQuery(
     api.channels.signal.getLinkUri,
     isExpanded ? {} : "skip",
   ) as string | null | undefined;
-
-  useEffect(() => {
-    if (!isExpanded) {
-      setError(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const result = await setupBridge({ provider: "signal" });
-        if (cancelled) return;
-
-        // Local mode: deploy bridge via Electron IPC
-        if (result.status === "initializing" && runtimeMode !== "cloud_247") {
-          await deployBridgeLocally("signal", getBridgeBundle);
-        }
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message ?? "Failed to start bridge");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isExpanded, setupBridge, getBridgeBundle, runtimeMode]);
 
   const handleCopy = useCallback(() => {
     if (linkUri) {
