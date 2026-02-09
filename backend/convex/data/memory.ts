@@ -1,10 +1,16 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation, internalQuery } from "../_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+  query,
+} from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { embed as aiEmbed, generateText } from "ai";
 import { getModelConfig } from "../agent/model";
 import { DISCOVERY_FACT_EXTRACTION_PROMPT } from "../prompts/discovery_facts";
+import { requireUserId } from "../auth";
 
 const memoryValidator = v.object({
   _id: v.id("memories"),
@@ -504,6 +510,33 @@ export const listCategories = internalQuery({
     const counts = new Map<string, number>();
     for (const m of all) {
       const key = `${m.category}/${m.subcategory}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    return Array.from(counts.entries()).map(([key, count]) => {
+      const [category, subcategory] = key.split("/");
+      return { category, subcategory, count };
+    });
+  },
+});
+
+export const listCategoriesForOwner = query({
+  args: {},
+  returns: v.array(v.object({
+    category: v.string(),
+    subcategory: v.string(),
+    count: v.number(),
+  })),
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const all = await ctx.db
+      .query("memories")
+      .withIndex("by_owner_category", (q) => q.eq("ownerId", ownerId))
+      .take(500);
+
+    const counts = new Map<string, number>();
+    for (const memory of all) {
+      const key = `${memory.category}/${memory.subcategory}`;
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
 

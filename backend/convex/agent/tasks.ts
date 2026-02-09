@@ -524,6 +524,63 @@ export const listByConversation = query({
   },
 });
 
+export const listByConversationSince = query({
+  args: {
+    conversationId: v.id("conversations"),
+    afterUpdatedAt: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(taskClientValidator),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+
+    const afterUpdatedAt = args.afterUpdatedAt ?? 0;
+    const requestedLimit = args.limit ?? 200;
+    const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 1000);
+    const scanLimit = Math.min(Math.max(limit * 4, 200), 2000);
+
+    const records = await ctx.db
+      .query("tasks")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .order("desc")
+      .take(scanLimit);
+
+    const filtered = records
+      .filter((record) => record.updatedAt > afterUpdatedAt)
+      .sort(
+        (a, b) =>
+          a.updatedAt - b.updatedAt ||
+          String(a._id).localeCompare(String(b._id)),
+      )
+      .slice(-limit);
+
+    return filtered.map((record) => toTaskClient(record));
+  },
+});
+
+export const getConversationTaskHead = query({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  returns: v.object({
+    latestUpdatedAt: v.number(),
+    latestTaskId: v.union(v.id("tasks"), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+    const latest = await ctx.db
+      .query("tasks")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .order("desc")
+      .first();
+
+    return {
+      latestUpdatedAt: latest?.updatedAt ?? 0,
+      latestTaskId: latest?._id ?? null,
+    };
+  },
+});
+
 export const runSubagent = action({
   args: {
     conversationId: v.id("conversations"),
