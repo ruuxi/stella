@@ -8,7 +8,7 @@
  * SelfModPackage — export as blueprint
  */
 import { createFeature, getActiveFeature, setActiveFeature, getFeature, updateFeature, listStagedFiles, applyBatch, getHistory, removeLastHistoryEntries, restoreSnapshot, listSnapshots, packageFeature, } from "../self-mod/index.js";
-export const handleSelfModStart = async (args, context, frontendRoot) => {
+export const handleSelfModStart = async (args, context) => {
     const name = String(args.name ?? "Unnamed modification");
     const description = String(args.description ?? "");
     const featureId = `mod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

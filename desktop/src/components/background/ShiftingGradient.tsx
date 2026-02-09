@@ -86,7 +86,7 @@ function generateBlobs(
       size: Math.round(rand(1020, 1280) * sizeScale),
       scale: rand(0.9, 1.15),
       blur: Math.round(baseBlur * blurMultiplier),
-      alpha: rand(0.65, 0.8),
+      alpha: rand(0.75, 0.9),
       color: colors[i % colors.length],
     };
   });
@@ -140,7 +140,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         tokens.surfaceWarningStrong,
         tokens.surfaceBrandBase,
       ];
-      const strength = isDark ? 0.22 : 0.28;
+      const strength = isDark ? 0.28 : 0.34;
       return tokenColors.map((token) => {
         const color = parseColor(token) ?? fallback;
         return mixRgb(bg, color, strength);

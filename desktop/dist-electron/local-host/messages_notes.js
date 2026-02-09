@@ -123,7 +123,7 @@ async function collectAppleNotes(stellaHome) {
             try {
                 rows = db.prepare(query).all();
             }
-            catch (err) {
+            catch {
                 // Try fallback with alternative column names
                 log("Primary Notes query failed, trying fallback");
                 query = `
@@ -140,7 +140,7 @@ async function collectAppleNotes(stellaHome) {
                 try {
                     rows = db.prepare(query).all();
                 }
-                catch (err2) {
+                catch {
                     // Final fallback - just count notes
                     log("Alternative Notes query failed, using simple fallback");
                     query = `

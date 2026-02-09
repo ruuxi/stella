@@ -135,7 +135,8 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
                 const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
                 toolHost.setSkills(skills);
                 await callMutation("data/skills.upsertMany", {
-                    skills: skills.map(({ filePath, ...rest }) => rest),
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    skills: skills.map(({ filePath: _, ...rest }) => rest),
                 });
                 await callMutation("agent/agents.upsertMany", {
                     agents,

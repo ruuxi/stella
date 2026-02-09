@@ -63,7 +63,7 @@ const createAndActivateFeature = async (context, relativePath, reason) => {
 };
 async function ensureActiveFeature(context, relativePath) {
     const now = Date.now();
-    let featureId = await getActiveFeature(context.conversationId);
+    const featureId = await getActiveFeature(context.conversationId);
     if (!featureId) {
         return createAndActivateFeature(context, relativePath, "no active feature");
     }
