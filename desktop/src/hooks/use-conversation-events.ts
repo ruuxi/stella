@@ -74,6 +74,11 @@ export type TaskFailedPayload = {
   error?: string;
 };
 
+export type TaskProgressPayload = {
+  taskId: string;
+  statusText: string;
+};
+
 // Task item for UI display
 export type TaskItem = {
   id: string;
@@ -81,6 +86,7 @@ export type TaskItem = {
   agentType: string;
   status: "running" | "completed" | "error";
   parentTaskId?: string;
+  statusText?: string;
 };
 
 // Type guards
@@ -143,6 +149,18 @@ export function isTaskFailed(
     typeof event.payload === "object" &&
     event.payload !== null &&
     "taskId" in event.payload
+  );
+}
+
+export function isTaskProgress(
+  event: EventRecord
+): event is EventRecord & { payload: TaskProgressPayload } {
+  return (
+    event.type === "task_progress" &&
+    typeof event.payload === "object" &&
+    event.payload !== null &&
+    "taskId" in event.payload &&
+    "statusText" in event.payload
   );
 }
 
@@ -326,6 +344,7 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
   const startedEvents = events.filter(isTaskStarted);
   const completedEvents = events.filter(isTaskCompleted);
   const failedEvents = events.filter(isTaskFailed);
+  const progressEvents = events.filter(isTaskProgress);
 
   // Build maps of taskId -> completion/failure events
   const completedByTaskId = new Map<string, EventRecord & { payload: TaskCompletedPayload }>();
@@ -336,6 +355,13 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
   const failedByTaskId = new Map<string, EventRecord & { payload: TaskFailedPayload }>();
   for (const event of failedEvents) {
     failedByTaskId.set(event.payload.taskId, event);
+  }
+
+  // Build map of taskId -> latest progress status text
+  const latestProgressByTaskId = new Map<string, string>();
+  for (const event of progressEvents) {
+    // Later events overwrite earlier ones — last one wins
+    latestProgressByTaskId.set(event.payload.taskId, event.payload.statusText);
   }
 
   return startedEvents.map((event) => {
@@ -354,6 +380,7 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
       agentType: event.payload.agentType,
       status,
       parentTaskId: event.payload.parentTaskId,
+      statusText: latestProgressByTaskId.get(taskId),
     };
   });
 }

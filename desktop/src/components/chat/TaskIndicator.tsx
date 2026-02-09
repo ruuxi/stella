@@ -43,7 +43,7 @@ export function TaskIndicator({ tasks, className }: TaskIndicatorProps) {
               {getAgentLabel(task.agentType)}
             </span>
             <span className="task-indicator-description">
-              {task.description}
+              {task.statusText ?? task.description}
             </span>
           </div>
         </div>
