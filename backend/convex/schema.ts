@@ -190,6 +190,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_owner", ["ownerId"])
+    .index("by_last_active", ["lastActiveAt"])
     .index("by_sprite_name", ["spriteName"]),
   plugins: defineTable({
     id: v.string(),

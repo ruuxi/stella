@@ -7,5 +7,11 @@ crons.daily("decay memories", { hourUTC: 4, minuteUTC: 0 }, internal.data.memory
 crons.interval("heartbeat tick", { minutes: 1 }, internal.scheduling.heartbeat.tick);
 crons.interval("cron jobs tick", { minutes: 1 }, internal.scheduling.cron_jobs.tick);
 crons.interval("bridge wake tick", { minutes: 1 }, internal.channels.bridge.bridgeWakeTick);
+crons.daily(
+  "cleanup inactive cloud devices",
+  { hourUTC: 5, minuteUTC: 0 },
+  internal.agent.cloud_device_cleanup.cleanupInactive,
+  {},
+);
 
 export default crons;
