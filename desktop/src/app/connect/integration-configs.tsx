@@ -83,14 +83,14 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     provider: "linq",
-    displayName: "Linq (iMessage/SMS)",
+    displayName: "Text Stella (iMessage/SMS)",
     type: "bot",
     icon: (
       <svg viewBox="0 0 24 24" fill="currentColor">
         <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12zM7 9h2v2H7V9zm4 0h2v2h-2V9zm4 0h2v2h-2V9z" />
       </svg>
     ),
-    instructions: "Text the code below to +1 (205) 249-0578 to link your iMessage/SMS.",
+    instructions: "Text the code below to +1 (205) 249-0578 to start texting Stella via iMessage/SMS.",
   },
   {
     provider: "whatsapp",
