@@ -8,6 +8,7 @@ import { resolveModelConfig } from "../agent/model_resolver";
 
 export type RunAgentTurnResult = {
   text: string;
+  silent: boolean;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;
@@ -45,7 +46,7 @@ export async function runAgentTurn({
     id: conversationId,
   });
   if (!conversation) {
-    return { text: "" };
+    return { text: "", silent: false };
   }
 
   const resolvedOwnerId = ownerId ?? conversation.ownerId;
@@ -112,6 +113,7 @@ export async function runAgentTurn({
         totalTokens?: number;
       }
     | undefined;
+  let noResponseCalled = false;
 
   const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
   const result = await streamText({
@@ -125,6 +127,11 @@ export async function runAgentTurn({
         content: [{ type: "text", text: prompt.trim() || " " }],
       },
     ],
+    onStepFinish: ({ toolCalls }) => {
+      if (toolCalls?.some((tc: { toolName: string }) => tc.toolName === "NoResponse")) {
+        noResponseCalled = true;
+      }
+    },
     onFinish: ({ usage, totalUsage }) => {
       const usageTotals = totalUsage ?? usage;
       const hasUsage =
@@ -152,5 +159,5 @@ export async function runAgentTurn({
     });
   }
 
-  return { text, usage: usageSummary };
+  return { text, silent: noResponseCalled, usage: usageSummary };
 }
