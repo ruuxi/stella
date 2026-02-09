@@ -27,7 +27,6 @@ import {
 export const handleSelfModStart = async (
   args: Record<string, unknown>,
   context: ToolContext,
-  frontendRoot?: string,
 ): Promise<ToolResult> => {
   const name = String(args.name ?? "Unnamed modification");
   const description = String(args.description ?? "");

@@ -107,7 +107,7 @@ async function ensureActiveFeature(
   relativePath: string,
 ): Promise<string> {
   const now = Date.now();
-  let featureId = await getActiveFeature(context.conversationId);
+  const featureId = await getActiveFeature(context.conversationId);
   if (!featureId) {
     return createAndActivateFeature(context, relativePath, "no active feature");
   }

@@ -9,8 +9,6 @@ import type {
   GitConfig,
 } from "./discovery_types.js";
 
-const log = (...args: unknown[]) => console.log("[dev-environment]", ...args);
-
 const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
   Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
 
@@ -41,7 +39,7 @@ async function collectIDEExtensions(): Promise<IDEExtension[]> {
         const name = match ? match[1] : entry;
         extensions.push({ name, source });
       }
-    } catch (err) {
+    } catch {
       // Directory doesn't exist, ignore
     }
   };
@@ -96,7 +94,7 @@ async function collectIDESettings(): Promise<IDESettings[]> {
       if (Object.keys(highlights).length > 0) {
         settings.push({ source, highlights });
       }
-    } catch (err) {
+    } catch {
       // File doesn't exist or can't be parsed, ignore
     }
   };
@@ -153,7 +151,7 @@ async function collectGitConfig(): Promise<GitConfig | null> {
     }
 
     return config;
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -189,7 +187,7 @@ async function collectDotfiles(): Promise<string[]> {
       try {
         await fs.access(path.join(homeDir, file));
         existing.push(file);
-      } catch (err) {
+      } catch {
         // File doesn't exist, ignore
       }
     })
@@ -220,7 +218,7 @@ async function collectRuntimes(): Promise<string[]> {
       try {
         await fs.access(path.join(homeDir, dir));
         detected.push(name);
-      } catch (err) {
+      } catch {
         // Directory doesn't exist, ignore
       }
     })
@@ -244,13 +242,13 @@ async function collectPackageManagers(): Promise<string[]> {
           await fs.access("/opt/homebrew");
           detected.push("homebrew");
           return;
-        } catch (err) {
+        } catch {
           // Try alternate location
         }
         try {
           await fs.access("/usr/local/Homebrew");
           detected.push("homebrew");
-        } catch (err) {
+        } catch {
           // Not found
         }
       })()
@@ -264,7 +262,7 @@ async function collectPackageManagers(): Promise<string[]> {
         try {
           await fs.access(path.join(homeDir, "scoop"));
           detected.push("scoop");
-        } catch (err) {
+        } catch {
           // Not found
         }
       })()
@@ -276,7 +274,7 @@ async function collectPackageManagers(): Promise<string[]> {
           const programData = process.env.ProgramData || "C:\\ProgramData";
           await fs.access(path.join(programData, "chocolatey"));
           detected.push("chocolatey");
-        } catch (err) {
+        } catch {
           // Not found
         }
       })()
@@ -307,7 +305,7 @@ async function collectPackageManagers(): Promise<string[]> {
           await fs.access(pnpmPath);
           detected.push("pnpm");
           return;
-        } catch (err) {
+        } catch {
           // Try next path
         }
       }
@@ -330,7 +328,7 @@ async function detectWSL(): Promise<boolean> {
     const entries = await fs.readdir(packagesDir);
 
     return entries.some((entry) => entry.startsWith("CanonicalGroupLimited"));
-  } catch (err) {
+  } catch {
     return false;
   }
 }

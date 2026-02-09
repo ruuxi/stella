@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
@@ -68,7 +69,7 @@ type StorePackage = {
   implementation?: string;
 };
 
-function StoreView({ onBack: _onBack, onComposePrompt }: StoreViewProps) {
+function StoreView({ onComposePrompt }: StoreViewProps) {
   const { setView } = useUiState();
   const [page, setPage] = useState<StorePage>("browse");
   const [category, setCategory] = useState<CategoryTab>("all");

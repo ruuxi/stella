@@ -1,4 +1,5 @@
 import type { UiState, WindowMode } from './ui'
+import type { Theme } from '../theme/themes/types'
 
 export type RadialWedge = 'capture' | 'chat' | 'full' | 'voice' | 'auto' | 'dismiss'
 
@@ -271,7 +272,7 @@ export type ElectronApi = {
   }) => Promise<{ uninstalled: boolean; requiresRevert?: boolean; note?: string }>
 
   // Theme loading from installed themes
-  listInstalledThemes: () => Promise<Array<{ id: string; name: string; light: Record<string, string>; dark: Record<string, string> }>>
+  listInstalledThemes: () => Promise<Theme[]>
 
   // Bridge manager
   bridgeDeploy: (payload: {

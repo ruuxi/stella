@@ -65,7 +65,7 @@ describe("Tools Module - Unit Tests", () => {
       // which will occur if database doesn't exist or can't be opened
       mockFs.access.mockRejectedValue(new Error("File not found"));
 
-      const result = await toolHost.executeTool(
+      await toolHost.executeTool(
         "SqliteQuery",
         {
           database_path: "/tmp/test.db",
@@ -73,7 +73,7 @@ describe("Tools Module - Unit Tests", () => {
         },
         testContext
       );
-      
+
       // Should attempt to access (not blocked)
       expect(mockFs.access).toHaveBeenCalled();
     });
@@ -117,7 +117,7 @@ describe("Tools Module - Unit Tests", () => {
       mockFs.access.mockResolvedValue(undefined);
       mockFs.readFile.mockResolvedValue("file content");
 
-      const result = await toolHost.executeTool(
+      await toolHost.executeTool(
         "Read",
         { file_path: "~/test.txt" },
         {

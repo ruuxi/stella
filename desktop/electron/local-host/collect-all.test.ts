@@ -1,11 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import path from "path";
-import os from "os";
 import fs from "fs";
 
 // Import types
-import type { ShellAnalysis, DevProject, DiscoveredApp, AllUserSignals } from "./types.js";
-import type { BrowserData } from "./browser-data.js";
+import type { ShellAnalysis, DevProject, DiscoveredApp } from "./types.js";
 
 // Mock fs
 vi.mock("fs", () => ({
