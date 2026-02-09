@@ -51,6 +51,28 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     let syncPromise = null;
     let syncDebounceTimer = null;
     const watchers = [];
+    let heartbeatInterval = null;
+    const HEARTBEAT_INTERVAL_MS = 30000;
+    const sendHeartbeat = () => {
+        callMutation("agent/device_resolver.heartbeat", {
+            deviceId,
+            platform: process.platform,
+        }).catch((err) => logError("Heartbeat failed:", err));
+    };
+    const startHeartbeat = () => {
+        if (heartbeatInterval)
+            return;
+        sendHeartbeat();
+        heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    };
+    const stopHeartbeat = () => {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+        }
+        // Best-effort goOffline — fire and forget
+        callMutation("agent/device_resolver.goOffline", {}).catch(() => { });
+    };
     const skillsPath = path.join(StellaHome, "skills");
     const agentsPath = path.join(StellaHome, "agents");
     const pluginsPath = path.join(StellaHome, "plugins");
@@ -284,8 +306,11 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             // Start subscription if runner is running and we now have auth.
             // Note: avoid restarting an active subscription on token refresh; Convex
             // will re-authenticate as needed via the updated auth callback.
-            if (isRunning)
+            if (isRunning) {
                 startSubscription();
+                // Send immediate heartbeat when auth becomes available
+                sendHeartbeat();
+            }
         }
         else {
             // Stop subscription when auth is cleared (logout/unauthenticated).
@@ -450,6 +475,8 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
         startWatchers();
         // Start real-time subscription for tool requests (only if auth is ready)
         startSubscription();
+        // Start device heartbeat (only sends if auth is available)
+        startHeartbeat();
     };
     const stop = () => {
         isRunning = false;
@@ -457,6 +484,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             clearTimeout(syncDebounceTimer);
             syncDebounceTimer = null;
         }
+        stopHeartbeat();
         stopWatchers();
         stopSubscription();
         if (client) {
