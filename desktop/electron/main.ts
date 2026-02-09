@@ -1224,6 +1224,10 @@ app.whenReady().then(async () => {
     if (!nextToken) {
       cacheStore?.resetAll()
       clearPushSyncSubscriptions()
+      broadcastCacheUpdated({
+        streams: ['events', 'tasks', 'threads', 'memory_categories'],
+        source: 'manual',
+      })
     } else if (cacheStore) {
       void cacheStore.syncMemoryCategories('self').catch(() => undefined)
       refreshPushSyncSubscriptions()
