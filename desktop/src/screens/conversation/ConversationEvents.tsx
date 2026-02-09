@@ -10,6 +10,7 @@ import {
   StreamingIndicator,
   type TurnViewModel,
 } from "./MessageTurn";
+import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import { useTurnViewModels } from "./use-turn-view-models";
 
 type Props = {
@@ -306,6 +307,11 @@ export const ConversationEvents = memo(function ConversationEvents({
           runningTool={runningTool}
           onOpenAttachment={onOpenAttachment}
         />
+      )}
+
+      {/* Persistent task progress — visible even when orchestrator is not streaming */}
+      {!showStreaming && runningTasks.length > 0 && (
+        <TaskIndicator tasks={runningTasks} />
       )}
     </div>
   );
