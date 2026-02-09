@@ -1,6 +1,7 @@
 import { memo } from "react";
 import type { Attachment, TaskItem } from "../../hooks/use-conversation-events";
 import { WorkingIndicator } from "../../components/chat/WorkingIndicator";
+import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import { Markdown } from "../../components/chat/Markdown";
 import { ReasoningSection } from "../../components/chat/ReasoningSection";
 import type { EventRecord, MessagePayload } from "../../hooks/use-conversation-events";
@@ -144,7 +145,7 @@ export const TurnItem = memo(function TurnItem({
           {shouldShowStreamingAssistant && streaming && (
             <>
               {streaming.runningTasks.length > 0 && (
-                <WorkingIndicator tasks={streaming.runningTasks} />
+                <TaskIndicator tasks={streaming.runningTasks} />
               )}
               {hasReasoningContent && streaming.reasoningText && (
                 <ReasoningSection
@@ -207,7 +208,7 @@ export const StreamingIndicator = memo(function StreamingIndicator({
     <div className="session-turn">
       <div className="event-item assistant streaming">
         {runningTasks.length > 0 && (
-          <WorkingIndicator tasks={runningTasks} />
+          <TaskIndicator tasks={runningTasks} />
         )}
         {hasReasoningContent && (
           <ReasoningSection
