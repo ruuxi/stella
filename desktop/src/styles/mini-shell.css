@@ -454,11 +454,11 @@
 }
 
 @media (max-width: 960px) {
-  .full-body {
+  .window-shell.mini .full-body {
     flex-direction: column;
   }
 
-  .side-panel {
+  .window-shell.mini .side-panel {
     flex: 1 1 auto;
     min-width: 0;
   }

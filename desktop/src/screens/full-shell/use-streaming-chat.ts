@@ -2,7 +2,7 @@
  * Custom hook: streaming state machine, SSE connection, tool/task tracking, abort.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRafStringAccumulator } from "../../hooks/use-raf-state";
 import { useMutation, useAction } from "convex/react";
 import { api } from "../../convex/api";
@@ -43,7 +43,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
 
       const optimisticEvent = {
         _id: `optimistic-${crypto.randomUUID()}`,
-        timestamp: Date.now(),
+        timestamp: (current.page[0]?.timestamp ?? 0) + 1,
         type: args.type,
         deviceId: args.deviceId,
         payload: args.payload,
@@ -66,6 +66,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       resetStreamingText();
       resetReasoningText();
       setIsStreaming(false);
+      setQueueNext(false);
       requestAnimationFrame(() => {
         if (scheduledForRunId !== streamRunIdRef.current) {
           return;
@@ -74,7 +75,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       });
       streamAbortRef.current = null;
     },
-    [resetStreamingText, resetReasoningText],
+    [resetStreamingText, resetReasoningText, setQueueNext],
   );
 
   const cancelCurrentStream = useCallback(() => {
@@ -117,6 +118,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
             if (runId !== streamRunIdRef.current) return;
             streamAbortRef.current = null;
             setIsStreaming(false);
+            setQueueNext(false);
             if (streamingTextRef.current.trim().length === 0) {
               resetStreamingText();
               setPendingUserMessageId(null);
@@ -144,6 +146,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       appendStreamingDelta,
       appendReasoningDelta,
       streamingTextRef,
+      setQueueNext,
     ],
   );
 
@@ -214,12 +217,6 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
     ],
   );
 
-  useEffect(() => {
-    if (!isStreaming && queueNext) {
-      setQueueNext(false);
-    }
-  }, [isStreaming, queueNext]);
-
   const sendMessage = useCallback(
     async (opts: {
       text: string;
@@ -267,7 +264,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         return;
       }
 
-      let attachments: AttachmentRef[] = [];
+      const attachments: AttachmentRef[] = [];
       if (opts.chatContext?.regionScreenshots?.length) {
         const uploadedAttachments: Array<AttachmentRef | null> =
           await Promise.all(

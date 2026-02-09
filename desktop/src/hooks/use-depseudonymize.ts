@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 type Replacement = { pattern: RegExp; replacement: string };
 type DiscoveryCategory = "browsing_bookmarks" | "dev_environment" | "apps_system" | "messages_notes";
@@ -88,27 +88,43 @@ function applyReplacements(
  * Returns a no-op passthrough if no identity map exists.
  */
 export function useDepseudonymize(): (text: string) => string {
-  const [replacements, setReplacements] = useState<Replacement[]>(
-    cachedReplacements ?? [],
-  );
-
-  useEffect(() => {
-    if (!isMessagesNotesEnabled()) {
+  const isEnabled = useMemo(() => isMessagesNotesEnabled(), []);
+  const [replacements, setReplacements] = useState<Replacement[] | null>(() => {
+    if (!isEnabled) {
       cachedReplacements = [];
       loadPromise = null;
-      setReplacements([]);
+      return [];
+    }
+    return cachedReplacements;
+  });
+
+  useEffect(() => {
+    if (!isEnabled) {
+      return;
+    }
+    if (cachedReplacements !== null) {
       return;
     }
 
-    if (cachedReplacements !== null) {
-      setReplacements(cachedReplacements);
-      return;
-    }
-    loadReplacements().then(setReplacements);
-  }, []);
+    let cancelled = false;
+    loadReplacements().then((loaded) => {
+      if (!cancelled) {
+        setReplacements(loaded);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEnabled]);
+
+  const resolvedReplacements = useMemo(
+    () => replacements ?? [],
+    [replacements],
+  );
 
   return useCallback(
-    (text: string) => applyReplacements(text, replacements),
-    [replacements],
+    (text: string) => applyReplacements(text, resolvedReplacements),
+    [resolvedReplacements],
   );
 }
