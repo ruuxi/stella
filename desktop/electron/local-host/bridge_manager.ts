@@ -1,4 +1,4 @@
-import { spawn, execSync, type ChildProcess } from 'child_process'
+import { spawn, type ChildProcess } from 'child_process'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
@@ -17,6 +17,45 @@ const processes = new Map<string, ChildProcess>()
 
 async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true })
+}
+
+async function runCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs: number,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stderr = ''
+
+    child.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString()
+    })
+
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM')
+      reject(new Error(`${command} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    child.on('error', (err) => {
+      clearTimeout(timeout)
+      reject(err)
+    })
+
+    child.on('close', (code) => {
+      clearTimeout(timeout)
+      if (code === 0) {
+        resolve()
+        return
+      }
+      reject(new Error(stderr.trim() || `${command} exited with code ${code}`))
+    })
+  })
 }
 
 export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error?: string }> {
@@ -41,8 +80,8 @@ export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error
       }
       await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2), 'utf-8')
 
-      // Run npm install synchronously (short operation for a few deps)
-      execSync('npm install --production', { cwd: dir, timeout: 120_000, stdio: 'pipe' })
+      const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+      await runCommand(npmCommand, ['install', '--production'], dir, 120_000)
     }
 
     return { ok: true }
