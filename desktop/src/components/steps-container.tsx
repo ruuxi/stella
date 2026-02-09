@@ -36,6 +36,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   bash: { icon: "⌨️", label: "Terminal" },
   killshell: { icon: "⌨️", label: "Kill Shell" },
   webfetch: { icon: "🌐", label: "Fetch" },
+  task: { icon: "🤖", label: "Task" },
   taskcreate: { icon: "🤖", label: "Task" },
   taskoutput: { icon: "🤖", label: "Task Output" },
   taskcancel: { icon: "🤖", label: "Task Cancel" },

@@ -58,12 +58,28 @@ export const FullShell = () => {
   });
 
   // Streaming chat
-  const streaming = useStreamingChat({
+  const {
+    streamingText,
+    reasoningText,
+    isStreaming,
+    pendingUserMessageId,
+    queueNext,
+    setQueueNext,
+    sendMessage,
+    syncWithEvents,
+    processFollowUpQueue,
+  } = useStreamingChat({
     conversationId: state.conversationId,
   });
 
   // Scroll management
-  const scroll = useScrollManagement();
+  const {
+    scrollContainerRef,
+    isNearBottom,
+    showScrollButton,
+    scrollToBottom,
+    handleScroll,
+  } = useScrollManagement();
 
   // Broadcast gate state to main process
   useEffect(() => {
@@ -110,9 +126,9 @@ export const FullShell = () => {
   useCanvasCommands(events);
 
   const savedCanvasState = useQuery(
-    api.data.canvas_states.getForConversation as any,
+    api.data.canvas_states.getForConversation,
     state.conversationId
-      ? { conversationId: state.conversationId as any }
+      ? { conversationId: state.conversationId }
       : "skip",
   ) as
     | {
@@ -159,37 +175,37 @@ export const FullShell = () => {
 
   // Sync streaming with events
   useEffect(() => {
-    streaming.syncWithEvents(events);
-  }, [events, streaming.syncWithEvents]);
+    syncWithEvents(events);
+  }, [events, syncWithEvents]);
 
   // Process follow-up queue
   useEffect(() => {
-    streaming.processFollowUpQueue(events);
-  }, [events, streaming.processFollowUpQueue]);
+    processFollowUpQueue(events);
+  }, [events, processFollowUpQueue]);
 
   // Auto-scroll when persisted conversation content arrives
   useEffect(() => {
-    if (scroll.isNearBottom) {
-      scroll.scrollToBottom("smooth");
+    if (isNearBottom) {
+      scrollToBottom("smooth");
     }
-  }, [events.length, scroll.isNearBottom, scroll.scrollToBottom]);
+  }, [events.length, isNearBottom, scrollToBottom]);
 
   // Keep viewport pinned during streaming
   useEffect(() => {
-    if (streaming.isStreaming && scroll.isNearBottom) {
-      scroll.scrollToBottom("auto");
+    if (isStreaming && isNearBottom) {
+      scrollToBottom("auto");
     }
   }, [
-    streaming.streamingText,
-    streaming.reasoningText,
-    streaming.isStreaming,
-    scroll.isNearBottom,
-    scroll.scrollToBottom,
+    streamingText,
+    reasoningText,
+    isStreaming,
+    isNearBottom,
+    scrollToBottom,
   ]);
 
   const handleSend = useCallback(() => {
     const hasScreenshotCtx = Boolean(chatContext?.regionScreenshots?.length);
-    void streaming.sendMessage({
+    void sendMessage({
       text: message,
       selectedText,
       chatContext,
@@ -203,7 +219,7 @@ export const FullShell = () => {
       },
     });
     setMessage("");
-  }, [message, selectedText, chatContext, streaming]);
+  }, [message, selectedText, chatContext, sendMessage]);
 
   const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
@@ -256,22 +272,22 @@ export const FullShell = () => {
           <>
             <ChatColumn
               events={events}
-              streamingText={streaming.streamingText}
-              reasoningText={streaming.reasoningText}
-              isStreaming={streaming.isStreaming}
-              pendingUserMessageId={streaming.pendingUserMessageId}
+              streamingText={streamingText}
+              reasoningText={reasoningText}
+              isStreaming={isStreaming}
+              pendingUserMessageId={pendingUserMessageId}
               message={message}
               setMessage={setMessage}
               chatContext={chatContext}
               setChatContext={setChatContext}
               selectedText={selectedText}
               setSelectedText={setSelectedText}
-              queueNext={streaming.queueNext}
-              setQueueNext={streaming.setQueueNext}
-              scrollContainerRef={scroll.scrollContainerRef}
-              handleScroll={scroll.handleScroll}
-              showScrollButton={scroll.showScrollButton}
-              scrollToBottom={scroll.scrollToBottom}
+              queueNext={queueNext}
+              setQueueNext={setQueueNext}
+              scrollContainerRef={scrollContainerRef}
+              handleScroll={handleScroll}
+              showScrollButton={showScrollButton}
+              scrollToBottom={scrollToBottom}
               conversationId={state.conversationId}
               onboardingDone={onboarding.onboardingDone}
               isAuthenticated={onboarding.isAuthenticated}

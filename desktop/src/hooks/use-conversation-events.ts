@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../convex/api";
 import type { StepItem } from "../components/steps-container";
 import { getElectronApi } from "../services/electron";
@@ -379,15 +379,12 @@ export const useConversationEvents = (conversationId?: string) => {
       : "skip"
   ) as { page: EventRecord[] } | undefined;
 
-  const [cachedEvents, setCachedEvents] = useState<EventRecord[]>([]);
-  const lastConversationIdRef = useRef<string | undefined>(undefined);
+  const [cachedEvents, setCachedEvents] = useState<{
+    conversationId: string;
+    events: EventRecord[];
+  } | null>(null);
 
   useEffect(() => {
-    if (conversationId !== lastConversationIdRef.current) {
-      lastConversationIdRef.current = conversationId;
-      setCachedEvents([]);
-    }
-
     if (!useCache || !electronApi?.cacheGetConversationEvents || !electronApi?.cacheSyncConversationEvents) {
       return;
     }
@@ -405,7 +402,10 @@ export const useConversationEvents = (conversationId?: string) => {
           limit: 200,
         });
         if (!cancelled) {
-          setCachedEvents(local);
+          setCachedEvents({
+            conversationId,
+            events: local,
+          });
         }
       } catch (error) {
         if (!cancelled) {
@@ -434,7 +434,10 @@ export const useConversationEvents = (conversationId?: string) => {
         ]);
         const synced = eventsResult ?? [];
         if (!cancelled) {
-          setCachedEvents(synced);
+          setCachedEvents({
+            conversationId,
+            events: synced,
+          });
         }
       } catch (error) {
         if (!cancelled) {
@@ -484,7 +487,10 @@ export const useConversationEvents = (conversationId?: string) => {
       if (!conversationId) {
         return [];
       }
-      return cachedEvents;
+      if (!cachedEvents || cachedEvents.conversationId !== conversationId) {
+        return [];
+      }
+      return cachedEvents.events;
     }
     const events = result?.page ?? [];
     return [...events].reverse();

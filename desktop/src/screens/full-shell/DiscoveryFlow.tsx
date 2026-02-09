@@ -2,7 +2,7 @@
  * Discovery category selection, signal collection, synthesis trigger.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/api";
 import { getOrCreateDeviceId } from "../../services/device";
@@ -108,19 +108,21 @@ export function useDiscoveryFlow({
     [],
   );
 
-  // Returning users: hydrate categories from localStorage
-  useEffect(() => {
-    if (!onboardingDone || discoveryCategories) return;
-    setDiscoveryCategories(
-      parseStoredDiscoveryCategories(
-        localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
-      ),
+  const effectiveDiscoveryCategories = useMemo(() => {
+    if (discoveryCategories) {
+      return discoveryCategories;
+    }
+    if (!onboardingDone) {
+      return null;
+    }
+    return parseStoredDiscoveryCategories(
+      localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
     );
-  }, [onboardingDone, discoveryCategories]);
+  }, [discoveryCategories, onboardingDone]);
 
   // Step 1: Start signal collection when categories are selected
   useEffect(() => {
-    if (!discoveryCategories || discoveryRef.current.started) return;
+    if (!effectiveDiscoveryCategories || discoveryRef.current.started) return;
     discoveryRef.current.started = true;
 
     const collectSignals = async () => {
@@ -129,7 +131,7 @@ export function useDiscoveryFlow({
         if (exists) return;
 
         const result = await window.electronAPI?.collectAllSignals?.({
-          categories: discoveryCategories,
+          categories: effectiveDiscoveryCategories,
         });
 
         if (!result) {
@@ -149,7 +151,7 @@ export function useDiscoveryFlow({
     };
 
     void collectSignals();
-  }, [discoveryCategories]);
+  }, [effectiveDiscoveryCategories]);
 
   // Step 2: After auth + onboarding + conversationId, synthesize
   useEffect(() => {
