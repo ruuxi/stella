@@ -1,4 +1,4 @@
-import { mutation, query, MutationCtx } from "../_generated/server";
+import { mutation, internalMutation, query, internalQuery, MutationCtx } from "../_generated/server";
 import { v, Infer } from "convex/values";
 import {
   GENERAL_AGENT_SYSTEM_PROMPT,
@@ -309,16 +309,16 @@ const upsertAgent = async (ctx: MutationCtx, agent: AgentRecord) => {
   const existing = await ctx.db
     .query("agents")
     .withIndex("by_agent_key", (q) => q.eq("id", agent.id))
-    .take(1);
+    .first();
 
   const { model: _model, ...safeAgent } = agent as AgentRecord & { model?: string };
 
-  if (existing[0]) {
-    await ctx.db.patch(existing[0]._id, {
+  if (existing) {
+    await ctx.db.patch(existing._id, {
       ...safeAgent,
       updatedAt: Date.now(),
     });
-    return existing[0]._id;
+    return existing._id;
   }
 
   return await ctx.db.insert("agents", {
@@ -327,7 +327,7 @@ const upsertAgent = async (ctx: MutationCtx, agent: AgentRecord) => {
   });
 };
 
-export const ensureBuiltins = mutation({
+export const ensureBuiltins = internalMutation({
   args: {},
   returns: v.object({ ok: v.boolean() }),
   handler: async (ctx) => {
@@ -359,42 +359,56 @@ export const upsertMany = mutation({
   },
 });
 
+const getAgentConfigHandler = async (ctx: { db: any }, args: { agentType: string }) => {
+  const record = await ctx.db
+    .query("agents")
+    .withIndex("by_agent_key", (q: any) => q.eq("id", args.agentType))
+    .first();
+
+  if (record) {
+    return toAgentConfig(record);
+  }
+
+  const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
+  if (builtin) {
+    return toAgentConfig({
+      ...builtin,
+      updatedAt: Date.now(),
+    });
+  }
+
+  return toAgentConfig({
+    id: args.agentType,
+    name: args.agentType,
+    description: "Agent instructions.",
+    systemPrompt: GENERAL_AGENT_SYSTEM_PROMPT,
+    agentTypes: [args.agentType],
+    toolsAllowlist: undefined,
+    defaultSkills: [],
+    maxTaskDepth: 2,
+    version: 1,
+    source: "fallback",
+    updatedAt: Date.now(),
+  });
+};
+
 export const getAgentConfig = query({
   args: {
     agentType: v.string(),
   },
   returns: agentConfigValidator,
   handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("agents")
-      .withIndex("by_agent_key", (q) => q.eq("id", args.agentType))
-      .take(1);
+    return await getAgentConfigHandler(ctx, args);
+  },
+});
 
-    if (record[0]) {
-      return toAgentConfig(record[0]);
-    }
-
-    const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
-    if (builtin) {
-      return toAgentConfig({
-        ...builtin,
-        updatedAt: Date.now(),
-      });
-    }
-
-    return toAgentConfig({
-      id: args.agentType,
-      name: args.agentType,
-      description: "Agent instructions.",
-      systemPrompt: GENERAL_AGENT_SYSTEM_PROMPT,
-      agentTypes: [args.agentType],
-      toolsAllowlist: undefined,
-      defaultSkills: [],
-      maxTaskDepth: 2,
-      version: 1,
-      source: "fallback",
-      updatedAt: Date.now(),
-    });
+export const getAgentConfigInternal = internalQuery({
+  args: {
+    agentType: v.string(),
+  },
+  returns: agentConfigValidator,
+  handler: async (ctx, args) => {
+    return await getAgentConfigHandler(ctx, args);
   },
 });
 

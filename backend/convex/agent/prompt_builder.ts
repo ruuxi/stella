@@ -1,5 +1,5 @@
 import type { ActionCtx } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 
 export type PromptBuildResult = {
@@ -69,11 +69,11 @@ export const buildSystemPrompt = async (
   agentType: string,
   options?: { ownerId?: string; conversationId?: Id<"conversations"> },
 ): Promise<PromptBuildResult> => {
-  const agent = await ctx.runQuery(api.agent.agents.getAgentConfig, {
+  const agent = await ctx.runQuery(internal.agent.agents.getAgentConfigInternal, {
     agentType,
   });
 
-  const skills = await ctx.runQuery(api.data.skills.listEnabledSkills, {
+  const skills = await ctx.runQuery(internal.data.skills.listEnabledSkillsInternal, {
     agentType,
   });
 

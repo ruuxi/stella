@@ -484,7 +484,7 @@ export const createBackendTools = (
 
           if (!policy) {
             const publicIntegration = await ctx.runQuery(
-              api.data.integrations.getPublicIntegrationById,
+              internal.data.integrations.getPublicIntegrationByIdInternal,
               { id: args.provider },
             );
             if (publicIntegration?.usagePolicy) {
@@ -542,7 +542,7 @@ export const createBackendTools = (
         skill_id: z.string().min(1).describe("Skill ID from the skills listing in the system prompt"),
       }),
       execute: async (args) => {
-        const skill = await ctx.runQuery(api.data.skills.getSkillById, {
+        const skill = await ctx.runQuery(internal.data.skills.getSkillByIdInternal, {
           skillId: args.skill_id,
         });
         if (!skill) {
@@ -790,7 +790,7 @@ export const createBackendTools = (
           .describe("Filter by package type"),
       }),
       execute: async (args) => {
-        const results = (await ctx.runQuery(api.data.store_packages.search, {
+        const results = (await ctx.runQuery(internal.data.store_packages.searchInternal, {
           query: args.query,
           type: args.type,
         })) as Array<{
@@ -828,7 +828,7 @@ export const createBackendTools = (
         package_id: z.string().min(1).describe("The store package ID to install"),
       }),
       execute: async (args) => {
-        const pkg = await ctx.runQuery(api.data.store_packages.getByPackageId, {
+        const pkg = await ctx.runQuery(internal.data.store_packages.getByPackageIdInternal, {
           packageId: args.package_id,
         });
 
@@ -1037,7 +1037,7 @@ export const createBackendTools = (
           requiresSecrets.push(skillId);
         }
 
-        await ctx.runMutation(api.data.skills.upsertMany, {
+        await ctx.runMutation(internal.data.skills.upsertManyInternal, {
           skills: [
             {
               id: skillId,

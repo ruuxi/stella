@@ -1,6 +1,6 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { DeviceToolContext } from "../agent/device_tools";
@@ -80,7 +80,7 @@ export const createOrchestrationTools = (
         threadId = newThreadId;
       }
 
-      const result = await ctx.runAction(api.agent.tasks.runSubagent, {
+      const result = await ctx.runAction(internal.agent.tasks.runSubagent, {
         conversationId: context.conversationId,
         userMessageId: context.userMessageId,
         targetDeviceId: context.targetDeviceId,
@@ -111,7 +111,7 @@ export const createOrchestrationTools = (
     }),
     execute: async (args) => {
       try {
-        const record = await ctx.runQuery(api.agent.tasks.getOutputByExternalId, {
+        const record = await ctx.runQuery(internal.agent.tasks.getOutputByExternalIdInternal, {
           taskId: args.task_id,
         });
         if (!record) return `Task not found: ${args.task_id}`;
@@ -134,7 +134,7 @@ export const createOrchestrationTools = (
       reason: z.string().optional().describe("Why the task is being canceled (logged for debugging)"),
     }),
     execute: async (args) => {
-      const record = await ctx.runMutation(api.agent.tasks.cancelTask, {
+      const record = await ctx.runMutation(internal.agent.tasks.cancelTaskInternal, {
         taskId: args.task_id as Id<"tasks">,
         reason: args.reason,
       });

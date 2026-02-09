@@ -261,11 +261,11 @@ export const invoke = action({
   },
   returns: agentInvokeResultValidator,
   handler: async (ctx, args): Promise<AgentInvokeResult> => {
-    await ctx.runMutation(api.agent.agents.ensureBuiltins, {});
-    await ctx.runMutation(api.data.skills.ensureBuiltinSkills, {});
+    await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
+    await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
 
     const promptBuild = await buildSystemPrompt(ctx, args.agentType);
-    const pluginTools = (await ctx.runQuery(api.data.plugins.listToolDescriptors, {})) as Array<{
+    const pluginTools = (await ctx.runQuery(internal.data.plugins.listToolDescriptorsInternal, {})) as Array<{
       pluginId: string;
       name: string;
       description: string;

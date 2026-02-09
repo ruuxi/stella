@@ -1,6 +1,7 @@
 import {
   action,
   internalAction,
+  internalMutation,
   internalQuery,
   mutation,
   query,
@@ -94,7 +95,7 @@ const appendTaskEvent = async (
     targetDeviceId: string;
   },
 ): Promise<void> => {
-  await ctx.runMutation(api.events.appendEvent, {
+  await ctx.runMutation(internal.events.appendInternalEvent, {
     conversationId: args.conversationId,
     type: args.type,
     deviceId: args.deviceId,
@@ -161,7 +162,7 @@ const executeSubagentRun = async (
   const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
     ownerId: args.ownerId,
   });
-  const pluginTools = (await ctx.runQuery(api.data.plugins.listToolDescriptors, {})) as PluginToolDescriptor[];
+  const pluginTools = (await ctx.runQuery(internal.data.plugins.listToolDescriptorsInternal, {})) as PluginToolDescriptor[];
 
   // Load thread history if continuing a thread
   let threadMessages: Array<{ role: "user"; content: string } | { role: "assistant"; content: string }> = [];
@@ -296,7 +297,7 @@ const executeSubagentRun = async (
       return `Task ${postStatus}.\nTask ID: ${args.taskId}`;
     }
 
-    await ctx.runMutation(api.agent.tasks.completeTaskRecord, {
+    await ctx.runMutation(internal.agent.tasks.completeTaskRecord, {
       taskId: args.taskId,
       status: "completed",
       result: text,
@@ -327,7 +328,7 @@ const executeSubagentRun = async (
 
     const errorMessage = (error as Error).message || "Unknown task error";
 
-    await ctx.runMutation(api.agent.tasks.completeTaskRecord, {
+    await ctx.runMutation(internal.agent.tasks.completeTaskRecord, {
       taskId: args.taskId,
       status: "error",
       error: errorMessage,
@@ -348,7 +349,7 @@ const executeSubagentRun = async (
   }
 };
 
-export const createTaskRecord = mutation({
+export const createTaskRecord = internalMutation({
   args: {
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
@@ -365,7 +366,6 @@ export const createTaskRecord = mutation({
     maxTaskDepth: v.number(),
   }),
   handler: async (ctx, args) => {
-    await requireConversationOwner(ctx, args.conversationId);
     const maxTaskDepth = Math.max(1, Math.floor(args.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH));
 
     let taskDepth = 1;
@@ -397,7 +397,7 @@ export const createTaskRecord = mutation({
   },
 });
 
-export const completeTaskRecord = mutation({
+export const completeTaskRecord = internalMutation({
   args: {
     taskId: v.id("tasks"),
     status: v.string(),
@@ -429,6 +429,51 @@ export const cancelTask = mutation({
     const record = await ctx.db.get(args.taskId);
     if (!record) return null;
     await requireConversationOwner(ctx, record.conversationId);
+
+    if (record.status !== "running") {
+      return toTaskClient(record);
+    }
+
+    const now = Date.now();
+    const reason = args.reason?.trim() || "Canceled";
+    await ctx.db.patch(args.taskId, {
+      status: "canceled" satisfies TaskStatus,
+      error: reason,
+      updatedAt: now,
+      completedAt: now,
+    });
+
+    const targetDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
+      conversationId: record.conversationId,
+    });
+
+    if (targetDeviceId) {
+      await appendTaskEvent(ctx, {
+        conversationId: record.conversationId,
+        type: "task_failed",
+        deviceId: targetDeviceId,
+        targetDeviceId: targetDeviceId,
+        payload: {
+          taskId: args.taskId,
+          error: reason,
+        },
+      });
+    }
+
+    const updated = await ctx.db.get(args.taskId);
+    return toTaskClientOrNull(updated);
+  },
+});
+
+export const cancelTaskInternal = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    reason: v.optional(v.string()),
+  },
+  returns: v.union(taskClientValidator, v.null()),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.taskId);
+    if (!record) return null;
 
     if (record.status !== "running") {
       return toTaskClient(record);
@@ -508,6 +553,21 @@ export const getOutputByExternalId = query({
   },
 });
 
+export const getOutputByExternalIdInternal = internalQuery({
+  args: {
+    taskId: v.string(),
+  },
+  returns: v.union(taskClientValidator, v.null()),
+  handler: async (ctx, args) => {
+    try {
+      const record = await ctx.db.get(args.taskId as Id<"tasks">);
+      return toTaskClientOrNull(record);
+    } catch {
+      return null;
+    }
+  },
+});
+
 export const listByConversation = query({
   args: {
     conversationId: v.id("conversations"),
@@ -537,24 +597,15 @@ export const listByConversationSince = query({
     const afterUpdatedAt = args.afterUpdatedAt ?? 0;
     const requestedLimit = args.limit ?? 200;
     const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 1000);
-    const scanLimit = Math.min(Math.max(limit * 4, 200), 2000);
-
     const records = await ctx.db
       .query("tasks")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
-      .order("desc")
-      .take(scanLimit);
-
-    const filtered = records
-      .filter((record) => record.updatedAt > afterUpdatedAt)
-      .sort(
-        (a, b) =>
-          a.updatedAt - b.updatedAt ||
-          String(a._id).localeCompare(String(b._id)),
+      .withIndex("by_conversation_updated", (q) =>
+        q.eq("conversationId", args.conversationId).gt("updatedAt", afterUpdatedAt),
       )
-      .slice(-limit);
+      .order("asc")
+      .take(limit);
 
-    return filtered.map((record) => toTaskClient(record));
+    return records.map((record) => toTaskClient(record));
   },
 });
 
@@ -570,7 +621,9 @@ export const getConversationTaskHead = query({
     await requireConversationOwner(ctx, args.conversationId);
     const latest = await ctx.db
       .query("tasks")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_conversation_updated", (q) =>
+        q.eq("conversationId", args.conversationId),
+      )
       .order("desc")
       .first();
 
@@ -581,7 +634,7 @@ export const getConversationTaskHead = query({
   },
 });
 
-export const runSubagent = action({
+export const runSubagent = internalAction({
   args: {
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
@@ -596,15 +649,15 @@ export const runSubagent = action({
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const conversation: Doc<"conversations"> = await requireConversationOwner(ctx, args.conversationId);
-    await ctx.runMutation(api.agent.agents.ensureBuiltins, {});
-    await ctx.runMutation(api.data.skills.ensureBuiltinSkills, {});
+    await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
+    await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
 
     const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
       ownerId: conversation.ownerId,
     });
 
     const created: { taskId: Id<"tasks">; taskDepth: number; maxTaskDepth: number } =
-      await ctx.runMutation(api.agent.tasks.createTaskRecord, {
+      await ctx.runMutation(internal.agent.tasks.createTaskRecord, {
         conversationId: args.conversationId,
         userMessageId: args.userMessageId,
         targetDeviceId: args.targetDeviceId,

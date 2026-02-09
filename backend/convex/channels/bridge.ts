@@ -242,13 +242,15 @@ export const hasActiveBridgeForOwner = internalQuery({
   args: { ownerId: v.string() },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const sessions = await ctx.db.query("bridge_sessions").collect();
+    const sessions = await ctx.db
+      .query("bridge_sessions")
+      .withIndex("by_owner_provider", (q) => q.eq("ownerId", args.ownerId))
+      .collect();
     return sessions.some(
       (session) =>
-        session.ownerId === args.ownerId &&
-        (session.status === "connected" ||
-          session.status === "awaiting_auth" ||
-          session.status === "initializing"),
+        session.status === "connected" ||
+        session.status === "awaiting_auth" ||
+        session.status === "initializing",
     );
   },
 });

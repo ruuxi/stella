@@ -1,4 +1,4 @@
-import { mutation, query, MutationCtx } from "../_generated/server";
+import { mutation, internalMutation, query, internalQuery, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { secretMountsValidator } from "../shared_validators";
 import { BUILTIN_SKILLS } from "../prompts/index";
@@ -186,14 +186,14 @@ const upsertSkill = async (ctx: MutationCtx, skill: SkillRecord) => {
   const existing = await ctx.db
     .query("skills")
     .withIndex("by_skill_key", (q) => q.eq("id", skill.id))
-    .take(1);
+    .first();
 
-  if (existing[0]) {
-    await ctx.db.patch(existing[0]._id, {
+  if (existing) {
+    await ctx.db.patch(existing._id, {
       ...skill,
       updatedAt: Date.now(),
     });
-    return existing[0]._id;
+    return existing._id;
   }
 
   return await ctx.db.insert("skills", {
@@ -202,23 +202,48 @@ const upsertSkill = async (ctx: MutationCtx, skill: SkillRecord) => {
   });
 };
 
+const upsertManyHandler = async (ctx: MutationCtx, args: { skills: any[] }) => {
+  const items = Array.isArray(args.skills) ? args.skills : [];
+  let upserted = 0;
+  for (const item of items) {
+    const skill = normalizeSkill(item);
+    if (!skill) continue;
+    await upsertSkill(ctx, skill);
+    upserted += 1;
+  }
+  return { upserted };
+};
+
 export const upsertMany = mutation({
   args: {
     skills: v.array(skillImportValidator),
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
-    const items = Array.isArray(args.skills) ? args.skills : [];
-    let upserted = 0;
-    for (const item of items) {
-      const skill = normalizeSkill(item);
-      if (!skill) continue;
-      await upsertSkill(ctx, skill);
-      upserted += 1;
-    }
-    return { upserted };
+    return await upsertManyHandler(ctx, args);
   },
 });
+
+export const upsertManyInternal = internalMutation({
+  args: {
+    skills: v.array(skillImportValidator),
+  },
+  returns: v.object({ upserted: v.number() }),
+  handler: async (ctx, args) => {
+    return await upsertManyHandler(ctx, args);
+  },
+});
+
+const listEnabledSkillsHandler = async (ctx: { db: any }, args: { agentType: string }) => {
+  const enabledSkills = await ctx.db
+    .query("skills")
+    .withIndex("by_enabled", (q: any) => q.eq("enabled", true))
+    .take(400);
+  return enabledSkills.filter((skill: any) => {
+    if (!skill.agentTypes || skill.agentTypes.length === 0) return true;
+    return skill.agentTypes.includes(args.agentType);
+  });
+};
 
 export const listEnabledSkills = query({
   args: {
@@ -226,17 +251,27 @@ export const listEnabledSkills = query({
   },
   returns: v.array(skillValidator),
   handler: async (ctx, args) => {
-    // Use by_enabled index to fetch only enabled skills, then post-filter by agentType
-    const enabledSkills = await ctx.db
-      .query("skills")
-      .withIndex("by_enabled", (q) => q.eq("enabled", true))
-      .take(400);
-    return enabledSkills.filter((skill) => {
-      if (!skill.agentTypes || skill.agentTypes.length === 0) return true;
-      return skill.agentTypes.includes(args.agentType);
-    });
+    return await listEnabledSkillsHandler(ctx, args);
   },
 });
+
+export const listEnabledSkillsInternal = internalQuery({
+  args: {
+    agentType: v.string(),
+  },
+  returns: v.array(skillValidator),
+  handler: async (ctx, args) => {
+    return await listEnabledSkillsHandler(ctx, args);
+  },
+});
+
+const getSkillByIdHandler = async (ctx: { db: any }, args: { skillId: string }) => {
+  const result = await ctx.db
+    .query("skills")
+    .withIndex("by_skill_key", (q: any) => q.eq("id", args.skillId))
+    .first();
+  return result ?? null;
+};
 
 export const getSkillById = query({
   args: {
@@ -244,11 +279,17 @@ export const getSkillById = query({
   },
   returns: v.union(skillValidator, v.null()),
   handler: async (ctx, args) => {
-    const results = await ctx.db
-      .query("skills")
-      .withIndex("by_skill_key", (q) => q.eq("id", args.skillId))
-      .take(1);
-    return results[0] ?? null;
+    return await getSkillByIdHandler(ctx, args);
+  },
+});
+
+export const getSkillByIdInternal = internalQuery({
+  args: {
+    skillId: v.string(),
+  },
+  returns: v.union(skillValidator, v.null()),
+  handler: async (ctx, args) => {
+    return await getSkillByIdHandler(ctx, args);
   },
 });
 
@@ -260,7 +301,7 @@ export const listSkills = query({
   },
 });
 
-export const ensureBuiltinSkills = mutation({
+export const ensureBuiltinSkills = internalMutation({
   args: {},
   returns: v.object({ ok: v.boolean() }),
   handler: async (ctx) => {

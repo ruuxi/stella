@@ -237,6 +237,7 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("by_conversation", ["conversationId", "createdAt"])
+    .index("by_conversation_updated", ["conversationId", "updatedAt"])
     .index("by_status", ["status", "updatedAt"])
     .index("by_parent", ["parentTaskId", "createdAt"]),
   memories: defineTable({
@@ -328,7 +329,8 @@ export default defineSchema({
     text: v.string(),
     createdAt: v.number(),
   })
-    .index("by_session", ["sessionId", "createdAt"]),
+    .index("by_session", ["sessionId", "createdAt"])
+    .index("by_createdAt", ["createdAt"]),
   store_packages: defineTable({
     packageId: v.string(),
     name: v.string(),
