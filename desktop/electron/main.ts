@@ -797,6 +797,15 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
       break
     case 'capture': {
       updateUiState({ mode: 'chat' })
+      // Hide radial + modifier overlay before entering region capture so they
+      // don't appear in the screenshot (desktopCapturer captures composited screen).
+      hideRadialWindow()
+      hideModifierOverlay()
+      const miniWasShowing = isMiniShowing()
+      if (miniWasShowing) {
+        hideMiniWindow(false)
+      }
+      await new Promise((r) => setTimeout(r, 50))
       const regionCapture = await startRegionCapture()
       if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
         const ctx = pendingChatContext ?? emptyContext()

@@ -137,7 +137,21 @@ int main(int argc, char* argv[])
     HWND hwnd = findTopLevelWindowAtPoint(pt, excludedPids);
     if (!hwnd)
     {
+        // Fallback: WindowFromPoint can find child/nested windows that the
+        // top-level z-order walk misses, but we must still respect PID exclusion.
         hwnd = WindowFromPoint(pt);
+        if (hwnd)
+        {
+            HWND fallbackRoot = GetAncestor(hwnd, GA_ROOT);
+            if (fallbackRoot) hwnd = fallbackRoot;
+
+            DWORD fallbackPid = 0;
+            GetWindowThreadProcessId(hwnd, &fallbackPid);
+            if (isPidExcluded(fallbackPid, excludedPids))
+            {
+                hwnd = NULL;
+            }
+        }
     }
     if (!hwnd)
     {
@@ -148,14 +162,6 @@ int main(int argc, char* argv[])
     // Walk up to the top-level (non-child) window
     HWND root = GetAncestor(hwnd, GA_ROOT);
     if (root) hwnd = root;
-
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (isPidExcluded(pid, excludedPids))
-    {
-        printf("{\"error\":\"no non-excluded window at point\"}\n");
-        return 0;
-    }
 
     // Title
     char title[512] = {};
