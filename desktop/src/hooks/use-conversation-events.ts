@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../convex/api";
 import type { StepItem } from "../components/steps-container";
 import { getElectronApi } from "../services/electron";
@@ -380,8 +380,14 @@ export const useConversationEvents = (conversationId?: string) => {
   ) as { page: EventRecord[] } | undefined;
 
   const [cachedEvents, setCachedEvents] = useState<EventRecord[]>([]);
+  const lastConversationIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
+    if (conversationId !== lastConversationIdRef.current) {
+      lastConversationIdRef.current = conversationId;
+      setCachedEvents([]);
+    }
+
     if (!useCache || !electronApi?.cacheGetConversationEvents || !electronApi?.cacheSyncConversationEvents) {
       return;
     }
