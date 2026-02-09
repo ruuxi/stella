@@ -919,8 +919,14 @@ export const deliverTaskResult = internalAction({
         ],
       });
 
+      // Check if NoResponse was called in any step
+      const noResponseCalled = genResult.steps?.some(
+        (step: { toolCalls?: Array<{ toolName: string }> }) =>
+          step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
+      );
+
       const text = genResult.text?.trim() ?? "";
-      if (text.length > 0) {
+      if (text.length > 0 && !noResponseCalled) {
         await ctx.runMutation(internal.events.saveAssistantMessage, {
           conversationId: args.conversationId,
           text,

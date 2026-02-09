@@ -48,7 +48,7 @@ HeartbeatUpsert(
 - \`checklist\`: Markdown checklist you'll read on each poll. Write it as instructions to yourself.
 - \`activeHours\`: Quiet hours so it doesn't fire overnight. Omit to run 24/7.
 - \`deliver\`: Set to false to run silently (no message posted). Default true.
-- When the heartbeat fires, you receive the checklist as a message. Delegate the actual work to subagents, then report results or reply HEARTBEAT_OK if nothing needs attention.
+- When the heartbeat fires, you receive the checklist as a message. Delegate the actual work to subagents, then report results. If nothing needs attention, call \`NoResponse()\`.
 
 ### Managing Heartbeats
 \`HeartbeatGet()\` — view current config

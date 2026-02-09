@@ -1057,5 +1057,15 @@ export const createBackendTools = (
         return `Skill "${skillId}" created with ${args.endpoints.length} endpoints.\n\nAgents can now use ActivateSkill("${skillId}") to load the ${args.service} API documentation and call endpoints via IntegrationRequest.`;
       },
     }),
+    NoResponse: tool({
+      description:
+        "Signal that you have nothing to say to the user right now. " +
+        "Call this instead of generating a message when a system event, task result, or heartbeat check " +
+        "does not warrant a visible response. Do NOT call this for user messages — always reply to users.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        return "__NO_RESPONSE__";
+      },
+    }),
   };
 };

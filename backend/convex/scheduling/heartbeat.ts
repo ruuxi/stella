@@ -4,12 +4,9 @@ import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { requireConversationOwner, requireUserId } from "../auth";
 import {
-  DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
   DEFAULT_HEARTBEAT_INTERVAL_MS,
-  HEARTBEAT_TOKEN,
   isHeartbeatContentEffectivelyEmpty,
   resolveHeartbeatPrompt,
-  stripHeartbeatToken,
 } from "../automation/utils";
 import { runAgentTurn } from "../automation/runner";
 
@@ -398,6 +395,7 @@ export const run = internalAction({
     const agentType = config.agentType ?? "orchestrator";
 
     let text = "";
+    let silent = false;
     let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
     try {
       const result = await runAgentTurn({
@@ -411,6 +409,7 @@ export const run = internalAction({
         includeHistory: true,
       });
       text = result.text ?? "";
+      silent = result.silent;
       usage = result.usage;
     } catch (error) {
       await ctx.runMutation(internal.scheduling.heartbeat.recordRun, {
@@ -421,22 +420,15 @@ export const run = internalAction({
       return null;
     }
 
-    const ackMaxChars = Math.max(
-      0,
-      typeof config.ackMaxChars === "number" && Number.isFinite(config.ackMaxChars)
-        ? config.ackMaxChars
-        : DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
-    );
-    const normalized = stripHeartbeatToken(text, { maxAckChars: ackMaxChars });
-    if (normalized.shouldSkip) {
+    if (silent) {
       await ctx.runMutation(internal.scheduling.heartbeat.recordRun, {
         id: config._id,
-        status: HEARTBEAT_TOKEN,
+        status: "no-response",
       });
       return null;
     }
 
-    const finalText = normalized.text.trim();
+    const finalText = text.trim();
     if (!finalText) {
       await ctx.runMutation(internal.scheduling.heartbeat.recordRun, {
         id: config._id,
