@@ -8,7 +8,7 @@ import {
   ActionCtx,
 } from "../_generated/server";
 import { v, ConvexError, Infer } from "convex/values";
-import { streamText } from "ai";
+import { streamText, generateText } from "ai";
 import { api, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
@@ -698,12 +698,14 @@ export const runSubagent = internalAction({
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
       targetDeviceId: args.targetDeviceId,
+      description: args.description,
       prompt: args.prompt,
       subagentType: args.subagentType,
       taskId,
       ownerId: conversation.ownerId,
       includeHistory: args.includeHistory,
       threadId: args.threadId,
+      parentTaskId: args.parentTaskId,
     });
 
     return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
@@ -715,16 +717,18 @@ export const executeSubagent = internalAction({
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
     targetDeviceId: v.string(),
+    description: v.string(),
     prompt: v.string(),
     subagentType: v.string(),
     taskId: v.id("tasks"),
     ownerId: v.string(),
     includeHistory: v.optional(v.boolean()),
     threadId: v.optional(v.id("threads")),
+    parentTaskId: v.optional(v.id("tasks")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await executeSubagentRun(ctx, {
+    const resultText = await executeSubagentRun(ctx, {
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
       targetDeviceId: args.targetDeviceId,
@@ -735,6 +739,32 @@ export const executeSubagent = internalAction({
       includeHistory: args.includeHistory,
       threadId: args.threadId,
     });
+
+    // Deliver result to the orchestrator for top-level tasks only.
+    // Nested subagent results flow back through their parent's tool output.
+    if (!args.parentTaskId) {
+      const task = await ctx.runQuery(internal.agent.tasks.getTaskStatus, {
+        taskId: args.taskId,
+      });
+      const status = task === "completed" ? "completed" : task === "error" ? "error" : task ?? "completed";
+
+      // Extract the actual result text from the formatted return string
+      const resultMatch = resultText.match(/--- (?:Agent Result|Error) ---\n([\s\S]*)$/);
+      const cleanResult = resultMatch?.[1]?.trim() ?? resultText;
+
+      await ctx.scheduler.runAfter(0, internal.agent.tasks.deliverTaskResult, {
+        conversationId: args.conversationId,
+        userMessageId: args.userMessageId,
+        targetDeviceId: args.targetDeviceId,
+        taskId: args.taskId,
+        description: args.description,
+        agentType: args.subagentType,
+        result: cleanResult,
+        status,
+        ownerId: args.ownerId,
+      });
+    }
+
     return null;
   },
 });
@@ -770,6 +800,144 @@ export const taskCheckin = internalAction({
       targetDeviceId: args.targetDeviceId,
       taskId: args.taskId,
     });
+    return null;
+  },
+});
+
+/**
+ * Deliver a completed subagent's result to the orchestrator.
+ *
+ * When a top-level subagent finishes, this action re-invokes the orchestrator
+ * with the task result as a user-role message. The orchestrator decides how
+ * (or whether) to respond to the user. Its response is saved as an
+ * assistant_message event so the frontend picks it up automatically.
+ */
+export const deliverTaskResult = internalAction({
+  args: {
+    conversationId: v.id("conversations"),
+    userMessageId: v.id("events"),
+    targetDeviceId: v.string(),
+    taskId: v.id("tasks"),
+    description: v.string(),
+    agentType: v.string(),
+    result: v.string(),
+    status: v.string(),
+    ownerId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Build the internal message that the orchestrator will see
+    const statusLabel = args.status === "completed" ? "completed" : "failed";
+    const deliveryMessage = [
+      `[System: Subagent task ${statusLabel}]`,
+      `Task ID: ${args.taskId}`,
+      `Agent: ${args.agentType}`,
+      `Description: ${args.description}`,
+      "",
+      `--- ${args.status === "completed" ? "Result" : "Error"} ---`,
+      args.result,
+    ].join("\n");
+
+    // Build orchestrator prompt and tools
+    const conversation = await ctx.runQuery(internal.conversations.getById, {
+      id: args.conversationId,
+    });
+    if (!conversation) return null;
+
+    const promptBuild = await buildSystemPrompt(ctx, "orchestrator", {
+      ownerId: args.ownerId,
+      conversationId: args.conversationId,
+    });
+    const pluginTools = (await ctx.runQuery(
+      internal.data.plugins.listToolDescriptorsInternal,
+      {},
+    )) as PluginToolDescriptor[];
+
+    // Gather recent conversation history so the orchestrator has context
+    const historyEvents = await ctx.runQuery(
+      internal.events.listRecentMessages,
+      {
+        conversationId: args.conversationId,
+        limit: 20,
+      },
+    );
+    const historyMessages = historyEvents.flatMap((event: Doc<"events">) => {
+      const payload =
+        event.payload && typeof event.payload === "object"
+          ? (event.payload as { text?: string })
+          : {};
+      const text = typeof payload.text === "string" ? payload.text.trim() : "";
+      if (!text) return [];
+      return [
+        {
+          role:
+            event.type === "assistant_message"
+              ? ("assistant" as const)
+              : ("user" as const),
+          content: text,
+        },
+      ];
+    });
+
+    const toolContext: DeviceToolContext = {
+      conversationId: args.conversationId,
+      userMessageId: args.userMessageId,
+      targetDeviceId: args.targetDeviceId,
+      agentType: "orchestrator",
+      sourceDeviceId: args.targetDeviceId,
+    };
+
+    const resolvedConfig = await resolveModelConfig(
+      ctx,
+      "orchestrator",
+      args.ownerId,
+    );
+
+    try {
+      const genResult = await generateText({
+        ...resolvedConfig,
+        system: promptBuild.systemPrompt,
+        tools: createTools(ctx, toolContext, {
+          agentType: "orchestrator",
+          toolsAllowlist: promptBuild.toolsAllowlist,
+          maxTaskDepth: promptBuild.maxTaskDepth,
+          pluginTools: pluginTools as Array<{
+            pluginId: string;
+            name: string;
+            description: string;
+            inputSchema: Record<string, unknown>;
+          }>,
+          ownerId: args.ownerId,
+          conversationId: args.conversationId,
+        }),
+        messages: [
+          ...historyMessages,
+          {
+            role: "user",
+            content: deliveryMessage,
+          },
+        ],
+      });
+
+      const text = genResult.text?.trim() ?? "";
+      if (text.length > 0) {
+        await ctx.runMutation(internal.events.saveAssistantMessage, {
+          conversationId: args.conversationId,
+          text,
+          userMessageId: args.userMessageId,
+          usage: genResult.usage
+            ? {
+                inputTokens: genResult.usage.inputTokens,
+                outputTokens: genResult.usage.outputTokens,
+                totalTokens: genResult.usage.totalTokens,
+              }
+            : undefined,
+        });
+      }
+    } catch (error) {
+      console.error("deliverTaskResult failed:", (error as Error).message);
+    }
+
     return null;
   },
 });
