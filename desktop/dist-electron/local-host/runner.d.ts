@@ -25,6 +25,8 @@ export declare const createLocalHostRunner: ({ deviceId, StellaHome, frontendRoo
         requestId: string;
         agentType?: string;
     }) => Promise<import("./tools-types.js").ToolResult>;
+    runQuery: <T = unknown>(name: string, args: Record<string, unknown>) => Promise<T | null>;
+    subscribeQuery: (name: string, args: Record<string, unknown>, onUpdate: (value: unknown) => void) => (() => void) | null;
     getConvexUrl: () => string | null;
     getAuthToken: () => string | null;
 };
