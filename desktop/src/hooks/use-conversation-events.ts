@@ -1,7 +1,8 @@
 import { useQuery } from "convex/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../convex/api";
 import type { StepItem } from "../components/steps-container";
+import { getElectronApi } from "../services/electron";
 
 // Base event record from Convex
 export type EventRecord = {
@@ -366,17 +367,122 @@ export function getRunningTasks(events: EventRecord[]): TaskItem[] {
 
 // Main hook to fetch conversation events
 export const useConversationEvents = (conversationId?: string) => {
+  const electronApi = getElectronApi();
+  const useCache =
+    Boolean(electronApi?.cacheGetConversationEvents) &&
+    Boolean(electronApi?.cacheSyncConversationEvents);
+
   const result = useQuery(
     api.events.listEvents,
-    conversationId
+    !useCache && conversationId
       ? { conversationId, paginationOpts: { cursor: null, numItems: 200 } }
       : "skip"
   ) as { page: EventRecord[] } | undefined;
 
+  const [cachedEvents, setCachedEvents] = useState<EventRecord[]>([]);
+
+  useEffect(() => {
+    if (!useCache || !electronApi?.cacheGetConversationEvents || !electronApi?.cacheSyncConversationEvents) {
+      return;
+    }
+
+    if (!conversationId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadLocal = async () => {
+      try {
+        const local = await electronApi.cacheGetConversationEvents({
+          conversationId,
+          limit: 200,
+        });
+        if (!cancelled) {
+          setCachedEvents(local);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Failed to load cached conversation events", error);
+        }
+      }
+    };
+
+    const syncRemote = async () => {
+      try {
+        const [eventsResult] = await Promise.all([
+          electronApi.cacheSyncConversationEvents({
+            conversationId,
+            limit: 200,
+            syncLimit: 400,
+          }),
+          electronApi.cacheSyncTasks?.({
+            conversationId,
+            limit: 200,
+            syncLimit: 300,
+          }),
+          electronApi.cacheSyncThreads?.({
+            conversationId,
+            limit: 32,
+          }),
+        ]);
+        const synced = eventsResult ?? [];
+        if (!cancelled) {
+          setCachedEvents(synced);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Failed to sync cached conversation events", error);
+        }
+      }
+    };
+
+    void (async () => {
+      await loadLocal();
+      await syncRemote();
+    })();
+
+    const unsubscribeCacheUpdated = electronApi.onCacheUpdated?.((payload) => {
+      if (payload?.conversationId && payload.conversationId !== conversationId) {
+        return;
+      }
+      if (!Array.isArray(payload?.streams) || payload.streams.includes("events")) {
+        void loadLocal();
+      }
+    });
+
+    const handleFocus = () => {
+      void syncRemote();
+    };
+    const handleOnline = () => {
+      void syncRemote();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleFocus);
+      window.addEventListener("online", handleOnline);
+    }
+
+    return () => {
+      cancelled = true;
+      unsubscribeCacheUpdated?.();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", handleFocus);
+        window.removeEventListener("online", handleOnline);
+      }
+    };
+  }, [conversationId, electronApi, useCache]);
+
   return useMemo(() => {
+    if (useCache) {
+      if (!conversationId) {
+        return [];
+      }
+      return cachedEvents;
+    }
     const events = result?.page ?? [];
     return [...events].reverse();
-  }, [result?.page]);
+  }, [cachedEvents, conversationId, result?.page, useCache]);
 };
 
 // Hook to extract steps from events

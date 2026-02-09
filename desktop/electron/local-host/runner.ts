@@ -134,6 +134,18 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     return client.query(convexName as never, args as never);
   };
 
+  const subscribeQuery = (
+    name: string,
+    args: Record<string, unknown>,
+    onUpdate: (value: unknown) => void,
+  ): (() => void) | null => {
+    if (!client || !authToken) return null;
+    const convexName = toConvexName(name);
+    return client.onUpdate(convexName as never, args as never, (value: unknown) => {
+      onUpdate(value);
+    });
+  };
+
   const generateMetadataViaBackend = async (
     markdown: string,
     dirName: string,
@@ -581,6 +593,14 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     return toolHost.executeTool(toolName, toolArgs, context);
   };
 
+  const runQuery = async <T = unknown>(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<T | null> => {
+    const result = await callQuery(name, args);
+    return (result as T | null) ?? null;
+  };
+
   return {
     deviceId,
     setConvexUrl,
@@ -588,6 +608,8 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     start,
     stop,
     executeTool,
+    runQuery,
+    subscribeQuery,
     getConvexUrl: () => convexUrl,
     getAuthToken: () => authToken,
   };
