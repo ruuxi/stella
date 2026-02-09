@@ -15,7 +15,6 @@ import { collectBrowserData, coreMemoryExists, writeCoreMemory, formatBrowserDat
 import { collectAllSignals } from './local-host/collect-all.js';
 import { handleInstallCanvas, handleInstallPlugin, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from './local-host/tools_store.js';
 import * as bridgeManager from './local-host/bridge_manager.js';
-import { ConvexCacheStore } from './cache/convex-cache.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -36,7 +35,6 @@ let mouseHook = null;
 let localHostRunner = null;
 let deviceId = null;
 let StellaHomePath = null;
-let cacheStore = null;
 let appReady = false; // true when authenticated + onboarding complete
 let isQuitting = false;
 let pendingConvexUrl = null;
@@ -60,13 +58,6 @@ let regionCaptureDisplay = null;
 let pendingRegionCaptureResolve = null;
 let pendingRegionCapturePromise = null;
 const pendingCredentialRequests = new Map();
-let pushSyncConversationId = null;
-let pushSyncUnsubscribers = [];
-let pushSyncDebounceTimer = null;
-let pushSyncRehydrateTimer = null;
-const pendingPushStreams = new Set();
-const PUSH_SYNC_DEBOUNCE_MS = 300;
-const PUSH_SYNC_REHYDRATE_MS = 30 * 60 * 1000;
 const emptyContext = () => ({
     window: null,
     browserUrl: null,
@@ -137,111 +128,6 @@ const broadcastUiState = () => {
         window.webContents.send('ui:state', uiState);
     }
 };
-const broadcastCacheUpdated = (payload) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.send('cache:updated', payload);
-    }
-};
-const clearPushSyncSubscriptions = () => {
-    if (pushSyncDebounceTimer) {
-        clearTimeout(pushSyncDebounceTimer);
-        pushSyncDebounceTimer = null;
-    }
-    if (pushSyncRehydrateTimer) {
-        clearInterval(pushSyncRehydrateTimer);
-        pushSyncRehydrateTimer = null;
-    }
-    pendingPushStreams.clear();
-    for (const unsubscribe of pushSyncUnsubscribers) {
-        try {
-            unsubscribe();
-        }
-        catch {
-            // Ignore cleanup failures.
-        }
-    }
-    pushSyncUnsubscribers = [];
-    pushSyncConversationId = null;
-};
-const syncConversationCacheStreams = async (conversationId, streams, source) => {
-    if (!cacheStore || !conversationId) {
-        return;
-    }
-    const streamSet = new Set(streams);
-    const promises = [];
-    if (streamSet.has('events')) {
-        promises.push(cacheStore
-            .syncConversationEvents(conversationId, { limit: 200, syncLimit: 400 })
-            .catch(() => undefined));
-    }
-    if (streamSet.has('tasks')) {
-        promises.push(cacheStore
-            .syncTasks(conversationId, { limit: 200, syncLimit: 300 })
-            .catch(() => undefined));
-    }
-    if (streamSet.has('threads')) {
-        promises.push(cacheStore
-            .syncThreads(conversationId, { limit: 32 })
-            .catch(() => undefined));
-    }
-    if (promises.length === 0) {
-        return;
-    }
-    await Promise.all(promises);
-    broadcastCacheUpdated({
-        conversationId,
-        streams: Array.from(streamSet),
-        source,
-    });
-};
-const schedulePushSync = (streams) => {
-    const conversationId = pushSyncConversationId;
-    if (!conversationId || !cacheStore) {
-        return;
-    }
-    for (const stream of streams) {
-        pendingPushStreams.add(stream);
-    }
-    if (pushSyncDebounceTimer) {
-        return;
-    }
-    pushSyncDebounceTimer = setTimeout(() => {
-        pushSyncDebounceTimer = null;
-        const nextStreams = Array.from(pendingPushStreams);
-        pendingPushStreams.clear();
-        void syncConversationCacheStreams(conversationId, nextStreams, 'push');
-    }, PUSH_SYNC_DEBOUNCE_MS);
-};
-const refreshPushSyncSubscriptions = () => {
-    const conversationId = uiState.conversationId?.trim() ?? '';
-    if (!conversationId || !cacheStore || !localHostRunner?.getAuthToken()) {
-        clearPushSyncSubscriptions();
-        return;
-    }
-    if (pushSyncConversationId === conversationId && pushSyncUnsubscribers.length > 0) {
-        return;
-    }
-    clearPushSyncSubscriptions();
-    pushSyncConversationId = conversationId;
-    const subscribe = (queryName, stream) => {
-        const unsubscribe = localHostRunner?.subscribeQuery?.(queryName, { conversationId }, () => {
-            schedulePushSync([stream]);
-        });
-        if (typeof unsubscribe === 'function') {
-            pushSyncUnsubscribers.push(unsubscribe);
-        }
-    };
-    subscribe('events.getConversationEventHead', 'events');
-    subscribe('agent/tasks.getConversationTaskHead', 'tasks');
-    subscribe('data/threads.getActiveThreadsHeadForConversation', 'threads');
-    if (pushSyncRehydrateTimer) {
-        clearInterval(pushSyncRehydrateTimer);
-    }
-    pushSyncRehydrateTimer = setInterval(() => {
-        schedulePushSync(['events', 'tasks', 'threads']);
-    }, PUSH_SYNC_REHYDRATE_MS);
-    schedulePushSync(['events', 'tasks', 'threads']);
-};
 const setPendingChatContext = (next) => {
     pendingChatContext = next;
     chatContextVersion += 1;
@@ -293,7 +179,6 @@ app.on('open-url', (event, url) => {
 const updateUiState = (partial) => {
     Object.assign(uiState, partial);
     broadcastUiState();
-    refreshPushSyncSubscriptions();
 };
 const getDevUrl = (windowMode) => {
     const url = new URL('http://localhost:5173');
@@ -898,7 +783,6 @@ const configureLocalHost = (convexUrl) => {
     pendingConvexUrl = convexUrl;
     if (localHostRunner) {
         localHostRunner.setConvexUrl(convexUrl);
-        refreshPushSyncSubscriptions();
     }
 };
 const requestCredential = async (payload) => {
@@ -944,12 +828,10 @@ app.whenReady().then(async () => {
         frontendRoot: path.resolve(__dirname, '..'),
         requestCredential,
     });
-    cacheStore = new ConvexCacheStore(path.join(StellaHome.statePath, 'cache.db'), async (name, args) => (await localHostRunner?.runQuery(name, args)) ?? null);
     if (pendingConvexUrl) {
         localHostRunner.setConvexUrl(pendingConvexUrl);
     }
     localHostRunner.start();
-    refreshPushSyncSubscriptions();
     createFullWindow();
     createMiniWindow();
     createRadialWindow(); // Pre-create radial window for faster display
@@ -994,108 +876,7 @@ app.whenReady().then(async () => {
     ipcMain.handle('auth:setToken', (_event, payload) => {
         const nextToken = payload?.token ?? null;
         localHostRunner?.setAuthToken(nextToken);
-        if (!nextToken) {
-            cacheStore?.resetAll();
-            clearPushSyncSubscriptions();
-            broadcastCacheUpdated({
-                streams: ['events', 'tasks', 'threads', 'memory_categories'],
-                source: 'manual',
-            });
-        }
-        else if (cacheStore) {
-            void cacheStore.syncMemoryCategories('self').catch(() => undefined);
-            refreshPushSyncSubscriptions();
-        }
         return { ok: true };
-    });
-    ipcMain.handle('cache:getConversationEvents', (_event, payload) => {
-        const conversationId = payload?.conversationId?.trim();
-        if (!cacheStore || !conversationId) {
-            return [];
-        }
-        return cacheStore.getConversationEvents(conversationId, payload?.limit);
-    });
-    ipcMain.handle('cache:syncConversationEvents', async (_event, payload) => {
-        const conversationId = payload?.conversationId?.trim();
-        if (!cacheStore || !conversationId) {
-            return [];
-        }
-        const events = await cacheStore.syncConversationEvents(conversationId, {
-            limit: payload?.limit,
-            syncLimit: payload?.syncLimit,
-        });
-        broadcastCacheUpdated({
-            conversationId,
-            streams: ['events'],
-            source: 'manual',
-        });
-        return events;
-    });
-    ipcMain.handle('cache:getTasks', (_event, payload) => {
-        const conversationId = payload?.conversationId?.trim();
-        if (!cacheStore || !conversationId) {
-            return [];
-        }
-        return cacheStore.getTasks(conversationId, payload?.limit);
-    });
-    ipcMain.handle('cache:syncTasks', async (_event, payload) => {
-        const conversationId = payload?.conversationId?.trim();
-        if (!cacheStore || !conversationId) {
-            return [];
-        }
-        const tasks = await cacheStore.syncTasks(conversationId, {
-            limit: payload?.limit,
-            syncLimit: payload?.syncLimit,
-        });
-        broadcastCacheUpdated({
-            conversationId,
-            streams: ['tasks'],
-            source: 'manual',
-        });
-        return tasks;
-    });
-    ipcMain.handle('cache:getThreads', (_event, payload) => {
-        const conversationId = payload?.conversationId?.trim();
-        if (!cacheStore || !conversationId) {
-            return [];
-        }
-        return cacheStore.getThreads(conversationId, payload?.limit);
-    });
-    ipcMain.handle('cache:syncThreads', async (_event, payload) => {
-        const conversationId = payload?.conversationId?.trim();
-        if (!cacheStore || !conversationId) {
-            return [];
-        }
-        const threads = await cacheStore.syncThreads(conversationId, {
-            limit: payload?.limit,
-        });
-        broadcastCacheUpdated({
-            conversationId,
-            streams: ['threads'],
-            source: 'manual',
-        });
-        return threads;
-    });
-    ipcMain.handle('cache:getMemoryCategories', (_event, payload) => {
-        if (!cacheStore) {
-            return [];
-        }
-        const ownerId = payload?.ownerId?.trim() || 'self';
-        return cacheStore.getMemoryCategories(ownerId, payload?.limit);
-    });
-    ipcMain.handle('cache:syncMemoryCategories', async (_event, payload) => {
-        if (!cacheStore) {
-            return [];
-        }
-        const ownerId = payload?.ownerId?.trim() || 'self';
-        const categories = await cacheStore.syncMemoryCategories(ownerId, {
-            limit: payload?.limit,
-        });
-        broadcastCacheUpdated({
-            streams: ['memory_categories'],
-            source: 'manual',
-        });
-        return categories;
     });
     // Window control handlers for custom title bar
     ipcMain.on('window:minimize', (event) => {
@@ -1373,12 +1154,10 @@ app.whenReady().then(async () => {
             createFullWindow();
             createMiniWindow();
         }
-        refreshPushSyncSubscriptions();
         showWindow('full');
     });
 });
 app.on('window-all-closed', () => {
-    clearPushSyncSubscriptions();
     if (process.platform !== 'darwin') {
         app.quit();
     }
@@ -1386,9 +1165,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
     isQuitting = true;
     bridgeManager.stopAll();
-    clearPushSyncSubscriptions();
-    cacheStore?.close();
-    cacheStore = null;
     cleanupSelectedTextProcess();
     destroyModifierOverlay();
 });

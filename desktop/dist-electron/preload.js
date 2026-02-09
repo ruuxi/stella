@@ -51,23 +51,6 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     getDeviceId: () => electron_1.ipcRenderer.invoke('device:getId'),
     configureHost: (config) => electron_1.ipcRenderer.invoke('host:configure', config),
     setAuthToken: (payload) => electron_1.ipcRenderer.invoke('auth:setToken', payload),
-    cacheGetConversationEvents: (payload) => electron_1.ipcRenderer.invoke('cache:getConversationEvents', payload),
-    cacheSyncConversationEvents: (payload) => electron_1.ipcRenderer.invoke('cache:syncConversationEvents', payload),
-    cacheGetTasks: (payload) => electron_1.ipcRenderer.invoke('cache:getTasks', payload),
-    cacheSyncTasks: (payload) => electron_1.ipcRenderer.invoke('cache:syncTasks', payload),
-    cacheGetThreads: (payload) => electron_1.ipcRenderer.invoke('cache:getThreads', payload),
-    cacheSyncThreads: (payload) => electron_1.ipcRenderer.invoke('cache:syncThreads', payload),
-    cacheGetMemoryCategories: (payload) => electron_1.ipcRenderer.invoke('cache:getMemoryCategories', payload),
-    cacheSyncMemoryCategories: (payload) => electron_1.ipcRenderer.invoke('cache:syncMemoryCategories', payload),
-    onCacheUpdated: (callback) => {
-        const handler = (_event, payload) => {
-            callback(payload);
-        };
-        electron_1.ipcRenderer.on('cache:updated', handler);
-        return () => {
-            electron_1.ipcRenderer.removeListener('cache:updated', handler);
-        };
-    },
     onAuthCallback: (callback) => {
         const handler = (_event, data) => {
             callback(data);
