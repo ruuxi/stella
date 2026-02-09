@@ -116,6 +116,7 @@ const getSelectedTextWindows = (): Promise<string | null> => {
       pendingResolve = null
     }
 
+    // eslint-disable-next-line prefer-const -- timeout and resolver are mutually referential
     let timeout: NodeJS.Timeout
     const resolver = (result: string | null) => {
       if (pendingResolve === resolver) {

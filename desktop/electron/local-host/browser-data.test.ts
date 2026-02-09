@@ -66,7 +66,6 @@ describe("Browser Data Collection - Unit Tests", () => {
 
   describe("Platform Path Detection", () => {
     it("should detect correct Chrome path on Windows", () => {
-      const platform = "win32";
       const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
       const expectedPath = path.join(localAppData, "Google/Chrome/User Data/Default/History");
 

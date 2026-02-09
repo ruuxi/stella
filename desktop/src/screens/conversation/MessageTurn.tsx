@@ -22,6 +22,7 @@ export type StreamingTurnProps = {
   runningTool?: string;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const getEventText = (event: EventRecord): string => {
   if (event.payload && typeof event.payload === "object") {
     const payload = event.payload as MessagePayload;
@@ -30,6 +31,7 @@ export const getEventText = (event: EventRecord): string => {
   return "";
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const getAttachments = (event: EventRecord): Attachment[] => {
   if (event.payload && typeof event.payload === "object") {
     return (event.payload as MessagePayload).attachments ?? [];
@@ -37,6 +39,7 @@ export const getAttachments = (event: EventRecord): Attachment[] => {
   return [];
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function attachmentsEqual(a: Attachment[], b: Attachment[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;

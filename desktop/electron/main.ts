@@ -139,7 +139,6 @@ let miniShowRequestId = 0
 let pendingMiniBlurHideTimer: NodeJS.Timeout | null = null
 let suppressMiniBlurUntil = 0
 let pendingMiniOpacityHideTimer: NodeJS.Timeout | null = null
-let radialShowActive = false
 let radialSelectionCommitted = false
 let radialCaptureRequestId = 0
 let pendingRadialCapturePromise: Promise<void> | null = null
@@ -1043,7 +1042,6 @@ const initMouseHook = () => {
       if (isMiniShowing() && miniWindow) {
         miniWindow.webContents.send('mini:dismissPreview')
       }
-      radialShowActive = true
       radialSelectionCommitted = false
       // 1. Show radial immediately so first-open latency is not gated by
       // selected-text capture.
@@ -1054,7 +1052,6 @@ const initMouseHook = () => {
       captureRadialContext(x, y)
     },
     onRadialHide: () => {
-      radialShowActive = false
       // Modifier-up can end the gesture without a mouse-up selection.
       // In that path, ignore any in-flight capture from this gesture.
       if (!radialSelectionCommitted) {

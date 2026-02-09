@@ -607,7 +607,7 @@ const NOISE_TITLE_PATTERNS = [
   /^new tab$/i,
   // Raw URLs as titles (page didn't have a real title)
   /^https?:\/\//i,
-  /^\w+\.\w+\/[\w\/-]+$/, // Matches "domain.com/path/to/page" patterns
+  /^\w+\.\w+\/[\w/-]+$/, // Matches "domain.com/path/to/page" patterns
 ];
 
 // Auth/infrastructure domains to exclude from title queries
