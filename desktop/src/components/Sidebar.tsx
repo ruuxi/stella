@@ -13,6 +13,7 @@ interface SidebarProps {
   onSettings?: () => void;
   onStore?: () => void;
   storeActive?: boolean;
+  settingsActive?: boolean;
 }
 
 const navItems = [
@@ -125,6 +126,7 @@ export const Sidebar = ({
   onSettings,
   onStore,
   storeActive,
+  settingsActive,
 }: SidebarProps) => {
   const { isAuthenticated } = useConvexAuth();
 
@@ -142,7 +144,7 @@ export const Sidebar = ({
         {navItems.map((item) => (
           <button
             key={item.label}
-            className={`sidebar-nav-item${item.label === "App Store" && storeActive ? " sidebar-nav-item--active" : ""}`}
+            className={`sidebar-nav-item${(item.label === "App Store" && storeActive) || (item.label === "Settings" && settingsActive) ? " sidebar-nav-item--active" : ""}`}
             type="button"
             onClick={getClickHandler(item.label)}
           >

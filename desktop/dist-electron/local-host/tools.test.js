@@ -53,7 +53,7 @@ describe("Tools Module - Unit Tests", () => {
             // Since SqliteQuery uses dynamic imports, we'll test the error path
             // which will occur if database doesn't exist or can't be opened
             mockFs.access.mockRejectedValue(new Error("File not found"));
-            const result = await toolHost.executeTool("SqliteQuery", {
+            await toolHost.executeTool("SqliteQuery", {
                 database_path: "/tmp/test.db",
                 query: "SELECT * FROM test",
             }, testContext);
@@ -86,7 +86,7 @@ describe("Tools Module - Unit Tests", () => {
             const mockFs = fs;
             mockFs.access.mockResolvedValue(undefined);
             mockFs.readFile.mockResolvedValue("file content");
-            const result = await toolHost.executeTool("Read", { file_path: "~/test.txt" }, {
+            await toolHost.executeTool("Read", { file_path: "~/test.txt" }, {
                 conversationId: "test",
                 deviceId: "test",
                 requestId: "test",

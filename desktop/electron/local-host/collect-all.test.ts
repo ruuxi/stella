@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 
 // Import types
-import type { ShellAnalysis, DevProject, DiscoveredApp } from "./types.js";
+import type { ShellAnalysis, DevProject, DiscoveredApp, AllUserSignals } from "./types.js";
 
 // Mock fs
 vi.mock("fs", () => ({

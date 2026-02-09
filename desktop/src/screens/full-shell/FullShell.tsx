@@ -29,6 +29,7 @@ import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 
 const StoreView = lazy(() => import("./StoreView"));
+const SettingsView = lazy(() => import("./SettingsView"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -254,9 +255,10 @@ export const FullShell = () => {
           onThemeSelect={onboarding.handleThemeSelect}
           onSignIn={() => setAuthDialogOpen(true)}
           onConnect={() => setConnectDialogOpen(true)}
-          onSettings={() => setRuntimeModeDialogOpen(true)}
+          onSettings={() => setView(state.view === 'settings' ? 'chat' : 'settings')}
           onStore={() => setView(state.view === 'store' ? 'chat' : 'store')}
           storeActive={state.view === 'store'}
+          settingsActive={state.view === 'settings'}
         />
         {state.view === 'store' ? (
           <Suspense fallback={<div className="store-loading">Loading Store...</div>}>
@@ -266,6 +268,13 @@ export const FullShell = () => {
                 setView("chat");
                 setMessage(text);
               }}
+            />
+          </Suspense>
+        ) : state.view === 'settings' ? (
+          <Suspense fallback={<div className="store-loading">Loading Settings...</div>}>
+            <SettingsView
+              onBack={() => setView('chat')}
+              onOpenRuntimeMode={() => setRuntimeModeDialogOpen(true)}
             />
           </Suspense>
         ) : (

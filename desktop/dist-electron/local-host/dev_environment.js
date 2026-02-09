@@ -2,7 +2,6 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
-const log = (...args) => console.log("[dev-environment]", ...args);
 const withTimeout = (promise, ms, fallback) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(fallback), ms))]);
 const execAsync = (command) => new Promise((resolve, reject) => {
     exec(command, { encoding: "utf-8", maxBuffer: 1024 * 1024 }, (error, stdout) => {
@@ -28,7 +27,7 @@ async function collectIDEExtensions() {
                 extensions.push({ name, source });
             }
         }
-        catch (err) {
+        catch {
             // Directory doesn't exist, ignore
         }
     };
@@ -78,7 +77,7 @@ async function collectIDESettings() {
                 settings.push({ source, highlights });
             }
         }
-        catch (err) {
+        catch {
             // File doesn't exist or can't be parsed, ignore
         }
     };
@@ -130,7 +129,7 @@ async function collectGitConfig() {
         }
         return config;
     }
-    catch (err) {
+    catch {
         return null;
     }
 }
@@ -163,7 +162,7 @@ async function collectDotfiles() {
             await fs.access(path.join(homeDir, file));
             existing.push(file);
         }
-        catch (err) {
+        catch {
             // File doesn't exist, ignore
         }
     }));
@@ -189,7 +188,7 @@ async function collectRuntimes() {
             await fs.access(path.join(homeDir, dir));
             detected.push(name);
         }
-        catch (err) {
+        catch {
             // Directory doesn't exist, ignore
         }
     }));
@@ -208,14 +207,14 @@ async function collectPackageManagers() {
                 detected.push("homebrew");
                 return;
             }
-            catch (err) {
+            catch {
                 // Try alternate location
             }
             try {
                 await fs.access("/usr/local/Homebrew");
                 detected.push("homebrew");
             }
-            catch (err) {
+            catch {
                 // Not found
             }
         })());
@@ -227,7 +226,7 @@ async function collectPackageManagers() {
                 await fs.access(path.join(homeDir, "scoop"));
                 detected.push("scoop");
             }
-            catch (err) {
+            catch {
                 // Not found
             }
         })());
@@ -237,7 +236,7 @@ async function collectPackageManagers() {
                 await fs.access(path.join(programData, "chocolatey"));
                 detected.push("chocolatey");
             }
-            catch (err) {
+            catch {
                 // Not found
             }
         })());
@@ -262,7 +261,7 @@ async function collectPackageManagers() {
                 detected.push("pnpm");
                 return;
             }
-            catch (err) {
+            catch {
                 // Try next path
             }
         }
@@ -280,7 +279,7 @@ async function detectWSL() {
         const entries = await fs.readdir(packagesDir);
         return entries.some((entry) => entry.startsWith("CanonicalGroupLimited"));
     }
-    catch (err) {
+    catch {
         return false;
     }
 }
