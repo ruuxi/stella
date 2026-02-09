@@ -8,7 +8,7 @@ import {
 } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 import { requireUserId } from "../auth";
 
 // ---------------------------------------------------------------------------
@@ -64,6 +64,11 @@ const runtimeStatusValidator = v.object({
   enabled: v.boolean(),
   cloudDevice: v.union(cloudDeviceValidator, v.null()),
 });
+const cloudDeviceListValidator = v.array(cloudDeviceValidator);
+const ensureSingleRecordResultValidator = v.object({
+  cloudDevice: cloudDeviceValidator,
+  created: v.boolean(),
+});
 
 const RUNTIME_MODE_KEY = "runtime_mode";
 const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
@@ -73,6 +78,75 @@ type RuntimeStatus = {
   mode: "local" | "cloud_247";
   enabled: boolean;
   cloudDevice: Doc<"cloud_devices"> | null;
+};
+
+const cloudStatusRank = (status: string): number => {
+  switch (status) {
+    case "running":
+      return 4;
+    case "provisioning":
+      return 3;
+    case "stopped":
+      return 2;
+    case "error":
+      return 0;
+    default:
+      return 1;
+  }
+};
+
+const compareCloudDevices = (a: Doc<"cloud_devices">, b: Doc<"cloud_devices">): number => {
+  const setupDelta = Number(b.setupComplete) - Number(a.setupComplete);
+  if (setupDelta !== 0) return setupDelta;
+
+  const statusDelta = cloudStatusRank(b.status) - cloudStatusRank(a.status);
+  if (statusDelta !== 0) return statusDelta;
+
+  const activityDelta = b.lastActiveAt - a.lastActiveAt;
+  if (activityDelta !== 0) return activityDelta;
+
+  const updatedDelta = b.updatedAt - a.updatedAt;
+  if (updatedDelta !== 0) return updatedDelta;
+
+  const createdDelta = b.createdAt - a.createdAt;
+  if (createdDelta !== 0) return createdDelta;
+
+  return b._creationTime - a._creationTime;
+};
+
+const pickPrimaryCloudDevice = (
+  records: Doc<"cloud_devices">[],
+): Doc<"cloud_devices"> | null => {
+  if (records.length === 0) return null;
+  return [...records].sort(compareCloudDevices)[0] ?? null;
+};
+
+const ownerStableHash = (ownerId: string): string => {
+  let hash = 2166136261;
+  for (let i = 0; i < ownerId.length; i += 1) {
+    hash ^= ownerId.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const buildSpriteNameForOwner = (ownerId: string): string => {
+  const sanitized = ownerId.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const suffix = sanitized.slice(-8) || "user";
+  const stable = ownerStableHash(ownerId).slice(0, 6).padEnd(6, "0");
+  return `stella-${suffix}-${stable}`;
+};
+
+const isSpriteAlreadyExistsError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("sprites api post /sprites: 400") &&
+    (message.includes("duplicate") ||
+      message.includes("exists") ||
+      message.includes("already") ||
+      message.includes("name"))
+  );
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
@@ -381,13 +455,25 @@ export const resolveForOwner = internalQuery({
       return null;
     }
 
-    const record = await ctx.db
+    const records = await ctx.db
       .query("cloud_devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
-      .first();
+      .collect();
+    const record = pickPrimaryCloudDevice(records);
 
     if (!record || record.status === "error") return null;
     return record.spriteName;
+  },
+});
+
+export const listForOwner = internalQuery({
+  args: { ownerId: v.string() },
+  returns: cloudDeviceListValidator,
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("cloud_devices")
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .collect();
   },
 });
 
@@ -395,10 +481,11 @@ export const getForOwner = internalQuery({
   args: { ownerId: v.string() },
   returns: v.union(cloudDeviceValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db
+    const records = await ctx.db
       .query("cloud_devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
-      .first();
+      .collect();
+    return pickPrimaryCloudDevice(records);
   },
 });
 
@@ -410,10 +497,11 @@ export const touchActivity = internalMutation({
   args: { ownerId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const record = await ctx.db
+    const records = await ctx.db
       .query("cloud_devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
-      .first();
+      .collect();
+    const record = pickPrimaryCloudDevice(records);
 
     if (record) {
       await ctx.db.patch(record._id, {
@@ -445,17 +533,46 @@ export const updateStatus = internalMutation({
   },
 });
 
-export const insertCloudDevice = internalMutation({
+export const deleteCloudDevicesByIds = internalMutation({
+  args: {
+    ids: v.array(v.id("cloud_devices")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    for (const id of args.ids) {
+      await ctx.db.delete(id);
+    }
+    return null;
+  },
+});
+
+export const ensureSingleRecordForOwner = internalMutation({
   args: {
     ownerId: v.string(),
     provider: v.string(),
     spriteName: v.string(),
     status: v.string(),
   },
-  returns: v.id("cloud_devices"),
+  returns: ensureSingleRecordResultValidator,
   handler: async (ctx, args) => {
+    const records = await ctx.db
+      .query("cloud_devices")
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .collect();
+    const existing = pickPrimaryCloudDevice(records);
+
+    if (existing) {
+      const duplicateIds = records
+        .filter((record) => record._id !== existing._id)
+        .map((record) => record._id);
+      for (const duplicateId of duplicateIds) {
+        await ctx.db.delete(duplicateId);
+      }
+      return { cloudDevice: existing, created: false };
+    }
+
     const now = Date.now();
-    return await ctx.db.insert("cloud_devices", {
+    const deviceId = await ctx.db.insert("cloud_devices", {
       ownerId: args.ownerId,
       provider: args.provider,
       spriteName: args.spriteName,
@@ -465,6 +582,12 @@ export const insertCloudDevice = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    const cloudDevice = await ctx.db.get(deviceId);
+    if (!cloudDevice) {
+      throw new Error("Failed to load cloud device after insert");
+    }
+    return { cloudDevice, created: true };
   },
 });
 
@@ -550,10 +673,11 @@ export const get247Status = query({
       .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
       .first();
     const mode = normalizeRuntimeMode(runtimePreference?.value ?? null);
-    const cloudDevice = await ctx.db
+    const records = await ctx.db
       .query("cloud_devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
-      .first();
+      .collect();
+    const cloudDevice = pickPrimaryCloudDevice(records);
 
     return {
       mode,
@@ -571,10 +695,11 @@ export const getActive = query({
     if (!identity) return null;
     const ownerId = identity.subject;
 
-    return await ctx.db
+    const records = await ctx.db
       .query("cloud_devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
-      .first();
+      .collect();
+    return pickPrimaryCloudDevice(records);
   },
 });
 
@@ -582,12 +707,42 @@ export const getActive = query({
 // Public Actions (for frontend)
 // ---------------------------------------------------------------------------
 
+const ensureSingleCloudDeviceForOwner = async (
+  ctx: ActionCtx,
+  ownerId: string,
+): Promise<Doc<"cloud_devices"> | null> => {
+  const records = await ctx.runQuery(internal.agent.cloud_devices.listForOwner, { ownerId });
+  const primary = pickPrimaryCloudDevice(records);
+  if (!primary) return null;
+
+  const duplicates = records.filter((record) => record._id !== primary._id);
+  if (duplicates.length === 0) return primary;
+
+  const duplicateIds = duplicates.map((record) => record._id);
+  await ctx.runMutation(internal.agent.cloud_devices.deleteCloudDevicesByIds, { ids: duplicateIds });
+
+  const deletedSpriteNames = new Set<string>();
+  for (const duplicate of duplicates) {
+    if (duplicate.spriteName === primary.spriteName || deletedSpriteNames.has(duplicate.spriteName)) {
+      continue;
+    }
+    deletedSpriteNames.add(duplicate.spriteName);
+    try {
+      await spritesApi(`/sprites/${duplicate.spriteName}`, "DELETE");
+    } catch (error) {
+      console.error("[cloud_devices] Duplicate sprite deletion error (continuing):", error);
+    }
+  }
+
+  return primary;
+};
+
 const ensure247ForOwner = async (
   ctx: ActionCtx,
   ownerId: string,
 ): Promise<Enable247Result> => {
-  const existing = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, { ownerId });
-  if (existing) {
+  const existing = await ensureSingleCloudDeviceForOwner(ctx, ownerId);
+  if (existing && existing.status !== "error") {
     await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
       ownerId,
       key: RUNTIME_MODE_KEY,
@@ -596,23 +751,39 @@ const ensure247ForOwner = async (
     return { status: "already_enabled", spriteName: existing.spriteName };
   }
 
-  const suffix = ownerId.slice(-8);
-  const rand = Math.random().toString(36).slice(2, 6);
-  const spriteName = `stella-${suffix}-${rand}`;
+  if (existing && existing.status === "error") {
+    try {
+      await spritesApi(`/sprites/${existing.spriteName}`, "DELETE");
+    } catch (error) {
+      console.error("[cloud_devices] Error-state sprite deletion error (continuing):", error);
+    }
+    await ctx.runMutation(internal.agent.cloud_devices.deleteCloudDevice, {
+      id: existing._id,
+    });
+  }
 
-  await spritesApi("/sprites", "POST", { name: spriteName });
+  const spriteName = buildSpriteNameForOwner(ownerId);
+  try {
+    await spritesApi("/sprites", "POST", { name: spriteName });
+  } catch (error) {
+    if (!isSpriteAlreadyExistsError(error)) {
+      throw error;
+    }
+  }
 
-  const deviceId = await ctx.runMutation(internal.agent.cloud_devices.insertCloudDevice, {
+  const result = await ctx.runMutation(internal.agent.cloud_devices.ensureSingleRecordForOwner, {
     ownerId,
     provider: "sprites",
     spriteName,
     status: "provisioning",
   });
 
-  await ctx.scheduler.runAfter(0, internal.agent.cloud_devices.setupSprite, {
-    deviceId,
-    spriteName,
-  });
+  if (result.created || !result.cloudDevice.setupComplete) {
+    await ctx.scheduler.runAfter(0, internal.agent.cloud_devices.setupSprite, {
+      deviceId: result.cloudDevice._id,
+      spriteName: result.cloudDevice.spriteName,
+    });
+  }
 
   await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
     ownerId,
@@ -620,14 +791,14 @@ const ensure247ForOwner = async (
     value: "cloud_247",
   });
 
-  return { status: "provisioning", spriteName };
+  return { status: "provisioning", spriteName: result.cloudDevice.spriteName };
 };
 
 const disable247ForOwner = async (
   ctx: ActionCtx,
   ownerId: string,
 ): Promise<Disable247Result> => {
-  const record = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, { ownerId });
+  const record = await ensureSingleCloudDeviceForOwner(ctx, ownerId);
   if (!record) {
     await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
       ownerId,
