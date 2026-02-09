@@ -54,6 +54,46 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
   configureHost: (config: { convexUrl?: string }) => ipcRenderer.invoke('host:configure', config),
   setAuthToken: (payload: { token: string | null }) => ipcRenderer.invoke('auth:setToken', payload),
+  cacheGetConversationEvents: (payload: { conversationId: string; limit?: number }) =>
+    ipcRenderer.invoke('cache:getConversationEvents', payload),
+  cacheSyncConversationEvents: (payload: { conversationId: string; limit?: number; syncLimit?: number }) =>
+    ipcRenderer.invoke('cache:syncConversationEvents', payload),
+  cacheGetTasks: (payload: { conversationId: string; limit?: number }) =>
+    ipcRenderer.invoke('cache:getTasks', payload),
+  cacheSyncTasks: (payload: { conversationId: string; limit?: number; syncLimit?: number }) =>
+    ipcRenderer.invoke('cache:syncTasks', payload),
+  cacheGetThreads: (payload: { conversationId: string; limit?: number }) =>
+    ipcRenderer.invoke('cache:getThreads', payload),
+  cacheSyncThreads: (payload: { conversationId: string; limit?: number }) =>
+    ipcRenderer.invoke('cache:syncThreads', payload),
+  cacheGetMemoryCategories: (payload?: { ownerId?: string; limit?: number }) =>
+    ipcRenderer.invoke('cache:getMemoryCategories', payload),
+  cacheSyncMemoryCategories: (payload?: { ownerId?: string; limit?: number }) =>
+    ipcRenderer.invoke('cache:syncMemoryCategories', payload),
+  onCacheUpdated: (
+    callback: (
+      payload: {
+        conversationId?: string
+        streams: Array<'events' | 'tasks' | 'threads' | 'memory_categories'>
+        source?: 'push' | 'manual'
+      },
+    ) => void,
+  ) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: {
+        conversationId?: string
+        streams: Array<'events' | 'tasks' | 'threads' | 'memory_categories'>
+        source?: 'push' | 'manual'
+      },
+    ) => {
+      callback(payload)
+    }
+    ipcRenderer.on('cache:updated', handler)
+    return () => {
+      ipcRenderer.removeListener('cache:updated', handler)
+    }
+  },
   onAuthCallback: (callback: (data: { url: string }) => void) => {
     const handler = (_event: IpcRendererEvent, data: { url: string }) => {
       callback(data)
