@@ -239,16 +239,12 @@ export const getOrCreateConversationForOwner = internalMutation({
   },
   returns: v.id("conversations"),
   handler: async (ctx, args) => {
-    // Debug: count ALL default conversations for this owner
-    const allDefaults = await ctx.db
+    const existing = await ctx.db
       .query("conversations")
       .withIndex("by_owner_default", (q) =>
         q.eq("ownerId", args.ownerId).eq("isDefault", true),
       )
-      .collect();
-    console.log("[channel-debug] getOrCreateConversationForOwner — ownerId:", args.ownerId, "found", allDefaults.length, "default conversations:", allDefaults.map(c => c._id));
-
-    const existing = allDefaults[0] ?? null;
+      .first();
 
     if (existing) return existing._id;
 
@@ -690,7 +686,6 @@ export async function processIncomingMessage(args: {
       internal.channels.utils.getOrCreateConversationForOwner,
       { ownerId: connection.ownerId },
     );
-    console.log("[channel-debug] DM routing — connection.ownerId:", connection.ownerId, "conversationId:", conversationId);
   }
 
   await args.ctx.runMutation(internal.events.appendInternalEvent, {
