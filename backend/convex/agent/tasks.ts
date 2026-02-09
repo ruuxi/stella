@@ -8,7 +8,7 @@ import {
   ActionCtx,
 } from "../_generated/server";
 import { v, ConvexError, Infer } from "convex/values";
-import { streamText, generateText } from "ai";
+import { generateText } from "ai";
 import { api, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
@@ -48,6 +48,10 @@ const taskClientValidator = v.object({
   taskDepth: v.number(),
   result: v.optional(v.string()),
   error: v.optional(v.string()),
+  statusUpdates: v.optional(v.array(v.object({
+    text: v.string(),
+    timestamp: v.number(),
+  }))),
   createdAt: v.number(),
   updatedAt: v.number(),
   completedAt: v.optional(v.number()),
@@ -148,6 +152,44 @@ const buildHistoryMessages = async (
   });
 };
 
+/** Map a tool call to a short human-readable description for progress tracking. */
+const describeToolCall = (toolName: string, args: Record<string, unknown>): string => {
+  const path = typeof args.file_path === "string"
+    ? args.file_path.replace(/^.*[/\\]/, "")
+    : typeof args.path === "string"
+      ? args.path.replace(/^.*[/\\]/, "")
+      : undefined;
+
+  switch (toolName) {
+    case "Read":
+      return path ? `Reading ${path}` : "Reading file";
+    case "Write":
+      return path ? `Writing ${path}` : "Writing file";
+    case "Edit":
+      return path ? `Editing ${path}` : "Editing file";
+    case "Glob":
+      return typeof args.pattern === "string" ? `Searching for ${args.pattern}` : "Searching files";
+    case "Grep":
+      return typeof args.pattern === "string" ? `Searching for '${args.pattern}'` : "Searching content";
+    case "Bash": {
+      const cmd = typeof args.command === "string" ? args.command.slice(0, 60) : "";
+      return cmd ? `Running: ${cmd}` : "Running command";
+    }
+    case "WebSearch":
+      return typeof args.query === "string" ? `Searching web for '${args.query}'` : "Searching web";
+    case "WebFetch":
+      return typeof args.url === "string" ? `Fetching ${new URL(args.url).hostname}` : "Fetching URL";
+    case "TaskCreate":
+      return typeof args.description === "string" ? `Delegating: ${args.description}` : "Delegating task";
+    case "OpenCanvas":
+      return typeof args.name === "string" ? `Opening canvas: ${args.name}` : "Opening canvas";
+    case "CloseCanvas":
+      return "Closing canvas";
+    default:
+      return toolName;
+  }
+};
+
 const executeSubagentRun = async (
   ctx: ActionCtx,
   args: SubagentExecutionArgs,
@@ -245,7 +287,7 @@ const executeSubagentRun = async (
 
   try {
     const resolvedConfig = await resolveModelConfig(ctx, args.subagentType, args.ownerId);
-    const result = await streamText({
+    const result = await generateText({
       ...resolvedConfig,
       system: promptBuild.systemPrompt,
       tools: createTools(
@@ -270,16 +312,34 @@ const executeSubagentRun = async (
         },
       ],
       abortSignal: abortController.signal,
+      onStepFinish: async ({ toolCalls }) => {
+        if (!toolCalls || toolCalls.length === 0) return;
+        const descriptions = toolCalls.map(
+          (tc) => describeToolCall(
+            tc.toolName,
+            "args" in tc && tc.args ? (tc.args as Record<string, unknown>) : {},
+          ),
+        );
+        for (const desc of descriptions) {
+          try {
+            await ctx.runMutation(internal.agent.tasks.pushStatusUpdate, {
+              taskId: args.taskId,
+              text: desc,
+            });
+          } catch {
+            // Task may have been canceled — ignore
+          }
+        }
+      },
     });
 
-    const text: string = await result.text;
+    const text: string = result.text ?? "";
     finished = true;
     await cancelWatcher;
 
     // Save thread step if this is a threaded execution
     if (args.threadId) {
-      const response = await result.response;
-      const responseMessages = response?.messages ?? [];
+      const responseMessages = result.response?.messages ?? [];
       await ctx.runMutation(internal.data.threads.appendStep, {
         threadId: args.threadId,
         stepIndex: nextStepIndex,
@@ -417,6 +477,51 @@ export const completeTaskRecord = internalMutation({
     });
     const record = await ctx.db.get(args.taskId);
     return toTaskClientOrNull(record);
+  },
+});
+
+const MAX_STATUS_UPDATES = 5;
+
+export const pushStatusUpdate = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    text: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.status !== "running") return null;
+
+    const updates = task.statusUpdates ?? [];
+    const lastText = updates.length > 0 ? updates[updates.length - 1].text : "";
+
+    // Skip if identical to the previous update
+    if (args.text === lastText) return null;
+
+    updates.push({ text: args.text, timestamp: Date.now() });
+
+    // Keep only the most recent entries
+    const trimmed = updates.length > MAX_STATUS_UPDATES
+      ? updates.slice(updates.length - MAX_STATUS_UPDATES)
+      : updates;
+
+    await ctx.db.patch(args.taskId, {
+      statusUpdates: trimmed,
+      updatedAt: Date.now(),
+    });
+
+    // Emit a lightweight event so the frontend can pick up progress
+    await ctx.db.insert("events", {
+      conversationId: task.conversationId,
+      type: "task_progress",
+      payload: {
+        taskId: args.taskId as string,
+        statusText: args.text,
+      },
+      timestamp: Date.now(),
+    });
+
+    return null;
   },
 });
 

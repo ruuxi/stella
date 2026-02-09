@@ -242,6 +242,10 @@ export default defineSchema({
     model: v.optional(v.string()),
     result: v.optional(v.string()),
     error: v.optional(v.string()),
+    statusUpdates: v.optional(v.array(v.object({
+      text: v.string(),
+      timestamp: v.number(),
+    }))),
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
