@@ -3,11 +3,13 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  query,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
+import { requireConversationOwner } from "../auth";
 
 const MAX_ACTIVE_THREADS = 8;
 
@@ -89,6 +91,77 @@ export const listActiveThreads = internalQuery({
       title: t.title,
       lastActiveAt: t.lastActiveAt,
     }));
+  },
+});
+
+export const listActiveThreadsForConversation = query({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  returns: v.array(
+    v.object({
+      _id: v.id("threads"),
+      agentType: v.string(),
+      title: v.string(),
+      status: v.string(),
+      createdAt: v.number(),
+      lastActiveAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+    const threads = await ctx.db
+      .query("threads")
+      .withIndex("by_conversation_status", (q) =>
+        q.eq("conversationId", args.conversationId).eq("status", "active"),
+      )
+      .collect();
+
+    threads.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+
+    return threads.map((thread) => ({
+      _id: thread._id,
+      agentType: thread.agentType,
+      title: thread.title,
+      status: thread.status,
+      createdAt: thread.createdAt,
+      lastActiveAt: thread.lastActiveAt,
+    }));
+  },
+});
+
+export const getActiveThreadsHeadForConversation = query({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  returns: v.object({
+    activeCount: v.number(),
+    latestLastActiveAt: v.number(),
+    latestThreadId: v.union(v.id("threads"), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+    const activeThreads = await ctx.db
+      .query("threads")
+      .withIndex("by_conversation_status", (q) =>
+        q.eq("conversationId", args.conversationId).eq("status", "active"),
+      )
+      .collect();
+
+    let latestLastActiveAt = 0;
+    let latestThreadId: Id<"threads"> | null = null;
+    for (const thread of activeThreads) {
+      if (thread.lastActiveAt > latestLastActiveAt) {
+        latestLastActiveAt = thread.lastActiveAt;
+        latestThreadId = thread._id;
+      }
+    }
+
+    return {
+      activeCount: activeThreads.length,
+      latestLastActiveAt,
+      latestThreadId,
+    };
   },
 });
 

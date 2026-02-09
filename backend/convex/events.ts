@@ -431,6 +431,54 @@ export const listEvents = query({
   },
 });
 
+export const listEventsSince = query({
+  args: {
+    conversationId: v.id("conversations"),
+    afterTimestamp: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+    const afterTimestamp = args.afterTimestamp ?? 0;
+    const requestedLimit = args.limit ?? 400;
+    const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 1000);
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_conversation", (q) =>
+        q.eq("conversationId", args.conversationId).gt("timestamp", afterTimestamp),
+      )
+      .order("asc")
+      .take(limit);
+
+    return events.map((event) => sanitizeEventForRead(event));
+  },
+});
+
+export const getConversationEventHead = query({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  returns: v.object({
+    latestTimestamp: v.number(),
+    latestEventId: v.union(v.id("events"), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+    const latest = await ctx.db
+      .query("events")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .order("desc")
+      .first();
+
+    return {
+      latestTimestamp: latest?.timestamp ?? 0,
+      latestEventId: latest?._id ?? null,
+    };
+  },
+});
+
 export const listToolRequestsForDevice = query({
   args: {
     deviceId: v.string(),
