@@ -3,6 +3,7 @@ import {
   internalMutation,
   internalQuery,
 } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./utils";
@@ -13,6 +14,15 @@ import { retryFetch } from "../lib/retry_fetch";
 // ---------------------------------------------------------------------------
 
 const LINQ_API_BASE = "https://api.linqapp.com/api/partner";
+type LinkCodeResult = Awaited<ReturnType<typeof processLinkCode>>;
+
+const LINK_RESULT_MESSAGE: Record<LinkCodeResult, string> = {
+  invalid_code: "Invalid or expired code. Please generate a new one in Stella Settings.",
+  already_linked: "Your number is already linked to Stella!",
+  linking_disabled: "Linq linking is currently disabled.",
+  not_allowed: "This number is not allowed to link.",
+  linked: "Linked! You can now message Stella directly here via iMessage/SMS.",
+};
 
 const linqFetch = async (
   path: string,
@@ -161,7 +171,7 @@ export const cacheChatId = internalMutation({
  * Falls back to creating a new chat if needed.
  */
 const sendLinqReply = async (
-  ctx: { runQuery: Function; runMutation: Function },
+  ctx: ActionCtx,
   phoneNumber: string,
   text: string,
   incomingChatId?: string,
@@ -247,42 +257,12 @@ export const handleStartCommand = internalAction({
       code,
     });
 
-    if (result === "invalid_code") {
-      await sendLinqReply(
-        ctx,
-        args.senderPhone,
-        "Invalid or expired code. Please generate a new one in Stella Settings.",
-        args.incomingChatId,
-      );
-    } else if (result === "already_linked") {
-      await sendLinqReply(
-        ctx,
-        args.senderPhone,
-        "Your number is already linked to Stella!",
-        args.incomingChatId,
-      );
-    } else if (result === "linking_disabled") {
-      await sendLinqReply(
-        ctx,
-        args.senderPhone,
-        "Linq linking is currently disabled.",
-        args.incomingChatId,
-      );
-    } else if (result === "not_allowed") {
-      await sendLinqReply(
-        ctx,
-        args.senderPhone,
-        "This number is not allowed to link.",
-        args.incomingChatId,
-      );
-    } else {
-      await sendLinqReply(
-        ctx,
-        args.senderPhone,
-        "Linked! You can now message Stella directly here via iMessage/SMS.",
-        args.incomingChatId,
-      );
-    }
+    await sendLinqReply(
+      ctx,
+      args.senderPhone,
+      LINK_RESULT_MESSAGE[result],
+      args.incomingChatId,
+    );
     return null;
   },
 });
@@ -291,7 +271,6 @@ export const handleIncomingMessage = internalAction({
   args: {
     senderPhone: v.string(),
     text: v.string(),
-    displayName: v.optional(v.string()),
     incomingChatId: v.string(),
   },
   returns: v.null(),

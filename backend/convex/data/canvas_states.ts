@@ -89,13 +89,19 @@ export const getForConversationInternal = internalQuery({
   },
   returns: v.union(canvasStateValidator, v.null()),
   handler: async (ctx, args) => {
-    const results = await ctx.db
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) {
+      return null;
+    }
+
+    return await ctx.db
       .query("canvas_states")
-      .withIndex("by_owner_conversation")
-      .take(500);
-    return (
-      results.find((s) => s.conversationId === args.conversationId) ?? null
-    );
+      .withIndex("by_owner_conversation", (q) =>
+        q
+          .eq("ownerId", conversation.ownerId)
+          .eq("conversationId", args.conversationId),
+      )
+      .first();
   },
 });
 
@@ -108,14 +114,21 @@ export const remove = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const results = await ctx.db
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) {
+      return null;
+    }
+
+    const states = await ctx.db
       .query("canvas_states")
-      .withIndex("by_owner_conversation")
-      .take(500);
-    const matching = results.filter(
-      (s) => s.conversationId === args.conversationId,
-    );
-    for (const state of matching) {
+      .withIndex("by_owner_conversation", (q) =>
+        q
+          .eq("ownerId", conversation.ownerId)
+          .eq("conversationId", args.conversationId),
+      )
+      .collect();
+
+    for (const state of states) {
       await ctx.db.delete(state._id);
     }
     return null;
