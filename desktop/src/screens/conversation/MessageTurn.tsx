@@ -3,7 +3,6 @@ import type { Attachment, TaskItem } from "../../hooks/use-conversation-events";
 import { WorkingIndicator } from "../../components/chat/WorkingIndicator";
 import { Markdown } from "../../components/chat/Markdown";
 import { ReasoningSection } from "../../components/chat/ReasoningSection";
-import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import type { EventRecord, MessagePayload } from "../../hooks/use-conversation-events";
 
 export type TurnViewModel = {
@@ -142,7 +141,7 @@ export const TurnItem = memo(function TurnItem({
           {shouldShowStreamingAssistant && streaming && (
             <>
               {streaming.runningTasks.length > 0 && (
-                <TaskIndicator tasks={streaming.runningTasks} />
+                <WorkingIndicator tasks={streaming.runningTasks} />
               )}
               {hasReasoningContent && streaming.reasoningText && (
                 <ReasoningSection
@@ -156,7 +155,6 @@ export const TurnItem = memo(function TurnItem({
                 !hasReasoningContent &&
                 streaming.runningTasks.length === 0 && (
                   <WorkingIndicator
-                    isResponding={false}
                     isReasoning={true}
                     toolName={streaming.runningTool}
                   />
@@ -205,7 +203,9 @@ export const StreamingIndicator = memo(function StreamingIndicator({
   return (
     <div className="session-turn">
       <div className="event-item assistant streaming">
-        {runningTasks.length > 0 && <TaskIndicator tasks={runningTasks} />}
+        {runningTasks.length > 0 && (
+          <WorkingIndicator tasks={runningTasks} />
+        )}
         {hasReasoningContent && (
           <ReasoningSection
             content={reasoningText!}
@@ -216,7 +216,6 @@ export const StreamingIndicator = memo(function StreamingIndicator({
           !hasReasoningContent &&
           runningTasks.length === 0 && (
             <WorkingIndicator
-              isResponding={false}
               isReasoning={true}
               toolName={runningTool}
             />
