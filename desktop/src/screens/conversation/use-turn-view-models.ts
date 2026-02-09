@@ -1,4 +1,4 @@
-import { useMemo, useRef, useDeferredValue } from "react";
+import { useMemo, useDeferredValue } from "react";
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import {
   groupEventsIntoTurns,
@@ -10,7 +10,6 @@ import {
   type TurnViewModel,
   getEventText,
   getAttachments,
-  attachmentsEqual,
 } from "./MessageTurn";
 
 export function useTurnViewModels(opts: {
@@ -74,12 +73,8 @@ export function useTurnViewModels(opts: {
 
   const depseudonymize = useDepseudonymize();
 
-  const turnViewCacheRef = useRef<Map<string, TurnViewModel>>(new Map());
   const turns = useMemo(() => {
-    const nextCache = new Map<string, TurnViewModel>();
-    const viewModels: TurnViewModel[] = [];
-
-    for (const turn of slicedTurns) {
+    return slicedTurns.map((turn): TurnViewModel => {
       const userText = getEventText(turn.userMessage);
       const userAttachments = getAttachments(turn.userMessage);
       const assistantText = turn.assistantMessage
@@ -87,32 +82,14 @@ export function useTurnViewModels(opts: {
         : "";
       const assistantMessageId = turn.assistantMessage?._id ?? null;
 
-      const prev = turnViewCacheRef.current.get(turn.id);
-      if (
-        prev &&
-        prev.userText === userText &&
-        prev.assistantText === assistantText &&
-        prev.assistantMessageId === assistantMessageId &&
-        attachmentsEqual(prev.userAttachments, userAttachments)
-      ) {
-        nextCache.set(turn.id, prev);
-        viewModels.push(prev);
-        continue;
-      }
-
-      const next: TurnViewModel = {
+      return {
         id: turn.id,
         userText,
         userAttachments,
         assistantText,
         assistantMessageId,
       };
-      nextCache.set(turn.id, next);
-      viewModels.push(next);
-    }
-
-    turnViewCacheRef.current = nextCache;
-    return viewModels;
+    });
   }, [slicedTurns, depseudonymize]);
 
   const deferredStreamingText = useDeferredValue(streamingText);

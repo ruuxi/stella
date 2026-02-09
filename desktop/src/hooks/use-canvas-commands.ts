@@ -16,13 +16,15 @@ type CanvasCommandPayload = {
 export const useCanvasCommands = (events: EventRecord[]) => {
   const { openCanvas, closeCanvas } = useCanvas()
   const processedRef = useRef<Set<string>>(new Set())
+  const previousLengthRef = useRef(events.length)
 
-  // Reset processed set when conversation changes (events array identity changes)
-  const prevEventsRef = useRef<EventRecord[]>(events)
-  if (events.length === 0 && prevEventsRef.current.length > 0) {
-    processedRef.current.clear()
-  }
-  prevEventsRef.current = events
+  // Reset processed IDs when the event stream is reset (e.g. conversation switch)
+  useEffect(() => {
+    if (events.length === 0 && previousLengthRef.current > 0) {
+      processedRef.current.clear()
+    }
+    previousLengthRef.current = events.length
+  }, [events.length])
 
   useEffect(() => {
     for (const event of events) {

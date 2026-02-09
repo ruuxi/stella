@@ -50,7 +50,7 @@ export function useMiniChat(opts: {
 
     const optimisticEvent = {
       _id: `optimistic-${crypto.randomUUID()}`,
-      timestamp: Date.now(),
+      timestamp: (current.page[0]?.timestamp ?? 0) + 1,
       type: args.type,
       deviceId: args.deviceId,
       payload: args.payload,
@@ -202,10 +202,19 @@ export function useMiniChat(opts: {
     if (isStreaming || pendingUserMessageId || !state.conversationId) return;
     const queued = findQueuedFollowUp(events);
     if (!queued) return;
-    startStream({
-      userMessageId: queued.event._id,
-      attachments: queued.attachments,
+
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      startStream({
+        userMessageId: queued.event._id,
+        attachments: queued.attachments,
+      });
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     events,
     findQueuedFollowUp,

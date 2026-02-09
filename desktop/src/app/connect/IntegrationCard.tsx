@@ -109,21 +109,20 @@ function BotSetupView({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isExpanded) {
-      setCode(null);
-      setError(null);
-      return;
-    }
+    if (!isExpanded) return;
 
     let cancelled = false;
-    setError(null);
 
     generateCode({ provider: integration.provider })
       .then((result) => {
-        if (!cancelled) setCode(result.code);
+        if (cancelled) return;
+        setCode(result.code);
+        setError(null);
       })
       .catch((err) => {
-        if (!cancelled) setError((err as Error).message ?? "Failed to generate code");
+        if (cancelled) return;
+        setCode(null);
+        setError((err as Error).message ?? "Failed to generate code");
       });
 
     return () => {
@@ -264,7 +263,13 @@ export function IntegrationCard({
       return <ConnectedView integration={integration} />;
     }
     if (integration.type === "bot") {
-      return <BotSetupView integration={integration} isExpanded={isExpanded} />;
+      return (
+        <BotSetupView
+          key={`${integration.provider}-${isExpanded ? "open" : "closed"}`}
+          integration={integration}
+          isExpanded={isExpanded}
+        />
+      );
     }
     if (integration.provider === "whatsapp") {
       return <WhatsAppBridgeView isExpanded={isExpanded} />;
