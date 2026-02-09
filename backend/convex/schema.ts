@@ -301,6 +301,16 @@ export default defineSchema({
     .index("by_provider_external", ["provider", "externalUserId"])
     .index("by_owner_provider", ["ownerId", "provider"])
     .index("by_owner_provider_external", ["ownerId", "provider", "externalUserId"]),
+  slack_installations: defineTable({
+    teamId: v.string(),
+    teamName: v.optional(v.string()),
+    botToken: v.string(),
+    botUserId: v.optional(v.string()),
+    scope: v.optional(v.string()),
+    installedBy: v.optional(v.string()),
+    installedAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_team", ["teamId"]),
   bridge_sessions: defineTable({
     ownerId: v.string(),
     provider: v.string(),

@@ -29,6 +29,7 @@ import type * as channels_google_chat from "../channels/google_chat.js";
 import type * as channels_linq from "../channels/linq.js";
 import type * as channels_signal from "../channels/signal.js";
 import type * as channels_slack from "../channels/slack.js";
+import type * as channels_slack_installations from "../channels/slack_installations.js";
 import type * as channels_teams from "../channels/teams.js";
 import type * as channels_telegram from "../channels/telegram.js";
 import type * as channels_utils from "../channels/utils.js";
@@ -99,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   "channels/linq": typeof channels_linq;
   "channels/signal": typeof channels_signal;
   "channels/slack": typeof channels_slack;
+  "channels/slack_installations": typeof channels_slack_installations;
   "channels/teams": typeof channels_teams;
   "channels/telegram": typeof channels_telegram;
   "channels/utils": typeof channels_utils;
