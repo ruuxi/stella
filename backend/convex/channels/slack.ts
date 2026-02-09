@@ -1,5 +1,7 @@
 import { internalAction } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 import { processIncomingMessage, processLinkCode } from "./utils";
 import { retryFetch } from "../lib/retry_fetch";
 
@@ -59,13 +61,22 @@ export async function verifySlackSignature(
 // Slack API Helpers
 // ---------------------------------------------------------------------------
 
-const sendSlackMessage = async (channel: string, text: string) => {
-  const token = process.env.SLACK_BOT_TOKEN;
-  if (!token) {
-    console.error("[slack] Missing SLACK_BOT_TOKEN");
-    return;
+/** Resolve the bot token for a Slack workspace, falling back to the global env var. */
+async function resolveSlackToken(
+  ctx: { runQuery: ActionCtx["runQuery"] },
+  teamId?: string,
+): Promise<string | null> {
+  if (teamId) {
+    const installation = await ctx.runQuery(
+      internal.channels.slack_installations.getByTeamId,
+      { teamId },
+    );
+    if (installation) return installation.botToken;
   }
+  return process.env.SLACK_BOT_TOKEN ?? null;
+}
 
+const sendSlackMessage = async (channel: string, text: string, token: string) => {
   // Slack message limit is 40,000 chars
   const maxLen = 40000;
   const truncated = text.length > maxLen
@@ -101,9 +112,16 @@ export const handleLinkCommand = internalAction({
     channelId: v.string(),
     code: v.string(),
     displayName: v.optional(v.string()),
+    teamId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const token = await resolveSlackToken(ctx, args.teamId);
+    if (!token) {
+      console.error("[slack] No bot token available for team:", args.teamId);
+      return null;
+    }
+
     const result = await processLinkCode({
       ctx,
       provider: "slack",
@@ -113,15 +131,15 @@ export const handleLinkCommand = internalAction({
     });
 
     if (result === "invalid_code") {
-      await sendSlackMessage(args.channelId, "Invalid or expired code. Please generate a new one in Stella Settings.");
+      await sendSlackMessage(args.channelId, "Invalid or expired code. Please generate a new one in Stella Settings.", token);
     } else if (result === "already_linked") {
-      await sendSlackMessage(args.channelId, "Your Slack account is already linked to Stella!");
+      await sendSlackMessage(args.channelId, "Your Slack account is already linked to Stella!", token);
     } else if (result === "linking_disabled") {
-      await sendSlackMessage(args.channelId, "Slack linking is currently disabled.");
+      await sendSlackMessage(args.channelId, "Slack linking is currently disabled.", token);
     } else if (result === "not_allowed") {
-      await sendSlackMessage(args.channelId, "This Slack account is not allowed to link.");
+      await sendSlackMessage(args.channelId, "This Slack account is not allowed to link.", token);
     } else {
-      await sendSlackMessage(args.channelId, "Linked! You can now message Stella directly here.");
+      await sendSlackMessage(args.channelId, "Linked! You can now message Stella directly here.", token);
     }
     return null;
   },
@@ -133,9 +151,16 @@ export const handleIncomingMessage = internalAction({
     channelId: v.string(),
     text: v.string(),
     displayName: v.optional(v.string()),
+    teamId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const token = await resolveSlackToken(ctx, args.teamId);
+    if (!token) {
+      console.error("[slack] No bot token available for team:", args.teamId);
+      return null;
+    }
+
     try {
       const result = await processIncomingMessage({
         ctx,
@@ -148,14 +173,15 @@ export const handleIncomingMessage = internalAction({
         await sendSlackMessage(
           args.channelId,
           "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
+          token,
         );
         return null;
       }
 
-      await sendSlackMessage(args.channelId, result.text);
+      await sendSlackMessage(args.channelId, result.text, token);
     } catch (error) {
       console.error("[slack] Agent turn failed:", error);
-      await sendSlackMessage(args.channelId, "Sorry, something went wrong. Please try again.");
+      await sendSlackMessage(args.channelId, "Sorry, something went wrong. Please try again.", token);
     }
     return null;
   },

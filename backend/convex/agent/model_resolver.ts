@@ -13,7 +13,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import type { LanguageModel } from "ai";
+import { createGateway, type LanguageModel } from "ai";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -63,6 +63,22 @@ function createProviderModel(modelString: string, apiKey: string): LanguageModel
   }
 }
 
+/** Create a model via OpenRouter (OpenAI-compatible API, any provider/model) */
+function createOpenRouterModel(modelString: string, apiKey: string): LanguageModel {
+  const openrouter = createOpenAI({
+    apiKey,
+    baseURL: "https://openrouter.ai/api/v1",
+  });
+  // OpenRouter accepts full provider/model strings as the model ID
+  return openrouter(modelString);
+}
+
+/** Create a model via Vercel AI Gateway with user's own key */
+function createGatewayModel(modelString: string, apiKey: string): LanguageModel {
+  const gateway = createGateway({ apiKey });
+  return gateway(modelString);
+}
+
 /** Map provider prefix to secrets provider key */
 function providerToSecretKey(provider: string): string | null {
   switch (provider) {
@@ -75,6 +91,18 @@ function providerToSecretKey(provider: string): string | null {
     default:
       return null;
   }
+}
+
+/** Helper to look up a user's decrypted key for a given provider */
+async function getUserKey(
+  ctx: { runQuery: ActionCtx["runQuery"] },
+  ownerId: string,
+  provider: string,
+): Promise<string | null> {
+  return await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
+    ownerId,
+    provider,
+  });
 }
 
 /**
@@ -110,15 +138,18 @@ export async function resolveModelConfig(
     modelString = override;
   }
 
-  // Check for BYOK — look up user's API key for this model's provider
+  // BYOK fallback chain:
+  // 1. Direct provider key (anthropic, openai, google)
+  // 2. OpenRouter key (routes any model through OpenRouter)
+  // 3. Vercel AI Gateway key (user's own gateway key)
+  // 4. Platform gateway (default, no user key)
   const provider = extractProvider(modelString);
+
+  // 1. Direct provider key
   if (provider) {
     const secretKey = providerToSecretKey(provider);
     if (secretKey) {
-      const apiKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
-        ownerId,
-        provider: secretKey,
-      });
+      const apiKey = await getUserKey(ctx, ownerId, secretKey);
       if (apiKey) {
         const directModel = createProviderModel(modelString, apiKey);
         if (directModel) {
@@ -126,14 +157,33 @@ export async function resolveModelConfig(
             model: directModel,
             temperature: defaults.temperature,
             maxOutputTokens: defaults.maxOutputTokens,
-            // Don't pass gateway providerOptions when using direct provider
           };
         }
       }
     }
   }
 
-  // No BYOK — return model string (gateway will resolve it)
+  // 2. OpenRouter fallback
+  const openrouterKey = await getUserKey(ctx, ownerId, "llm:openrouter");
+  if (openrouterKey) {
+    return {
+      model: createOpenRouterModel(modelString, openrouterKey),
+      temperature: defaults.temperature,
+      maxOutputTokens: defaults.maxOutputTokens,
+    };
+  }
+
+  // 3. User's own Vercel AI Gateway key
+  const gatewayKey = await getUserKey(ctx, ownerId, "llm:gateway");
+  if (gatewayKey) {
+    return {
+      model: createGatewayModel(modelString, gatewayKey),
+      temperature: defaults.temperature,
+      maxOutputTokens: defaults.maxOutputTokens,
+    };
+  }
+
+  // 4. No BYOK — return model string (platform gateway will resolve it)
   return {
     model: modelString,
     temperature: defaults.temperature,

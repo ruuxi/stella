@@ -961,6 +961,116 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
+// Slack OAuth Callback
+// ---------------------------------------------------------------------------
+
+const buildSlackResultPage = (success: boolean, message: string): string => {
+  const title = success ? "Stella Installed" : "Installation Failed";
+  const color = success ? "#22c55e" : "#ef4444";
+  const icon = success ? "&#10003;" : "&#10007;";
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>${title}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #0a0a0a; color: #e5e5e5; }
+  .card { text-align: center; padding: 3rem; max-width: 400px; }
+  .icon { font-size: 4rem; color: ${color}; margin-bottom: 1rem; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  p { color: #a3a3a3; line-height: 1.6; }
+</style>
+</head>
+<body><div class="card"><div class="icon">${icon}</div><h1>${title}</h1><p>${message}</p></div></body>
+</html>`;
+};
+
+http.route({
+  path: "/api/slack/oauth_callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const error = url.searchParams.get("error");
+
+    if (error) {
+      return new Response(buildSlackResultPage(false, "Installation was cancelled."), {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
+
+    if (!code) {
+      return new Response(buildSlackResultPage(false, "Missing authorization code."), {
+        status: 400,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
+
+    const clientId = process.env.SLACK_CLIENT_ID;
+    const clientSecret = process.env.SLACK_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      console.error("[slack-oauth] Missing SLACK_CLIENT_ID or SLACK_CLIENT_SECRET");
+      return new Response(buildSlackResultPage(false, "Server configuration error."), {
+        status: 500,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
+
+    try {
+      const redirectUri = `${process.env.CONVEX_SITE_URL}/api/slack/oauth_callback`;
+      const tokenRes = await fetch("https://slack.com/api/oauth.v2.access", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: redirectUri,
+        }).toString(),
+      });
+
+      const tokenData = await tokenRes.json() as {
+        ok: boolean;
+        error?: string;
+        access_token?: string;
+        bot_user_id?: string;
+        scope?: string;
+        team?: { id?: string; name?: string };
+        authed_user?: { id?: string };
+      };
+
+      if (!tokenData.ok) {
+        console.error("[slack-oauth] Token exchange failed:", tokenData.error);
+        return new Response(
+          buildSlackResultPage(false, `Slack error: ${tokenData.error}`),
+          { status: 400, headers: { "Content-Type": "text/html" } },
+        );
+      }
+
+      await ctx.runMutation(internal.channels.slack_installations.upsert, {
+        teamId: tokenData.team?.id ?? "",
+        teamName: tokenData.team?.name,
+        botToken: tokenData.access_token ?? "",
+        botUserId: tokenData.bot_user_id,
+        scope: tokenData.scope,
+        installedBy: tokenData.authed_user?.id,
+      });
+
+      const teamName = tokenData.team?.name ?? "your workspace";
+      return new Response(
+        buildSlackResultPage(true, `Stella has been installed in ${teamName}! You can close this tab and DM @Stella to get started.`),
+        { status: 200, headers: { "Content-Type": "text/html" } },
+      );
+    } catch (err) {
+      console.error("[slack-oauth] Error:", err);
+      return new Response(
+        buildSlackResultPage(false, "An unexpected error occurred during installation."),
+        { status: 500, headers: { "Content-Type": "text/html" } },
+      );
+    }
+  }),
+});
+
+// ---------------------------------------------------------------------------
 // Slack Webhook
 // ---------------------------------------------------------------------------
 
@@ -986,6 +1096,7 @@ http.route({
     let payload: {
       type?: string;
       challenge?: string;
+      team_id?: string;
       event?: {
         type?: string;
         bot_id?: string;
@@ -1038,12 +1149,14 @@ http.route({
             slackUserId,
             channelId,
             code: text.slice(5).trim(),
+            teamId: payload.team_id,
           });
         } else {
           await ctx.scheduler.runAfter(0, internal.channels.slack.handleIncomingMessage, {
             slackUserId,
             channelId,
             text,
+            teamId: payload.team_id,
           });
         }
       }
