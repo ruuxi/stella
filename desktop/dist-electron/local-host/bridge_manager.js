@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -7,6 +7,34 @@ const SIGKILL_TIMEOUT_MS = 5000;
 const processes = new Map();
 async function ensureDir(dir) {
     await fs.mkdir(dir, { recursive: true });
+}
+async function runCommand(command, args, cwd, timeoutMs) {
+    await new Promise((resolve, reject) => {
+        const child = spawn(command, args, {
+            cwd,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        child.stderr?.on('data', (data) => {
+            stderr += data.toString();
+        });
+        const timeout = setTimeout(() => {
+            child.kill('SIGTERM');
+            reject(new Error(`${command} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+        child.on('error', (err) => {
+            clearTimeout(timeout);
+            reject(err);
+        });
+        child.on('close', (code) => {
+            clearTimeout(timeout);
+            if (code === 0) {
+                resolve();
+                return;
+            }
+            reject(new Error(stderr.trim() || `${command} exited with code ${code}`));
+        });
+    });
 }
 export async function deploy(bundle) {
     const dir = path.join(BRIDGES_DIR, bundle.provider);
@@ -27,8 +55,8 @@ export async function deploy(bundle) {
                 pkgJson.dependencies[dep] = '*';
             }
             await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2), 'utf-8');
-            // Run npm install synchronously (short operation for a few deps)
-            execSync('npm install --production', { cwd: dir, timeout: 120000, stdio: 'pipe' });
+            const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+            await runCommand(npmCommand, ['install', '--production'], dir, 120000);
         }
         return { ok: true };
     }

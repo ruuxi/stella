@@ -9,7 +9,7 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { execSync } from "child_process";
+import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
 const sanitizeRelativePath = (relativePath) => {
@@ -19,25 +19,37 @@ const sanitizeRelativePath = (relativePath) => {
     }
     return normalized;
 };
-const readResultObject = (result) => {
-    if (result.error) {
-        throw new Error(result.error);
+const normalizeAppName = (value) => {
+    const normalized = value
+        .trim()
+        .replace(/[\\/]+/g, "-")
+        .replace(/\s+/g, "-")
+        .replace(/[^a-zA-Z0-9_-]/g, "")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    if (!normalized) {
+        return null;
     }
-    if (!result.result) {
-        return {};
-    }
-    if (typeof result.result === "string") {
-        try {
-            return JSON.parse(result.result);
-        }
-        catch {
-            return { value: result.result };
-        }
-    }
-    if (typeof result.result === "object") {
-        return result.result;
-    }
-    return { value: result.result };
+    return normalized.slice(0, 64);
+};
+const runCommand = async (command, args) => {
+    await new Promise((resolve, reject) => {
+        const child = spawn(command, args, { stdio: "pipe" });
+        let stderr = "";
+        child.stderr?.on("data", (chunk) => {
+            stderr += chunk.toString();
+        });
+        child.on("error", (error) => {
+            reject(error);
+        });
+        child.on("close", (code) => {
+            if (code === 0) {
+                resolve();
+                return;
+            }
+            reject(new Error(stderr.trim() || `${command} exited with code ${code}`));
+        });
+    });
 };
 /**
  * Install a skill package locally.
@@ -91,7 +103,8 @@ export const handleInstallTheme = async (args) => {
  */
 export const handleInstallCanvas = async (args) => {
     const packageId = String(args.packageId ?? "").trim();
-    const appName = String(args.workspaceId ?? args.name ?? packageId).trim();
+    const appNameInput = String(args.workspaceId ?? args.name ?? packageId).trim();
+    const appName = normalizeAppName(appNameInput);
     if (!packageId) {
         return { error: "InstallCanvasPackage requires packageId." };
     }
@@ -104,7 +117,7 @@ export const handleInstallCanvas = async (args) => {
     const appsDir = path.join(os.homedir(), ".stella", "apps");
     const appPath = path.join(appsDir, appName);
     try {
-        execSync(`node "${createAppScript}" "${appName}"`, { stdio: "pipe" });
+        await runCommand(process.execPath, [createAppScript, appName]);
         // Write custom App.tsx if provided
         const source = typeof args.source === "string" ? args.source : undefined;
         if (source) {
