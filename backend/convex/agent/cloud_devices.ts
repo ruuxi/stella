@@ -466,6 +466,25 @@ export const resolveForOwner = internalQuery({
   },
 });
 
+/**
+ * Resolve cloud device for owner without checking runtime_mode preference.
+ * Used by channel integrations where cloud is the fallback when no local
+ * device is available.
+ */
+export const resolveForOwnerUngated = internalQuery({
+  args: { ownerId: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const records = await ctx.db
+      .query("cloud_devices")
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .collect();
+    const record = pickPrimaryCloudDevice(records);
+    if (!record || record.status === "error") return null;
+    return record.spriteName;
+  },
+});
+
 export const listForOwner = internalQuery({
   args: { ownerId: v.string() },
   returns: cloudDeviceListValidator,

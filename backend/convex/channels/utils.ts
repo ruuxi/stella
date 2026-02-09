@@ -635,16 +635,22 @@ export async function processIncomingMessage(args: {
   await args.ctx.runMutation(internal.events.appendInternalEvent, {
     conversationId,
     type: "user_message",
+    deviceId: `channel:${args.provider}`,
     payload: { text: args.text },
   });
 
+  // For channel messages, find the owner's local device (Electron app) across
+  // all conversations — not the channel's own "channel:provider" device ID.
   const targetDeviceId =
-    (await args.ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
-      conversationId,
+    (await args.ctx.runQuery(internal.events.getLatestLocalDeviceIdForOwner, {
+      ownerId: connection.ownerId,
     })) ?? undefined;
 
+  // If no local device, fall back to cloud device (no runtime_mode gate —
+  // channel messages should always have a tool execution environment if one
+  // exists).
   const spriteName = !targetDeviceId
-    ? await args.ctx.runQuery(internal.agent.cloud_devices.resolveForOwner, {
+    ? await args.ctx.runQuery(internal.agent.cloud_devices.resolveForOwnerUngated, {
         ownerId: connection.ownerId,
       })
     : null;

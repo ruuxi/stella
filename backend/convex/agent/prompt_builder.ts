@@ -111,31 +111,31 @@ export const buildSystemPrompt = async (
     }
   }
 
-  // Inject active threads for orchestrator
-  if (agentType === "orchestrator" && options?.conversationId) {
-    try {
-      const activeThreads = await ctx.runQuery(
-        internal.data.threads.listActiveThreads,
-        { conversationId: options.conversationId },
-      );
-      if (activeThreads.length > 0) {
-        const threadLines = activeThreads.map(
-          (t: { _id: Id<"threads">; title: string; agentType: string }) =>
-            `- [${t._id}] "${t.title}" (${t.agentType})`,
-        );
-        systemParts.push(
-          [
-            "# Active Threads",
-            "These are ongoing work sessions. Use thread_id in TaskCreate to continue one, or thread_title to start new.",
-            "",
-            ...threadLines,
-          ].join("\n"),
-        );
-      }
-    } catch {
-      // Thread query failed — skip
-    }
-  }
+  // Threads disabled for now
+  // if (agentType === "orchestrator" && options?.conversationId) {
+  //   try {
+  //     const activeThreads = await ctx.runQuery(
+  //       internal.data.threads.listActiveThreads,
+  //       { conversationId: options.conversationId },
+  //     );
+  //     if (activeThreads.length > 0) {
+  //       const threadLines = activeThreads.map(
+  //         (t: { _id: Id<"threads">; title: string; agentType: string }) =>
+  //           `- [${t._id}] "${t.title}" (${t.agentType})`,
+  //       );
+  //       systemParts.push(
+  //         [
+  //           "# Active Threads",
+  //           "These are ongoing work sessions. Use thread_id in TaskCreate to continue one, or thread_title to start new.",
+  //           "",
+  //           ...threadLines,
+  //         ].join("\n"),
+  //       );
+  //     }
+  //   } catch {
+  //     // Thread query failed — skip
+  //   }
+  // }
 
   // Inject category tree for orchestrator
   if (agentType === "orchestrator" && options?.ownerId) {
