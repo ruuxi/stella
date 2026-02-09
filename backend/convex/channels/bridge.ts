@@ -5,6 +5,7 @@ import {
   internalQuery,
   query,
 } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
@@ -119,6 +120,18 @@ const HEARTBEAT_STALE_AFTER_MS = 3 * 60_000;
 const HEARTBEAT_STALE_REASON = "Bridge heartbeat timed out";
 
 type WakeTierName = (typeof WAKE_TIERS)[number]["name"];
+const DEVICE_RUNNING_SESSION_STATUSES = new Set([
+  "connected",
+  "awaiting_auth",
+  "initializing",
+]);
+const DEVICE_SLEEPING_SESSION_STATUSES = new Set([
+  "error",
+  "disconnected",
+  "stopped",
+  "logged_out",
+]);
+const AGGRESSIVE_WAKE_TIERS = new Set<WakeTierName>(["COOL", "COLD", "FROZEN"]);
 
 function computeWakeInterval(
   lastMessageAtMs: number | undefined,
@@ -149,6 +162,52 @@ function computeWakeInterval(
   intervalMs = Math.max(WAKE_TIERS[0].floorMs, Math.min(WAKE_TIERS[WAKE_TIERS.length - 1].ceilingMs * WAKE_NIGHT_MULTIPLIER, intervalMs));
 
   return { intervalMs, tier: tier.name };
+}
+
+async function setCloudDeviceRunning(ctx: ActionCtx, ownerId: string): Promise<void> {
+  const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, { ownerId });
+  if (!device || device.status === "running" || device.status === "error") {
+    return;
+  }
+  await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
+    id: device._id,
+    status: "running",
+  });
+}
+
+async function setCloudDeviceSleepingIfNoActiveBridge(
+  ctx: ActionCtx,
+  ownerId: string,
+): Promise<void> {
+  const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
+    ownerId,
+  });
+  if (hasActiveBridge) {
+    return;
+  }
+  const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, { ownerId });
+  if (!device || device.status === "sleeping" || device.status === "error") {
+    return;
+  }
+  await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
+    id: device._id,
+    status: "sleeping",
+  });
+}
+
+async function scheduleWake(
+  ctx: ActionCtx,
+  sessionId: Id<"bridge_sessions">,
+  consecutiveEmptyWakes: number,
+): Promise<void> {
+  const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
+    id: sessionId,
+    consecutiveEmptyWakes,
+  });
+  await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
+    sessionId,
+    dueAtMs: nextWake.dueAtMs,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -480,15 +539,7 @@ export const wakeSprite = internalAction({
         await ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
           ownerId: session.ownerId,
         });
-        const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
-          ownerId: session.ownerId,
-        });
-        if (device && device.status !== "running" && device.status !== "error") {
-          await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-            id: device._id,
-            status: "running",
-          });
-        }
+        await setCloudDeviceRunning(ctx, session.ownerId);
       } catch (error) {
         console.error("[bridge] Wake exec failed:", error);
       }
@@ -496,15 +547,7 @@ export const wakeSprite = internalAction({
 
     // Schedule next wake
     const emptyWakes = (session.consecutiveEmptyWakes ?? 0) + 1;
-    const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
-      id: args.sessionId,
-      consecutiveEmptyWakes: emptyWakes,
-    });
-
-    await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
-      sessionId: args.sessionId,
-      dueAtMs: nextWake.dueAtMs,
-    });
+    await scheduleWake(ctx, args.sessionId, emptyWakes);
 
     return null;
   },
@@ -533,20 +576,7 @@ export const bridgeWakeTick = internalAction({
       await ctx.runMutation(internal.channels.bridge.clearWakeSchedule, { id: session._id });
 
       if (sessionMode === "cloud") {
-        const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
-          ownerId: session.ownerId,
-        });
-        if (!hasActiveBridge) {
-          const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
-            ownerId: session.ownerId,
-          });
-          if (device && device.status !== "sleeping" && device.status !== "error") {
-            await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-              id: device._id,
-              status: "sleeping",
-            });
-          }
-        }
+        await setCloudDeviceSleepingIfNoActiveBridge(ctx, session.ownerId);
       }
     }
 
@@ -677,20 +707,7 @@ export const stopBridge = action({
     await ctx.runMutation(internal.channels.bridge.clearWakeSchedule, { id: session._id });
 
     if (sessionMode === "cloud") {
-      const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
-        ownerId,
-      });
-      if (!hasActiveBridge) {
-        const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
-          ownerId,
-        });
-        if (device && device.status !== "sleeping" && device.status !== "error") {
-          await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-            id: device._id,
-            status: "sleeping",
-          });
-        }
-      }
+      await setCloudDeviceSleepingIfNoActiveBridge(ctx, ownerId);
     }
 
     return { status: "stopped" };
@@ -754,25 +771,10 @@ export const handleHeartbeat = internalAction({
     });
 
     if (sessionMode === "cloud") {
-      const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
-        ownerId: args.ownerId,
-      });
-      if (device && device.status !== "running" && device.status !== "error") {
-        await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-          id: device._id,
-          status: "running",
-        });
-      }
+      await setCloudDeviceRunning(ctx, args.ownerId);
 
       if (session.status === "disconnected") {
-        const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
-          id: session._id,
-          consecutiveEmptyWakes: 0,
-        });
-        await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
-          sessionId: session._id,
-          dueAtMs: nextWake.dueAtMs,
-        });
+        await scheduleWake(ctx, session._id, 0);
       }
     }
     return null;
@@ -839,53 +841,22 @@ export const handleAuthUpdate = internalAction({
       }
 
       if (sessionMode === "cloud") {
-        const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
-          id: session._id,
-          consecutiveEmptyWakes: 0,
-        });
-        await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
-          sessionId: session._id,
-          dueAtMs: nextWake.dueAtMs,
-        });
+        await scheduleWake(ctx, session._id, 0);
       }
     }
 
-    const shouldMarkSleeping =
-      args.status === "error" ||
-      args.status === "disconnected" ||
-      args.status === "stopped" ||
-      args.status === "logged_out";
+    const shouldMarkSleeping = DEVICE_SLEEPING_SESSION_STATUSES.has(args.status);
 
     if (shouldMarkSleeping) {
       await ctx.runMutation(internal.channels.bridge.clearWakeSchedule, { id: session._id });
     }
 
     if (sessionMode === "cloud") {
-      const shouldMarkRunning =
-        args.status === "connected" ||
-        args.status === "awaiting_auth" ||
-        args.status === "initializing";
-
-      const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
-        ownerId: args.ownerId,
-      });
-      if (device && device.status !== "error") {
-        if (shouldMarkRunning && device.status !== "running") {
-          await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-            id: device._id,
-            status: "running",
-          });
-        } else if (shouldMarkSleeping && device.status !== "sleeping") {
-          const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
-            ownerId: args.ownerId,
-          });
-          if (!hasActiveBridge) {
-            await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-              id: device._id,
-              status: "sleeping",
-            });
-          }
-        }
+      const shouldMarkRunning = DEVICE_RUNNING_SESSION_STATUSES.has(args.status);
+      if (shouldMarkRunning) {
+        await setCloudDeviceRunning(ctx, args.ownerId);
+      } else if (shouldMarkSleeping) {
+        await setCloudDeviceSleepingIfNoActiveBridge(ctx, args.ownerId);
       }
     }
     return null;
@@ -962,16 +933,9 @@ export const handleBridgeMessage = internalAction({
     // Instant promotion: if tier was COOL/COLD/FROZEN, reschedule aggressively (cloud only)
     const sessionMode = session.mode ?? "cloud";
     if (sessionMode === "cloud") {
-      const currentTier = session.wakeTier;
-      if (currentTier === "COOL" || currentTier === "COLD" || currentTier === "FROZEN") {
-        const nextWake = await ctx.runMutation(internal.channels.bridge.scheduleNextWake, {
-          id: session._id,
-          consecutiveEmptyWakes: 0,
-        });
-        await ctx.scheduler.runAfter(nextWake.intervalMs, internal.channels.bridge.wakeSprite, {
-          sessionId: session._id,
-          dueAtMs: nextWake.dueAtMs,
-        });
+      const currentTier = session.wakeTier as WakeTierName | undefined;
+      if (currentTier && AGGRESSIVE_WAKE_TIERS.has(currentTier)) {
+        await scheduleWake(ctx, session._id, 0);
       }
     }
 
@@ -1001,20 +965,7 @@ export const handleBridgeError = internalAction({
     });
     // Clear wake schedule on error
     await ctx.runMutation(internal.channels.bridge.clearWakeSchedule, { id: session._id });
-    const hasActiveBridge = await ctx.runQuery(internal.channels.bridge.hasActiveBridgeForOwner, {
-      ownerId: args.ownerId,
-    });
-    if (!hasActiveBridge) {
-      const device = await ctx.runQuery(internal.agent.cloud_devices.getForOwner, {
-        ownerId: args.ownerId,
-      });
-      if (device && device.status !== "sleeping" && device.status !== "error") {
-        await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
-          id: device._id,
-          status: "sleeping",
-        });
-      }
-    }
+    await setCloudDeviceSleepingIfNoActiveBridge(ctx, args.ownerId);
     return null;
   },
 });

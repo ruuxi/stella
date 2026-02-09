@@ -236,6 +236,10 @@ export const seed = mutation({
       version: string;
     }> = [];
 
+    if (seedPackages.length === 0) {
+      return null;
+    }
+
     for (const pkg of seedPackages) {
       const existing = await ctx.db
         .query("store_packages")

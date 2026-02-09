@@ -1,6 +1,8 @@
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { requireConversationOwner, requireUserId } from "./auth";
 import { jsonValueValidator } from "./shared_validators";
 import {
@@ -306,6 +308,68 @@ const deviceRequiredTypes = new Set([
   "screen_event",
 ]);
 
+type AppendEventArgs = {
+  conversationId: Id<"conversations">;
+  type: string;
+  timestamp?: number;
+  deviceId?: string;
+  requestId?: string;
+  targetDeviceId?: string;
+  payload: unknown;
+};
+
+const resolveAppendEventPayload = (args: AppendEventArgs) => {
+  if (deviceRequiredTypes.has(args.type) && !args.deviceId) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `deviceId required for ${args.type}`,
+    });
+  }
+
+  if (args.type === "tool_result" && !args.requestId) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: "tool_result requires requestId",
+    });
+  }
+
+  const sanitizedPayload = sanitizeEventPayloadForStorage(args.type, args.payload ?? {});
+  const payloadTargetDeviceId =
+    sanitizedPayload && typeof sanitizedPayload === "object"
+      ? (sanitizedPayload as { targetDeviceId?: string }).targetDeviceId
+      : undefined;
+  const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceId;
+
+  if (args.type === "tool_request" && !resolvedTargetDeviceId) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: "tool_request requires targetDeviceId",
+    });
+  }
+
+  return {
+    sanitizedPayload,
+    resolvedTargetDeviceId,
+    timestamp: args.timestamp ?? Date.now(),
+  };
+};
+
+const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
+  const { sanitizedPayload, resolvedTargetDeviceId, timestamp } = resolveAppendEventPayload(args);
+  const eventId = await ctx.db.insert("events", {
+    conversationId: args.conversationId,
+    timestamp,
+    type: args.type,
+    deviceId: args.deviceId,
+    requestId: args.requestId,
+    targetDeviceId: resolvedTargetDeviceId,
+    payload: sanitizedPayload,
+  });
+
+  await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
+  return sanitizeEventForRead(await ctx.db.get(eventId));
+};
+
 export const appendEvent = mutation({
   args: {
     conversationId: v.id("conversations"),
@@ -319,40 +383,7 @@ export const appendEvent = mutation({
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
-    if (deviceRequiredTypes.has(args.type) && !args.deviceId) {
-      throw new ConvexError({ code: "INVALID_ARGUMENT", message: `deviceId required for ${args.type}` });
-    }
-
-    if (args.type === "tool_result" && !args.requestId) {
-      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "tool_result requires requestId" });
-    }
-
-    const sanitizedPayload = sanitizeEventPayloadForStorage(args.type, args.payload ?? {});
-    const payloadTargetDeviceId =
-      sanitizedPayload && typeof sanitizedPayload === "object"
-        ? (sanitizedPayload as { targetDeviceId?: string }).targetDeviceId
-        : undefined;
-    const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceId;
-
-    if (args.type === "tool_request" && !resolvedTargetDeviceId) {
-      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "tool_request requires targetDeviceId" });
-    }
-
-    const timestamp = args.timestamp ?? Date.now();
-
-    const eventId = await ctx.db.insert("events", {
-      conversationId: args.conversationId,
-      timestamp,
-      type: args.type,
-      deviceId: args.deviceId,
-      requestId: args.requestId,
-      targetDeviceId: resolvedTargetDeviceId,
-      payload: sanitizedPayload,
-    });
-
-    await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
-
-    return sanitizeEventForRead(await ctx.db.get(eventId));
+    return await appendEventCore(ctx, args);
   },
 });
 
@@ -368,40 +399,7 @@ export const appendInternalEvent = internalMutation({
   },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
-    if (deviceRequiredTypes.has(args.type) && !args.deviceId) {
-      throw new ConvexError({ code: "INVALID_ARGUMENT", message: `deviceId required for ${args.type}` });
-    }
-
-    if (args.type === "tool_result" && !args.requestId) {
-      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "tool_result requires requestId" });
-    }
-
-    const sanitizedPayload = sanitizeEventPayloadForStorage(args.type, args.payload ?? {});
-    const payloadTargetDeviceId =
-      sanitizedPayload && typeof sanitizedPayload === "object"
-        ? (sanitizedPayload as { targetDeviceId?: string }).targetDeviceId
-        : undefined;
-    const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceId;
-
-    if (args.type === "tool_request" && !resolvedTargetDeviceId) {
-      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "tool_request requires targetDeviceId" });
-    }
-
-    const timestamp = args.timestamp ?? Date.now();
-
-    const eventId = await ctx.db.insert("events", {
-      conversationId: args.conversationId,
-      timestamp,
-      type: args.type,
-      deviceId: args.deviceId,
-      requestId: args.requestId,
-      targetDeviceId: resolvedTargetDeviceId,
-      payload: sanitizedPayload,
-    });
-
-    await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
-
-    return sanitizeEventForRead(await ctx.db.get(eventId));
+    return await appendEventCore(ctx, args);
   },
 });
 
