@@ -115,49 +115,6 @@ export type AllUserSignalsResult = {
   error?: string
 }
 
-export type CachedConversationEvent = {
-  _id: string
-  timestamp: number
-  type: string
-  deviceId?: string
-  requestId?: string
-  targetDeviceId?: string
-  payload?: Record<string, unknown>
-}
-
-export type CachedTask = {
-  _id: string
-  status: string
-  agentType?: string
-  description?: string
-  parentTaskId?: string
-  result?: string
-  error?: string
-  updatedAt: number
-}
-
-export type CachedThread = {
-  _id: string
-  title: string
-  agentType: string
-  status: string
-  createdAt: number
-  lastActiveAt: number
-}
-
-export type CachedMemoryCategory = {
-  category: string
-  subcategory: string
-  count: number
-  updatedAt: number
-}
-
-export type CacheUpdatedPayload = {
-  conversationId?: string
-  streams: Array<'events' | 'tasks' | 'threads' | 'memory_categories'>
-  source?: 'push' | 'manual'
-}
-
 export type ElectronApi = {
   platform: string
   
@@ -184,15 +141,6 @@ export type ElectronApi = {
   getDeviceId: () => Promise<string | null>
   configureHost: (config: { convexUrl?: string }) => Promise<{ deviceId: string | null }>
   setAuthToken: (payload: { token: string | null }) => Promise<{ ok: boolean }>
-  cacheGetConversationEvents: (payload: { conversationId: string; limit?: number }) => Promise<CachedConversationEvent[]>
-  cacheSyncConversationEvents: (payload: { conversationId: string; limit?: number; syncLimit?: number }) => Promise<CachedConversationEvent[]>
-  cacheGetTasks: (payload: { conversationId: string; limit?: number }) => Promise<CachedTask[]>
-  cacheSyncTasks: (payload: { conversationId: string; limit?: number; syncLimit?: number }) => Promise<CachedTask[]>
-  cacheGetThreads: (payload: { conversationId: string; limit?: number }) => Promise<CachedThread[]>
-  cacheSyncThreads: (payload: { conversationId: string; limit?: number }) => Promise<CachedThread[]>
-  cacheGetMemoryCategories: (payload?: { ownerId?: string; limit?: number }) => Promise<CachedMemoryCategory[]>
-  cacheSyncMemoryCategories: (payload?: { ownerId?: string; limit?: number }) => Promise<CachedMemoryCategory[]>
-  onCacheUpdated: (callback: (payload: CacheUpdatedPayload) => void) => () => void
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void
   // App readiness gate (controls radial menu + mini shell)
   setAppReady: (ready: boolean) => void
