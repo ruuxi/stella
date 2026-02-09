@@ -253,7 +253,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
           className="gradient-grain"
           style={{
             backgroundImage: `url("${GRAIN_DATA_URI}")`,
-            opacity: mode === "soft" ? 0.55 : 1,
+            opacity: mode === "soft" ? 0.28 : 0.55,
           }}
         />
       </div>

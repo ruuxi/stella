@@ -29,7 +29,7 @@ import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 
 const StoreView = lazy(() => import("./StoreView"));
-const SettingsView = lazy(() => import("./SettingsView"));
+const SettingsDialog = lazy(() => import("./SettingsView"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -44,6 +44,7 @@ export const FullShell = () => {
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [runtimeModeDialogOpen, setRuntimeModeDialogOpen] = useState(false);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
 
   // Auto-reconnect local bridges on launch
   useBridgeAutoReconnect();
@@ -255,10 +256,9 @@ export const FullShell = () => {
           onThemeSelect={onboarding.handleThemeSelect}
           onSignIn={() => setAuthDialogOpen(true)}
           onConnect={() => setConnectDialogOpen(true)}
-          onSettings={() => setView(state.view === 'settings' ? 'chat' : 'settings')}
+          onSettings={() => setSettingsDialogOpen(true)}
           onStore={() => setView(state.view === 'store' ? 'chat' : 'store')}
           storeActive={state.view === 'store'}
-          settingsActive={state.view === 'settings'}
         />
         {state.view === 'store' ? (
           <Suspense fallback={<div className="store-loading">Loading Store...</div>}>
@@ -268,13 +268,6 @@ export const FullShell = () => {
                 setView("chat");
                 setMessage(text);
               }}
-            />
-          </Suspense>
-        ) : state.view === 'settings' ? (
-          <Suspense fallback={<div className="store-loading">Loading Settings...</div>}>
-            <SettingsView
-              onBack={() => setView('chat')}
-              onOpenRuntimeMode={() => setRuntimeModeDialogOpen(true)}
             />
           </Suspense>
         ) : (
@@ -330,6 +323,20 @@ export const FullShell = () => {
         open={runtimeModeDialogOpen}
         onOpenChange={setRuntimeModeDialogOpen}
       />
+      <Suspense fallback={null}>
+        <SettingsDialog
+          open={settingsDialogOpen}
+          onOpenChange={setSettingsDialogOpen}
+          onOpenRuntimeMode={() => {
+            setSettingsDialogOpen(false);
+            setRuntimeModeDialogOpen(true);
+          }}
+          onSignOut={() => {
+            setSettingsDialogOpen(false);
+            import("@/lib/auth-client").then(({ authClient }) => authClient.signOut());
+          }}
+        />
+      </Suspense>
 
       {isDev && (
         <button
