@@ -6,6 +6,19 @@ import { Spinner } from '@/components/spinner'
 const PanelRenderer = lazy(() => import('./renderers/panel'))
 const AppframeRenderer = lazy(() => import('./renderers/appframe'))
 
+/** Extract port from a localhost URL, or null if not localhost. */
+const getLocalhostPort = (url?: string): number | null => {
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      const port = parseInt(parsed.port, 10)
+      return Number.isFinite(port) ? port : null
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
 export const CanvasPanel = () => {
   const { state, closeCanvas, setWidth } = useCanvas()
   const { isOpen, canvas, width } = state
@@ -18,6 +31,15 @@ export const CanvasPanel = () => {
     },
     [width, setWidth],
   )
+
+  const handleClose = useCallback(() => {
+    // Kill dev server shell if canvas had a localhost URL
+    const port = getLocalhostPort(canvas?.url)
+    if (port) {
+      window.electronAPI?.shellKillByPort(port)
+    }
+    closeCanvas()
+  }, [canvas, closeCanvas])
 
   if (!isOpen || !canvas) return null
 
@@ -40,7 +62,7 @@ export const CanvasPanel = () => {
           <div className="canvas-panel-header-right">
             <button
               className="canvas-panel-close"
-              onClick={closeCanvas}
+              onClick={handleClose}
               aria-label="Close canvas"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

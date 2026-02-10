@@ -637,5 +637,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     subscribeQuery,
     getConvexUrl: () => convexUrl,
     getAuthToken: () => authToken,
+    killAllShells: () => toolHost.killAllShells(),
+    killShellsByPort: (port: number) => toolHost.killShellsByPort(port),
   };
 };
