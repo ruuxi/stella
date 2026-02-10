@@ -62,6 +62,7 @@ export const BASE_TOOL_NAMES = [
   "StoreSearch",
   "GenerateApiSkill",
   "SelfModInstallBlueprint",
+  "ListResources",
   "SpawnRemoteMachine",
   "NoResponse",
   // Orchestration tools
