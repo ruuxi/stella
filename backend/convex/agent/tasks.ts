@@ -117,7 +117,6 @@ type SubagentExecutionArgs = {
   taskId: Id<"tasks">;
   ownerId?: string;
   includeHistory?: boolean;
-  threadId?: Id<"threads">;
 };
 
 const buildHistoryMessages = async (
@@ -152,42 +151,445 @@ const buildHistoryMessages = async (
   });
 };
 
-/** Map a tool call to a short human-readable description for progress tracking. */
-const describeToolCall = (toolName: string, args: Record<string, unknown>): string => {
-  const path = typeof args.file_path === "string"
-    ? args.file_path.replace(/^.*[/\\]/, "")
-    : typeof args.path === "string"
-      ? args.path.replace(/^.*[/\\]/, "")
-      : undefined;
+/** Pick a random entry from a list. */
+const pick = (list: string[]): string => list[Math.floor(Math.random() * list.length)];
 
-  switch (toolName) {
-    case "Read":
-      return path ? `Reading ${path}` : "Reading file";
-    case "Write":
-      return path ? `Writing ${path}` : "Writing file";
-    case "Edit":
-      return path ? `Editing ${path}` : "Editing file";
-    case "Glob":
-      return typeof args.pattern === "string" ? `Searching for ${args.pattern}` : "Searching files";
-    case "Grep":
-      return typeof args.pattern === "string" ? `Searching for '${args.pattern}'` : "Searching content";
-    case "Bash": {
-      const cmd = typeof args.command === "string" ? args.command.slice(0, 60) : "";
-      return cmd ? `Running: ${cmd}` : "Running command";
-    }
-    case "WebSearch":
-      return typeof args.query === "string" ? `Searching web for '${args.query}'` : "Searching web";
-    case "WebFetch":
-      return typeof args.url === "string" ? `Fetching ${new URL(args.url).hostname}` : "Fetching URL";
-    case "TaskCreate":
-      return typeof args.description === "string" ? `Delegating: ${args.description}` : "Delegating task";
-    case "OpenCanvas":
-      return typeof args.name === "string" ? `Opening canvas: ${args.name}` : "Opening canvas";
-    case "CloseCanvas":
-      return "Closing canvas";
-    default:
-      return toolName;
+/** Classify a bash command into a high-level activity. */
+const classifyBashCommand = (cmd: string): string => {
+  const lower = cmd.toLowerCase();
+  if (/\b(test|jest|vitest|mocha|pytest|cargo test|go test|spec)\b/.test(lower)) return "test";
+  if (/\b(install|add|npm i|bun add|yarn add|pip install|cargo add)\b/.test(lower)) return "install";
+  if (/\b(build|compile|tsc|webpack|vite build|cargo build|make)\b/.test(lower)) return "build";
+  if (/\b(git\s+(log|diff|status|show|blame|stash|branch|checkout))\b/.test(lower)) return "git";
+  if (/\b(git\s+(add|commit|push|pull|merge|rebase|cherry-pick))\b/.test(lower)) return "git-write";
+  if (/\b(lint|eslint|prettier|format|clippy)\b/.test(lower)) return "lint";
+  if (/\b(start|dev|serve|run dev|up)\b/.test(lower)) return "server";
+  return "other";
+};
+
+const STATUS_DESCRIPTIONS: Record<string, string[]> = {
+  Read: [
+    "Taking a peek at the source",
+    "Scanning through some files",
+    "Reviewing the code",
+    "Diving into the codebase",
+    "Studying the source code",
+    "Examining some files",
+    "Going through the code",
+    "Poking around the project",
+    "Investigating the code",
+    "Flipping through the source",
+    "Browsing the codebase",
+    "Getting familiar with the code",
+    "Pulling up some files",
+    "Skimming through the code",
+    "Taking a closer look",
+    "Checking out the details",
+    "Leafing through the source",
+    "Reading up on the code",
+    "Peering into the files",
+    "Looking over the implementation",
+  ],
+  Write: [
+    "Writing some fresh code",
+    "Creating a new file",
+    "Putting together some code",
+    "Crafting something new",
+    "Spinning up a new file",
+    "Drafting some code",
+    "Whipping up something new",
+    "Building from scratch",
+    "Starting a new file",
+    "Cooking up some code",
+    "Laying down some new code",
+    "Setting up something new",
+    "Getting creative",
+    "Bringing something new to life",
+    "Sketching out a new file",
+    "Composing some code",
+    "Piecing together a new file",
+    "Starting fresh on a file",
+    "Planting a new seed in the project",
+    "Drafting up something cool",
+  ],
+  Edit: [
+    "Making some tweaks",
+    "Fine-tuning the code",
+    "Adjusting a few things",
+    "Polishing the code",
+    "Touching up some details",
+    "Refining the implementation",
+    "Making a few changes",
+    "Updating the code",
+    "Reworking some pieces",
+    "Tightening things up",
+    "Smoothing out the code",
+    "Patching things up",
+    "Tidying up the code",
+    "Sprucing things up",
+    "Ironing out the code",
+    "Tweaking a few things",
+    "Cleaning things up",
+    "Working through some edits",
+    "Putting the finishing touches on",
+    "Giving the code a makeover",
+  ],
+  Glob: [
+    "Searching through the project",
+    "Hunting for the right files",
+    "Looking around the codebase",
+    "Tracking something down",
+    "Digging through the project",
+    "Scouting the codebase",
+    "Finding what we need",
+    "Scanning for matches",
+    "Combing through the files",
+    "On the hunt for files",
+    "Locating the right spot",
+    "Playing detective",
+    "Narrowing things down",
+    "Following the trail",
+    "Zeroing in on the right files",
+    "Sifting through the project",
+    "Rummaging through the codebase",
+    "Sniffing out the right files",
+    "Scoping out the project",
+    "Looking for the missing piece",
+  ],
+  Grep: [
+    "Searching through the code",
+    "Looking for a needle in the codebase",
+    "Hunting for specific code",
+    "Tracking down a reference",
+    "Digging through the source",
+    "Scanning the codebase",
+    "Combing through the code",
+    "Searching for a pattern",
+    "Following the breadcrumbs",
+    "Zeroing in on something",
+    "Tracing through the code",
+    "Looking for clues in the code",
+    "Scouring the source",
+    "Picking through the code",
+    "Sniffing out a reference",
+    "Doing some detective work",
+    "Chasing down a lead",
+    "Looking for the right spot",
+    "Sleuthing through the codebase",
+    "Finding the right lines",
+  ],
+  "Bash:test": [
+    "Running the tests",
+    "Making sure everything works",
+    "Checking for any issues",
+    "Putting the code through its paces",
+    "Verifying everything's good",
+    "Running a quick check",
+    "Testing things out",
+    "Double-checking the code",
+    "Making sure nothing's broken",
+    "Running some quality checks",
+    "Kicking the tires",
+    "Seeing if it all holds up",
+    "Giving the code a test drive",
+    "Sanity-checking the changes",
+    "Validating the changes",
+    "Making sure it's all good",
+    "Checking our work",
+    "Running diagnostics",
+    "Seeing if the tests are happy",
+    "Making sure everything's solid",
+  ],
+  "Bash:install": [
+    "Installing dependencies",
+    "Grabbing the packages we need",
+    "Setting up dependencies",
+    "Pulling in some libraries",
+    "Getting everything installed",
+    "Fetching the required packages",
+    "Loading up dependencies",
+    "Downloading what we need",
+    "Bringing in the tools",
+    "Setting things up",
+    "Gathering the building blocks",
+    "Getting the pieces in place",
+    "Prepping the dependencies",
+    "Rounding up the libraries",
+    "Getting the ingredients ready",
+    "Pulling in the essentials",
+    "Lining up the dependencies",
+    "Stocking up on packages",
+    "Getting everything we need",
+    "Wrangling some packages",
+  ],
+  "Bash:build": [
+    "Building the project",
+    "Compiling everything",
+    "Putting it all together",
+    "Assembling the build",
+    "Bundling things up",
+    "Packaging the project",
+    "Getting the build ready",
+    "Baking the build",
+    "Firing up the compiler",
+    "Wrapping it all up",
+    "Stitching everything together",
+    "Making it production-ready",
+    "Turning code into magic",
+    "Running the build pipeline",
+    "Bringing it all together",
+    "Crunching the code",
+    "Forging the build",
+    "Processing the code",
+    "Generating the output",
+    "Constructing the final product",
+  ],
+  "Bash:git": [
+    "Checking version history",
+    "Looking through the git log",
+    "Reviewing the commit history",
+    "Checking what's changed",
+    "Going through the history",
+    "Tracing the changes",
+    "Looking at past work",
+    "Checking the record",
+    "Reviewing the project history",
+    "Digging through commits",
+    "Checking the paper trail",
+    "Looking at the revision history",
+    "Reviewing what happened",
+    "Following the breadcrumbs",
+    "Checking the project timeline",
+    "Looking back at changes",
+    "Investigating the history",
+    "Peeking at the timeline",
+    "Scanning the changelog",
+    "Auditing past changes",
+  ],
+  "Bash:git-write": [
+    "Saving the changes",
+    "Committing the work",
+    "Pushing things forward",
+    "Recording the changes",
+    "Locking in the updates",
+    "Shipping the code",
+    "Wrapping up the changes",
+    "Sealing the deal",
+    "Packaging up the work",
+    "Making it official",
+    "Checking in the code",
+    "Saving our progress",
+    "Preserving the changes",
+    "Finalizing the updates",
+    "Stamping the changes",
+    "Buttoning up the work",
+    "Putting a bow on it",
+    "Logging the changes",
+    "Marking a checkpoint",
+    "Locking it in",
+  ],
+  "Bash:lint": [
+    "Checking code quality",
+    "Tidying up the formatting",
+    "Running the linter",
+    "Making sure the style is right",
+    "Polishing the code style",
+    "Enforcing code standards",
+    "Cleaning up formatting",
+    "Checking for style issues",
+    "Giving the code a once-over",
+    "Making things pretty",
+    "Running a style check",
+    "Ensuring consistency",
+    "Straightening up the code",
+    "Applying formatting rules",
+    "Dotting the i's and crossing the t's",
+    "Making the code presentable",
+    "Grooming the codebase",
+    "Running the style police",
+    "Whipping the code into shape",
+    "Aligning the formatting",
+  ],
+  "Bash:server": [
+    "Starting the dev server",
+    "Spinning up the server",
+    "Getting the server going",
+    "Booting up the dev environment",
+    "Firing up the server",
+    "Launching the dev server",
+    "Bringing the server online",
+    "Warming up the server",
+    "Starting up the engine",
+    "Getting things running",
+    "Powering up the dev environment",
+    "Lighting up the server",
+    "Kickstarting the server",
+    "Opening shop",
+    "Turning the key",
+    "Revving up the server",
+    "Setting the stage",
+    "Booting up",
+    "Starting the engines",
+    "Getting the show on the road",
+  ],
+  "Bash:other": [
+    "Running a command",
+    "Doing some behind-the-scenes work",
+    "Working in the terminal",
+    "Taking care of something",
+    "Handling some setup",
+    "Running a quick operation",
+    "Getting something done",
+    "Doing a little housekeeping",
+    "Working some magic",
+    "Tinkering under the hood",
+    "Taking care of business",
+    "Running something real quick",
+    "Handling the details",
+    "Working through the details",
+    "Doing the heavy lifting",
+    "Making things happen",
+    "Processing in the background",
+    "Crunching away",
+    "Wrapping up a quick task",
+    "Keeping the gears turning",
+  ],
+  WebSearch: [
+    "Searching the web",
+    "Looking it up online",
+    "Doing some research",
+    "Consulting the internet",
+    "Finding some answers online",
+    "Browsing for information",
+    "Scouring the web",
+    "Looking for answers online",
+    "Doing a quick search",
+    "Researching the topic",
+    "Checking the web",
+    "Gathering some intel",
+    "Looking into it online",
+    "Tracking down info online",
+    "Checking the latest online",
+    "Digging into the web",
+    "Asking the internet",
+    "Surfing for answers",
+    "Going online for info",
+    "Hitting up the search engines",
+  ],
+  WebFetch: [
+    "Grabbing some info from a page",
+    "Checking out a webpage",
+    "Pulling up a reference",
+    "Reading an online resource",
+    "Fetching some documentation",
+    "Looking at a web page",
+    "Pulling some info from the web",
+    "Checking a reference online",
+    "Loading up a resource",
+    "Consulting an online source",
+    "Reviewing a web page",
+    "Peeking at a web page",
+    "Getting info from a site",
+    "Checking the docs online",
+    "Reading up on something",
+    "Visiting a resource",
+    "Referencing an online page",
+    "Browsing a resource",
+    "Grabbing a reference",
+    "Pulling data from a page",
+  ],
+  StoreSearch: [
+    "Browsing the store",
+    "Looking through the marketplace",
+    "Checking what's available",
+    "Shopping for add-ons",
+    "Searching the catalog",
+    "Exploring the store",
+    "Seeing what's out there",
+    "Window shopping",
+    "Hunting for the perfect add-on",
+    "Checking the shelves",
+    "Looking for something cool",
+    "Scanning the store",
+    "Perusing the catalog",
+    "Seeing what we can find",
+    "Shopping around",
+    "Checking out the options",
+    "Digging through the store",
+    "Scouting the marketplace",
+    "Looking for the right fit",
+    "Browsing the marketplace",
+  ],
+  OpenCanvas: [
+    "Preparing something visual",
+    "Setting up a display",
+    "Getting ready to show you something",
+    "Putting together a visual",
+    "Firing up the canvas",
+    "Creating something to show you",
+    "Setting the stage",
+    "Preparing a preview",
+    "Getting the visual ready",
+    "Spinning up a display",
+    "Building something visual",
+    "Laying out a display",
+    "Setting up the canvas",
+    "Crafting a visual",
+    "Prepping a preview",
+    "Getting things ready to display",
+    "Working on a visual",
+    "Assembling a display",
+    "Whipping up something visual",
+    "Putting on a show",
+  ],
+  default: [
+    "Working on it...",
+    "Making progress...",
+    "Chugging along...",
+    "Busy at work...",
+    "Getting things done...",
+    "On it...",
+    "In the zone...",
+    "Plugging away...",
+    "Working behind the scenes...",
+    "Making things happen...",
+    "Keeping busy...",
+    "Moving forward...",
+    "Hard at work...",
+    "Cooking something up...",
+    "Taking care of things...",
+    "Hammering away...",
+    "Working the magic...",
+    "Staying focused...",
+    "Grinding away...",
+    "Getting closer...",
+  ],
+};
+
+/** Map a tool call to a friendly, non-technical description for progress tracking. */
+const describeToolCall = (toolName: string, _args: Record<string, unknown>): string => {
+  // Direct tool match
+  if (STATUS_DESCRIPTIONS[toolName]) {
+    return pick(STATUS_DESCRIPTIONS[toolName]);
   }
+
+  // Bash commands get sub-classified
+  if (toolName === "Bash") {
+    const cmd = typeof _args.command === "string" ? _args.command : "";
+    const category = classifyBashCommand(cmd);
+    const key = `Bash:${category}`;
+    return pick(STATUS_DESCRIPTIONS[key] ?? STATUS_DESCRIPTIONS["Bash:other"]);
+  }
+
+  // CloseCanvas is rare and boring — just skip it
+  if (toolName === "CloseCanvas") return "Tidying up";
+
+  // TaskCreate — keep the description if present, it's already human-written
+  if (toolName === "TaskCreate") {
+    return typeof _args.description === "string" ? _args.description : "Delegating some work";
+  }
+
+  return pick(STATUS_DESCRIPTIONS.default);
 };
 
 const executeSubagentRun = async (
@@ -206,44 +608,7 @@ const executeSubagentRun = async (
   });
   const pluginTools = (await ctx.runQuery(internal.data.plugins.listToolDescriptorsInternal, {})) as PluginToolDescriptor[];
 
-  // Load thread history if continuing a thread
-  let threadMessages: Array<{ role: "user"; content: string } | { role: "assistant"; content: string }> = [];
-  let nextStepIndex = 0;
-  if (args.threadId) {
-    const steps = await ctx.runQuery(internal.data.threads.loadSteps, {
-      threadId: args.threadId,
-    });
-    for (const step of steps) {
-      threadMessages.push({ role: "user" as const, content: step.prompt });
-      try {
-        const parsed = JSON.parse(step.response);
-        if (Array.isArray(parsed)) {
-          for (const msg of parsed) {
-            if (msg.role === "assistant" && typeof msg.content === "string") {
-              threadMessages.push({ role: "assistant" as const, content: msg.content });
-            } else if (msg.role === "assistant" && Array.isArray(msg.content)) {
-              // Extract text parts from structured content
-              const textParts = msg.content
-                .filter((p: { type: string; text?: string }) => p.type === "text" && p.text)
-                .map((p: { text: string }) => p.text)
-                .join("");
-              if (textParts) {
-                threadMessages.push({ role: "assistant" as const, content: textParts });
-              }
-            }
-          }
-        }
-      } catch {
-        // Skip unparseable responses
-      }
-    }
-    nextStepIndex = steps.length;
-  }
-
-  // When continuing a thread, skip conversation history — thread has its own context
-  const historyMessages = args.threadId
-    ? []
-    : args.includeHistory
+  const historyMessages = args.includeHistory
       ? await buildHistoryMessages(
           ctx,
           args.conversationId,
@@ -304,7 +669,6 @@ const executeSubagentRun = async (
         },
       ),
       messages: [
-        ...threadMessages,
         ...historyMessages,
         {
           role: "user",
@@ -336,20 +700,6 @@ const executeSubagentRun = async (
     const text: string = result.text ?? "";
     finished = true;
     await cancelWatcher;
-
-    // Save thread step if this is a threaded execution
-    if (args.threadId) {
-      const responseMessages = result.response?.messages ?? [];
-      await ctx.runMutation(internal.data.threads.appendStep, {
-        threadId: args.threadId,
-        stepIndex: nextStepIndex,
-        prompt: args.prompt,
-        response: JSON.stringify(responseMessages),
-      });
-      await ctx.runMutation(internal.data.threads.touchThread, {
-        threadId: args.threadId,
-      });
-    }
 
     const postStatus = await ctx.runQuery(internal.agent.tasks.getTaskStatus, {
       taskId: args.taskId,
@@ -750,7 +1100,6 @@ export const runSubagent = internalAction({
     subagentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
     includeHistory: v.optional(v.boolean()),
-    threadId: v.optional(v.id("threads")),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -809,7 +1158,6 @@ export const runSubagent = internalAction({
       taskId,
       ownerId: conversation.ownerId,
       includeHistory: args.includeHistory,
-      threadId: args.threadId,
       parentTaskId: args.parentTaskId,
     });
 
@@ -828,7 +1176,6 @@ export const executeSubagent = internalAction({
     taskId: v.id("tasks"),
     ownerId: v.string(),
     includeHistory: v.optional(v.boolean()),
-    threadId: v.optional(v.id("threads")),
     parentTaskId: v.optional(v.id("tasks")),
   },
   returns: v.null(),
@@ -842,7 +1189,6 @@ export const executeSubagent = internalAction({
       taskId: args.taskId,
       ownerId: args.ownerId,
       includeHistory: args.includeHistory,
-      threadId: args.threadId,
     });
 
     // Deliver result to the orchestrator for top-level tasks only.
