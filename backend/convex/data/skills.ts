@@ -1,7 +1,16 @@
-import { mutation, internalMutation, query, internalQuery, MutationCtx } from "../_generated/server";
+import {
+  mutation,
+  internalMutation,
+  query,
+  internalQuery,
+  MutationCtx,
+  QueryCtx,
+} from "../_generated/server";
 import { v } from "convex/values";
 import { secretMountsValidator } from "../shared_validators";
 import { BUILTIN_SKILLS } from "../prompts/index";
+import { requireUserId } from "../auth";
+import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
 
 type SecretMountSpec = {
   provider: string;
@@ -17,6 +26,7 @@ type SecretMounts = SecretMountMap | { env?: SecretMountMap; files?: SecretMount
 const skillValidator = v.object({
   _id: v.id("skills"),
   _creationTime: v.number(),
+  ownerId: v.optional(v.string()),
   id: v.string(),
   name: v.string(),
   description: v.string(),
@@ -52,6 +62,7 @@ const skillImportValidator = v.object({
 });
 
 type SkillRecord = {
+  ownerId?: string;
   id: string;
   name: string;
   description: string;
@@ -164,6 +175,7 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
   const enabled = record.enabled === false ? false : true;
 
   return {
+    ownerId: typeof record.ownerId === "string" ? record.ownerId : undefined,
     id,
     name,
     description,
@@ -182,33 +194,43 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
   };
 };
 
-const upsertSkill = async (ctx: MutationCtx, skill: SkillRecord) => {
+const upsertSkill = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  skill: SkillRecord,
+) => {
   const existing = await ctx.db
     .query("skills")
-    .withIndex("by_skill_key", (q) => q.eq("id", skill.id))
+    .withIndex("by_owner_and_skill_key", (q) =>
+      q.eq("ownerId", ownerId).eq("id", skill.id),
+    )
     .first();
 
+  const payload = {
+    ...skill,
+    ownerId,
+    updatedAt: Date.now(),
+  };
+
   if (existing) {
-    await ctx.db.patch(existing._id, {
-      ...skill,
-      updatedAt: Date.now(),
-    });
+    await ctx.db.patch(existing._id, payload);
     return existing._id;
   }
 
-  return await ctx.db.insert("skills", {
-    ...skill,
-    updatedAt: Date.now(),
-  });
+  return await ctx.db.insert("skills", payload);
 };
 
-const upsertManyHandler = async (ctx: MutationCtx, args: { skills: any[] }) => {
+const upsertManyHandler = async (
+  ctx: MutationCtx,
+  args: { skills: unknown[] },
+  ownerId: string,
+) => {
   const items = Array.isArray(args.skills) ? args.skills : [];
   let upserted = 0;
   for (const item of items) {
     const skill = normalizeSkill(item);
     if (!skill) continue;
-    await upsertSkill(ctx, skill);
+    await upsertSkill(ctx, ownerId, skill);
     upserted += 1;
   }
   return { upserted };
@@ -220,29 +242,78 @@ export const upsertMany = mutation({
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
-    return await upsertManyHandler(ctx, args);
+    const ownerId = await requireUserId(ctx);
+    return await upsertManyHandler(ctx, args, ownerId);
   },
 });
 
 export const upsertManyInternal = internalMutation({
   args: {
+    ownerId: v.optional(v.string()),
     skills: v.array(skillImportValidator),
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
-    return await upsertManyHandler(ctx, args);
+    const ownerId = args.ownerId ?? BUILTIN_OWNER_ID;
+    return await upsertManyHandler(ctx, args, ownerId);
   },
 });
 
-const listEnabledSkillsHandler = async (ctx: { db: any }, args: { agentType: string }) => {
-  const enabledSkills = await ctx.db
-    .query("skills")
-    .withIndex("by_enabled", (q: any) => q.eq("enabled", true))
-    .take(400);
-  return enabledSkills.filter((skill: any) => {
-    if (!skill.agentTypes || skill.agentTypes.length === 0) return true;
-    return skill.agentTypes.includes(args.agentType);
-  });
+const supportsAgentType = (agentTypes: string[] | undefined, agentType: string) =>
+  !agentTypes || agentTypes.length === 0 || agentTypes.includes(agentType);
+
+const listEnabledSkillsHandler = async (
+  ctx: QueryCtx,
+  args: { agentType: string; ownerId?: string },
+) => {
+  const [legacyBuiltinSkills, builtinEnabled, ownerScoped] = await Promise.all([
+    ctx.db
+      .query("skills")
+      .withIndex("by_enabled", (q) => q.eq("enabled", true))
+      .take(400)
+      .then((rows) =>
+        rows.filter((skill) => skill.ownerId === undefined && skill.source === "builtin"),
+      ),
+    ctx.db
+      .query("skills")
+      .withIndex("by_owner_and_enabled", (q) =>
+        q.eq("ownerId", BUILTIN_OWNER_ID).eq("enabled", true),
+      )
+      .take(400),
+    args.ownerId
+      ? ctx.db
+          .query("skills")
+          .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId!))
+          .order("desc")
+          .take(400)
+      : Promise.resolve([]),
+  ]);
+
+  const merged = new Map<string, (typeof builtinEnabled)[number]>();
+
+  for (const skill of legacyBuiltinSkills) {
+    if (supportsAgentType(skill.agentTypes, args.agentType)) {
+      merged.set(skill.id, skill);
+    }
+  }
+
+  for (const skill of builtinEnabled) {
+    if (supportsAgentType(skill.agentTypes, args.agentType)) {
+      merged.set(skill.id, skill);
+    }
+  }
+
+  for (const skill of ownerScoped) {
+    const skillEnabled = skill.enabled !== false;
+    const skillSupportsAgent = supportsAgentType(skill.agentTypes, args.agentType);
+    if (!skillEnabled || !skillSupportsAgent) {
+      merged.delete(skill.id);
+      continue;
+    }
+    merged.set(skill.id, skill);
+  }
+
+  return Array.from(merged.values());
 };
 
 export const listEnabledSkills = query({
@@ -251,13 +322,15 @@ export const listEnabledSkills = query({
   },
   returns: v.array(skillValidator),
   handler: async (ctx, args) => {
-    return await listEnabledSkillsHandler(ctx, args);
+    const ownerId = await requireUserId(ctx);
+    return await listEnabledSkillsHandler(ctx, { ...args, ownerId });
   },
 });
 
 export const listEnabledSkillsInternal = internalQuery({
   args: {
     agentType: v.string(),
+    ownerId: v.optional(v.string()),
   },
   returns: v.array(skillValidator),
   handler: async (ctx, args) => {
@@ -265,12 +338,42 @@ export const listEnabledSkillsInternal = internalQuery({
   },
 });
 
-const getSkillByIdHandler = async (ctx: { db: any }, args: { skillId: string }) => {
-  const result = await ctx.db
+const getSkillByIdHandler = async (
+  ctx: QueryCtx,
+  args: { skillId: string; ownerId?: string },
+) => {
+  if (args.ownerId) {
+    const ownerSkill = await ctx.db
+      .query("skills")
+      .withIndex("by_owner_and_skill_key", (q) =>
+        q.eq("ownerId", args.ownerId!).eq("id", args.skillId),
+      )
+      .first();
+    if (ownerSkill) {
+      return ownerSkill;
+    }
+  }
+
+  const builtinSkill = await ctx.db
     .query("skills")
-    .withIndex("by_skill_key", (q: any) => q.eq("id", args.skillId))
+    .withIndex("by_owner_and_skill_key", (q) =>
+      q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", args.skillId),
+    )
     .first();
-  return result ?? null;
+  if (builtinSkill) {
+    return builtinSkill;
+  }
+
+  const legacyBuiltin = await ctx.db
+    .query("skills")
+    .withIndex("by_skill_key", (q) => q.eq("id", args.skillId))
+    .first();
+
+  if (legacyBuiltin && legacyBuiltin.ownerId === undefined && legacyBuiltin.source === "builtin") {
+    return legacyBuiltin;
+  }
+
+  return null;
 };
 
 export const getSkillById = query({
@@ -279,13 +382,15 @@ export const getSkillById = query({
   },
   returns: v.union(skillValidator, v.null()),
   handler: async (ctx, args) => {
-    return await getSkillByIdHandler(ctx, args);
+    const ownerId = await requireUserId(ctx);
+    return await getSkillByIdHandler(ctx, { ...args, ownerId });
   },
 });
 
 export const getSkillByIdInternal = internalQuery({
   args: {
     skillId: v.string(),
+    ownerId: v.optional(v.string()),
   },
   returns: v.union(skillValidator, v.null()),
   handler: async (ctx, args) => {
@@ -297,7 +402,34 @@ export const listSkills = query({
   args: {},
   returns: v.array(skillValidator),
   handler: async (ctx) => {
-    return await ctx.db.query("skills").withIndex("by_updated").order("desc").take(400);
+    const ownerId = await requireUserId(ctx);
+    const [legacyBuiltinSkills, builtinSkills, ownerSkills] = await Promise.all([
+      ctx.db
+        .query("skills")
+        .withIndex("by_updated")
+        .order("desc")
+        .take(400)
+        .then((rows) =>
+          rows.filter((skill) => skill.ownerId === undefined && skill.source === "builtin"),
+        ),
+      ctx.db
+        .query("skills")
+        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .order("desc")
+        .take(400),
+      ctx.db
+        .query("skills")
+        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
+        .order("desc")
+        .take(400),
+    ]);
+
+    const merged = new Map<string, (typeof ownerSkills)[number]>();
+    for (const skill of legacyBuiltinSkills) merged.set(skill.id, skill);
+    for (const skill of builtinSkills) merged.set(skill.id, skill);
+    for (const skill of ownerSkills) merged.set(skill.id, skill);
+
+    return Array.from(merged.values()).sort((a, b) => b.updatedAt - a.updatedAt);
   },
 });
 
@@ -306,7 +438,7 @@ export const ensureBuiltinSkills = internalMutation({
   returns: v.object({ ok: v.boolean() }),
   handler: async (ctx) => {
     for (const skill of BUILTIN_SKILLS) {
-      await upsertSkill(ctx, {
+      await upsertSkill(ctx, BUILTIN_OWNER_ID, {
         ...skill,
         version: 1,
         updatedAt: Date.now(),

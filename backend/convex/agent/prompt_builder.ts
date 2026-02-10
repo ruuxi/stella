@@ -72,10 +72,12 @@ export const buildSystemPrompt = async (
 ): Promise<PromptBuildResult> => {
   const agent = await ctx.runQuery(internal.agent.agents.getAgentConfigInternal, {
     agentType,
+    ownerId: options?.ownerId,
   });
 
   const skills = await ctx.runQuery(internal.data.skills.listEnabledSkillsInternal, {
     agentType,
+    ownerId: options?.ownerId,
   });
 
   const skillsSection = buildSkillsSection(
