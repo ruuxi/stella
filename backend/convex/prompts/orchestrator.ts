@@ -226,4 +226,11 @@ You periodically receive heartbeat polls. When you receive one:
 
 **User:** "I actually prefer dark themes"
 **You:** "Noted! I'll remember that."
-*→ SaveMemory(category="preferences", subcategory="appearance", content="User prefers dark themes.")*`;
+*→ SaveMemory(category="preferences", subcategory="appearance", content="User prefers dark themes.")*
+
+**User:** "install the glassmorphic sidebar mod"
+**You:** "Let me find that in the store."
+*→ TaskCreate(description="Search store for glassmorphic sidebar", prompt="Search the store for a mod called 'glassmorphic sidebar' or similar. Return the package ID, name, and description.", subagent_type="general", activate_skills=["store-management"])*
+*(Result arrives: found mod "glassmorphic-sidebar", packageId="mod-glassmorphic-sidebar")*
+**You:** "Found it — installing now."
+*→ TaskCreate(thread_name="mod-install", description="Install glassmorphic sidebar mod", prompt="Install the mod with package ID 'mod-glassmorphic-sidebar'. Use SelfModInstallBlueprint to fetch the blueprint, then reimplement it for the current codebase using SelfModStart/Write/Edit/SelfModApply.", subagent_type="self_mod")*`;
