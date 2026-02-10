@@ -118,6 +118,7 @@ type SubagentExecutionArgs = {
   ownerId?: string;
   includeHistory?: boolean;
   threadId?: Id<"threads">;
+  activateSkills?: string[];
 };
 
 const buildHistoryMessages = async (
@@ -609,6 +610,36 @@ const executeSubagentRun = async (
   const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
     ownerId: args.ownerId,
   });
+
+  // Merge pre-activated skills: inject their markdown and grant their tools
+  let effectiveAllowlist = promptBuild.toolsAllowlist
+    ? [...promptBuild.toolsAllowlist]
+    : undefined;
+  let effectiveSystemPrompt = promptBuild.systemPrompt;
+
+  if (args.activateSkills && args.activateSkills.length > 0) {
+    for (const skillId of args.activateSkills) {
+      try {
+        const skill = await ctx.runQuery(
+          internal.data.skills.getSkillByIdInternal,
+          { skillId, ownerId: args.ownerId },
+        );
+        if (skill && skill.enabled !== false) {
+          if (skill.toolsAllowlist && effectiveAllowlist) {
+            for (const t of skill.toolsAllowlist) {
+              if (!effectiveAllowlist.includes(t)) {
+                effectiveAllowlist.push(t);
+              }
+            }
+          }
+          effectiveSystemPrompt += `\n\n## Skill: ${skill.name}\n${skill.markdown}`;
+        }
+      } catch {
+        // Skill loading failed — continue without it
+      }
+    }
+  }
+
   const pluginTools = (await ctx.runQuery(
     internal.data.plugins.listToolDescriptorsInternal,
     { ownerId: args.ownerId },
@@ -738,13 +769,13 @@ const executeSubagentRun = async (
 
     const result = await generateText({
       ...resolvedConfig,
-      system: promptBuild.systemPrompt,
+      system: effectiveSystemPrompt,
       tools: createTools(
         ctx,
         toolContext,
         {
           agentType: args.subagentType,
-          toolsAllowlist: promptBuild.toolsAllowlist,
+          toolsAllowlist: effectiveAllowlist,
           maxTaskDepth: promptBuild.maxTaskDepth,
           pluginTools,
           ownerId: args.ownerId,
@@ -1223,6 +1254,7 @@ export const runSubagent = internalAction({
     includeHistory: v.optional(v.boolean()),
     threadId: v.optional(v.string()),
     threadName: v.optional(v.string()),
+    activateSkills: v.optional(v.array(v.string())),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -1314,6 +1346,7 @@ export const runSubagent = internalAction({
       includeHistory: args.includeHistory,
       parentTaskId: args.parentTaskId,
       threadId: resolvedThreadId,
+      activateSkills: args.activateSkills,
     });
 
     return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
@@ -1333,6 +1366,7 @@ export const executeSubagent = internalAction({
     includeHistory: v.optional(v.boolean()),
     parentTaskId: v.optional(v.id("tasks")),
     threadId: v.optional(v.id("threads")),
+    activateSkills: v.optional(v.array(v.string())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1346,6 +1380,7 @@ export const executeSubagent = internalAction({
       ownerId: args.ownerId,
       includeHistory: args.includeHistory,
       threadId: args.threadId,
+      activateSkills: args.activateSkills,
     });
 
     // Deliver result to the orchestrator for top-level tasks only.

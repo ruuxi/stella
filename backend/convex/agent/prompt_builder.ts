@@ -80,8 +80,16 @@ export const buildSystemPrompt = async (
     ownerId: options?.ownerId,
   });
 
+  // Skills with toolsAllowlist are gated — only available when pre-activated
+  // via activate_skills on TaskCreate. Hide them from the summary to avoid
+  // the agent seeing tools it can't call.
+  const visibleSkills = skills.filter(
+    (skill: { toolsAllowlist?: string[] }) =>
+      !skill.toolsAllowlist || skill.toolsAllowlist.length === 0,
+  );
+
   const skillsSection = buildSkillsSection(
-    skills.map((skill: { id: string; name: string; description: string; execution?: string; requiresSecrets?: string[]; publicIntegration?: boolean; secretMounts?: Record<string, unknown> }) => ({
+    visibleSkills.map((skill: { id: string; name: string; description: string; execution?: string; requiresSecrets?: string[]; publicIntegration?: boolean; secretMounts?: Record<string, unknown> }) => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,

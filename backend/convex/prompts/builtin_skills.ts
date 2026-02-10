@@ -10,6 +10,7 @@ type BuiltinSkill = {
   markdown: string;
   agentTypes: string[];
   tags: string[];
+  toolsAllowlist?: string[];
   source: "builtin";
   enabled: true;
 };
@@ -209,6 +210,14 @@ const STORE_MANAGEMENT: BuiltinSkill = {
     "Search the app store and install packages (skills, themes, mini-apps, plugins). Mod installs must be delegated to Self-Mod.",
   agentTypes: ["general"],
   tags: ["store", "packages", "install"],
+  toolsAllowlist: [
+    "StoreSearch",
+    "InstallSkillPackage",
+    "InstallThemePackage",
+    "InstallCanvasPackage",
+    "InstallPluginPackage",
+    "UninstallPackage",
+  ],
   source: "builtin",
   enabled: true,
   markdown: `# Store Search & Package Installation
@@ -247,6 +256,7 @@ const API_SKILL_GENERATION: BuiltinSkill = {
     "Convert browser API discovery results into reusable skills. Use after Browser agent returns an API map.",
   agentTypes: ["general"],
   tags: ["api", "integration", "skill-generation"],
+  toolsAllowlist: ["GenerateApiSkill"],
   source: "builtin",
   enabled: true,
   markdown: `# API Skill Generation
@@ -278,6 +288,44 @@ When the Browser agent extracts auth tokens from an active session:
 
 ## Canvas Display
 Include \`canvasHint\` to suggest how to display results. The generated skill will include instructions for writing a panel TSX file and calling \`OpenCanvas(name="...")\`.`,
+};
+
+const MEDIA_GENERATION: BuiltinSkill = {
+  id: "media-generation",
+  name: "Media Generation",
+  description:
+    "Generate or edit images and videos from text prompts using AI models.",
+  agentTypes: ["general"],
+  tags: ["media", "images", "video", "generation"],
+  toolsAllowlist: ["MediaGenerate"],
+  source: "builtin",
+  enabled: true,
+  markdown: `# Media Generation
+
+Generate or edit images and videos from text prompts.
+
+## MediaGenerate Parameters
+- \`mode\`: "generate" (create from scratch) or "edit" (modify existing)
+- \`media_type\`: "image" or "video"
+- \`prompt\`: Detailed description of what to create or how to edit
+- \`source_url\`: Required for edit mode — URL of the source image/video
+
+## Examples
+
+Generate an image:
+\`\`\`
+MediaGenerate(mode="generate", media_type="image", prompt="A serene mountain landscape at sunset with warm orange and purple tones")
+\`\`\`
+
+Edit an existing image:
+\`\`\`
+MediaGenerate(mode="edit", media_type="image", prompt="Make the sky more dramatic with storm clouds", source_url="https://...")
+\`\`\`
+
+## Tips
+- Be specific and descriptive in prompts for better results
+- Mention style, mood, composition, and color palette when relevant
+- For edits, describe the desired change clearly`,
 };
 
 // ---------------------------------------------------------------------------
@@ -768,6 +816,7 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   WORKSPACE,
   STORE_MANAGEMENT,
   API_SKILL_GENERATION,
+  MEDIA_GENERATION,
   // Self-mod agent
   FRONTEND_ARCHITECTURE,
   BLUEPRINT_MANAGEMENT,
