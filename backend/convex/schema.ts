@@ -254,6 +254,30 @@ export default defineSchema({
     .index("by_conversation_updated", ["conversationId", "updatedAt"])
     .index("by_status", ["status", "updatedAt"])
     .index("by_parent", ["parentTaskId", "createdAt"]),
+  threads: defineTable({
+    conversationId: v.id("conversations"),
+    name: v.string(),
+    status: v.string(),
+    summary: v.optional(v.string()),
+    messageCount: v.number(),
+    totalTokenEstimate: v.number(),
+    createdAt: v.number(),
+    lastUsedAt: v.number(),
+    closedAt: v.optional(v.number()),
+  })
+    .index("by_conversation_status", ["conversationId", "status", "lastUsedAt"])
+    .index("by_conversation_name", ["conversationId", "name"])
+    .index("by_conversation_last_used", ["conversationId", "lastUsedAt"]),
+  thread_messages: defineTable({
+    threadId: v.id("threads"),
+    ordinal: v.number(),
+    role: v.string(),
+    content: v.string(),
+    toolCallId: v.optional(v.string()),
+    tokenEstimate: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_thread_ordinal", ["threadId", "ordinal"]),
   memories: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),

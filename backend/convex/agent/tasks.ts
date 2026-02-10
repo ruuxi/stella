@@ -117,6 +117,7 @@ type SubagentExecutionArgs = {
   taskId: Id<"tasks">;
   ownerId?: string;
   includeHistory?: boolean;
+  threadId?: Id<"threads">;
 };
 
 const buildHistoryMessages = async (
@@ -592,6 +593,8 @@ const describeToolCall = (toolName: string, _args: Record<string, unknown>): str
   return pick(STATUS_DESCRIPTIONS.default);
 };
 
+const THREAD_COMPACTION_TOKEN_THRESHOLD = 80_000;
+
 const executeSubagentRun = async (
   ctx: ActionCtx,
   args: SubagentExecutionArgs,
@@ -616,6 +619,44 @@ const executeSubagentRun = async (
           SUBAGENT_HISTORY_LIMIT,
         )
       : [];
+
+  // --- Thread loading ---
+  const threadSupported = args.subagentType === "general" || args.subagentType === "self_mod";
+  let threadMessages: Array<{ role: "user" | "assistant" | "tool"; content: string; toolCallId?: string }> = [];
+  let summaryPair: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+  if (args.threadId && threadSupported) {
+    try {
+      await ctx.runMutation(internal.data.threads.touchThread, {
+        threadId: args.threadId,
+      });
+
+      const thread = await ctx.runQuery(internal.data.threads.getThreadById, {
+        threadId: args.threadId,
+      });
+
+      // Inject summary as synthetic user/assistant pair
+      if (thread?.summary) {
+        summaryPair = [
+          { role: "user" as const, content: `[Thread context — prior work summary]\n${thread.summary}` },
+          { role: "assistant" as const, content: "Understood. I have the context from previous work." },
+        ];
+      }
+
+      // Load thread messages and deserialize
+      const rawMessages = await ctx.runQuery(internal.data.threads.loadThreadMessages, {
+        threadId: args.threadId,
+      });
+
+      threadMessages = rawMessages.map((m) => ({
+        role: m.role as "user" | "assistant" | "tool",
+        content: m.content,
+        ...(m.toolCallId ? { toolCallId: m.toolCallId } : {}),
+      }));
+    } catch {
+      // Thread loading failed — proceed without thread context
+    }
+  }
 
   const toolContext: DeviceToolContext = {
     conversationId: args.conversationId,
@@ -652,6 +693,46 @@ const executeSubagentRun = async (
 
   try {
     const resolvedConfig = await resolveModelConfig(ctx, args.subagentType, args.ownerId);
+
+    // Build the messages array: summary → thread history → conversation history → new prompt
+    const messages: Array<
+      | { role: "user"; content: string }
+      | { role: "assistant"; content: string }
+      | { role: "user"; content: Array<{ type: "text"; text: string }> }
+    > = [];
+
+    for (const sp of summaryPair) {
+      if (sp.role === "assistant") {
+        messages.push({ role: "assistant", content: sp.content });
+      } else {
+        messages.push({ role: "user", content: sp.content });
+      }
+    }
+    for (const tm of threadMessages) {
+      // Thread messages are stored as user/assistant/tool — map tool role to user for message replay
+      if (tm.role === "assistant") {
+        messages.push({ role: "assistant", content: tm.content });
+      } else {
+        messages.push({ role: "user", content: tm.content });
+      }
+    }
+    for (const hm of historyMessages) {
+      if (hm.role === "assistant") {
+        messages.push({ role: "assistant", content: hm.content });
+      } else {
+        messages.push({ role: "user", content: hm.content });
+      }
+    }
+    messages.push({
+      role: "user" as const,
+      content: [
+        { type: "text" as const, text: args.prompt.trim() || " " },
+        ...(promptBuild.dynamicContext
+          ? [{ type: "text" as const, text: `\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>` }]
+          : []),
+      ],
+    });
+
     const result = await generateText({
       ...resolvedConfig,
       system: promptBuild.systemPrompt,
@@ -668,18 +749,7 @@ const executeSubagentRun = async (
           conversationId: args.conversationId,
         },
       ),
-      messages: [
-        ...historyMessages,
-        {
-          role: "user",
-          content: [
-            { type: "text", text: args.prompt.trim() || " " },
-            ...(promptBuild.dynamicContext
-              ? [{ type: "text" as const, text: `\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>` }]
-              : []),
-          ],
-        },
-      ],
+      messages,
       abortSignal: abortController.signal,
       onStepFinish: async ({ toolCalls }) => {
         if (!toolCalls || toolCalls.length === 0) return;
@@ -711,6 +781,49 @@ const executeSubagentRun = async (
     });
     if (postStatus && postStatus !== "running") {
       return `Task ${postStatus}.\nTask ID: ${args.taskId}`;
+    }
+
+    // --- Thread saving (only on success) ---
+    if (args.threadId && threadSupported) {
+      try {
+        // Save the task prompt as a user message
+        const messagesToSave: Array<{
+          role: string;
+          content: string;
+          toolCallId?: string;
+          tokenEstimate?: number;
+        }> = [
+          {
+            role: "user",
+            content: args.prompt,
+          },
+        ];
+
+        // Save all response messages from the result
+        if (result.response?.messages) {
+          for (const msg of result.response.messages) {
+            messagesToSave.push({
+              role: msg.role,
+              content: JSON.stringify(msg.content),
+            });
+          }
+        }
+
+        await ctx.runMutation(internal.data.threads.saveThreadMessages, {
+          threadId: args.threadId,
+          messages: messagesToSave,
+        });
+
+        // Check if compaction is needed
+        const inputTokens = result.usage?.inputTokens ?? 0;
+        if (inputTokens > THREAD_COMPACTION_TOKEN_THRESHOLD) {
+          await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+            threadId: args.threadId,
+          });
+        }
+      } catch {
+        // Thread saving failed — don't fail the task
+      }
     }
 
     await ctx.runMutation(internal.agent.tasks.completeTaskRecord, {
@@ -1105,6 +1218,8 @@ export const runSubagent = internalAction({
     subagentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
     includeHistory: v.optional(v.boolean()),
+    threadId: v.optional(v.string()),
+    threadName: v.optional(v.string()),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -1115,6 +1230,37 @@ export const runSubagent = internalAction({
     const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
       ownerId: conversation.ownerId,
     });
+
+    // Resolve thread: threadId takes priority, then threadName lookup/create
+    const threadSupported = args.subagentType === "general" || args.subagentType === "self_mod";
+    let resolvedThreadId: Id<"threads"> | undefined;
+
+    if (threadSupported) {
+      if (args.threadId) {
+        // Verify thread exists
+        const thread = await ctx.runQuery(internal.data.threads.getThreadById, {
+          threadId: args.threadId as Id<"threads">,
+        });
+        if (thread && thread.status === "active") {
+          resolvedThreadId = thread._id;
+        }
+        // If thread not found or closed, proceed without thread context
+      } else if (args.threadName) {
+        // Look up existing active thread by name, or create new one
+        const existing = await ctx.runQuery(internal.data.threads.getThreadByName, {
+          conversationId: args.conversationId,
+          name: args.threadName,
+        });
+        if (existing && existing.status === "active") {
+          resolvedThreadId = existing._id;
+        } else {
+          resolvedThreadId = await ctx.runMutation(internal.data.threads.createThread, {
+            conversationId: args.conversationId,
+            name: args.threadName,
+          });
+        }
+      }
+    }
 
     const created: { taskId: Id<"tasks">; taskDepth: number; maxTaskDepth: number } =
       await ctx.runMutation(internal.agent.tasks.createTaskRecord, {
@@ -1164,6 +1310,7 @@ export const runSubagent = internalAction({
       ownerId: conversation.ownerId,
       includeHistory: args.includeHistory,
       parentTaskId: args.parentTaskId,
+      threadId: resolvedThreadId,
     });
 
     return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
@@ -1182,6 +1329,7 @@ export const executeSubagent = internalAction({
     ownerId: v.string(),
     includeHistory: v.optional(v.boolean()),
     parentTaskId: v.optional(v.id("tasks")),
+    threadId: v.optional(v.id("threads")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1194,6 +1342,7 @@ export const executeSubagent = internalAction({
       taskId: args.taskId,
       ownerId: args.ownerId,
       includeHistory: args.includeHistory,
+      threadId: args.threadId,
     });
 
     // Deliver result to the orchestrator for top-level tasks only.
