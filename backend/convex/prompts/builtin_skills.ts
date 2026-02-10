@@ -229,7 +229,7 @@ Search proactively when the user asks for something that might exist as a packag
 
 ## Installing
 
-**Mod installs**: Always delegate to Self-Mod agent via TaskCreate. Mods are blueprints that need re-implementation — General cannot install them.
+**Mod installs**: General cannot install mods — they are blueprints that need re-implementation by the Self-Mod agent. Report the mod details (package ID, name, description) back to the Orchestrator, who will route the installation to Self-Mod.
 
 **Skill installs**:
 \`InstallSkillPackage({ packageId, skillId, name, markdown, agentTypes?, tags? })\`
