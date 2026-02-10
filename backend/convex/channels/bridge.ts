@@ -8,10 +8,15 @@ import {
 import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { requireUserId } from "../auth";
 import { processIncomingMessage } from "./utils";
 import { spritesApi, spritesApiText, spritesExec, spritesExecChecked } from "../agent/cloud_devices";
+import {
+  decryptSecretIfNeeded,
+  encryptSecret,
+  isEncryptedSecretSerialized,
+} from "../data/secrets_crypto";
 
 const bridgeAuthStateValidator = v.optional(
   v.object({
@@ -35,6 +40,7 @@ const bridgeSessionValidator = v.object({
   mode: v.optional(v.string()),
   status: v.string(),
   webhookSecret: v.string(),
+  webhookSecretKeyVersion: v.optional(v.number()),
   authState: bridgeAuthStateValidator,
   errorMessage: v.optional(v.string()),
   lastHeartbeatAt: v.optional(v.number()),
@@ -46,6 +52,53 @@ const bridgeSessionValidator = v.object({
   createdAt: v.number(),
   updatedAt: v.number(),
 });
+
+const bridgeSessionStatusValidator = v.object({
+  _id: v.id("bridge_sessions"),
+  _creationTime: v.number(),
+  ownerId: v.string(),
+  provider: v.string(),
+  spriteName: v.optional(v.string()),
+  mode: v.optional(v.string()),
+  status: v.string(),
+  authState: bridgeAuthStateValidator,
+  errorMessage: v.optional(v.string()),
+  lastHeartbeatAt: v.optional(v.number()),
+  lastMessageAtMs: v.optional(v.number()),
+  nextWakeAtMs: v.optional(v.number()),
+  wakeIntervalMs: v.optional(v.number()),
+  wakeTier: v.optional(v.string()),
+  consecutiveEmptyWakes: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
+const decodeBridgeSession = async (
+  session: Doc<"bridge_sessions"> | null,
+) => {
+  if (!session) {
+    return null;
+  }
+  const webhookSecret = await decryptSecretIfNeeded(session.webhookSecret);
+  return {
+    ...session,
+    webhookSecret,
+  };
+};
+
+const decodeBridgeSessions = async (
+  sessions: Array<Doc<"bridge_sessions">>,
+) => {
+  return await Promise.all(
+    sessions.map(async (session) => {
+      const webhookSecret = await decryptSecretIfNeeded(session.webhookSecret);
+      return {
+        ...session,
+        webhookSecret,
+      };
+    }),
+  );
+};
 
 const setupBridgeResultValidator = v.union(
   v.object({
@@ -221,12 +274,13 @@ export const getBridgeSession = internalQuery({
   },
   returns: v.union(bridgeSessionValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db
+    const session = await ctx.db
       .query("bridge_sessions")
       .withIndex("by_owner_provider", (q) =>
         q.eq("ownerId", args.ownerId).eq("provider", args.provider),
       )
       .first();
+    return await decodeBridgeSession(session);
   },
 });
 
@@ -234,7 +288,8 @@ export const getBridgeSessionById = internalQuery({
   args: { id: v.id("bridge_sessions") },
   returns: v.union(bridgeSessionValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const session = await ctx.db.get(args.id);
+    return await decodeBridgeSession(session);
   },
 });
 
@@ -269,16 +324,40 @@ export const createBridgeSession = internalMutation({
   returns: v.id("bridge_sessions"),
   handler: async (ctx, args) => {
     const now = Date.now();
+    const encrypted = await encryptSecret(generateBridgeWebhookSecret());
     return await ctx.db.insert("bridge_sessions", {
       ownerId: args.ownerId,
       provider: args.provider,
       spriteName: args.spriteName,
       mode: args.mode,
       status: "initializing",
-      webhookSecret: generateBridgeWebhookSecret(),
+      webhookSecret: JSON.stringify(encrypted),
+      webhookSecretKeyVersion: encrypted.keyVersion,
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+export const backfillPlaintextWebhookSecrets = internalMutation({
+  args: {},
+  returns: v.object({ migrated: v.number() }),
+  handler: async (ctx) => {
+    const sessions = await ctx.db.query("bridge_sessions").collect();
+    let migrated = 0;
+    for (const session of sessions) {
+      if (isEncryptedSecretSerialized(session.webhookSecret)) {
+        continue;
+      }
+      const encrypted = await encryptSecret(session.webhookSecret);
+      await ctx.db.patch(session._id, {
+        webhookSecret: JSON.stringify(encrypted),
+        webhookSecretKeyVersion: encrypted.keyVersion,
+        updatedAt: Date.now(),
+      });
+      migrated += 1;
+    }
+    return { migrated };
   },
 });
 
@@ -339,7 +418,9 @@ export const listDueWakes = internalQuery({
       .query("bridge_sessions")
       .withIndex("by_next_wake", (q) => q.lte("nextWakeAtMs", args.nowMs))
       .take(100);
-    return sessions.filter((s) => s.status === "connected");
+    return await decodeBridgeSessions(
+      sessions.filter((s) => s.status === "connected"),
+    );
   },
 });
 
@@ -347,7 +428,8 @@ export const listAllBridgeSessions = internalQuery({
   args: {},
   returns: v.array(bridgeSessionValidator),
   handler: async (ctx) => {
-    return await ctx.db.query("bridge_sessions").collect();
+    const sessions = await ctx.db.query("bridge_sessions").collect();
+    return await decodeBridgeSessions(sessions);
   },
 });
 
@@ -395,16 +477,38 @@ export const scheduleNextWake = internalMutation({
 
 export const getBridgeStatus = query({
   args: { provider: v.string() },
-  returns: v.union(bridgeSessionValidator, v.null()),
+  returns: v.union(bridgeSessionStatusValidator, v.null()),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
-    return await ctx.db
+    const session = await ctx.db
       .query("bridge_sessions")
       .withIndex("by_owner_provider", (q) =>
         q.eq("ownerId", identity.subject).eq("provider", args.provider),
       )
       .first();
+    if (!session) {
+      return null;
+    }
+    return {
+      _id: session._id,
+      _creationTime: session._creationTime,
+      ownerId: session.ownerId,
+      provider: session.provider,
+      spriteName: session.spriteName,
+      mode: session.mode,
+      status: session.status,
+      authState: session.authState,
+      errorMessage: session.errorMessage,
+      lastHeartbeatAt: session.lastHeartbeatAt,
+      lastMessageAtMs: session.lastMessageAtMs,
+      nextWakeAtMs: session.nextWakeAtMs,
+      wakeIntervalMs: session.wakeIntervalMs,
+      wakeTier: session.wakeTier,
+      consecutiveEmptyWakes: session.consecutiveEmptyWakes,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    };
   },
 });
 

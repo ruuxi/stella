@@ -344,6 +344,7 @@ http.route({
     }
 
     const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
+
     const result = await streamText({
       ...resolvedConfig,
       system: promptBuild.systemPrompt,

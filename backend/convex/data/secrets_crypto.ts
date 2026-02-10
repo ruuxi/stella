@@ -78,6 +78,29 @@ const decryptWithKey = async (
   return new Uint8Array(plaintext);
 };
 
+const isEncryptedSecretPayload = (value: unknown): value is EncryptedSecretPayload => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.keyVersion === "number" &&
+    typeof record.dataNonce === "string" &&
+    typeof record.dataCiphertext === "string" &&
+    typeof record.keyNonce === "string" &&
+    typeof record.keyCiphertext === "string"
+  );
+};
+
+export const isEncryptedSecretSerialized = (value: string) => {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isEncryptedSecretPayload(parsed);
+  } catch {
+    return false;
+  }
+};
+
 export const encryptSecret = async (plaintext: string): Promise<EncryptedSecretPayload> => {
   const masterKeyBytes = getMasterKeyBytes();
   const masterKey = await importAesKey(masterKeyBytes);
@@ -100,7 +123,11 @@ export const encryptSecret = async (plaintext: string): Promise<EncryptedSecretP
 export const decryptSecret = async (serialized: string): Promise<string> => {
   const masterKeyBytes = getMasterKeyBytes();
   const masterKey = await importAesKey(masterKeyBytes);
-  const payload = JSON.parse(serialized) as EncryptedSecretPayload;
+  const payloadRaw = JSON.parse(serialized) as unknown;
+  if (!isEncryptedSecretPayload(payloadRaw)) {
+    throw new Error("Invalid encrypted secret payload");
+  }
+  const payload = payloadRaw as EncryptedSecretPayload;
 
   const dataKeyBytes = await decryptWithKey(masterKey, {
     nonce: payload.keyNonce,
@@ -114,4 +141,11 @@ export const decryptSecret = async (serialized: string): Promise<string> => {
   });
 
   return decoder.decode(plaintextBytes);
+};
+
+export const decryptSecretIfNeeded = async (serializedOrPlaintext: string): Promise<string> => {
+  if (!isEncryptedSecretSerialized(serializedOrPlaintext)) {
+    return serializedOrPlaintext;
+  }
+  return await decryptSecret(serializedOrPlaintext);
 };
