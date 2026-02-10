@@ -110,16 +110,13 @@ const getGitRepoActivity = async (dir: string): Promise<number | null> => {
       path.join(gitDir, "logs", "HEAD"), // Reflog
     ];
 
+    const fileStats = await Promise.all(
+      filesToCheck.map((file) => fs.stat(file).catch(() => null))
+    );
     let mostRecent = 0;
-
-    for (const file of filesToCheck) {
-      try {
-        const fileStat = await fs.stat(file);
-        if (fileStat.mtimeMs > mostRecent) {
-          mostRecent = fileStat.mtimeMs;
-        }
-      } catch {
-        // File doesn't exist, skip
+    for (const fileStat of fileStats) {
+      if (fileStat && fileStat.mtimeMs > mostRecent) {
+        mostRecent = fileStat.mtimeMs;
       }
     }
 
@@ -194,25 +191,25 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
   const cutoffTime = Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000;
   const results: DevProject[] = [];
 
-  // Check which roots exist
-  const existingRoots: string[] = [];
-  for (const root of projectRoots) {
-    try {
-      const stat = await fs.stat(root);
-      if (stat.isDirectory()) {
-        existingRoots.push(root);
+  // Check which roots exist (parallel stat)
+  const rootStats = await Promise.all(
+    projectRoots.map(async (root) => {
+      try {
+        const stat = await fs.stat(root);
+        return stat.isDirectory() ? root : null;
+      } catch {
+        return null;
       }
-    } catch {
-      // Root doesn't exist
-    }
-  }
+    })
+  );
+  const existingRoots = rootStats.filter((r): r is string => r !== null);
 
   log(`Scanning ${existingRoots.length} project roots:`, existingRoots);
 
-  // Scan each root for git repos
-  for (const root of existingRoots) {
-    await scanForGitRepos(root, 0, cutoffTime, results);
-  }
+  // Scan all roots for git repos in parallel
+  await Promise.all(
+    existingRoots.map((root) => scanForGitRepos(root, 0, cutoffTime, results))
+  );
 
   // Deduplicate by path (in case roots overlap)
   const seen = new Set<string>();
@@ -249,7 +246,7 @@ export const formatDevProjectsForSynthesis = (projects: DevProject[]): string =>
         .map((p) => {
           const daysAgo = Math.floor((Date.now() - p.lastActivity) / (24 * 60 * 60 * 1000));
           const recency = daysAgo === 0 ? "today" : daysAgo === 1 ? "yesterday" : `${daysAgo}d ago`;
-          return `- ${p.name} (${recency})`;
+          return `- ${p.name} (${p.path}) (${recency})`;
         })
         .join("\n")
   );
