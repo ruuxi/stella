@@ -281,15 +281,22 @@ http.route({
       contentParts.push({ type: "text", text: " " });
     }
 
-    // Combine system prompt with platform guidance
-    const systemPrompt = platformGuidance
-      ? `${promptBuild.systemPrompt}\n\n${platformGuidance}`
-      : promptBuild.systemPrompt;
+    // Inject dynamic context + platform guidance into last user message (not system prompt)
+    // This keeps the system prompt stable across turns for prompt caching.
+    const contextParts: string[] = [];
+    if (promptBuild.dynamicContext) contextParts.push(promptBuild.dynamicContext);
+    if (platformGuidance) contextParts.push(platformGuidance);
+    if (contextParts.length > 0) {
+      contentParts.push({
+        type: "text",
+        text: `\n\n<system-context>\n${contextParts.join("\n\n")}\n</system-context>`,
+      });
+    }
 
     const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
     const result = await streamText({
       ...resolvedConfig,
-      system: systemPrompt,
+      system: promptBuild.systemPrompt,
       tools: createTools(
         ctx,
         targetDeviceId

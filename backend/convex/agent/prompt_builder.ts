@@ -4,6 +4,7 @@ import type { Id } from "../_generated/dataModel";
 
 export type PromptBuildResult = {
   systemPrompt: string;
+  dynamicContext: string;
   toolsAllowlist?: string[];
   maxTaskDepth: number;
   defaultSkills: string[];
@@ -94,22 +95,8 @@ export const buildSystemPrompt = async (
     systemParts.push(skillsSection);
   }
 
-  // Add CORE_MEMORY awareness for the general agent when trust level is basic or full
-  if (agentType === "general" && options?.ownerId) {
-    try {
-      const trustLevel = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
-        ownerId: options.ownerId,
-        key: "trust_level",
-      });
-      if (trustLevel === "basic" || trustLevel === "full") {
-        systemParts.push(
-          "If ~/.stella/state/CORE_MEMORY.MD exists, read it at the start of new conversations to personalize your responses. This contains the user's discovered context profile.",
-        );
-      }
-    } catch {
-      // Preference not found or auth issue — skip
-    }
-  }
+  // Dynamic context — injected into last user message for prompt caching
+  const dynamicParts: string[] = [];
 
   // Inject device status for orchestrator
   if (agentType === "orchestrator" && options?.ownerId) {
@@ -137,7 +124,7 @@ export const buildSystemPrompt = async (
           );
         }
       }
-      systemParts.push(lines.join("\n"));
+      dynamicParts.push(lines.join("\n"));
     } catch {
       // Device status query failed — skip
     }
@@ -153,7 +140,7 @@ export const buildSystemPrompt = async (
         const tree = buildCategoryTree(
           categories as Array<{ category: string; subcategory: string; count: number }>,
         );
-        systemParts.push(`# Memory Categories\n${tree}`);
+        dynamicParts.push(`# Memory Categories\n${tree}`);
       }
     } catch {
       // Category query failed — skip
@@ -170,7 +157,7 @@ export const buildSystemPrompt = async (
       });
       if (coreMemories.length > 0) {
         const coreContent = coreMemories.map((m: { content: string }) => m.content).join("\n");
-        systemParts.push(`# Core Memory\n${coreContent}`);
+        dynamicParts.push(`# Core Memory\n${coreContent}`);
       }
     } catch {
       // Core memory query failed — skip
@@ -184,6 +171,7 @@ export const buildSystemPrompt = async (
 
   return {
     systemPrompt: systemParts.join("\n\n").trim(),
+    dynamicContext: dynamicParts.join("\n\n").trim(),
     toolsAllowlist: agent.toolsAllowlist ?? undefined,
     maxTaskDepth,
     defaultSkills: agent.defaultSkills ?? [],

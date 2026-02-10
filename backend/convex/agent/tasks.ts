@@ -672,7 +672,12 @@ const executeSubagentRun = async (
         ...historyMessages,
         {
           role: "user",
-          content: [{ type: "text", text: args.prompt.trim() || " " }],
+          content: [
+            { type: "text", text: args.prompt.trim() || " " },
+            ...(promptBuild.dynamicContext
+              ? [{ type: "text" as const, text: `\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>` }]
+              : []),
+          ],
         },
       ],
       abortSignal: abortController.signal,
@@ -1365,7 +1370,9 @@ export const deliverTaskResult = internalAction({
           ...historyMessages,
           {
             role: "user",
-            content: deliveryMessage,
+            content: promptBuild.dynamicContext
+              ? `${deliveryMessage}\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`
+              : deliveryMessage,
           },
         ],
       });
