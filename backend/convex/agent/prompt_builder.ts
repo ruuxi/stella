@@ -147,6 +147,30 @@ export const buildSystemPrompt = async (
     }
   }
 
+  // Inject active threads for orchestrator
+  if (agentType === "orchestrator" && options?.conversationId) {
+    try {
+      const activeThreads = await ctx.runQuery(internal.data.threads.listActiveThreads, {
+        conversationId: options.conversationId,
+      });
+      if (activeThreads.length > 0) {
+        const lines = activeThreads.map((t) => {
+          const ageMs = Date.now() - t.lastUsedAt;
+          const age = ageMs < 60_000 ? "just now"
+            : ageMs < 3_600_000 ? `${Math.floor(ageMs / 60_000)}m ago`
+            : ageMs < 86_400_000 ? `${Math.floor(ageMs / 3_600_000)}h ago`
+            : `${Math.floor(ageMs / 86_400_000)}d ago`;
+          return `- **${t.name}** (id: ${t._id}) — ${t.messageCount} msgs, last used ${age}`;
+        });
+        dynamicParts.push(
+          `# Active Threads\nContinue with thread_id, or create new with thread_name.\n${lines.join("\n")}`,
+        );
+      }
+    } catch {
+      // Thread query failed — skip
+    }
+  }
+
   // Inject core memory for orchestrator
   if (agentType === "orchestrator" && options?.ownerId) {
     try {
