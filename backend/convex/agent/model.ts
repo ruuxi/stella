@@ -112,12 +112,15 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   // Core memory synthesis (first-launch discovery)
   synthesis: {
-    model: "openai/gpt-5.2",
+    model: "openai/gpt-5.2-codex",
     temperature: 1.0,
-    maxOutputTokens: 1000,
+    maxOutputTokens: 2500,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["cerebras", "groq"],
+      },
+      openai: {
+        reasoningEffort: "low",
       },
     },
   },

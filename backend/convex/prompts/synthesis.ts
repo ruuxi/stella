@@ -1,68 +1,77 @@
 // ---------------------------------------------------------------------------
-// Core Memory Synthesis Prompt (Distilled version - 300-400 tokens output)
+// Core Memory Synthesis Prompt (V2 — actionable desktop assistant reference card)
 // ---------------------------------------------------------------------------
 
-export const CORE_MEMORY_SYNTHESIS_PROMPT = `You are distilling discovery data into a compact CORE MEMORY for an AI assistant. This is NOT a comprehensive profile - it's the essential understanding needed to truly know this person, AND a map to detailed memories stored elsewhere.
+export const CORE_MEMORY_SYNTHESIS_PROMPT = `You are synthesizing discovery data into a CORE MEMORY for an AI desktop assistant. This is the assistant's primary reference for understanding the user AND for taking action on their behalf — opening apps, navigating to projects, running commands, and anticipating needs.
 
 ## Goal
-Capture WHO this person is in 300-400 tokens. An AI reading this should immediately understand:
-- What they do and care about most
-- How to be genuinely helpful to them
-- What categories of detailed knowledge are available via RecallMemories
+Create an actionable profile in 1000-1500 tokens. An AI reading this should be able to:
+- Immediately act on requests like "open my project" or "launch Spotify" without searching
+- Know this person's active projects, their locations, and what tech each uses
+- Know which apps they use and what they're called
+- Understand their interests, workflows, and preferences
+- Distinguish this person from any other user
 
 ## Output Format
 
 \`\`\`
 [who]
-<2-3 sentences: What do they do? What are they building/working on? What's their expertise level?>
+<2-3 sentences: What do they do? What are they building? Expertise level and primary domain.>
 
-[context_map]
-<One line per category that has meaningful signal. Format: "- category/subcategory: one-line summary"
-Examples:
-- projects/stella: AI assistant platform, Electron+Convex, actively building
-- browsing/interests: AI/ML research, indie game dev communities
-- environment/ide: Cursor power user, custom keybindings, Catppuccin theme
-- personal/communication: Active in 3 group chats, frequent async communicator
-- technical/languages: TypeScript primary, Rust for side projects
-Only include categories where the data reveals something meaningful. 3-6 lines max.
-These act as pointers — the AI should search memory for details on any of these.>
+[projects]
+<One line per active project/workspace. Include the directory path if available.
+Format: "- project_name (path): what it is, key tech"
+5-8 lines MAX. Most recent/active first. Prioritize — do NOT list every project, only the top ones.>
+
+[apps]
+<Apps and services the user actively uses. Include app names exactly as they appear on their system.
+Format: "- AppName: what they use it for (if clear from signals)"
+8-12 lines MAX. Only include apps they clearly use regularly, not every detected process.>
+
+[interests]
+<Significant interest areas — professional AND personal. Format: "- area: specific details"
+Include hobbies, entertainment, communities, content consumption, games — not just work.
+3-8 lines.>
+
+[environment]
+<2-4 sentences: OS, shell, primary languages/frameworks, editor, deployment platforms, package managers, and distinctive workflow patterns. Name specifics.>
 
 [personality]
-<2-3 sentences: Work style, values, quirks. What patterns emerge from the data?>
+<2-3 sentences: Work style, values, behavioral patterns. Cite evidence from the signals, not generic traits.>
 
 [how_to_help]
-<2-3 sentences: What would actually be useful to them? Reference that detailed context is available via memory search when relevant.>
+<2-3 sentences: What context would help an assistant be most useful to this person? Reference their actual projects, tools, and workflows. Focus on what the assistant should know and be ready for — not what it should proactively launch or open.>
 \`\`\`
 
 ## Rules
 
-1. **DISTILL, DON'T LIST**: Find the 3-5 most important things, not every detail.
-   - BAD: "Uses npm, pnpm, bun, yarn, node, npx..."
-   - GOOD: "JS/TS developer who experiments with different runtimes"
+1. **ACTIONABLE OVER DESCRIPTIVE**: Prefer details the assistant can act on. Paths, app names, service names, project names — these let the assistant DO things, not just know things.
+   - BAD: "works on several active coding projects"
+   - GOOD: "- stella (C:/Users/Alex/projects/stella): AI assistant platform, Electron+Convex+React"
 
-2. **NO REPETITION**: If something appears in one section, it doesn't appear in another.
+2. **PRESERVE HIGH-SIGNAL DETAILS**: If the input has tiered signals, Tier 1 represents the most important data. Ensure Tier 1 items are reflected in the output.
 
-3. **PATTERNS OVER ITEMS**: Describe what the data reveals about them, not the data itself.
-   - BAD: "Visits Convex dashboard, Railway, Vercel, Stripe..."
-   - GOOD: "Runs production apps and actively monitors their infrastructure"
+3. **FULL PERSON**: If the data shows entertainment, games, personal interests, hobbies, or communities, include them in [interests] and relevant apps in [apps]. The assistant helps with everything, not just work.
 
-4. **ACTIONABLE**: Every sentence should help an AI be more useful to them.
+4. **ZERO HALLUCINATION**: Every name, path, app, service, or entity in your output must appear in the provided signals. If uncertain, omit.
 
-5. **CONTEXT_MAP IS A BRIDGE**: Each line should make the AI want to search for more details via RecallMemories. The detailed facts are stored in ephemeral memory, not here.
+5. **NO GENERIC FILLER**: Every sentence should contain information specific to THIS person.
+   - BAD: "comfortable with modern tooling and cloud infrastructure"
+   - GOOD: "primary editor is Cursor, deploys to Vercel/Railway, backend on Convex"
 
 ## What to SKIP
-- Exhaustive lists of tools/sites/creators
-- Anything that could apply to most developers
-- Raw statistics or visit counts
-- Obvious inferences ("uses GitHub" for a developer)
+- Raw visit counts or statistics
+- Generic personality traits ("high-velocity", "experiment-driven", "pragmatic")
+- Duplicate information across sections
+- Apps that are generic OS utilities everyone has (Explorer, Settings, etc.)
 
 ## Length
-300-400 tokens maximum. Quality over quantity.`;
+1000-1500 tokens. Use the full budget — density of actionable, specific facts matters more than brevity.`;
 
 export const buildCoreSynthesisUserMessage = (rawOutputs: string): string => {
-  return `Distill this discovery data into a compact CORE MEMORY.
+  return `Synthesize this discovery data into a CORE MEMORY profile.
 
-Remember: 300-400 tokens max. Find the essence, not the exhaustive list.
+Use 1000-1500 tokens. Preserve specific names, projects, services, and interests.
 
 ${rawOutputs}
 
