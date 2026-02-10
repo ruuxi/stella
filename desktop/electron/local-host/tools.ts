@@ -6,7 +6,6 @@
  *
  * - tools-types.ts    — Shared type definitions
  * - tools-utils.ts    — Shared utilities (logging, path expansion, truncation, etc.)
- * - tools-database.ts — SqliteQuery handler
  * - tools-file.ts     — Read, Write, Edit handlers
  * - tools-search.ts   — Glob, Grep handlers
  * - tools-shell.ts    — Bash, SkillBash handlers
@@ -31,7 +30,6 @@ import type {
 import { log, logError } from "./tools-utils.js";
 
 // Tool handlers
-import { handleSqliteQuery } from "./tools-database.js";
 import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./tools-file.js";
 import { handleGlob, handleGrep } from "./tools-search.js";
 import {
@@ -194,9 +192,6 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     AskUserQuestion: (args) => handleAskUser(args),
     RequestCredential: (args) => handleRequestCredential(userConfig, args),
 
-    // Database tools
-    SqliteQuery: (args, context) => handleSqliteQuery(args, context),
-
     // Media tools (not yet implemented)
     MediaGenerate: async () => notConfigured("MediaGenerate"),
 
@@ -258,9 +253,28 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     }
   };
 
+  const killAllShells = () => {
+    for (const shell of shellState.shells.values()) {
+      if (shell.running) {
+        shell.kill();
+      }
+    }
+  };
+
+  const killShellsByPort = (port: number) => {
+    const portStr = String(port);
+    for (const shell of shellState.shells.values()) {
+      if (shell.running && shell.command.includes(portStr)) {
+        shell.kill();
+      }
+    }
+  };
+
   return {
     executeTool,
     getShells: () => Array.from(shellState.shells.values()),
+    killAllShells,
+    killShellsByPort,
     loadPlugins,
     getPluginSyncPayload: () => pluginSyncPayload,
     setSkills,

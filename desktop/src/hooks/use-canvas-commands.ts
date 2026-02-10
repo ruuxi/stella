@@ -9,12 +9,25 @@ type CanvasCommandPayload = {
   url?: string
 }
 
+/** Extract port from a localhost URL, or null if not localhost. */
+const getLocalhostPort = (url?: string): number | null => {
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      const port = parseInt(parsed.port, 10)
+      return Number.isFinite(port) ? port : null
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
 /**
  * Watches conversation events for `canvas_command` type and dispatches
  * to the canvas state (open/close).
  */
 export const useCanvasCommands = (events: EventRecord[]) => {
-  const { openCanvas, closeCanvas } = useCanvas()
+  const { state, openCanvas, closeCanvas } = useCanvas()
   const processedRef = useRef<Set<string>>(new Set())
   const previousLengthRef = useRef(events.length)
 
@@ -47,10 +60,15 @@ export const useCanvasCommands = (events: EventRecord[]) => {
           break
         }
         case 'close': {
+          // Kill dev server shell if canvas had a localhost URL
+          const port = getLocalhostPort(state.canvas?.url)
+          if (port) {
+            window.electronAPI?.shellKillByPort(port)
+          }
           closeCanvas()
           break
         }
       }
     }
-  }, [events, openCanvas, closeCanvas])
+  }, [events, state.canvas, openCanvas, closeCanvas])
 }
