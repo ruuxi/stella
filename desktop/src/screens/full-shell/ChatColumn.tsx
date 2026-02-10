@@ -16,16 +16,13 @@ type DiscoveryCategory =
   | "messages_notes";
 
 type ChatColumnProps = {
-  // Events
   events: EventRecord[];
 
-  // Streaming
   streamingText: string;
   reasoningText: string;
   isStreaming: boolean;
   pendingUserMessageId: string | null;
 
-  // Message input
   message: string;
   setMessage: (message: string) => void;
   chatContext: ChatContext | null;
@@ -35,13 +32,11 @@ type ChatColumnProps = {
   queueNext: boolean;
   setQueueNext: (value: boolean) => void;
 
-  // Scroll
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   handleScroll: () => void;
   showScrollButton: boolean;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
 
-  // State
   conversationId: string | null;
   onboardingDone: boolean;
   isAuthenticated: boolean;
@@ -49,7 +44,6 @@ type ChatColumnProps = {
   canSubmit: boolean;
   onSend: () => void;
 
-  // Onboarding
   hasExpanded: boolean;
   onboardingKey: number;
   blackHoleRef: React.RefObject<AsciiBlackHoleHandle | null>;
@@ -142,7 +136,6 @@ export function ChatColumn({
         )}
       </div>
 
-      {/* Scroll to bottom button */}
       {showScrollButton && hasMessages && onboardingDone && (
         <button
           className="scroll-to-bottom"
@@ -162,7 +155,6 @@ export function ChatColumn({
         </button>
       )}
 
-      {/* Composer - only when authenticated */}
       {isAuthenticated && onboardingDone && (
         <Composer
           message={message}

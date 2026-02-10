@@ -2,7 +2,6 @@
 import * as React from "react";
 import { X } from "lucide-react";
 
-// Toast context for managing toasts
 interface ToastContextValue {
   toasts: Toast[];
   addToast: (options: ToastOptions) => string;
@@ -97,7 +96,6 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
   );
 }
 
-// Helper function to show toast from outside React
 let toastFn: ((options: ToastOptions | string) => string) | null = null;
 
 export function setToastFn(fn: (options: ToastOptions | string) => string) {

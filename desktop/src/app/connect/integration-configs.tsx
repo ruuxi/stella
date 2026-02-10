@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
 
-// ---------------------------------------------------------------------------
-// Integration definitions
-// ---------------------------------------------------------------------------
-
 export type IntegrationType = "bot" | "bridge";
 
 export interface Integration {

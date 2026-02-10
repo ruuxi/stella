@@ -13,10 +13,6 @@ import { INTEGRATIONS } from "./integration-configs";
 import { IntegrationCard } from "./IntegrationCard";
 import "../ConnectDialog.css";
 
-// ---------------------------------------------------------------------------
-// ConnectDialog
-// ---------------------------------------------------------------------------
-
 interface ConnectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

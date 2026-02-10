@@ -10,10 +10,6 @@ import {
   type BridgeProvider,
 } from "@/lib/bridge-local";
 
-// ---------------------------------------------------------------------------
-// Shared hooks
-// ---------------------------------------------------------------------------
-
 function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
   const setupBridge = useAction(api.channels.bridge.setupBridge);
   const getBridgeBundle = useAction(api.channels.bridge.getBridgeBundle);
@@ -47,10 +43,6 @@ function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
   return error;
 }
 
-// ---------------------------------------------------------------------------
-// Sub-views
-// ---------------------------------------------------------------------------
-
 function ConnectedView({ integration }: { integration: Integration }) {
   const deleteConnection = useMutation(api.channels.utils.deleteConnection);
   const stopBridge = useAction(api.channels.bridge.stopBridge);
@@ -62,11 +54,10 @@ function ConnectedView({ integration }: { integration: Integration }) {
     setDisconnecting(true);
     try {
       if (isBridge) {
-        // Stop local process if running
         try {
           await window.electronAPI?.bridgeStop({ provider: integration.provider });
         } catch {
-          // Ignore — may not be running locally
+          // Ignore; bridge may not be running locally.
         }
         await stopBridge({ provider: integration.provider });
       }
@@ -267,10 +258,6 @@ function SignalBridgeView({ isExpanded }: { isExpanded: boolean }) {
     </>
   );
 }
-
-// ---------------------------------------------------------------------------
-// IntegrationCard
-// ---------------------------------------------------------------------------
 
 export function IntegrationCard({
   integration,
