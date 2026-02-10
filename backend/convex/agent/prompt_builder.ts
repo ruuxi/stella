@@ -160,6 +160,23 @@ export const buildSystemPrompt = async (
     }
   }
 
+  // Inject core memory for orchestrator
+  if (agentType === "orchestrator" && options?.ownerId) {
+    try {
+      const coreMemories = await ctx.runQuery(internal.data.memory.getExistingMemories, {
+        ownerId: options.ownerId,
+        category: "core",
+        subcategory: "identity",
+      });
+      if (coreMemories.length > 0) {
+        const coreContent = coreMemories.map((m: { content: string }) => m.content).join("\n");
+        systemParts.push(`# Core Memory\n${coreContent}`);
+      }
+    } catch {
+      // Core memory query failed — skip
+    }
+  }
+
   const maxTaskDepthValue = Number(agent.maxTaskDepth ?? 2);
   const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue > 0
     ? Math.floor(maxTaskDepthValue)

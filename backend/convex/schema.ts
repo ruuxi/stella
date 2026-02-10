@@ -260,16 +260,11 @@ export default defineSchema({
     category: v.string(),
     subcategory: v.string(),
     content: v.string(),
-    embedding: v.array(v.float64()),
     accessedAt: v.number(),
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
     decay: v.number(),
   })
-    .vectorIndex("by_embedding", {
-      vectorField: "embedding",
-      dimensions: 1536,
-      filterFields: ["ownerId", "category"],
-    })
     .index("by_owner_category", ["ownerId", "category", "subcategory"])
     .index("by_decay", ["decay", "accessedAt"]),
   heartbeat_configs: defineTable({

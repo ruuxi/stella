@@ -8,7 +8,7 @@ export const CORE_MEMORY_SYNTHESIS_PROMPT = `You are distilling discovery data i
 Capture WHO this person is in 300-400 tokens. An AI reading this should immediately understand:
 - What they do and care about most
 - How to be genuinely helpful to them
-- What categories of detailed knowledge are available via MemorySearch
+- What categories of detailed knowledge are available via RecallMemories
 
 ## Output Format
 
@@ -48,7 +48,7 @@ These act as pointers — the AI should search memory for details on any of thes
 
 4. **ACTIONABLE**: Every sentence should help an AI be more useful to them.
 
-5. **CONTEXT_MAP IS A BRIDGE**: Each line should make the AI want to search for more details via MemorySearch. The detailed facts are stored in ephemeral memory, not here.
+5. **CONTEXT_MAP IS A BRIDGE**: Each line should make the AI want to search for more details via RecallMemories. The detailed facts are stored in ephemeral memory, not here.
 
 ## What to SKIP
 - Exhaustive lists of tools/sites/creators

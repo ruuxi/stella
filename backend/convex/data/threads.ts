@@ -348,8 +348,8 @@ export const archiveAndSummarize = internalAction({
         prompt: `Summarize this work session titled "${thread.title}" into 2-3 sentences of key facts and outcomes:\n\n${truncated}`,
       });
 
-      // Insert as episodic memory via the existing ingest pipeline
-      await ctx.runAction(internal.data.memory.insertMemoryWithEmbedding, {
+      // Insert as episodic memory
+      await ctx.runMutation(internal.data.memory.insertMemory, {
         ownerId: args.ownerId,
         category: "threads",
         subcategory: thread.title,

@@ -52,13 +52,13 @@ export const createOrchestrationTools = (
       "Usage:\n" +
       "- description: short summary for logging (e.g. \"Search for React components\").\n" +
       "- prompt: the full instructions the subagent will follow. Be specific — the subagent only sees this prompt.\n" +
-      "- subagent_type: which agent to use — \"memory\" (context lookup), \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
+      "- subagent_type: which agent to use — \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
       "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.\n\n" +
       "Multiple tasks can run in parallel — call TaskCreate multiple times, then poll each with TaskOutput.",
     inputSchema: z.object({
       description: z.string().describe("Short summary for logging"),
       prompt: z.string().describe("Full instructions for the subagent"),
-      subagent_type: z.string().describe("Agent type: memory, general, self_mod, explore, or browser"),
+      subagent_type: z.string().describe("Agent type: general, self_mod, explore, or browser"),
       include_history: z.boolean().optional().describe("Pass conversation context to the subagent"),
       // thread_id: z.string().optional().describe("Continue an existing thread"),
       // thread_title: z.string().optional().describe("Create a new thread with this title"),
@@ -134,12 +134,13 @@ export const createOrchestrationTools = (
     TaskCreate,
     TaskOutput,
     TaskCancel,
-    MemorySearch: createMemorySearchTool(ctx, options),
+    RecallMemories: createRecallMemoriesTool(ctx, options),
+    SaveMemory: createSaveMemoryTool(ctx, options),
   };
 };
 
 /**
- * Deviceless orchestration tools — includes MemorySearch (pure DB query)
+ * Deviceless orchestration tools — includes memory tools (pure DB query + cheap LLM)
  * but excludes Task tools (which need device context for subagent tools).
  */
 export const createOrchestrationToolsWithoutDevice = (
@@ -147,55 +148,77 @@ export const createOrchestrationToolsWithoutDevice = (
   options: ToolOptions,
 ): ToolSet => {
   return {
-    MemorySearch: createMemorySearchTool(ctx, options),
+    RecallMemories: createRecallMemoriesTool(ctx, options),
+    SaveMemory: createSaveMemoryTool(ctx, options),
   };
 };
 
-const createMemorySearchTool = (ctx: ActionCtx, options: ToolOptions) =>
+const createRecallMemoriesTool = (ctx: ActionCtx, options: ToolOptions) =>
   tool({
     description:
-      "Search the user's episodic memory for relevant past context.\n\n" +
-      "Memories are stored from past conversations and tasks. Use when:\n" +
+      "Look up relevant memories from past conversations.\n\n" +
+      "Provide 1-3 category/subcategory pairs from the Memory Categories tree in your system prompt, " +
+      "plus a natural language query. Returns a synthesized context summary.\n\n" +
+      "Use when:\n" +
       "- The user references something from a previous conversation (\"remember when...\", \"like last time\").\n" +
-      "- You need historical context to answer a question (user preferences, past decisions, prior work).\n" +
+      "- You need historical context (user preferences, past decisions, prior work).\n" +
       "- You want to check if something was discussed or decided before.\n\n" +
-      "The response includes:\n" +
-      "1. Available categories — a tree of category/subcategory with counts. Use this to discover what's stored.\n" +
-      "2. Matched memories — the most relevant memories for your query.\n\n" +
       "Tips:\n" +
-      "- Use natural language queries (\"user's preferred programming language\", \"previous project setup\").\n" +
-      "- Use the category filter to narrow results when you know the domain (e.g. category=\"preferences\").\n" +
-      "- If no results match, try broader or rephrased queries.",
+      "- Check the Memory Categories tree to pick the right category/subcategory pairs.\n" +
+      "- Use specific queries for better results (\"user's preferred programming language\" not just \"preferences\").\n" +
+      "- If no results match, try different category pairs or broader queries.",
     inputSchema: z.object({
-      query: z.string().min(1).describe("Natural language search query"),
-      category: z.string().optional().describe("Filter to a specific category (e.g. \"preferences\", \"projects\")"),
+      categories: z.array(z.object({
+        category: z.string().describe("Memory category (e.g. \"preferences\", \"projects\")"),
+        subcategory: z.string().describe("Memory subcategory (e.g. \"coding\", \"setup\")"),
+      })).min(1).max(3).describe("1-3 category/subcategory pairs to search"),
+      query: z.string().min(1).describe("Natural language query describing what you need"),
     }),
     execute: async (args) => {
       if (!options.ownerId) {
-        return "MemorySearch requires an authenticated owner context.";
+        return "RecallMemories requires an authenticated owner context.";
       }
       try {
-        const [categories, results] = await Promise.all([
-          ctx.runQuery(internal.data.memory.listCategories, { ownerId: options.ownerId }),
-          ctx.runAction(internal.data.memory.search, {
-            query: args.query,
-            category: args.category,
-            ownerId: options.ownerId,
-          }),
-        ]);
-        const categoryTree = categories
-          .map((c: { category: string; subcategory: string; count: number }) =>
-            `${c.category}/${c.subcategory} (${c.count})`,
-          )
-          .join("\n");
-        const memories = results
-          .map((r: { category: string; subcategory: string; content: string }) =>
-            `[${r.category}/${r.subcategory}] ${r.content}`,
-          )
-          .join("\n\n");
-        return `Available categories:\n${categoryTree}\n\n---\nMatched memories:\n${memories || "(none)"}`;
+        return await ctx.runAction(internal.data.memory.recallMemories, {
+          ownerId: options.ownerId,
+          categories: args.categories,
+          query: args.query,
+        });
       } catch (error) {
-        return `MemorySearch failed: ${(error as Error).message}`;
+        return `RecallMemories failed: ${(error as Error).message}`;
+      }
+    },
+  });
+
+const createSaveMemoryTool = (ctx: ActionCtx, options: ToolOptions) =>
+  tool({
+    description:
+      "Save something worth remembering across conversations.\n\n" +
+      "Use when you learn something about the user worth persisting — preferences, decisions, personal details, " +
+      "project context, or any fact that would be useful in future conversations.\n\n" +
+      "The system automatically deduplicates: if a similar memory already exists in the same category/subcategory, " +
+      "it will be updated rather than duplicated.\n\n" +
+      "Pick category/subcategory from the Memory Categories tree, or create new ones if needed.\n\n" +
+      "Each memory should be a coherent thought (1-3 sentences), not a bare keyword or a long document.",
+    inputSchema: z.object({
+      category: z.string().describe("Memory category (e.g. \"preferences\", \"projects\", \"personal\")"),
+      subcategory: z.string().describe("Memory subcategory (e.g. \"coding\", \"setup\", \"family\")"),
+      content: z.string().min(1).describe("The information to remember (1-3 coherent sentences)"),
+    }),
+    execute: async (args) => {
+      if (!options.ownerId) {
+        return "SaveMemory requires an authenticated owner context.";
+      }
+      try {
+        return await ctx.runAction(internal.data.memory.saveMemory, {
+          ownerId: options.ownerId!,
+          category: args.category,
+          subcategory: args.subcategory,
+          content: args.content,
+          conversationId: options.conversationId,
+        });
+      } catch (error) {
+        return `SaveMemory failed: ${(error as Error).message}`;
       }
     },
   });
