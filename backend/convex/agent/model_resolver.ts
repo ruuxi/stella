@@ -79,6 +79,15 @@ function createGatewayModel(modelString: string, apiKey: string): LanguageModel 
   return gateway(modelString);
 }
 
+/** Strip gateway-specific options, keep provider-specific ones (e.g. openai.reasoningEffort) */
+function filterGatewayOptions(
+  providerOptions?: Record<string, unknown>,
+): ProviderOptions | undefined {
+  if (!providerOptions) return undefined;
+  const { gateway, ...rest } = providerOptions;
+  return Object.keys(rest).length > 0 ? (rest as ProviderOptions) : undefined;
+}
+
 /** Map provider prefix to secrets provider key */
 function providerToSecretKey(provider: string): string | null {
   switch (provider) {
@@ -157,6 +166,7 @@ export async function resolveModelConfig(
             model: directModel,
             temperature: defaults.temperature,
             maxOutputTokens: defaults.maxOutputTokens,
+            providerOptions: filterGatewayOptions(defaults.providerOptions as Record<string, unknown>),
           };
         }
       }
@@ -170,6 +180,7 @@ export async function resolveModelConfig(
       model: createOpenRouterModel(modelString, openrouterKey),
       temperature: defaults.temperature,
       maxOutputTokens: defaults.maxOutputTokens,
+      providerOptions: filterGatewayOptions(defaults.providerOptions as Record<string, unknown>),
     };
   }
 
@@ -180,6 +191,7 @@ export async function resolveModelConfig(
       model: createGatewayModel(modelString, gatewayKey),
       temperature: defaults.temperature,
       maxOutputTokens: defaults.maxOutputTokens,
+      providerOptions: filterGatewayOptions(defaults.providerOptions as Record<string, unknown>),
     };
   }
 
