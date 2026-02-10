@@ -57,12 +57,10 @@ export function ThemePicker({
   } = useTheme();
 
   const [internalOpen, setInternalOpen] = useState(false);
-  
-  // Support both controlled and uncontrolled mode
+
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setOpen = controlledOnOpenChange || setInternalOpen;
 
-  // Sort themes alphabetically by name
   const sortedThemes = useMemo(
     () => [...themes].sort((a, b) => a.name.localeCompare(b.name)),
     [themes]
@@ -92,7 +90,6 @@ export function ThemePicker({
       <PopoverContent side="top" align="end" data-theme-picker="true">
         <PopoverBody>
           <div data-slot="theme-picker-sections" onMouseLeave={() => cancelPreview()}>
-            {/* Appearance Section */}
             <div data-slot="theme-picker-section" data-bordered>
               <div data-slot="theme-picker-label">Appearance</div>
               <div data-slot="theme-picker-button-row">
@@ -109,7 +106,6 @@ export function ThemePicker({
                 ))}
               </div>
 
-              {/* Gradient Mode */}
               <div data-slot="theme-picker-label">Gradient</div>
               <div
                 data-slot="theme-picker-button-row"
@@ -130,7 +126,6 @@ export function ThemePicker({
                 ))}
               </div>
 
-              {/* Gradient Color */}
               <div data-slot="theme-picker-label">Color</div>
               <div
                 data-slot="theme-picker-button-row"
@@ -152,7 +147,6 @@ export function ThemePicker({
               </div>
             </div>
 
-            {/* Theme List Section */}
             <div
               data-slot="theme-picker-theme-list"
               onMouseLeave={() => cancelThemePreview()}

@@ -46,20 +46,16 @@ export const FullShell = () => {
   const [runtimeModeDialogOpen, setRuntimeModeDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
 
-  // Auto-reconnect local bridges on launch
   useBridgeAutoReconnect();
 
-  // Onboarding
   const onboarding = useOnboardingOverlay();
 
-  // Discovery
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     isAuthenticated: onboarding.isAuthenticated,
     onboardingDone: onboarding.onboardingDone,
     conversationId: state.conversationId,
   });
 
-  // Streaming chat
   const {
     streamingText,
     reasoningText,
@@ -74,7 +70,6 @@ export const FullShell = () => {
     conversationId: state.conversationId,
   });
 
-  // Scroll management
   const {
     scrollContainerRef,
     isNearBottom,
@@ -83,13 +78,11 @@ export const FullShell = () => {
     handleScroll,
   } = useScrollManagement();
 
-  // Broadcast gate state to main process
   useEffect(() => {
     const ready = onboarding.isAuthenticated && onboarding.onboardingDone;
     window.electronAPI?.setAppReady?.(ready);
   }, [onboarding.isAuthenticated, onboarding.onboardingDone]);
 
-  // Chat context from Electron
   useEffect(() => {
     const electronApi = getElectronApi();
     if (!electronApi) return;
@@ -123,7 +116,6 @@ export const FullShell = () => {
     };
   }, []);
 
-  // Events
   const events = useConversationEvents(state.conversationId ?? undefined);
   useCanvasCommands(events);
 
@@ -175,24 +167,20 @@ export const FullShell = () => {
     restoredCanvasConversationRef.current = state.conversationId;
   }, [state.conversationId, savedCanvasState, openCanvas, closeCanvas, setWidth]);
 
-  // Sync streaming with events
   useEffect(() => {
     syncWithEvents(events);
   }, [events, syncWithEvents]);
 
-  // Process follow-up queue
   useEffect(() => {
     processFollowUpQueue(events);
   }, [events, processFollowUpQueue]);
 
-  // Auto-scroll when persisted conversation content arrives
   useEffect(() => {
     if (isNearBottom) {
       scrollToBottom("smooth");
     }
   }, [events.length, isNearBottom, scrollToBottom]);
 
-  // Keep viewport pinned during streaming
   useEffect(() => {
     if (isStreaming && isNearBottom) {
       scrollToBottom("auto");
@@ -206,16 +194,12 @@ export const FullShell = () => {
   ]);
 
   const handleSend = useCallback(() => {
-    const hasScreenshotCtx = Boolean(chatContext?.regionScreenshots?.length);
     void sendMessage({
       text: message,
       selectedText,
       chatContext,
       onClear: () => {
         setMessage("");
-        if (!hasScreenshotCtx && !selectedText?.trim() && !chatContext?.window) {
-          // Composer will collapse naturally
-        }
         setSelectedText(null);
         setChatContext(null);
       },

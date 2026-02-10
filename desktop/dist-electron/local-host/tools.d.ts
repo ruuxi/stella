@@ -6,7 +6,6 @@
  *
  * - tools-types.ts    — Shared type definitions
  * - tools-utils.ts    — Shared utilities (logging, path expansion, truncation, etc.)
- * - tools-database.ts — SqliteQuery handler
  * - tools-file.ts     — Read, Write, Edit handlers
  * - tools-search.ts   — Glob, Grep handlers
  * - tools-shell.ts    — Bash, SkillBash handlers
@@ -19,6 +18,8 @@ export type { ToolContext, ToolResult, PluginSyncPayload };
 export declare const createToolHost: ({ StellaHome, frontendRoot, requestCredential, resolveSecret }: ToolHostOptions) => {
     executeTool: (toolName: string, toolArgs: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>;
     getShells: () => import("./tools-types.js").ShellRecord[];
+    killAllShells: () => void;
+    killShellsByPort: (port: number) => void;
     loadPlugins: () => Promise<PluginSyncPayload>;
     getPluginSyncPayload: () => PluginSyncPayload;
     setSkills: (skills: PluginSyncPayload["skills"]) => void;
