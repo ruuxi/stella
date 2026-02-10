@@ -105,7 +105,9 @@ function BotSetupView({
   isExpanded: boolean;
 }) {
   const generateCode = useMutation(api.channels.utils.generateLinkCode);
+  const createSlackInstallUrl = useMutation((api as any).data.integrations.createSlackInstallUrl);
   const [code, setCode] = useState<string | null>(null);
+  const [botLink, setBotLink] = useState<string | null>(integration.botLink ?? null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -129,6 +131,30 @@ function BotSetupView({
       cancelled = true;
     };
   }, [isExpanded, integration.provider, generateCode]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    if (integration.provider !== "slack") {
+      setBotLink(integration.botLink ?? null);
+      return;
+    }
+
+    let cancelled = false;
+    createSlackInstallUrl({})
+      .then((result) => {
+        if (cancelled) return;
+        setBotLink(result.url);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setBotLink(null);
+        setError((err as Error).message ?? "Failed to prepare Slack install URL");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [createSlackInstallUrl, integration.botLink, integration.provider, isExpanded]);
 
   const handleCopy = useCallback(() => {
     if (code) {
@@ -158,10 +184,10 @@ function BotSetupView({
         </div>
       )}
 
-      {integration.botLink && (
+      {botLink && (
         <a
           className="connect-bot-link"
-          href={integration.botLink}
+          href={botLink}
           target="_blank"
           rel="noopener noreferrer"
         >
