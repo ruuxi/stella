@@ -195,29 +195,5 @@ print(f"Replaced {count if ${replaceAll} else 1} occurrence(s) in {path}")
         }
       },
     }),
-    SqliteQuery: tool({
-      description:
-        "Execute a read-only SQL query on a SQLite database in the cloud sandbox.",
-      inputSchema: z.object({
-        database_path: z.string().min(1),
-        query: z.string().min(1),
-        limit: z.number().int().positive().max(500).optional(),
-      }),
-      execute: async (args) => {
-        const limit = args.limit ?? 100;
-        try {
-          const result = await spritesExec(
-            spriteName,
-            `sqlite3 -header -column "${args.database_path}" "${args.query} LIMIT ${limit}"`,
-          );
-          if (result.exit_code !== 0) {
-            return `SQLite error: ${result.stderr}`;
-          }
-          return truncate(result.stdout || "(no results)");
-        } catch (error) {
-          return `SqliteQuery failed: ${(error as Error).message}`;
-        }
-      },
-    }),
   };
 };

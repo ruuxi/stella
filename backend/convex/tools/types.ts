@@ -17,7 +17,12 @@ export type ToolOptions = {
   conversationId?: Id<"conversations">;
 };
 
+/**
+ * Reference list of all tool names across all tiers.
+ * Not used for logic — only for documentation and type hints.
+ */
 export const BASE_TOOL_NAMES = [
+  // Device tools (Electron local execution)
   "Read",
   "Write",
   "Edit",
@@ -25,14 +30,25 @@ export const BASE_TOOL_NAMES = [
   "Grep",
   "Bash",
   "KillShell",
-  "WebFetch",
-  "WebSearch",
-  "TaskCreate",
-  "TaskOutput",
-  "TaskCancel",
   "AskUserQuestion",
   "RequestCredential",
+  "SkillBash",
+  "MediaGenerate",
+  "SelfModStart",
+  "SelfModApply",
+  "SelfModRevert",
+  "SelfModStatus",
+  "SelfModPackage",
+  "InstallSkillPackage",
+  "InstallThemePackage",
+  "InstallCanvasPackage",
+  "InstallPluginPackage",
+  "UninstallPackage",
+  // Backend tools (always available, server-side)
+  "WebSearch",
+  "WebFetch",
   "IntegrationRequest",
+  "ActivateSkill",
   "HeartbeatGet",
   "HeartbeatUpsert",
   "HeartbeatRun",
@@ -41,12 +57,17 @@ export const BASE_TOOL_NAMES = [
   "CronUpdate",
   "CronRemove",
   "CronRun",
-  "SkillBash",
-  "SqliteQuery",
-  "MediaGenerate",
-  "RecallMemories",
-  "SaveMemory",
-  "ActivateSkill",
   "OpenCanvas",
   "CloseCanvas",
+  "StoreSearch",
+  "GenerateApiSkill",
+  "SelfModInstallBlueprint",
+  "SpawnRemoteMachine",
+  "NoResponse",
+  // Orchestration tools
+  "TaskCreate",
+  "TaskOutput",
+  "TaskCancel",
+  "RecallMemories",
+  "SaveMemory",
 ] as const;

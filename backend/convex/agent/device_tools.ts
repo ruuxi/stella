@@ -23,7 +23,6 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "AskUserQuestion",
   "RequestCredential",
   "SkillBash",
-  "SqliteQuery",
   "MediaGenerate",
   "SelfModStart",
   "SelfModApply",
@@ -325,20 +324,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         run_in_background: z.boolean().optional().describe("Run in background and return a shell_id"),
       }),
       execute: (args) => call("SkillBash", args),
-    }),
-    SqliteQuery: tool({
-      description:
-        "Execute a read-only SQL query on a local SQLite database.\n\n" +
-        "Usage:\n" +
-        "- Only SELECT and PRAGMA statements are allowed. Mutations will be rejected.\n" +
-        "- Returns rows as JSON. Use limit to cap the number of rows (default uncapped, max 500).\n" +
-        "- database_path must be an absolute path to a .db or .sqlite file.",
-      inputSchema: z.object({
-        database_path: z.string().min(1).describe("Absolute path to the SQLite database file"),
-        query: z.string().min(1).describe("SQL query (SELECT or PRAGMA only)"),
-        limit: z.number().int().positive().max(500).optional().describe("Maximum number of rows to return"),
-      }),
-      execute: (args) => call("SqliteQuery", args),
     }),
     MediaGenerate: tool({
       description:
