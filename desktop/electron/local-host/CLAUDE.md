@@ -44,6 +44,7 @@ Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and
 | `skill_import.ts` | Import skills from `~/.claude/skills/` into `~/.stella/skills/` |
 | `identity_map.ts` | Persistent pseudonymization (maps real names to aliases) |
 | `manifests.ts` | Manifest file parsing |
+| `bridge_manager.ts` | Local bridge lifecycle (deploy/start/stop/stopAll/isRunning) |
 
 ### User Signal Collection
 

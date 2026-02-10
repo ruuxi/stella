@@ -46,10 +46,21 @@ Built on Radix UI with custom styling:
 - `radio-group.tsx` - Radio button groups
 - `toast.tsx` - Toast notifications
 
+### Display
+- `icon.tsx` - Icon system
+- `avatar.tsx` - Avatar component
+- `spinner.tsx` - Loading spinner
+- `code.tsx` - Code display
+- `image-preview.tsx` - Image preview
+- `tag.tsx` - Tag/badge component
+- `progress-circle.tsx` - Circular progress indicator
+- `keybind.tsx` - Keyboard shortcut display
+
 ### Layout
 - `card.tsx` - Card containers
 - `list.tsx` - List containers
 - `steps-container.tsx` - Step-based layouts
+- `resize-handle.tsx` - Draggable resize handle
 
 ### Form
 - `text-field.tsx` - Text inputs
@@ -74,10 +85,19 @@ Side panel system for rendering interactive content:
 - `renderers/panel.tsx` - Vite-compiled single-file TSX from `workspace/panels/`
 - `renderers/appframe.tsx` - Sandboxed iframe for workspace apps (`~/.stella/apps/`)
 
+### App-Level Components
+Direct imports (not re-exported from index.ts):
+- `Sidebar.tsx` - Application sidebar
+- `TitleBar.tsx` - Window title bar
+- `ThemePicker.tsx` - Theme picker UI
+- `AuthStatus.tsx` - Authentication status
+- `CredentialModal.tsx` - Credential management modal
+- `AsciiBlackHole.tsx` - ASCII animation wrapper
+
 ### Other Subdirectories
 - `background/` - `ShiftingGradient.tsx` animated background
-- `ascii-creature/` - WebGL ASCII art rendering
-- `onboarding/` - Onboarding flow components
+- `ascii-creature/` - WebGL ASCII art rendering (shader, glyph atlas, renderer)
+- `onboarding/` - Onboarding flow components (discovery, step1, state hook)
 
 ## Styling Patterns
 
