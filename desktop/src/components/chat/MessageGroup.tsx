@@ -14,7 +14,6 @@ type MessageGroupProps = {
 const getMessageText = (event: EventRecord): string => {
   if (event.payload && typeof event.payload === "object") {
     const payload = event.payload as MessagePayload;
-    // Check common content field names
     return payload.text ?? payload.content ?? payload.message ?? "";
   }
   return "";
@@ -40,12 +39,10 @@ export function MessageGroup({
   const assistantText = assistantMessage ? getMessageText(assistantMessage) : "";
   const hasStreamingContent = Boolean(streamingText && streamingText.trim().length > 0);
 
-  // Determine if we're still waiting for assistant response
   const showWorkingIndicator = isStreaming && !assistantMessage;
 
   return (
     <div className="message-group">
-      {/* User message */}
       <div className="session-turn">
         <div className="event-item user">
           <div className="event-body">{userText}</div>
@@ -81,7 +78,6 @@ export function MessageGroup({
         </div>
       </div>
 
-      {/* Working indicator - shows while streaming without content yet */}
       {showWorkingIndicator && (
         <div className="session-turn">
           <div className="event-item assistant streaming">
@@ -95,7 +91,6 @@ export function MessageGroup({
         </div>
       )}
 
-      {/* Assistant message - shows completed response */}
       {assistantMessage && !isStreaming && (
         <div className="session-turn">
           <div className="event-item assistant">

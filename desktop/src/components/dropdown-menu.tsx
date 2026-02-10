@@ -2,10 +2,8 @@ import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
 
-// Root component
 const DropdownMenuRoot = DropdownMenuPrimitive.Root;
 
-// Trigger
 const DropdownMenuTrigger = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger>
@@ -19,10 +17,8 @@ const DropdownMenuTrigger = React.forwardRef<
 ));
 DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 
-// Portal
 const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 
-// Content
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
@@ -39,7 +35,6 @@ const DropdownMenuContent = React.forwardRef<
 ));
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
-// Separator
 const DropdownMenuSeparator = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Separator>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
@@ -53,7 +48,6 @@ const DropdownMenuSeparator = React.forwardRef<
 ));
 DropdownMenuSeparator.displayName = "DropdownMenuSeparator";
 
-// Label
 const DropdownMenuLabel = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Label>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label>
@@ -67,7 +61,6 @@ const DropdownMenuLabel = React.forwardRef<
 ));
 DropdownMenuLabel.displayName = "DropdownMenuLabel";
 
-// Item
 const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>
@@ -81,7 +74,6 @@ const DropdownMenuItem = React.forwardRef<
 ));
 DropdownMenuItem.displayName = "DropdownMenuItem";
 
-// RadioGroup
 const DropdownMenuRadioGroup = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.RadioGroup>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioGroup>
@@ -95,7 +87,6 @@ const DropdownMenuRadioGroup = React.forwardRef<
 ));
 DropdownMenuRadioGroup.displayName = "DropdownMenuRadioGroup";
 
-// RadioItem
 const DropdownMenuRadioItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.RadioItem>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
@@ -116,7 +107,6 @@ const DropdownMenuRadioItem = React.forwardRef<
 ));
 DropdownMenuRadioItem.displayName = "DropdownMenuRadioItem";
 
-// CheckboxItem
 const DropdownMenuCheckboxItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
@@ -137,13 +127,10 @@ const DropdownMenuCheckboxItem = React.forwardRef<
 ));
 DropdownMenuCheckboxItem.displayName = "DropdownMenuCheckboxItem";
 
-// Group
 const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 
-// Sub
 const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 
-// SubTrigger
 const DropdownMenuSubTrigger = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger>
@@ -157,7 +144,6 @@ const DropdownMenuSubTrigger = React.forwardRef<
 ));
 DropdownMenuSubTrigger.displayName = "DropdownMenuSubTrigger";
 
-// SubContent
 const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
@@ -171,7 +157,6 @@ const DropdownMenuSubContent = React.forwardRef<
 ));
 DropdownMenuSubContent.displayName = "DropdownMenuSubContent";
 
-// Export all components
 export {
   DropdownMenuRoot as DropdownMenu,
   DropdownMenuTrigger,

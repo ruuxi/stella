@@ -22,7 +22,6 @@ const WEDGE_ANGLE = 72 // 360 / 5 wedges
 const DEAD_ZONE_RADIUS = 30 // Center zone for "dismiss"
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
-// Helper to convert hex to rgba with alpha
 const toRgba = (color: string, alpha: number): string => {
   if (color.startsWith('#')) {
     const { r, g, b } = hexToRgb(color)
@@ -31,7 +30,6 @@ const toRgba = (color: string, alpha: number): string => {
   return color
 }
 
-// Generate SVG path for a wedge
 const createWedgePath = (startAngle: number, endAngle: number): string => {
   const startRad = (startAngle - 90) * (Math.PI / 180)
   const endRad = (endAngle - 90) * (Math.PI / 180)
@@ -55,7 +53,6 @@ const createWedgePath = (startAngle: number, endAngle: number): string => {
   `
 }
 
-// Get icon + label position for a wedge
 const getContentPosition = (index: number) => {
   const midAngle = (index * WEDGE_ANGLE + WEDGE_ANGLE / 2 - 90) * (Math.PI / 180)
   const contentRadius = (INNER_RADIUS + OUTER_RADIUS) / 2
@@ -79,20 +76,15 @@ export function RadialDial() {
       const dy = y - centerY
       const distance = Math.sqrt(dx * dx + dy * dy)
 
-      // Center zone = dismiss
       if (distance < DEAD_ZONE_RADIUS) {
         return 'dismiss'
       }
 
-      // Calculate angle (0 = right, going clockwise)
       let angle = Math.atan2(dy, dx) * (180 / Math.PI)
-      // Normalize to 0-360
       if (angle < 0) angle += 360
 
-      // Adjust angle to start from top
       angle = (angle + 90) % 360
 
-      // Determine wedge index
       const wedgeIndex = Math.floor(angle / WEDGE_ANGLE)
       return WEDGES[wedgeIndex]?.id ?? 'dismiss'
     },
@@ -102,7 +94,6 @@ export function RadialDial() {
   useEffect(() => {
     if (!api) return
 
-    // Listen for radial events from main process
     const handleShow = (
       _event: unknown,
       data: { centerX: number; centerY: number; x?: number; y?: number }
@@ -133,8 +124,7 @@ export function RadialDial() {
         cancelAnimationFrame(animateFrameRef.current)
         animateFrameRef.current = null
       }
-      // Reset immediately — the window is parked off-screen so the user won't
-      // see this. Next show will start from the base state.
+      // Reset immediately; the window is parked off-screen, so users never see this.
       setAnimateIn(false)
     }
 
@@ -147,7 +137,6 @@ export function RadialDial() {
       setSelectedWedge((prev) => (prev === wedge ? prev : wedge))
     }
 
-    // Access ipcRenderer through electronAPI
     const electronAPI = window.electronAPI
     if (electronAPI?.onRadialShow) {
       const cleanupShow = electronAPI.onRadialShow(handleShow)
@@ -166,8 +155,6 @@ export function RadialDial() {
     }
   }, [api, calculateWedge])
 
-  // Always render the full SVG so the compositor buffer is pre-painted.
-  // Window visibility is controlled by OS show()/hide() in the main process.
   return (
     <div className="radial-dial-container">
       <div className={`radial-dial-frame${animateIn ? ' radial-dial-frame--visible' : ''}`}>
@@ -177,7 +164,6 @@ export function RadialDial() {
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           className="radial-dial"
         >
-          {/* Wedges */}
           {WEDGES.map((wedge, index) => {
             const startAngle = index * WEDGE_ANGLE
             const endAngle = (index + 1) * WEDGE_ANGLE
@@ -242,7 +228,6 @@ export function RadialDial() {
             )
           })}
 
-          {/* Center circle */}
           <circle
             cx={CENTER}
             cy={CENTER}
@@ -254,7 +239,6 @@ export function RadialDial() {
           />
         </svg>
 
-        {/* Center blackhole animation - outside SVG for WebGL compatibility */}
         <div className="radial-center-blackhole">
           <AsciiBlackHole width={20} height={20} initialBirthProgress={1} />
         </div>
