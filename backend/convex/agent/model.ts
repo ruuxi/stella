@@ -20,9 +20,6 @@ type ModelConfig = {
   };
 };
 
-// ============================================================================
-// DEFAULT - Fallback for unknown agent types
-// ============================================================================
 const DEFAULT_MODEL: ModelConfig = {
   model: "zai/glm-4.7",
   temperature: 1.0,
@@ -34,11 +31,7 @@ const DEFAULT_MODEL: ModelConfig = {
   },
 };
 
-// ============================================================================
-// PER-AGENT MODEL CONFIGURATION
-// ============================================================================
 const AGENT_MODELS: Record<string, ModelConfig> = {
-  // Orchestrator (top-level responder)
   orchestrator: {
     model: "anthropic/claude-opus-4.6",
     temperature: 1.0,
@@ -50,7 +43,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Main general-purpose agent
   general: {
     model: "anthropic/claude-opus-4.6",
     temperature: 1.0,
@@ -62,7 +54,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Codebase exploration and research
   explore: {
     model: "zai/glm-4.7",
     temperature: 1.0,
@@ -74,7 +65,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Browser automation via Playwright
   browser: {
     model: "moonshotai/kimi-k2.5",
     temperature: 1.0,
@@ -86,7 +76,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Self-modification agent
   self_mod: {
     model: "anthropic/claude-opus-4.6",
     temperature: 1.0,
@@ -98,7 +87,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Cheap model for memory recall filter, save dedup, extraction, decay summarization
   memory_ops: {
     model: "zai/glm-4.7",
     temperature: 1.0,
@@ -110,7 +98,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Core memory synthesis (first-launch discovery)
   synthesis: {
     model: "openai/gpt-5.2-codex",
     temperature: 1.0,
@@ -125,7 +112,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Welcome message generation (personalized greeting)
   welcome: {
     model: "anthropic/claude-opus-4.6",
     temperature: 1.0,
@@ -146,7 +132,4 @@ export function getModelConfig(agentType: string): ModelConfig {
   return AGENT_MODELS[agentType] ?? DEFAULT_MODEL;
 }
 
-/**
- * Export individual configs for direct access if needed.
- */
 export { DEFAULT_MODEL, AGENT_MODELS };
