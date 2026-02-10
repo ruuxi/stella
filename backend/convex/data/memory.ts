@@ -7,9 +7,10 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { embed as aiEmbed, generateText } from "ai";
+import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
 import { DISCOVERY_FACT_EXTRACTION_PROMPT } from "../prompts/discovery_facts";
+import { RECALL_FILTER_PROMPT, SAVE_MEMORY_PROMPT } from "../prompts/memory";
 import { requireUserId } from "../auth";
 
 const memoryValidator = v.object({
@@ -20,9 +21,9 @@ const memoryValidator = v.object({
   category: v.string(),
   subcategory: v.string(),
   content: v.string(),
-  embedding: v.array(v.float64()),
   accessedAt: v.number(),
   createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
   decay: v.number(),
 });
 
@@ -37,28 +38,8 @@ const factExtractionResultValidator = v.object({
   parseOk: v.boolean(),
 });
 
-const memorySearchResultValidator = v.object({
-  category: v.string(),
-  subcategory: v.string(),
-  content: v.string(),
-  score: v.number(),
-});
-
 // ---------------------------------------------------------------------------
-// Embedding helper — uses the AI SDK gateway, same as streamText
-// ---------------------------------------------------------------------------
-
-async function embed(text: string): Promise<number[]> {
-  const config = getModelConfig("embedding");
-  const { embedding } = await aiEmbed({
-    ...config,
-    value: text,
-  });
-  return embedding;
-}
-
-// ---------------------------------------------------------------------------
-// Cheap LLM helper (for fact extraction, dedup, decay summarization)
+// Cheap LLM helper (for fact extraction, dedup, decay, recall, save)
 // Uses the AI SDK generateText, same provider routing as streamText.
 // ---------------------------------------------------------------------------
 
@@ -165,6 +146,51 @@ Rules:
 - Deduplicate within your output
 - Output ONLY the JSON array, nothing else`;
 
+/**
+ * Build a category-aware version of FACT_EXTRACTION_PROMPT.
+ * Injects the existing category tree so the LLM prefers existing
+ * categories but can still create new ones when needed.
+ */
+function buildCategoryAwareExtractionPrompt(
+  existingCategories: { category: string; subcategory: string }[],
+): string {
+  const tree = new Map<string, Set<string>>();
+  for (const { category, subcategory } of existingCategories) {
+    if (!tree.has(category)) tree.set(category, new Set());
+    tree.get(category)!.add(subcategory);
+  }
+
+  if (tree.size === 0) return FACT_EXTRACTION_PROMPT;
+
+  const treeLines = Array.from(tree.entries())
+    .map(([cat, subs]) => `- ${cat}: ${Array.from(subs).join(", ")}`)
+    .join("\n");
+
+  return `You extract discrete facts from conversation summaries. For each fact, assign a category and subcategory.
+
+Existing categories in the user's memory:
+${treeLines}
+
+Default categories (use when nothing existing fits):
+- projects: subcategories are project names (e.g., "Stella", "my-app")
+- personal: preferences, habits, biographical info
+- tasks: things the user wants to do, action items, goals
+- technical: technical knowledge, solutions, configurations
+- preferences: tool preferences, communication style, workflow preferences
+- people: people the user knows, relationships, contacts
+
+Output valid JSON array:
+[{"category":"...","subcategory":"...","content":"..."}]
+
+Rules:
+- Each fact should be a single, self-contained piece of information
+- Be specific and preserve important details (names, versions, paths)
+- PREFER using existing categories/subcategories listed above when the information fits
+- Create new categories or subcategories only when nothing existing is appropriate
+- Deduplicate within your output
+- Output ONLY the JSON array, nothing else`;
+}
+
 const DEDUP_PROMPT = `Compare a new fact against existing memories in the same subcategory. Decide:
 - INSERT: new information not captured by existing memories
 - SKIP: already captured by an existing memory
@@ -183,10 +209,10 @@ const DECAY_SUMMARIZE_PROMPT = `Compress this memory into a shorter, more abstra
 // ---------------------------------------------------------------------------
 
 export const extractFacts = internalAction({
-  args: { summary: v.string() },
+  args: { summary: v.string(), promptOverride: v.optional(v.string()) },
   returns: factExtractionResultValidator,
   handler: async (_ctx, args): Promise<FactExtractionResult> => {
-    const response = await cheapLLM(FACT_EXTRACTION_PROMPT, args.summary);
+    const response = await cheapLLM(args.promptOverride ?? FACT_EXTRACTION_PROMPT, args.summary);
     return parseFactResponse(response);
   },
 });
@@ -223,7 +249,6 @@ export const insertMemory = internalMutation({
     category: v.string(),
     subcategory: v.string(),
     content: v.string(),
-    embedding: v.array(v.float64()),
   },
   returns: v.id("memories"),
   handler: async (ctx, args) => {
@@ -234,9 +259,9 @@ export const insertMemory = internalMutation({
       category: args.category,
       subcategory: args.subcategory,
       content: args.content,
-      embedding: args.embedding,
       accessedAt: now,
       createdAt: now,
+      updatedAt: now,
       decay: 0,
     });
   },
@@ -250,14 +275,14 @@ export const mergeMemory = internalMutation({
   args: {
     memoryId: v.id("memories"),
     content: v.string(),
-    embedding: v.array(v.float64()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const now = Date.now();
     await ctx.db.patch(args.memoryId, {
       content: args.content,
-      embedding: args.embedding,
-      accessedAt: Date.now(),
+      accessedAt: now,
+      updatedAt: now,
       decay: 0,
     });
     return null;
@@ -265,7 +290,7 @@ export const mergeMemory = internalMutation({
 });
 
 // ---------------------------------------------------------------------------
-// ingestSummary (internal action) — orchestrates extraction → dedup → embed → insert
+// ingestSummary (internal action) — orchestrates extraction → dedup → insert
 // ---------------------------------------------------------------------------
 
 export const ingestSummary = internalAction({
@@ -297,8 +322,15 @@ export const ingestSummary = internalAction({
       return null;
     }
 
-    // 1. Extract facts
-    const { facts, parseOk } = await ctx.runAction(internal.data.memory.extractFacts, { summary });
+    // 1. Build category-aware prompt, then extract facts
+    const existingCategories = await ctx.runQuery(internal.data.memory.listCategories, {
+      ownerId: args.ownerId,
+    });
+    const extractionPrompt = buildCategoryAwareExtractionPrompt(existingCategories);
+    const { facts, parseOk } = await ctx.runAction(internal.data.memory.extractFacts, {
+      summary,
+      promptOverride: extractionPrompt,
+    });
     if (!parseOk) {
       return null;
     }
@@ -307,7 +339,7 @@ export const ingestSummary = internalAction({
       return null;
     }
 
-    // 2. For each fact: dedup → embed → insert/merge
+    // 2. For each fact: dedup → insert/merge
     for (const fact of facts) {
       const existing = await ctx.runQuery(internal.data.memory.getExistingMemories, {
         ownerId: args.ownerId,
@@ -348,21 +380,17 @@ export const ingestSummary = internalAction({
       }
 
       if (mergeTarget && mergedContent) {
-        const vector = await embed(mergedContent);
         await ctx.runMutation(internal.data.memory.mergeMemory, {
           memoryId: mergeTarget._id,
           content: mergedContent,
-          embedding: vector,
         });
       } else if (shouldInsert) {
-        const vector = await embed(fact.content);
         await ctx.runMutation(internal.data.memory.insertMemory, {
           ownerId: args.ownerId,
           conversationId: args.conversationId,
           category: fact.category,
           subcategory: fact.subcategory,
           content: fact.content,
-          embedding: vector,
         });
       }
     }
@@ -373,120 +401,167 @@ export const ingestSummary = internalAction({
 });
 
 // ---------------------------------------------------------------------------
-// search (action) — embed query → vectorSearch → return results
+// recallMemories (internal action) — category-indexed read + LLM filter
 // ---------------------------------------------------------------------------
 
-export const search = internalAction({
+export const recallMemories = internalAction({
   args: {
-    query: v.string(),
-    category: v.optional(v.string()),
     ownerId: v.string(),
+    categories: v.array(v.object({
+      category: v.string(),
+      subcategory: v.string(),
+    })),
+    query: v.string(),
   },
-  returns: v.array(memorySearchResultValidator),
-  handler: async (ctx, args): Promise<Array<{ category: string; subcategory: string; content: string; score: number }>> => {
-    const vector = await embed(args.query);
-
-    const searchLimit = args.category ? 256 : 10;
-
-    // Vector search filters only support q.eq and q.or — no AND.
-    // Always filter by ownerId (security). Post-filter by category after fetch.
-    const ownerResults = await ctx.vectorSearch("memories", "by_embedding", {
-      vector,
-      limit: searchLimit,
-      filter: (q) => q.eq("ownerId", args.ownerId),
-    });
-
-    let results = ownerResults;
-    if (args.category) {
-      const category = args.category;
-      const categoryResults = await ctx.vectorSearch("memories", "by_embedding", {
-        vector,
-        limit: 256,
-        filter: (q) => q.eq("category", category),
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    // 1. Fetch all memory rows for each category/subcategory pair
+    const allMemories: Doc<"memories">[] = [];
+    for (const pair of args.categories) {
+      const memories = await ctx.runQuery(internal.data.memory.getExistingMemories, {
+        ownerId: args.ownerId,
+        category: pair.category,
+        subcategory: pair.subcategory,
       });
-      const merged = new Map<string, { _id: any; _score: number }>();
-      const addResult = (item: { _id: any; _score: number }) => {
-        const key = String(item._id);
-        const existing = merged.get(key);
-        if (!existing || item._score > existing._score) {
-          merged.set(key, { _id: item._id, _score: item._score });
-        }
-      };
-      ownerResults.forEach(addResult);
-      categoryResults.forEach(addResult);
-      results = Array.from(merged.values()).sort(
-        (a, b) => b._score - a._score || String(a._id).localeCompare(String(b._id)),
-      );
+      allMemories.push(...memories);
     }
 
-    // Fetch full docs
-    type MemoryDoc = {
-      _id: Id<"memories">;
-      ownerId: string;
-      category: string;
-      subcategory: string;
-      content: string;
-    };
-    const docs: Array<{ doc: MemoryDoc; score: number } | null> = await Promise.all(
-      results.map(async (r) => {
-        const doc = (await ctx.runQuery(internal.data.memory.getMemoryById, {
-          id: r._id,
-        })) as MemoryDoc | null;
-        return doc ? { doc, score: r._score } : null;
-      }),
+    if (allMemories.length === 0) {
+      return "No memories found for the requested categories.";
+    }
+
+    // 2. Format for LLM with IDs
+    const memoryList = allMemories.map((m, i) =>
+      `[${i}] (id:${m._id}) [${m.category}/${m.subcategory}] ${m.content}`,
+    ).join("\n");
+
+    // 3. Call cheap LLM to filter and synthesize
+    const response = await cheapLLM(
+      RECALL_FILTER_PROMPT,
+      `Memories:\n${memoryList}\n\nQuery: ${args.query}`,
     );
 
-    // Post-filter by category, then limit to 10
-    const matched = docs
-      .filter((entry): entry is { doc: MemoryDoc; score: number } => {
-        if (!entry) return false;
-        if (entry.doc.ownerId !== args.ownerId) return false;
-        if (args.category && entry.doc.category !== args.category) return false;
-        return true;
-      })
-      .slice(0, 10);
+    // 4. Parse response, touch used memories
+    try {
+      const parsed = JSON.parse(response.trim());
+      const usedIds: string[] = Array.isArray(parsed.usedIds) ? parsed.usedIds : [];
+      const context: string = typeof parsed.context === "string" ? parsed.context : response;
 
-    // Touch all returned memories in a single mutation (reset decay + accessedAt)
-    if (matched.length > 0) {
-      await ctx.runMutation(internal.data.memory.touchMemories, {
-        memoryIds: matched.map((entry) => entry.doc._id),
+      const validIds = usedIds
+        .map((id) => allMemories.find((m) => String(m._id) === id)?._id)
+        .filter((id): id is Id<"memories"> => id !== undefined);
+
+      if (validIds.length > 0) {
+        await ctx.runMutation(internal.data.memory.touchMemoriesById, {
+          memoryIds: validIds,
+        });
+      }
+
+      return context;
+    } catch {
+      // LLM didn't return valid JSON — return raw text
+      return response;
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// saveMemory (internal action) — explicit write with dedup
+// ---------------------------------------------------------------------------
+
+export const saveMemory = internalAction({
+  args: {
+    ownerId: v.string(),
+    category: v.string(),
+    subcategory: v.string(),
+    content: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+  },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    // 1. Fetch existing memories for this category/subcategory
+    const existing = await ctx.runQuery(internal.data.memory.getExistingMemories, {
+      ownerId: args.ownerId,
+      category: args.category,
+      subcategory: args.subcategory,
+    });
+
+    if (existing.length === 0) {
+      // No existing — just insert
+      await ctx.runMutation(internal.data.memory.insertMemory, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        category: args.category,
+        subcategory: args.subcategory,
+        content: args.content,
       });
+      return `Memory saved in ${args.category}/${args.subcategory}.`;
     }
 
-    return matched.map((entry) => ({
-      category: entry.doc.category,
-      subcategory: entry.doc.subcategory,
-      content: entry.doc.content,
-      score: entry.score,
-    }));
+    // 2. Ask LLM to decide INSERT/UPDATE/NOOP
+    const existingList = existing.map((m, i) =>
+      `[${i}] (id:${m._id}) ${m.content}`,
+    ).join("\n");
+
+    const response = await cheapLLM(
+      SAVE_MEMORY_PROMPT,
+      `New information:\n${args.content}\n\nExisting memories in ${args.category}/${args.subcategory}:\n${existingList}`,
+    );
+
+    // 3. Execute decision
+    try {
+      const parsed = JSON.parse(response.trim());
+      const action = (typeof parsed.action === "string" ? parsed.action : "INSERT").toUpperCase();
+
+      if (action === "NOOP" || action === "SKIP") {
+        return `Already captured in ${args.category}/${args.subcategory}.`;
+      }
+
+      if (action === "UPDATE" && parsed.id && parsed.content) {
+        await ctx.runMutation(internal.data.memory.mergeMemory, {
+          memoryId: parsed.id as Id<"memories">,
+          content: parsed.content,
+        });
+        return `Memory updated in ${args.category}/${args.subcategory}.`;
+      }
+
+      // INSERT
+      const content = (typeof parsed.content === "string" && parsed.content.trim())
+        ? parsed.content
+        : args.content;
+      await ctx.runMutation(internal.data.memory.insertMemory, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        category: args.category,
+        subcategory: args.subcategory,
+        content,
+      });
+      return `Memory saved in ${args.category}/${args.subcategory}.`;
+    } catch {
+      // Fallback: insert as-is
+      await ctx.runMutation(internal.data.memory.insertMemory, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        category: args.category,
+        subcategory: args.subcategory,
+        content: args.content,
+      });
+      return `Memory saved (fallback) in ${args.category}/${args.subcategory}.`;
+    }
   },
 });
 
 // ---------------------------------------------------------------------------
-// touchMemory (internal mutation) — reset accessedAt + decay on access
+// touchMemoriesById (internal mutation) — update accessedAt for used memories
 // ---------------------------------------------------------------------------
 
-export const touchMemory = internalMutation({
-  args: { memoryId: v.id("memories") },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.memoryId, {
-      accessedAt: Date.now(),
-      decay: 0,
-    });
-    return null;
-  },
-});
-
-export const touchMemories = internalMutation({
+export const touchMemoriesById = internalMutation({
   args: { memoryIds: v.array(v.id("memories")) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     await Promise.all(
-      args.memoryIds.map((id) =>
-        ctx.db.patch(id, { accessedAt: now, decay: 0 }),
-      ),
+      args.memoryIds.map((id) => ctx.db.patch(id, { accessedAt: now })),
     );
     return null;
   },
@@ -581,11 +656,9 @@ export const decayMemories = internalAction({
       } else {
         // Re-summarize
         const compressed = await cheapLLM(DECAY_SUMMARIZE_PROMPT, memory.content);
-        const vector = await embed(compressed);
         await ctx.runMutation(internal.data.memory.patchDecay, {
           memoryId: memory._id,
           content: compressed,
-          embedding: vector,
           decay: memory.decay + 1,
         });
       }
@@ -637,14 +710,13 @@ export const patchDecay = internalMutation({
   args: {
     memoryId: v.id("memories"),
     content: v.string(),
-    embedding: v.array(v.float64()),
     decay: v.number(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.memoryId, {
       content: args.content,
-      embedding: args.embedding,
+      updatedAt: Date.now(),
       decay: args.decay,
     });
     return null;
@@ -705,11 +777,9 @@ export const seedFromDiscovery = internalAction({
             const parsed = JSON.parse(dedupResult.trim());
             if (parsed.action === "SKIP") continue;
             if (parsed.action === "MERGE" && parsed.content && existing[parsed.mergeTargetIndex]) {
-              const vec = await embed(parsed.content);
               await ctx.runMutation(internal.data.memory.mergeMemory, {
                 memoryId: existing[parsed.mergeTargetIndex]._id,
                 content: parsed.content,
-                embedding: vec,
               });
               continue;
             }
@@ -719,13 +789,11 @@ export const seedFromDiscovery = internalAction({
         }
 
         // Insert new memory
-        const vec = await embed(fact.content);
         await ctx.runMutation(internal.data.memory.insertMemory, {
           ownerId: args.ownerId,
           category: fact.category,
           subcategory: fact.subcategory,
           content: fact.content,
-          embedding: vec,
         });
       } catch (err) {
         console.error(`[memory] seedFromDiscovery: error processing fact`, fact.category, fact.subcategory, err);
@@ -733,33 +801,6 @@ export const seedFromDiscovery = internalAction({
     }
 
     console.log("[memory] seedFromDiscovery: complete");
-    return null;
-  },
-});
-
-// ---------------------------------------------------------------------------
-// insertMemoryWithEmbedding (internal action) — embed + insert in one call
-// ---------------------------------------------------------------------------
-
-export const insertMemoryWithEmbedding = internalAction({
-  args: {
-    ownerId: v.string(),
-    category: v.string(),
-    subcategory: v.string(),
-    content: v.string(),
-    conversationId: v.optional(v.id("conversations")),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const vector = await embed(args.content);
-    await ctx.runMutation(internal.data.memory.insertMemory, {
-      ownerId: args.ownerId,
-      conversationId: args.conversationId,
-      category: args.category,
-      subcategory: args.subcategory,
-      content: args.content,
-      embedding: vector,
-    });
     return null;
   },
 });

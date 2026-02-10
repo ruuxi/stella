@@ -62,18 +62,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Memory retrieval agent
-  memory: {
-    model: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 4096,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
   // Codebase exploration and research
   explore: {
     model: "zai/glm-4.7",
@@ -110,17 +98,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  // Embedding model for episodic memory
-  embedding: {
-    model: "alibaba/qwen3-embedding-8b",
-    providerOptions: {
-      deepinfra: {
-        dimensions: 1536, // Match schema vector index dimensions
-      },
-    },
-  },
-
-  // Cheap model for memory extraction, dedup, decay summarization
+  // Cheap model for memory recall filter, save dedup, extraction, decay summarization
   memory_ops: {
     model: "zai/glm-4.7",
     temperature: 1.0,

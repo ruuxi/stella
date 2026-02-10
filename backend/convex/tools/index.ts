@@ -43,7 +43,7 @@ export const createTools = (
   // Tier 0: Backend tools (always available)
   const backendTools = createBackendTools(ctx, options);
 
-  // Orchestration tools (MemorySearch always works; Task tools need device context)
+  // Orchestration tools (memory tools always work; Task tools need device context)
   const orchestrationTools = context
     ? createOrchestrationTools(ctx, context, options)
     : createOrchestrationToolsWithoutDevice(ctx, options);
