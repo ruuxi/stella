@@ -609,7 +609,10 @@ const executeSubagentRun = async (
   const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
     ownerId: args.ownerId,
   });
-  const pluginTools = (await ctx.runQuery(internal.data.plugins.listToolDescriptorsInternal, {})) as PluginToolDescriptor[];
+  const pluginTools = (await ctx.runQuery(
+    internal.data.plugins.listToolDescriptorsInternal,
+    { ownerId: args.ownerId },
+  )) as PluginToolDescriptor[];
 
   const historyMessages = args.includeHistory
       ? await buildHistoryMessages(
@@ -1455,7 +1458,7 @@ export const deliverTaskResult = internalAction({
     });
     const pluginTools = (await ctx.runQuery(
       internal.data.plugins.listToolDescriptorsInternal,
-      {},
+      { ownerId: args.ownerId },
     )) as PluginToolDescriptor[];
 
     // Gather recent conversation history so the orchestrator has context

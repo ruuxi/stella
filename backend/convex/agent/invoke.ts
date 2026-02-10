@@ -264,8 +264,17 @@ export const invoke = action({
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
     await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
 
-    const promptBuild = await buildSystemPrompt(ctx, args.agentType);
-    const pluginTools = (await ctx.runQuery(internal.data.plugins.listToolDescriptorsInternal, {})) as Array<{
+    let ownerId: string | undefined = undefined;
+    if (args.conversationId) {
+      const convo = await requireConversationOwner(ctx, args.conversationId);
+      ownerId = convo.ownerId;
+    }
+
+    const promptBuild = await buildSystemPrompt(ctx, args.agentType, { ownerId });
+    const pluginTools = (await ctx.runQuery(
+      internal.data.plugins.listToolDescriptorsInternal,
+      { ownerId },
+    )) as Array<{
       pluginId: string;
       name: string;
       description: string;
@@ -277,12 +286,6 @@ export const invoke = action({
       userMessageId: args.userMessageId,
       targetDeviceId: args.targetDeviceId,
     });
-
-    let ownerId: string | undefined = undefined;
-    if (args.conversationId) {
-      const convo = await requireConversationOwner(ctx, args.conversationId);
-      ownerId = convo.ownerId;
-    }
 
     const tools = deviceContext
       ? createTools(

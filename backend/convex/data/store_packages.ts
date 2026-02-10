@@ -1,6 +1,7 @@
 import { mutation, internalMutation, query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { jsonValueValidator } from "../shared_validators";
+import { requireUserId } from "../auth";
 
 const packageTypeValidator = v.union(
   v.literal("skill"),
@@ -164,12 +165,12 @@ export const getByPackageIdInternal = internalQuery({
  */
 export const install = mutation({
   args: {
-    ownerId: v.string(),
     packageId: v.string(),
     version: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     // Find the package
     const pkg = await ctx.db
       .query("store_packages")
@@ -190,7 +191,7 @@ export const install = mutation({
     const existing = await ctx.db
       .query("store_installs")
       .withIndex("by_owner_package", (q) =>
-        q.eq("ownerId", args.ownerId).eq("packageId", args.packageId),
+        q.eq("ownerId", ownerId).eq("packageId", args.packageId),
       )
       .first();
 
@@ -201,7 +202,7 @@ export const install = mutation({
       });
     } else {
       await ctx.db.insert("store_installs", {
-        ownerId: args.ownerId,
+        ownerId,
         packageId: args.packageId,
         installedVersion: args.version,
         installedAt: Date.now(),
@@ -217,15 +218,15 @@ export const install = mutation({
  */
 export const uninstall = mutation({
   args: {
-    ownerId: v.string(),
     packageId: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("store_installs")
       .withIndex("by_owner_package", (q) =>
-        q.eq("ownerId", args.ownerId).eq("packageId", args.packageId),
+        q.eq("ownerId", ownerId).eq("packageId", args.packageId),
       )
       .first();
 
@@ -241,14 +242,13 @@ export const uninstall = mutation({
  * Get all installed packages for an owner.
  */
 export const getInstalled = query({
-  args: {
-    ownerId: v.string(),
-  },
+  args: {},
   returns: v.array(installValidator),
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
     const results = await ctx.db
       .query("store_installs")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(200);
     return results;

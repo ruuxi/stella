@@ -78,14 +78,49 @@ const http = httpRouter();
 
 authComponent.registerRoutes(http, createAuth, { cors: true });
 
+const DEFAULT_CORS_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:4173",
+  "null",
+];
+
+const parseCorsOriginList = (rawValue: string | undefined): string[] =>
+  (rawValue ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+const CORS_ALLOWED_ORIGINS = (() => {
+  const configured = new Set<string>(DEFAULT_CORS_ALLOWED_ORIGINS);
+  const siteUrl = process.env.SITE_URL;
+  if (siteUrl) {
+    configured.add(siteUrl);
+  }
+  const extraOrigins = parseCorsOriginList(process.env.CORS_ALLOWED_ORIGINS);
+  for (const origin of extraOrigins) {
+    configured.add(origin);
+  }
+  return configured;
+})();
+
+const isAllowedCorsOrigin = (origin: string | null) => {
+  if (!origin) return true;
+  return CORS_ALLOWED_ORIGINS.has(origin);
+};
+
 const getCorsHeaders = (origin: string | null) => {
-  return {
-    "Access-Control-Allow-Origin": origin ?? "*",
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
-  } as Record<string, string>;
+  };
+  if (origin && isAllowedCorsOrigin(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
 };
 
 const withCors = (response: Response, origin: string | null) => {
@@ -99,6 +134,14 @@ const withCors = (response: Response, origin: string | null) => {
     statusText: response.statusText,
     headers,
   });
+};
+
+const rejectDisallowedCorsOrigin = (request: Request): Response | null => {
+  const origin = request.headers.get("origin");
+  if (origin && !isAllowedCorsOrigin(origin)) {
+    return new Response("CORS origin denied", { status: 403 });
+  }
+  return null;
 };
 
 const WEBHOOK_RATE_WINDOW_MS = 60_000;
@@ -124,6 +167,8 @@ http.route({
   path: "/api/chat",
   method: "OPTIONS",
   handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
     const origin = request.headers.get("origin");
     return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
   }),
@@ -133,6 +178,8 @@ http.route({
   path: "/api/chat",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
     const origin = request.headers.get("origin");
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
@@ -257,7 +304,10 @@ http.route({
     // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);
 
-    const pluginTools = await ctx.runQuery(internal.data.plugins.listToolDescriptorsInternal, {});
+    const pluginTools = await ctx.runQuery(
+      internal.data.plugins.listToolDescriptorsInternal,
+      { ownerId: conversation.ownerId },
+    );
 
     const contentParts: Array<
       { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }
@@ -430,6 +480,8 @@ http.route({
   path: "/api/synthesize",
   method: "OPTIONS",
   handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
     const origin = request.headers.get("origin");
     return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
   }),
@@ -439,6 +491,8 @@ http.route({
   path: "/api/synthesize",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
     const origin = request.headers.get("origin");
 
     const identity = await ctx.auth.getUserIdentity();
@@ -539,6 +593,8 @@ http.route({
   path: "/api/seed-memories",
   method: "OPTIONS",
   handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
     return new Response(null, {
       status: 204,
       headers: getCorsHeaders(request.headers.get("origin")),
@@ -550,6 +606,8 @@ http.route({
   path: "/api/seed-memories",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
     const origin = request.headers.get("origin");
 
     const identity = await ctx.auth.getUserIdentity();
@@ -611,6 +669,8 @@ http.route({
   path: "/api/generate-skill-metadata",
   method: "OPTIONS",
   handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
     const origin = request.headers.get("origin");
     return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
   }),
@@ -620,6 +680,8 @@ http.route({
   path: "/api/generate-skill-metadata",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
     const origin = request.headers.get("origin");
 
     const identity = await ctx.auth.getUserIdentity();
@@ -997,6 +1059,28 @@ http.route({
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
     const error = url.searchParams.get("error");
+    const state = url.searchParams.get("state");
+
+    if (!state) {
+      return new Response(buildSlackResultPage(false, "Missing OAuth state."), {
+        status: 400,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
+
+    const consumedState = await ctx.runMutation(
+      internal.data.integrations.consumeSlackOAuthState,
+      { state },
+    );
+    if (!consumedState) {
+      return new Response(
+        buildSlackResultPage(false, "Invalid or expired OAuth state. Please retry installation."),
+        {
+          status: 400,
+          headers: { "Content-Type": "text/html" },
+        },
+      );
+    }
 
     if (error) {
       return new Response(buildSlackResultPage(false, "Installation was cancelled."), {

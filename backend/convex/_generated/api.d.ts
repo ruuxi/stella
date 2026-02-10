@@ -50,6 +50,7 @@ import type * as data_store_packages from "../data/store_packages.js";
 import type * as data_threads from "../data/threads.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as lib_owner_ids from "../lib/owner_ids.js";
 import type * as lib_redaction from "../lib/redaction.js";
 import type * as lib_retry_fetch from "../lib/retry_fetch.js";
 import type * as prompts_browser from "../prompts/browser.js";
@@ -122,6 +123,7 @@ declare const fullApi: ApiFromModules<{
   "data/threads": typeof data_threads;
   events: typeof events;
   http: typeof http;
+  "lib/owner_ids": typeof lib_owner_ids;
   "lib/redaction": typeof lib_redaction;
   "lib/retry_fetch": typeof lib_retry_fetch;
   "prompts/browser": typeof prompts_browser;

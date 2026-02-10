@@ -91,6 +91,7 @@ export default defineSchema({
     .index("by_conversation", ["conversationId"])
     .index("by_device", ["deviceId"]),
   agents: defineTable({
+    ownerId: v.optional(v.string()),
     id: v.string(),
     name: v.string(),
     description: v.string(),
@@ -104,9 +105,12 @@ export default defineSchema({
     source: v.string(),
     updatedAt: v.number(),
   })
+    .index("by_owner_and_agent_key", ["ownerId", "id"])
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
     .index("by_agent_key", ["id"])
     .index("by_updated", ["updatedAt"]),
   skills: defineTable({
+    ownerId: v.optional(v.string()),
     id: v.string(),
     name: v.string(),
     description: v.string(),
@@ -123,6 +127,9 @@ export default defineSchema({
     enabled: v.boolean(),
     updatedAt: v.number(),
   })
+    .index("by_owner_and_skill_key", ["ownerId", "id"])
+    .index("by_owner_and_enabled", ["ownerId", "enabled"])
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
     .index("by_skill_key", ["id"])
     .index("by_enabled", ["enabled"])
     .index("by_updated", ["updatedAt"]),
@@ -202,6 +209,7 @@ export default defineSchema({
     .index("by_last_active", ["lastActiveAt"])
     .index("by_sprite_name", ["spriteName"]),
   plugins: defineTable({
+    ownerId: v.optional(v.string()),
     id: v.string(),
     name: v.string(),
     version: v.string(),
@@ -209,9 +217,12 @@ export default defineSchema({
     source: v.string(),
     updatedAt: v.number(),
   })
+    .index("by_owner_and_plugin_key", ["ownerId", "id"])
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
     .index("by_plugin_key", ["id"])
     .index("by_updated", ["updatedAt"]),
   plugin_tools: defineTable({
+    ownerId: v.optional(v.string()),
     id: v.string(),
     pluginId: v.string(),
     name: v.string(),
@@ -220,6 +231,9 @@ export default defineSchema({
     source: v.string(),
     updatedAt: v.number(),
   })
+    .index("by_owner_and_tool_key", ["ownerId", "id"])
+    .index("by_owner_and_name", ["ownerId", "name"])
+    .index("by_owner_and_plugin_and_updated", ["ownerId", "pluginId", "updatedAt"])
     .index("by_tool_key", ["id"])
     .index("by_name", ["name"])
     .index("by_plugin", ["pluginId", "updatedAt"]),

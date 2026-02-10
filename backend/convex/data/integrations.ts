@@ -1,4 +1,4 @@
-import { mutation, query, internalQuery } from "../_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { requireUserId } from "../auth";
 import { jsonObjectValidator } from "../shared_validators";
@@ -20,7 +20,7 @@ export const listPublicIntegrations = query({
   },
 });
 
-export const upsertPublicIntegration = mutation({
+export const upsertPublicIntegration = internalMutation({
   args: {
     id: v.string(),
     provider: v.string(),
@@ -51,6 +51,139 @@ export const upsertPublicIntegration = mutation({
       usagePolicy: args.usagePolicy,
       updatedAt: Date.now(),
     });
+    return null;
+  },
+});
+
+const SLACK_OAUTH_STATE_KEY = "slack_oauth_state";
+const SLACK_OAUTH_SCOPE = "chat:write,im:history,im:read,im:write";
+const SLACK_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+const generateSecureState = (bytesLength = 24) => {
+  if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
+    throw new Error("Secure random generator unavailable for Slack OAuth state");
+  }
+  const bytes = new Uint8Array(bytesLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
+const parseSlackState = (
+  value: string,
+): {
+  state?: string;
+  expiresAt?: number;
+  usedAt?: number;
+  createdAt?: number;
+} | null => {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as {
+      state?: string;
+      expiresAt?: number;
+      usedAt?: number;
+      createdAt?: number;
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const createSlackInstallUrl = mutation({
+  args: {},
+  returns: v.object({
+    url: v.string(),
+    expiresAt: v.number(),
+  }),
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const clientId = process.env.SLACK_CLIENT_ID;
+    const convexSiteUrl = process.env.CONVEX_SITE_URL;
+
+    if (!clientId || !convexSiteUrl) {
+      throw new Error("Missing Slack OAuth configuration");
+    }
+
+    const now = Date.now();
+    const expiresAt = now + SLACK_OAUTH_STATE_TTL_MS;
+    const state = generateSecureState();
+    const value = JSON.stringify({
+      state,
+      expiresAt,
+      createdAt: now,
+    });
+
+    const existing = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_owner_key", (q) =>
+        q.eq("ownerId", ownerId).eq("key", SLACK_OAUTH_STATE_KEY),
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        value,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("user_preferences", {
+        ownerId,
+        key: SLACK_OAUTH_STATE_KEY,
+        value,
+        updatedAt: now,
+      });
+    }
+
+    const redirectUri = `${convexSiteUrl}/api/slack/oauth_callback`;
+    const url =
+      `https://slack.com/oauth/v2/authorize?client_id=${encodeURIComponent(clientId)}` +
+      `&scope=${encodeURIComponent(SLACK_OAUTH_SCOPE)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&state=${encodeURIComponent(state)}`;
+
+    return { url, expiresAt };
+  },
+});
+
+export const consumeSlackOAuthState = internalMutation({
+  args: {
+    state: v.string(),
+  },
+  returns: v.union(v.null(), v.object({ ownerId: v.string() })),
+  handler: async (ctx, args) => {
+    const prefs = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_key", (q) => q.eq("key", SLACK_OAUTH_STATE_KEY))
+      .collect();
+
+    const now = Date.now();
+    for (const pref of prefs) {
+      const parsed = parseSlackState(pref.value);
+      if (!parsed || parsed.state !== args.state) {
+        continue;
+      }
+
+      if (typeof parsed.usedAt === "number") {
+        return null;
+      }
+
+      if (typeof parsed.expiresAt !== "number" || parsed.expiresAt <= now) {
+        return null;
+      }
+
+      await ctx.db.patch(pref._id, {
+        value: JSON.stringify({
+          state: parsed.state,
+          expiresAt: parsed.expiresAt,
+          createdAt: parsed.createdAt ?? now,
+          usedAt: now,
+        }),
+        updatedAt: now,
+      });
+      return { ownerId: pref.ownerId };
+    }
+
     return null;
   },
 });

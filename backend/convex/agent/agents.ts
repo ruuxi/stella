@@ -1,4 +1,11 @@
-import { mutation, internalMutation, query, internalQuery, MutationCtx } from "../_generated/server";
+import {
+  mutation,
+  internalMutation,
+  query,
+  internalQuery,
+  MutationCtx,
+  QueryCtx,
+} from "../_generated/server";
 import { v, Infer } from "convex/values";
 import {
   GENERAL_AGENT_SYSTEM_PROMPT,
@@ -7,6 +14,8 @@ import {
   EXPLORE_AGENT_SYSTEM_PROMPT,
   BROWSER_AGENT_SYSTEM_PROMPT,
 } from "../prompts/index";
+import { requireUserId } from "../auth";
+import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
 
 const agentValidator = v.object({
   _id: v.id("agents"),
@@ -75,6 +84,7 @@ type AgentClient = Infer<typeof agentClientValidator>;
 type AgentConfig = Infer<typeof agentConfigValidator>;
 
 type AgentRecord = {
+  ownerId?: string;
   id: string;
   name: string;
   description: string;
@@ -269,6 +279,7 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
       : undefined;
 
   return {
+    ownerId: typeof record.ownerId === "string" ? record.ownerId : undefined,
     id,
     name,
     description,
@@ -285,36 +296,47 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
 
 /** Strip model field for client responses (keeps _id, _creationTime) */
 const toAgentClient = (agent: Record<string, unknown>): AgentClient => {
-  const { model: _model, ...rest } = agent;
+  const { model: _model, ownerId: _ownerId, ...rest } = agent;
   return rest as AgentClient;
 };
 
 /** Strip model, _id, _creationTime for config responses */
 const toAgentConfig = (agent: Record<string, unknown>): AgentConfig => {
-  const { model: _model, _id: _docId, _creationTime: _ct, ...rest } = agent;
+  const {
+    model: _model,
+    ownerId: _ownerId,
+    _id: _docId,
+    _creationTime: _ct,
+    ...rest
+  } = agent;
   return rest as AgentConfig;
 };
 
-const upsertAgent = async (ctx: MutationCtx, agent: AgentRecord) => {
+const upsertAgent = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  agent: AgentRecord,
+) => {
   const existing = await ctx.db
     .query("agents")
-    .withIndex("by_agent_key", (q) => q.eq("id", agent.id))
+    .withIndex("by_owner_and_agent_key", (q) =>
+      q.eq("ownerId", ownerId).eq("id", agent.id),
+    )
     .first();
 
   const { model: _model, ...safeAgent } = agent as AgentRecord & { model?: string };
+  const payload = {
+    ...safeAgent,
+    ownerId,
+    updatedAt: Date.now(),
+  };
 
   if (existing) {
-    await ctx.db.patch(existing._id, {
-      ...safeAgent,
-      updatedAt: Date.now(),
-    });
+    await ctx.db.patch(existing._id, payload);
     return existing._id;
   }
 
-  return await ctx.db.insert("agents", {
-    ...safeAgent,
-    updatedAt: Date.now(),
-  });
+  return await ctx.db.insert("agents", payload);
 };
 
 export const ensureBuiltins = internalMutation({
@@ -322,7 +344,7 @@ export const ensureBuiltins = internalMutation({
   returns: v.object({ ok: v.boolean() }),
   handler: async (ctx) => {
     for (const builtin of BUILTIN_AGENT_DEFS) {
-      await upsertAgent(ctx, {
+      await upsertAgent(ctx, BUILTIN_OWNER_ID, {
         ...builtin,
         updatedAt: Date.now(),
       });
@@ -337,26 +359,54 @@ export const upsertMany = mutation({
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
     const items = Array.isArray(args.agents) ? args.agents : [];
     let upserted = 0;
     for (const item of items) {
       const agent = normalizeAgent(item);
       if (!agent) continue;
-      await upsertAgent(ctx, agent);
+      await upsertAgent(ctx, ownerId, agent);
       upserted += 1;
     }
     return { upserted };
   },
 });
 
-const getAgentConfigHandler = async (ctx: { db: any }, args: { agentType: string }) => {
-  const record = await ctx.db
-    .query("agents")
-    .withIndex("by_agent_key", (q: any) => q.eq("id", args.agentType))
-    .first();
+const getAgentConfigHandler = async (
+  ctx: QueryCtx,
+  args: { agentType: string; ownerId?: string },
+) => {
+  if (args.ownerId) {
+    const ownerRecord = await ctx.db
+      .query("agents")
+      .withIndex("by_owner_and_agent_key", (q) =>
+        q.eq("ownerId", args.ownerId!).eq("id", args.agentType),
+      )
+      .first();
+    if (ownerRecord) {
+      return toAgentConfig(ownerRecord);
+    }
+  }
 
-  if (record) {
-    return toAgentConfig(record);
+  const builtinRecord = await ctx.db
+    .query("agents")
+    .withIndex("by_owner_and_agent_key", (q) =>
+      q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", args.agentType),
+    )
+    .first();
+  if (builtinRecord) {
+    return toAgentConfig(builtinRecord);
+  }
+
+  const legacyRecords = await ctx.db
+    .query("agents")
+    .withIndex("by_agent_key", (q) => q.eq("id", args.agentType))
+    .take(20);
+  const legacyBuiltin = legacyRecords.find(
+    (agent) => agent.ownerId === undefined && agent.source === "builtin",
+  );
+  if (legacyBuiltin) {
+    return toAgentConfig(legacyBuiltin);
   }
 
   const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
@@ -388,13 +438,15 @@ export const getAgentConfig = query({
   },
   returns: agentConfigValidator,
   handler: async (ctx, args) => {
-    return await getAgentConfigHandler(ctx, args);
+    const ownerId = await requireUserId(ctx);
+    return await getAgentConfigHandler(ctx, { ...args, ownerId });
   },
 });
 
 export const getAgentConfigInternal = internalQuery({
   args: {
     agentType: v.string(),
+    ownerId: v.optional(v.string()),
   },
   returns: agentConfigValidator,
   handler: async (ctx, args) => {
@@ -406,11 +458,35 @@ export const listAgents = query({
   args: {},
   returns: v.array(agentClientValidator),
   handler: async (ctx) => {
-    const records = await ctx.db
-      .query("agents")
-      .withIndex("by_updated")
-      .order("desc")
-      .take(200);
-    return records.map((record) => toAgentClient(record));
+    const ownerId = await requireUserId(ctx);
+    const [legacyBuiltins, builtinRecords, ownerRecords] = await Promise.all([
+      ctx.db
+        .query("agents")
+        .withIndex("by_updated")
+        .order("desc")
+        .take(200)
+        .then((rows) =>
+          rows.filter((agent) => agent.ownerId === undefined && agent.source === "builtin"),
+        ),
+      ctx.db
+        .query("agents")
+        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .order("desc")
+        .take(200),
+      ctx.db
+        .query("agents")
+        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
+        .order("desc")
+        .take(200),
+    ]);
+
+    const merged = new Map<string, (typeof ownerRecords)[number]>();
+    for (const record of legacyBuiltins) merged.set(record.id, record);
+    for (const record of builtinRecords) merged.set(record.id, record);
+    for (const record of ownerRecords) merged.set(record.id, record);
+
+    return Array.from(merged.values())
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((record) => toAgentClient(record));
   },
 });
