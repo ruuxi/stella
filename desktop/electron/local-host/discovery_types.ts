@@ -34,7 +34,7 @@ export const DISCOVERY_CATEGORIES: DiscoveryCategoryConfig[] = [
   {
     id: "dev_environment",
     label: "Development Environment",
-    description: "IDE extensions, git config, dotfiles, runtimes, and package managers",
+    description: "Git config, dotfiles, runtimes, and package managers",
     defaultEnabled: true,
     requiresFDA: false,
   },
@@ -79,16 +79,6 @@ export type SafariData = {
 // Category 2: Development Environment
 // ---------------------------------------------------------------------------
 
-export type IDEExtension = {
-  name: string;
-  source: "vscode" | "cursor";
-};
-
-export type IDESettings = {
-  source: "vscode" | "cursor";
-  highlights: Record<string, string>; // key settings extracted
-};
-
 export type GitConfig = {
   name?: string;
   email?: string;
@@ -97,8 +87,6 @@ export type GitConfig = {
 };
 
 export type DevEnvironmentSignals = {
-  ideExtensions: IDEExtension[];
-  ideSettings: IDESettings[];
   gitConfig: GitConfig | null;
   dotfiles: string[]; // names of dotfiles that exist
   runtimes: string[]; // names of runtimes detected

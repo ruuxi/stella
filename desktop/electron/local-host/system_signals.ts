@@ -22,6 +22,9 @@ import type {
 
 const log = (...args: unknown[]) => console.log("[system-signals]", ...args);
 
+// Keep only strongest file-type signals for synthesis input.
+const FILESYSTEM_TOP_FILE_TYPES = 5;
+
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
@@ -314,10 +317,10 @@ async function collectFilesystemSignals(): Promise<FilesystemSignals> {
       }
     }
 
-    // Sort by count and take top 15
+    // Sort by count and take top file types
     const sorted = Object.entries(extensions)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 15);
+      .slice(0, FILESYSTEM_TOP_FILE_TYPES);
 
     result.downloadsExtensions = Object.fromEntries(sorted);
   } catch (error) {
@@ -364,10 +367,10 @@ async function collectFilesystemSignals(): Promise<FilesystemSignals> {
       }
     }
 
-    // Sort by count and take top 15
+    // Sort by count and take top file types
     const sorted = Object.entries(extensions)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 15);
+      .slice(0, FILESYSTEM_TOP_FILE_TYPES);
 
     result.desktopFileTypes = Object.fromEntries(sorted);
   } catch (error) {
