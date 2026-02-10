@@ -190,4 +190,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   bridgeStop: (payload: { provider: string }) => ipcRenderer.invoke('bridge:stop', payload),
   bridgeStatus: (payload: { provider: string }) => ipcRenderer.invoke('bridge:status', payload),
 
+  shellKillByPort: (port: number) => ipcRenderer.invoke('shell:killByPort', { port }),
 })

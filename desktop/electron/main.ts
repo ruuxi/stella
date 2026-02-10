@@ -1366,6 +1366,12 @@ app.whenReady().then(async () => {
     return { running: bridgeManager.isRunning(payload.provider) }
   })
 
+  ipcMain.handle('shell:killByPort', async (_event, payload: { port: number }) => {
+    if (localHostRunner) {
+      localHostRunner.killShellsByPort(payload.port)
+    }
+  })
+
   ipcMain.handle('theme:listInstalled', async () => {
     const { promises: fs } = await import('fs')
     const os = await import('os')
@@ -1413,6 +1419,9 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true
+  if (localHostRunner) {
+    localHostRunner.killAllShells()
+  }
   bridgeManager.stopAll()
   cleanupSelectedTextProcess()
   destroyModifierOverlay()

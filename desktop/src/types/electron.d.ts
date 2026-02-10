@@ -230,6 +230,7 @@ export type ElectronApi = {
   bridgeStop: (payload: { provider: string }) => Promise<{ ok: boolean }>
   bridgeStatus: (payload: { provider: string }) => Promise<{ running: boolean }>
 
+  shellKillByPort: (port: number) => Promise<void>
 }
 
 declare global {
