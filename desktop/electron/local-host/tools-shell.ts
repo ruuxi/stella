@@ -4,7 +4,7 @@
 
 import { spawn } from "child_process";
 import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, PluginSyncPayload } from "./tools-types.js";
-import { truncate, writeSecretFile } from "./tools-utils.js";
+import { removeSecretFile, truncate, writeSecretFile } from "./tools-utils.js";
 
 export type ShellState = {
   shells: Map<string, ShellRecord>;
@@ -30,6 +30,7 @@ export const startShell = (
   command: string,
   cwd: string,
   envOverrides?: Record<string, string>,
+  onClose?: () => void,
 ) => {
   const id = crypto.randomUUID();
   // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
@@ -66,6 +67,9 @@ export const startShell = (
     record.running = false;
     record.exitCode = code ?? null;
     record.completedAt = Date.now();
+    if (onClose) {
+      onClose();
+    }
   });
 
   state.shells.set(id, record);
@@ -175,6 +179,12 @@ export const handleSkillBash = async (
 
   const envOverrides: Record<string, string> = {};
   const providerCache = new Map<string, string>();
+  const mountedSecretFiles: string[] = [];
+  const cleanupMountedSecretFiles = async () => {
+    for (const mountedPath of mountedSecretFiles) {
+      await removeSecretFile(mountedPath);
+    }
+  };
 
   if (skill.secretMounts.env) {
     for (const [envName, spec] of Object.entries(skill.secretMounts.env)) {
@@ -186,6 +196,7 @@ export const handleSkillBash = async (
         "SkillBash",
       );
       if (!value) {
+        await cleanupMountedSecretFiles();
         return {
           error: `Missing secret for ${spec.provider}.`,
         };
@@ -204,25 +215,40 @@ export const handleSkillBash = async (
         "SkillBash",
       );
       if (!value) {
+        await cleanupMountedSecretFiles();
         return {
           error: `Missing secret for ${spec.provider}.`,
         };
       }
-      await writeSecretFile(filePath, value, cwd);
+      const mountedPath = await writeSecretFile(filePath, value, cwd);
+      mountedSecretFiles.push(mountedPath);
     }
   }
 
   if (runInBackground) {
-    const record = startShell(state, command, cwd, envOverrides);
-    return {
-      result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
-        record.output || "(no output yet)",
-      )}`,
-    };
+    try {
+      const record = startShell(state, command, cwd, envOverrides, () => {
+        for (const mountedPath of mountedSecretFiles) {
+          void removeSecretFile(mountedPath);
+        }
+      });
+      return {
+        result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
+          record.output || "(no output yet)",
+        )}`,
+      };
+    } catch {
+      await cleanupMountedSecretFiles();
+      throw new Error("Failed to start background shell");
+    }
   }
 
-  const output = await runShell(command, cwd, timeout, envOverrides);
-  return { result: truncate(output) };
+  try {
+    const output = await runShell(command, cwd, timeout, envOverrides);
+    return { result: truncate(output) };
+  } finally {
+    await cleanupMountedSecretFiles();
+  }
 };
 
 export const handleKillShell = async (

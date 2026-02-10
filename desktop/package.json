@@ -50,6 +50,8 @@
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-virtual": "^3.13.18",
     "ai": "^6.0.49",
+    "ai-sdk-provider-claude-code": "^3.4.0",
+    "ai-sdk-provider-codex-app-server": "^1.1.7",
     "better-auth": "1.4.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

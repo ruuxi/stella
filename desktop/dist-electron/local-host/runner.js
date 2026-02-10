@@ -438,12 +438,27 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
                 argsPreview: JSON.stringify(sanitizeForLogs(toolArgs)).slice(0, 200),
             });
             const startTime = Date.now();
-            const toolResult = await toolHost.executeTool(toolName, toolArgs, {
-                conversationId: request.conversationId,
-                deviceId,
-                requestId: request.requestId,
-                agentType: request.payload?.agentType,
-            });
+            let toolResult;
+            // HarnessInvoke needs Convex context for Stella MCP tools
+            if (toolName === "HarnessInvoke") {
+                const { handleHarnessInvoke } = await import("./tools_harness.js");
+                const convexContext = {
+                    callMutation: (name, cArgs) => callMutation(name, cArgs),
+                    callQuery: (name, cArgs) => callQuery(name, cArgs),
+                    callAction: (name, cArgs) => runAction(name, cArgs),
+                    conversationId: request.conversationId,
+                    deviceId,
+                };
+                toolResult = await handleHarnessInvoke(toolArgs, convexContext);
+            }
+            else {
+                toolResult = await toolHost.executeTool(toolName, toolArgs, {
+                    conversationId: request.conversationId,
+                    deviceId,
+                    requestId: request.requestId,
+                    agentType: request.payload?.agentType,
+                });
+            }
             const duration = Date.now() - startTime;
             log(`Tool ${toolName} completed in ${duration}ms`, {
                 hasResult: "result" in toolResult,
@@ -500,6 +515,17 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
         const result = await callQuery(name, args);
         return result ?? null;
     };
+    const runMutation = async (name, args) => {
+        const result = await callMutation(name, args);
+        return result ?? null;
+    };
+    const runAction = async (name, args) => {
+        if (!client || !authToken)
+            return null;
+        const convexName = toConvexName(name);
+        const result = await client.action(convexName, args);
+        return result ?? null;
+    };
     return {
         deviceId,
         setConvexUrl,
@@ -508,6 +534,8 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
         stop,
         executeTool,
         runQuery,
+        runMutation,
+        runAction,
         subscribeQuery,
         getConvexUrl: () => convexUrl,
         getAuthToken: () => authToken,

@@ -627,14 +627,6 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     return toolHost.executeTool(toolName, toolArgs, context);
   };
 
-  const runQuery = async <T = unknown>(
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<T | null> => {
-    const result = await callQuery(name, args);
-    return (result as T | null) ?? null;
-  };
-
   return {
     deviceId,
     setConvexUrl,
@@ -642,7 +634,6 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     start,
     stop,
     executeTool,
-    runQuery,
     subscribeQuery,
     getConvexUrl: () => convexUrl,
     getAuthToken: () => authToken,
