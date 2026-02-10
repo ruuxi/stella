@@ -56,7 +56,7 @@ Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and
 | `safari_data.ts` | Safari history and bookmarks (macOS) |
 | `app-discovery.ts` | Installed app discovery |
 | `dev-projects.ts` | Development project discovery |
-| `dev_environment.ts` | IDE extensions, git config, dotfiles |
+| `dev_environment.ts` | Git config, dotfiles, runtimes, package managers |
 | `shell-history.ts` | Shell history parsing |
 | `messages_notes.ts` | iMessage, Notes, Reminders, Calendar |
 | `system_signals.ts` | Screen Time, Dock pins, filesystem signals |
