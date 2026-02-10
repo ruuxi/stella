@@ -88,10 +88,9 @@ function StoreView({ onComposePrompt }: StoreViewProps) {
     searchQuery ? { query: searchQuery, type: typeFilter } : "skip",
   ) as StorePackage[] | undefined;
 
-  const ownerId = "local"; // Placeholder; real auth would provide this
   const installedRecords = useQuery(
     api.data.store_packages.getInstalled as any,
-    { ownerId },
+    {},
   ) as { packageId: string; installedVersion: string }[] | undefined;
 
   const selectedPackage = useQuery(
@@ -241,7 +240,7 @@ function StoreView({ onComposePrompt }: StoreViewProps) {
         }
 
         // Record install in backend
-        await installMutation({ ownerId, packageId: pkg.packageId, version: pkg.version });
+        await installMutation({ packageId: pkg.packageId, version: pkg.version });
       } catch (err) {
         console.error("Install failed:", err);
       } finally {
@@ -252,7 +251,7 @@ function StoreView({ onComposePrompt }: StoreViewProps) {
         });
       }
     },
-    [installingIds, installMutation, onComposePrompt, ownerId, setView],
+    [installingIds, installMutation, onComposePrompt, setView],
   );
 
   const handleUninstall = useCallback(
@@ -278,7 +277,7 @@ function StoreView({ onComposePrompt }: StoreViewProps) {
           unregisterTheme(pkg.packageId);
         }
 
-        await uninstallMutation({ ownerId, packageId: pkg.packageId });
+        await uninstallMutation({ packageId: pkg.packageId });
       } catch (err) {
         console.error("Uninstall failed:", err);
       } finally {
@@ -289,7 +288,7 @@ function StoreView({ onComposePrompt }: StoreViewProps) {
         });
       }
     },
-    [installingIds, onComposePrompt, ownerId, setView, uninstallMutation],
+    [installingIds, onComposePrompt, setView, uninstallMutation],
   );
 
   return (
