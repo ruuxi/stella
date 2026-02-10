@@ -6,6 +6,7 @@ import { promises as fs } from "fs";
 import type { Dirent } from "fs";
 import path from "path";
 import os from "os";
+import { spawn } from "child_process";
 
 // Constants
 export const MAX_OUTPUT = 30_000;
@@ -242,6 +243,34 @@ export const saveJson = async (filePath: string, value: unknown) => {
 };
 
 // Secret file utilities
+const tightenWindowsAcl = async (resolvedPath: string) => {
+  if (process.platform !== "win32") {
+    return;
+  }
+  const username = process.env.USERNAME;
+  if (!username) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const child = spawn(
+      "icacls",
+      [
+        resolvedPath,
+        "/inheritance:r",
+        "/grant:r",
+        `${username}:R`,
+      ],
+      {
+        stdio: "ignore",
+        windowsHide: true,
+      },
+    );
+    child.on("close", () => resolve());
+    child.on("error", () => resolve());
+  });
+};
+
 export const writeSecretFile = async (filePath: string, value: string, cwd: string) => {
   const expanded = expandHomePath(filePath);
   const resolved = path.isAbsolute(expanded)
@@ -249,12 +278,23 @@ export const writeSecretFile = async (filePath: string, value: string, cwd: stri
     : path.resolve(cwd, expanded);
   await fs.mkdir(path.dirname(resolved), { recursive: true });
   await fs.writeFile(resolved, value, "utf-8");
-  if (process.platform !== "win32") {
-    try {
-      await fs.chmod(resolved, 0o600);
-    } catch {
-      // Ignore permission failures.
-    }
+  try {
+    await fs.chmod(resolved, 0o600);
+  } catch {
+    // Ignore permission failures.
+  }
+  try {
+    await tightenWindowsAcl(resolved);
+  } catch {
+    // Ignore ACL hardening failures.
   }
   return resolved;
+};
+
+export const removeSecretFile = async (filePath: string) => {
+  try {
+    await fs.unlink(filePath);
+  } catch {
+    // Best-effort cleanup.
+  }
 };

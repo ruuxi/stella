@@ -5,7 +5,7 @@
  * organized into 4 onboarding-selectable categories:
  *
  * Category 1 (browsing_bookmarks): Browser history + bookmarks + Safari
- * Category 2 (dev_environment): Dev projects + shell + IDE config + dotfiles
+ * Category 2 (dev_environment): Dev projects + shell + git config + dotfiles
  * Category 3 (apps_system): Apps + Screen Time + Dock + filesystem
  * Category 4 (messages_notes): iMessage + Notes + Reminders + Calendar (opt-in)
  */

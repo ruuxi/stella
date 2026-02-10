@@ -12,78 +12,6 @@ const execAsync = (command) => new Promise((resolve, reject) => {
         resolve(stdout.trim());
     });
 });
-async function collectIDEExtensions() {
-    const extensions = [];
-    const homeDir = os.homedir();
-    const vscodeExtDir = path.join(homeDir, ".vscode", "extensions");
-    const cursorExtDir = path.join(homeDir, ".cursor", "extensions");
-    const readExtensions = async (dir, source) => {
-        try {
-            const entries = await fs.readdir(dir);
-            for (const entry of entries) {
-                // Strip version suffix: take everything before the last "-" followed by digits/dots only
-                const match = entry.match(/^(.+)-[\d.]+$/);
-                const name = match ? match[1] : entry;
-                extensions.push({ name, source });
-            }
-        }
-        catch {
-            // Directory doesn't exist, ignore
-        }
-    };
-    await Promise.all([
-        readExtensions(vscodeExtDir, "vscode"),
-        readExtensions(cursorExtDir, "cursor"),
-    ]);
-    return extensions;
-}
-async function collectIDESettings() {
-    const settings = [];
-    const homeDir = os.homedir();
-    const platform = process.platform;
-    const extractedKeys = [
-        "workbench.colorTheme",
-        "editor.fontFamily",
-        "editor.fontSize",
-        "editor.formatOnSave",
-        "editor.tabSize",
-        "editor.defaultFormatter",
-        `terminal.integrated.defaultProfile.${platform === "darwin" ? "osx" : platform === "win32" ? "windows" : "linux"}`,
-    ];
-    const getSettingsPath = (ide) => {
-        const baseName = ide === "vscode" ? "Code" : "Cursor";
-        if (platform === "darwin") {
-            return path.join(homeDir, "Library", "Application Support", baseName, "User", "settings.json");
-        }
-        else if (platform === "win32") {
-            return path.join(process.env.APPDATA || "", baseName, "User", "settings.json");
-        }
-        else {
-            return path.join(homeDir, ".config", baseName, "User", "settings.json");
-        }
-    };
-    const readSettings = async (source) => {
-        try {
-            const settingsPath = getSettingsPath(source);
-            const content = await fs.readFile(settingsPath, "utf-8");
-            const parsed = JSON.parse(content);
-            const highlights = {};
-            for (const key of extractedKeys) {
-                if (key in parsed) {
-                    highlights[key] = String(parsed[key]);
-                }
-            }
-            if (Object.keys(highlights).length > 0) {
-                settings.push({ source, highlights });
-            }
-        }
-        catch {
-            // File doesn't exist or can't be parsed, ignore
-        }
-    };
-    await Promise.all([readSettings("vscode"), readSettings("cursor")]);
-    return settings;
-}
 async function collectGitConfig() {
     const homeDir = os.homedir();
     const gitConfigPath = path.join(homeDir, ".gitconfig");
@@ -284,9 +212,7 @@ async function detectWSL() {
     }
 }
 export async function collectDevEnvironment() {
-    const [ideExtensions, ideSettings, gitConfig, dotfiles, runtimes, packageManagers, wslDetected] = await Promise.all([
-        withTimeout(collectIDEExtensions(), 5000, []),
-        withTimeout(collectIDESettings(), 3000, []),
+    const [gitConfig, dotfiles, runtimes, packageManagers, wslDetected] = await Promise.all([
         withTimeout(collectGitConfig(), 2000, null),
         withTimeout(collectDotfiles(), 2000, []),
         withTimeout(collectRuntimes(), 2000, []),
@@ -294,8 +220,6 @@ export async function collectDevEnvironment() {
         withTimeout(detectWSL(), 3000, false),
     ]);
     return {
-        ideExtensions,
-        ideSettings,
         gitConfig,
         dotfiles,
         runtimes,
@@ -305,31 +229,6 @@ export async function collectDevEnvironment() {
 }
 export function formatDevEnvironmentForSynthesis(data) {
     const sections = [];
-    // IDE Extensions
-    if (data.ideExtensions.length > 0) {
-        const vscodeExts = data.ideExtensions.filter((e) => e.source === "vscode");
-        const cursorExts = data.ideExtensions.filter((e) => e.source === "cursor");
-        const lines = ["### IDE Extensions"];
-        if (vscodeExts.length > 0) {
-            const names = vscodeExts.slice(0, 20).map((e) => e.name);
-            lines.push(`VSCode (${vscodeExts.length}): ${names.join(", ")}`);
-        }
-        if (cursorExts.length > 0) {
-            const names = cursorExts.slice(0, 20).map((e) => e.name);
-            lines.push(`Cursor (${cursorExts.length}): ${names.join(", ")}`);
-        }
-        sections.push(lines.join("\n"));
-    }
-    // IDE Settings
-    if (data.ideSettings.length > 0) {
-        const lines = ["### IDE Settings"];
-        for (const setting of data.ideSettings) {
-            for (const [key, value] of Object.entries(setting.highlights)) {
-                lines.push(`${setting.source}: ${key}: ${JSON.stringify(value)}`);
-            }
-        }
-        sections.push(lines.join("\n"));
-    }
     // Git Identity
     if (data.gitConfig) {
         const lines = ["### Git Identity"];
