@@ -320,6 +320,36 @@ export const getSecretValueById = query({
   },
 });
 
+export const listSecretsInternal = internalQuery({
+  args: {
+    ownerId: v.string(),
+  },
+  returns: v.array(
+    v.object({
+      _id: v.id("secrets"),
+      ...secretPublicFields,
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const records = await ctx.db
+      .query("secrets")
+      .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+      .order("desc")
+      .take(200);
+
+    return records.map((record) => ({
+      _id: record._id,
+      provider: record.provider,
+      label: record.label,
+      status: record.status,
+      metadata: record.metadata ?? undefined,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      lastUsedAt: record.lastUsedAt ?? undefined,
+    }));
+  },
+});
+
 export const getSecretForTool = internalQuery({
   args: {
     ownerId: v.string(),

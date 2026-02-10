@@ -138,7 +138,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "RequestCredential",
       "IntegrationRequest",
       "SkillBash",
-
+      "ListResources",
     ],
     defaultSkills: [],
     maxTaskDepth: 0,

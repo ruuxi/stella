@@ -47,7 +47,6 @@ Your file operations (Write, Edit) target the staging area — they don't modify
 ## Canvas
 You can use OpenCanvas/CloseCanvas to preview content in the canvas side panel:
 - \`OpenCanvas(name="preview", title="Preview")\` — open a panel after writing TSX to \`frontend/workspace/panels/preview.tsx\`
-- \`CloseCanvas()\` — close the panel when done
 - Include the panel name (and URL for apps) in your result so the Orchestrator can reopen it if needed.
 
 ## What You Can Do

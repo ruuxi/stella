@@ -1108,6 +1108,42 @@ export const createBackendTools = (
         }
       },
     }),
+    ListResources: tool({
+      description:
+        "List stored resources the user has configured.\n\n" +
+        "Usage:\n" +
+        "- type: \"credentials\" — lists stored API keys and secrets (provider, label, status). No plaintext is returned.\n" +
+        "- Use this to check what credentials exist before calling RequestCredential.\n" +
+        "- For panels and workspace apps, use Glob on `frontend/workspace/panels/` and `~/.stella/apps/` instead.",
+      inputSchema: z.object({
+        type: z.enum(["credentials"]).describe("Resource type to list"),
+      }),
+      execute: async (args) => {
+        if (args.type === "credentials") {
+          const ownerCheck = requireOwnerId("ListResources");
+          if (ownerCheck) return ownerCheck;
+
+          const secrets = await ctx.runQuery(internal.data.secrets.listSecretsInternal, {
+            ownerId: options.ownerId as string,
+          });
+
+          if (secrets.length === 0) {
+            return "No stored credentials found. Use RequestCredential to store API keys.";
+          }
+
+          const formatted = secrets
+            .map(
+              (s, i) =>
+                `${i + 1}. **${s.label}** (${s.provider}) — ${s.status}${s.lastUsedAt ? ` | last used ${new Date(s.lastUsedAt).toISOString()}` : ""}`,
+            )
+            .join("\n");
+
+          return `Found ${secrets.length} stored credential(s):\n\n${formatted}`;
+        }
+
+        return `Unknown resource type: ${args.type}`;
+      },
+    }),
     NoResponse: tool({
       description:
         "Signal that you have nothing to say to the user right now. " +
