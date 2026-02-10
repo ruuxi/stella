@@ -18,6 +18,7 @@ import { analyzeShellHistory, formatShellAnalysisForSynthesis } from "./shell-hi
 import { discoverApps, formatAppDiscoveryForSynthesis } from "./app-discovery.js";
 import { collectBrowserBookmarks, formatBrowserBookmarksForSynthesis } from "./browser_bookmarks.js";
 import { collectSafariData, formatSafariDataForSynthesis } from "./safari_data.js";
+import { filterLowSignalDomains, tierFormattedSignals } from "./signal_processing.js";
 import { collectDevEnvironment, formatDevEnvironmentForSynthesis } from "./dev_environment.js";
 import { collectSystemSignals, formatSystemSignalsForSynthesis } from "./system_signals.js";
 import { collectMessagesNotes, formatMessagesNotesForSynthesis } from "./messages_notes.js";
@@ -315,8 +316,13 @@ const formatSignalsForSynthesisWithSections = async (
     .map((category) => formattedSections[category])
     .filter((section): section is string => Boolean(section && section.trim().length > 0));
 
+  // Post-process: filter low-signal domains, then tier for synthesis priority
+  let formatted = orderedSections.join("\n\n");
+  formatted = filterLowSignalDomains(formatted);
+  formatted = tierFormattedSignals(formatted);
+
   return {
-    formatted: orderedSections.join("\n\n"),
+    formatted,
     formattedSections,
   };
 };

@@ -466,39 +466,34 @@ const getMostRecentlyUsedProfile = async (browserType: BrowserType): Promise<str
   // Profile patterns to look for
   const profilePatterns = ["Default", "Profile 1", "Profile 2", "Profile 3", "Profile 4", "Profile 5"];
   
-  let mostRecentProfile = "Default";
-  let mostRecentTime = 0;
-  
-  for (const browserDir of browserDirs) {
+  // Check all profile paths in parallel
+  const profileChecks = browserDirs.flatMap((browserDir) => {
     const userDataPath = path.join(basePath, browserDir);
-    
-    for (const profile of profilePatterns) {
+    return profilePatterns.map(async (profile) => {
       const profilePath = path.join(userDataPath, profile);
-      
       try {
         const stat = await fs.stat(profilePath);
-        
-        if (stat.isDirectory()) {
-          // Check the History file's modification time (more accurate than folder)
-          const historyPath = path.join(profilePath, "History");
-          try {
-            const historyStat = await fs.stat(historyPath);
-            if (historyStat.mtimeMs > mostRecentTime) {
-              mostRecentTime = historyStat.mtimeMs;
-              mostRecentProfile = profile;
-            }
-          } catch {
-            // No History file, use folder mtime as fallback
-            if (stat.mtimeMs > mostRecentTime) {
-              mostRecentTime = stat.mtimeMs;
-              mostRecentProfile = profile;
-            }
-          }
+        if (!stat.isDirectory()) return null;
+        const historyPath = path.join(profilePath, "History");
+        try {
+          const historyStat = await fs.stat(historyPath);
+          return { profile, mtime: historyStat.mtimeMs };
+        } catch {
+          return { profile, mtime: stat.mtimeMs };
         }
       } catch {
-        // Profile doesn't exist, skip
-        continue;
+        return null;
       }
+    });
+  });
+
+  const profileResults = await Promise.all(profileChecks);
+  let mostRecentProfile = "Default";
+  let mostRecentTime = 0;
+  for (const result of profileResults) {
+    if (result && result.mtime > mostRecentTime) {
+      mostRecentTime = result.mtime;
+      mostRecentProfile = result.profile;
     }
   }
   
@@ -759,26 +754,23 @@ const findMostRecentlyModifiedBrowser = async (): Promise<{
   historyPath: string;
   mtime: number;
 } | null> => {
-  const candidates: Array<{ type: BrowserType; historyPath: string; mtime: number }> = [];
-
-  for (const config of BROWSER_CONFIGS) {
-    // Get the most recently used profile for this browser
-    const recentProfile = await getMostRecentlyUsedProfile(config.type);
-    const historyPath = await getHistoryPathForBrowserProfile(config.type, recentProfile);
-
-    if (historyPath) {
+  // Check all browsers in parallel
+  const candidateResults = await Promise.all(
+    BROWSER_CONFIGS.map(async (config) => {
+      const recentProfile = await getMostRecentlyUsedProfile(config.type);
+      const historyPath = await getHistoryPathForBrowserProfile(config.type, recentProfile);
+      if (!historyPath) return null;
       try {
         const stat = await fs.stat(historyPath);
-        candidates.push({
-          type: config.type,
-          historyPath,
-          mtime: stat.mtimeMs,
-        });
+        return { type: config.type, historyPath, mtime: stat.mtimeMs };
       } catch {
-        // Can't stat this file, skip
+        return null;
       }
-    }
-  }
+    })
+  );
+  const candidates = candidateResults.filter(
+    (c): c is { type: BrowserType; historyPath: string; mtime: number } => c !== null
+  );
 
   if (candidates.length === 0) {
     return null;
@@ -808,16 +800,19 @@ const findBrowser = async (): Promise<{
 } | null> => {
   const platform = process.platform;
 
-  // Step 1: Check currently running browsers (most reliable!)
-  log("Checking for running browsers...");
-  const runningBrowsers = await detectRunningBrowsers();
-  
+  // Steps 1 & 2: Detect running browsers and OS default browser in parallel
+  log("Detecting running browsers and OS default browser...");
+  const [runningBrowsers, defaultBrowser] = await Promise.all([
+    detectRunningBrowsers(),
+    detectDefaultBrowser(),
+  ]);
+
+  // Prefer running browsers (most reliable)
   if (runningBrowsers.length > 0) {
-    // Try each running browser in priority order
     for (const browser of runningBrowsers) {
       const lastProfile = await getMostRecentlyUsedProfile(browser);
       const historyPath = await getHistoryPathForBrowserProfile(browser, lastProfile);
-      
+
       if (historyPath) {
         log(`Found ${browser} history (currently running, ${lastProfile} profile) at: ${historyPath}`);
         return { type: browser, historyPath };
@@ -826,22 +821,18 @@ const findBrowser = async (): Promise<{
     log("Running browsers detected but history not accessible, continuing...");
   }
 
-  // Step 2: Try to detect the OS default browser
-  log("Detecting OS default browser...");
-  const defaultBrowser = await detectDefaultBrowser();
-  
+  // Fall back to OS default browser
   if (defaultBrowser) {
     log(`OS default browser: ${defaultBrowser}`);
-    
+
     const lastProfile = await getMostRecentlyUsedProfile(defaultBrowser);
     const historyPath = await getHistoryPathForBrowserProfile(defaultBrowser, lastProfile);
-    
+
     if (historyPath) {
       log(`Found ${defaultBrowser} history (OS default, ${lastProfile} profile) at: ${historyPath}`);
       return { type: defaultBrowser, historyPath };
     }
-    
-    // If last profile doesn't work, try Default profile
+
     if (lastProfile !== "Default") {
       const defaultHistoryPath = await getHistoryPathForBrowserProfile(defaultBrowser, "Default");
       if (defaultHistoryPath) {
@@ -849,7 +840,7 @@ const findBrowser = async (): Promise<{
         return { type: defaultBrowser, historyPath: defaultHistoryPath };
       }
     }
-    
+
     log(`OS default browser ${defaultBrowser} detected but history not accessible, falling back...`);
   } else {
     log("Could not detect OS default browser, trying most recently modified...");
@@ -904,20 +895,17 @@ const copyHistoryDatabase = async (
   await fs.copyFile(historyPath, tempPath);
   log(`Copied history to: ${tempPath}`);
 
-  // Try to copy WAL files for complete data (Chrome uses Write-Ahead Logging)
-  // These files contain recent uncommitted transactions
-  const walExtensions = ["-wal", "-shm"];
-  for (const ext of walExtensions) {
-    const walSource = historyPath + ext;
-    const walDest = tempPath + ext;
-    try {
-      await fs.access(walSource);
-      await fs.copyFile(walSource, walDest);
-      log(`Copied WAL file: ${ext}`);
-    } catch {
-      // WAL file doesn't exist or can't be copied - that's OK
-    }
-  }
+  // Copy WAL files in parallel for complete data (Chrome uses Write-Ahead Logging)
+  await Promise.all(
+    ["-wal", "-shm"].map(async (ext) => {
+      try {
+        await fs.copyFile(historyPath + ext, tempPath + ext);
+        log(`Copied WAL file: ${ext}`);
+      } catch {
+        // WAL file doesn't exist or can't be copied - that's OK
+      }
+    })
+  );
 
   return tempPath;
 };
