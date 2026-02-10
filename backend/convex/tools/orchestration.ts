@@ -60,8 +60,6 @@ export const createOrchestrationTools = (
       prompt: z.string().describe("Full instructions for the subagent"),
       subagent_type: z.string().describe("Agent type: general, self_mod, explore, or browser"),
       include_history: z.boolean().optional().describe("Pass conversation context to the subagent"),
-      // thread_id: z.string().optional().describe("Continue an existing thread"),
-      // thread_title: z.string().optional().describe("Create a new thread with this title"),
     }),
     execute: async (args) => {
       if (!context.userMessageId) {
