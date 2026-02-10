@@ -30,14 +30,6 @@ export type SafariData = {
     }[];
     bookmarks: BookmarkEntry[];
 };
-export type IDEExtension = {
-    name: string;
-    source: "vscode" | "cursor";
-};
-export type IDESettings = {
-    source: "vscode" | "cursor";
-    highlights: Record<string, string>;
-};
 export type GitConfig = {
     name?: string;
     email?: string;
@@ -45,8 +37,6 @@ export type GitConfig = {
     aliases: string[];
 };
 export type DevEnvironmentSignals = {
-    ideExtensions: IDEExtension[];
-    ideSettings: IDESettings[];
     gitConfig: GitConfig | null;
     dotfiles: string[];
     runtimes: string[];

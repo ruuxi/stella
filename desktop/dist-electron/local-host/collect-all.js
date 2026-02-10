@@ -5,7 +5,7 @@
  * organized into 4 onboarding-selectable categories:
  *
  * Category 1 (browsing_bookmarks): Browser history + bookmarks + Safari
- * Category 2 (dev_environment): Dev projects + shell + IDE config + dotfiles
+ * Category 2 (dev_environment): Dev projects + shell + git config + dotfiles
  * Category 3 (apps_system): Apps + Screen Time + Dock + filesystem
  * Category 4 (messages_notes): iMessage + Notes + Reminders + Calendar (opt-in)
  */
@@ -17,6 +17,7 @@ import { analyzeShellHistory, formatShellAnalysisForSynthesis } from "./shell-hi
 import { discoverApps, formatAppDiscoveryForSynthesis } from "./app-discovery.js";
 import { collectBrowserBookmarks, formatBrowserBookmarksForSynthesis } from "./browser_bookmarks.js";
 import { collectSafariData, formatSafariDataForSynthesis } from "./safari_data.js";
+import { filterLowSignalDomains, tierFormattedSignals } from "./signal_processing.js";
 import { collectDevEnvironment, formatDevEnvironmentForSynthesis } from "./dev_environment.js";
 import { collectSystemSignals, formatSystemSignalsForSynthesis } from "./system_signals.js";
 import { collectMessagesNotes, formatMessagesNotesForSynthesis } from "./messages_notes.js";
@@ -68,7 +69,7 @@ export const collectAllUserSignals = async (StellaHome, categories = DEFAULT_CAT
         tasks.shell = analyzeShellHistory();
         tasks.devEnv = collectDevEnvironment().catch((e) => {
             log("Dev environment collection failed:", e);
-            return { ideExtensions: [], ideSettings: [], gitConfig: null, dotfiles: [], runtimes: [], packageManagers: [], wslDetected: false };
+            return { gitConfig: null, dotfiles: [], runtimes: [], packageManagers: [], wslDetected: false };
         });
     }
     if (categories.includes("apps_system")) {
@@ -236,8 +237,12 @@ const formatSignalsForSynthesisWithSections = async (data, StellaHome, categorie
     const orderedSections = categories
         .map((category) => formattedSections[category])
         .filter((section) => Boolean(section && section.trim().length > 0));
+    // Post-process: filter low-signal domains, then tier for synthesis priority
+    let formatted = orderedSections.join("\n\n");
+    formatted = filterLowSignalDomains(formatted);
+    formatted = tierFormattedSignals(formatted);
     return {
-        formatted: orderedSections.join("\n\n"),
+        formatted,
         formattedSections,
     };
 };

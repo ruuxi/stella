@@ -15,7 +15,7 @@ export const DISCOVERY_CATEGORIES = [
     {
         id: "dev_environment",
         label: "Development Environment",
-        description: "IDE extensions, git config, dotfiles, runtimes, and package managers",
+        description: "Git config, dotfiles, runtimes, and package managers",
         defaultEnabled: true,
         requiresFDA: false,
     },

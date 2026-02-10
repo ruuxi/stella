@@ -37,3 +37,4 @@ export declare const getStatePath: (stateRoot: string, kind: string, id: string)
 export declare const loadJson: <T>(filePath: string, fallback: T) => Promise<T>;
 export declare const saveJson: (filePath: string, value: unknown) => Promise<void>;
 export declare const writeSecretFile: (filePath: string, value: string, cwd: string) => Promise<string>;
+export declare const removeSecretFile: (filePath: string) => Promise<void>;

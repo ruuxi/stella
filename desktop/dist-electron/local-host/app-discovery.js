@@ -365,32 +365,32 @@ const discoverRecentlyUsedApps = async () => {
     const cutoffTime = Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000;
     const apps = [];
     const knownApps = getKnownApps();
-    for (const app of knownApps) {
+    const checks = knownApps
+        .filter((app) => app.dataPath[platform] && app.exePath[platform])
+        .map(async (app) => {
         const dataPath = app.dataPath[platform];
         const exePath = app.exePath[platform];
-        if (!dataPath || !exePath)
-            continue;
         try {
             const stat = await fs.stat(dataPath);
             if (stat.isDirectory() && stat.mtimeMs >= cutoffTime) {
-                // Verify exe exists
-                try {
-                    await fs.access(exePath);
-                }
-                catch {
-                    continue; // Exe doesn't exist
-                }
-                apps.push({
+                await fs.access(exePath);
+                return {
                     name: app.name,
                     executablePath: exePath,
                     source: "recent",
                     lastUsed: stat.mtimeMs,
-                });
+                };
             }
         }
         catch {
-            // Data folder doesn't exist, app not used
+            // Data folder doesn't exist or exe missing
         }
+        return null;
+    });
+    const results = await Promise.all(checks);
+    for (const result of results) {
+        if (result)
+            apps.push(result);
     }
     return apps;
 };
@@ -400,15 +400,17 @@ const discoverRecentlyUsedApps = async () => {
 export const discoverApps = async () => {
     log("Starting app discovery...");
     const platform = process.platform;
-    // Collect running apps
-    const runningApps = platform === "win32"
-        ? await discoverRunningAppsWindows()
+    // Collect running apps and recently used in parallel
+    const runningAppsPromise = platform === "win32"
+        ? discoverRunningAppsWindows()
         : platform === "darwin"
-            ? await discoverRunningAppsMac()
-            : [];
+            ? discoverRunningAppsMac()
+            : Promise.resolve([]);
+    const [runningApps, recentApps] = await Promise.all([
+        runningAppsPromise,
+        discoverRecentlyUsedApps(),
+    ]);
     log(`Found ${runningApps.length} running apps`);
-    // Collect recently used apps
-    const recentApps = await discoverRecentlyUsedApps();
     log(`Found ${recentApps.length} recently used apps`);
     // Merge: running apps take priority
     const runningNames = new Set(runningApps.map((a) => a.name.toLowerCase()));

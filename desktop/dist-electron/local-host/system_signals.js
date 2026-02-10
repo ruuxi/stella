@@ -13,6 +13,8 @@ import path from "path";
 import os from "os";
 import { exec } from "child_process";
 const log = (...args) => console.log("[system-signals]", ...args);
+// Keep only strongest file-type signals for synthesis input.
+const FILESYSTEM_TOP_FILE_TYPES = 5;
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
@@ -135,20 +137,19 @@ async function collectAppUsageMacOS(stellaHome) {
 async function collectAppUsageWindows(stellaHome) {
     try {
         const cdpBase = path.join(os.homedir(), "AppData/Local/ConnectedDevicesPlatform");
-        // Find ActivitiesCache.db
-        let dbPath = null;
+        // Find ActivitiesCache.db (check all subdirs in parallel)
         const dirs = await fs.readdir(cdpBase);
-        for (const dir of dirs) {
+        const dbResults = await Promise.all(dirs.map(async (dir) => {
             const candidate = path.join(cdpBase, dir, "ActivitiesCache.db");
             try {
                 await fs.access(candidate);
-                dbPath = candidate;
-                break;
+                return candidate;
             }
             catch {
-                continue;
+                return null;
             }
-        }
+        }));
+        const dbPath = dbResults.find((p) => p !== null) ?? null;
         if (!dbPath) {
             log("ActivitiesCache.db not found");
             return [];
@@ -235,80 +236,77 @@ async function collectAppUsage(stellaHome) {
 // Filesystem Signals
 // ---------------------------------------------------------------------------
 async function collectFilesystemSignals() {
-    const result = {
-        downloadsExtensions: {},
-        documentsFolders: [],
-        desktopFileTypes: {},
-    };
-    // Downloads
-    try {
-        const downloadsPath = path.join(os.homedir(), "Downloads");
-        const files = await fs.readdir(downloadsPath);
-        const extensions = {};
-        for (const file of files) {
-            if (file.startsWith("."))
-                continue;
-            const ext = path.extname(file).toLowerCase();
-            if (ext) {
-                extensions[ext] = (extensions[ext] || 0) + 1;
-            }
-        }
-        // Sort by count and take top 15
-        const sorted = Object.entries(extensions)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 15);
-        result.downloadsExtensions = Object.fromEntries(sorted);
-    }
-    catch (error) {
-        log("Failed to read Downloads:", error);
-    }
-    // Documents
-    try {
-        const documentsPath = path.join(os.homedir(), "Documents");
-        const entries = await fs.readdir(documentsPath);
-        const folders = [];
-        for (const entry of entries) {
-            if (entry.startsWith("."))
-                continue;
-            const fullPath = path.join(documentsPath, entry);
+    const home = os.homedir();
+    // Scan Downloads, Documents, Desktop in parallel
+    const [downloadsExtensions, documentsFolders, desktopFileTypes] = await Promise.all([
+        // Downloads
+        (async () => {
             try {
-                const stat = await fs.stat(fullPath);
-                if (stat.isDirectory()) {
-                    folders.push(entry);
+                const files = await fs.readdir(path.join(home, "Downloads"));
+                const extensions = {};
+                for (const file of files) {
+                    if (file.startsWith("."))
+                        continue;
+                    const ext = path.extname(file).toLowerCase();
+                    if (ext)
+                        extensions[ext] = (extensions[ext] || 0) + 1;
                 }
+                const sorted = Object.entries(extensions)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, FILESYSTEM_TOP_FILE_TYPES);
+                return Object.fromEntries(sorted);
             }
-            catch {
-                continue;
+            catch (error) {
+                log("Failed to read Downloads:", error);
+                return {};
             }
-        }
-        result.documentsFolders = folders.slice(0, 20);
-    }
-    catch (error) {
-        log("Failed to read Documents:", error);
-    }
-    // Desktop
-    try {
-        const desktopPath = path.join(os.homedir(), "Desktop");
-        const files = await fs.readdir(desktopPath);
-        const extensions = {};
-        for (const file of files) {
-            if (file.startsWith("."))
-                continue;
-            const ext = path.extname(file).toLowerCase();
-            if (ext) {
-                extensions[ext] = (extensions[ext] || 0) + 1;
+        })(),
+        // Documents — parallel stat for directory detection
+        (async () => {
+            try {
+                const documentsPath = path.join(home, "Documents");
+                const entries = await fs.readdir(documentsPath);
+                const visible = entries.filter((e) => !e.startsWith("."));
+                const statResults = await Promise.all(visible.map(async (entry) => {
+                    try {
+                        const stat = await fs.stat(path.join(documentsPath, entry));
+                        return stat.isDirectory() ? entry : null;
+                    }
+                    catch {
+                        return null;
+                    }
+                }));
+                return statResults.filter((e) => e !== null).slice(0, 20);
             }
-        }
-        // Sort by count and take top 15
-        const sorted = Object.entries(extensions)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 15);
-        result.desktopFileTypes = Object.fromEntries(sorted);
-    }
-    catch (error) {
-        log("Failed to read Desktop:", error);
-    }
-    return result;
+            catch (error) {
+                log("Failed to read Documents:", error);
+                return [];
+            }
+        })(),
+        // Desktop
+        (async () => {
+            try {
+                const files = await fs.readdir(path.join(home, "Desktop"));
+                const extensions = {};
+                for (const file of files) {
+                    if (file.startsWith("."))
+                        continue;
+                    const ext = path.extname(file).toLowerCase();
+                    if (ext)
+                        extensions[ext] = (extensions[ext] || 0) + 1;
+                }
+                const sorted = Object.entries(extensions)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, FILESYSTEM_TOP_FILE_TYPES);
+                return Object.fromEntries(sorted);
+            }
+            catch (error) {
+                log("Failed to read Desktop:", error);
+                return {};
+            }
+        })(),
+    ]);
+    return { downloadsExtensions, documentsFolders, desktopFileTypes };
 }
 // ---------------------------------------------------------------------------
 // Main Collector

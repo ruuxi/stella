@@ -8,7 +8,7 @@ export type ShellState = {
     resolveSecretValue: (spec: SecretMountSpec, cache: Map<string, string>, context?: ToolContext, toolName?: string) => Promise<string | null>;
 };
 export declare const createShellState: (resolveSecretValue: ShellState["resolveSecretValue"]) => ShellState;
-export declare const startShell: (state: ShellState, command: string, cwd: string, envOverrides?: Record<string, string>) => ShellRecord;
+export declare const startShell: (state: ShellState, command: string, cwd: string, envOverrides?: Record<string, string>, onClose?: () => void) => ShellRecord;
 export declare const runShell: (command: string, cwd: string, timeoutMs: number, envOverrides?: Record<string, string>) => Promise<string>;
 export declare const handleBash: (state: ShellState, args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
 export declare const handleSkillBash: (state: ShellState, args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
