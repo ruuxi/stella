@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Stella Backend is a Convex-powered backend for an AI assistant platform. It provides:
 - Conversation management with multi-device support
 - Streaming AI chat via HTTP endpoints using the Vercel AI SDK
-- Multi-agent system with 6 builtin agents and per-agent model configuration
+- Multi-agent system with 5 builtin agents and per-agent model configuration
 - Skills system for dynamic prompt augmentation
 - Plugin system for extensible tools
 - Subagent task delegation with depth limits
@@ -91,14 +91,13 @@ App store:
 
 ### Agent Types
 
-6 builtin agents defined in `agent/agents.ts`:
+5 builtin agents defined in `agent/agents.ts`:
 
 | Agent | Purpose | Key Tools |
 |-------|---------|-----------|
-| `orchestrator` | Default entry point, delegates to subagents, handles scheduling | TaskCreate, TaskOutput, TaskCancel, OpenCanvas, CloseCanvas, Heartbeat*, Cron* |
-| `memory` | Memory search and retrieval | MemorySearch, Read |
-| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, KillShell, Glob, Grep, WebFetch, WebSearch, OpenCanvas, CloseCanvas, GenerateApiSkill, store tools |
-| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, KillShell, OpenCanvas, CloseCanvas, SelfMod* tools |
+| `orchestrator` | Default entry point, delegates to subagents, handles scheduling/memory | TaskCreate, TaskOutput, TaskCancel, OpenCanvas, CloseCanvas, RecallMemories, SaveMemory, Heartbeat*, Cron*, SpawnRemoteMachine, NoResponse |
+| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, KillShell, Glob, Grep, WebFetch, WebSearch, OpenCanvas, CloseCanvas, RecallMemories, SaveMemory, GenerateApiSkill, store tools |
+| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, KillShell, Glob, Grep, OpenCanvas, CloseCanvas, WebFetch, WebSearch, SelfMod* tools, TaskCreate/Output/Cancel |
 | `explore` | Lightweight read-only exploration | Read, Glob, Grep, WebFetch, WebSearch |
 | `browser` | Browser automation | Bash, KillShell, Read, OpenCanvas, CloseCanvas |
 
@@ -108,7 +107,7 @@ Per-agent model configuration in `agent/model.ts`.
 
 Tools are assembled in `tools/index.ts`:
 
-1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, HeartbeatGet, HeartbeatUpsert, HeartbeatRun, CronList, CronAdd, CronUpdate, CronRemove, CronRun, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint
+1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, ActivateSkill, HeartbeatGet, HeartbeatUpsert, HeartbeatRun, CronList, CronAdd, CronUpdate, CronRemove, CronRun, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint, SpawnRemoteMachine, NoResponse
 2. **Cloud tools** (when no local device, but cloud sandbox available): Bash, Read, Write, Edit, Glob, Grep, SqliteQuery via Sprites
 3. **Device tools** (`agent/device_tools.ts`): When Electron app is running — 22+ tools executed locally via request/response through the events table
 
@@ -118,7 +117,7 @@ Device tool pattern:
 3. Client inserts `tool_result` event with same requestId
 4. Backend polls for result (750ms interval, 120s timeout)
 
-**Orchestration tools** (TaskCreate, TaskOutput, TaskCancel, AgentInvoke, MemorySearch) are created separately via `tools/orchestration.ts`.
+**Orchestration tools** (TaskCreate, TaskOutput, TaskCancel, AgentInvoke, RecallMemories, SaveMemory) are created separately via `tools/orchestration.ts`.
 
 ### Task/Subagent System
 
