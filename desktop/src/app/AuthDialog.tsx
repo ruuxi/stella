@@ -82,7 +82,7 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
           <DialogTitle>Welcome to Stella</DialogTitle>
           <DialogCloseButton />
         </DialogHeader>
-        <DialogDescription>Sign in to sync your conversations and settings.</DialogDescription>
+        <DialogDescription>Sign in with your email.</DialogDescription>
         <DialogBody>
           <form className="auth-dialog-form" onSubmit={handleMagicLink}>
             <TextField
@@ -94,7 +94,7 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
               autoComplete="email"
             />
             <Button type="submit" variant="primary" size="large" className="auth-dialog-button">
-              {status === "sending" ? "Sending..." : "Send magic link"}
+              {status === "sending" ? "Sending..." : "Send sign-in email"}
             </Button>
           </form>
 

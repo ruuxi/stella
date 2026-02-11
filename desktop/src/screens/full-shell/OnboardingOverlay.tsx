@@ -4,13 +4,12 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useConvexAuth } from "convex/react";
-import { Spinner } from "../../components/spinner";
-import { Button } from "../../components/button";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
 } from "../../components/StellaAnimation";
 import { OnboardingStep1, useOnboardingState } from "../../components/Onboarding";
+import { InlineAuth } from "../../components/InlineAuth";
 
 const CREATURE_INITIAL_SIZE = 0.22;
 
@@ -168,17 +167,7 @@ export function OnboardingView({
           isAuthenticated={isAuthenticated}
         />
       )}
-      {!isAuthenticated && onboardingDone && (
-        <Button
-          variant="secondary"
-          size="large"
-          onClick={onSignIn}
-          disabled={isAuthLoading}
-          className="onboarding-signin"
-        >
-          {isAuthLoading ? <Spinner size="sm" /> : "Sign in"}
-        </Button>
-      )}
+      {!isAuthenticated && onboardingDone && <InlineAuth className="onboarding-inline-auth--static" />}
     </div>
   );
 }

@@ -10,9 +10,10 @@ import {
   type OnboardingStep1Props,
 } from "./use-onboarding-state";
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
+import { InlineAuth } from "../InlineAuth";
 import "../Onboarding.css";
 
-export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onSignIn, onOpenThemePicker, onConfirmTheme, onDiscoveryConfirm, themeConfirmed, hasSelectedTheme, isAuthenticated }) => {
+export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onOpenThemePicker, onConfirmTheme, onDiscoveryConfirm, themeConfirmed, hasSelectedTheme, isAuthenticated }) => {
   const [phase, setPhase] = useState<Phase>("typing-intro");
   const [displayed, setDisplayed] = useState("");
   const [showCursor, setShowCursor] = useState(true);
@@ -116,11 +117,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
 
   const handleClick = () => {
     onInteract?.();
-    if (phase === "waiting-click") {
-      // Open sign-in dialog instead of advancing directly
-      onSignIn?.();
-      return;
-    } else if (phase === "waiting-click-preview") {
+    if (phase === "waiting-click-preview") {
       setPhase("fading-out-preview");
     }
   };
@@ -165,7 +162,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
 
   const phaseConfig = PHASES[phase];
   const isIntro = INTRO_PHASES.has(phase);
-  const clickPromptText = phaseConfig.kind === "click" ? phaseConfig.prompt : "";
+  const showInlineAuth = phase === "waiting-click";
+  const clickPromptText = phaseConfig.kind === "click" && phase !== "waiting-click" ? phaseConfig.prompt : "";
   const showClickPrompt = Boolean(clickPromptText);
   const showChoices = phaseConfig.kind === "choices";
   const isDeclining = phaseConfig.kind === "declined";
@@ -195,6 +193,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
           {displayed}
           <span className="onboarding-cursor" style={{ opacity: showCursor ? 1 : 0 }}>│</span>
         </div>
+
+        {showInlineAuth && <InlineAuth />}
 
         {showClickPrompt && (
           <div className="onboarding-choices onboarding-choices--subtle" data-visible={true}>
