@@ -7,8 +7,9 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/api";
 import { getOrCreateDeviceId } from "../../services/device";
 import {
-  synthesizeCoreMemory,
+  generateWelcomeMessageFromCoreMemory,
   seedDiscoveryMemories,
+  synthesizeCoreMemory,
 } from "../../services/synthesis";
 import type { AllUserSignalsResult } from "../../types/electron";
 
@@ -25,6 +26,7 @@ const DEFAULT_DISCOVERY_CATEGORIES = [
 ] as const;
 
 const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
+const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 
 const parseStoredDiscoveryCategories = (
   raw: string | null,
@@ -74,6 +76,10 @@ export function useDiscoveryFlow({
     error: string | null;
   }>({ started: false, synthesized: false, result: null, error: null });
 
+  const previousOnboardingDoneRef = useRef(onboardingDone);
+  const [onboardingCompletionCount, setOnboardingCompletionCount] =
+    useState(0);
+
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
   >(() => {
@@ -84,6 +90,24 @@ export function useDiscoveryFlow({
       localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
     );
   });
+
+  useEffect(() => {
+    if (!previousOnboardingDoneRef.current && onboardingDone) {
+      setOnboardingCompletionCount((count) => count + 1);
+    }
+
+    if (!onboardingDone) {
+      discoveryRef.current = {
+        started: false,
+        synthesized: false,
+        result: null,
+        error: null,
+      };
+      setDiscoveryCategories(null);
+    }
+
+    previousOnboardingDoneRef.current = onboardingDone;
+  }, [onboardingDone]);
 
   const waitForSignalCollection = async (
     maxWaitSeconds: number,
@@ -106,6 +130,20 @@ export function useDiscoveryFlow({
       setDiscoveryCategories(categories);
     },
     [],
+  );
+
+  const appendWelcomeMessage = useCallback(
+    async (text: string) => {
+      if (!conversationId || !text.trim()) return;
+      const deviceId = await getOrCreateDeviceId();
+      await appendEvent({
+        conversationId,
+        type: "assistant_message",
+        deviceId,
+        payload: { text },
+      });
+    },
+    [appendEvent, conversationId],
   );
 
   const effectiveDiscoveryCategories = useMemo(() => {
@@ -153,17 +191,30 @@ export function useDiscoveryFlow({
     void collectSignals();
   }, [effectiveDiscoveryCategories]);
 
-  // Step 2: After auth + onboarding + conversationId, synthesize
+  // Step 2: After auth + onboarding completion + conversationId, generate welcome.
   useEffect(() => {
     if (!isAuthenticated || !onboardingDone || !conversationId) return;
+    if (onboardingCompletionCount < 1) return;
     if (discoveryRef.current.synthesized) return;
 
     const synthesize = async () => {
+      discoveryRef.current.synthesized = true;
+
       try {
         const exists = await window.electronAPI?.checkCoreMemoryExists?.();
-        if (exists) return;
+        if (exists) {
+          const existingCoreMemory = await window.electronAPI?.readCoreMemory?.();
+          let welcomeMessage = "";
 
-        discoveryRef.current.synthesized = true;
+          if (existingCoreMemory?.trim()) {
+            welcomeMessage = await generateWelcomeMessageFromCoreMemory(
+              existingCoreMemory,
+            );
+          }
+
+          await appendWelcomeMessage(welcomeMessage || DEFAULT_WELCOME_MESSAGE);
+          return;
+        }
 
         const collectionReady = await waitForSignalCollection(30);
         if (!collectionReady) return;
@@ -178,22 +229,22 @@ export function useDiscoveryFlow({
 
         void seedDiscoveryMemories(result.formatted);
 
-        if (synthesisResult.welcomeMessage && conversationId) {
-          const deviceId = await getOrCreateDeviceId();
-          await appendEvent({
-            conversationId,
-            type: "assistant_message",
-            deviceId,
-            payload: { text: synthesisResult.welcomeMessage },
-          });
-        }
+        await appendWelcomeMessage(
+          synthesisResult.welcomeMessage || DEFAULT_WELCOME_MESSAGE,
+        );
       } catch {
         // Silent fail - discovery is non-critical
       }
     };
 
     void synthesize();
-  }, [isAuthenticated, onboardingDone, conversationId, appendEvent]);
+  }, [
+    appendWelcomeMessage,
+    conversationId,
+    isAuthenticated,
+    onboardingCompletionCount,
+    onboardingDone,
+  ]);
 
   return {
     handleDiscoveryConfirm,

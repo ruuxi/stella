@@ -13,6 +13,10 @@ export type SynthesisResult = {
   welcomeMessage: string;
 };
 
+type WelcomeMessageResult = {
+  welcomeMessage: string;
+};
+
 export async function synthesizeCoreMemory(
   formattedSignals: string,
 ): Promise<SynthesisResult> {
@@ -76,6 +80,45 @@ export async function seedDiscoveryMemories(
     },
     body: JSON.stringify({ formattedSignals }),
   }).catch(() => {
-    // Silent fail — memory seeding is non-critical
+    // Silent fail - memory seeding is non-critical
   });
+}
+
+/**
+ * Generate a welcome message from existing core memory.
+ */
+export async function generateWelcomeMessageFromCoreMemory(
+  coreMemory: string,
+): Promise<string> {
+  const baseUrl = import.meta.env.VITE_CONVEX_URL;
+  if (!baseUrl) {
+    throw new Error("VITE_CONVEX_URL is not set.");
+  }
+
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error("Not authenticated");
+  }
+
+  const httpBaseUrl =
+    import.meta.env.VITE_CONVEX_HTTP_URL ??
+    baseUrl.replace(".convex.cloud", ".convex.site");
+
+  const endpoint = new URL("/api/welcome-message", httpBaseUrl).toString();
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ coreMemory }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Welcome generation failed: ${response.status} - ${errorText}`);
+  }
+
+  const result = (await response.json()) as WelcomeMessageResult;
+  return result.welcomeMessage?.trim() ?? "";
 }

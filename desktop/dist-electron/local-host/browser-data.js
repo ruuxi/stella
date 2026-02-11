@@ -1017,6 +1017,18 @@ export const writeCoreMemory = async (StellaHome, content) => {
     await fs.writeFile(coreMemoryPath, content, "utf-8");
     log("Wrote CORE_MEMORY.MD");
 };
+/**
+ * Read core memory profile from disk
+ */
+export const readCoreMemory = async (StellaHome) => {
+    const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
+    try {
+        return await fs.readFile(coreMemoryPath, "utf-8");
+    }
+    catch {
+        return null;
+    }
+};
 const formatDomainList = (domains) => domains.map((d) => `${d.domain} (${d.visits})`).join("\n");
 /**
  * Format browser data for LLM synthesis input

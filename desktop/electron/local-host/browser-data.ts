@@ -1182,6 +1182,20 @@ export const writeCoreMemory = async (
   log("Wrote CORE_MEMORY.MD");
 };
 
+/**
+ * Read core memory profile from disk
+ */
+export const readCoreMemory = async (
+  StellaHome: string,
+): Promise<string | null> => {
+  const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
+  try {
+    return await fs.readFile(coreMemoryPath, "utf-8");
+  } catch {
+    return null;
+  }
+};
+
 const formatDomainList = (domains: DomainVisit[]): string =>
   domains.map((d) => `${d.domain} (${d.visits})`).join("\n");
 

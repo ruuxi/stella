@@ -39,6 +39,10 @@ export declare const coreMemoryExists: (StellaHome: string) => Promise<boolean>;
  */
 export declare const writeCoreMemory: (StellaHome: string, content: string) => Promise<void>;
 /**
+ * Read core memory profile from disk
+ */
+export declare const readCoreMemory: (StellaHome: string) => Promise<string | null>;
+/**
  * Format browser data for LLM synthesis input
  */
 export declare const formatBrowserDataForSynthesis: (data: BrowserData) => string;
