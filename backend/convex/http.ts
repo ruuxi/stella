@@ -10,6 +10,10 @@ import {
 } from "./agent/context_budget";
 import { createTools } from "./tools/index";
 import { resolveModelConfig } from "./agent/model_resolver";
+import {
+  buildRuntimeRouteContext,
+  classifyOrchestratorIntent,
+} from "./agent/intent_router";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
 import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
@@ -285,6 +289,15 @@ http.route({
         : body.agent === "general"
           ? "general"
           : "orchestrator";
+
+    const runtimeRoute =
+      agentType === "orchestrator"
+        ? classifyOrchestratorIntent({
+            text: userText,
+            hasAttachments: resolvedImages.length > 0,
+          })
+        : null;
+
     const promptBuild = await buildSystemPrompt(ctx, agentType, { ownerId: conversation.ownerId, conversationId });
 
     // Add platform-specific guidance
@@ -321,6 +334,7 @@ http.route({
     // This keeps the system prompt stable across turns for prompt caching.
     const contextParts: string[] = [];
     if (promptBuild.dynamicContext) contextParts.push(promptBuild.dynamicContext);
+    if (runtimeRoute) contextParts.push(buildRuntimeRouteContext(runtimeRoute));
     if (platformGuidance) contextParts.push(platformGuidance);
     if (contextParts.length > 0) {
       contentParts.push({
