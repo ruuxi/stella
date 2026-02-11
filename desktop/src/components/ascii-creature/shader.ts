@@ -47,7 +47,6 @@ export const getFragmentShader = (): string => {
     uniform vec2 u_canvasSize;
     uniform vec2 u_gridSize;
     uniform float u_time;
-    uniform float u_aspect;
     uniform float u_charCount;
     uniform float u_birth;
     uniform float u_flash;
@@ -56,45 +55,51 @@ export const getFragmentShader = (): string => {
   `;
 
   const baseColorLogic = `
+    // Smooth color interpolation — evenly spread across intensity
+    float colorPos = clamp(intensity * 4.0, 0.0, 3.999);
+    float ci = floor(colorPos);
+    float cf = smoothstep(0.0, 1.0, colorPos - ci);
+
     vec3 color;
-    if (charIndex <= 2.0) {
-      color = u_colors[0];
-    } else if (charIndex <= 4.0) {
-      color = u_colors[1];
-    } else if (charIndex <= 6.0) {
-      color = u_colors[2];
-    } else if (charIndex <= 7.0) {
-      color = u_colors[3];
+    if (ci < 1.0) {
+      color = mix(u_colors[0], u_colors[1], cf);
+    } else if (ci < 2.0) {
+      color = mix(u_colors[1], u_colors[2], cf);
+    } else if (ci < 3.0) {
+      color = mix(u_colors[2], u_colors[3], cf);
     } else {
-      color = u_colors[4];
+      color = mix(u_colors[3], u_colors[4], cf);
     }
 
+    // Mute center, vivify edges — inverted saturation gradient
+    float luma = dot(color, vec3(0.299, 0.587, 0.114));
+    float sat = mix(0.55, 1.4, 1.0 - intensity);
+    color = mix(vec3(luma), color, sat);
+
+    // Warm tint on outer dots
+    float warm = (1.0 - intensity);
+    color *= vec3(1.0 + warm * 0.2, 1.0 + warm * 0.07, 1.0 - warm * 0.1);
+
     // Expanding flash wave from center outward
-    // u_flash: 1 = just triggered (wave at center), 0 = done (wave expanded)
     float waveRadius = (1.0 - u_flash) * 1.8;
     float waveWidth = 0.3;
-
-    // Distance from the wave front - intensity peaks at wave front
     float waveDist = abs(dist - waveRadius);
     float waveIntensity = smoothstep(waveWidth, 0.0, waveDist) * u_flash;
-
-    // Boost existing color brightness (no white shift)
     color *= 1.0 + waveIntensity * 2.0;
 
     gl_FragColor = vec4(color, glyphAlpha);
   `;
 
-  // Evolving - Morphing between Black Hole, Neural, and Becoming
+  // Flowing organic patterns — 3 phases morphing smoothly
   return `${baseHeader}
     void main() {
       vec2 uv = vec2(gl_FragCoord.x / u_canvasSize.x, 1.0 - gl_FragCoord.y / u_canvasSize.y);
-      vec2 cell = floor(uv * u_gridSize);
-      float cx = u_gridSize.x * 0.5;
-      float cy = u_gridSize.y * 0.5;
-      float dx = (cell.x - cx) / cx;
-      float dy = (cell.y - cy) / cy;
-      float dist = sqrt(dx * dx + (dy * dy) / (u_aspect * u_aspect));
-      float angle = atan(dy, dx);
+
+      // True circular distance using canvas pixel aspect ratio
+      vec2 c = uv - 0.5;
+      c.x *= u_canvasSize.x / u_canvasSize.y;
+      float dist = length(c) * 2.0;
+      float angle = atan(c.y, c.x);
 
       float cycle = u_time * 0.15;
       float phase = mod(cycle, 3.0);
@@ -105,6 +110,7 @@ export const getFragmentShader = (): string => {
       float total = w1 + w2 + w3;
       w1 /= total; w2 /= total; w3 /= total;
 
+      // Phase 1: Flowing spiral disk
       float i1 = 0.0;
       if (dist >= 0.15) {
         float spiralOffset = 1.0 / (dist + 0.05);
@@ -115,6 +121,7 @@ export const getFragmentShader = (): string => {
         i1 = ((wave1 + wave2) * 0.5 + 0.5) * falloff + disk;
       }
 
+      // Phase 2: Pulsing rays with radial waves
       float time1 = u_time * 2.0;
       float p1 = sin(time1) * 0.5 + 0.5;
       float p2 = sin(time1 + 2.094) * 0.5 + 0.5;
@@ -128,6 +135,7 @@ export const getFragmentShader = (): string => {
       float falloff2 = max(0.0, 1.0 - dist * 0.8);
       float i2 = rays * falloff2 + core2;
 
+      // Phase 3: Organic breathing forms
       float breathe = sin(u_time * 0.4) * 0.5 + 0.5;
       float potential = sin(angle * 7.0 + dist * 8.0 + u_time * 0.5) * 0.5 + 0.5;
       potential *= exp(-dist * 1.0);
@@ -140,20 +148,15 @@ export const getFragmentShader = (): string => {
       float intensity = i1 * w1 + i2 * w2 + i3 * w3;
       intensity = min(intensity, 1.0);
 
-      // Small creatures stay bright and alive with stronger pulsing
+      // Birth animation
       float birthRadius = u_birth * 1.5;
       float birthEdge = smoothstep(birthRadius, birthRadius - 0.3, dist);
-
-      // Faster, more organic pulse at small sizes (neural network "thinking")
-      // At u_birth=1.0, this reduces to the original: pulseStrength=0, birthPulse=1.0
       float smallness = 1.0 - u_birth;
       float pulseSpeed = 5.0 + smallness * 2.0;
       float pulseStrength = smallness * 0.5;
       float birthPulse = 1.0 + sin(dist * 25.0 - u_time * pulseSpeed) * pulseStrength;
       float breathe2 = 1.0 + sin(u_time * 1.5) * 0.15 * smallness;
-
       intensity *= birthEdge * birthPulse * breathe2;
-      // Use sqrt curve so small creatures stay bright, but at u_birth=1.0 this is still 1.0
       intensity *= sqrt(u_birth);
 
       float charIndex = floor(intensity * (u_charCount - 1.0));
