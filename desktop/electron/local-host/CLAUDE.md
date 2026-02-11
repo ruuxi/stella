@@ -26,7 +26,6 @@ This directory implements the local tool execution system that runs on the user'
 | `tools-shell.ts` | Bash, KillShell, SkillBash |
 | `tools-state.ts` | Task, TaskOutput |
 | `tools-user.ts` | AskUserQuestion, RequestCredential |
-| `tools-database.ts` | SqliteQuery |
 | `tools_store.ts` | InstallSkillPackage, InstallThemePackage, InstallCanvasPackage, InstallPluginPackage, UninstallPackage |
 | `tools_self_mod.ts` | SelfModStart, SelfModApply, SelfModRevert, SelfModStatus, SelfModPackage |
 

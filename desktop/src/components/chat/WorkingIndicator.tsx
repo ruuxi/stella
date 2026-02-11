@@ -17,8 +17,6 @@ const getAgentLabel = (agentType: string): string => {
   switch (agentType) {
     case "general":
       return "Working";
-    case "memory":
-      return "Searching memory";
     case "explore":
       return "Exploring";
     case "browser":
