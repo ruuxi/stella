@@ -37,6 +37,7 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
   const restoredCanvasConversationRef = useRef<string | null>(null);
+  const isNearBottomRef = useRef(true);
 
   const [message, setMessage] = useState("");
   const [chatContext, setChatContext] = useState<ChatContext | null>(null);
@@ -77,6 +78,10 @@ export const FullShell = () => {
     scrollToBottom,
     handleScroll,
   } = useScrollManagement();
+
+  useEffect(() => {
+    isNearBottomRef.current = isNearBottom;
+  }, [isNearBottom]);
 
   useEffect(() => {
     const ready = onboarding.isAuthenticated && onboarding.onboardingDone;
@@ -176,20 +181,19 @@ export const FullShell = () => {
   }, [events, processFollowUpQueue]);
 
   useEffect(() => {
-    if (isNearBottom) {
+    if (isNearBottomRef.current) {
       scrollToBottom("smooth");
     }
-  }, [events.length, isNearBottom, scrollToBottom]);
+  }, [events.length, scrollToBottom]);
 
   useEffect(() => {
-    if (isStreaming && isNearBottom) {
+    if (isStreaming && isNearBottomRef.current) {
       scrollToBottom("auto");
     }
   }, [
     streamingText,
     reasoningText,
     isStreaming,
-    isNearBottom,
     scrollToBottom,
   ]);
 
