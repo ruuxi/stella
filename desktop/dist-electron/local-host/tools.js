@@ -26,7 +26,7 @@ import { createShellState, handleBash, handleKillShell, handleSkillBash, } from 
 import { createStateContext, handleTask, handleTaskOutput, } from "./tools-state.js";
 import { handleAskUser, handleRequestCredential } from "./tools-user.js";
 import { handleSelfModStart, handleSelfModApply, handleSelfModRevert, handleSelfModStatus, handleSelfModPackage, } from "./tools_self_mod.js";
-import { handleInstallCanvas, handleInstallPlugin, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from "./tools_store.js";
+import { handleManagePackage, } from "./tools_store.js";
 export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, resolveSecret }) => {
     const stateRoot = path.join(StellaHome, "state");
     const pluginsRoot = path.join(StellaHome, "plugins");
@@ -135,11 +135,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
         SelfModStatus: (args, context) => handleSelfModStatus(args, context),
         SelfModPackage: (args, context) => handleSelfModPackage(args, context, frontendRoot),
         // Store tools
-        InstallSkillPackage: (args) => handleInstallSkill(args),
-        InstallThemePackage: (args) => handleInstallTheme(args),
-        InstallCanvasPackage: (args) => handleInstallCanvas(args),
-        InstallPluginPackage: (args) => handleInstallPlugin(args),
-        UninstallPackage: (args) => handleUninstallPackage(args),
+        ManagePackage: (args) => handleManagePackage(args),
     };
     const executeTool = async (toolName, toolArgs, context) => {
         log(`Executing tool: ${toolName}`, {
