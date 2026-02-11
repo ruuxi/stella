@@ -63,8 +63,8 @@ export function useMiniChat(opts: {
   });
 
   const createAttachment = useAction(api.data.attachments.createFromDataUrl);
-  const createConversation = useMutation(
-    api.conversations.createConversation,
+  const getOrCreateDefaultConversation = useMutation(
+    api.conversations.getOrCreateDefaultConversation,
   );
   const events = useConversationEvents(state.conversationId ?? undefined);
 
@@ -170,16 +170,17 @@ export function useMiniChat(opts: {
     return null;
   }, []);
 
-  // Auto-create conversation if none exists
+  // Ensure mini chat binds to the default conversation instead of creating a
+  // fresh non-default thread during startup races.
   useEffect(() => {
     if (!state.conversationId) {
-      void createConversation({}).then(
+      void getOrCreateDefaultConversation({}).then(
         (conversation: { _id?: string } | null) => {
           if (conversation?._id) setConversationId(conversation._id);
         },
       );
     }
-  }, [state.conversationId, createConversation, setConversationId]);
+  }, [state.conversationId, getOrCreateDefaultConversation, setConversationId]);
 
   // Sync streaming with assistant reply
   useEffect(() => {
