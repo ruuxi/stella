@@ -3,6 +3,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "../agent/prompt_builder";
+import { eventsToHistoryMessages } from "../agent/history_messages";
 import { createTools } from "../tools/index";
 import { resolveModelConfig } from "../agent/model_resolver";
 
@@ -86,28 +87,13 @@ export async function runAgentTurn({
 
   const historyEvents =
     includeHistory && historyLimit > 0
-      ? await ctx.runQuery(internal.events.listRecentMessages, {
+      ? await ctx.runQuery(internal.events.listRecentContextEvents, {
           conversationId,
           limit: Math.min(Math.max(Math.floor(historyLimit), 1), 100),
         })
       : [];
 
-  const historyMessages = (historyEvents ?? []).flatMap((event: { type: string; payload?: unknown }) => {
-    const payload =
-      event.payload && typeof event.payload === "object"
-        ? (event.payload as { text?: string })
-        : {};
-    const text = typeof payload.text === "string" ? payload.text.trim() : "";
-    if (!text) {
-      return [];
-    }
-    return [
-      {
-        role: event.type === "assistant_message" ? ("assistant" as const) : ("user" as const),
-        content: text,
-      },
-    ];
-  });
+  const historyMessages = eventsToHistoryMessages(historyEvents ?? []);
 
   let usageSummary:
     | {

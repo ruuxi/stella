@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./agent/prompt_builder";
+import { eventsToHistoryMessages } from "./agent/history_messages";
 import { createTools } from "./tools/index";
 import { resolveModelConfig } from "./agent/model_resolver";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
@@ -237,7 +238,7 @@ http.route({
     const historyLimit = Math.max(0, HISTORY_LIMIT - 1);
     const historyEvents =
       historyLimit > 0
-        ? await ctx.runQuery(internal.events.listRecentMessages, {
+        ? await ctx.runQuery(internal.events.listRecentContextEvents, {
             conversationId,
             limit: historyLimit,
             beforeTimestamp: userEvent.timestamp,
@@ -245,22 +246,7 @@ http.route({
           })
         : [];
 
-    const historyMessages = historyEvents.flatMap((event: Doc<"events">) => {
-      const payload =
-        event.payload && typeof event.payload === "object"
-          ? (event.payload as { text?: string })
-          : {};
-      const text = typeof payload.text === "string" ? payload.text.trim() : "";
-      if (!text) {
-        return [];
-      }
-      return [
-        {
-          role: event.type === "assistant_message" ? ("assistant" as const) : ("user" as const),
-          content: text,
-        },
-      ];
-    });
+    const historyMessages = eventsToHistoryMessages(historyEvents);
 
     const attachments = body.attachments ?? [];
     const resolvedImages: Array<{ url: string; mimeType?: string }> = [];
