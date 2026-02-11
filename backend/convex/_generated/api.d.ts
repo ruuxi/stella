@@ -11,6 +11,8 @@
 import type * as agent_agents from "../agent/agents.js";
 import type * as agent_cloud_device_cleanup from "../agent/cloud_device_cleanup.js";
 import type * as agent_cloud_devices from "../agent/cloud_devices.js";
+import type * as agent_context_budget from "../agent/context_budget.js";
+import type * as agent_context_window from "../agent/context_window.js";
 import type * as agent_device_resolver from "../agent/device_resolver.js";
 import type * as agent_device_tools from "../agent/device_tools.js";
 import type * as agent_history_messages from "../agent/history_messages.js";
@@ -48,6 +50,7 @@ import type * as data_secrets from "../data/secrets.js";
 import type * as data_secrets_crypto from "../data/secrets_crypto.js";
 import type * as data_skills from "../data/skills.js";
 import type * as data_store_packages from "../data/store_packages.js";
+import type * as data_thread_compaction_format from "../data/thread_compaction_format.js";
 import type * as data_threads from "../data/threads.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
@@ -85,6 +88,8 @@ declare const fullApi: ApiFromModules<{
   "agent/agents": typeof agent_agents;
   "agent/cloud_device_cleanup": typeof agent_cloud_device_cleanup;
   "agent/cloud_devices": typeof agent_cloud_devices;
+  "agent/context_budget": typeof agent_context_budget;
+  "agent/context_window": typeof agent_context_window;
   "agent/device_resolver": typeof agent_device_resolver;
   "agent/device_tools": typeof agent_device_tools;
   "agent/history_messages": typeof agent_history_messages;
@@ -122,6 +127,7 @@ declare const fullApi: ApiFromModules<{
   "data/secrets_crypto": typeof data_secrets_crypto;
   "data/skills": typeof data_skills;
   "data/store_packages": typeof data_store_packages;
+  "data/thread_compaction_format": typeof data_thread_compaction_format;
   "data/threads": typeof data_threads;
   events: typeof events;
   http: typeof http;

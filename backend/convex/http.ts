@@ -5,6 +5,9 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./agent/prompt_builder";
 import { eventsToHistoryMessages } from "./agent/history_messages";
+import {
+  ORCHESTRATOR_HISTORY_MAX_TOKENS,
+} from "./agent/context_budget";
 import { createTools } from "./tools/index";
 import { resolveModelConfig } from "./agent/model_resolver";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
@@ -72,8 +75,6 @@ You are running on Linux. Use Linux-compatible commands:
 
   return "";
 };
-
-const HISTORY_LIMIT = 100;
 
 const http = httpRouter();
 
@@ -235,16 +236,15 @@ http.route({
     const userText = userPayload.text ?? "";
     const userPlatform = userPayload.platform ?? "unknown";
 
-    const historyLimit = Math.max(0, HISTORY_LIMIT - 1);
-    const historyEvents =
-      historyLimit > 0
-        ? await ctx.runQuery(internal.events.listRecentContextEvents, {
-            conversationId,
-            limit: historyLimit,
-            beforeTimestamp: userEvent.timestamp,
-            excludeEventId: userMessageId,
-          })
-        : [];
+    const historyEvents = await ctx.runQuery(
+      internal.events.listRecentContextEventsByTokens,
+      {
+        conversationId,
+        maxTokens: ORCHESTRATOR_HISTORY_MAX_TOKENS,
+        beforeTimestamp: userEvent.timestamp,
+        excludeEventId: userMessageId,
+      },
+    );
 
     const historyMessages = eventsToHistoryMessages(historyEvents);
 

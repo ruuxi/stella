@@ -75,6 +75,35 @@ describe("history message formatting", () => {
     expect(messages[1]?.content).toContain("Command executed successfully.");
   });
 
+  test("inserts synthetic tool result when a call is left unresolved", () => {
+    const events = [
+      {
+        ...baseEvent,
+        _id: "event_tool_req_unresolved",
+        requestId: "req_missing",
+        type: "tool_request",
+        payload: {
+          toolName: "Bash",
+          args: { command: "start winword" },
+          agentType: "general",
+        },
+      },
+      {
+        ...baseEvent,
+        _id: "event_next_user",
+        type: "user_message",
+        payload: { text: "Any update?" },
+      },
+    ] as any[];
+
+    const messages = eventsToHistoryMessages(events);
+    expect(messages).toHaveLength(3);
+    expect(messages[1]?.content).toContain("[Tool result] Bash");
+    expect(messages[1]?.content).toContain("request_id: req_missing");
+    expect(messages[1]?.content).toContain("No result provided");
+    expect(messages[2]).toEqual({ role: "user", content: "Any update?" });
+  });
+
   test("replays task lifecycle events", () => {
     const events = [
       {
@@ -134,4 +163,3 @@ describe("history message formatting", () => {
     expect(messages).toEqual([{ role: "user", content: "Hello" }]);
   });
 });
-

@@ -4,6 +4,9 @@ import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "../agent/prompt_builder";
 import { eventsToHistoryMessages } from "../agent/history_messages";
+import {
+  AUTOMATION_HISTORY_MAX_TOKENS,
+} from "../agent/context_budget";
 import { createTools } from "../tools/index";
 import { resolveModelConfig } from "../agent/model_resolver";
 
@@ -26,7 +29,7 @@ type RunAgentTurnArgs = {
   targetDeviceId?: string;
   spriteName?: string;
   includeHistory?: boolean;
-  historyLimit?: number;
+  historyMaxTokens?: number;
 };
 
 export async function runAgentTurn({
@@ -38,7 +41,7 @@ export async function runAgentTurn({
   targetDeviceId,
   spriteName,
   includeHistory = true,
-  historyLimit = 80,
+  historyMaxTokens = AUTOMATION_HISTORY_MAX_TOKENS,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
   await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
   await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
@@ -86,10 +89,10 @@ export async function runAgentTurn({
   );
 
   const historyEvents =
-    includeHistory && historyLimit > 0
-      ? await ctx.runQuery(internal.events.listRecentContextEvents, {
+    includeHistory && historyMaxTokens > 0
+      ? await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
           conversationId,
-          limit: Math.min(Math.max(Math.floor(historyLimit), 1), 100),
+          maxTokens: Math.min(Math.max(Math.floor(historyMaxTokens), 1), 120_000),
         })
       : [];
 
