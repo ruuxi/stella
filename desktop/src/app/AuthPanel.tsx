@@ -96,7 +96,7 @@ export const AuthPanel = () => {
             autoComplete="email"
           />
           <Button type="submit" variant="primary" className="auth-panel-button">
-            {status === "sending" ? "Sending..." : "Send magic link"}
+            {status === "sending" ? "Sending..." : "Send sign-in email"}
           </Button>
         </form>
 

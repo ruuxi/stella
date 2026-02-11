@@ -11,18 +11,19 @@
 
 .auth-dialog-status {
   margin: 0 24px 16px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: var(--radius-md, 6px);
   font-size: 13px;
   text-align: center;
+  line-height: 1.4;
 }
 
 .auth-dialog-status.success {
-  background: rgba(127, 209, 174, 0.12);
-  color: #7fd1ae;
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  color: var(--primary);
 }
 
 .auth-dialog-status.error {
-  background: rgba(255, 143, 143, 0.12);
-  color: #ff8f8f;
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  color: var(--destructive);
 }

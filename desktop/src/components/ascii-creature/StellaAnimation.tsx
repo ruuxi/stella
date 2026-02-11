@@ -201,6 +201,8 @@ export const StellaAnimation = React.forwardRef<
       };
 
       animateRef.current = animate;
+      // Always render one initial frame so paused mode shows the creature
+      mainRenderer.render(timeRef.current, birthRef.current, flashRef.current);
       if (!pausedRef.current) {
         requestRef.current = requestAnimationFrame(animate);
       }

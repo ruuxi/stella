@@ -1,4 +1,4 @@
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { useMemo } from "react";
 import { api } from "../convex/api";
 import type { StepItem } from "../components/steps-container";
@@ -395,9 +395,10 @@ export function getRunningTasks(events: EventRecord[]): TaskItem[] {
 
 // Main hook to fetch conversation events
 export const useConversationEvents = (conversationId?: string) => {
+  const { isAuthenticated } = useConvexAuth();
   const result = useQuery(
     api.events.listEvents,
-    conversationId
+    isAuthenticated && conversationId
       ? { conversationId, paginationOpts: { cursor: null, numItems: 200 } }
       : "skip"
   ) as { page: EventRecord[] } | undefined;
