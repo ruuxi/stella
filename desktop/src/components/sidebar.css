@@ -15,50 +15,49 @@
   z-index: 2;
 }
 
-/* Reserve space for the fixed title bar + logo */
+/* Reserve space for the fixed title bar */
 .sidebar-header {
+  height: 4px;
   flex-shrink: 0;
   -webkit-app-region: drag;
-  padding-top: 38px;
-  padding-bottom: 4px;
 }
 
-.sidebar-logo {
+.sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 20px;
-  -webkit-app-region: no-drag;
+  gap: 8px;
+  padding: 0 14px 6px;
 }
 
-.sidebar-logo-creature {
-  width: 28px;
-  height: 22px;
+.sidebar-brand-logo {
+  width: 72px;
+  height: 72px;
   flex-shrink: 0;
-  overflow: hidden;
-  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.sidebar-logo-creature .stella-animation-container {
-  animation: none;
+.sidebar-brand-logo-art {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-.sidebar-logo-creature .ascii-canvas {
-  top: 50%;
-}
-
-.sidebar-logo-text {
+.sidebar-brand-text {
+  color: var(--text-weaker);
   font-size: 16px;
-  font-weight: 700;
-  color: var(--text-strong);
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 12px 12px;
+  padding: 10px 12px 12px;
   flex: 1;
 }
 
