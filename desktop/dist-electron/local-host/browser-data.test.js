@@ -18,7 +18,7 @@ vi.mock("bun:sqlite", () => ({
     Database: mockDatabase,
 }));
 // Import functions after mocks are set up
-import { collectBrowserData, coreMemoryExists, writeCoreMemory, formatBrowserDataForSynthesis, } from "./browser-data.js";
+import { collectBrowserData, coreMemoryExists, readCoreMemory, writeCoreMemory, formatBrowserDataForSynthesis, } from "./browser-data.js";
 describe("Browser Data Collection - Unit Tests", () => {
     const mockFs = fs.promises;
     // Use a valid absolute path for Windows
@@ -82,6 +82,20 @@ describe("Browser Data Collection - Unit Tests", () => {
             await writeCoreMemory(testStellaHome, "# Test Profile\n\nContent here");
             expect(mockFs.mkdir).toHaveBeenCalledWith(path.join(testStellaHome, "state"), { recursive: true });
             expect(mockFs.writeFile).toHaveBeenCalledWith(path.join(testStellaHome, "state", "CORE_MEMORY.MD"), "# Test Profile\n\nContent here", "utf-8");
+        });
+    });
+    describe("readCoreMemory", () => {
+        it("should return CORE_MEMORY.MD contents when present", async () => {
+            const expected = "# Existing Core Memory\n\nProfile content";
+            mockFs.readFile.mockResolvedValue(expected);
+            const result = await readCoreMemory(testStellaHome);
+            expect(result).toBe(expected);
+            expect(mockFs.readFile).toHaveBeenCalledWith(path.join(testStellaHome, "state", "CORE_MEMORY.MD"), "utf-8");
+        });
+        it("should return null when CORE_MEMORY.MD is missing", async () => {
+            mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
+            const result = await readCoreMemory(testStellaHome);
+            expect(result).toBeNull();
         });
     });
     describe("formatBrowserDataForSynthesis", () => {

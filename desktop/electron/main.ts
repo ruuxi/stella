@@ -28,6 +28,7 @@ import { resolveStellaHome } from './local-host/stella-home.js'
 import {
   collectBrowserData,
   coreMemoryExists,
+  readCoreMemory,
   writeCoreMemory,
   formatBrowserDataForSynthesis,
   type BrowserData,
@@ -1453,6 +1454,13 @@ app.whenReady().then(async () => {
     } catch (error) {
       return { ok: false, error: (error as Error).message }
     }
+  })
+
+  ipcMain.handle('browserData:readCoreMemory', async (): Promise<string | null> => {
+    if (!StellaHomePath) {
+      return null
+    }
+    return readCoreMemory(StellaHomePath)
   })
 
   // Comprehensive user signal collection (with category support)
