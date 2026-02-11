@@ -6,7 +6,7 @@
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: 260px;
+  width: 220px;
   flex-shrink: 0;
   background: var(--background);
   border-right: 1px solid var(--border-weak);
@@ -33,14 +33,14 @@
 .sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 12px;
+  padding: 12px 16px;
   border-radius: var(--radius-md);
   background: transparent;
   border: none;
   color: var(--text-base);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   cursor: default;
   transition: background 0.15s ease, color 0.15s ease;
@@ -102,7 +102,7 @@
 
 /* Push the title bar to start after the sidebar */
 .window-shell.full .title-bar {
-  left: 260px;
+  left: 220px;
 }
 
 /* On macOS, traffic lights sit inside the sidebar area — that's intentional */
