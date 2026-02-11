@@ -1,4 +1,4 @@
-import { CHARS, ASPECT } from "./glyph-atlas";
+import { DOT_COUNT } from "./glyph-atlas";
 import { createProgram, getFragmentShader } from "./shader";
 
 export type GlRenderer = {
@@ -75,7 +75,6 @@ export const initRenderer = (
   const uCanvasSize = gl.getUniformLocation(program, "u_canvasSize");
   const uGridSize = gl.getUniformLocation(program, "u_gridSize");
   const uTime = gl.getUniformLocation(program, "u_time");
-  const uAspect = gl.getUniformLocation(program, "u_aspect");
   const uCharCount = gl.getUniformLocation(program, "u_charCount");
   const uBirth = gl.getUniformLocation(program, "u_birth");
   const uFlash = gl.getUniformLocation(program, "u_flash");
@@ -86,7 +85,6 @@ export const initRenderer = (
     !uCanvasSize ||
     !uGridSize ||
     !uTime ||
-    !uAspect ||
     !uCharCount ||
     !uBirth ||
     !uFlash ||
@@ -98,8 +96,7 @@ export const initRenderer = (
 
   gl.uniform2f(uCanvasSize, targetCanvas.width, targetCanvas.height);
   gl.uniform2f(uGridSize, width, height);
-  gl.uniform1f(uAspect, ASPECT);
-  gl.uniform1f(uCharCount, CHARS.length);
+  gl.uniform1f(uCharCount, DOT_COUNT);
   gl.uniform1f(uBirth, birthValue);
   gl.uniform1f(uFlash, flashValue);
   gl.uniform1i(uGlyph, 0);
