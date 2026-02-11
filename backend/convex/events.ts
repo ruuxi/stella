@@ -9,6 +9,10 @@ import {
   sanitizeForToolResultPersistence,
   sanitizeSensitiveData,
 } from "./lib/redaction";
+import {
+  estimateContextEventTokens,
+  selectRecentByTokenBudget,
+} from "./agent/context_window";
 
 const eventValidator = v.object({
   _id: v.id("events"),
@@ -211,6 +215,60 @@ export const listRecentContextEvents = internalQuery({
     }
 
     return events.map((event) => sanitizeEventForRead(event));
+  },
+});
+
+export const listRecentContextEventsByTokens = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    maxTokens: v.optional(v.number()),
+    beforeTimestamp: v.optional(v.number()),
+    excludeEventId: v.optional(v.id("events")),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    const maxTokens = Math.min(
+      Math.max(Math.floor(args.maxTokens ?? 24_000), 1),
+      120_000,
+    );
+    // Approximate how many recent rows we may need to cover maxTokens.
+    // Clamp for predictable query cost.
+    const scanLimit = Math.min(
+      Math.max(Math.ceil(maxTokens / 6), 240),
+      2400,
+    );
+
+    const query = ctx.db.query("events").withIndex("by_conversation", (q) => {
+      const base = q.eq("conversationId", args.conversationId);
+      if (args.beforeTimestamp !== undefined) {
+        return base.lte("timestamp", args.beforeTimestamp);
+      }
+      return base;
+    });
+
+    let events = await query.order("desc").take(scanLimit);
+    if (args.excludeEventId) {
+      events = events.filter((event) => event._id !== args.excludeEventId);
+    }
+
+    const modelEvents = events.filter((event) => MODEL_CONTEXT_EVENT_TYPES.has(event.type));
+    const selectedNewestFirst = selectRecentByTokenBudget({
+      itemsNewestFirst: modelEvents,
+      maxTokens,
+      estimateTokens: (event) =>
+        estimateContextEventTokens({
+          type: event.type,
+          payload: event.payload,
+          requestId: event.requestId,
+        }),
+    });
+
+    selectedNewestFirst.sort(
+      (a, b) =>
+        a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
+    );
+
+    return selectedNewestFirst.map((event) => sanitizeEventForRead(event));
   },
 });
 

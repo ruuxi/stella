@@ -46,11 +46,11 @@ The orchestrator gets the task ID back instantly and can continue (say something
 1. **Build system prompt** via `prompt_builder.ts` — base agent prompt + enabled skills
 2. **Load base tools + skill summaries** — tool access comes from the agent allowlist; skills are prompt guidance
 3. **Load thread context** — if threaded (general/self_mod only): load summary pair + all thread messages
-4. **Load conversation history** — if `includeHistory=true`: last 100 messages from the conversation
+4. **Load conversation history** — if `includeHistory=true`: recent context events selected by token budget (tool calls/results + task events included)
 5. **Pre-gathered context** — if `recallMemory` or `preExplore` provided (see below)
 6. **Build messages array**: summary → thread messages → history → pre-gathered context + prompt
 7. **Call `generateText()`** with the subagent's tools, system prompt, and messages
-8. **Save thread messages** — append new messages to thread, trigger compaction if >80k tokens
+8. **Save thread messages** — append new messages to thread, trigger compaction when thread/context token pressure is high
 9. **Complete task record** — mark as `"completed"` with result text
 
 ### 4. Result Delivery (auto-delivery)
@@ -58,7 +58,7 @@ The orchestrator gets the task ID back instantly and can continue (say something
 After `executeSubagentRun` returns, `executeSubagent` checks: is this a top-level task (`!parentTaskId`)?
 
 If yes → schedules `deliverTaskResult` which **re-invokes the orchestrator** as a fresh `generateText()` call:
-- Gathers last 20 conversation messages for context
+- Gathers recent conversation context by token budget
 - Formats a system message: `[System: Subagent task completed] ... --- Result --- <agent output>`
 - Calls `generateText()` with orchestrator's full system prompt + tools
 - Orchestrator reads the result, decides what to tell the user (or calls `NoResponse()`)
@@ -117,7 +117,7 @@ Threads give general and self_mod agents persistent memory across tasks.
 
 **What's stored**: all messages (user prompts, assistant responses, tool interactions) in `thread_messages` table with sequential ordinals.
 
-**Compaction**: when input tokens exceed ~80k, old messages are summarized by LLM into `thread.summary`, originals deleted, recent 6 kept.
+**Compaction**: when token pressure is high, old messages are summarized by LLM into `thread.summary`, originals deleted, and a recent token-budget tail is kept.
 
 **Limits**: max 16 active threads per conversation. LRU eviction when full.
 
@@ -128,7 +128,7 @@ The final messages array sent to `generateText()`:
 ```
 1. Thread summary pair (synthetic user/assistant if thread has summary)
 2. Thread messages (all stored messages from the thread)
-3. Conversation history (if include_history=true, last 100 messages)
+3. Conversation history (if include_history=true, recent context selected by token budget)
 4. Final user message:
    a. <context> block (pre-gathered memory + explore results, if any)
    b. Task prompt

@@ -8,10 +8,15 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
+import {
+  findRecentStartIndexByTokens,
+  formatThreadMessagesForCompaction,
+} from "./thread_compaction_format";
 
 const MAX_THREADS_PER_CONVERSATION = 16;
 const MAX_CONTENT_LENGTH = 500_000;
 const MIN_MESSAGES_FOR_COMPACTION = 6;
+const THREAD_COMPACTION_KEEP_RECENT_TOKENS = 20_000;
 
 const THREAD_COMPACTION_PROMPT = `You are summarizing a work session for an AI coding agent.
 This summary will be injected as context when the agent resumes this work later.
@@ -25,6 +30,20 @@ Preserve with high fidelity:
 
 Write a dense, factual summary in 200-500 words using bullet points.
 Output ONLY the summary content.`;
+
+const THREAD_COMPACTION_UPDATE_PROMPT = `You are updating an existing session summary for an AI coding agent.
+You receive:
+- <previous-summary>: the earlier session summary
+- <conversation>: newer messages not yet folded in
+
+Update the summary with high fidelity:
+- Preserve prior key context unless superseded
+- Add new progress, decisions, errors, and outcomes
+- Keep exact file paths, function names, and error text
+- Note what remains to be done
+
+Write a dense, factual summary in 200-500 words using bullet points.
+Output ONLY the updated summary content.`;
 
 const threadValidator = v.object({
   _id: v.id("threads"),
@@ -363,39 +382,48 @@ export const compactThread = internalAction({
     // 3. Skip if too few messages
     if (messages.length <= MIN_MESSAGES_FOR_COMPACTION) return null;
 
-    // 4. Split: keep last 6 messages, summarize the rest
-    const recentCount = MIN_MESSAGES_FOR_COMPACTION;
-    const oldMessages = messages.slice(0, messages.length - recentCount);
-    const recentMessages = messages.slice(messages.length - recentCount);
+    // 4. Split: keep recent token budget, but avoid splitting a turn mid-flow.
+    const recentStartIndex = findRecentStartIndexByTokens(
+      messages,
+      THREAD_COMPACTION_KEEP_RECENT_TOKENS,
+    );
+    const oldMessages = messages.slice(0, recentStartIndex);
+    const recentMessages = messages.slice(recentStartIndex);
 
     if (oldMessages.length === 0) return null;
 
-    // 5. Format old messages for summarization
-    const existingSummary = thread.summary
-      ? `[Previous session summary]\n${thread.summary}\n\n`
-      : "";
+    // 5. Format old messages for summarization (tool-aware, role-aware).
+    const oldText = formatThreadMessagesForCompaction(
+      oldMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    );
+    if (oldText.trim().length === 0) return null;
 
-    const oldText = oldMessages
-      .map((m) => {
-        const content = m.content.length > 10000
-          ? m.content.slice(0, 10000) + "...[truncated for summarization]"
-          : m.content;
-        return `[${m.role}] ${content}`;
-      })
+    // 6. Call LLM to summarize or incrementally update.
+    const hasPreviousSummary = Boolean(thread.summary && thread.summary.trim().length > 0);
+    const promptBody = [
+      `<conversation>\n${oldText}\n</conversation>`,
+      hasPreviousSummary ? `<previous-summary>\n${thread.summary!.trim()}\n</previous-summary>` : "",
+      hasPreviousSummary ? THREAD_COMPACTION_UPDATE_PROMPT : THREAD_COMPACTION_PROMPT,
+    ]
+      .filter((part) => part.length > 0)
       .join("\n\n");
 
-    // 6. Call LLM to summarize
     const config = getModelConfig("memory_ops");
     const { text: newSummary } = await generateText({
       ...config,
-      system: THREAD_COMPACTION_PROMPT,
+      system: "Output ONLY the summary content.",
       messages: [
         {
           role: "user",
-          content: `${existingSummary}Messages to summarize:\n\n${oldText}`,
+          content: promptBody,
         },
       ],
     });
+    const summary = newSummary.trim();
+    if (summary.length === 0) return null;
 
     // 7. Delete old messages
     const firstRecentOrdinal = recentMessages[0].ordinal;
@@ -412,7 +440,7 @@ export const compactThread = internalAction({
 
     await ctx.runMutation(internal.data.threads.patchThreadAfterCompaction, {
       threadId: args.threadId,
-      summary: newSummary,
+      summary,
       messageCount: recentMessages.length,
       totalTokenEstimate: remainingTokens,
     });

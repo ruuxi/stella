@@ -13,6 +13,10 @@ import { api, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
 import { eventsToHistoryMessages } from "./history_messages";
+import {
+  SUBAGENT_HISTORY_MAX_TOKENS,
+  TASK_DELIVERY_HISTORY_MAX_TOKENS,
+} from "./context_budget";
 import type { DeviceToolContext } from "./device_tools";
 import { createTools } from "../tools/index";
 import { resolveModelConfig } from "./model_resolver";
@@ -62,9 +66,12 @@ const taskClientValidator = v.object({
 type TaskClient = Infer<typeof taskClientValidator>;
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
-const SUBAGENT_HISTORY_LIMIT = 100;
 const TASK_CANCEL_POLL_INTERVAL_MS = 2000;
 const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
+const THREAD_COMPACTION_CONTEXT_WINDOW_TOKENS = 80_000;
+const THREAD_COMPACTION_RESERVE_TOKENS = 12_000;
+const THREAD_COMPACTION_TRIGGER_TOKENS =
+  THREAD_COMPACTION_CONTEXT_WINDOW_TOKENS - THREAD_COMPACTION_RESERVE_TOKENS;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -132,12 +139,12 @@ const buildHistoryMessages = async (
   ctx: ActionCtx,
   conversationId: Id<"conversations">,
   userMessageId: Id<"events">,
-  limit: number,
+  maxTokens: number,
 ) => {
   const userEvent = await ctx.runQuery(internal.events.getById, { id: userMessageId });
-  const historyEvents = await ctx.runQuery(internal.events.listRecentContextEvents, {
+  const historyEvents = await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
     conversationId,
-    limit,
+    maxTokens,
     beforeTimestamp: userEvent?.timestamp,
     excludeEventId: userMessageId,
   });
@@ -585,8 +592,6 @@ const describeToolCall = (toolName: string, _args: Record<string, unknown>): str
   return pick(STATUS_DESCRIPTIONS.default);
 };
 
-const THREAD_COMPACTION_TOKEN_THRESHOLD = 80_000;
-
 const executeSubagentRun = async (
   ctx: ActionCtx,
   args: SubagentExecutionArgs,
@@ -617,7 +622,7 @@ const executeSubagentRun = async (
           ctx,
           args.conversationId,
           args.userMessageId,
-          SUBAGENT_HISTORY_LIMIT,
+          SUBAGENT_HISTORY_MAX_TOKENS,
         )
       : [];
 
@@ -881,9 +886,16 @@ const executeSubagentRun = async (
           messages: messagesToSave,
         });
 
-        // Check if compaction is needed
+        // Check if compaction is needed using token-pressure thresholds.
         const inputTokens = result.usage?.inputTokens ?? 0;
-        if (inputTokens > THREAD_COMPACTION_TOKEN_THRESHOLD) {
+        const updatedThread = await ctx.runQuery(internal.data.threads.getThreadById, {
+          threadId: args.threadId,
+        });
+        const threadTokens = updatedThread?.totalTokenEstimate ?? 0;
+        if (
+          inputTokens > THREAD_COMPACTION_TRIGGER_TOKENS ||
+          threadTokens > THREAD_COMPACTION_TRIGGER_TOKENS
+        ) {
           await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
             threadId: args.threadId,
           });
@@ -1547,10 +1559,10 @@ export const deliverTaskResult = internalAction({
 
     // Gather recent conversation history so the orchestrator has context
     const historyEvents = await ctx.runQuery(
-      internal.events.listRecentContextEvents,
+      internal.events.listRecentContextEventsByTokens,
       {
         conversationId: args.conversationId,
-        limit: 20,
+        maxTokens: TASK_DELIVERY_HISTORY_MAX_TOKENS,
       },
     );
     const historyMessages = eventsToHistoryMessages(historyEvents);
