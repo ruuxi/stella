@@ -724,8 +724,16 @@ export const setupBridge = action({
       ownerId,
       provider: args.provider,
     });
-    if (existing && existing.status !== "error" && existing.status !== "stopped") {
-      return { status: "already_running", sessionId: existing._id };
+    if (existing) {
+      const existingMode = existing.mode ?? "cloud";
+      const shouldReuseExisting =
+        existing.status !== "error" &&
+        existing.status !== "stopped" &&
+        existingMode === bridgeMode;
+
+      if (shouldReuseExisting) {
+        return { status: "already_running", sessionId: existing._id };
+      }
     }
 
     // Clean up old session if it exists

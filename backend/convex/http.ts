@@ -42,7 +42,7 @@ const getPlatformGuidance = (platform: string): string => {
 
 You are running on Windows. Use Windows-compatible commands:
 - Shell: Git Bash (bash syntax works)
-- Open apps: \`start <app>\` or \`cmd //c start <app>\` (NOT \`open -a\`)
+- Open apps: \`start <app>\` or \`cmd /c start "" <app>\` (NOT \`open -a\`)
 - Open URLs: \`start <url>\`
 - File paths: Use forward slashes in bash, or escape backslashes
 - Common paths: \`$USERPROFILE\` (home), \`$APPDATA\`, \`$LOCALAPPDATA\`
@@ -227,7 +227,18 @@ http.route({
       return withCors(new Response("Conversation mismatch", { status: 400 }), origin);
     }
 
-    const targetDeviceId = userEvent.deviceId ?? undefined;
+    const executionTarget = await ctx.runQuery(
+      internal.agent.device_resolver.resolveExecutionTarget,
+      { ownerId: conversation.ownerId },
+    );
+    // Prefer live device/cloud resolution; fall back to message deviceId for startup race windows.
+    const targetDeviceId = executionTarget.targetDeviceId ?? userEvent.deviceId ?? undefined;
+    const spriteName = targetDeviceId ? undefined : executionTarget.spriteName ?? undefined;
+    if (spriteName) {
+      await ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
+        ownerId: conversation.ownerId,
+      });
+    }
 
     const userPayload =
       userEvent.payload && typeof userEvent.payload === "object"
@@ -347,6 +358,7 @@ http.route({
           maxTaskDepth: promptBuild.maxTaskDepth,
           ownerId: conversation.ownerId,
           conversationId,
+          spriteName,
         },
       ),
       messages: [

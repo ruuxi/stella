@@ -19,6 +19,7 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "Edit",
   "Glob",
   "Grep",
+  "OpenApp",
   "Bash",
   "KillShell",
   "AskUserQuestion",
@@ -275,6 +276,21 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         max_results: z.number().optional().describe("Maximum number of results to return"),
       }),
       execute: (args) => call("Grep", args),
+    }),
+    OpenApp: tool({
+      description:
+        "Launch an application on the local device.\n\n" +
+        "Usage:\n" +
+        "- Use this for opening desktop apps (e.g. Microsoft Word, VS Code, browser apps).\n" +
+        "- app can be an app name or executable path.\n" +
+        "- args are passed to the launched app.\n" +
+        "- This tool launches and returns immediately (non-blocking).",
+      inputSchema: z.object({
+        app: z.string().min(1).describe("Application name or executable path to launch"),
+        args: z.array(z.string()).optional().describe("Optional arguments passed to the app"),
+        working_directory: z.string().optional().describe("Working directory for the launch context"),
+      }),
+      execute: (args) => call("OpenApp", args),
     }),
     Bash: tool({
       description:
