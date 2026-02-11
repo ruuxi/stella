@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   findRecentStartIndex,
   findRecentStartIndexByTokens,
+  findThreadCompactionCutByTokens,
   formatThreadMessagesForCompaction,
 } from "../convex/data/thread_compaction_format";
 
@@ -65,5 +66,20 @@ describe("thread compaction split selection", () => {
 
     const start = findRecentStartIndexByTokens(messages, 9000);
     expect(start).toBe(4);
+  });
+
+  test("detects split-turn boundaries when token cut starts mid-turn", () => {
+    const messages = [
+      { role: "user", content: "task", tokenEstimate: 2000 },
+      { role: "assistant", content: "analysis 1", tokenEstimate: 2000 },
+      { role: "assistant", content: "analysis 2", tokenEstimate: 2000 },
+      { role: "assistant", content: "latest", tokenEstimate: 2000 },
+    ];
+
+    const cut = findThreadCompactionCutByTokens(messages, 2500);
+    expect(cut.recentStartIndex).toBe(3);
+    expect(cut.isSplitTurn).toBe(true);
+    expect(cut.turnStartIndex).toBe(0);
+    expect(cut.historyEndIndex).toBe(0);
   });
 });

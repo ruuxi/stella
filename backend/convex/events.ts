@@ -7,6 +7,7 @@ import { requireConversationOwner, requireUserId } from "./auth";
 import { jsonValueValidator } from "./shared_validators";
 import {
   sanitizeForToolResultPersistence,
+  sanitizeForToolRequestPersistence,
   sanitizeSensitiveData,
 } from "./lib/redaction";
 import {
@@ -35,6 +36,9 @@ const usageSummaryValidator = v.object({
 const sanitizeEventPayloadForStorage = (type: string, payload: unknown) => {
   if (type === "tool_result") {
     return sanitizeForToolResultPersistence(payload);
+  }
+  if (type === "tool_request") {
+    return sanitizeForToolRequestPersistence(payload);
   }
   return payload;
 };
@@ -329,6 +333,14 @@ export const enqueueToolRequest = internalMutation({
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
+    const payload = sanitizeEventPayloadForStorage("tool_request", {
+      toolName: args.toolName,
+      args: args.toolArgs ?? {},
+      targetDeviceId: args.targetDeviceId,
+      sourceDeviceId: args.sourceDeviceId,
+      userMessageId: args.userMessageId,
+      agentType: args.agentType,
+    });
     const eventId = await ctx.db.insert("events", {
       conversationId: args.conversationId,
       timestamp,
@@ -336,14 +348,7 @@ export const enqueueToolRequest = internalMutation({
       requestId: args.requestId,
       targetDeviceId: args.targetDeviceId,
       deviceId: args.sourceDeviceId,
-      payload: {
-        toolName: args.toolName,
-        args: args.toolArgs ?? {},
-        targetDeviceId: args.targetDeviceId,
-        sourceDeviceId: args.sourceDeviceId,
-        userMessageId: args.userMessageId,
-        agentType: args.agentType,
-      },
+      payload,
     });
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
     return await ctx.db.get(eventId);
