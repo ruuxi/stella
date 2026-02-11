@@ -1,4 +1,5 @@
 import { tool } from "ai";
+import type { Value } from "convex/values";
 import { z } from "zod";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -149,7 +150,7 @@ export const executeDeviceTool = async (
     requestId,
     targetDeviceId: context.targetDeviceId,
     toolName,
-    toolArgs,
+    toolArgs: toolArgs as Value,
     agentType: context.agentType,
     sourceDeviceId: context.sourceDeviceId,
     userMessageId: context.userMessageId,

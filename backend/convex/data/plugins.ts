@@ -5,7 +5,7 @@ import {
   MutationCtx,
   QueryCtx,
 } from "../_generated/server";
-import { v } from "convex/values";
+import { v, type Value } from "convex/values";
 import { z } from "zod";
 import { jsonSchemaValidator } from "../shared_validators";
 import { requireUserId } from "../auth";
@@ -67,7 +67,7 @@ type ToolDescriptor = {
   pluginId: string;
   name: string;
   description: string;
-  inputSchema: Record<string, unknown>;
+  inputSchema: Record<string, Value>;
   source: string;
 };
 
@@ -82,6 +82,42 @@ type JsonSchema = {
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const toConvexValue = (value: unknown, depth = 0): Value => {
+  if (depth > 10) return "[TRUNCATED]";
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => toConvexValue(entry, depth + 1));
+  }
+  if (isObjectRecord(value)) {
+    const output: Record<string, Value | undefined> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      output[key] = toConvexValue(entry, depth + 1);
+    }
+    return output;
+  }
+  return String(value);
+};
+
+const toConvexObject = (value: unknown): Record<string, Value> => {
+  if (!isObjectRecord(value)) return {};
+  const output: Record<string, Value> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    output[key] = toConvexValue(entry);
+  }
+  return output;
+};
 
 const coerceString = (value: unknown, fallback: string) =>
   typeof value === "string" && value.trim() ? value.trim() : fallback;
@@ -114,7 +150,7 @@ const normalizeTool = (value: unknown): ToolDescriptor | null => {
 
   const description = coerceString(value.description, `Plugin tool: ${name}`);
   const inputSchema = isObjectRecord(value.inputSchema)
-    ? (value.inputSchema as Record<string, unknown>)
+    ? toConvexObject(value.inputSchema)
     : { type: "object", properties: {}, required: [] };
 
   return {
@@ -186,15 +222,7 @@ const upsertPluginTool = async (
 };
 
 const listPluginsForOwner = async (ctx: QueryCtx, ownerId: string) => {
-  const [legacyBuiltins, builtins, ownerPlugins] = await Promise.all([
-    ctx.db
-      .query("plugins")
-      .withIndex("by_updated")
-      .order("desc")
-      .take(200)
-      .then((rows) =>
-        rows.filter((plugin) => plugin.ownerId === undefined && plugin.source === "builtin"),
-      ),
+  const [builtins, ownerPlugins] = await Promise.all([
     ctx.db
       .query("plugins")
       .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
@@ -208,7 +236,6 @@ const listPluginsForOwner = async (ctx: QueryCtx, ownerId: string) => {
   ]);
 
   const merged = new Map<string, (typeof ownerPlugins)[number]>();
-  for (const plugin of legacyBuiltins) merged.set(plugin.id, plugin);
   for (const plugin of builtins) merged.set(plugin.id, plugin);
   for (const plugin of ownerPlugins) merged.set(plugin.id, plugin);
 
@@ -216,15 +243,7 @@ const listPluginsForOwner = async (ctx: QueryCtx, ownerId: string) => {
 };
 
 const listToolsForOwner = async (ctx: QueryCtx, ownerId?: string) => {
-  const [legacyBuiltins, builtins, ownerTools] = await Promise.all([
-    ctx.db
-      .query("plugin_tools")
-      .withIndex("by_name")
-      .order("asc")
-      .take(400)
-      .then((rows) =>
-        rows.filter((tool) => tool.ownerId === undefined && tool.source === "builtin"),
-      ),
+  const [builtins, ownerTools] = await Promise.all([
     ctx.db
       .query("plugin_tools")
       .withIndex("by_owner_and_name", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
@@ -240,7 +259,6 @@ const listToolsForOwner = async (ctx: QueryCtx, ownerId?: string) => {
   ]);
 
   const merged = new Map<string, (typeof builtins)[number]>();
-  for (const tool of legacyBuiltins) merged.set(tool.id, tool);
   for (const tool of builtins) merged.set(tool.id, tool);
   for (const tool of ownerTools) merged.set(tool.id, tool);
 

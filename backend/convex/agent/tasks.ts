@@ -4,7 +4,7 @@ import {
   internalQuery,
   ActionCtx,
 } from "../_generated/server";
-import { v, ConvexError, Infer } from "convex/values";
+import { v, ConvexError, Infer, type Value } from "convex/values";
 import { generateText } from "ai";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -97,7 +97,7 @@ const appendTaskEvent = async (
     conversationId: Id<"conversations">;
     type: string;
     deviceId: string;
-    payload: Record<string, unknown>;
+    payload: Record<string, Value | undefined>;
     targetDeviceId: string;
   },
 ): Promise<void> => {

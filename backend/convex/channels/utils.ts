@@ -431,47 +431,6 @@ export const deleteConnection = mutation({
   },
 });
 
-export const getDmPolicy = internalQuery({
-  args: { provider: v.string() },
-  returns: v.object({
-    policy: v.union(
-      v.literal("pairing"),
-      v.literal("allowlist"),
-      v.literal("open"),
-      v.literal("disabled"),
-    ),
-    allowlist: v.array(v.string()),
-    denylist: v.array(v.string()),
-  }),
-  handler: async (ctx, args): Promise<{ policy: DmPolicy; allowlist: string[]; denylist: string[] }> => {
-    const ownerId = await requireUserId(ctx);
-    const policyKey = getDmPolicyKey(args.provider);
-    const allowlistKey = getDmAllowlistKey(args.provider);
-    const denylistKey = getDmDenylistKey(args.provider);
-
-    const [policyPref, allowlistPref, denylistPref] = await Promise.all([
-      ctx.db
-        .query("user_preferences")
-        .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", policyKey))
-        .first(),
-      ctx.db
-        .query("user_preferences")
-        .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", allowlistKey))
-        .first(),
-      ctx.db
-        .query("user_preferences")
-        .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", denylistKey))
-        .first(),
-    ]);
-
-    return {
-      policy: normalizeDmPolicy(policyPref?.value),
-      allowlist: parseStringList(allowlistPref?.value),
-      denylist: parseStringList(denylistPref?.value),
-    };
-  },
-});
-
 export const setDmPolicy = internalMutation({
   args: {
     provider: v.string(),

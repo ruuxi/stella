@@ -272,29 +272,6 @@ const hostAllowed = (hostname: string, allowedHosts: string[]) => {
   });
 };
 
-const parseLegacyPublicPolicy = (envName: string): PublicIntegrationPolicy | null => {
-  const allowedEnvsRaw = process.env.STELLA_PUBLIC_ENV_ALLOWLIST ?? "";
-  const allowlistedEnvs = new Set(
-    allowedEnvsRaw
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean),
-  );
-  if (!allowlistedEnvs.has(envName)) {
-    return null;
-  }
-
-  const hostEnvKey = `STELLA_PUBLIC_ENV_HOSTS_${envName.replace(/[^A-Za-z0-9]/g, "_")}`;
-  const allowedHosts = parseAllowedHosts(process.env[hostEnvKey] ?? "");
-  if (allowedHosts.length === 0) {
-    return null;
-  }
-
-  return {
-    envVar: envName,
-    allowedHosts,
-  };
-};
 
 const parsePublicPolicyFromUsagePolicy = (usagePolicy: string): PublicIntegrationPolicy | null => {
   try {
@@ -499,15 +476,11 @@ export const createBackendTools = (
             }
           }
 
-          const requestedEnvName = args.publicKeyEnv?.trim();
-          if (!policy && requestedEnvName) {
-            policy = parseLegacyPublicPolicy(requestedEnvName);
-          }
-
           if (!policy) {
-            return `Public integration policy is not configured for provider "${args.provider}". Configure STELLA_PUBLIC_INTEGRATION_RULES or an allowlisted legacy env policy.`;
+            return `Public integration policy is not configured for provider "${args.provider}". Configure STELLA_PUBLIC_INTEGRATION_RULES env var or add a row to integrations_public.`;
           }
 
+          const requestedEnvName = args.publicKeyEnv?.trim();
           if (
             requestedEnvName &&
             requestedEnvName.length > 0 &&

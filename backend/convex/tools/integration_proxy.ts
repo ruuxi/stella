@@ -8,6 +8,7 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { requireUserId } from "../auth";
+import { jsonValueValidator } from "../shared_validators";
 
 export const execute = action({
   args: {
@@ -15,14 +16,18 @@ export const execute = action({
     request: v.object({
       url: v.string(),
       method: v.optional(v.string()),
-      headers: v.optional(v.any()),
-      query: v.optional(v.any()),
-      body: v.optional(v.any()),
+      headers: v.optional(v.record(v.string(), v.string())),
+      query: v.optional(v.record(v.string(), v.string())),
+      body: v.optional(jsonValueValidator),
       timeoutMs: v.optional(v.number()),
     }),
     responseType: v.optional(v.string()),
   },
-  returns: v.any(),
+  returns: v.object({
+    data: v.optional(jsonValueValidator),
+    error: v.optional(v.string()),
+    body: v.optional(v.string()),
+  }),
   handler: async (ctx, args) => {
     await requireUserId(ctx);
 

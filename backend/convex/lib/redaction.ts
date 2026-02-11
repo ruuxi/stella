@@ -1,3 +1,5 @@
+import type { Value } from "convex/values";
+
 type RedactionOptions = {
   redactFreeformStrings?: boolean;
   maxDepth?: number;
@@ -32,17 +34,34 @@ const sanitizeInner = (
   options: Required<RedactionOptions>,
   depth: number,
   seen: WeakSet<object>,
-): unknown => {
+): Value => {
   if (depth > options.maxDepth) {
     return "[TRUNCATED]";
+  }
+
+  if (value === undefined) {
+    return null;
   }
 
   if (typeof value === "string") {
     return options.redactFreeformStrings ? redactString(value) : value;
   }
 
-  if (typeof value !== "object" || value === null) {
+  if (
+    value === null ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
     return value;
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return value;
+  }
+
+  if (typeof value !== "object") {
+    return options.redactFreeformStrings ? redactString(String(value)) : String(value);
   }
 
   if (seen.has(value)) {
@@ -58,7 +77,7 @@ const sanitizeInner = (
     return options.redactFreeformStrings ? redactString(String(value)) : String(value);
   }
 
-  const output: Record<string, unknown> = {};
+  const output: Record<string, Value | undefined> = {};
   for (const [key, entry] of Object.entries(value)) {
     if (SENSITIVE_KEY_RE.test(key)) {
       output[key] = REDACTED_VALUE;
@@ -72,7 +91,7 @@ const sanitizeInner = (
 export const sanitizeSensitiveData = (
   value: unknown,
   options: RedactionOptions = {},
-): unknown => {
+): Value => {
   const normalized: Required<RedactionOptions> = {
     redactFreeformStrings: options.redactFreeformStrings ?? true,
     maxDepth: options.maxDepth ?? 10,
@@ -80,11 +99,11 @@ export const sanitizeSensitiveData = (
   return sanitizeInner(value, normalized, 0, new WeakSet<object>());
 };
 
-export const sanitizeForLogs = (value: unknown) =>
+export const sanitizeForLogs = (value: unknown): Value =>
   sanitizeSensitiveData(value, { redactFreeformStrings: true });
 
-export const sanitizeForToolResultPersistence = (value: unknown) =>
+export const sanitizeForToolResultPersistence = (value: unknown): Value =>
   sanitizeSensitiveData(value, { redactFreeformStrings: true });
 
-export const sanitizeForToolRequestPersistence = (value: unknown) =>
+export const sanitizeForToolRequestPersistence = (value: unknown): Value =>
   sanitizeSensitiveData(value, { redactFreeformStrings: false });

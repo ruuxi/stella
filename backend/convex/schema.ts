@@ -106,9 +106,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_owner_and_agent_key", ["ownerId", "id"])
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
-    .index("by_agent_key", ["id"])
-    .index("by_updated", ["updatedAt"]),
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"]),
   skills: defineTable({
     ownerId: v.optional(v.string()),
     id: v.string(),
@@ -129,10 +127,7 @@ export default defineSchema({
   })
     .index("by_owner_and_skill_key", ["ownerId", "id"])
     .index("by_owner_and_enabled", ["ownerId", "enabled"])
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
-    .index("by_skill_key", ["id"])
-    .index("by_enabled", ["enabled"])
-    .index("by_updated", ["updatedAt"]),
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"]),
   secrets: defineTable({
     ownerId: v.string(),
     provider: v.string(),
@@ -194,7 +189,8 @@ export default defineSchema({
     platform: v.optional(v.string()),
   })
     .index("by_owner", ["ownerId"])
-    .index("by_device", ["deviceId"]),
+    .index("by_device", ["deviceId"])
+    .index("by_online_lastSeenAt", ["online", "lastSeenAt"]),
   cloud_devices: defineTable({
     ownerId: v.string(),
     provider: v.string(),
@@ -218,9 +214,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_owner_and_plugin_key", ["ownerId", "id"])
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
-    .index("by_plugin_key", ["id"])
-    .index("by_updated", ["updatedAt"]),
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"]),
   plugin_tools: defineTable({
     ownerId: v.optional(v.string()),
     id: v.string(),
@@ -234,8 +228,6 @@ export default defineSchema({
     .index("by_owner_and_tool_key", ["ownerId", "id"])
     .index("by_owner_and_name", ["ownerId", "name"])
     .index("by_owner_and_plugin_and_updated", ["ownerId", "pluginId", "updatedAt"])
-    .index("by_tool_key", ["id"])
-    .index("by_name", ["name"])
     .index("by_plugin", ["pluginId", "updatedAt"]),
   user_preferences: defineTable({
     ownerId: v.string(),
