@@ -1,16 +1,27 @@
 import { useMemo, useDeferredValue } from "react";
-import type { EventRecord } from "../../hooks/use-conversation-events";
+import type {
+  EventRecord,
+  MessagePayload,
+} from "../../hooks/use-conversation-events";
 import {
   groupEventsIntoTurns,
   getCurrentRunningTool,
   getRunningTasks,
 } from "../../hooks/use-conversation-events";
 import { useDepseudonymize } from "../../hooks/use-depseudonymize";
+import { isOrchestratorChatMessagePayload } from "../../components/chat/emotes/message-source";
 import {
   type TurnViewModel,
   getEventText,
   getAttachments,
 } from "./MessageTurn";
+
+const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
+  if (!event?.payload || typeof event.payload !== "object") {
+    return null;
+  }
+  return event.payload as MessagePayload;
+};
 
 export function useTurnViewModels(opts: {
   events: EventRecord[];
@@ -81,6 +92,9 @@ export function useTurnViewModels(opts: {
         ? depseudonymize(getEventText(turn.assistantMessage))
         : "";
       const assistantMessageId = turn.assistantMessage?._id ?? null;
+      const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
+        getMessagePayload(turn.assistantMessage),
+      );
 
       return {
         id: turn.id,
@@ -88,6 +102,7 @@ export function useTurnViewModels(opts: {
         userAttachments,
         assistantText,
         assistantMessageId,
+        assistantEmotesEnabled,
       };
     });
   }, [slicedTurns, depseudonymize]);

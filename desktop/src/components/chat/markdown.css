@@ -240,6 +240,16 @@
   display: block;
 }
 
+.markdown img.stella-inline-emote {
+  display: inline-block;
+  height: 1.9em;
+  width: auto;
+  max-width: none;
+  margin: 0 0.1em;
+  vertical-align: -0.32em;
+  border-radius: 0;
+}
+
 /* Task lists (checkboxes) */
 .markdown input[type="checkbox"] {
   margin-right: 0.5rem;

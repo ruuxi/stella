@@ -768,6 +768,9 @@ const handleRadialSelection = async (wedge) => {
         case 'capture': {
             radialContextShouldCommit = true;
             commitStagedRadialContext();
+            // Lock context for capture mode so a late radial text/window probe does not
+            // overwrite the final "window under mouse" metadata from region capture.
+            cancelRadialContextCapture();
             updateUiState({ mode: 'chat' });
             // Hide radial + modifier overlay before entering region capture so they
             // don't appear in the screenshot (desktopCapturer captures composited screen).
@@ -1103,6 +1106,7 @@ app.whenReady().then(async () => {
         const next = [...pendingChatContext.regionScreenshots];
         next.splice(index, 1);
         setPendingChatContext({ ...pendingChatContext, regionScreenshots: next });
+        broadcastChatContext();
     });
     ipcMain.on('region:select', (_event, selection) => {
         void finalizeRegionCapture(selection);
