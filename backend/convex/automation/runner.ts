@@ -57,15 +57,6 @@ export async function runAgentTurn({
   const promptBuild = await buildSystemPrompt(ctx, agentType, {
     ownerId: resolvedOwnerId,
   });
-  const pluginTools = (await ctx.runQuery(
-    internal.data.plugins.listToolDescriptorsInternal,
-    { ownerId: resolvedOwnerId },
-  )) as Array<{
-    pluginId: string;
-    name: string;
-    description: string;
-    inputSchema: Record<string, unknown>;
-  }>;
 
   const tools = createTools(
     ctx,
@@ -81,7 +72,6 @@ export async function runAgentTurn({
       agentType,
       toolsAllowlist: promptBuild.toolsAllowlist,
       maxTaskDepth: promptBuild.maxTaskDepth,
-      pluginTools,
       ownerId: resolvedOwnerId,
       conversationId,
       spriteName,

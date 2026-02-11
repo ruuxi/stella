@@ -789,12 +789,12 @@ export const createBackendTools = (
         "Usage:\n" +
         "- Search proactively when the user asks for something that might exist as a package.\n" +
         "- Returns up to 10 results with name, packageId, type, description, and install count.\n" +
-        "- Filter by type: skill, mod, theme, canvas, plugin.\n" +
+        "- Filter by type: skill, mod, theme, canvas.\n" +
         "- Suggest packages conversationally — don't force installation.",
       inputSchema: z.object({
         query: z.string().describe("Search query"),
         type: z
-          .enum(["skill", "mod", "theme", "canvas", "plugin"])
+          .enum(["skill", "mod", "theme", "canvas"])
           .optional()
           .describe("Filter by package type"),
       }),

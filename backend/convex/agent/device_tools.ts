@@ -448,8 +448,8 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       description:
         "Install or uninstall a package locally under ~/.stella.\n\n" +
         "Usage:\n" +
-        "- action=\"install\": install skill/theme/canvas/plugin package.\n" +
-        "- action=\"uninstall\": uninstall skill/theme/canvas/plugin/mod by local ID.\n" +
+        "- action=\"install\": install skill/theme/canvas package.\n" +
+        "- action=\"uninstall\": uninstall skill/theme/canvas/mod by local ID.\n" +
         "- For mod installs, delegate to Self-Mod and use SelfModInstallBlueprint.",
       inputSchema: z.discriminatedUnion("action", [
         z.object({
@@ -480,22 +480,12 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
               dependencies: z.record(z.string()).optional().describe("Extra npm dependencies"),
               source: z.string().optional().describe("Initial App.tsx source"),
             }),
-            z.object({
-              type: z.literal("plugin"),
-              packageId: z.string().min(1).describe("Store package ID"),
-              pluginId: z.string().optional().describe("Local plugin ID"),
-              name: z.string().optional().describe("Plugin display name"),
-              version: z.string().optional().describe("Plugin version"),
-              description: z.string().optional().describe("Plugin description"),
-              manifest: z.record(z.any()).optional().describe("plugin.json object"),
-              files: z.record(z.string()).optional().describe("Relative file map to write"),
-            }),
           ]),
         }),
         z.object({
           action: z.literal("uninstall"),
           package: z.object({
-            type: z.enum(["skill", "theme", "canvas", "plugin", "mod"]).describe("Package type"),
+            type: z.enum(["skill", "theme", "canvas", "mod"]).describe("Package type"),
             localId: z.string().min(1).describe("Local identifier (skillId, themeId, workspaceId)"),
             packageId: z.string().optional().describe("Store package ID"),
           }),

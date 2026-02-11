@@ -1,18 +1,16 @@
-import { tool, ToolSet } from "ai";
+import { ToolSet } from "ai";
 import type { ActionCtx } from "../_generated/server";
 import {
   createCoreDeviceTools,
-  executeDeviceTool,
   sanitizeToolName,
   type DeviceToolContext,
 } from "../agent/device_tools";
-import { jsonSchemaToZod } from "../data/plugins";
 import { createBackendTools } from "./backend";
 import { createCloudTools } from "./cloud";
 import { createOrchestrationTools, createOrchestrationToolsWithoutDevice } from "./orchestration";
-import { BASE_TOOL_NAMES, type PluginToolDescriptor, type ToolOptions } from "./types";
+import { BASE_TOOL_NAMES, type ToolOptions } from "./types";
 
-export { BASE_TOOL_NAMES, type PluginToolDescriptor, type ToolOptions } from "./types";
+export { BASE_TOOL_NAMES, type ToolOptions } from "./types";
 export type { DeviceToolContext } from "../agent/device_tools";
 
 const filterTools = (
@@ -48,36 +46,17 @@ export const createTools = (
     ? createOrchestrationTools(ctx, context, options)
     : createOrchestrationToolsWithoutDevice(ctx, options);
 
-  // Build plugin tools dynamically from descriptors (require device context)
-  const pluginTools = context
-    ? Object.fromEntries(
-        options.pluginTools.map((descriptor) => {
-          const sanitizedName = sanitizeToolName(descriptor.name);
-          return [
-            sanitizedName,
-            tool({
-              description: descriptor.description,
-              inputSchema: jsonSchemaToZod(descriptor.inputSchema),
-              execute: (args) => executeDeviceTool(ctx, context, descriptor.name, args),
-            }),
-          ] as const;
-        }),
-      )
-    : {};
-
   const allTools: ToolSet = {
     ...coreTools,
     ...cloudTools,
     ...backendTools,
-    ...pluginTools,
     ...orchestrationTools,
   };
 
   const allowlist = options.toolsAllowlist
-    ? Array.from(
+      ? Array.from(
         new Set([
           ...options.toolsAllowlist.map(sanitizeToolName),
-          ...options.pluginTools.map((toolDef) => sanitizeToolName(toolDef.name)),
         ]),
       )
     : undefined;
