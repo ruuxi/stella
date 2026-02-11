@@ -12,6 +12,7 @@ import { generateText } from "ai";
 import { api, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
+import { eventsToHistoryMessages } from "./history_messages";
 import type { DeviceToolContext } from "./device_tools";
 import { createTools } from "../tools/index";
 import { resolveModelConfig } from "./model_resolver";
@@ -134,29 +135,13 @@ const buildHistoryMessages = async (
   limit: number,
 ) => {
   const userEvent = await ctx.runQuery(internal.events.getById, { id: userMessageId });
-  const historyEvents = await ctx.runQuery(internal.events.listRecentMessages, {
+  const historyEvents = await ctx.runQuery(internal.events.listRecentContextEvents, {
     conversationId,
     limit,
     beforeTimestamp: userEvent?.timestamp,
     excludeEventId: userMessageId,
   });
-
-  return historyEvents.flatMap((event: Doc<"events">) => {
-    const payload =
-      event.payload && typeof event.payload === "object"
-        ? (event.payload as { text?: string })
-        : {};
-    const text = typeof payload.text === "string" ? payload.text.trim() : "";
-    if (!text) {
-      return [];
-    }
-    return [
-      {
-        role: event.type === "assistant_message" ? ("assistant" as const) : ("user" as const),
-        content: text,
-      },
-    ];
-  });
+  return eventsToHistoryMessages(historyEvents);
 };
 
 /** Pick a random entry from a list. */
@@ -1562,29 +1547,13 @@ export const deliverTaskResult = internalAction({
 
     // Gather recent conversation history so the orchestrator has context
     const historyEvents = await ctx.runQuery(
-      internal.events.listRecentMessages,
+      internal.events.listRecentContextEvents,
       {
         conversationId: args.conversationId,
         limit: 20,
       },
     );
-    const historyMessages = historyEvents.flatMap((event: Doc<"events">) => {
-      const payload =
-        event.payload && typeof event.payload === "object"
-          ? (event.payload as { text?: string })
-          : {};
-      const text = typeof payload.text === "string" ? payload.text.trim() : "";
-      if (!text) return [];
-      return [
-        {
-          role:
-            event.type === "assistant_message"
-              ? ("assistant" as const)
-              : ("user" as const),
-          content: text,
-        },
-      ];
-    });
+    const historyMessages = eventsToHistoryMessages(historyEvents);
 
     const toolContext: DeviceToolContext = {
       conversationId: args.conversationId,

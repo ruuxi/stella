@@ -13,6 +13,7 @@ import type * as agent_cloud_device_cleanup from "../agent/cloud_device_cleanup.
 import type * as agent_cloud_devices from "../agent/cloud_devices.js";
 import type * as agent_device_resolver from "../agent/device_resolver.js";
 import type * as agent_device_tools from "../agent/device_tools.js";
+import type * as agent_history_messages from "../agent/history_messages.js";
 import type * as agent_invoke from "../agent/invoke.js";
 import type * as agent_model from "../agent/model.js";
 import type * as agent_model_resolver from "../agent/model_resolver.js";
@@ -86,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   "agent/cloud_devices": typeof agent_cloud_devices;
   "agent/device_resolver": typeof agent_device_resolver;
   "agent/device_tools": typeof agent_device_tools;
+  "agent/history_messages": typeof agent_history_messages;
   "agent/invoke": typeof agent_invoke;
   "agent/model": typeof agent_model;
   "agent/model_resolver": typeof agent_model_resolver;

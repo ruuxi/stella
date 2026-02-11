@@ -161,6 +161,59 @@ export const listRecentMessages = internalQuery({
   },
 });
 
+const MODEL_CONTEXT_EVENT_TYPES = new Set([
+  "user_message",
+  "assistant_message",
+  "tool_request",
+  "tool_result",
+  "task_started",
+  "task_completed",
+  "task_failed",
+]);
+
+export const listRecentContextEvents = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    limit: v.optional(v.number()),
+    beforeTimestamp: v.optional(v.number()),
+    excludeEventId: v.optional(v.id("events")),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    const requestedLimit = args.limit ?? 20;
+    if (requestedLimit <= 0) {
+      return [];
+    }
+    const limit = Math.min(Math.floor(requestedLimit), 120);
+    const take = Math.min(Math.max(limit * 8, 80), 800);
+
+    const query = ctx.db.query("events").withIndex("by_conversation", (q) => {
+      const base = q.eq("conversationId", args.conversationId);
+      if (args.beforeTimestamp !== undefined) {
+        return base.lte("timestamp", args.beforeTimestamp);
+      }
+      return base;
+    });
+    let events = await query.order("desc").take(take);
+
+    if (args.excludeEventId) {
+      events = events.filter((event) => event._id !== args.excludeEventId);
+    }
+
+    events = events.filter((event) => MODEL_CONTEXT_EVENT_TYPES.has(event.type));
+    events.sort(
+      (a, b) =>
+        a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
+    );
+
+    if (events.length > limit) {
+      events = events.slice(-limit);
+    }
+
+    return events.map((event) => sanitizeEventForRead(event));
+  },
+});
+
 export const getLatestDeviceIdForConversation = internalQuery({
   args: {
     conversationId: v.id("conversations"),
