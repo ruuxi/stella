@@ -1,76 +1,133 @@
 # CLAUDE.md
 
-This file provides guidance to codex when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
 Stella Backend is a Convex-powered backend for an AI assistant platform. It provides:
 - Conversation management with multi-device support
 - Streaming AI chat via HTTP endpoints using the Vercel AI SDK
-- Configurable agents with system prompts and tool allowlists
+- Multi-agent system with 5 builtin agents and per-agent model configuration
 - Skills system for dynamic prompt augmentation
 - Plugin system for extensible tools
 - Subagent task delegation with depth limits
+- Channel integrations (Telegram, Discord, Slack, Google Chat, Teams, WhatsApp/Signal)
+- Memory system with vector search
+- Self-modification system for platform changes
+- App store for skills and themes
 
 ## Commands
 
 ```bash
-bun convex dev      # Start Convex dev server (watches for changes, syncs to cloud)
-bun convex deploy   # Deploy to Convex cloud (production)
+bun run dev         # Start Convex dev server (watches for changes, syncs to cloud)
+bun run deploy      # Deploy to Convex cloud (production)
 ```
 
-## Environment Variables
-
-Set in Convex dashboard (Settings > Environment Variables):
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `AI_GATEWAY_MODEL` | Yes | Model identifier for streamText (e.g., `anthropic/claude-3-5-sonnet`) |
-| `BETTER_AUTH_SECRET` | Yes | Secret for better-auth session signing |
-| `RESEND_API_KEY` | No | Resend API key for email functionality |
-
-Never store secrets in code or expose to frontend.
-
 ## Architecture
+
+### Directory Structure
+
+```
+convex/
+├── agent/          # Agent system (invoke, model config, prompt building, device tools, tasks)
+├── tools/          # Tool definitions (backend, cloud, orchestration, types)
+├── data/           # Data access (plugins, skills, store_packages)
+├── channels/       # Messaging integrations (telegram, discord, slack, google_chat, teams)
+├── scheduling/     # Heartbeats and user cron jobs
+├── prompts/        # System prompt templates
+├── automation/     # Automated workflows
+├── lib/            # Shared utilities
+├── auth.ts         # Better-auth configuration
+├── conversations.ts
+├── events.ts
+├── http.ts         # HTTP endpoints (chat, webhooks, synthesis)
+└── schema.ts       # All table definitions
+```
 
 ### Core Data Flow
 
 1. **Chat Request** (`http.ts`): HTTP POST to `/api/chat` with conversationId and userMessageId
-2. **Prompt Building** (`prompt_builder.ts`): Combines agent system prompt with enabled skills
-3. **Tool Execution** (`device_tools.ts`): Tools dispatch requests to target devices via events table, poll for results
-4. **Streaming Response**: Uses Vercel AI SDK `streamText()` with tool calling
+2. **Agent Selection** (`http.ts`): Defaults to `orchestrator`, can be overridden to `general`, `self_mod`, etc.
+3. **Prompt Building** (`agent/prompt_builder.ts`): Combines agent system prompt with enabled skills
+4. **Tool Assembly** (`tools/index.ts`): Three-tier tool system (see below)
+5. **Streaming Response**: Uses Vercel AI SDK `streamText()` with tool calling
 
 ### Key Tables (schema.ts)
 
-- **conversations**: Owner-scoped chat sessions, indexed by owner+default and owner+updated
+Core:
+- **conversations**: Owner-scoped chat sessions
 - **events**: All conversation events (messages, tool requests/results, task events) with device targeting
+- **attachments**: File attachments for conversations
+
+Agent system:
 - **agents**: Agent configurations with system prompts, tool allowlists, skill defaults
-- **skills**: Markdown instructions injected into agent prompts based on agentType
-- **plugins/plugin_tools**: External tool definitions with JSON Schema inputs
+- **skills**: Markdown instructions injected into agent prompts (with execution, secretMounts fields)
 - **tasks**: Subagent task tracking with parent relationships and depth limits
+
+Data & secrets:
+- **secrets**: Encrypted user secrets vault
+- **secret_access_audit**: Audit trail for secret access
+- **user_preferences**: Per-user settings
+- **memories**: Episodic memory with vector index (1536-dim embeddings)
+
+Integrations:
+- **integrations_public**: Public API integration definitions
+- **user_integrations**: Per-user integration configs
+- **plugins** / **plugin_tools**: External tool definitions with JSON Schema inputs
+
+Infrastructure:
+- **remote_computers**: Remote computer connections
+- **cloud_devices**: Sprites cloud sandboxes
+- **heartbeat_configs**: Scheduling system
+- **channel_connections**: Messaging channel links
+- **bridge_sessions**: WhatsApp/Signal bridge sessions
+- **cron_jobs**: User-scheduled cron jobs
+
+App store:
+- **store_packages**: Package definitions (with search index)
+- **store_installs**: Installed packages per user
+- **canvas_states**: Canvas persistence per conversation
+- **self_mod_features**: Self-modification feature tracking
 
 ### Agent Types
 
-- `general`: Default agent with full tool access (Read, Write, Edit, Glob, Grep, Bash, etc.)
-- `self_mod`: Self-modification agent for platform changes
+5 builtin agents defined in `agent/agents.ts`:
 
-### Tool System
+| Agent | Purpose | Key Tools |
+|-------|---------|-----------|
+| `orchestrator` | Default entry point, delegates to subagents, handles scheduling/memory | TaskCreate, TaskOutput, TaskCancel, OpenCanvas, CloseCanvas, RecallMemories, SaveMemory, Heartbeat*, Cron*, SpawnRemoteMachine, NoResponse |
+| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, KillShell, Glob, Grep, WebFetch, WebSearch, RequestCredential, IntegrationRequest, SkillBash + skill-gated tools |
+| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, KillShell, Glob, Grep, OpenCanvas, CloseCanvas, WebFetch, WebSearch, AskUserQuestion, SelfMod* tools |
+| `explore` | Lightweight read-only exploration | Read, Glob, Grep, WebFetch, WebSearch |
+| `browser` | Browser automation | Bash, KillShell, Read, OpenCanvas, CloseCanvas |
 
-Device tools (`device_tools.ts`) work via request/response pattern through the events table:
+Per-agent model configuration in `agent/model.ts`.
+
+### Three-Tier Tool System
+
+Tools are assembled in `tools/index.ts`:
+
+1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, ActivateSkill, HeartbeatGet, HeartbeatUpsert, HeartbeatRun, CronList, CronAdd, CronUpdate, CronRemove, CronRun, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint, SpawnRemoteMachine, NoResponse
+2. **Cloud tools** (when no local device, but cloud sandbox available): Bash, Read, Write, Edit, Glob, Grep, SqliteQuery via Sprites
+3. **Device tools** (`agent/device_tools.ts`): When Electron app is running — 22+ tools executed locally via request/response through the events table
+
+Device tool pattern:
 1. Backend inserts `tool_request` event targeting a deviceId
 2. Client device polls and executes locally
 3. Client inserts `tool_result` event with same requestId
 4. Backend polls for result (750ms interval, 120s timeout)
 
-Plugin tools convert JSON Schema to Zod schemas dynamically (`plugins.ts:jsonSchemaToZod`).
+**Orchestration tools** (TaskCreate, TaskOutput, TaskCancel, AgentInvoke, RecallMemories, SaveMemory) are created separately via `tools/orchestration.ts`.
 
 ### Task/Subagent System
 
-Tasks (`tasks.ts`) enable agent-to-agent delegation:
-- `Task` tool delegates to subagent types
-- `TaskOutput` retrieves results by task ID
+Tasks (`agent/tasks.ts`) enable agent-to-agent delegation:
+- Three tools: `TaskCreate` (delegate), `TaskOutput` (poll result), `TaskCancel` (stop)
 - Depth limiting via `maxTaskDepth` (default 2) prevents infinite recursion
-- Task events track lifecycle (task_started, task_completed, task_failed)
+- Background execution with `run_in_background` option
+- Task events track lifecycle (task_started, task_completed, task_failed, task_checkin)
+
+`AgentInvoke` (`agent/invoke.ts`) provides bounded structured agent calls.
 
 ## Convex Conventions
 
@@ -82,9 +139,10 @@ Follow the guidelines in `convex_rules.md` (comprehensive reference):
 - Reference functions via `api.filename.functionName` or `internal.filename.functionName`
 - Define schemas in `convex/schema.ts` with appropriate indexes
 - File names: alphanumeric, underscores, periods only (no hyphens)
+- `ActionCtx` has no `ctx.db` — only `QueryCtx` and `MutationCtx` do
 
 ## Deployment
 
 1. Ensure all environment variables are set in Convex dashboard
-2. Run `bun convex deploy` from backend directory
+2. Run `bun run deploy` from backend directory
 3. Verify deployment in Convex dashboard logs
