@@ -108,6 +108,11 @@ const appendTaskEvent = async (
   });
 };
 
+type RecallMemoryArgs = {
+  query?: string;
+  categories?: Array<{ category: string; subcategory: string }>;
+};
+
 type SubagentExecutionArgs = {
   conversationId: Id<"conversations">;
   userMessageId: Id<"events">;
@@ -119,6 +124,8 @@ type SubagentExecutionArgs = {
   includeHistory?: boolean;
   threadId?: Id<"threads">;
   activateSkills?: string[];
+  recallMemory?: RecallMemoryArgs;
+  preExplore?: string;
 };
 
 const buildHistoryMessages = async (
@@ -728,6 +735,66 @@ const executeSubagentRun = async (
   try {
     const resolvedConfig = await resolveModelConfig(ctx, args.subagentType, args.ownerId);
 
+    // --- Pre-gathered context (memory recall + explore) ---
+    const preGatheredParts: string[] = [];
+
+    if (args.recallMemory && args.ownerId) {
+      try {
+        const query = args.recallMemory.query || args.prompt.slice(0, 500);
+        let categories = args.recallMemory.categories;
+        if (!categories || categories.length === 0) {
+          const allCats = await ctx.runQuery(internal.data.memory.listCategories, {
+            ownerId: args.ownerId,
+          });
+          categories = allCats.map((c: { category: string; subcategory: string }) => ({
+            category: c.category,
+            subcategory: c.subcategory,
+          }));
+        }
+        if (categories.length > 0) {
+          const memoryResult = await ctx.runAction(internal.data.memory.recallMemories, {
+            ownerId: args.ownerId,
+            categories,
+            query,
+          });
+          if (memoryResult && memoryResult !== "No memories found for the requested categories.") {
+            preGatheredParts.push(`## Recalled Memories\n${memoryResult}`);
+          }
+        }
+      } catch (e) {
+        console.error("Pre-gather memory recall failed:", (e as Error).message);
+      }
+    }
+
+    if (args.preExplore && args.ownerId) {
+      try {
+        const explorePromptBuild = await buildSystemPrompt(ctx, "explore", {
+          ownerId: args.ownerId,
+        });
+        const exploreModelConfig = await resolveModelConfig(ctx, "explore", args.ownerId);
+        const exploreTools = createTools(ctx, toolContext, {
+          agentType: "explore",
+          toolsAllowlist: explorePromptBuild.toolsAllowlist,
+          maxTaskDepth: 0,
+          pluginTools: [],
+          ownerId: args.ownerId,
+          conversationId: args.conversationId,
+        });
+        const exploreResult = await generateText({
+          ...exploreModelConfig,
+          system: explorePromptBuild.systemPrompt,
+          tools: exploreTools,
+          messages: [{ role: "user" as const, content: args.preExplore }],
+        });
+        const exploreText = exploreResult.text?.trim() ?? "";
+        if (exploreText) {
+          preGatheredParts.push(`## Explore Results\n${exploreText}`);
+        }
+      } catch (e) {
+        console.error("Pre-gather explore failed:", (e as Error).message);
+      }
+    }
+
     // Build the messages array: summary → thread history → conversation history → new prompt
     const messages: Array<
       | { role: "user"; content: string }
@@ -757,15 +824,21 @@ const executeSubagentRun = async (
         messages.push({ role: "user", content: hm.content });
       }
     }
-    messages.push({
-      role: "user" as const,
-      content: [
-        { type: "text" as const, text: args.prompt.trim() || " " },
-        ...(promptBuild.dynamicContext
-          ? [{ type: "text" as const, text: `\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>` }]
-          : []),
-      ],
-    });
+    const promptContent: Array<{ type: "text"; text: string }> = [];
+    if (preGatheredParts.length > 0) {
+      promptContent.push({
+        type: "text" as const,
+        text: `<context>\n${preGatheredParts.join("\n\n")}\n</context>\n\n`,
+      });
+    }
+    promptContent.push({ type: "text" as const, text: args.prompt.trim() || " " });
+    if (promptBuild.dynamicContext) {
+      promptContent.push({
+        type: "text" as const,
+        text: `\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`,
+      });
+    }
+    messages.push({ role: "user" as const, content: promptContent });
 
     const result = await generateText({
       ...resolvedConfig,
@@ -1255,6 +1328,14 @@ export const runSubagent = internalAction({
     threadId: v.optional(v.string()),
     threadName: v.optional(v.string()),
     activateSkills: v.optional(v.array(v.string())),
+    recallMemory: v.optional(v.object({
+      query: v.optional(v.string()),
+      categories: v.optional(v.array(v.object({
+        category: v.string(),
+        subcategory: v.string(),
+      }))),
+    })),
+    preExplore: v.optional(v.string()),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -1347,6 +1428,8 @@ export const runSubagent = internalAction({
       parentTaskId: args.parentTaskId,
       threadId: resolvedThreadId,
       activateSkills: args.activateSkills,
+      recallMemory: args.recallMemory,
+      preExplore: args.preExplore,
     });
 
     return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
@@ -1367,6 +1450,14 @@ export const executeSubagent = internalAction({
     parentTaskId: v.optional(v.id("tasks")),
     threadId: v.optional(v.id("threads")),
     activateSkills: v.optional(v.array(v.string())),
+    recallMemory: v.optional(v.object({
+      query: v.optional(v.string()),
+      categories: v.optional(v.array(v.object({
+        category: v.string(),
+        subcategory: v.string(),
+      }))),
+    })),
+    preExplore: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1381,6 +1472,8 @@ export const executeSubagent = internalAction({
       includeHistory: args.includeHistory,
       threadId: args.threadId,
       activateSkills: args.activateSkills,
+      recallMemory: args.recallMemory,
+      preExplore: args.preExplore,
     });
 
     // Deliver result to the orchestrator for top-level tasks only.
