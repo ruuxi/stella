@@ -49,5 +49,5 @@ Switching windows is handled by the main process. The renderer requests the wind
 
 ## Agent System Notes
 - Stella uses a single default home directory at `~/.stella`.
-- The local host scans `~/.stella/{agents,skills,plugins}` and syncs manifests to the backend.
-- Task delegation (`Task`, `TaskOutput`) is handled server-side, while device and plugin tools run on the local host.
+- The local host scans `~/.stella/{agents,skills}` and syncs manifests to the backend.
+- Task delegation (`Task`, `TaskOutput`) is handled server-side, while device tools run on the local host.

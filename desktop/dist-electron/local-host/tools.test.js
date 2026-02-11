@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 import { createToolHost } from "./tools.js";
 // Mock fs and spawn
 vi.mock("fs", () => ({
+    existsSync: vi.fn(() => true),
     promises: {
         readFile: vi.fn(),
         writeFile: vi.fn(),

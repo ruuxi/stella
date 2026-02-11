@@ -6,7 +6,7 @@ import { ConversationEvents } from "../ConversationEvents";
 import { OnboardingView } from "./OnboardingOverlay";
 import { Composer } from "./Composer";
 import type { EventRecord } from "../../hooks/use-conversation-events";
-import type { AsciiBlackHoleHandle } from "../../components/AsciiBlackHole";
+import type { StellaAnimationHandle } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
 
 type DiscoveryCategory =
@@ -46,7 +46,7 @@ type ChatColumnProps = {
 
   hasExpanded: boolean;
   onboardingKey: number;
-  blackHoleRef: React.RefObject<AsciiBlackHoleHandle | null>;
+  stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   triggerFlash: () => void;
   startBirthAnimation: () => void;
   completeOnboarding: () => void;
@@ -84,7 +84,7 @@ export function ChatColumn({
   onSend,
   hasExpanded,
   onboardingKey,
-  blackHoleRef,
+  stellaAnimationRef,
   triggerFlash,
   startBirthAnimation,
   completeOnboarding,
@@ -121,7 +121,7 @@ export function ChatColumn({
             onboardingDone={onboardingDone}
             isAuthenticated={isAuthenticated}
             isAuthLoading={isAuthLoading}
-            blackHoleRef={blackHoleRef}
+            stellaAnimationRef={stellaAnimationRef}
             onboardingKey={onboardingKey}
             triggerFlash={triggerFlash}
             startBirthAnimation={startBirthAnimation}

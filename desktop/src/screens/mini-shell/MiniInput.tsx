@@ -1,4 +1,4 @@
-import { AsciiBlackHole } from "../../components/AsciiBlackHole";
+import { StellaAnimation } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
 
 type Props = {
@@ -32,7 +32,7 @@ export const MiniInput = ({
     <div className="raycast-header">
       <div className="raycast-search">
         <div className="raycast-search-icon">
-          <AsciiBlackHole width={32} height={32} paused={!shellVisible} />
+          <StellaAnimation width={32} height={32} paused={!shellVisible} />
         </div>
         <div className="raycast-input-wrap">
           {chatContext?.regionScreenshots?.map((screenshot, index) => (

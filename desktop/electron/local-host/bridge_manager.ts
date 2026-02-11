@@ -5,6 +5,7 @@ import os from 'os'
 
 const BRIDGES_DIR = path.join(os.homedir(), '.stella', 'bridges')
 const SIGKILL_TIMEOUT_MS = 5000
+const BRIDGE_STARTUP_GRACE_MS = 1200
 
 type BridgeBundle = {
   provider: string
@@ -39,12 +40,13 @@ async function runCommand(
 
     const timeout = setTimeout(() => {
       child.kill('SIGTERM')
-      reject(new Error(`${command} timed out after ${timeoutMs}ms`))
+      reject(new Error(`${command} ${args.join(' ')} timed out after ${timeoutMs}ms`))
     }, timeoutMs)
 
     child.on('error', (err) => {
       clearTimeout(timeout)
-      reject(err)
+      const details = err instanceof Error ? err.message : String(err)
+      reject(new Error(`${command} ${args.join(' ')} failed to start: ${details}`))
     })
 
     child.on('close', (code) => {
@@ -53,7 +55,7 @@ async function runCommand(
         resolve()
         return
       }
-      reject(new Error(stderr.trim() || `${command} exited with code ${code}`))
+      reject(new Error(stderr.trim() || `${command} ${args.join(' ')} exited with code ${code}`))
     })
   })
 }
@@ -80,8 +82,16 @@ export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error
       }
       await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2), 'utf-8')
 
-      const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-      await runCommand(npmCommand, ['install', '--production'], dir, 120_000)
+      if (process.platform === 'win32') {
+        await runCommand(
+          'cmd.exe',
+          ['/d', '/s', '/c', 'npm install --production'],
+          dir,
+          120_000,
+        )
+      } else {
+        await runCommand('npm', ['install', '--production'], dir, 120_000)
+      }
     }
 
     return { ok: true }
@@ -90,7 +100,7 @@ export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error
   }
 }
 
-export function start(provider: string): { ok: boolean; error?: string } {
+export async function start(provider: string): Promise<{ ok: boolean; error?: string }> {
   if (processes.has(provider)) {
     const existing = processes.get(provider)!
     if (!existing.killed && existing.exitCode === null) {
@@ -103,6 +113,8 @@ export function start(provider: string): { ok: boolean; error?: string } {
   const bridgePath = path.join(dir, 'bridge.js')
 
   try {
+    await fs.access(bridgePath)
+
     const child = spawn('node', [bridgePath], {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -128,6 +140,44 @@ export function start(provider: string): { ok: boolean; error?: string } {
     })
 
     processes.set(provider, child)
+
+    const startupResult = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      const timer = setTimeout(() => {
+        cleanup()
+        resolve({ ok: true })
+      }, BRIDGE_STARTUP_GRACE_MS)
+
+      const onError = (err: Error) => {
+        cleanup()
+        resolve({ ok: false, error: err.message })
+      }
+
+      const onExit = (code: number | null) => {
+        cleanup()
+        const codeLabel = typeof code === 'number' ? String(code) : 'unknown'
+        resolve({ ok: false, error: `Bridge process exited during startup (code ${codeLabel})` })
+      }
+
+      const cleanup = () => {
+        clearTimeout(timer)
+        child.off('error', onError)
+        child.off('exit', onExit)
+      }
+
+      child.once('error', onError)
+      child.once('exit', onExit)
+    })
+
+    if (!startupResult.ok) {
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // Already dead
+      }
+      processes.delete(provider)
+      return startupResult
+    }
+
     return { ok: true }
   } catch (err) {
     return { ok: false, error: (err as Error).message }

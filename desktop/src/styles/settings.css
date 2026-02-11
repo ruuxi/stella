@@ -32,7 +32,7 @@
   align-items: center;
   padding: 7px 12px;
   border: none;
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-md, 6px) 0 0 var(--radius-md, 6px);
   background: transparent;
   color: var(--text-weak);
   font-size: 13px;
@@ -55,9 +55,31 @@
 
 /* ---- Panel Content ---- */
 
-.settings-panel {
+.settings-panel-wrap {
   flex: 1;
   min-width: 0;
+  position: relative;
+}
+
+.settings-panel-wrap::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent, var(--background));
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  border-radius: 0 0 var(--radius-xl, 10px) 0;
+}
+
+.settings-panel-wrap[data-at-bottom]::after {
+  opacity: 0;
+}
+
+.settings-panel {
+  height: 100%;
   overflow-y: auto;
   scrollbar-width: none;
   padding: 4px 20px 16px;
@@ -70,16 +92,16 @@
 .settings-tab-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
 }
 
 /* ---- Section Card ---- */
 
 .settings-card {
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  border-radius: 12px;
-  padding: 16px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 .settings-card-header {
@@ -164,6 +186,27 @@
 
 .settings-model-select:focus {
   border-color: var(--interactive);
+}
+
+.settings-model-reset-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.settings-model-reset-icon:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
 /* ---- Buttons ---- */

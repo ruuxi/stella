@@ -14,13 +14,12 @@
  * - tools-user.ts     — AskUserQuestion, RequestCredential handlers
  */
 import path from "path";
-import { loadPluginsFromHome } from "./plugins.js";
 // Utilities
 import { log, logError } from "./tools-utils.js";
 // Tool handlers
 import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./tools-file.js";
 import { handleGlob, handleGrep } from "./tools-search.js";
-import { createShellState, handleBash, handleKillShell, handleSkillBash, } from "./tools-shell.js";
+import { createShellState, handleBash, handleKillShell, handleOpenApp, handleSkillBash, } from "./tools-shell.js";
 // WebFetch and WebSearch have been promoted to backend tools (Convex actions).
 // import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import { createStateContext, handleTask, handleTaskOutput, } from "./tools-state.js";
@@ -29,17 +28,8 @@ import { handleSelfModStart, handleSelfModApply, handleSelfModRevert, handleSelf
 import { handleManagePackage, } from "./tools_store.js";
 export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, resolveSecret }) => {
     const stateRoot = path.join(StellaHome, "state");
-    const pluginsRoot = path.join(StellaHome, "plugins");
     // Configure file tools with frontend root for self-mod interception
     setFileToolsConfig({ frontendRoot });
-    // Plugin state
-    const pluginHandlers = new Map();
-    let pluginSyncPayload = {
-        plugins: [],
-        tools: [],
-        skills: [],
-        agents: [],
-    };
     // User tools config
     const userConfig = { requestCredential };
     // Secret resolution helper for shell tools
@@ -81,29 +71,6 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     const setSkills = (skills) => {
         shellState.skillCache = skills;
     };
-    const loadPlugins = async () => {
-        log("Loading plugins from:", pluginsRoot);
-        const loaded = await loadPluginsFromHome(pluginsRoot);
-        pluginHandlers.clear();
-        for (const [name, handler] of loaded.handlers.entries()) {
-            log("Registering plugin handler:", name);
-            pluginHandlers.set(name, handler);
-        }
-        log("Total plugin handlers registered:", pluginHandlers.size);
-        pluginSyncPayload = {
-            plugins: loaded.plugins,
-            tools: loaded.tools.map((tool) => ({
-                pluginId: tool.pluginId,
-                name: tool.name,
-                description: tool.description,
-                inputSchema: tool.inputSchema,
-                source: tool.source,
-            })),
-            skills: loaded.skills,
-            agents: loaded.agents,
-        };
-        return pluginSyncPayload;
-    };
     const notConfigured = (name) => ({
         result: `${name} is not configured on this device yet.`,
     });
@@ -117,6 +84,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
         Glob: (args) => handleGlob(args),
         Grep: (args) => handleGrep(args),
         // Shell tools
+        OpenApp: (args) => handleOpenApp(args),
         Bash: (args, context) => handleBash(shellState, args, context),
         KillShell: (args) => handleKillShell(shellState, args),
         SkillBash: (args, context) => handleSkillBash(shellState, args, context),
@@ -144,12 +112,9 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
                 : toolArgs,
             context,
         });
-        const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
+        const handler = handlers[toolName];
         if (!handler) {
-            const availableTools = [
-                ...Object.keys(handlers),
-                ...Array.from(pluginHandlers.keys()),
-            ];
+            const availableTools = Object.keys(handlers);
             logError(`Unknown tool: ${toolName}. Available tools:`, availableTools);
             return { error: `Unknown tool: ${toolName}` };
         }
@@ -194,8 +159,6 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
         getShells: () => Array.from(shellState.shells.values()),
         killAllShells,
         killShellsByPort,
-        loadPlugins,
-        getPluginSyncPayload: () => pluginSyncPayload,
         setSkills,
     };
 };

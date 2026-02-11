@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/api";
-import { Accordion } from "@/components/accordion";
 import { Button } from "@/components/button";
 import { showToast } from "@/components/toast";
 import type { Integration } from "./integration-configs";
@@ -26,8 +25,18 @@ function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
         const result = await setupBridge({ provider });
         if (cancelled) return;
 
-        if (result.status === "initializing" && runtimeMode !== "cloud_247") {
-          await deployAndStartLocalBridge(provider, getBridgeBundle);
+        if (runtimeMode !== "cloud_247") {
+          const electronApi = window.electronAPI;
+          const bridgeStatus = electronApi
+            ? await electronApi.bridgeStatus({ provider }).catch(() => null)
+            : null;
+          if (cancelled) return;
+
+          const shouldStartLocal =
+            result.status === "initializing" || !bridgeStatus?.running;
+          if (shouldStartLocal) {
+            await deployAndStartLocalBridge(provider, getBridgeBundle);
+          }
         }
         if (!cancelled) setError(null);
       } catch (err) {
@@ -259,12 +268,41 @@ function SignalBridgeView({ isExpanded }: { isExpanded: boolean }) {
   );
 }
 
-export function IntegrationCard({
+export function IntegrationGridCard({
   integration,
-  isExpanded,
+  isSelected,
+  onClick,
 }: {
   integration: Integration;
-  isExpanded: boolean;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const connection = useQuery(api.channels.utils.getConnection, {
+    provider: integration.provider,
+  });
+  const isConnected = connection !== null && connection !== undefined;
+
+  return (
+    <button
+      className={`connect-grid-card${isSelected ? " connect-grid-card-selected" : ""}`}
+      onClick={onClick}
+      type="button"
+    >
+      <span className="connect-grid-card-icon">{integration.icon}</span>
+      <span className="connect-grid-card-name">{integration.displayName}</span>
+      {isConnected && (
+        <span className="connect-grid-card-badge">
+          <span className="connect-grid-card-badge-dot" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+export function IntegrationDetailArea({
+  integration,
+}: {
+  integration: Integration;
 }) {
   const connection = useQuery(api.channels.utils.getConnection, {
     provider: integration.provider,
@@ -278,33 +316,25 @@ export function IntegrationCard({
     if (integration.type === "bot") {
       return (
         <BotSetupView
-          key={`${integration.provider}-${isExpanded ? "open" : "closed"}`}
+          key={integration.provider}
           integration={integration}
-          isExpanded={isExpanded}
+          isExpanded={true}
         />
       );
     }
     if (integration.provider === "whatsapp") {
-      return <WhatsAppBridgeView isExpanded={isExpanded} />;
+      return <WhatsAppBridgeView isExpanded={true} />;
     }
-    return <SignalBridgeView isExpanded={isExpanded} />;
+    return <SignalBridgeView isExpanded={true} />;
   };
 
   return (
-    <Accordion.Item value={integration.provider}>
-      <Accordion.Trigger className="connect-trigger">
-        <span className="connect-trigger-icon">{integration.icon}</span>
-        <span className="connect-trigger-name">{integration.displayName}</span>
-        {isConnected && (
-          <span className="connect-trigger-badge">
-            <span className="connect-trigger-badge-dot" />
-            Connected
-          </span>
-        )}
-      </Accordion.Trigger>
-      <Accordion.Content>
-        <div className="connect-content">{renderContent()}</div>
-      </Accordion.Content>
-    </Accordion.Item>
+    <div className="connect-detail-area" key={integration.provider}>
+      <div className="connect-detail-header">
+        <span className="connect-grid-card-icon">{integration.icon}</span>
+        <span className="connect-detail-name">{integration.displayName}</span>
+      </div>
+      <div className="connect-detail-body">{renderContent()}</div>
+    </div>
   );
 }

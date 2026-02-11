@@ -4,7 +4,6 @@
  * Skills: ~/.stella/skills/{skillId}/
  * Themes: ~/.stella/themes/{themeId}.json
  * Mini-apps: ~/.stella/apps/{appName}/
- * Plugins: ~/.stella/plugins/{pluginId}/
  */
 import type { ToolResult } from "./tools-types.js";
 /**
@@ -23,17 +22,12 @@ export declare const handleInstallTheme: (args: Record<string, unknown>) => Prom
  */
 export declare const handleInstallCanvas: (args: Record<string, unknown>) => Promise<ToolResult>;
 /**
- * Install a plugin package locally.
- * Supports plugin manifest + arbitrary file map.
- */
-export declare const handleInstallPlugin: (args: Record<string, unknown>) => Promise<ToolResult>;
-/**
  * Uninstall a package locally by removing its files.
  */
 export declare const handleUninstallPackage: (args: Record<string, unknown>) => Promise<ToolResult>;
 /**
  * Unified package management entrypoint.
- * - install: skill/theme/canvas/plugin
- * - uninstall: skill/theme/canvas/plugin/mod
+ * - install: skill/theme/canvas
+ * - uninstall: skill/theme/canvas/mod
  */
 export declare const handleManagePackage: (args: Record<string, unknown>) => Promise<ToolResult>;

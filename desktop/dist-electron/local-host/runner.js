@@ -4,6 +4,7 @@ import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import { syncExternalSkills } from "./skill_import.js";
 import { loadIdentityMap, depseudonymize } from "./identity_map.js";
+import { purgeExpiredDeferredDeletes } from "./deferred_delete.js";
 import { sanitizeForLogs } from "./tools-utils.js";
 import path from "path";
 import fs from "fs";
@@ -14,6 +15,7 @@ const SYNC_DEBOUNCE_MS = 500;
 const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
 const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
+const DEFERRED_DELETE_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requestCredential }) => {
     const toolHost = createToolHost({
         StellaHome,
@@ -51,6 +53,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     let syncPromise = null;
     let syncDebounceTimer = null;
     const watchers = [];
+    let deferredDeleteSweepInterval = null;
     let heartbeatInterval = null;
     const HEARTBEAT_INTERVAL_MS = 30000;
     const sendHeartbeat = () => {
@@ -72,6 +75,23 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
         }
         // Best-effort goOffline — fire and forget
         callMutation("agent/device_resolver.goOffline", {}).catch(() => { });
+    };
+    const sweepDeferredDeletes = async (reason) => {
+        try {
+            const summary = await purgeExpiredDeferredDeletes({ stellaHome: StellaHome });
+            if (summary.purged > 0 || summary.errors.length > 0) {
+                log("Deferred-delete sweep complete", {
+                    reason,
+                    purged: summary.purged,
+                    checked: summary.checked,
+                    skipped: summary.skipped,
+                    errors: summary.errors,
+                });
+            }
+        }
+        catch (error) {
+            logError(`Deferred-delete sweep failed (${reason}):`, error);
+        }
     };
     const skillsPath = path.join(StellaHome, "skills");
     const agentsPath = path.join(StellaHome, "agents");
@@ -144,8 +164,8 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
                         // Continue with manifest sync even if import fails
                     }
                 }
-                const skills = await loadSkillsFromHome(skillsPath, []);
-                const agents = await loadAgentsFromHome(agentsPath, []);
+                const skills = await loadSkillsFromHome(skillsPath);
+                const agents = await loadAgentsFromHome(agentsPath);
                 toolHost.setSkills(skills);
                 await callMutation("data/skills.upsertMany", {
                     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -456,6 +476,13 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             return;
         isRunning = true;
         log("Starting local host runner", { deviceId, StellaHome });
+        // Purge expired deferred-deletion entries (survives app restarts).
+        void sweepDeferredDeletes("startup");
+        if (!deferredDeleteSweepInterval) {
+            deferredDeleteSweepInterval = setInterval(() => {
+                void sweepDeferredDeletes("interval");
+            }, DEFERRED_DELETE_SWEEP_INTERVAL_MS);
+        }
         // Initial sync on startup
         void syncManifests();
         // Start file watchers for manifest changes
@@ -467,6 +494,10 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     };
     const stop = () => {
         isRunning = false;
+        if (deferredDeleteSweepInterval) {
+            clearInterval(deferredDeleteSweepInterval);
+            deferredDeleteSweepInterval = null;
+        }
         if (syncDebounceTimer) {
             clearTimeout(syncDebounceTimer);
             syncDebounceTimer = null;

@@ -4,7 +4,7 @@ import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
 import { hexToRgb } from '../theme/color'
-import { AsciiBlackHole } from '../components/AsciiBlackHole'
+import { StellaAnimation } from '../components/StellaAnimation'
 
 const WEDGES: { id: RadialWedge; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
   { id: 'capture', label: 'Capture', icon: Camera },
@@ -239,8 +239,8 @@ export function RadialDial() {
           />
         </svg>
 
-        <div className="radial-center-blackhole">
-          <AsciiBlackHole width={20} height={20} initialBirthProgress={1} />
+        <div className="radial-center-stella-animation">
+          <StellaAnimation width={20} height={20} initialBirthProgress={1} />
         </div>
       </div>
     </div>

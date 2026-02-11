@@ -7,7 +7,7 @@ import { registerTheme, unregisterTheme } from "@/theme/themes";
 import type { Theme } from "@/theme/themes/types";
 
 type StorePage = "browse" | "detail" | "installed" | "updates";
-type PackageType = "skill" | "canvas" | "plugin" | "theme" | "mod";
+type PackageType = "skill" | "canvas" | "theme" | "mod";
 type CategoryTab = "all" | PackageType;
 
 const CATEGORY_TABS: { label: string; value: CategoryTab }[] = [
@@ -16,13 +16,11 @@ const CATEGORY_TABS: { label: string; value: CategoryTab }[] = [
   { label: "Skills", value: "skill" },
   { label: "Mini-apps", value: "canvas" },
   { label: "Themes", value: "theme" },
-  { label: "Plugins", value: "plugin" },
 ];
 
 const TYPE_ICONS: Record<string, string> = {
   skill: "\u2728",
   canvas: "\u{1F3A8}",
-  plugin: "\u{1F50C}",
   theme: "\u{1F308}",
   mod: "\u2699\uFE0F",
 };
@@ -30,7 +28,6 @@ const TYPE_ICONS: Record<string, string> = {
 const TYPE_GRADIENTS: Record<string, string> = {
   skill: "linear-gradient(135deg, #ff6b35 0%, #f7c948 100%)",
   canvas: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-  plugin: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
   theme: "linear-gradient(135deg, #ee5a6f 0%, #f093fb 100%)",
   mod: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
 };
@@ -224,25 +221,6 @@ function StoreView({ onComposePrompt }: StoreViewProps) {
             name: payload?.workspaceName ?? pkg.name,
             dependencies: payload?.dependencies,
             source: payload?.source,
-          });
-        } else if (pkg.type === "plugin" && window.electronAPI) {
-          const payload = pkg.modPayload as
-            | {
-                pluginId?: string;
-                version?: string;
-                description?: string;
-                manifest?: Record<string, unknown>;
-                files?: Record<string, string>;
-              }
-            | undefined;
-          await (window.electronAPI as any).storeInstallPlugin({
-            packageId: pkg.packageId,
-            pluginId: payload?.pluginId ?? pkg.packageId,
-            name: pkg.name,
-            version: payload?.version ?? pkg.version,
-            description: payload?.description ?? pkg.description,
-            manifest: payload?.manifest,
-            files: payload?.files,
           });
         }
 
