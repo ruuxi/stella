@@ -8,42 +8,72 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
+import { THREAD_COMPACTION_KEEP_RECENT_TOKENS } from "../agent/context_budget";
 import {
-  findRecentStartIndexByTokens,
+  findThreadCompactionCutByTokens,
   formatThreadMessagesForCompaction,
 } from "./thread_compaction_format";
 
 const MAX_THREADS_PER_CONVERSATION = 16;
 const MAX_CONTENT_LENGTH = 500_000;
 const MIN_MESSAGES_FOR_COMPACTION = 6;
-const THREAD_COMPACTION_KEEP_RECENT_TOKENS = 20_000;
 
-const THREAD_COMPACTION_PROMPT = `You are summarizing a work session for an AI coding agent.
-This summary will be injected as context when the agent resumes this work later.
+const THREAD_COMPACTION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
-Preserve with high fidelity:
-- The task objective and current progress
-- Key decisions and their rationale
-- File paths, function names, error messages, technical details
-- What was tried and outcomes
-- What remains to be done
+Use this EXACT format:
 
-Write a dense, factual summary in 200-500 words using bullet points.
-Output ONLY the summary content.`;
+## Goal
+[What is the user trying to accomplish?]
 
-const THREAD_COMPACTION_UPDATE_PROMPT = `You are updating an existing session summary for an AI coding agent.
-You receive:
-- <previous-summary>: the earlier session summary
-- <conversation>: newer messages not yet folded in
+## Constraints & Preferences
+- [Constraints, preferences, or requirements]
 
-Update the summary with high fidelity:
-- Preserve prior key context unless superseded
-- Add new progress, decisions, errors, and outcomes
-- Keep exact file paths, function names, and error text
-- Note what remains to be done
+## Progress
+### Done
+- [x] [Completed work]
 
-Write a dense, factual summary in 200-500 words using bullet points.
-Output ONLY the updated summary content.`;
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Current blockers, if any]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Next Steps
+1. [Ordered next step]
+
+## Critical Context
+- [Important paths, function names, errors, details needed to continue]
+
+Keep sections concise. Preserve exact file paths, function names, and error messages.`;
+
+const THREAD_COMPACTION_UPDATE_PROMPT = `The messages above are NEW conversation messages to incorporate into the existing summary in <previous-summary>.
+
+Update the existing structured summary with new information:
+- Preserve prior important context unless superseded
+- Move completed items from In Progress to Done
+- Add new decisions, errors, and outcomes
+- Update Next Steps based on the latest state
+- Preserve exact file paths, function names, and error messages
+
+Use the same exact output format as the base summary prompt.`;
+
+const TURN_PREFIX_SUMMARY_PROMPT = `This is the PREFIX of a turn that was too large to keep. The SUFFIX (recent work) is retained.
+
+Summarize only what is needed for continuity:
+
+## Original Request
+[What the user asked in this turn]
+
+## Early Progress
+- [Decisions and work completed in this prefix]
+
+## Context for Suffix
+- [Information needed to understand the retained suffix]
+
+Be concise and preserve exact technical details.`;
 
 const threadValidator = v.object({
   _id: v.id("threads"),
@@ -382,15 +412,18 @@ export const compactThread = internalAction({
     // 3. Skip if too few messages
     if (messages.length <= MIN_MESSAGES_FOR_COMPACTION) return null;
 
-    // 4. Split: keep recent token budget, but avoid splitting a turn mid-flow.
-    const recentStartIndex = findRecentStartIndexByTokens(
+    // 4. Split by token budget. If a turn is split, summarize the dropped prefix separately.
+    const cut = findThreadCompactionCutByTokens(
       messages,
       THREAD_COMPACTION_KEEP_RECENT_TOKENS,
     );
-    const oldMessages = messages.slice(0, recentStartIndex);
-    const recentMessages = messages.slice(recentStartIndex);
+    const oldMessages = messages.slice(0, cut.historyEndIndex);
+    const turnPrefixMessages = cut.isSplitTurn
+      ? messages.slice(cut.turnStartIndex, cut.recentStartIndex)
+      : [];
+    const recentMessages = messages.slice(cut.recentStartIndex);
 
-    if (oldMessages.length === 0) return null;
+    if (oldMessages.length === 0 && turnPrefixMessages.length === 0) return null;
 
     // 5. Format old messages for summarization (tool-aware, role-aware).
     const oldText = formatThreadMessagesForCompaction(
@@ -399,30 +432,61 @@ export const compactThread = internalAction({
         content: m.content,
       })),
     );
-    if (oldText.trim().length === 0) return null;
 
     // 6. Call LLM to summarize or incrementally update.
     const hasPreviousSummary = Boolean(thread.summary && thread.summary.trim().length > 0);
-    const promptBody = [
-      `<conversation>\n${oldText}\n</conversation>`,
-      hasPreviousSummary ? `<previous-summary>\n${thread.summary!.trim()}\n</previous-summary>` : "",
-      hasPreviousSummary ? THREAD_COMPACTION_UPDATE_PROMPT : THREAD_COMPACTION_PROMPT,
-    ]
-      .filter((part) => part.length > 0)
-      .join("\n\n");
-
     const config = getModelConfig("memory_ops");
-    const { text: newSummary } = await generateText({
-      ...config,
-      system: "Output ONLY the summary content.",
-      messages: [
-        {
-          role: "user",
-          content: promptBody,
-        },
-      ],
-    });
-    const summary = newSummary.trim();
+
+    let baseSummary = hasPreviousSummary ? thread.summary!.trim() : "";
+    if (oldText.trim().length > 0) {
+      const promptBody = [
+        `<conversation>\n${oldText}\n</conversation>`,
+        hasPreviousSummary ? `<previous-summary>\n${thread.summary!.trim()}\n</previous-summary>` : "",
+        hasPreviousSummary ? THREAD_COMPACTION_UPDATE_PROMPT : THREAD_COMPACTION_PROMPT,
+      ]
+        .filter((part) => part.length > 0)
+        .join("\n\n");
+
+      const { text: nextSummaryText } = await generateText({
+        ...config,
+        system: "Output ONLY the summary content.",
+        messages: [
+          {
+            role: "user",
+            content: promptBody,
+          },
+        ],
+      });
+      baseSummary = nextSummaryText.trim();
+    }
+
+    let turnPrefixSummary = "";
+    if (turnPrefixMessages.length > 0) {
+      const turnPrefixText = formatThreadMessagesForCompaction(
+        turnPrefixMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      );
+      if (turnPrefixText.trim().length > 0) {
+        const { text: turnPrefixSummaryText } = await generateText({
+          ...config,
+          system: "Output ONLY the summary content.",
+          messages: [
+            {
+              role: "user",
+              content: `<conversation>\n${turnPrefixText}\n</conversation>\n\n${TURN_PREFIX_SUMMARY_PROMPT}`,
+            },
+          ],
+        });
+        turnPrefixSummary = turnPrefixSummaryText.trim();
+      }
+    }
+
+    const summary = [baseSummary, turnPrefixSummary ? `---\n\n${turnPrefixSummary}` : ""]
+      .filter((part) => part.trim().length > 0)
+      .join("\n\n")
+      .trim();
     if (summary.length === 0) return null;
 
     // 7. Delete old messages

@@ -14,6 +14,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
 import { eventsToHistoryMessages } from "./history_messages";
 import {
+  computeCompactionTriggerTokens,
   SUBAGENT_HISTORY_MAX_TOKENS,
   TASK_DELIVERY_HISTORY_MAX_TOKENS,
 } from "./context_budget";
@@ -68,10 +69,6 @@ type TaskClient = Infer<typeof taskClientValidator>;
 const DEFAULT_MAX_TASK_DEPTH = 2;
 const TASK_CANCEL_POLL_INTERVAL_MS = 2000;
 const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
-const THREAD_COMPACTION_CONTEXT_WINDOW_TOKENS = 80_000;
-const THREAD_COMPACTION_RESERVE_TOKENS = 12_000;
-const THREAD_COMPACTION_TRIGGER_TOKENS =
-  THREAD_COMPACTION_CONTEXT_WINDOW_TOKENS - THREAD_COMPACTION_RESERVE_TOKENS;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -130,9 +127,11 @@ type SubagentExecutionArgs = {
   taskId: Id<"tasks">;
   ownerId?: string;
   includeHistory?: boolean;
+  historyMaxTokens?: number;
   threadId?: Id<"threads">;
   recallMemory?: RecallMemoryArgs;
   preExplore?: string;
+  overflowRecoveryAttempt?: number;
 };
 
 const buildHistoryMessages = async (
@@ -165,6 +164,70 @@ const classifyBashCommand = (cmd: string): string => {
   if (/\b(lint|eslint|prettier|format|clippy)\b/.test(lower)) return "lint";
   if (/\b(start|dev|serve|run dev|up)\b/.test(lower)) return "server";
   return "other";
+};
+
+const CONTEXT_OVERFLOW_RE =
+  /(context length|context window|too many tokens|max(?:imum)? context|prompt(?:\s+is)? too long|token limit|context_length_exceeded)/i;
+
+const isContextOverflowError = (message: string): boolean =>
+  CONTEXT_OVERFLOW_RE.test(message);
+
+const parseJson = (raw: string): unknown => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
+const normalizeToolCallId = (value: string): string => {
+  const normalized = value.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return normalized.length > 64 ? normalized.slice(0, 64) : normalized;
+};
+
+const asThreadMessageText = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const toStoredThreadEnvelope = (message: { role: string; content: unknown; toolCallId?: string }) =>
+  JSON.stringify({
+    role: message.role,
+    content: message.content,
+    ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+  });
+
+const replayThreadMessage = (message: { role: "user" | "assistant" | "tool"; content: string; toolCallId?: string }) => {
+  const parsed = parseJson(message.content);
+  const envelope = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as { role?: string; content?: unknown; toolCallId?: string })
+    : null;
+  const payload = envelope?.content ?? parsed;
+  const callId = message.toolCallId ?? envelope?.toolCallId;
+
+  if (message.role === "assistant") {
+    return {
+      role: "assistant" as const,
+      content: payload,
+    };
+  }
+
+  if (message.role === "tool") {
+    const prefix = callId ? `[Tool result ${callId}]` : "[Tool result]";
+    return {
+      role: "user" as const,
+      content: `${prefix}\n${asThreadMessageText(payload)}`,
+    };
+  }
+
+  return {
+    role: "user" as const,
+    content: typeof payload === "string" ? payload : asThreadMessageText(payload),
+  };
 };
 
 const STATUS_DESCRIPTIONS: Record<string, string[]> = {
@@ -617,12 +680,13 @@ const executeSubagentRun = async (
     { ownerId: args.ownerId },
   )) as PluginToolDescriptor[];
 
+  const historyTokenBudget = args.historyMaxTokens ?? SUBAGENT_HISTORY_MAX_TOKENS;
   const historyMessages = args.includeHistory
       ? await buildHistoryMessages(
           ctx,
           args.conversationId,
           args.userMessageId,
-          SUBAGENT_HISTORY_MAX_TOKENS,
+          historyTokenBudget,
         )
       : [];
 
@@ -761,11 +825,7 @@ const executeSubagentRun = async (
     }
 
     // Build the messages array: summary → thread history → conversation history → new prompt
-    const messages: Array<
-      | { role: "user"; content: string }
-      | { role: "assistant"; content: string }
-      | { role: "user"; content: Array<{ type: "text"; text: string }> }
-    > = [];
+    const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
 
     for (const sp of summaryPair) {
       if (sp.role === "assistant") {
@@ -775,12 +835,7 @@ const executeSubagentRun = async (
       }
     }
     for (const tm of threadMessages) {
-      // Thread messages are stored as user/assistant/tool — map tool role to user for message replay
-      if (tm.role === "assistant") {
-        messages.push({ role: "assistant", content: tm.content });
-      } else {
-        messages.push({ role: "user", content: tm.content });
-      }
+      messages.push(replayThreadMessage(tm));
     }
     for (const hm of historyMessages) {
       if (hm.role === "assistant") {
@@ -821,7 +876,7 @@ const executeSubagentRun = async (
           conversationId: args.conversationId,
         },
       ),
-      messages,
+      messages: messages as any[],
       abortSignal: abortController.signal,
       onStepFinish: async ({ toolCalls }) => {
         if (!toolCalls || toolCalls.length === 0) return;
@@ -874,9 +929,20 @@ const executeSubagentRun = async (
         // Save all response messages from the result
         if (result.response?.messages) {
           for (const msg of result.response.messages) {
+            const rawToolCallId =
+              (msg as { toolCallId?: unknown }).toolCallId;
+            const toolCallId =
+              typeof rawToolCallId === "string"
+                ? normalizeToolCallId(rawToolCallId)
+                : undefined;
             messagesToSave.push({
               role: msg.role,
-              content: JSON.stringify(msg.content),
+              content: toStoredThreadEnvelope({
+                role: msg.role,
+                content: msg.content,
+                toolCallId,
+              }),
+              ...(toolCallId ? { toolCallId } : {}),
             });
           }
         }
@@ -892,9 +958,12 @@ const executeSubagentRun = async (
           threadId: args.threadId,
         });
         const threadTokens = updatedThread?.totalTokenEstimate ?? 0;
+        const compactionTriggerTokens = computeCompactionTriggerTokens(
+          typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
+        );
         if (
-          inputTokens > THREAD_COMPACTION_TRIGGER_TOKENS ||
-          threadTokens > THREAD_COMPACTION_TRIGGER_TOKENS
+          inputTokens > compactionTriggerTokens ||
+          threadTokens > compactionTriggerTokens
         ) {
           await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
             threadId: args.threadId,
@@ -935,6 +1004,38 @@ const executeSubagentRun = async (
     }
 
     const errorMessage = (error as Error).message || "Unknown task error";
+
+    const overflowRecoveryAttempt = args.overflowRecoveryAttempt ?? 0;
+    if (isContextOverflowError(errorMessage) && overflowRecoveryAttempt < 1) {
+      try {
+        await ctx.runMutation(internal.agent.tasks.pushStatusUpdate, {
+          taskId: args.taskId,
+          text: "Context limit reached, compacting and retrying",
+        });
+      } catch {
+        // Ignore status update errors.
+      }
+
+      if (args.threadId && threadSupported) {
+        try {
+          await ctx.runAction(internal.data.threads.compactThread, {
+            threadId: args.threadId,
+          });
+        } catch {
+          // Best effort; continue retry even if compaction fails.
+        }
+      }
+
+      const nextHistoryMaxTokens = args.includeHistory
+        ? Math.max(4_000, Math.floor(historyTokenBudget / 2))
+        : undefined;
+
+      return await executeSubagentRun(ctx, {
+        ...args,
+        overflowRecoveryAttempt: overflowRecoveryAttempt + 1,
+        historyMaxTokens: nextHistoryMaxTokens,
+      });
+    }
 
     await ctx.runMutation(internal.agent.tasks.completeTaskRecord, {
       taskId: args.taskId,
@@ -1557,16 +1658,6 @@ export const deliverTaskResult = internalAction({
       { ownerId: args.ownerId },
     )) as PluginToolDescriptor[];
 
-    // Gather recent conversation history so the orchestrator has context
-    const historyEvents = await ctx.runQuery(
-      internal.events.listRecentContextEventsByTokens,
-      {
-        conversationId: args.conversationId,
-        maxTokens: TASK_DELIVERY_HISTORY_MAX_TOKENS,
-      },
-    );
-    const historyMessages = eventsToHistoryMessages(historyEvents);
-
     const toolContext: DeviceToolContext = {
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
@@ -1582,53 +1673,75 @@ export const deliverTaskResult = internalAction({
     );
 
     try {
-      const genResult = await generateText({
-        ...resolvedConfig,
-        system: promptBuild.systemPrompt,
-        tools: createTools(ctx, toolContext, {
-          agentType: "orchestrator",
-          toolsAllowlist: promptBuild.toolsAllowlist,
-          maxTaskDepth: promptBuild.maxTaskDepth,
-          pluginTools: pluginTools as Array<{
-            pluginId: string;
-            name: string;
-            description: string;
-            inputSchema: Record<string, unknown>;
-          }>,
-          ownerId: args.ownerId,
-          conversationId: args.conversationId,
-        }),
-        messages: [
-          ...historyMessages,
+      let historyBudget = TASK_DELIVERY_HISTORY_MAX_TOKENS;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const historyEvents = await ctx.runQuery(
+          internal.events.listRecentContextEventsByTokens,
           {
-            role: "user",
-            content: promptBuild.dynamicContext
-              ? `${deliveryMessage}\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`
-              : deliveryMessage,
+            conversationId: args.conversationId,
+            maxTokens: historyBudget,
           },
-        ],
-      });
+        );
+        const historyMessages = eventsToHistoryMessages(historyEvents);
 
-      // Check if NoResponse was called in any step
-      const noResponseCalled = genResult.steps?.some(
-        (step: { toolCalls?: Array<{ toolName: string }> }) =>
-          step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
-      );
+        try {
+          const genResult = await generateText({
+            ...resolvedConfig,
+            system: promptBuild.systemPrompt,
+            tools: createTools(ctx, toolContext, {
+              agentType: "orchestrator",
+              toolsAllowlist: promptBuild.toolsAllowlist,
+              maxTaskDepth: promptBuild.maxTaskDepth,
+              pluginTools: pluginTools as Array<{
+                pluginId: string;
+                name: string;
+                description: string;
+                inputSchema: Record<string, unknown>;
+              }>,
+              ownerId: args.ownerId,
+              conversationId: args.conversationId,
+            }),
+            messages: [
+              ...historyMessages,
+              {
+                role: "user",
+                content: promptBuild.dynamicContext
+                  ? `${deliveryMessage}\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`
+                  : deliveryMessage,
+              },
+            ],
+          });
 
-      const text = genResult.text?.trim() ?? "";
-      if (text.length > 0 && !noResponseCalled) {
-        await ctx.runMutation(internal.events.saveAssistantMessage, {
-          conversationId: args.conversationId,
-          text,
-          userMessageId: args.userMessageId,
-          usage: genResult.usage
-            ? {
-                inputTokens: genResult.usage.inputTokens,
-                outputTokens: genResult.usage.outputTokens,
-                totalTokens: genResult.usage.totalTokens,
-              }
-            : undefined,
-        });
+          // Check if NoResponse was called in any step
+          const noResponseCalled = genResult.steps?.some(
+            (step: { toolCalls?: Array<{ toolName: string }> }) =>
+              step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
+          );
+
+          const text = genResult.text?.trim() ?? "";
+          if (text.length > 0 && !noResponseCalled) {
+            await ctx.runMutation(internal.events.saveAssistantMessage, {
+              conversationId: args.conversationId,
+              text,
+              userMessageId: args.userMessageId,
+              usage: genResult.usage
+                ? {
+                    inputTokens: genResult.usage.inputTokens,
+                    outputTokens: genResult.usage.outputTokens,
+                    totalTokens: genResult.usage.totalTokens,
+                  }
+                : undefined,
+            });
+          }
+          break;
+        } catch (error) {
+          const message = (error as Error).message ?? "Unknown error";
+          if (attempt === 0 && isContextOverflowError(message)) {
+            historyBudget = Math.max(4_000, Math.floor(historyBudget / 2));
+            continue;
+          }
+          throw error;
+        }
       }
     } catch (error) {
       console.error("deliverTaskResult failed:", (error as Error).message);
@@ -1637,3 +1750,5 @@ export const deliverTaskResult = internalAction({
     return null;
   },
 });
+
+

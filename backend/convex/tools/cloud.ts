@@ -4,15 +4,30 @@ import { spritesExec } from "../agent/cloud_devices";
 
 const MAX_OUTPUT = 30_000;
 
-const truncate = (value: string, max = MAX_OUTPUT) =>
-  value.length > max ? `${value.slice(0, max)}\n\n... (truncated)` : value;
+const truncate = (value: string, max = MAX_OUTPUT) => {
+  if (value.length <= max) {
+    return { text: value, truncated: false, outputChars: value.length, totalChars: value.length };
+  }
+  return {
+    text: value.slice(0, max),
+    truncated: true,
+    outputChars: max,
+    totalChars: value.length,
+  };
+};
+
+const renderTruncated = (value: string, max = MAX_OUTPUT) => {
+  const result = truncate(value, max);
+  if (!result.truncated) return result.text;
+  return `${result.text}\n\n[Output truncated: chars=${result.outputChars}/${result.totalChars}]`;
+};
 
 const formatExecResult = (result: { stdout: string; stderr: string; exit_code: number }) => {
   const parts: string[] = [];
   if (result.stdout) parts.push(result.stdout);
   if (result.stderr) parts.push(`STDERR: ${result.stderr}`);
   if (result.exit_code !== 0) parts.push(`Exit code: ${result.exit_code}`);
-  return truncate(parts.join("\n") || "(no output)");
+  return renderTruncated(parts.join("\n") || "(no output)");
 };
 
 /**
@@ -63,7 +78,7 @@ export const createCloudTools = (spriteName: string): ToolSet => {
           // Count total lines for header
           const wcResult = await spritesExec(spriteName, `wc -l < "${args.file_path}"`);
           const totalLines = wcResult.stdout.trim();
-          return `File has ${totalLines} lines. Showing from line ${offset}.\n${truncate(result.stdout)}`;
+          return `File has ${totalLines} lines. Showing from line ${offset}.\n${renderTruncated(result.stdout)}`;
         } catch (error) {
           return `Read failed: ${(error as Error).message}`;
         }
@@ -152,7 +167,7 @@ print(f"Replaced {count if ${replaceAll} else 1} occurrence(s) in {path}")
           if (!result.stdout.trim()) {
             return `No files matching "${args.pattern}" in ${searchPath}`;
           }
-          return truncate(result.stdout);
+          return renderTruncated(result.stdout);
         } catch (error) {
           return `Glob failed: ${(error as Error).message}`;
         }
@@ -189,7 +204,7 @@ print(f"Replaced {count if ${replaceAll} else 1} occurrence(s) in {path}")
           if (!result.stdout.trim() && result.exit_code === 1) {
             return `No matches for "${args.pattern}" in ${searchPath}`;
           }
-          return truncate(result.stdout || result.stderr);
+          return renderTruncated(result.stdout || result.stderr);
         } catch (error) {
           return `Grep failed: ${(error as Error).message}`;
         }

@@ -10,8 +10,8 @@ type PendingToolCall = {
   toolName: string;
 };
 
-const MAX_TEXT_CHARS = 4000;
-const MAX_JSON_CHARS = 1200;
+const MAX_TEXT_CHARS = 30_000;
+const MAX_JSON_CHARS = 12_000;
 
 const ellipsize = (value: string, maxChars: number) =>
   value.length <= maxChars ? value : `${value.slice(0, maxChars)}...(truncated)`;

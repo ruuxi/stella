@@ -49,28 +49,70 @@ const POLL_INTERVAL_MS = 750;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const formatTruncationNote = (value: unknown): string | null => {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const totalLines =
+    typeof item.totalLines === "number" ? item.totalLines : undefined;
+  const outputLines =
+    typeof item.outputLines === "number" ? item.outputLines : undefined;
+  const totalBytes =
+    typeof item.totalBytes === "number" ? item.totalBytes : undefined;
+  const outputBytes =
+    typeof item.outputBytes === "number" ? item.outputBytes : undefined;
+  const truncatedBy =
+    typeof item.truncatedBy === "string" ? item.truncatedBy : undefined;
+
+  const parts: string[] = [];
+  if (truncatedBy) parts.push(`by=${truncatedBy}`);
+  if (typeof outputLines === "number" || typeof totalLines === "number") {
+    parts.push(`lines=${outputLines ?? "?"}/${totalLines ?? "?"}`);
+  }
+  if (typeof outputBytes === "number" || typeof totalBytes === "number") {
+    parts.push(`bytes=${outputBytes ?? "?"}/${totalBytes ?? "?"}`);
+  }
+  if (parts.length === 0) return null;
+  return `[Output truncated: ${parts.join(", ")}]`;
+};
+
 const formatToolResult = (toolName: string, payload: unknown) => {
   if (!payload || typeof payload !== "object") {
     return `Tool ${toolName} completed.`;
   }
 
-  const { result, error } = payload as {
+  const { result, error, details, truncation } = payload as {
     result?: unknown;
     error?: string;
+    details?: unknown;
+    truncation?: unknown;
   };
+  const truncationNote =
+    formatTruncationNote(truncation) ??
+    (details && typeof details === "object"
+      ? formatTruncationNote((details as Record<string, unknown>).truncation)
+      : null);
 
   if (error) {
     return `ERROR: ${toolName} failed: ${error}`;
   }
 
   if (typeof result === "string") {
-    return result;
+    return truncationNote ? `${result}\n\n${truncationNote}` : result;
   }
 
   try {
-    return JSON.stringify(result ?? payload, null, 2);
+    const body =
+      result && typeof result === "object"
+        ? {
+            ...(result as Record<string, unknown>),
+            ...(truncationNote ? { _truncation: truncationNote } : {}),
+          }
+        : result ?? payload;
+    return JSON.stringify(body, null, 2);
   } catch {
-    return `Tool ${toolName} completed.`;
+    return truncationNote
+      ? `Tool ${toolName} completed.\n\n${truncationNote}`
+      : `Tool ${toolName} completed.`;
   }
 };
 

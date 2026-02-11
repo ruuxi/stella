@@ -4,8 +4,8 @@ type ThreadSummaryInputMessage = {
   tokenEstimate?: number;
 };
 
-const MAX_BLOCK_CHARS = 10_000;
-const MAX_JSON_CHARS = 1_500;
+const MAX_BLOCK_CHARS = 100_000;
+const MAX_JSON_CHARS = 20_000;
 
 const ellipsize = (value: string, maxChars: number) =>
   value.length <= maxChars ? value : `${value.slice(0, maxChars)}...(truncated)`;
@@ -144,17 +144,27 @@ const estimateMessageTokens = (message: ThreadSummaryInputMessage): number => {
   return Math.max(1, Math.ceil((message.content ?? "").length / 4));
 };
 
-/**
- * Choose where recent messages begin by token budget, then back up to
- * the closest user turn start to avoid cutting a turn mid-flow.
- */
-export const findRecentStartIndexByTokens = (
+export type ThreadCompactionCut = {
+  recentStartIndex: number;
+  historyEndIndex: number;
+  turnStartIndex: number;
+  isSplitTurn: boolean;
+};
+
+export const findThreadCompactionCutByTokens = (
   messages: ThreadSummaryInputMessage[],
   keepRecentTokens: number,
-): number => {
-  if (messages.length === 0) return 0;
-  const budget = Math.max(1, Math.floor(keepRecentTokens));
+): ThreadCompactionCut => {
+  if (messages.length === 0) {
+    return {
+      recentStartIndex: 0,
+      historyEndIndex: 0,
+      turnStartIndex: -1,
+      isSplitTurn: false,
+    };
+  }
 
+  const budget = Math.max(1, Math.floor(keepRecentTokens));
   let used = 0;
   let start = messages.length - 1;
   while (start >= 0) {
@@ -165,13 +175,51 @@ export const findRecentStartIndexByTokens = (
     used += next;
     start -= 1;
   }
+  const recentStartIndex = Math.max(0, start + 1);
 
-  let recentStart = Math.max(0, start + 1);
-  while (recentStart > 0) {
-    if (messages[recentStart]?.role === "user") {
+  const startsAtUser = messages[recentStartIndex]?.role === "user";
+  if (startsAtUser) {
+    return {
+      recentStartIndex,
+      historyEndIndex: recentStartIndex,
+      turnStartIndex: -1,
+      isSplitTurn: false,
+    };
+  }
+
+  let turnStartIndex = -1;
+  for (let i = recentStartIndex; i >= 0; i--) {
+    if (messages[i]?.role === "user") {
+      turnStartIndex = i;
       break;
     }
-    recentStart -= 1;
   }
-  return recentStart;
+
+  if (turnStartIndex === -1) {
+    return {
+      recentStartIndex,
+      historyEndIndex: recentStartIndex,
+      turnStartIndex: -1,
+      isSplitTurn: false,
+    };
+  }
+
+  return {
+    recentStartIndex,
+    historyEndIndex: turnStartIndex,
+    turnStartIndex,
+    isSplitTurn: true,
+  };
+};
+
+/**
+ * Choose where recent messages begin by token budget, then back up to
+ * the closest user turn start to avoid cutting a turn mid-flow.
+ */
+export const findRecentStartIndexByTokens = (
+  messages: ThreadSummaryInputMessage[],
+  keepRecentTokens: number,
+): number => {
+  const cut = findThreadCompactionCutByTokens(messages, keepRecentTokens);
+  return cut.isSplitTurn ? cut.turnStartIndex : cut.recentStartIndex;
 };
