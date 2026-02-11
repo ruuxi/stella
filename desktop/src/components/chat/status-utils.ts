@@ -13,8 +13,6 @@ export function computeStatus(options?: {
 
   if (toolName) {
     switch (toolName.toLowerCase()) {
-      case "task":
-        return "Delegating work";
       case "todowrite":
       case "todoread":
         return "Planning next steps";
