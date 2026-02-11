@@ -29,6 +29,7 @@ vi.mock("bun:sqlite", () => ({
 import {
   collectBrowserData,
   coreMemoryExists,
+  readCoreMemory,
   writeCoreMemory,
   formatBrowserDataForSynthesis,
 } from "./browser-data.js";
@@ -40,6 +41,7 @@ describe("Browser Data Collection - Unit Tests", () => {
     copyFile: ReturnType<typeof vi.fn>;
     unlink: ReturnType<typeof vi.fn>;
     writeFile: ReturnType<typeof vi.fn>;
+    readFile: ReturnType<typeof vi.fn>;
   };
 
   // Use a valid absolute path for Windows
@@ -130,6 +132,29 @@ describe("Browser Data Collection - Unit Tests", () => {
         "# Test Profile\n\nContent here",
         "utf-8"
       );
+    });
+  });
+
+  describe("readCoreMemory", () => {
+    it("should return CORE_MEMORY.MD contents when present", async () => {
+      const expected = "# Existing Core Memory\n\nProfile content";
+      mockFs.readFile.mockResolvedValue(expected);
+
+      const result = await readCoreMemory(testStellaHome);
+
+      expect(result).toBe(expected);
+      expect(mockFs.readFile).toHaveBeenCalledWith(
+        path.join(testStellaHome, "state", "CORE_MEMORY.MD"),
+        "utf-8"
+      );
+    });
+
+    it("should return null when CORE_MEMORY.MD is missing", async () => {
+      mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
+
+      const result = await readCoreMemory(testStellaHome);
+
+      expect(result).toBeNull();
     });
   });
 

@@ -171,6 +171,7 @@ export type ElectronApi = {
   checkCoreMemoryExists: () => Promise<boolean>
   collectBrowserData: () => Promise<BrowserDataResult>
   writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
+  readCoreMemory: () => Promise<string | null>
   // Comprehensive user signal collection (browser + dev projects + shell + apps)
   collectAllSignals: (options?: { categories?: string[] }) => Promise<AllUserSignalsResult>
   // Identity map for pseudonymization
