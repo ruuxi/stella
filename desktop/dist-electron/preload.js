@@ -137,40 +137,10 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     storeUninstall: (payload) => electron_1.ipcRenderer.invoke('store:uninstall', payload),
     // Theme loading from installed themes
     listInstalledThemes: () => electron_1.ipcRenderer.invoke('theme:listInstalled'),
-    // Harness streaming (Claude Code / Codex local agent execution)
-    harnessStream: (request) => electron_1.ipcRenderer.invoke('harness:stream', request),
-    harnessAbort: () => electron_1.ipcRenderer.send('harness:abort'),
-    harnessCheck: (model) => electron_1.ipcRenderer.invoke('harness:check', model),
-    onHarnessDelta: (callback) => {
-        const handler = (_event, delta) => {
-            callback(delta);
-        };
-        electron_1.ipcRenderer.on('harness:delta', handler);
-        return () => {
-            electron_1.ipcRenderer.removeListener('harness:delta', handler);
-        };
-    },
-    onHarnessDone: (callback) => {
-        const handler = (_event, fullText) => {
-            callback(fullText);
-        };
-        electron_1.ipcRenderer.on('harness:done', handler);
-        return () => {
-            electron_1.ipcRenderer.removeListener('harness:done', handler);
-        };
-    },
-    onHarnessError: (callback) => {
-        const handler = (_event, error) => {
-            callback(error);
-        };
-        electron_1.ipcRenderer.on('harness:error', handler);
-        return () => {
-            electron_1.ipcRenderer.removeListener('harness:error', handler);
-        };
-    },
     // Bridge manager
     bridgeDeploy: (payload) => electron_1.ipcRenderer.invoke('bridge:deploy', payload),
     bridgeStart: (payload) => electron_1.ipcRenderer.invoke('bridge:start', payload),
     bridgeStop: (payload) => electron_1.ipcRenderer.invoke('bridge:stop', payload),
     bridgeStatus: (payload) => electron_1.ipcRenderer.invoke('bridge:status', payload),
+    shellKillByPort: (port) => electron_1.ipcRenderer.invoke('shell:killByPort', { port }),
 });

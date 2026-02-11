@@ -62,7 +62,7 @@ export const handleInstallSkill = async (args) => {
     const agentTypes = args.agentTypes ?? ["general"];
     const tags = args.tags ?? [];
     if (!skillId || !name || !markdown) {
-        return { error: "InstallSkillPackage requires skillId, name, and markdown." };
+        return { error: "Skill install requires skillId, name, and markdown." };
     }
     const skillDir = path.join(getStellaRoot(), "skills", skillId);
     await fs.mkdir(skillDir, { recursive: true });
@@ -89,7 +89,7 @@ export const handleInstallTheme = async (args) => {
     const light = args.light;
     const dark = args.dark;
     if (!themeId || !name || !light || !dark) {
-        return { error: "InstallThemePackage requires themeId, name, light, and dark." };
+        return { error: "Theme install requires themeId, name, light, and dark." };
     }
     const themesDir = path.join(getStellaRoot(), "themes");
     await fs.mkdir(themesDir, { recursive: true });
@@ -106,10 +106,10 @@ export const handleInstallCanvas = async (args) => {
     const appNameInput = String(args.workspaceId ?? args.name ?? packageId).trim();
     const appName = normalizeAppName(appNameInput);
     if (!packageId) {
-        return { error: "InstallCanvasPackage requires packageId." };
+        return { error: "Canvas install requires packageId." };
     }
     if (!appName) {
-        return { error: "InstallCanvasPackage requires a name." };
+        return { error: "Canvas install requires a name." };
     }
     // Locate create-app.js relative to this file (local-host/ → ../../workspace/)
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -162,7 +162,7 @@ export const handleInstallPlugin = async (args) => {
         ? args.files
         : {};
     if (!pluginId) {
-        return { error: "InstallPluginPackage requires pluginId or packageId." };
+        return { error: "Plugin install requires pluginId or packageId." };
     }
     const pluginDir = path.join(getStellaRoot(), "plugins", pluginId);
     await fs.mkdir(pluginDir, { recursive: true });
@@ -195,7 +195,7 @@ export const handleUninstallPackage = async (args) => {
     const type = args.type;
     const localId = args.localId;
     if (!type || !localId) {
-        return { error: "UninstallPackage requires type and localId." };
+        return { error: "Package uninstall requires type and localId." };
     }
     const stellaRoot = getStellaRoot();
     try {
@@ -240,4 +240,41 @@ export const handleUninstallPackage = async (args) => {
         return { error: `Failed to uninstall: ${err.message}` };
     }
     return { result: { uninstalled: true } };
+};
+/**
+ * Unified package management entrypoint.
+ * - install: skill/theme/canvas/plugin
+ * - uninstall: skill/theme/canvas/plugin/mod
+ */
+export const handleManagePackage = async (args) => {
+    const action = String(args.action ?? "").trim().toLowerCase();
+    const pkg = args.package && typeof args.package === "object"
+        ? args.package
+        : null;
+    if (!action || !pkg) {
+        return { error: "ManagePackage requires action and package." };
+    }
+    if (action === "install") {
+        const type = String(pkg.type ?? "").trim().toLowerCase();
+        switch (type) {
+            case "skill":
+                return await handleInstallSkill(pkg);
+            case "theme":
+                return await handleInstallTheme(pkg);
+            case "canvas":
+                return await handleInstallCanvas(pkg);
+            case "plugin":
+                return await handleInstallPlugin(pkg);
+            case "mod":
+                return {
+                    error: "Mod install is not supported via ManagePackage. Delegate to Self-Mod and use SelfModInstallBlueprint.",
+                };
+            default:
+                return { error: `Unsupported install package type: ${type}` };
+        }
+    }
+    if (action === "uninstall") {
+        return await handleUninstallPackage(pkg);
+    }
+    return { error: `Unsupported action: ${action}` };
 };
