@@ -12,6 +12,7 @@ export type PromptBuildResult = {
 };
 
 const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
+const MAX_ACTIVE_THREADS_IN_PROMPT = 12;
 
 const buildSkillsSection = (
   skills: Array<{
@@ -160,7 +161,8 @@ export const buildSystemPrompt = async (
         conversationId: options.conversationId,
       });
       if (activeThreads.length > 0) {
-        const lines = activeThreads.map((t) => {
+        const visibleThreads = activeThreads.slice(0, MAX_ACTIVE_THREADS_IN_PROMPT);
+        const lines = visibleThreads.map((t) => {
           const ageMs = Date.now() - t.lastUsedAt;
           const age = ageMs < 60_000 ? "just now"
             : ageMs < 3_600_000 ? `${Math.floor(ageMs / 60_000)}m ago`
@@ -168,6 +170,11 @@ export const buildSystemPrompt = async (
             : `${Math.floor(ageMs / 86_400_000)}d ago`;
           return `- **${t.name}** (id: ${t._id}) — ${t.messageCount} msgs, last used ${age}`;
         });
+        if (activeThreads.length > visibleThreads.length) {
+          lines.push(
+            `- ...and ${activeThreads.length - visibleThreads.length} more active thread(s). Use thread_name to reuse by name.`,
+          );
+        }
         dynamicParts.push(
           `# Active Threads\nContinue with thread_id, or create new with thread_name.\n${lines.join("\n")}`,
         );
