@@ -129,7 +129,6 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
 
   const skillsPath = path.join(StellaHome, "skills");
   const agentsPath = path.join(StellaHome, "agents");
-  const pluginsPath = path.join(StellaHome, "plugins");
   const statePath = path.join(StellaHome, "state");
   const discoveryCategoriesPath = path.join(
     statePath,
@@ -220,17 +219,8 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
           }
         }
 
-        const pluginPayload = await toolHost.loadPlugins();
-        log("Loaded plugins:", {
-          pluginCount: pluginPayload.plugins.length,
-          toolCount: pluginPayload.tools.length,
-          skillCount: pluginPayload.skills.length,
-          agentCount: pluginPayload.agents.length,
-          toolNames: pluginPayload.tools.map((t) => t.name),
-        });
-
-        const skills = await loadSkillsFromHome(skillsPath, pluginPayload.skills);
-        const agents = await loadAgentsFromHome(agentsPath, pluginPayload.agents);
+        const skills = await loadSkillsFromHome(skillsPath, []);
+        const agents = await loadAgentsFromHome(agentsPath, []);
 
         toolHost.setSkills(skills);
 
@@ -240,10 +230,6 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
         });
         await callMutation("agent/agents.upsertMany", {
           agents,
-        });
-        await callMutation("data/plugins.upsertMany", {
-          plugins: pluginPayload.plugins,
-          tools: pluginPayload.tools,
         });
 
         log("Manifest sync complete");
@@ -271,7 +257,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
 
   const startWatchers = () => {
     // Watch internal Stella directories
-    const watchDirs = [skillsPath, agentsPath, pluginsPath];
+    const watchDirs = [skillsPath, agentsPath];
 
     // Also watch external skill sources (if they exist)
     const externalDirs = [claudeSkillsPath, agentsSkillsPath];
