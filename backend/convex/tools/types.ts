@@ -39,11 +39,7 @@ export const BASE_TOOL_NAMES = [
   "SelfModRevert",
   "SelfModStatus",
   "SelfModPackage",
-  "InstallSkillPackage",
-  "InstallThemePackage",
-  "InstallCanvasPackage",
-  "InstallPluginPackage",
-  "UninstallPackage",
+  "ManagePackage",
   // Backend tools (always available, server-side)
   "WebSearch",
   "WebFetch",

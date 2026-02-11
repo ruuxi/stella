@@ -543,7 +543,7 @@ export const createBackendTools = (
         "Usage:\n" +
         "- Skills are listed in the system prompt by name and description.\n" +
         "- Call this to load the full markdown instructions for a skill.\n" +
-        "- Always activate a skill before following its workflow or using its tools.\n" +
+        "- Always activate a skill before following its workflow guidance.\n" +
         "- If the skill has secretMounts, use SkillBash (not Bash) for commands that need those secrets.",
       inputSchema: z.object({
         skill_id: z.string().min(1).describe("Skill ID from the skills listing in the system prompt"),

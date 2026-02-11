@@ -29,11 +29,7 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "SelfModRevert",
   "SelfModStatus",
   "SelfModPackage",
-  "InstallSkillPackage",
-  "InstallThemePackage",
-  "InstallCanvasPackage",
-  "InstallPluginPackage",
-  "UninstallPackage",
+  "ManagePackage",
 ] as const;
 
 type DeviceToolName = (typeof CORE_DEVICE_TOOL_NAMES)[number] | string;
@@ -405,66 +401,64 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("SelfModPackage", args),
     }),
-    InstallSkillPackage: tool({
+    ManagePackage: tool({
       description:
-        "Install a skill package locally from the app store. Writes skill files to ~/.stella/skills/.",
-      inputSchema: z.object({
-        packageId: z.string().min(1).describe("Store package ID"),
-        skillId: z.string().min(1).describe("Local skill ID"),
-        name: z.string().min(1).describe("Skill name"),
-        markdown: z.string().min(1).describe("Skill markdown content"),
-        agentTypes: z.array(z.string()).optional().describe("Agent types this skill applies to"),
-        tags: z.array(z.string()).optional().describe("Tags for the skill"),
-      }),
-      execute: (args) => call("InstallSkillPackage", args),
-    }),
-    InstallThemePackage: tool({
-      description:
-        "Install a theme package locally from the app store. Writes theme JSON to ~/.stella/themes/.",
-      inputSchema: z.object({
-        packageId: z.string().min(1).describe("Store package ID"),
-        themeId: z.string().min(1).describe("Local theme ID"),
-        name: z.string().min(1).describe("Theme name"),
-        light: z.record(z.string()).describe("Light mode color palette"),
-        dark: z.record(z.string()).describe("Dark mode color palette"),
-      }),
-      execute: (args) => call("InstallThemePackage", args),
-    }),
-    InstallCanvasPackage: tool({
-      description:
-        "Install a mini-app/canvas package locally as a workspace app under ~/.stella/apps/{name}/.",
-      inputSchema: z.object({
-        packageId: z.string().min(1).describe("Store package ID"),
-        workspaceId: z.string().optional().describe("Preferred workspace ID"),
-        name: z.string().min(1).describe("Workspace name"),
-        dependencies: z.record(z.string()).optional().describe("Extra npm dependencies"),
-        source: z.string().optional().describe("Initial App.tsx source"),
-      }),
-      execute: (args) => call("InstallCanvasPackage", args),
-    }),
-    InstallPluginPackage: tool({
-      description:
-        "Install a plugin package locally to ~/.stella/plugins/ from store payload files and manifest.",
-      inputSchema: z.object({
-        packageId: z.string().min(1).describe("Store package ID"),
-        pluginId: z.string().optional().describe("Local plugin ID"),
-        name: z.string().optional().describe("Plugin display name"),
-        version: z.string().optional().describe("Plugin version"),
-        description: z.string().optional().describe("Plugin description"),
-        manifest: z.record(z.any()).optional().describe("plugin.json object"),
-        files: z.record(z.string()).optional().describe("Relative file map to write"),
-      }),
-      execute: (args) => call("InstallPluginPackage", args),
-    }),
-    UninstallPackage: tool({
-      description:
-        "Uninstall a package locally. Removes files from ~/.stella/ based on type.",
-      inputSchema: z.object({
-        packageId: z.string().min(1).describe("Store package ID"),
-        type: z.enum(["skill", "theme", "canvas", "plugin", "mod"]).describe("Package type"),
-        localId: z.string().min(1).describe("Local identifier (skillId, themeId, workspaceId)"),
-      }),
-      execute: (args) => call("UninstallPackage", args),
+        "Install or uninstall a package locally under ~/.stella.\n\n" +
+        "Usage:\n" +
+        "- action=\"install\": install skill/theme/canvas/plugin package.\n" +
+        "- action=\"uninstall\": uninstall skill/theme/canvas/plugin/mod by local ID.\n" +
+        "- For mod installs, delegate to Self-Mod and use SelfModInstallBlueprint.",
+      inputSchema: z.discriminatedUnion("action", [
+        z.object({
+          action: z.literal("install"),
+          package: z.discriminatedUnion("type", [
+            z.object({
+              type: z.literal("skill"),
+              packageId: z.string().min(1).describe("Store package ID"),
+              skillId: z.string().min(1).describe("Local skill ID"),
+              name: z.string().min(1).describe("Skill name"),
+              markdown: z.string().min(1).describe("Skill markdown content"),
+              agentTypes: z.array(z.string()).optional().describe("Agent types this skill applies to"),
+              tags: z.array(z.string()).optional().describe("Tags for the skill"),
+            }),
+            z.object({
+              type: z.literal("theme"),
+              packageId: z.string().min(1).describe("Store package ID"),
+              themeId: z.string().min(1).describe("Local theme ID"),
+              name: z.string().min(1).describe("Theme name"),
+              light: z.record(z.string()).describe("Light mode color palette"),
+              dark: z.record(z.string()).describe("Dark mode color palette"),
+            }),
+            z.object({
+              type: z.literal("canvas"),
+              packageId: z.string().min(1).describe("Store package ID"),
+              workspaceId: z.string().optional().describe("Preferred workspace ID"),
+              name: z.string().optional().describe("Workspace name"),
+              dependencies: z.record(z.string()).optional().describe("Extra npm dependencies"),
+              source: z.string().optional().describe("Initial App.tsx source"),
+            }),
+            z.object({
+              type: z.literal("plugin"),
+              packageId: z.string().min(1).describe("Store package ID"),
+              pluginId: z.string().optional().describe("Local plugin ID"),
+              name: z.string().optional().describe("Plugin display name"),
+              version: z.string().optional().describe("Plugin version"),
+              description: z.string().optional().describe("Plugin description"),
+              manifest: z.record(z.any()).optional().describe("plugin.json object"),
+              files: z.record(z.string()).optional().describe("Relative file map to write"),
+            }),
+          ]),
+        }),
+        z.object({
+          action: z.literal("uninstall"),
+          package: z.object({
+            type: z.enum(["skill", "theme", "canvas", "plugin", "mod"]).describe("Package type"),
+            localId: z.string().min(1).describe("Local identifier (skillId, themeId, workspaceId)"),
+            packageId: z.string().optional().describe("Store package ID"),
+          }),
+        }),
+      ]),
+      execute: (args) => call("ManagePackage", args),
     }),
   };
 };
