@@ -48,17 +48,20 @@ export const createOrchestrationTools = (
   const TaskCreate = tool({
     description:
       "Delegate a task to a subagent for execution.\n\n" +
-      "The task runs in the background and returns immediately with a task_id. Use TaskOutput to poll for results.\n\n" +
+      "The task runs in the background and returns immediately with a task_id. Results are auto-delivered when the agent finishes.\n\n" +
       "Usage:\n" +
       "- description: short summary for logging (e.g. \"Search for React components\").\n" +
       "- prompt: the full instructions the subagent will follow. Be specific — the subagent only sees this prompt.\n" +
       "- subagent_type: which agent to use — \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
       "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.\n\n" +
+      "Pre-gathered context:\n" +
+      "- recall_memory: automatically recall memories and inject them into the agent's context before it runs. Provide a query (defaults to task description) and optional category filters.\n" +
+      "- pre_explore: run an explore agent first with the given prompt, then inject its findings into the main agent's context.\n\n" +
       "Threads (general and self_mod only):\n" +
       "- thread_id: continue an existing thread — the agent sees its full prior message history and picks up where it left off.\n" +
       "- thread_name: create or reuse a named thread (short, kebab-case, e.g. \"sidebar-refactor\"). If an active thread with this name exists, it's reused.\n" +
       "- Use threads for multi-step work, iterative tasks, or follow-ups on the same topic. Skip for one-shot tasks or explore agents.\n\n" +
-      "Multiple tasks can run in parallel — call TaskCreate multiple times, then poll each with TaskOutput.",
+      "Multiple tasks can run in parallel — call TaskCreate multiple times.",
     inputSchema: z.object({
       description: z.string().describe("Short summary for logging"),
       prompt: z.string().describe("Full instructions for the subagent"),
@@ -72,6 +75,18 @@ export const createOrchestrationTools = (
       ),
       activate_skills: z.array(z.string()).optional().describe(
         "Skill IDs to pre-activate. Injects full skill documentation and grants access to the skill's specialized tools. Use for store operations (\"store-management\"), API skill creation (\"api-skill-generation\"), or media generation (\"media-generation\").",
+      ),
+      recall_memory: z.object({
+        query: z.string().optional().describe("What to recall — defaults to the task description"),
+        categories: z.array(z.object({
+          category: z.string(),
+          subcategory: z.string(),
+        })).optional().describe("Category/subcategory pairs to search — defaults to all categories"),
+      }).optional().describe(
+        "Automatically recall memories and inject into the agent's context before it runs.",
+      ),
+      pre_explore: z.string().optional().describe(
+        "Run an explore agent with this prompt first, then inject its findings into the main agent's context.",
       ),
     }),
     execute: async (args) => {
@@ -91,6 +106,8 @@ export const createOrchestrationTools = (
         threadId: args.thread_id,
         threadName: args.thread_name,
         activateSkills: args.activate_skills,
+        recallMemory: args.recall_memory,
+        preExplore: args.pre_explore,
       });
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
     },
