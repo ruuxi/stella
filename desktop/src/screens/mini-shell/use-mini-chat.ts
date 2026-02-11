@@ -23,7 +23,7 @@ export function useMiniChat(opts: {
 }) {
   const { chatContext, selectedText, setChatContext, setSelectedText, isStreaming, setIsStreaming } =
     opts;
-  const { state, setConversationId } = useUiState();
+  const { state } = useUiState();
   const [message, setMessage] = useState("");
   const [streamingText, appendStreamingDelta, resetStreamingText] =
     useRafStringAccumulator();
@@ -63,9 +63,6 @@ export function useMiniChat(opts: {
   });
 
   const createAttachment = useAction(api.data.attachments.createFromDataUrl);
-  const getOrCreateDefaultConversation = useMutation(
-    api.conversations.getOrCreateDefaultConversation,
-  );
   const events = useConversationEvents(state.conversationId ?? undefined);
 
   const resetStreamingState = useCallback(
@@ -169,18 +166,6 @@ export function useMiniChat(opts: {
     }
     return null;
   }, []);
-
-  // Ensure mini chat binds to the default conversation instead of creating a
-  // fresh non-default thread during startup races.
-  useEffect(() => {
-    if (!state.conversationId) {
-      void getOrCreateDefaultConversation({}).then(
-        (conversation: { _id?: string } | null) => {
-          if (conversation?._id) setConversationId(conversation._id);
-        },
-      );
-    }
-  }, [state.conversationId, getOrCreateDefaultConversation, setConversationId]);
 
   // Sync streaming with assistant reply
   useEffect(() => {

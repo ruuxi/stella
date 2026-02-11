@@ -68,50 +68,20 @@ export type ToolHostOptions = {
         deviceId?: string;
     }) => Promise<ResolvedSecret | null>;
 };
-export type PluginSyncPayload = {
-    plugins: Array<{
-        id: string;
-        name: string;
-        version: string;
-        description?: string;
-        source: string;
-    }>;
-    tools: Array<{
-        pluginId: string;
-        name: string;
-        description: string;
-        inputSchema: Record<string, unknown>;
-        source: string;
-    }>;
-    skills: Array<{
-        id: string;
-        name: string;
-        description: string;
-        markdown: string;
-        agentTypes: string[];
-        toolsAllowlist?: string[];
-        tags?: string[];
-        execution?: "backend" | "device";
-        requiresSecrets?: string[];
-        publicIntegration?: boolean;
-        secretMounts?: SecretMounts;
-        version: number;
-        source: string;
-        filePath: string;
-    }>;
-    agents: Array<{
-        id: string;
-        name: string;
-        description: string;
-        systemPrompt: string;
-        agentTypes: string[];
-        toolsAllowlist?: string[];
-        defaultSkills?: string[];
-        model?: string;
-        maxTaskDepth?: number;
-        version: number;
-        source: string;
-        filePath: string;
-    }>;
+export type SkillRecord = {
+    id: string;
+    name: string;
+    description: string;
+    markdown: string;
+    agentTypes: string[];
+    toolsAllowlist?: string[];
+    tags?: string[];
+    execution?: "backend" | "device";
+    requiresSecrets?: string[];
+    publicIntegration?: boolean;
+    secretMounts?: SecretMounts;
+    version: number;
+    source: string;
+    filePath: string;
 };
 export type ToolHandler = (args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>;

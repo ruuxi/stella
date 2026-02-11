@@ -3,7 +3,6 @@ export type StellaHome = {
     homePath: string;
     agentsPath: string;
     skillsPath: string;
-    pluginsPath: string;
     statePath: string;
     logsPath: string;
     canvasPath: string;

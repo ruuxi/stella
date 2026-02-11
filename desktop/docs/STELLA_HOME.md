@@ -5,7 +5,7 @@ Stella uses a single default home directory at:
 - Windows: `%USERPROFILE%\\.stella`
 - macOS/Linux: `~/.stella`
 
-This directory is the default workspace and contains agent instructions, skills, plugins, and local state.
+This directory is the default workspace and contains agent instructions, skills, and local state.
 
 ## Layout
 
@@ -15,8 +15,6 @@ This directory is the default workspace and contains agent instructions, skills,
     <agentId>/AGENT.md
   skills/
     <skillId>/SKILL.md
-  plugins/
-    <pluginId>/plugin.json
   state/
     device.json
     todos/

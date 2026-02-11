@@ -29,7 +29,7 @@ export function useBridgeAutoReconnect() {
       const status = session.status;
 
       // If session is active but process isn't running, restart it
-      if (status === "connected" || status === "awaiting_auth") {
+      if (status === "connected" || status === "awaiting_auth" || status === "initializing") {
         if (reconnectingRef.current.has(provider)) continue;
 
         electronApi.bridgeStatus({ provider }).then(async (result) => {

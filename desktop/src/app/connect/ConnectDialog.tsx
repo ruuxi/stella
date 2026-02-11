@@ -4,13 +4,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogBody,
   DialogCloseButton,
 } from "@/components/dialog";
-import { Accordion } from "@/components/accordion";
 import { INTEGRATIONS } from "./integration-configs";
-import { IntegrationCard } from "./IntegrationCard";
+import { IntegrationGridCard, IntegrationDetailArea } from "./IntegrationCard";
 import "../ConnectDialog.css";
 
 interface ConnectDialogProps {
@@ -18,17 +16,27 @@ interface ConnectDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const allIntegrations = INTEGRATIONS;
+
 export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
-  const [expandedProvider, setExpandedProvider] = useState<string | undefined>(
+  const [selectedProvider, setSelectedProvider] = useState<string | undefined>(
     undefined,
   );
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
-      setExpandedProvider(undefined);
+      setSelectedProvider(undefined);
     }
     onOpenChange(nextOpen);
   };
+
+  const handleCardClick = (provider: string) => {
+    setSelectedProvider((prev) => (prev === provider ? undefined : provider));
+  };
+
+  const selectedIntegration = INTEGRATIONS.find(
+    (i) => i.provider === selectedProvider,
+  );
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -37,24 +45,24 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
           <DialogTitle>Connect</DialogTitle>
           <DialogCloseButton />
         </DialogHeader>
-        <DialogDescription>
-          Link Stella to your messaging platforms.
-        </DialogDescription>
         <DialogBody>
-          <Accordion
-            type="single"
-            collapsible
-            value={expandedProvider}
-            onValueChange={setExpandedProvider}
-          >
-            {INTEGRATIONS.map((integration) => (
-              <IntegrationCard
+          <div className="connect-grid">
+            {allIntegrations.map((integration) => (
+              <IntegrationGridCard
                 key={integration.provider}
                 integration={integration}
-                isExpanded={expandedProvider === integration.provider}
+                isSelected={selectedProvider === integration.provider}
+                onClick={() => handleCardClick(integration.provider)}
               />
             ))}
-          </Accordion>
+          </div>
+
+          {selectedIntegration && (
+            <IntegrationDetailArea
+              key={selectedIntegration.provider}
+              integration={selectedIntegration}
+            />
+          )}
         </DialogBody>
       </DialogContent>
     </Dialog>

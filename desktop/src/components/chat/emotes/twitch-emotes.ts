@@ -89,9 +89,9 @@ type LocalEmojiPayload = {
 
 const CACHE_KEY = "stella:twitch-emotes:v2";
 const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
-const LOCAL_MANIFEST_URL = "/emotes/manifest.json";
-const LOCAL_EMOJI_INDEX_URL = "/emotes/emoji-index.json";
-const LOCAL_EMOJI_LABELS_URL = "/emotes/emoji-labels.json";
+const LOCAL_MANIFEST_FILE = "manifest.json";
+const LOCAL_EMOJI_INDEX_FILE = "emoji-index.json";
+const LOCAL_EMOJI_LABELS_FILE = "emoji-labels.json";
 const SEVEN_TV_GLOBAL_URL = "https://7tv.io/v3/emote-sets/global";
 const SEVEN_TV_USER_URL = "https://7tv.io/v3/users/twitch";
 const BTTV_GLOBAL_URL = "https://api.betterttv.net/3/cached/emotes/global";
@@ -150,6 +150,41 @@ const isValidCode = (value: string) => {
 
 const normalizeCode = (value: string) => value.trim();
 const isNumeric = (value: string) => /^[0-9]+$/.test(value);
+
+const resolvePublicAssetUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("file://") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:")
+  ) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+
+  if (typeof window !== "undefined" && window.location?.href) {
+    try {
+      if (trimmed.startsWith("/")) {
+        return new URL(`.${trimmed}`, window.location.href).toString();
+      }
+      return new URL(trimmed, window.location.href).toString();
+    } catch {
+      // Fall through to non-window fallback.
+    }
+  }
+
+  return trimmed;
+};
+
+const getLocalEmotesJsonUrl = (fileName: string) =>
+  resolvePublicAssetUrl(`/emotes/${fileName}`);
 
 const toAbsoluteUrl = (value: string) => {
   if (value.startsWith("https://") || value.startsWith("http://")) {
@@ -258,7 +293,7 @@ const parseManifest = (raw: unknown): Map<string, TwitchEmoteRecord> | null => {
     ) {
       continue;
     }
-    map.set(emote.code, emote);
+    map.set(emote.code, { ...emote, url: resolvePublicAssetUrl(emote.url) });
   }
 
   return map;
@@ -296,7 +331,7 @@ const parseEmojiLookup = (raw: unknown): Map<string, string> | null => {
       continue;
     }
     const emoji = extractSingleEmoji(entry.emoji.trim());
-    const url = entry.url.trim();
+    const url = resolvePublicAssetUrl(entry.url);
     if (!emoji || !url) {
       continue;
     }
@@ -323,7 +358,7 @@ const loadLocalManifestRecords = async () => {
   localManifestLoadAttempted = true;
 
   try {
-    const response = await fetch(LOCAL_MANIFEST_URL, {
+    const response = await fetch(getLocalEmotesJsonUrl(LOCAL_MANIFEST_FILE), {
       cache: "no-store",
       headers: { Accept: "application/json" },
     });
@@ -356,12 +391,16 @@ const fetchEmojiLookupFromUrl = async (url: string) => {
 };
 
 const loadLocalEmojiLookup = async () => {
-  const indexed = await fetchEmojiLookupFromUrl(LOCAL_EMOJI_INDEX_URL);
+  const indexed = await fetchEmojiLookupFromUrl(
+    getLocalEmotesJsonUrl(LOCAL_EMOJI_INDEX_FILE),
+  );
   if (indexed && indexed.size > 0) {
     return indexed;
   }
 
-  const labeled = await fetchEmojiLookupFromUrl(LOCAL_EMOJI_LABELS_URL);
+  const labeled = await fetchEmojiLookupFromUrl(
+    getLocalEmotesJsonUrl(LOCAL_EMOJI_LABELS_FILE),
+  );
   if (labeled && labeled.size > 0) {
     return labeled;
   }

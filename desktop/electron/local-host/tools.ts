@@ -15,14 +15,13 @@
  */
 
 import path from "path";
-import { loadPluginsFromHome } from "./plugins.js";
 
 // Types
 import type {
   ToolContext,
   ToolResult,
   ToolHostOptions,
-  PluginSyncPayload,
+  SkillRecord,
   SecretMountSpec,
 } from "./tools-types.js";
 
@@ -36,6 +35,7 @@ import {
   createShellState,
   handleBash,
   handleKillShell,
+  handleOpenApp,
   handleSkillBash,
   type ShellState,
 } from "./tools-shell.js";
@@ -60,26 +60,13 @@ import {
 } from "./tools_store.js";
 
 // Re-export types for external consumers
-export type { ToolContext, ToolResult, PluginSyncPayload };
+export type { ToolContext, ToolResult };
 
 export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, resolveSecret }: ToolHostOptions) => {
   const stateRoot = path.join(StellaHome, "state");
-  const pluginsRoot = path.join(StellaHome, "plugins");
 
   // Configure file tools with frontend root for self-mod interception
   setFileToolsConfig({ frontendRoot });
-
-  // Plugin state
-  const pluginHandlers = new Map<
-    string,
-    (args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>
-  >();
-  let pluginSyncPayload: PluginSyncPayload = {
-    plugins: [],
-    tools: [],
-    skills: [],
-    agents: [],
-  };
 
   // User tools config
   const userConfig: UserToolsConfig = { requestCredential };
@@ -127,34 +114,8 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
   const shellState: ShellState = createShellState(resolveSecretValue);
   const stateContext: StateContext = createStateContext(stateRoot);
 
-  const setSkills = (skills: PluginSyncPayload["skills"]) => {
+  const setSkills = (skills: SkillRecord[]) => {
     shellState.skillCache = skills;
-  };
-
-  const loadPlugins = async (): Promise<PluginSyncPayload> => {
-    log("Loading plugins from:", pluginsRoot);
-    const loaded = await loadPluginsFromHome(pluginsRoot);
-    pluginHandlers.clear();
-    for (const [name, handler] of loaded.handlers.entries()) {
-      log("Registering plugin handler:", name);
-      pluginHandlers.set(name, handler);
-    }
-    log("Total plugin handlers registered:", pluginHandlers.size);
-
-    pluginSyncPayload = {
-      plugins: loaded.plugins,
-      tools: loaded.tools.map((tool) => ({
-        pluginId: tool.pluginId,
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema as Record<string, unknown>,
-        source: tool.source,
-      })),
-      skills: loaded.skills,
-      agents: loaded.agents,
-    };
-
-    return pluginSyncPayload;
   };
 
   const notConfigured = (name: string): ToolResult => ({
@@ -176,6 +137,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     Grep: (args) => handleGrep(args),
 
     // Shell tools
+    OpenApp: (args) => handleOpenApp(args),
     Bash: (args, context) => handleBash(shellState, args, context),
     KillShell: (args) => handleKillShell(shellState, args),
     SkillBash: (args, context) => handleSkillBash(shellState, args, context),
@@ -214,12 +176,9 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
       context,
     });
 
-    const handler = handlers[toolName] ?? pluginHandlers.get(toolName);
+    const handler = handlers[toolName];
     if (!handler) {
-      const availableTools = [
-        ...Object.keys(handlers),
-        ...Array.from(pluginHandlers.keys()),
-      ];
+      const availableTools = Object.keys(handlers);
       logError(`Unknown tool: ${toolName}. Available tools:`, availableTools);
       return { error: `Unknown tool: ${toolName}` } satisfies ToolResult;
     }
@@ -267,8 +226,6 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     getShells: () => Array.from(shellState.shells.values()),
     killAllShells,
     killShellsByPort,
-    loadPlugins,
-    getPluginSyncPayload: () => pluginSyncPayload,
     setSkills,
   };
 };

@@ -7,9 +7,9 @@ import { useConvexAuth } from "convex/react";
 import { Spinner } from "../../components/spinner";
 import { Button } from "../../components/button";
 import {
-  AsciiBlackHole,
-  type AsciiBlackHoleHandle,
-} from "../../components/AsciiBlackHole";
+  StellaAnimation,
+  type StellaAnimationHandle,
+} from "../../components/StellaAnimation";
 import { OnboardingStep1, useOnboardingState } from "../../components/Onboarding";
 
 const CREATURE_INITIAL_SIZE = 0.22;
@@ -38,16 +38,16 @@ export function useOnboardingOverlay() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [themeConfirmed, setThemeConfirmed] = useState(false);
   const [hasSelectedTheme, setHasSelectedTheme] = useState(false);
-  const blackHoleRef = useRef<AsciiBlackHoleHandle | null>(null);
+  const stellaAnimationRef = useRef<StellaAnimationHandle | null>(null);
 
   const triggerFlash = useCallback(() => {
-    blackHoleRef.current?.triggerFlash();
+    stellaAnimationRef.current?.triggerFlash();
   }, []);
 
   const startBirthAnimation = useCallback(() => {
     if (hasExpanded) return;
     setHasExpanded(true);
-    blackHoleRef.current?.startBirth();
+    stellaAnimationRef.current?.startBirth();
   }, [hasExpanded]);
 
   const handleResetOnboarding = useCallback(() => {
@@ -56,7 +56,7 @@ export function useOnboardingOverlay() {
     setThemeConfirmed(false);
     setHasSelectedTheme(false);
     setThemePickerOpen(false);
-    blackHoleRef.current?.reset(CREATURE_INITIAL_SIZE);
+    stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
   }, [resetOnboarding]);
 
@@ -84,7 +84,7 @@ export function useOnboardingOverlay() {
     setThemePickerOpen,
     themeConfirmed,
     hasSelectedTheme,
-    blackHoleRef,
+    stellaAnimationRef,
     triggerFlash,
     startBirthAnimation,
     handleResetOnboarding,
@@ -99,7 +99,7 @@ export function OnboardingView({
   onboardingDone,
   isAuthenticated,
   isAuthLoading,
-  blackHoleRef,
+  stellaAnimationRef,
   onboardingKey,
   triggerFlash,
   startBirthAnimation,
@@ -115,7 +115,7 @@ export function OnboardingView({
   onboardingDone: boolean;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
-  blackHoleRef: React.RefObject<AsciiBlackHoleHandle | null>;
+  stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   onboardingKey: number;
   triggerFlash: () => void;
   startBirthAnimation: () => void;
@@ -142,12 +142,12 @@ export function OnboardingView({
             startBirthAnimation();
           }
         }}
-        className="onboarding-blackhole"
+        className="onboarding-stella-animation"
         data-expanded={hasExpanded ? "true" : "false"}
         title={!hasExpanded ? "Click to awaken" : undefined}
       >
-        <AsciiBlackHole
-          ref={blackHoleRef}
+        <StellaAnimation
+          ref={stellaAnimationRef}
           width={120}
           height={56}
           initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}

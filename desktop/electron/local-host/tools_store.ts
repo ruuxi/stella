@@ -4,7 +4,6 @@
  * Skills: ~/.stella/skills/{skillId}/
  * Themes: ~/.stella/themes/{themeId}.json
  * Mini-apps: ~/.stella/apps/{appName}/
- * Plugins: ~/.stella/plugins/{pluginId}/
  */
 
 import fs from "fs/promises";
@@ -14,16 +13,9 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
 import type { ToolResult } from "./tools-types.js";
+import { trashPathForDeferredDelete } from "./deferred_delete.js";
 
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
-
-const sanitizeRelativePath = (relativePath: string): string | null => {
-  const normalized = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!normalized || normalized.includes("..")) {
-    return null;
-  }
-  return normalized;
-};
 
 const normalizeAppName = (value: string): string | null => {
   const normalized = value
@@ -190,62 +182,6 @@ export const handleInstallCanvas = async (
 };
 
 /**
- * Install a plugin package locally.
- * Supports plugin manifest + arbitrary file map.
- */
-export const handleInstallPlugin = async (
-  args: Record<string, unknown>,
-): Promise<ToolResult> => {
-  const pluginId = String(args.pluginId ?? args.packageId ?? "").trim();
-  const name = String(args.name ?? pluginId).trim();
-  const version = String(args.version ?? "0.0.0").trim();
-  const description = String(args.description ?? "Installed from App Store");
-  const manifest =
-    args.manifest && typeof args.manifest === "object"
-      ? (args.manifest as Record<string, unknown>)
-      : null;
-  const files =
-    args.files && typeof args.files === "object"
-      ? (args.files as Record<string, string>)
-      : {};
-
-  if (!pluginId) {
-    return { error: "Plugin install requires pluginId or packageId." };
-  }
-
-  const pluginDir = path.join(getStellaRoot(), "plugins", pluginId);
-  await fs.mkdir(pluginDir, { recursive: true });
-
-  const pluginJson =
-    manifest ?? ({
-      id: pluginId,
-      name,
-      version,
-      description,
-      tools: [],
-      skills: [],
-      agents: [],
-    } satisfies Record<string, unknown>);
-
-  await fs.writeFile(
-    path.join(pluginDir, "plugin.json"),
-    JSON.stringify(pluginJson, null, 2),
-    "utf-8",
-  );
-
-  for (const [relativePath, content] of Object.entries(files)) {
-    if (typeof content !== "string") continue;
-    const safePath = sanitizeRelativePath(relativePath);
-    if (!safePath) continue;
-    const filePath = path.join(pluginDir, safePath);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, content, "utf-8");
-  }
-
-  return { result: { installed: true, pluginId, path: pluginDir } };
-};
-
-/**
  * Uninstall a package locally by removing its files.
  */
 export const handleUninstallPackage = async (
@@ -259,30 +195,27 @@ export const handleUninstallPackage = async (
   }
 
   const stellaRoot = getStellaRoot();
+  const trashOptions = {
+    source: "tool:UninstallPackage",
+    force: true,
+    stellaHome: stellaRoot,
+  };
 
   try {
     switch (type) {
       case "skill": {
         const skillDir = path.join(stellaRoot, "skills", localId);
-        await fs.rm(skillDir, { recursive: true, force: true });
+        await trashPathForDeferredDelete(skillDir, trashOptions);
         break;
       }
       case "theme": {
         const themePath = path.join(stellaRoot, "themes", `${localId}.json`);
-        await fs.rm(themePath, { force: true });
+        await trashPathForDeferredDelete(themePath, trashOptions);
         break;
       }
       case "canvas": {
         const appsRoot = path.join(os.homedir(), ".stella", "apps");
-        await fs.rm(path.join(appsRoot, localId), {
-          recursive: true,
-          force: true,
-        });
-        break;
-      }
-      case "plugin": {
-        const pluginDir = path.join(stellaRoot, "plugins", localId);
-        await fs.rm(pluginDir, { recursive: true, force: true });
+        await trashPathForDeferredDelete(path.join(appsRoot, localId), trashOptions);
         break;
       }
       case "mod": {
@@ -306,8 +239,8 @@ export const handleUninstallPackage = async (
 
 /**
  * Unified package management entrypoint.
- * - install: skill/theme/canvas/plugin
- * - uninstall: skill/theme/canvas/plugin/mod
+ * - install: skill/theme/canvas
+ * - uninstall: skill/theme/canvas/mod
  */
 export const handleManagePackage = async (
   args: Record<string, unknown>,
@@ -331,8 +264,6 @@ export const handleManagePackage = async (
         return await handleInstallTheme(pkg);
       case "canvas":
         return await handleInstallCanvas(pkg);
-      case "plugin":
-        return await handleInstallPlugin(pkg);
       case "mod":
         return {
           error:

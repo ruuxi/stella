@@ -13,14 +13,12 @@
  * - tools-state.ts    — Task, TaskOutput handlers
  * - tools-user.ts     — AskUserQuestion, RequestCredential handlers
  */
-import type { ToolContext, ToolResult, ToolHostOptions, PluginSyncPayload } from "./tools-types.js";
-export type { ToolContext, ToolResult, PluginSyncPayload };
+import type { ToolContext, ToolResult, ToolHostOptions, SkillRecord } from "./tools-types.js";
+export type { ToolContext, ToolResult };
 export declare const createToolHost: ({ StellaHome, frontendRoot, requestCredential, resolveSecret }: ToolHostOptions) => {
     executeTool: (toolName: string, toolArgs: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>;
     getShells: () => import("./tools-types.js").ShellRecord[];
     killAllShells: () => void;
     killShellsByPort: (port: number) => void;
-    loadPlugins: () => Promise<PluginSyncPayload>;
-    getPluginSyncPayload: () => PluginSyncPayload;
-    setSkills: (skills: PluginSyncPayload["skills"]) => void;
+    setSkills: (skills: SkillRecord[]) => void;
 };

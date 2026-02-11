@@ -204,15 +204,6 @@ export type ElectronApi = {
     dependencies?: Record<string, string>
     source?: string
   }) => Promise<{ installed: boolean; workspaceId?: string; path?: string }>
-  storeInstallPlugin: (payload: {
-    packageId: string
-    pluginId?: string
-    name?: string
-    version?: string
-    description?: string
-    manifest?: Record<string, unknown>
-    files?: Record<string, string>
-  }) => Promise<{ installed: boolean; pluginId?: string; path?: string }>
   storeUninstall: (payload: {
     packageId: string
     type: string
