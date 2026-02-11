@@ -1,6 +1,7 @@
 import type { EventRecord, MessagePayload, Attachment } from "../../hooks/use-conversation-events";
 import { WorkingIndicator } from "./WorkingIndicator";
 import { Markdown } from "./Markdown";
+import { isOrchestratorChatMessagePayload } from "./emotes/message-source";
 
 type MessageGroupProps = {
   userMessage: EventRecord;
@@ -37,6 +38,11 @@ export function MessageGroup({
   const userText = getMessageText(userMessage);
   const userAttachments = getAttachments(userMessage);
   const assistantText = assistantMessage ? getMessageText(assistantMessage) : "";
+  const assistantPayload =
+    assistantMessage?.payload && typeof assistantMessage.payload === "object"
+      ? (assistantMessage.payload as MessagePayload)
+      : null;
+  const assistantEmotesEnabled = isOrchestratorChatMessagePayload(assistantPayload);
   const hasStreamingContent = Boolean(streamingText && streamingText.trim().length > 0);
 
   const showWorkingIndicator = isStreaming && !assistantMessage;
@@ -86,7 +92,13 @@ export function MessageGroup({
               isReasoning={!hasStreamingContent}
               toolName={currentToolName}
             />
-            {hasStreamingContent && streamingText && <Markdown text={streamingText} isAnimating={isStreaming} />}
+            {hasStreamingContent && streamingText && (
+              <Markdown
+                text={streamingText}
+                isAnimating={isStreaming}
+                enableEmotes={true}
+              />
+            )}
           </div>
         </div>
       )}
@@ -94,7 +106,11 @@ export function MessageGroup({
       {assistantMessage && !isStreaming && (
         <div className="session-turn">
           <div className="event-item assistant">
-            <Markdown text={assistantText} cacheKey={assistantMessage._id} />
+            <Markdown
+              text={assistantText}
+              cacheKey={assistantMessage._id}
+              enableEmotes={assistantEmotesEnabled}
+            />
           </div>
         </div>
       )}

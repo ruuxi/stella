@@ -12,6 +12,7 @@ export type TurnViewModel = {
   userAttachments: Attachment[];
   assistantText: string;
   assistantMessageId: string | null;
+  assistantEmotesEnabled: boolean;
 };
 
 export type StreamingTurnProps = {
@@ -91,6 +92,9 @@ export const TurnItem = memo(function TurnItem({
   const assistantDisplayText = hasAssistantContent
     ? assistantText
     : (streaming?.streamingText ?? "");
+  const assistantEnableEmotes = hasAssistantContent
+    ? turn.assistantEmotesEnabled
+    : shouldShowStreamingAssistant;
   const assistantCacheKey = `assistant-${turn.id}`;
 
   return (
@@ -173,6 +177,7 @@ export const TurnItem = memo(function TurnItem({
               isAnimating={
                 shouldShowStreamingAssistant && streaming?.isStreaming
               }
+              enableEmotes={assistantEnableEmotes}
             />
           )}
         </div>
@@ -233,6 +238,7 @@ export const StreamingIndicator = memo(function StreamingIndicator({
                 : undefined
             }
             isAnimating={isStreaming}
+            enableEmotes={true}
           />
         )}
       </div>
