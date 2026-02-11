@@ -71,13 +71,6 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type TaskStatus = "running" | "completed" | "error" | "canceled";
 
-type PluginToolDescriptor = {
-  pluginId: string;
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-};
-
 /** Strip model field for client responses */
 const toTaskClient = (task: Record<string, unknown>): TaskClient => {
   const { model: _model, ...rest } = task;
@@ -672,11 +665,6 @@ const executeSubagentRun = async (
     : undefined;
   let effectiveSystemPrompt = promptBuild.systemPrompt;
 
-  const pluginTools = (await ctx.runQuery(
-    internal.data.plugins.listToolDescriptorsInternal,
-    { ownerId: args.ownerId },
-  )) as PluginToolDescriptor[];
-
   const historyTokenBudget = args.historyMaxTokens ?? SUBAGENT_HISTORY_MAX_TOKENS;
   const historyMessages = args.includeHistory
       ? await buildHistoryMessages(
@@ -802,7 +790,6 @@ const executeSubagentRun = async (
           agentType: "explore",
           toolsAllowlist: explorePromptBuild.toolsAllowlist,
           maxTaskDepth: 0,
-          pluginTools: [],
           ownerId: args.ownerId,
           conversationId: args.conversationId,
         });
@@ -867,7 +854,6 @@ const executeSubagentRun = async (
           agentType: args.subagentType,
           toolsAllowlist: effectiveAllowlist,
           maxTaskDepth: promptBuild.maxTaskDepth,
-          pluginTools,
           ownerId: args.ownerId,
           currentTaskId: args.taskId,
           conversationId: args.conversationId,
@@ -1650,10 +1636,6 @@ export const deliverTaskResult = internalAction({
       ownerId: args.ownerId,
       conversationId: args.conversationId,
     });
-    const pluginTools = (await ctx.runQuery(
-      internal.data.plugins.listToolDescriptorsInternal,
-      { ownerId: args.ownerId },
-    )) as PluginToolDescriptor[];
 
     const toolContext: DeviceToolContext = {
       conversationId: args.conversationId,
@@ -1689,12 +1671,6 @@ export const deliverTaskResult = internalAction({
               agentType: "orchestrator",
               toolsAllowlist: promptBuild.toolsAllowlist,
               maxTaskDepth: promptBuild.maxTaskDepth,
-              pluginTools: pluginTools as Array<{
-                pluginId: string;
-                name: string;
-                description: string;
-                inputSchema: Record<string, unknown>;
-              }>,
               ownerId: args.ownerId,
               conversationId: args.conversationId,
             }),

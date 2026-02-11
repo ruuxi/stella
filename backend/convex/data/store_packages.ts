@@ -6,7 +6,6 @@ import { requireUserId } from "../auth";
 const packageTypeValidator = v.union(
   v.literal("skill"),
   v.literal("canvas"),
-  v.literal("plugin"),
   v.literal("theme"),
   v.literal("mod"),
 );
@@ -265,7 +264,7 @@ export const seed = internalMutation({
     const seedPackages: Array<{
       packageId: string;
       name: string;
-      type: "skill" | "canvas" | "plugin" | "theme";
+      type: "skill" | "canvas" | "theme";
       author: string;
       description: string;
       tags: string[];

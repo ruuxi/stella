@@ -2,7 +2,6 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
   jsonObjectValidator,
-  jsonSchemaValidator,
   jsonValueValidator,
   optionalJsonValueValidator,
   secretMountsValidator,
@@ -204,31 +203,6 @@ export default defineSchema({
     .index("by_owner", ["ownerId"])
     .index("by_last_active", ["lastActiveAt"])
     .index("by_sprite_name", ["spriteName"]),
-  plugins: defineTable({
-    ownerId: v.optional(v.string()),
-    id: v.string(),
-    name: v.string(),
-    version: v.string(),
-    description: v.optional(v.string()),
-    source: v.string(),
-    updatedAt: v.number(),
-  })
-    .index("by_owner_and_plugin_key", ["ownerId", "id"])
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"]),
-  plugin_tools: defineTable({
-    ownerId: v.optional(v.string()),
-    id: v.string(),
-    pluginId: v.string(),
-    name: v.string(),
-    description: v.string(),
-    inputSchema: jsonSchemaValidator,
-    source: v.string(),
-    updatedAt: v.number(),
-  })
-    .index("by_owner_and_tool_key", ["ownerId", "id"])
-    .index("by_owner_and_name", ["ownerId", "name"])
-    .index("by_owner_and_plugin_and_updated", ["ownerId", "pluginId", "updatedAt"])
-    .index("by_plugin", ["pluginId", "updatedAt"]),
   user_preferences: defineTable({
     ownerId: v.string(),
     key: v.string(),
@@ -391,7 +365,6 @@ export default defineSchema({
     type: v.union(
       v.literal("skill"),
       v.literal("canvas"),
-      v.literal("plugin"),
       v.literal("theme"),
       v.literal("mod"),
     ),

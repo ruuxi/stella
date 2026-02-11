@@ -271,15 +271,6 @@ export const invoke = internalAction({
     }
 
     const promptBuild = await buildSystemPrompt(ctx, args.agentType, { ownerId });
-    const pluginTools = (await ctx.runQuery(
-      internal.data.plugins.listToolDescriptorsInternal,
-      { ownerId },
-    )) as Array<{
-      pluginId: string;
-      name: string;
-      description: string;
-      inputSchema: Record<string, unknown>;
-    }>;
 
     const deviceContext = await coerceDeviceContext(ctx, {
       conversationId: args.conversationId,
@@ -299,7 +290,6 @@ export const invoke = internalAction({
             agentType: args.agentType,
             toolsAllowlist: promptBuild.toolsAllowlist,
             maxTaskDepth: Math.min(promptBuild.maxTaskDepth, 2),
-            pluginTools,
             ownerId,
             conversationId: args.conversationId,
           },

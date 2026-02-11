@@ -206,7 +206,7 @@ const STORE_MANAGEMENT: BuiltinSkill = {
   id: "store-management",
   name: "Store Search & Package Installation",
   description:
-    "Search the app store and install packages (skills, themes, mini-apps, plugins). Mod installs must be delegated to Self-Mod.",
+    "Search the app store and install packages (skills, themes, mini-apps). Mod installs must be delegated to Self-Mod.",
   agentTypes: ["general"],
   tags: ["store", "packages", "install"],
   source: "builtin",
@@ -214,7 +214,7 @@ const STORE_MANAGEMENT: BuiltinSkill = {
   markdown: `# Store Search & Package Installation
 
 ## Searching
-\`StoreSearch(query, type?)\` — types: skill, mod, theme, canvas, plugin.
+\`StoreSearch(query, type?)\` — types: skill, mod, theme, canvas.
 
 Search proactively when the user asks for something that might exist as a package. Suggest packages conversationally — don't force installation.
 
@@ -231,12 +231,10 @@ Search proactively when the user asks for something that might exist as a packag
 \`ManagePackage({ action: "install", package: { type: "theme", packageId, themeId, name, light, dark } })\`
 - Mini-app install:
 \`ManagePackage({ action: "install", package: { type: "canvas", packageId, workspaceId?, name?, dependencies?, source? } })\`
-- Plugin install:
-\`ManagePackage({ action: "install", package: { type: "plugin", packageId, pluginId?, manifest?, files? } })\`
 
 ## Uninstalling
 \`ManagePackage({ action: "uninstall", package: { type, localId, packageId? } })\`
-- type: "skill" | "theme" | "canvas" | "plugin" | "mod"
+- type: "skill" | "theme" | "canvas" | "mod"
 - localId: the local identifier (skillId, themeId, workspaceId, etc.)`,
 };
 
@@ -325,7 +323,7 @@ const FRONTEND_ARCHITECTURE: BuiltinSkill = {
   id: "frontend-architecture",
   name: "Frontend Architecture Reference",
   description:
-    "Full design system reference: directory structure, layout, CSS tokens, plugin slots, canvas system. Activate before structural changes.",
+    "Full design system reference: directory structure, layout, CSS tokens, slot system, canvas system. Activate before structural changes.",
   agentTypes: ["self_mod"],
   tags: ["architecture", "design-system", "reference"],
   source: "builtin",
@@ -415,7 +413,7 @@ frontend/src/
 --font-family-mono  (IBM Plex Mono)
 \`\`\`
 
-## Plugin Slot System
+## Slot System
 Components are registered in named slots that can be overridden:
 \`\`\`typescript
 import { useSlot, overrideSlot } from '@/plugins'
@@ -423,7 +421,7 @@ import { useSlot, overrideSlot } from '@/plugins'
 // In FullShell — renders whatever is registered for 'sidebar'
 const SidebarSlot = useSlot('sidebar')
 
-// Override a slot (from a plugin or self-mod):
+// Override a slot (from self-mod):
 overrideSlot('sidebar', MyCustomSidebar, { priority: 10, source: 'self-mod' })
 \`\`\`
 

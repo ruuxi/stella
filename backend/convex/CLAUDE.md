@@ -144,10 +144,9 @@ Tools are assembled in `tools/index.ts` in layered tiers:
 | Backend (always) | `tools/backend.ts` | WebSearch, WebFetch, OpenCanvas, CloseCanvas, IntegrationRequest |
 | Device (if Electron connected) | `agent/device_tools.ts` | Read, Write, Edit, Bash, Glob, Grep, KillShell |
 | Cloud (if no device and `spriteName` is present) | `tools/cloud.ts` | Bash, Read, Write, Edit via Sprites VM |
-| Plugin (if device connected) | dynamic descriptors from `data/plugins.ts` | Sanitized plugin tool names mapped to device execution |
 | Orchestration | `tools/orchestration.ts` | TaskCreate, TaskOutput, TaskCancel, RecallMemories, SaveMemory |
 
-Tools are filtered by the agent's `toolsAllowlist` from `agents.ts` (plus plugin tool names). Skills do not grant tools.
+Tools are filtered by the agent's `toolsAllowlist` from `agents.ts`. Skills do not grant tools.
 
 When no device context exists, orchestration falls back to a deviceless set: memory tools only (`RecallMemories`, `SaveMemory`) without Task tools.
 

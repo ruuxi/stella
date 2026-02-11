@@ -291,11 +291,6 @@ http.route({
     // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);
 
-    const pluginTools = await ctx.runQuery(
-      internal.data.plugins.listToolDescriptorsInternal,
-      { ownerId: conversation.ownerId },
-    );
-
     const contentParts: Array<
       { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }
     > = [];
@@ -350,12 +345,6 @@ http.route({
           agentType,
           toolsAllowlist: promptBuild.toolsAllowlist,
           maxTaskDepth: promptBuild.maxTaskDepth,
-          pluginTools: pluginTools as Array<{
-            pluginId: string;
-            name: string;
-            description: string;
-            inputSchema: Record<string, unknown>;
-          }>,
           ownerId: conversation.ownerId,
           conversationId,
         },

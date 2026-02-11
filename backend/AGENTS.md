@@ -9,7 +9,6 @@ Stella Backend is a Convex-powered backend for an AI assistant platform. It prov
 - Streaming AI chat via HTTP endpoints using the Vercel AI SDK
 - Multi-agent system with 5 builtin agents and per-agent model configuration
 - Skills system for dynamic prompt augmentation
-- Plugin system for extensible tools
 - Subagent task delegation with depth limits
 - Channel integrations (Telegram, Discord, Slack, Google Chat, Teams, WhatsApp/Signal)
 - Memory system with vector search
@@ -31,7 +30,7 @@ bun run deploy      # Deploy to Convex cloud (production)
 convex/
 ├── agent/          # Agent system (invoke, model config, prompt building, device tools, tasks)
 ├── tools/          # Tool definitions (backend, cloud, orchestration, types)
-├── data/           # Data access (plugins, skills, store_packages)
+├── data/           # Data access (skills, store_packages)
 ├── channels/       # Messaging integrations (telegram, discord, slack, google_chat, teams)
 ├── scheduling/     # Heartbeats and user cron jobs
 ├── prompts/        # System prompt templates
@@ -73,7 +72,6 @@ Data & secrets:
 Integrations:
 - **integrations_public**: Public API integration definitions
 - **user_integrations**: Per-user integration configs
-- **plugins** / **plugin_tools**: External tool definitions with JSON Schema inputs
 
 Infrastructure:
 - **remote_computers**: Remote computer connections
@@ -146,3 +144,4 @@ Follow the guidelines in `convex_rules.md` (comprehensive reference):
 1. Ensure all environment variables are set in Convex dashboard
 2. Run `bun run deploy` from backend directory
 3. Verify deployment in Convex dashboard logs
+
