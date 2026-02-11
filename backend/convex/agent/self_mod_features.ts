@@ -1,7 +1,7 @@
-import { mutation, query } from "../_generated/server";
+import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 
-export const create = mutation({
+export const create = internalMutation({
   args: {
     featureId: v.string(),
     ownerId: v.string(),
@@ -27,7 +27,7 @@ export const create = mutation({
   },
 });
 
-export const update = mutation({
+export const update = internalMutation({
   args: {
     featureId: v.string(),
     status: v.optional(v.string()),
@@ -53,7 +53,7 @@ export const update = mutation({
   },
 });
 
-export const listForConversation = query({
+export const listForConversation = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
@@ -84,7 +84,7 @@ export const listForConversation = query({
   },
 });
 
-export const listForOwner = query({
+export const listForOwner = internalQuery({
   args: {
     ownerId: v.string(),
   },
@@ -113,7 +113,7 @@ export const listForOwner = query({
   },
 });
 
-export const getByFeatureId = query({
+export const getByFeatureId = internalQuery({
   args: {
     featureId: v.string(),
   },

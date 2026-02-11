@@ -721,7 +721,7 @@ export const get247Status = query({
   },
 });
 
-export const getActive = query({
+export const getActive = internalQuery({
   args: {},
   returns: v.union(cloudDeviceValidator, v.null()),
   handler: async (ctx) => {
@@ -907,7 +907,7 @@ export const spawnForOwner = internalAction({
   },
 });
 
-export const enable247 = action({
+export const enable247 = internalAction({
   args: {},
   returns: enable247ResultValidator,
   handler: async (ctx): Promise<Enable247Result> => {
@@ -916,7 +916,7 @@ export const enable247 = action({
   },
 });
 
-export const disable247 = action({
+export const disable247 = internalAction({
   args: {},
   returns: disable247ResultValidator,
   handler: async (ctx): Promise<Disable247Result> => {

@@ -1,15 +1,12 @@
 import {
-  action,
   internalAction,
   internalMutation,
   internalQuery,
-  mutation,
-  query,
   ActionCtx,
 } from "../_generated/server";
 import { v, ConvexError, Infer } from "convex/values";
 import { generateText } from "ai";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
 import { eventsToHistoryMessages } from "./history_messages";
@@ -1173,7 +1170,7 @@ export const pushStatusUpdate = internalMutation({
   },
 });
 
-export const cancelTask = mutation({
+export const cancelTask = internalMutation({
   args: {
     taskId: v.id("tasks"),
     reason: v.optional(v.string()),
@@ -1275,7 +1272,7 @@ export const getTaskStatus = internalQuery({
   },
 });
 
-export const getById = query({
+export const getById = internalQuery({
   args: {
     taskId: v.id("tasks"),
   },
@@ -1289,7 +1286,7 @@ export const getById = query({
   },
 });
 
-export const getOutputByExternalId = query({
+export const getOutputByExternalId = internalQuery({
   args: {
     taskId: v.string(),
   },
@@ -1322,7 +1319,7 @@ export const getOutputByExternalIdInternal = internalQuery({
   },
 });
 
-export const listByConversation = query({
+export const listByConversation = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
@@ -1338,7 +1335,7 @@ export const listByConversation = query({
   },
 });
 
-export const listByConversationSince = query({
+export const listByConversationSince = internalQuery({
   args: {
     conversationId: v.id("conversations"),
     afterUpdatedAt: v.optional(v.number()),
@@ -1363,7 +1360,7 @@ export const listByConversationSince = query({
   },
 });
 
-export const getConversationTaskHead = query({
+export const getConversationTaskHead = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },

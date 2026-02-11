@@ -316,7 +316,7 @@ const listEnabledSkillsHandler = async (
   return Array.from(merged.values());
 };
 
-export const listEnabledSkills = query({
+export const listEnabledSkills = internalQuery({
   args: {
     agentType: v.string(),
   },
@@ -376,7 +376,7 @@ const getSkillByIdHandler = async (
   return null;
 };
 
-export const getSkillById = query({
+export const getSkillById = internalQuery({
   args: {
     skillId: v.string(),
   },
@@ -398,7 +398,7 @@ export const getSkillByIdInternal = internalQuery({
   },
 });
 
-export const listSkills = query({
+export const listSkills = internalQuery({
   args: {},
   returns: v.array(skillValidator),
   handler: async (ctx) => {

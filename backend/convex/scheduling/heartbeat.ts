@@ -1,4 +1,4 @@
-import { internalAction, internalMutation, internalQuery, mutation, query, type QueryCtx, type MutationCtx } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery, type QueryCtx, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
@@ -153,7 +153,7 @@ async function resolveConversationId(
   return conversation?._id ?? null;
 }
 
-export const getConfig = query({
+export const getConfig = internalQuery({
   args: {
     conversationId: v.optional(v.id("conversations")),
   },
@@ -173,7 +173,7 @@ export const getConfig = query({
   },
 });
 
-export const upsertConfig = mutation({
+export const upsertConfig = internalMutation({
   args: {
     conversationId: v.optional(v.id("conversations")),
     enabled: v.optional(v.boolean()),
@@ -478,7 +478,7 @@ export const run = internalAction({
   },
 });
 
-export const runNow = mutation({
+export const runNow = internalMutation({
   args: {
     conversationId: v.optional(v.id("conversations")),
   },

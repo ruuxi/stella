@@ -547,7 +547,7 @@ export const listEvents = query({
   },
 });
 
-export const listEventsSince = query({
+export const listEventsSince = internalQuery({
   args: {
     conversationId: v.id("conversations"),
     afterTimestamp: v.optional(v.number()),
@@ -572,7 +572,7 @@ export const listEventsSince = query({
   },
 });
 
-export const getConversationEventHead = query({
+export const getConversationEventHead = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },

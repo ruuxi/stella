@@ -8,7 +8,7 @@ const RUNTIME_MODE_KEY = "runtime_mode";
 const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
   value === "cloud_247" ? "cloud_247" : "local";
 
-export const setPreference = mutation({
+export const setPreference = internalMutation({
   args: {
     key: v.string(),
     value: v.string(),
@@ -68,7 +68,7 @@ export const setPreferenceForOwner = internalMutation({
   },
 });
 
-export const getPreference = query({
+export const getPreference = internalQuery({
   args: {
     key: v.string(),
   },
@@ -96,7 +96,7 @@ export const getRuntimeMode = query({
   },
 });
 
-export const setRuntimeMode = mutation({
+export const setRuntimeMode = internalMutation({
   args: {
     mode: runtimeModeValidator,
   },

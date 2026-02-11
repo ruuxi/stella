@@ -1,6 +1,6 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { ToolOptions } from "./types";
@@ -591,7 +591,7 @@ export const createBackendTools = (
         conversationId: z.string().optional(),
       }),
       execute: async (args) => {
-        const result = await ctx.runQuery(api.scheduling.heartbeat.getConfig, {
+        const result = await ctx.runQuery(internal.scheduling.heartbeat.getConfig, {
           ...(args.conversationId ? { conversationId: args.conversationId as Id<"conversations"> } : {}),
         });
         return formatResult(result);
@@ -625,7 +625,7 @@ export const createBackendTools = (
       }),
       execute: async (args) => {
         const { conversationId, ...rest } = args;
-        const result = await ctx.runMutation(api.scheduling.heartbeat.upsertConfig, {
+        const result = await ctx.runMutation(internal.scheduling.heartbeat.upsertConfig, {
           ...rest,
           ...(conversationId ? { conversationId: conversationId as Id<"conversations"> } : {}),
         });
@@ -640,7 +640,7 @@ export const createBackendTools = (
         conversationId: z.string().optional(),
       }),
       execute: async (args) => {
-        const result = await ctx.runMutation(api.scheduling.heartbeat.runNow, {
+        const result = await ctx.runMutation(internal.scheduling.heartbeat.runNow, {
           ...(args.conversationId ? { conversationId: args.conversationId as Id<"conversations"> } : {}),
         });
         return formatResult(result);
@@ -652,7 +652,7 @@ export const createBackendTools = (
         "Returns up to 200 jobs (newest first) with their schedule, payload, status, and next run time.",
       inputSchema: z.object({}),
       execute: async () => {
-        const result = await ctx.runQuery(api.scheduling.cron_jobs.list, {});
+        const result = await ctx.runQuery(internal.scheduling.cron_jobs.list, {});
         return formatResult(result);
       },
     }),
@@ -676,7 +676,7 @@ export const createBackendTools = (
         deleteAfterRun: z.boolean().optional(),
       }),
       execute: async (args) => {
-        const result = await ctx.runMutation(api.scheduling.cron_jobs.add, {
+        const result = await ctx.runMutation(internal.scheduling.cron_jobs.add, {
           name: args.name,
           schedule: args.schedule,
           payload: args.payload,
@@ -701,7 +701,7 @@ export const createBackendTools = (
       }),
       execute: async (args) => {
         const { conversationId, ...restPatch } = args.patch;
-        const result = await ctx.runMutation(api.scheduling.cron_jobs.update, {
+        const result = await ctx.runMutation(internal.scheduling.cron_jobs.update, {
           jobId: args.jobId as Id<"cron_jobs">,
           patch: {
             ...restPatch,
@@ -717,7 +717,7 @@ export const createBackendTools = (
         jobId: z.string(),
       }),
       execute: async (args) => {
-        await ctx.runMutation(api.scheduling.cron_jobs.remove, {
+        await ctx.runMutation(internal.scheduling.cron_jobs.remove, {
           jobId: args.jobId as Id<"cron_jobs">,
         });
         return "Cron job removed.";
@@ -731,7 +731,7 @@ export const createBackendTools = (
         jobId: z.string(),
       }),
       execute: async (args) => {
-        const result = await ctx.runMutation(api.scheduling.cron_jobs.run, {
+        const result = await ctx.runMutation(internal.scheduling.cron_jobs.run, {
           jobId: args.jobId as Id<"cron_jobs">,
         });
         return formatResult(result);

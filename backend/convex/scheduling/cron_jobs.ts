@@ -1,5 +1,5 @@
 import { Cron } from "croner";
-import { internalAction, internalMutation, internalQuery, mutation, query, type QueryCtx, type MutationCtx } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery, type QueryCtx, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
@@ -203,7 +203,7 @@ async function resolveConversationId(
   return conversation?._id ?? null;
 }
 
-export const list = query({
+export const list = internalQuery({
   args: {},
   returns: v.array(cronJobValidator),
   handler: async (ctx) => {
@@ -217,7 +217,7 @@ export const list = query({
   },
 });
 
-export const add = mutation({
+export const add = internalMutation({
   args: {
     name: v.string(),
     schedule: cronScheduleValidator,
@@ -281,7 +281,7 @@ export const add = mutation({
   },
 });
 
-export const update = mutation({
+export const update = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
     patch: cronPatchValidator,
@@ -352,7 +352,7 @@ export const update = mutation({
   },
 });
 
-export const remove = mutation({
+export const remove = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
@@ -379,7 +379,7 @@ export const deleteJob = internalMutation({
   },
 });
 
-export const run = mutation({
+export const run = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },

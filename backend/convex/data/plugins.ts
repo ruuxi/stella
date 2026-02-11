@@ -281,7 +281,7 @@ export const upsertMany = mutation({
   },
 });
 
-export const listPlugins = query({
+export const listPlugins = internalQuery({
   args: {},
   returns: v.array(pluginValidator),
   handler: async (ctx) => {
@@ -290,7 +290,7 @@ export const listPlugins = query({
   },
 });
 
-export const listToolDescriptors = query({
+export const listToolDescriptors = internalQuery({
   args: {},
   returns: v.array(pluginToolValidator),
   handler: async (ctx) => {

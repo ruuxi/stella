@@ -431,7 +431,7 @@ export const deleteConnection = mutation({
   },
 });
 
-export const getDmPolicy = query({
+export const getDmPolicy = internalQuery({
   args: { provider: v.string() },
   returns: v.object({
     policy: v.union(
@@ -472,7 +472,7 @@ export const getDmPolicy = query({
   },
 });
 
-export const setDmPolicy = mutation({
+export const setDmPolicy = internalMutation({
   args: {
     provider: v.string(),
     policy: v.union(
@@ -511,7 +511,7 @@ export const setDmPolicy = mutation({
   },
 });
 
-export const setDmAllowlist = mutation({
+export const setDmAllowlist = internalMutation({
   args: {
     provider: v.string(),
     externalUserIds: v.array(v.string()),
@@ -543,7 +543,7 @@ export const setDmAllowlist = mutation({
   },
 });
 
-export const setDmDenylist = mutation({
+export const setDmDenylist = internalMutation({
   args: {
     provider: v.string(),
     externalUserIds: v.array(v.string()),
