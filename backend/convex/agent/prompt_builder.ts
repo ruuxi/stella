@@ -11,6 +11,8 @@ export type PromptBuildResult = {
   skillIds: string[];
 };
 
+const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
+
 const buildSkillsSection = (
   skills: Array<{
     id: string;
@@ -32,12 +34,12 @@ const buildSkillsSection = (
     if (skill.execution === "device") tags.push("device-only");
     if (skill.secretMounts) tags.push("has secret mounts");
     const suffix = tags.length > 0 ? ` [${tags.join(", ")}]` : "";
-    return `- **${skill.name}** (${skill.id}): ${skill.description}${suffix}`;
+    return `- **${skill.name}** (${skill.id}): ${skill.description}${suffix} Activate skill.`;
   });
 
   return [
     "# Skills",
-    "Use the ActivateSkill tool to load a skill's full instructions before using it.",
+    "Skills are listed by name and description only. Use ActivateSkill to load a skill's full instructions when needed.",
     "",
     ...lines,
   ].join("\n");
@@ -75,21 +77,15 @@ export const buildSystemPrompt = async (
     ownerId: options?.ownerId,
   });
 
-  const skills = await ctx.runQuery(internal.data.skills.listEnabledSkillsInternal, {
-    agentType,
-    ownerId: options?.ownerId,
-  });
-
-  // Skills with toolsAllowlist are gated — only available when pre-activated
-  // via activate_skills on TaskCreate. Hide them from the summary to avoid
-  // the agent seeing tools it can't call.
-  const visibleSkills = skills.filter(
-    (skill: { toolsAllowlist?: string[] }) =>
-      !skill.toolsAllowlist || skill.toolsAllowlist.length === 0,
-  );
+  const skills = SKILLS_DISABLED_AGENT_TYPES.has(agentType)
+    ? []
+    : await ctx.runQuery(internal.data.skills.listEnabledSkillsInternal, {
+        agentType,
+        ownerId: options?.ownerId,
+      });
 
   const skillsSection = buildSkillsSection(
-    visibleSkills.map((skill: { id: string; name: string; description: string; execution?: string; requiresSecrets?: string[]; publicIntegration?: boolean; secretMounts?: Record<string, unknown> }) => ({
+    skills.map((skill: { id: string; name: string; description: string; execution?: string; requiresSecrets?: string[]; publicIntegration?: boolean; secretMounts?: Record<string, unknown> }) => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,

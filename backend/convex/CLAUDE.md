@@ -44,7 +44,7 @@ The orchestrator gets the task ID back instantly and can continue (say something
 **`executeSubagentRun`** handles the core execution:
 
 1. **Build system prompt** via `prompt_builder.ts` — base agent prompt + enabled skills
-2. **Activate skills** — if `activateSkills` provided, merge gated tools into allowlist and inject skill markdown
+2. **Activate skills** — if `activateSkills` provided, merge gated tools into allowlist only (no skill markdown injection)
 3. **Load thread context** — if threaded (general/self_mod only): load summary pair + all thread messages
 4. **Load conversation history** — if `includeHistory=true`: last 100 messages from the conversation
 5. **Pre-gathered context** — if `recallMemory` or `preExplore` provided (see below)
@@ -147,7 +147,7 @@ Tools are assembled in `tools/index.ts` in layered tiers:
 | Plugin (if device connected) | dynamic descriptors from `data/plugins.ts` | Sanitized plugin tool names mapped to device execution |
 | Orchestration | `tools/orchestration.ts` | TaskCreate, TaskOutput, TaskCancel, RecallMemories, SaveMemory |
 
-Tools are filtered by the agent's `toolsAllowlist` from `agents.ts` (plus `ActivateSkill` and plugin tool names). Skill-gated tools (store-management, api-skill-generation, media-generation) are only available when pre-activated via `activate_skills`.
+Tools are filtered by the agent's `toolsAllowlist` from `agents.ts` (plus plugin tool names, and `ActivateSkill` for non-`explore`/non-`memory` agents). Skill-gated tools (store-management, api-skill-generation, media-generation) are only available when pre-activated via `activate_skills`.
 
 When no device context exists, orchestration falls back to a deviceless set: memory tools only (`RecallMemories`, `SaveMemory`) without Task tools.
 

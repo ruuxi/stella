@@ -618,13 +618,17 @@ const executeSubagentRun = async (
     ownerId: args.ownerId,
   });
 
-  // Merge pre-activated skills: inject their markdown and grant their tools
+  // Merge pre-activated skills: grant their tools only.
+  // Skill markdown is never injected into agent prompts.
   let effectiveAllowlist = promptBuild.toolsAllowlist
     ? [...promptBuild.toolsAllowlist]
     : undefined;
   let effectiveSystemPrompt = promptBuild.systemPrompt;
 
-  if (args.activateSkills && args.activateSkills.length > 0) {
+  const skillActivationEnabled =
+    args.subagentType !== "explore" && args.subagentType !== "memory";
+
+  if (skillActivationEnabled && args.activateSkills && args.activateSkills.length > 0) {
     for (const skillId of args.activateSkills) {
       try {
         const skill = await ctx.runQuery(
@@ -639,7 +643,6 @@ const executeSubagentRun = async (
               }
             }
           }
-          effectiveSystemPrompt += `\n\n## Skill: ${skill.name}\n${skill.markdown}`;
         }
       } catch {
         // Skill loading failed — continue without it

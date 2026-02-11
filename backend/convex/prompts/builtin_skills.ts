@@ -267,7 +267,7 @@ When the Browser agent returns an API map from investigation, convert it into a 
 1. Browser agent discovers APIs via network interception → returns structured API map JSON
 2. Call \`GenerateApiSkill(service, baseUrl, auth, endpoints, ...)\` with the map data
 3. A skill is created with endpoint documentation and auth configuration
-4. Future conversations can \`ActivateSkill(skillId)\` to load the API docs
+4. Future conversations can \`ActivateSkill(skillId)\` to activate the skill
 5. Use \`IntegrationRequest\` to call the discovered endpoints
 
 ## GenerateApiSkill Parameters
