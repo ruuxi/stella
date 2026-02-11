@@ -126,7 +126,7 @@ export const FullShell = () => {
 
   const savedCanvasState = useQuery(
     api.data.canvas_states.getForConversation,
-    state.conversationId
+    state.conversationId && onboarding.isAuthenticated
       ? { conversationId: state.conversationId }
       : "skip",
   ) as

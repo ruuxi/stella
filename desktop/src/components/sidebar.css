@@ -15,11 +15,43 @@
   z-index: 2;
 }
 
-/* Reserve space for the fixed title bar (32px) */
+/* Reserve space for the fixed title bar + logo */
 .sidebar-header {
-  height: 32px;
   flex-shrink: 0;
   -webkit-app-region: drag;
+  padding-top: 38px;
+  padding-bottom: 4px;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-logo-creature {
+  width: 28px;
+  height: 22px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+.sidebar-logo-creature .stella-animation-container {
+  animation: none;
+}
+
+.sidebar-logo-creature .ascii-canvas {
+  top: 50%;
+}
+
+.sidebar-logo-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-strong);
+  letter-spacing: -0.02em;
 }
 
 .sidebar-nav {

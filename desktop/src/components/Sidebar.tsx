@@ -2,6 +2,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { authClient } from "@/lib/auth-client";
 import { api } from "@/convex/api";
 import { ThemePicker } from "./ThemePicker";
+import { StellaAnimation } from "./StellaAnimation";
 
 interface SidebarProps {
   hideThemePicker?: boolean;
@@ -137,7 +138,14 @@ export const Sidebar = ({
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header" />
+      <div className="sidebar-header">
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-creature">
+            <StellaAnimation width={24} height={14} paused />
+          </div>
+          <span className="sidebar-logo-text">Stella</span>
+        </div>
+      </div>
       <nav className="sidebar-nav">
         {navItems.map((item) => (
           <button

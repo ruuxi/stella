@@ -77,6 +77,7 @@ Built on Radix UI with custom styling:
 - `ReasoningSection.tsx` - AI reasoning display
 - `TaskIndicator.tsx` - Task progress indicators
 - `WorkingIndicator.tsx` - Loading states
+- `emotes/` - Twitch emote integration (emoji resolver, remark plugin, message source)
 
 ### Canvas (`canvas/`)
 Side panel system for rendering interactive content:
@@ -92,7 +93,7 @@ Direct imports (not re-exported from index.ts):
 - `ThemePicker.tsx` - Theme picker UI
 - `AuthStatus.tsx` - Authentication status
 - `CredentialModal.tsx` - Credential management modal
-- `StellaAnimation.tsx` - Stella animation wrapper
+- `Onboarding.tsx` - Top-level onboarding component
 
 ### Other Subdirectories
 - `background/` - `ShiftingGradient.tsx` animated background

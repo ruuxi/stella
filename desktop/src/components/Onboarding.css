@@ -319,3 +319,142 @@
   margin-top: 16px;
 }
 
+/* Inline auth (sign-in form embedded in onboarding) */
+.onboarding-inline-auth {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+  opacity: 0;
+  animation: fadeInUp 0.6s ease-out 0.2s forwards;
+}
+
+.onboarding-inline-auth-label {
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  color: var(--foreground);
+  opacity: 0.6;
+  text-transform: lowercase;
+}
+
+.onboarding-inline-auth-form {
+  display: flex;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  transition: border-color 0.2s ease;
+}
+
+.onboarding-inline-auth-form:focus-within {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.onboarding-inline-auth-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+}
+
+.onboarding-inline-auth-input::placeholder {
+  color: var(--foreground);
+  opacity: 0.35;
+}
+
+.onboarding-inline-auth-submit {
+  padding: 10px 18px;
+  background: none;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.22);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s ease, background 0.2s ease;
+  white-space: nowrap;
+}
+
+.onboarding-inline-auth-submit:hover:not(:disabled) {
+  opacity: 0.9;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.onboarding-inline-auth-submit:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.onboarding-inline-auth-sent {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  color: var(--foreground);
+  opacity: 0.7;
+  text-align: center;
+  line-height: 1.5;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.onboarding-inline-auth-retry {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  color: var(--foreground);
+  opacity: 0.5;
+  text-transform: lowercase;
+  cursor: pointer;
+  padding: 8px 20px;
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+
+.onboarding-inline-auth-retry:hover {
+  opacity: 0.8;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.onboarding-inline-auth-error {
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  color: var(--foreground);
+  opacity: 0.35;
+  text-transform: lowercase;
+}
+
+/* Static variant (post-onboarding, in normal flow) */
+.onboarding-inline-auth--static {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
+  margin-top: 24px;
+  opacity: 1;
+  animation: none;
+}
+

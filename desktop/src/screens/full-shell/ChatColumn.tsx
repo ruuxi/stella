@@ -96,6 +96,7 @@ export function ChatColumn({
   onSignIn,
 }: ChatColumnProps) {
   const hasMessages = events.length > 0 || isStreaming;
+  const showConversation = isAuthenticated && onboardingDone && hasMessages;
 
   return (
     <div className="full-body-main">
@@ -104,7 +105,7 @@ export function ChatColumn({
         ref={scrollContainerRef}
         onScroll={handleScroll}
       >
-        {hasMessages && onboardingDone ? (
+        {showConversation ? (
           <div className="session-messages">
             <ConversationEvents
               events={events}
@@ -136,7 +137,7 @@ export function ChatColumn({
         )}
       </div>
 
-      {showScrollButton && hasMessages && onboardingDone && (
+      {showScrollButton && showConversation && (
         <button
           className="scroll-to-bottom"
           onClick={() => scrollToBottom("smooth")}
