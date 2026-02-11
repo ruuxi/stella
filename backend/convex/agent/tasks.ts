@@ -123,7 +123,6 @@ type SubagentExecutionArgs = {
   ownerId?: string;
   includeHistory?: boolean;
   threadId?: Id<"threads">;
-  activateSkills?: string[];
   recallMemory?: RecallMemoryArgs;
   preExplore?: string;
 };
@@ -618,37 +617,10 @@ const executeSubagentRun = async (
     ownerId: args.ownerId,
   });
 
-  // Merge pre-activated skills: grant their tools only.
-  // Skill markdown is never injected into agent prompts.
   let effectiveAllowlist = promptBuild.toolsAllowlist
     ? [...promptBuild.toolsAllowlist]
     : undefined;
   let effectiveSystemPrompt = promptBuild.systemPrompt;
-
-  const skillActivationEnabled =
-    args.subagentType !== "explore" && args.subagentType !== "memory";
-
-  if (skillActivationEnabled && args.activateSkills && args.activateSkills.length > 0) {
-    for (const skillId of args.activateSkills) {
-      try {
-        const skill = await ctx.runQuery(
-          internal.data.skills.getSkillByIdInternal,
-          { skillId, ownerId: args.ownerId },
-        );
-        if (skill && skill.enabled !== false) {
-          if (skill.toolsAllowlist && effectiveAllowlist) {
-            for (const t of skill.toolsAllowlist) {
-              if (!effectiveAllowlist.includes(t)) {
-                effectiveAllowlist.push(t);
-              }
-            }
-          }
-        }
-      } catch {
-        // Skill loading failed — continue without it
-      }
-    }
-  }
 
   const pluginTools = (await ctx.runQuery(
     internal.data.plugins.listToolDescriptorsInternal,
@@ -1330,7 +1302,6 @@ export const runSubagent = internalAction({
     includeHistory: v.optional(v.boolean()),
     threadId: v.optional(v.string()),
     threadName: v.optional(v.string()),
-    activateSkills: v.optional(v.array(v.string())),
     recallMemory: v.optional(v.object({
       query: v.optional(v.string()),
       categories: v.optional(v.array(v.object({
@@ -1430,7 +1401,6 @@ export const runSubagent = internalAction({
       includeHistory: args.includeHistory,
       parentTaskId: args.parentTaskId,
       threadId: resolvedThreadId,
-      activateSkills: args.activateSkills,
       recallMemory: args.recallMemory,
       preExplore: args.preExplore,
     });
@@ -1452,7 +1422,6 @@ export const executeSubagent = internalAction({
     includeHistory: v.optional(v.boolean()),
     parentTaskId: v.optional(v.id("tasks")),
     threadId: v.optional(v.id("threads")),
-    activateSkills: v.optional(v.array(v.string())),
     recallMemory: v.optional(v.object({
       query: v.optional(v.string()),
       categories: v.optional(v.array(v.object({
@@ -1474,7 +1443,6 @@ export const executeSubagent = internalAction({
       ownerId: args.ownerId,
       includeHistory: args.includeHistory,
       threadId: args.threadId,
-      activateSkills: args.activateSkills,
       recallMemory: args.recallMemory,
       preExplore: args.preExplore,
     });

@@ -10,7 +10,6 @@ type BuiltinSkill = {
   markdown: string;
   agentTypes: string[];
   tags: string[];
-  toolsAllowlist?: string[];
   source: "builtin";
   enabled: true;
 };
@@ -210,14 +209,6 @@ const STORE_MANAGEMENT: BuiltinSkill = {
     "Search the app store and install packages (skills, themes, mini-apps, plugins). Mod installs must be delegated to Self-Mod.",
   agentTypes: ["general"],
   tags: ["store", "packages", "install"],
-  toolsAllowlist: [
-    "StoreSearch",
-    "InstallSkillPackage",
-    "InstallThemePackage",
-    "InstallCanvasPackage",
-    "InstallPluginPackage",
-    "UninstallPackage",
-  ],
   source: "builtin",
   enabled: true,
   markdown: `# Store Search & Package Installation
@@ -231,20 +222,20 @@ Search proactively when the user asks for something that might exist as a packag
 
 **Mod installs**: General cannot install mods — they are blueprints that need re-implementation by the Self-Mod agent. Report the mod details (package ID, name, description) back to the Orchestrator, who will route the installation to Self-Mod.
 
-**Skill installs**:
-\`InstallSkillPackage({ packageId, skillId, name, markdown, agentTypes?, tags? })\`
+**Install any package (single tool)**:
+\`ManagePackage({ action: "install", package: { type: "...", ... } })\`
 
-**Theme installs**:
-\`InstallThemePackage({ packageId, themeId, name, light, dark })\`
-
-**Mini-app installs**:
-\`InstallCanvasPackage({ packageId, name, dependencies?, source? })\`
-
-**Plugin installs**:
-\`InstallPluginPackage({ packageId, pluginId?, manifest?, files? })\`
+- Skill install:
+\`ManagePackage({ action: "install", package: { type: "skill", packageId, skillId, name, markdown, agentTypes?, tags? } })\`
+- Theme install:
+\`ManagePackage({ action: "install", package: { type: "theme", packageId, themeId, name, light, dark } })\`
+- Mini-app install:
+\`ManagePackage({ action: "install", package: { type: "canvas", packageId, workspaceId?, name?, dependencies?, source? } })\`
+- Plugin install:
+\`ManagePackage({ action: "install", package: { type: "plugin", packageId, pluginId?, manifest?, files? } })\`
 
 ## Uninstalling
-\`UninstallPackage({ packageId, type, localId })\`
+\`ManagePackage({ action: "uninstall", package: { type, localId, packageId? } })\`
 - type: "skill" | "theme" | "canvas" | "plugin" | "mod"
 - localId: the local identifier (skillId, themeId, workspaceId, etc.)`,
 };
@@ -256,7 +247,6 @@ const API_SKILL_GENERATION: BuiltinSkill = {
     "Convert browser API discovery results into reusable skills. Use after Browser agent returns an API map.",
   agentTypes: ["general"],
   tags: ["api", "integration", "skill-generation"],
-  toolsAllowlist: ["GenerateApiSkill"],
   source: "builtin",
   enabled: true,
   markdown: `# API Skill Generation
@@ -297,7 +287,6 @@ const MEDIA_GENERATION: BuiltinSkill = {
     "Generate or edit images and videos from text prompts using AI models.",
   agentTypes: ["general"],
   tags: ["media", "images", "video", "generation"],
-  toolsAllowlist: ["MediaGenerate"],
   source: "builtin",
   enabled: true,
   markdown: `# Media Generation
