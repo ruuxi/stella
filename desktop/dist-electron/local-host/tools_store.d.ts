@@ -31,3 +31,9 @@ export declare const handleInstallPlugin: (args: Record<string, unknown>) => Pro
  * Uninstall a package locally by removing its files.
  */
 export declare const handleUninstallPackage: (args: Record<string, unknown>) => Promise<ToolResult>;
+/**
+ * Unified package management entrypoint.
+ * - install: skill/theme/canvas/plugin
+ * - uninstall: skill/theme/canvas/plugin/mod
+ */
+export declare const handleManagePackage: (args: Record<string, unknown>) => Promise<ToolResult>;
