@@ -147,7 +147,7 @@ export function OnboardingView({
       >
         <StellaAnimation
           ref={stellaAnimationRef}
-          width={120}
+          width={100}
           height={56}
           initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
         />
