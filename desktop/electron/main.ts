@@ -1592,6 +1592,12 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('screenshot:capture', async (_event, point?: { x: number; y: number }) => {
     const display = getDisplayForPoint(point)
+    const cursorDip = point ?? screen.getCursorScreenPoint()
+    const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
+    const capturePoint = {
+      x: Math.round(cursorDip.x * scaleFactor),
+      y: Math.round(cursorDip.y * scaleFactor),
+    }
     hideRadialWindow()
     hideModifierOverlay()
     hideRegionCaptureWindow()
@@ -1599,6 +1605,16 @@ app.whenReady().then(async () => {
 
     try {
       await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
+      const sources = await prefetchWindowSources(getCurrentProcessWindowSourceIds())
+      const windowCapture = await captureWindowAtPoint(
+        capturePoint.x,
+        capturePoint.y,
+        sources,
+        { excludePids: [process.pid] },
+      )
+      if (windowCapture?.screenshot) {
+        return windowCapture.screenshot
+      }
       return await captureDisplayScreenshot(display)
     } finally {
       if (miniWasConcealed) {
