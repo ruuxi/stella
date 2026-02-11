@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { requireUserId } from "../auth";
 import { jsonObjectValidator } from "../shared_validators";
 
-export const listPublicIntegrations = query({
+export const listPublicIntegrations = internalQuery({
   args: {},
   returns: v.array(
     v.object({
@@ -211,7 +211,7 @@ const publicIntegrationReturnValidator = v.union(
   }),
 );
 
-export const getPublicIntegrationById = query({
+export const getPublicIntegrationById = internalQuery({
   args: {
     id: v.string(),
   },
@@ -231,7 +231,7 @@ export const getPublicIntegrationByIdInternal = internalQuery({
   },
 });
 
-export const listUserIntegrations = query({
+export const listUserIntegrations = internalQuery({
   args: {},
   returns: v.array(
     v.object({
@@ -255,7 +255,7 @@ export const listUserIntegrations = query({
   },
 });
 
-export const upsertUserIntegration = mutation({
+export const upsertUserIntegration = internalMutation({
   args: {
     provider: v.string(),
     mode: v.string(),

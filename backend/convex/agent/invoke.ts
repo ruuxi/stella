@@ -1,7 +1,7 @@
-import { action } from "../_generated/server";
+import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { streamText, stepCountIs } from "ai";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "../tools/index";
 import { resolveModelConfig } from "./model_resolver";
@@ -247,7 +247,7 @@ const coerceDeviceContext = async (
   return { conversationId, userMessageId, targetDeviceId };
 };
 
-export const invoke = action({
+export const invoke = internalAction({
   args: {
     agentType: v.string(),
     mode: v.optional(v.string()),

@@ -421,7 +421,7 @@ const getAgentConfigHandler = async (
   });
 };
 
-export const getAgentConfig = query({
+export const getAgentConfig = internalQuery({
   args: {
     agentType: v.string(),
   },
@@ -443,7 +443,7 @@ export const getAgentConfigInternal = internalQuery({
   },
 });
 
-export const listAgents = query({
+export const listAgents = internalQuery({
   args: {},
   returns: v.array(agentClientValidator),
   handler: async (ctx) => {

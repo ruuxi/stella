@@ -258,7 +258,7 @@ export const getInstalled = query({
 /**
  * Seed built-in packages (idempotent).
  */
-export const seed = mutation({
+export const seed = internalMutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
@@ -302,7 +302,7 @@ export const seed = mutation({
  * Publish a self-mod feature as a mod package in the store.
  * Upserts by packageId so re-publishing updates the existing entry.
  */
-export const publishMod = mutation({
+export const publishMod = internalMutation({
   args: {
     packageId: v.string(),
     name: v.string(),

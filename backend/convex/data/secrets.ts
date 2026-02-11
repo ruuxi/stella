@@ -153,7 +153,7 @@ export const listSecrets = query({
   },
 });
 
-export const updateSecret = mutation({
+export const updateSecret = internalMutation({
   args: {
     secretId: v.id("secrets"),
     plaintext: v.string(),
@@ -211,7 +211,7 @@ export const deleteSecret = mutation({
   },
 });
 
-export const getSecretHandle = query({
+export const getSecretHandle = internalQuery({
   args: {
     provider: v.string(),
   },

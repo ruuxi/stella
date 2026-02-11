@@ -6,7 +6,7 @@ import {
   query,
 } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { requireUserId } from "../auth";
@@ -740,7 +740,7 @@ export const setupBridge = action({
         { ownerId },
       );
       if (!spriteName) {
-        const result = await ctx.runAction(api.agent.cloud_devices.enable247, {});
+        const result = await ctx.runAction(internal.agent.cloud_devices.enable247, {});
         spriteName = result.spriteName;
       }
 

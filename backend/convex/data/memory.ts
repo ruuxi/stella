@@ -3,7 +3,6 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
-  query,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -609,7 +608,7 @@ export const listCategories = internalQuery({
   },
 });
 
-export const listCategoriesForOwner = query({
+export const listCategoriesForOwner = internalQuery({
   args: {},
   returns: v.array(v.object({
     category: v.string(),
