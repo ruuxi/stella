@@ -182,11 +182,18 @@ function StoreView({ onComposePrompt }: StoreViewProps) {
           );
         } else if (pkg.type === "skill" && window.electronAPI) {
           const payload = pkg.modPayload as { markdown?: string; agentTypes?: string[]; tags?: string[] } | undefined;
+          const markdown =
+            typeof payload?.markdown === "string" ? payload.markdown.trim() : "";
+          if (!markdown) {
+            throw new Error(
+              `Skill package "${pkg.packageId}" is missing modPayload.markdown and cannot be installed.`,
+            );
+          }
           await (window.electronAPI as any).storeInstallSkill({
             packageId: pkg.packageId,
             skillId: pkg.packageId,
             name: pkg.name,
-            markdown: payload?.markdown ?? pkg.description,
+            markdown,
             agentTypes: payload?.agentTypes ?? ["general"],
             tags: payload?.tags ?? pkg.tags,
           });

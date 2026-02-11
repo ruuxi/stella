@@ -26,7 +26,7 @@ This directory implements the local tool execution system that runs on the user'
 | `tools-shell.ts` | Bash, KillShell, SkillBash |
 | `tools-state.ts` | Task, TaskOutput |
 | `tools-user.ts` | AskUserQuestion, RequestCredential |
-| `tools_store.ts` | InstallSkillPackage, InstallThemePackage, InstallCanvasPackage, InstallPluginPackage, UninstallPackage |
+| `tools_store.ts` | ManagePackage |
 | `tools_self_mod.ts` | SelfModStart, SelfModApply, SelfModRevert, SelfModStatus, SelfModPackage |
 
 Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and are no longer registered as device tools. The `tools-web.ts` file still exists but its handlers are commented out of the registry.
