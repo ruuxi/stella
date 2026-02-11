@@ -44,6 +44,8 @@ export type MessagePayload = {
   content?: string;
   message?: string;
   role?: string;
+  source?: string;
+  agentType?: string;
   attachments?: Attachment[];
   mode?: string;
   usage?: {

@@ -15,7 +15,14 @@
     "native:build": "cd native && npm install && npm run build",
     "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run native:build && tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron-builder",
-    "electron:preview": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron ."
+    "electron:preview": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron .",
+    "emotes:sync": "node scripts/fetch-emotes.mjs",
+    "emotes:sync:clean": "node scripts/fetch-emotes.mjs --clean",
+    "emotes:label": "node scripts/label-emotes.mjs",
+    "emotes:label:dry": "node scripts/label-emotes.mjs --dry-run",
+    "emotes:emoji-index": "node scripts/build-emote-emoji-index.mjs",
+    "emotes:prune-family": "node scripts/prune-emotes-by-emoji-family.mjs",
+    "emotes:optimize": "node scripts/optimize-emotes.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.51",
@@ -72,7 +79,7 @@
     "recharts": "2.15.4",
     "shiki": "^3.21.0",
     "sonner": "^2.0.7",
-    "streamdown": "^2.1.0",
+    "streamdown": "^2.2.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
     "uiohook-napi": "^1.5.4",

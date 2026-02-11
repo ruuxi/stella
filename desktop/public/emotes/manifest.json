@@ -1,0 +1,5607 @@
+{
+  "version": 1,
+  "generatedAt": "2026-02-11T11:52:54.167Z",
+  "channels": [
+    "xqc",
+    "forsen",
+    "sodapoppin",
+    "lirik",
+    "nymn",
+    "pokelawls"
+  ],
+  "services": "7tv.bttv.ffz",
+  "emotes": [
+    {
+      "code": "-20",
+      "url": "/emotes/assets/7tv/-20-cfcbd6abdfe7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": ":))",
+      "url": "/emotes/assets/7tv/emote-115b292aaab5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": ":3",
+      "url": "/emotes/assets/7tv/3-4f17c6922fe3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": ":b",
+      "url": "/emotes/assets/7tv/b-dfcb5e882b56.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "!!!",
+      "url": "/emotes/assets/7tv/emote-065d40685c16.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "!burgie",
+      "url": "/emotes/assets/7tv/burgie-2e6a2cbfe465.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "!fund",
+      "url": "/emotes/assets/7tv/fund-a8b5d16b9ce8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "!givenympts",
+      "url": "/emotes/assets/7tv/givenympts-32aebf83fe93.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "!smp",
+      "url": "/emotes/assets/7tv/smp-3f69d0fe2510.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "!vote",
+      "url": "/emotes/assets/7tv/vote-7317ea05185a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "??",
+      "url": "/emotes/assets/7tv/emote-a7bb16a06689.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "???",
+      "url": "/emotes/assets/7tv/emote-7fcff5103163.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "????",
+      "url": "/emotes/assets/7tv/emote-b54f5ae498fb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "...",
+      "url": "/emotes/assets/7tv/emote-b26f60ec82e2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "...butthenameislessgenericsoyoudontaccidentallytypeit",
+      "url": "/emotes/assets/7tv/butthenameislessgenericsoyoudontaccidentallytypeit-1e254c4236d7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": ")))))",
+      "url": "/emotes/assets/7tv/emote-a4b1110b9085.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "+20",
+      "url": "/emotes/assets/7tv/20-e39e23e3b008.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "$$fish",
+      "url": "/emotes/assets/7tv/fish-4e45f3bbfc98.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "00",
+      "url": "/emotes/assets/7tv/00-4de2ecd4a2ad.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "0ut3",
+      "url": "/emotes/assets/7tv/0ut3-970c5df90fc1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "10Head",
+      "url": "/emotes/assets/7tv/10Head-195999ade0ce.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "1427butthenameislongerbecauseafewdumbassesinchatliketoruinit",
+      "url": "/emotes/assets/7tv/1427butthenameislongerbecauseafewdumbassesinchatliketoruinit-cc4d795175de.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "1984",
+      "url": "/emotes/assets/7tv/1984-8972dfe78e3c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "1D",
+      "url": "/emotes/assets/7tv/1D-3d53685df74b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "21",
+      "url": "/emotes/assets/7tv/21-997dde897d4d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "2bSway",
+      "url": "/emotes/assets/7tv/2bSway-53dd367c2d29.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "31",
+      "url": "/emotes/assets/7tv/31-a8a388b7fd8b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "4090",
+      "url": "/emotes/assets/7tv/4090-5adfc09198f5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "4Shrug",
+      "url": "/emotes/assets/7tv/4Shrug-520a57c7a82d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "500cigarettes",
+      "url": "/emotes/assets/7tv/500cigarettes-fa90095343a5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "aaaa",
+      "url": "/emotes/assets/7tv/aaaa-d45701b9c6bf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "ABBOBA",
+      "url": "/emotes/assets/7tv/ABBOBA-5d4f19f8dd92.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ABEL",
+      "url": "/emotes/assets/7tv/ABEL-43e24173fede.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "AbsoluteRage",
+      "url": "/emotes/assets/7tv/AbsoluteRage-fc57cd7c5426.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "achoo",
+      "url": "/emotes/assets/7tv/achoo-23eade0c1619.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "AddressMe",
+      "url": "/emotes/assets/7tv/AddressMe-8c9231593c9b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "AEUGH",
+      "url": "/emotes/assets/7tv/AEUGH-9ca67150f5b2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "agahi",
+      "url": "/emotes/assets/7tv/agahi-c027d88b44d0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "aha",
+      "url": "/emotes/assets/7tv/aha-a3ee646e7b14.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "AHEGAO",
+      "url": "/emotes/assets/7tv/AHEGAO-4434db7b8806.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ahmadmuhsin",
+      "url": "/emotes/assets/7tv/ahmadmuhsin-c473801a9f6e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "AhShit",
+      "url": "/emotes/assets/7tv/AhShit-ab0de71aca19.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "ahware",
+      "url": "/emotes/assets/7tv/ahware-508266bd7aad.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "aim",
+      "url": "/emotes/assets/7tv/aim-49e366d1781c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "AINTNOWAY",
+      "url": "/emotes/assets/7tv/AINTNOWAY-b13c2f9e6c74.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Alarm",
+      "url": "/emotes/assets/7tv/Alarm-730ad10492d4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Aldentge",
+      "url": "/emotes/assets/7tv/Aldentge-9e56551f35e7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "AlertTheCatStartsItsEngine",
+      "url": "/emotes/assets/7tv/AlertTheCatStartsItsEngine-e4da4d068ef3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "alias",
+      "url": "/emotes/assets/7tv/alias-69bf7340d7ea.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "AliasArrive",
+      "url": "/emotes/assets/7tv/AliasArrive-22120ae47eba.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "AlienApprove",
+      "url": "/emotes/assets/7tv/AlienApprove-0860a6f34032.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "AlienDanceBlue",
+      "url": "/emotes/assets/7tv/AlienDanceBlue-0983f59fac20.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "AlienParty",
+      "url": "/emotes/assets/7tv/AlienParty-c2291b8329fd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Alivelole",
+      "url": "/emotes/assets/7tv/Alivelole-730fd54500a5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "allRoads",
+      "url": "/emotes/assets/7tv/allRoads-459da9906e60.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "ALOO",
+      "url": "/emotes/assets/7tv/ALOO-84b7c6d800f6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "alreadytracer",
+      "url": "/emotes/assets/7tv/alreadytracer-d59515c90287.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "ambatuJam",
+      "url": "/emotes/assets/7tv/ambatuJam-86772e82c699.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "amongE",
+      "url": "/emotes/assets/7tv/amongE-49ef85a5a436.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "aMostPeculiarSpecimen",
+      "url": "/emotes/assets/7tv/aMostPeculiarSpecimen-3aa54edb525d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Android",
+      "url": "/emotes/assets/7tv/Android-4ac6ca53daac.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "AngelThump",
+      "url": "/emotes/assets/7tv/AngelThump-f9f00ada40ee.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Anger",
+      "url": "/emotes/assets/7tv/Anger-2d6f29177de4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "angy",
+      "url": "/emotes/assets/7tv/angy-b84d09692c8a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "aNIME",
+      "url": "/emotes/assets/7tv/aNIME-b14e17e2cd8a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ankhaPls",
+      "url": "/emotes/assets/7tv/ankhaPls-75e209839def.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "AOTC",
+      "url": "/emotes/assets/7tv/AOTC-1f9ec9b560da.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ApeSlap",
+      "url": "/emotes/assets/7tv/ApeSlap-ffba0b6bb1f0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "apohowoah",
+      "url": "/emotes/assets/7tv/apohowoah-813ef30359de.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "apolApol",
+      "url": "/emotes/assets/7tv/apolApol-b0c328fb7f2d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ApolEgg",
+      "url": "/emotes/assets/7tv/ApolEgg-be3ab023cb90.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Apollobotomy",
+      "url": "/emotes/assets/7tv/Apollobotomy-9f4e92337661.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ApolloHide",
+      "url": "/emotes/assets/7tv/ApolloHide-3d77369f6934.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "apolloKill",
+      "url": "/emotes/assets/7tv/apolloKill-1b65b1d9a973.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "apolloLooking",
+      "url": "/emotes/assets/7tv/apolloLooking-9e685f15404b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "apolloLove",
+      "url": "/emotes/assets/7tv/apolloLove-682245b0b7e6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ApolloLurk",
+      "url": "/emotes/assets/7tv/ApolloLurk-f309694e655d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "apolloPray",
+      "url": "/emotes/assets/7tv/apolloPray-ec8f71c952fc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "apolloSleep",
+      "url": "/emotes/assets/7tv/apolloSleep-d8a3006013e3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ApolloStairs",
+      "url": "/emotes/assets/7tv/ApolloStairs-fda266cfb790.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ApolloTrauma",
+      "url": "/emotes/assets/7tv/ApolloTrauma-46a6f962414b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ApolloWake",
+      "url": "/emotes/assets/7tv/ApolloWake-a5ebd6869726.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "apoLuL",
+      "url": "/emotes/assets/7tv/apoLuL-b40d77c5da1a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "APPLE",
+      "url": "/emotes/assets/7tv/APPLE-3eecf7f8f9fe.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "AragornHelmet",
+      "url": "/emotes/assets/7tv/AragornHelmet-168d97714059.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "areyoudonenymn",
+      "url": "/emotes/assets/7tv/areyoudonenymn-b21e1e971b90.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "arr",
+      "url": "/emotes/assets/7tv/arr-e05ec8e94e8c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Assept",
+      "url": "/emotes/assets/7tv/Assept-47dc9e447274.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "AURA",
+      "url": "/emotes/assets/7tv/AURA-1b0e2cbac6c1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "autism",
+      "url": "/emotes/assets/7tv/autism-dfc813359253.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "AverageOfflineChatter",
+      "url": "/emotes/assets/7tv/AverageOfflineChatter-d01b8a6e3814.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Aware",
+      "url": "/emotes/assets/7tv/Aware-0bed614f734b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "AwesomeChoke",
+      "url": "/emotes/assets/7tv/AwesomeChoke-cde3be636f7f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "AWOOGA",
+      "url": "/emotes/assets/7tv/AWOOGA-32e84e16c613.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "AWPge",
+      "url": "/emotes/assets/7tv/AWPge-8daaee003096.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "AYAYA",
+      "url": "/emotes/assets/7tv/AYAYA-4c6f609a82b5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "AYAYACRY",
+      "url": "/emotes/assets/ffz/AYAYACRY-f58134e3da8d.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "ayayaJAM",
+      "url": "/emotes/assets/7tv/ayayaJAM-7830a94f3978.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "AYAYAS",
+      "url": "/emotes/assets/ffz/AYAYAS-cd2cde6b03ca.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "AYAYAWeird",
+      "url": "/emotes/assets/ffz/AYAYAWeird-8747f3bd697a.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "AYOOO",
+      "url": "/emotes/assets/7tv/AYOOO-f52b064a4040.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT",
+      "url": "/emotes/assets/7tv/BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT-49a8b280642e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BABE",
+      "url": "/emotes/assets/7tv/BABE-dcfa99a2dbd5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "babyFR",
+      "url": "/emotes/assets/7tv/babyFR-741fe309afd6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Backseatega",
+      "url": "/emotes/assets/7tv/Backseatega-6aa6deb7e65a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Backseating",
+      "url": "/emotes/assets/7tv/Backseating-e8ebd73f4652.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "backstreetUncs",
+      "url": "/emotes/assets/7tv/backstreetUncs-07f1aada8acc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "badkok",
+      "url": "/emotes/assets/7tv/badkok-e6f0e8b0da18.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "baj",
+      "url": "/emotes/assets/7tv/baj-e1f229f70753.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "bajing",
+      "url": "/emotes/assets/7tv/bajing-c21000edc133.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Bajing",
+      "url": "/emotes/assets/7tv/Bajing-245b4c7c3e38.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Balcony",
+      "url": "/emotes/assets/7tv/Balcony-4d57796fe409.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BALDbutthenameislongersoyoucantspamit",
+      "url": "/emotes/assets/7tv/BALDbutthenameislongersoyoucantspamit-616d8165e402.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Baldge",
+      "url": "/emotes/assets/7tv/Baldge-f59a7d1f4268.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "BANANA",
+      "url": "/emotes/assets/7tv/BANANA-ff6dc6032bbe.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Bananacatrun",
+      "url": "/emotes/assets/7tv/Bananacatrun-658a21806063.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "BAND",
+      "url": "/emotes/assets/7tv/BAND-6788e711bdbb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Bandage",
+      "url": "/emotes/assets/7tv/Bandage-a1abfd677da1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BANGG",
+      "url": "/emotes/assets/7tv/BANGG-850901c38088.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "BANNED",
+      "url": "/emotes/assets/bttv/BANNED-63ed7b436e63.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "BAPPED",
+      "url": "/emotes/assets/7tv/BAPPED-b12574246fa5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Barons",
+      "url": "/emotes/assets/7tv/Barons-a39ed779aa9c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Barry63",
+      "url": "/emotes/assets/7tv/Barry63-782177af94d6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Bars",
+      "url": "/emotes/assets/7tv/Bars-a3ea4f1d7932.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BASADO",
+      "url": "/emotes/assets/7tv/BASADO-d3ad1642dd6e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Based",
+      "url": "/emotes/assets/7tv/Based-ce8fca8d977e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "bbCheer",
+      "url": "/emotes/assets/7tv/bbCheer-239eac615ab0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BBExplainingHow",
+      "url": "/emotes/assets/7tv/BBExplainingHow-04a8b2aaf3bd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "bbFaint",
+      "url": "/emotes/assets/7tv/bbFaint-85631c43e269.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "bbHuggingYou",
+      "url": "/emotes/assets/7tv/bbHuggingYou-d4447922f0e0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "bbLaugh",
+      "url": "/emotes/assets/7tv/bbLaugh-07bc3066381e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "bbLookUp",
+      "url": "/emotes/assets/7tv/bbLookUp-40b0e1017eff.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "bbParty",
+      "url": "/emotes/assets/7tv/bbParty-15004f063bbb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BBQING",
+      "url": "/emotes/assets/7tv/BBQING-1abb07398920.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BeachMouseWaiting",
+      "url": "/emotes/assets/7tv/BeachMouseWaiting-1a40c532ec96.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "beAlright",
+      "url": "/emotes/assets/7tv/beAlright-acf8637682e4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "BeanPls",
+      "url": "/emotes/assets/7tv/BeanPls-4fe2e7966e5c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BEAUTIFULMAN",
+      "url": "/emotes/assets/7tv/BEAUTIFULMAN-b5b052f2d694.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "BedgeTogether",
+      "url": "/emotes/assets/7tv/BedgeTogether-b4fc69392480.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "beeBobble",
+      "url": "/emotes/assets/7tv/beeBobble-fb72d27bfab1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "BEHOLD",
+      "url": "/emotes/assets/7tv/BEHOLD-bdf9f67c7818.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BELIEVERS",
+      "url": "/emotes/assets/7tv/BELIEVERS-617a64812241.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "belka",
+      "url": "/emotes/assets/7tv/belka-3936c4a61c2a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "bench0",
+      "url": "/emotes/assets/7tv/bench0-2469fe07af9b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BigDog",
+      "url": "/emotes/assets/7tv/BigDog-a85e5a55970e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "BigHardo",
+      "url": "/emotes/assets/7tv/BigHardo-d43799f68376.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "bigPog",
+      "url": "/emotes/assets/7tv/bigPog-a8e3e9d1b9a5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "bigTeaTime",
+      "url": "/emotes/assets/7tv/bigTeaTime-7a022124edc0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BillyArrive",
+      "url": "/emotes/assets/7tv/BillyArrive-63fac10d5a48.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BillyReady",
+      "url": "/emotes/assets/7tv/BillyReady-ba4ecb4cd418.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Binoculars",
+      "url": "/emotes/assets/7tv/Binoculars-13b675c7d8e8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Binoculous",
+      "url": "/emotes/assets/7tv/Binoculous-38ed535f8568.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "bioxeN",
+      "url": "/emotes/assets/7tv/bioxeN-2a295c1ab20c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Birdge",
+      "url": "/emotes/assets/7tv/Birdge-fb8a2512ba70.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BirdLaughingAtYou",
+      "url": "/emotes/assets/7tv/BirdLaughingAtYou-52356871ec3d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "birff",
+      "url": "/emotes/assets/7tv/birff-6044d579e652.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Bitrate",
+      "url": "/emotes/assets/7tv/Bitrate-584b5a99c3d4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Bits-100",
+      "url": "/emotes/assets/7tv/Bits-100-476609bc38b0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BLANKIES",
+      "url": "/emotes/assets/7tv/BLANKIES-0e1ede6d81a8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "blehE",
+      "url": "/emotes/assets/7tv/blehE-dfcb5e882b56.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Blender",
+      "url": "/emotes/assets/7tv/Blender-e7937829d2e0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Blindfold",
+      "url": "/emotes/assets/7tv/Blindfold-1f0fa271e5ba.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Bloons",
+      "url": "/emotes/assets/7tv/Bloons-323e67299e85.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "BlowingLeaves",
+      "url": "/emotes/assets/7tv/BlowingLeaves-1046445a7648.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Blush",
+      "url": "/emotes/assets/7tv/Blush-9193bdc02302.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Boating",
+      "url": "/emotes/assets/7tv/Boating-bf26142ce8ae.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "boink",
+      "url": "/emotes/assets/7tv/boink-5434a44b4d5f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "bombaware",
+      "url": "/emotes/assets/7tv/bombaware-8b83fd037a60.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "bongoTap",
+      "url": "/emotes/assets/7tv/bongoTap-815eff14432b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BONK",
+      "url": "/emotes/assets/bttv/BONK-38233758a34f.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "bonkFR",
+      "url": "/emotes/assets/bttv/bonkFR-c72652d1772a.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "BOOBAPEEK",
+      "url": "/emotes/assets/7tv/BOOBAPEEK-d2a1a324bb14.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BOOBEST",
+      "url": "/emotes/assets/7tv/BOOBEST-743b151652a7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BOROMIR",
+      "url": "/emotes/assets/7tv/BOROMIR-379a258654e2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BOTHA",
+      "url": "/emotes/assets/7tv/BOTHA-64125068f961.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BrainDead",
+      "url": "/emotes/assets/7tv/BrainDead-bcc83ef388f3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BrainRot",
+      "url": "/emotes/assets/7tv/BrainRot-cd753eac457c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BRAVOVINCE",
+      "url": "/emotes/assets/7tv/BRAVOVINCE-de0779959c9f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BREH",
+      "url": "/emotes/assets/7tv/BREH-052aa05b055c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BROKIE",
+      "url": "/emotes/assets/7tv/BROKIE-44854b240747.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Bruh",
+      "url": "/emotes/assets/7tv/Bruh-e16f06d95524.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "BRUHMM",
+      "url": "/emotes/assets/7tv/BRUHMM-90c320378ef2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "buda",
+      "url": "/emotes/assets/7tv/buda-eefc651e0f72.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "BULLSHIT",
+      "url": "/emotes/assets/7tv/BULLSHIT-3faefa5bb582.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "BULPES",
+      "url": "/emotes/assets/7tv/BULPES-3fd927398bd9.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BUNNY",
+      "url": "/emotes/assets/7tv/BUNNY-18d76a9466df.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BurgerTime",
+      "url": "/emotes/assets/7tv/BurgerTime-ff1355ca6d00.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "burgir",
+      "url": "/emotes/assets/7tv/burgir-8e850eaaedd4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "BUS",
+      "url": "/emotes/assets/7tv/BUS-d016bbf27287.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "BUYNOW",
+      "url": "/emotes/assets/7tv/BUYNOW-30fa776580b1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "CALLIT",
+      "url": "/emotes/assets/7tv/CALLIT-ac47acfacfd0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CAMON",
+      "url": "/emotes/assets/7tv/CAMON-3b1c08af958c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "carrotYummy",
+      "url": "/emotes/assets/7tv/carrotYummy-e44b7f985b67.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "CatBanger",
+      "url": "/emotes/assets/7tv/CatBanger-372b59ba9eec.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "catBite",
+      "url": "/emotes/assets/7tv/catBite-afad317f93d3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "catCry",
+      "url": "/emotes/assets/7tv/catCry-2e6edf06ed41.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "catDisco",
+      "url": "/emotes/assets/7tv/catDisco-046cb95edf14.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Cateatinbananahehappy",
+      "url": "/emotes/assets/7tv/Cateatinbananahehappy-636c1deb6a65.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "catFlip",
+      "url": "/emotes/assets/7tv/catFlip-5c9bea974839.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Catge",
+      "url": "/emotes/assets/bttv/Catge-2da0907e114d.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "CatGe",
+      "url": "/emotes/assets/bttv/CatGe-1cdd722fe2bd.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "CatGuitar",
+      "url": "/emotes/assets/7tv/CatGuitar-032786a8aee2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CatHandshake",
+      "url": "/emotes/assets/7tv/CatHandshake-ed2b049b4d39.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "catHug",
+      "url": "/emotes/assets/7tv/catHug-35aa179f530d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "catHyper",
+      "url": "/emotes/assets/7tv/catHyper-4235ef8bf74f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "catKebab",
+      "url": "/emotes/assets/7tv/catKebab-629cabe7ef1e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "catNOD",
+      "url": "/emotes/assets/7tv/catNOD-7eeffb97edbf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "CatPiano",
+      "url": "/emotes/assets/7tv/CatPiano-20aca9433a36.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "catPunch",
+      "url": "/emotes/assets/7tv/catPunch-3248dbc91503.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "catRose",
+      "url": "/emotes/assets/7tv/catRose-be5f1165e5ae.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "catSighButLookingToTheRightSoYouCanPutdashAfterIt",
+      "url": "/emotes/assets/7tv/catSighButLookingToTheRightSoYouCanPutdashAfterIt-faf6896e2c3b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "catSNIFFA",
+      "url": "/emotes/assets/7tv/catSNIFFA-4af3bfa7cbef.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "CAUGHT0",
+      "url": "/emotes/assets/7tv/CAUGHT0-52580a2e5da7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Chatge",
+      "url": "/emotes/assets/7tv/Chatge-e8d8cbab224b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Chatting",
+      "url": "/emotes/assets/7tv/Chatting-33cf046c6216.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CHEAT",
+      "url": "/emotes/assets/7tv/CHEAT-a7a698fed31b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CHEER",
+      "url": "/emotes/assets/7tv/CHEER-4b431f42a494.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Chiefs",
+      "url": "/emotes/assets/7tv/Chiefs-47054f409017.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "CHILLMAN",
+      "url": "/emotes/assets/7tv/CHILLMAN-d2c0d84f8699.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "chokeFR",
+      "url": "/emotes/assets/ffz/chokeFR-f665f91e57f0.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Cinema",
+      "url": "/emotes/assets/7tv/Cinema-71766ab8eefb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CinemaFail",
+      "url": "/emotes/assets/7tv/CinemaFail-ecd05a699c6f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Citto",
+      "url": "/emotes/assets/7tv/Citto-a18e9e546199.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "clanka",
+      "url": "/emotes/assets/7tv/clanka-6a9095b1de7e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ClankerLivesMatter",
+      "url": "/emotes/assets/7tv/ClankerLivesMatter-d3803509fb8f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Clap",
+      "url": "/emotes/assets/7tv/Clap-bde11008a854.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "CleanTheNymN",
+      "url": "/emotes/assets/7tv/CleanTheNymN-0dd464ec96aa.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "clownFiesta",
+      "url": "/emotes/assets/7tv/clownFiesta-97a07ca235cf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Clueless",
+      "url": "/emotes/assets/7tv/Clueless-377898c3e24e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CluelessMask",
+      "url": "/emotes/assets/7tv/CluelessMask-b26d575e0063.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "CoffeeTime",
+      "url": "/emotes/assets/7tv/CoffeeTime-9517650d8a14.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "cogFR",
+      "url": "/emotes/assets/bttv/cogFR-730684e22e22.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "COGGERS",
+      "url": "/emotes/assets/7tv/COGGERS-dc06ce3a8c1c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CokeShakey",
+      "url": "/emotes/assets/7tv/CokeShakey-a0bc0ee08760.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Colat",
+      "url": "/emotes/assets/7tv/Colat-f60294c871f5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Coldge",
+      "url": "/emotes/assets/7tv/Coldge-86954be8f971.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Comfi",
+      "url": "/emotes/assets/7tv/Comfi-340b1413346e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Concerned",
+      "url": "/emotes/assets/7tv/Concerned-5ffc56a3d93e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "ConcernFroge",
+      "url": "/emotes/assets/7tv/ConcernFroge-9a65eda50d52.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Confetti",
+      "url": "/emotes/assets/7tv/Confetti-0c3f5e47a78c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "cooperDespair",
+      "url": "/emotes/assets/7tv/cooperDespair-c3d03bd376cf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "cooperSad",
+      "url": "/emotes/assets/7tv/cooperSad-66c504477e85.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Copernicus",
+      "url": "/emotes/assets/7tv/Copernicus-ccbc1f4bc353.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "COPIUM",
+      "url": "/emotes/assets/7tv/COPIUM-aef6c937d6d5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "COPIUMOVERDOSE",
+      "url": "/emotes/assets/7tv/COPIUMOVERDOSE-493ea69e41ed.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "COPIUMSHIPMENT",
+      "url": "/emotes/assets/7tv/COPIUMSHIPMENT-fd64482c12ec.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "COPIUMTRUCK",
+      "url": "/emotes/assets/7tv/COPIUMTRUCK-d0b35547869d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Corncerned",
+      "url": "/emotes/assets/7tv/Corncerned-6b2271f9b311.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Corpa",
+      "url": "/emotes/assets/7tv/Corpa-a8b5d16b9ce8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "CORTISOL",
+      "url": "/emotes/assets/7tv/CORTISOL-8fa228f904a7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CountryBoys",
+      "url": "/emotes/assets/7tv/CountryBoys-1407544fd875.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "Countup",
+      "url": "/emotes/assets/7tv/Countup-cf6104ddc4e6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "coupleofaliens",
+      "url": "/emotes/assets/7tv/coupleofaliens-73f6922496cd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "cozyFR",
+      "url": "/emotes/assets/7tv/cozyFR-705835d0a561.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "crabPls",
+      "url": "/emotes/assets/7tv/crabPls-b9dd20b53d35.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "CrazyIWasCrazyOnceTheyPutMeInARoomARubberroomARubberroomFilledWithRatsRatsMakeMeGoCrazy",
+      "url": "/emotes/assets/7tv/CrazyIWasCrazyOnceTheyPutMeInARoomARubberroomARubberroomFilledWi-13ccbba64bd9.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "creaturevibE",
+      "url": "/emotes/assets/7tv/creaturevibE-e39e5034b48e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "cruising",
+      "url": "/emotes/assets/7tv/cruising-66aad008d814.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "cryFR",
+      "url": "/emotes/assets/bttv/cryFR-5c7ec6ce1efb.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "cultFR",
+      "url": "/emotes/assets/bttv/cultFR-3860c1b2ccc5.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "CUMMIES",
+      "url": "/emotes/assets/7tv/CUMMIES-c1205d75a3b7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "CUMtember",
+      "url": "/emotes/assets/7tv/CUMtember-38f5962f20ae.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "CUNGUS",
+      "url": "/emotes/assets/7tv/CUNGUS-080671427e2e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "cursePls",
+      "url": "/emotes/assets/7tv/cursePls-380a2029508d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Cute",
+      "url": "/emotes/assets/7tv/Cute-87bc6cda0a96.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DaBaby",
+      "url": "/emotes/assets/7tv/DaBaby-d98f481d8ef7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DAMNMAN",
+      "url": "/emotes/assets/7tv/DAMNMAN-59727e225c55.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "DankChat",
+      "url": "/emotes/assets/7tv/DankChat-6284d5ce15cc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DankFixed",
+      "url": "/emotes/assets/7tv/DankFixed-323a9be47c71.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DankG",
+      "url": "/emotes/assets/7tv/DankG-d603cf4021f1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "dankHat",
+      "url": "/emotes/assets/7tv/dankHat-bc0cfd6e7a4d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DankMap",
+      "url": "/emotes/assets/7tv/DankMap-8324689708a6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "DankStick",
+      "url": "/emotes/assets/7tv/DankStick-7de1225c688d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DarkerHands",
+      "url": "/emotes/assets/7tv/DarkerHands-6a5cdb672fdd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Deafge",
+      "url": "/emotes/assets/7tv/Deafge-4df5ea0fcedc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DEAL",
+      "url": "/emotes/assets/7tv/DEAL-63ca68292e35.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DeathGripge",
+      "url": "/emotes/assets/7tv/DeathGripge-e84347a7daa4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DEFIBMAN",
+      "url": "/emotes/assets/7tv/DEFIBMAN-3f98f85156ab.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Degloved",
+      "url": "/emotes/assets/7tv/Degloved-3d1e222a2281.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "DEI",
+      "url": "/emotes/assets/7tv/DEI-c485aa67f790.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "DEIshroom",
+      "url": "/emotes/assets/7tv/DEIshroom-ad7cedadc827.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DemonCat",
+      "url": "/emotes/assets/7tv/DemonCat-66f1a279bf42.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Dentris",
+      "url": "/emotes/assets/7tv/Dentris-362db0ae6e12.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "despairFR",
+      "url": "/emotes/assets/7tv/despairFR-e55af3d26178.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Despairge",
+      "url": "/emotes/assets/7tv/Despairge-317402a87e0d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DEWIT",
+      "url": "/emotes/assets/7tv/DEWIT-a7c17ffdec11.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "DiedOfHeat",
+      "url": "/emotes/assets/7tv/DiedOfHeat-197a92433791.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DIESOFFRAMES",
+      "url": "/emotes/assets/7tv/DIESOFFRAMES-13026a95dd6c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "DinkDonk",
+      "url": "/emotes/assets/7tv/DinkDonk-9288089e0392.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "DinnerTime",
+      "url": "/emotes/assets/7tv/DinnerTime-33a2228e9380.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DinoBlush",
+      "url": "/emotes/assets/7tv/DinoBlush-95f04f089298.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "div44",
+      "url": "/emotes/assets/7tv/div44-51e2468ca421.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DNDing",
+      "url": "/emotes/assets/7tv/DNDing-fd9a215860e7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "dogArrive",
+      "url": "/emotes/assets/7tv/dogArrive-85afac78f84a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "DonkAndDonker",
+      "url": "/emotes/assets/7tv/DonkAndDonker-fe2ef519360c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DonkChat",
+      "url": "/emotes/assets/7tv/DonkChat-d9b6fd362201.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "donkDriving",
+      "url": "/emotes/assets/7tv/donkDriving-5cbe7d0b8337.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "donkMiner",
+      "url": "/emotes/assets/7tv/donkMiner-cb85c80010ab.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "donkReading",
+      "url": "/emotes/assets/7tv/donkReading-b9b3c588251e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "donkRun",
+      "url": "/emotes/assets/7tv/donkRun-0d7ed4857b65.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DonkTrio",
+      "url": "/emotes/assets/7tv/DonkTrio-e3ea89069d4f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "donkWalk",
+      "url": "/emotes/assets/7tv/donkWalk-0ac226d0cf28.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DonkWall",
+      "url": "/emotes/assets/7tv/DonkWall-9645a8c05c10.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DonoTime",
+      "url": "/emotes/assets/7tv/DonoTime-7bb139952a0f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Dooma",
+      "url": "/emotes/assets/7tv/Dooma-a5fb3f5dff2b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DOOMAZZZ",
+      "url": "/emotes/assets/7tv/DOOMAZZZ-babce1fd8973.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "DOUBTERS",
+      "url": "/emotes/assets/7tv/DOUBTERS-0caf6ef0d787.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DougDimmadomeOwnerOfTheDimmsdaleDimmadomeLookingOutHisDimmsdaleDimmadomeLookingOutSpongebobsWindowAndKnucklesFtDanteDOIT",
+      "url": "/emotes/assets/ffz/DougDimmadomeOwnerOfTheDimmsdaleDimmadomeLookingOutHisDimmsdaleD-2fdeb0293ef4.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DOYOUFEELTHEWEIGHTOFYOURSINSDOESITHURTDOESGODSJUDGEMENTFILLYOUWITHGUILTTORMENTTHEYRECOMINGTHEYRECOMI",
+      "url": "/emotes/assets/7tv/DOYOUFEELTHEWEIGHTOFYOURSINSDOESITHURTDOESGODSJUDGEMENTFILLYOUWI-24d2a4749d62.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "DragonDeez",
+      "url": "/emotes/assets/7tv/DragonDeez-07389222e6ca.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "DRILL",
+      "url": "/emotes/assets/7tv/DRILL-ea3177def60e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "DRUNK",
+      "url": "/emotes/assets/7tv/DRUNK-dd943c32536f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "duckPls",
+      "url": "/emotes/assets/7tv/duckPls-c0315a68affb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "dumbleShrug",
+      "url": "/emotes/assets/7tv/dumbleShrug-32b233551fb7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "DumbVissx",
+      "url": "/emotes/assets/7tv/DumbVissx-135396b242c0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "dwerk",
+      "url": "/emotes/assets/7tv/dwerk-4b223500d200.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "EATO",
+      "url": "/emotes/assets/7tv/EATO-32f03a436e72.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "EatTheMinus",
+      "url": "/emotes/assets/7tv/EatTheMinus-8c07a6560a91.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "eda",
+      "url": "/emotes/assets/7tv/eda-0ed3a343a5df.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Eddie",
+      "url": "/emotes/assets/7tv/Eddie-e468fc10b3cf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "EDM",
+      "url": "/emotes/assets/7tv/EDM-2d8e9b722144.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "eeping",
+      "url": "/emotes/assets/7tv/eeping-eb89aba6a9d0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "EggCat",
+      "url": "/emotes/assets/7tv/EggCat-8578870a6902.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ELINA_btw",
+      "url": "/emotes/assets/7tv/ELINA_btw-58e5e0525083.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ElNoSabe",
+      "url": "/emotes/assets/7tv/ElNoSabe-0760d7265888.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "emm",
+      "url": "/emotes/assets/7tv/emm-ca9c3e55b8cf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "emoneyFiles",
+      "url": "/emotes/assets/7tv/emoneyFiles-c6cd99c7613f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "emoneyGassy",
+      "url": "/emotes/assets/7tv/emoneyGassy-63cf309f0df8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "emoneyNonverbal",
+      "url": "/emotes/assets/7tv/emoneyNonverbal-eba5a5f00191.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "emoneyTesticularTorsion",
+      "url": "/emotes/assets/7tv/emoneyTesticularTorsion-2750d9e83223.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ERP",
+      "url": "/emotes/assets/7tv/ERP-e902880559ad.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "evilNabi",
+      "url": "/emotes/assets/bttv/evilNabi-1e627bcf66b2.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "eww",
+      "url": "/emotes/assets/7tv/eww-562ce4e63a13.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Excel",
+      "url": "/emotes/assets/7tv/Excel-69dc18aa7431.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "EXPLAINING",
+      "url": "/emotes/assets/7tv/EXPLAINING-9597290af98f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Explosion",
+      "url": "/emotes/assets/7tv/Explosion-a28bcd5b5c21.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Exquisite",
+      "url": "/emotes/assets/7tv/Exquisite-b3f47bfc2aad.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "ezFR",
+      "url": "/emotes/assets/bttv/ezFR-254c4a6deb3a.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FacePalm",
+      "url": "/emotes/assets/7tv/FacePalm-f86cc0d55ebb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 76,
+      "source": "channel:nymn"
+    },
+    {
+      "code": "FAFA",
+      "url": "/emotes/assets/7tv/FAFA-84a2ae449400.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FailFish",
+      "url": "/emotes/assets/7tv/FailFish-3b01e31ab273.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "fallDamage",
+      "url": "/emotes/assets/ffz/fallDamage-b730d7bba267.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "fallFR",
+      "url": "/emotes/assets/bttv/fallFR-19c6c3f2482c.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FatFuck",
+      "url": "/emotes/assets/7tv/FatFuck-e494a274f9b0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "FedxQc",
+      "url": "/emotes/assets/7tv/FedxQc-db479574befd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "FeelsADHDMan",
+      "url": "/emotes/assets/7tv/FeelsADHDMan-86c9ee18ac32.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FeelsBadMan",
+      "url": "/emotes/assets/bttv/FeelsBadMan-b5b7bd39c249.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 20,
+      "source": "global"
+    },
+    {
+      "code": "FeelsBitrateMan",
+      "url": "/emotes/assets/7tv/FeelsBitrateMan-d0f2f0720803.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FeelsBlackScreen",
+      "url": "/emotes/assets/7tv/FeelsBlackScreen-853526f02d54.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FeelsDabMan",
+      "url": "/emotes/assets/ffz/FeelsDabMan-1df85a1372c5.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "FeelsGlitchMan",
+      "url": "/emotes/assets/7tv/FeelsGlitchMan-c83e14638723.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FeelsLagMan",
+      "url": "/emotes/assets/7tv/FeelsLagMan-e242dafd113e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "FeelsLateMan",
+      "url": "/emotes/assets/7tv/FeelsLateMan-ad8b12690f9b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "FeelsOldMan",
+      "url": "/emotes/assets/7tv/FeelsOldMan-9438bc893a97.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "FeelsRectangleMan",
+      "url": "/emotes/assets/7tv/FeelsRectangleMan-bf6453c29cfb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "FeelsStrongMan",
+      "url": "/emotes/assets/7tv/FeelsStrongMan-d3438536e7e8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "FEMLY",
+      "url": "/emotes/assets/7tv/FEMLY-c19734c8486a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "feralDance",
+      "url": "/emotes/assets/7tv/feralDance-9751348927bf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Fiddy",
+      "url": "/emotes/assets/7tv/Fiddy-9006dec8ee22.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "firework3",
+      "url": "/emotes/assets/7tv/firework3-9952619d8be8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Fireworks",
+      "url": "/emotes/assets/7tv/Fireworks-0ef5eef1ec45.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "FirstTimeChadder",
+      "url": "/emotes/assets/7tv/FirstTimeChadder-abd2b9ff8954.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "FirstTimeome44butthenameislongersoyoucantspamit",
+      "url": "/emotes/assets/7tv/FirstTimeome44butthenameislongersoyoucantspamit-41da5125cfd5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "FLIPMYBURGER",
+      "url": "/emotes/assets/7tv/FLIPMYBURGER-08bfb89c1c93.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Flower0",
+      "url": "/emotes/assets/7tv/Flower0-ffe5d6054eaf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "FO",
+      "url": "/emotes/assets/7tv/FO-4335cf985c41.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "foodSNIFFA",
+      "url": "/emotes/assets/7tv/foodSNIFFA-64ab3d18e46f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "forsenLaughingAtYou",
+      "url": "/emotes/assets/7tv/forsenLaughingAtYou-df23466e4042.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "founderr",
+      "url": "/emotes/assets/7tv/founderr-ce78656e2876.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "frfr",
+      "url": "/emotes/assets/7tv/frfr-56f5bd7d8957.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FRICK",
+      "url": "/emotes/assets/7tv/FRICK-8b5aa504a2b1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "friendSHIP",
+      "url": "/emotes/assets/7tv/friendSHIP-c2b1a52d1503.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "FRpls",
+      "url": "/emotes/assets/bttv/FRpls-32393deabe37.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GabenGet",
+      "url": "/emotes/assets/7tv/GabenGet-a0e3945693dc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GachiPls",
+      "url": "/emotes/assets/7tv/GachiPls-233ffcae5378.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "GAMBAADDICT",
+      "url": "/emotes/assets/7tv/GAMBAADDICT-8b715dca7cc7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GAMING",
+      "url": "/emotes/assets/7tv/GAMING-206f6cca1f31.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Gasp",
+      "url": "/emotes/assets/7tv/Gasp-023a6a725e55.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GENIUS",
+      "url": "/emotes/assets/7tv/GENIUS-52c7872ee4eb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "GEOGUESSR",
+      "url": "/emotes/assets/7tv/GEOGUESSR-23463d845eae.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Giggle",
+      "url": "/emotes/assets/7tv/Giggle-fd8b9ea1c592.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "gigl",
+      "url": "/emotes/assets/7tv/gigl-fff2b1e14ccd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "glizzyR",
+      "url": "/emotes/assets/7tv/glizzyR-c90ae166c74c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "GlobalElite",
+      "url": "/emotes/assets/7tv/GlobalElite-e3d6e29499cb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GnomeFR",
+      "url": "/emotes/assets/7tv/GnomeFR-e5f92e295ddd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GoldfishTime",
+      "url": "/emotes/assets/7tv/GoldfishTime-ee3018f5612c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GoodNightHomie",
+      "url": "/emotes/assets/bttv/GoodNightHomie-2cf1c447e9d7.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "GOODSHIT",
+      "url": "/emotes/assets/7tv/GOODSHIT-ce33f03ec770.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GoslingDrive",
+      "url": "/emotes/assets/7tv/GoslingDrive-cd38e4a53f96.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Grab1",
+      "url": "/emotes/assets/7tv/Grab1-4487de8f7944.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "granny",
+      "url": "/emotes/assets/7tv/granny-4c4a4f427168.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GREEDY",
+      "url": "/emotes/assets/7tv/GREEDY-cf8a33bdd20b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "GreenGrandfather",
+      "url": "/emotes/assets/7tv/GreenGrandfather-db4ad1642a10.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "gremlin",
+      "url": "/emotes/assets/7tv/gremlin-564c90906723.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "grinFR",
+      "url": "/emotes/assets/bttv/grinFR-b18783696bf8.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "groupSUM",
+      "url": "/emotes/assets/7tv/groupSUM-4132b3492396.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "grrr",
+      "url": "/emotes/assets/7tv/grrr-5c432be5a94b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "guh",
+      "url": "/emotes/assets/7tv/guh-23c42d306d98.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Haku",
+      "url": "/emotes/assets/7tv/Haku-4427118716f4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Hakuu",
+      "url": "/emotes/assets/7tv/Hakuu-0129eafb64c8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "hangupFR",
+      "url": "/emotes/assets/7tv/hangupFR-1f30352fdde1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Hapje",
+      "url": "/emotes/assets/bttv/Hapje-7fa7be0f96a8.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "HAPPIES",
+      "url": "/emotes/assets/bttv/HAPPIES-16a9a7745dbf.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "HAPPY",
+      "url": "/emotes/assets/bttv/HAPPY-5c1159a8adb5.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "happyFR",
+      "url": "/emotes/assets/ffz/happyFR-7d77e017e9dc.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Headbang",
+      "url": "/emotes/assets/7tv/Headbang-e5fead48a8ba.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "HelpMe",
+      "url": "/emotes/assets/7tv/HelpMe-a965e9f3d781.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "hes0",
+      "url": "/emotes/assets/7tv/hes0-8caeeb568a98.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "hesGay",
+      "url": "/emotes/assets/7tv/hesGay-0807c5c4bed7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "hesOffline",
+      "url": "/emotes/assets/7tv/hesOffline-82160748f734.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "HODOR",
+      "url": "/emotes/assets/7tv/HODOR-8d8324c2bf77.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "HomieKiss",
+      "url": "/emotes/assets/7tv/HomieKiss-3364f4b49267.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "HoneyBirb",
+      "url": "/emotes/assets/7tv/HoneyBirb-3ed78bbc31f8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "hoodieU",
+      "url": "/emotes/assets/7tv/hoodieU-399a245aafcb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "HORSING",
+      "url": "/emotes/assets/7tv/HORSING-7bc2e85e7182.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "HUH",
+      "url": "/emotes/assets/7tv/HUH-56a56f8cc1e0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "HyperViolinTime",
+      "url": "/emotes/assets/7tv/HyperViolinTime-327d504d2bd8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Idiot",
+      "url": "/emotes/assets/7tv/Idiot-fa6e50f7feaa.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "IFISPEAK",
+      "url": "/emotes/assets/7tv/IFISPEAK-22c9710454ea.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "IHaveAQuestion",
+      "url": "/emotes/assets/7tv/IHaveAQuestion-33812e5581a2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "IMGONNACUM",
+      "url": "/emotes/assets/7tv/IMGONNACUM-adebd780e905.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "imRight",
+      "url": "/emotes/assets/7tv/imRight-7cb6907f0ab7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "imwaiting",
+      "url": "/emotes/assets/7tv/imwaiting-cbf4d24e97a1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "ITARRIVED",
+      "url": "/emotes/assets/7tv/ITARRIVED-8352aa0b8a81.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "IVEPLAYEDTHESEGAMESBEFORE",
+      "url": "/emotes/assets/7tv/IVEPLAYEDTHESEGAMESBEFORE-e7a76f3b6183.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Jammies",
+      "url": "/emotes/assets/bttv/Jammies-ba33970181ac.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "jorkin",
+      "url": "/emotes/assets/7tv/jorkin-364f645243fd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "jumpFR",
+      "url": "/emotes/assets/bttv/jumpFR-464de66661da.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "KABOOM",
+      "url": "/emotes/assets/7tv/KABOOM-38d1802632f7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "keanuLeave",
+      "url": "/emotes/assets/7tv/keanuLeave-0795170d28a1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "kek",
+      "url": "/emotes/assets/7tv/kek-1439409b12a6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "KEKInsane",
+      "url": "/emotes/assets/7tv/KEKInsane-653f1c6b312f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "KEKWait",
+      "url": "/emotes/assets/7tv/KEKWait-d710c3bc959d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "KEKWalk",
+      "url": "/emotes/assets/7tv/KEKWalk-1bfa955b61ec.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "KickTime",
+      "url": "/emotes/assets/7tv/KickTime-f34ee3529d6e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "KirbyPunch",
+      "url": "/emotes/assets/7tv/KirbyPunch-d93673869b9c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "kiryuArrive",
+      "url": "/emotes/assets/7tv/kiryuArrive-dd2156f775a1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "KKonaW",
+      "url": "/emotes/assets/7tv/KKonaW-a45feabb3c26.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "KoroneWakeUp",
+      "url": "/emotes/assets/7tv/KoroneWakeUp-bb4170d74465.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "ladderFR",
+      "url": "/emotes/assets/bttv/ladderFR-2a6040561eb3.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LastTimeChatter",
+      "url": "/emotes/assets/7tv/LastTimeChatter-871b4cdc034b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "lateFR",
+      "url": "/emotes/assets/7tv/lateFR-a33d675296b1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LBow",
+      "url": "/emotes/assets/bttv/LBow-4d5d71e87c9e.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LCuddle",
+      "url": "/emotes/assets/bttv/LCuddle-dc13b725f3e6.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Learning",
+      "url": "/emotes/assets/7tv/Learning-f56a9c3ab813.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Leddit",
+      "url": "/emotes/assets/bttv/Leddit-2f1090d6d51c.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "LeMickey",
+      "url": "/emotes/assets/7tv/LeMickey-75d2d39724b2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "LGen",
+      "url": "/emotes/assets/bttv/LGen-bc438bacc9df.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LGhost",
+      "url": "/emotes/assets/7tv/LGhost-e6996c2b0a3b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "lickR",
+      "url": "/emotes/assets/7tv/lickR-cb079835df02.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "LifE",
+      "url": "/emotes/assets/7tv/LifE-6dda6a4198ce.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LILBRO",
+      "url": "/emotes/assets/7tv/LILBRO-f683e1a68f89.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "lildans",
+      "url": "/emotes/assets/7tv/lildans-89af0513bc13.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "lirikL",
+      "url": "/emotes/assets/bttv/lirikL-c9a13d77d201.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "lirikNOT",
+      "url": "/emotes/assets/7tv/lirikNOT-624dc15e44ab.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "lirikS",
+      "url": "/emotes/assets/7tv/lirikS-bb4b87b40f2e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LJam",
+      "url": "/emotes/assets/bttv/LJam-f10a491e4439.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LMaul",
+      "url": "/emotes/assets/7tv/LMaul-d56d7342e400.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LO",
+      "url": "/emotes/assets/7tv/LO-94156694dba1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "LOL",
+      "url": "/emotes/assets/7tv/LOL-e002900226eb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "lookDown",
+      "url": "/emotes/assets/7tv/lookDown-57a9e5e7e9fc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "LOTHRIC",
+      "url": "/emotes/assets/7tv/LOTHRIC-525ee91d1539.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "loveFR",
+      "url": "/emotes/assets/ffz/loveFR-cf2f1534b97d.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LPopo",
+      "url": "/emotes/assets/bttv/LPopo-69c6d25d8843.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LPPM",
+      "url": "/emotes/assets/bttv/LPPM-b33aee803983.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LSCATTER",
+      "url": "/emotes/assets/7tv/LSCATTER-36ab05bf1687.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LSmile",
+      "url": "/emotes/assets/bttv/LSmile-7775199a3f12.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LSword",
+      "url": "/emotes/assets/7tv/LSword-51bca9dcda20.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "LToilet",
+      "url": "/emotes/assets/7tv/LToilet-8fecde52b35e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "MadMushroom",
+      "url": "/emotes/assets/7tv/MadMushroom-f9f0c7b5c840.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "mamamia",
+      "url": "/emotes/assets/7tv/mamamia-a2fd5a75bb9d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "MarioKarted",
+      "url": "/emotes/assets/7tv/MarioKarted-6e833d2fec68.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "MAXWIN",
+      "url": "/emotes/assets/7tv/MAXWIN-ebfdbcadd851.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "MedTime",
+      "url": "/emotes/assets/7tv/MedTime-62cb1b60380a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "megaSadge",
+      "url": "/emotes/assets/7tv/megaSadge-a6ae68c9654b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "MEGAWIN",
+      "url": "/emotes/assets/7tv/MEGAWIN-61aab0e1baf3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Meowdy",
+      "url": "/emotes/assets/7tv/Meowdy-730cb928e7a5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "MineBlock0",
+      "url": "/emotes/assets/7tv/MineBlock0-c190ad1f29a0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "MLADY",
+      "url": "/emotes/assets/7tv/MLADY-b2a0bc2cb62e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "ModAbuse",
+      "url": "/emotes/assets/7tv/ModAbuse-af11461646c1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "modCheck",
+      "url": "/emotes/assets/7tv/modCheck-8b0b7c8b08bc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Modge",
+      "url": "/emotes/assets/7tv/Modge-cbf4aa8b15a2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "mon",
+      "url": "/emotes/assets/7tv/mon-0970642c6ee2.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "monkaFly",
+      "url": "/emotes/assets/7tv/monkaFly-2b3ce47cc9f8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "monkaGiggle",
+      "url": "/emotes/assets/7tv/monkaGiggle-cff5a439e41c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "monkaSneak",
+      "url": "/emotes/assets/7tv/monkaSneak-07b2a5924d2c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "monkeyPush",
+      "url": "/emotes/assets/7tv/monkeyPush-d2547a72189e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "MonsTime",
+      "url": "/emotes/assets/7tv/MonsTime-7b72dbe1be64.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Motion",
+      "url": "/emotes/assets/7tv/Motion-901197edb048.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "MustacheGlasses",
+      "url": "/emotes/assets/7tv/MustacheGlasses-300f21eda0ad.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Mutege",
+      "url": "/emotes/assets/7tv/Mutege-ac8363aa4197.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "NAaim",
+      "url": "/emotes/assets/7tv/NAaim-ef21e8607132.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "nabiBuff",
+      "url": "/emotes/assets/bttv/nabiBuff-66658b6ca0d0.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "nabiL",
+      "url": "/emotes/assets/bttv/nabiL-c7d904cc210e.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "NabiW",
+      "url": "/emotes/assets/bttv/NabiW-1d85c5a401db.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "naynaSHAKE",
+      "url": "/emotes/assets/bttv/naynaSHAKE-7000185097b2.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "neffSpy",
+      "url": "/emotes/assets/7tv/neffSpy-8fb8d171d68e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "NewPC",
+      "url": "/emotes/assets/7tv/NewPC-c4d5a1e54196.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "NoBully",
+      "url": "/emotes/assets/ffz/NoBully-9873d1e4d448.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "nomuFU",
+      "url": "/emotes/assets/bttv/nomuFU-9d6597cf6483.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "NomuJam",
+      "url": "/emotes/assets/bttv/NomuJam-35370b898267.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "NomuS",
+      "url": "/emotes/assets/bttv/NomuS-aaf9ae98ec34.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "NootNoot",
+      "url": "/emotes/assets/7tv/NootNoot-5fa5a52a0359.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "NOPERS",
+      "url": "/emotes/assets/7tv/NOPERS-b94981c76a61.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Noskill",
+      "url": "/emotes/assets/7tv/Noskill-aa53e5cb6230.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "notAddicted",
+      "url": "/emotes/assets/7tv/notAddicted-45e998f94501.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "notCinema",
+      "url": "/emotes/assets/7tv/notCinema-dce0ae129638.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "NOTED",
+      "url": "/emotes/assets/bttv/NOTED-f4908b609fed.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Notepad",
+      "url": "/emotes/assets/7tv/Notepad-671f1626b917.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "notListening",
+      "url": "/emotes/assets/7tv/notListening-2fed020b57be.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "notok",
+      "url": "/emotes/assets/7tv/notok-34d66b3f0be3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "NowISee",
+      "url": "/emotes/assets/7tv/NowISee-afa631ba8b47.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "nuhuh",
+      "url": "/emotes/assets/7tv/nuhuh-024fe138b920.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "nyAngy",
+      "url": "/emotes/assets/ffz/nyAngy-d793345909ea.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "o7FR",
+      "url": "/emotes/assets/7tv/o7FR-8b955267ba2d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "OkCat",
+      "url": "/emotes/assets/ffz/OkCat-eaa628db0031.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "OneSec",
+      "url": "/emotes/assets/7tv/OneSec-9d33daf2df8f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "OneTap",
+      "url": "/emotes/assets/ffz/OneTap-512dbff172fe.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "OnlyFangs",
+      "url": "/emotes/assets/7tv/OnlyFangs-deddfcb0a212.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "oopsie",
+      "url": "/emotes/assets/7tv/oopsie-492d068a4fed.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "operage",
+      "url": "/emotes/assets/7tv/operage-5e8788c07e46.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "OTK",
+      "url": "/emotes/assets/7tv/OTK-92d5ac32ab14.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "paidchatter",
+      "url": "/emotes/assets/7tv/paidchatter-4f4cd227b0b9.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "paperFR",
+      "url": "/emotes/assets/7tv/paperFR-05e5fa52926c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "parasocial",
+      "url": "/emotes/assets/7tv/parasocial-4d916377eac5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "pauseFR",
+      "url": "/emotes/assets/ffz/pauseFR-d4b7458994f8.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "peaceFR",
+      "url": "/emotes/assets/7tv/peaceFR-f7e81ef1530c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "peepoBless",
+      "url": "/emotes/assets/bttv/peepoBless-6704a9f5e5c1.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoBrick",
+      "url": "/emotes/assets/7tv/peepoBrick-8631ba14b703.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "peepoChef",
+      "url": "/emotes/assets/bttv/peepoChef-bf7017ec85ca.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoDumb",
+      "url": "/emotes/assets/7tv/peepoDumb-53b38ab4676d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "peepoFree",
+      "url": "/emotes/assets/7tv/peepoFree-d320fbb961eb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "peepoHappy",
+      "url": "/emotes/assets/ffz/peepoHappy-4a6997f63822.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoHide",
+      "url": "/emotes/assets/bttv/peepoHide-c92a87125069.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoJail",
+      "url": "/emotes/assets/ffz/peepoJail-b23c469c1189.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoKnife",
+      "url": "/emotes/assets/ffz/peepoKnife-f4aebb35ec86.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoMetal",
+      "url": "/emotes/assets/bttv/peepoMetal-55c425184f5e.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoPog",
+      "url": "/emotes/assets/ffz/peepoPog-66c2467f918a.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoSmash",
+      "url": "/emotes/assets/bttv/peepoSmash-70bd5fe787d7.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoTalk",
+      "url": "/emotes/assets/7tv/peepoTalk-23ee02743955.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "PeepoWeird",
+      "url": "/emotes/assets/ffz/PeepoWeird-61902e79abe8.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoWizard",
+      "url": "/emotes/assets/7tv/peepoWizard-0d46b494d6c1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoWoof",
+      "url": "/emotes/assets/ffz/peepoWoof-23c2491c76be.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "peepoWtfS",
+      "url": "/emotes/assets/ffz/peepoWtfS-1713726e9f1c.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "PepegaAsk",
+      "url": "/emotes/assets/7tv/PepegaAsk-7228d9d915fd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "PepegaDriving",
+      "url": "/emotes/assets/7tv/PepegaDriving-100aa1e8a1d3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "PepegaFlash",
+      "url": "/emotes/assets/7tv/PepegaFlash-1b395f438977.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "PepegaShower",
+      "url": "/emotes/assets/7tv/PepegaShower-a5742f91cf6a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "pepegeThink",
+      "url": "/emotes/assets/bttv/pepegeThink-a37fb9ee5c78.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "PepeHans",
+      "url": "/emotes/assets/ffz/PepeHans-9d08385ef998.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "PepeSpit",
+      "url": "/emotes/assets/7tv/PepeSpit-2b243539e98b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "pepeWeird",
+      "url": "/emotes/assets/bttv/pepeWeird-6f7df624662b.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "PEPSICLE",
+      "url": "/emotes/assets/bttv/PEPSICLE-9a6fc10a5a7d.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "pettheCat",
+      "url": "/emotes/assets/bttv/pettheCat-b52a01879528.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "PianoTime",
+      "url": "/emotes/assets/7tv/PianoTime-ccd02f90c215.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "pirateD",
+      "url": "/emotes/assets/7tv/pirateD-d9a838e234d4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "PizzaTime2",
+      "url": "/emotes/assets/7tv/PizzaTime2-1a24e56abd2a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "PogT",
+      "url": "/emotes/assets/ffz/PogT-2376bbaf89e6.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "PogYou",
+      "url": "/emotes/assets/bttv/PogYou-0b07bd254801.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "PokiShare",
+      "url": "/emotes/assets/7tv/PokiShare-ef21c2c0ebb6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Pondering",
+      "url": "/emotes/assets/7tv/Pondering-112fd8a3d800.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "POOPING",
+      "url": "/emotes/assets/7tv/POOPING-1c2875a1fbb6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Poorge",
+      "url": "/emotes/assets/7tv/Poorge-039f176849f3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "popFR",
+      "url": "/emotes/assets/bttv/popFR-1870d98d9c25.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "PoroPissed",
+      "url": "/emotes/assets/ffz/PoroPissed-090b4c76e96a.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "ppJedi",
+      "url": "/emotes/assets/7tv/ppJedi-d2abbf61b8f7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "ppOverheat",
+      "url": "/emotes/assets/7tv/ppOverheat-a2639e8a47a3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "pteraFR",
+      "url": "/emotes/assets/bttv/pteraFR-16699539bf4c.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "PUKERS",
+      "url": "/emotes/assets/7tv/PUKERS-b49fbf017187.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "puzzleFR",
+      "url": "/emotes/assets/bttv/puzzleFR-a5ccc4ffb118.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "qq",
+      "url": "/emotes/assets/7tv/qq-0ef0afe490ec.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "QUIET",
+      "url": "/emotes/assets/7tv/QUIET-d4c253f731ad.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "RAHHH",
+      "url": "/emotes/assets/7tv/RAHHH-2199b21f0567.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "RainTime",
+      "url": "/emotes/assets/7tv/RainTime-1d9588193113.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "RareHug",
+      "url": "/emotes/assets/bttv/RareHug-d40286eadfb9.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "RareSub",
+      "url": "/emotes/assets/bttv/RareSub-e5eac5fb77be.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "ratFR",
+      "url": "/emotes/assets/bttv/ratFR-7f9d3febab7b.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Readpin",
+      "url": "/emotes/assets/7tv/Readpin-1224d49fd3cd.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "REDACTED",
+      "url": "/emotes/assets/7tv/REDACTED-7dfb9cf7192a.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "RESTARTA",
+      "url": "/emotes/assets/7tv/RESTARTA-8fe258931667.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "retgekm9",
+      "url": "/emotes/assets/7tv/retgekm9-22f441d8cda5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "ROFLGATOR",
+      "url": "/emotes/assets/7tv/ROFLGATOR-a23da6ea7d7d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "RossPls",
+      "url": "/emotes/assets/bttv/RossPls-10ef90e6e1dd.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "rt",
+      "url": "/emotes/assets/7tv/rt-99d32294167c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "runFR",
+      "url": "/emotes/assets/bttv/runFR-4346b0fd41d5.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Sadeg",
+      "url": "/emotes/assets/7tv/Sadeg-8834e33ceca4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "sadgeCoomer",
+      "url": "/emotes/assets/bttv/sadgeCoomer-6c1df2c0a457.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "SadWeeb",
+      "url": "/emotes/assets/ffz/SadWeeb-67006b28db0e.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Saje",
+      "url": "/emotes/assets/bttv/Saje-2217dd30bfa0.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "SCAMBA",
+      "url": "/emotes/assets/7tv/SCAMBA-1b3a24b261d5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "SCATTER",
+      "url": "/emotes/assets/7tv/SCATTER-9ed0789f97cf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "SEXO",
+      "url": "/emotes/assets/7tv/SEXO-2c782a993d2c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "shankFR",
+      "url": "/emotes/assets/bttv/shankFR-90e6a5848e29.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "SHARKING",
+      "url": "/emotes/assets/7tv/SHARKING-5225b7e56ddf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "SHEESH",
+      "url": "/emotes/assets/7tv/SHEESH-e8dd28299028.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "SHITTON",
+      "url": "/emotes/assets/7tv/SHITTON-3be87ced3f30.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "ShowerTime",
+      "url": "/emotes/assets/7tv/ShowerTime-6c2b755d02bf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Shruge",
+      "url": "/emotes/assets/7tv/Shruge-70df1d9e9243.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "SICKMAN",
+      "url": "/emotes/assets/7tv/SICKMAN-848ee67c88c6.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "slither",
+      "url": "/emotes/assets/7tv/slither-9128aab0c315.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "SMASH",
+      "url": "/emotes/assets/bttv/SMASH-955ea5143999.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Smile",
+      "url": "/emotes/assets/7tv/Smile-f866dc6f34b0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "SNACKING",
+      "url": "/emotes/assets/7tv/SNACKING-870c8d90ff4b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "SnowTime",
+      "url": "/emotes/assets/7tv/SnowTime-4fc33e6dc81d.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "SocialCreditMinus",
+      "url": "/emotes/assets/7tv/SocialCreditMinus-cfcbd6abdfe7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "SOCLOSE",
+      "url": "/emotes/assets/7tv/SOCLOSE-f3f25f460797.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "sodaArrive",
+      "url": "/emotes/assets/bttv/sodaArrive-75f3846a63d5.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaAyaya",
+      "url": "/emotes/assets/bttv/sodaAyaya-3467659380c5.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaCOMFY",
+      "url": "/emotes/assets/bttv/sodaCOMFY-1a3b7fed72db.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaCOMFY2",
+      "url": "/emotes/assets/bttv/sodaCOMFY2-ba36f7d78e21.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaCredit",
+      "url": "/emotes/assets/bttv/sodaCredit-aa6904b69027.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaCrying",
+      "url": "/emotes/assets/bttv/sodaCrying-87aa452c0dae.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaDND",
+      "url": "/emotes/assets/bttv/sodaDND-77b3f547da06.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaFU",
+      "url": "/emotes/assets/ffz/sodaFU-ef5bb8db2555.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaGpls",
+      "url": "/emotes/assets/bttv/sodaGpls-bbe5917f8093.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "SODAING",
+      "url": "/emotes/assets/bttv/SODAING-29043d812806.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaJAM",
+      "url": "/emotes/assets/bttv/sodaJAM-46a8b9259fb9.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaKnight",
+      "url": "/emotes/assets/7tv/sodaKnight-7e546e687a78.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaLove",
+      "url": "/emotes/assets/bttv/sodaLove-76b45abaae0e.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaMONK",
+      "url": "/emotes/assets/bttv/sodaMONK-140fd6bd4e9f.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaNOW",
+      "url": "/emotes/assets/7tv/sodaNOW-0823fa84c2a4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodapeacexdd",
+      "url": "/emotes/assets/7tv/sodapeacexdd-ecab35d4181c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaPeeking",
+      "url": "/emotes/assets/bttv/sodaPeeking-59221adbb954.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaPop",
+      "url": "/emotes/assets/bttv/sodaPop-b72bf1cae790.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaRich",
+      "url": "/emotes/assets/bttv/sodaRich-59c410a26d49.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaRISK",
+      "url": "/emotes/assets/bttv/sodaRISK-3e01b1e3c097.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaSipping",
+      "url": "/emotes/assets/bttv/sodaSipping-fda913a36991.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaSmash",
+      "url": "/emotes/assets/bttv/sodaSmash-60a15d223922.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaSteer",
+      "url": "/emotes/assets/bttv/sodaSteer-da02ce492146.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaTAKE",
+      "url": "/emotes/assets/7tv/sodaTAKE-182bb6c43484.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaTP",
+      "url": "/emotes/assets/bttv/sodaTP-4c3cd275829c.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaWave",
+      "url": "/emotes/assets/bttv/sodaWave-106821d57a5a.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaWave2",
+      "url": "/emotes/assets/bttv/sodaWave2-2914349cfb63.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "sodaWiggle",
+      "url": "/emotes/assets/7tv/sodaWiggle-c0feb218b7bc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "Sparkles",
+      "url": "/emotes/assets/bttv/Sparkles-43587e0ea9f4.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "SPEECH",
+      "url": "/emotes/assets/7tv/SPEECH-f4502b54c051.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Speechless",
+      "url": "/emotes/assets/7tv/Speechless-8c1d86e00108.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "SPIN2WIN",
+      "url": "/emotes/assets/7tv/SPIN2WIN-750e6d27da90.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Spoogers",
+      "url": "/emotes/assets/7tv/Spoogers-b37d9c77b75f.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "StareKiss",
+      "url": "/emotes/assets/7tv/StareKiss-5720a4298db8.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "stealthFR",
+      "url": "/emotes/assets/bttv/stealthFR-df01741e74dc.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "STOPMAN",
+      "url": "/emotes/assets/7tv/STOPMAN-7776ab282a7b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "succit1g",
+      "url": "/emotes/assets/7tv/succit1g-b46c7dc75172.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "SuikaCherry",
+      "url": "/emotes/assets/7tv/SuikaCherry-1e764cd4ed0c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "suitFR",
+      "url": "/emotes/assets/bttv/suitFR-9690a5b59bbf.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "surfing",
+      "url": "/emotes/assets/7tv/surfing-72fcfb621b87.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "susFR",
+      "url": "/emotes/assets/ffz/susFR-eb50e669697e.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "SussyFR",
+      "url": "/emotes/assets/bttv/SussyFR-1ffc10125780.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "swimFR",
+      "url": "/emotes/assets/bttv/swimFR-eb033d167f0e.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "TakingNotes",
+      "url": "/emotes/assets/7tv/TakingNotes-c317956f4191.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "talusHF",
+      "url": "/emotes/assets/7tv/talusHF-74849a47b960.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "tantrumFR",
+      "url": "/emotes/assets/bttv/tantrumFR-3d892ffbc21d.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "Tasty",
+      "url": "/emotes/assets/7tv/Tasty-2f8263c3a5fe.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "tastyFR",
+      "url": "/emotes/assets/bttv/tastyFR-bb1a838fbc19.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "TERRARIA",
+      "url": "/emotes/assets/7tv/TERRARIA-5a9b51d5e949.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "ThankYou",
+      "url": "/emotes/assets/7tv/ThankYou-dcc8f8b730bc.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "ThatsJustMe",
+      "url": "/emotes/assets/7tv/ThatsJustMe-c58b23862143.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "Thinking",
+      "url": "/emotes/assets/7tv/Thinking-9e8d230268a7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "TimeToThrow",
+      "url": "/emotes/assets/7tv/TimeToThrow-c752ed49432e.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "TnT",
+      "url": "/emotes/assets/7tv/TnT-7da298092fd3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "ToeCam",
+      "url": "/emotes/assets/7tv/ToeCam-9d8ed761d6f0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "tomatoTime",
+      "url": "/emotes/assets/7tv/tomatoTime-ae7db7183016.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "TrumpetTime",
+      "url": "/emotes/assets/7tv/TrumpetTime-a2bd7a37baea.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "UHMcamp",
+      "url": "/emotes/assets/7tv/UHMcamp-2d67b400a9a7.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "valve",
+      "url": "/emotes/assets/7tv/valve-615bd3773dd5.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "ViolinTime",
+      "url": "/emotes/assets/7tv/ViolinTime-22e1c4e42c09.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "vNODDERS",
+      "url": "/emotes/assets/7tv/vNODDERS-605ff49054ce.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "vNOPERS",
+      "url": "/emotes/assets/7tv/vNOPERS-7f5435c20aa1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "VOICECOMMS",
+      "url": "/emotes/assets/7tv/VOICECOMMS-318cea36fd08.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "vSneeze",
+      "url": "/emotes/assets/7tv/vSneeze-c5566dcbadb3.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "WAA",
+      "url": "/emotes/assets/7tv/WAA-3d2313d89b54.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "wandFR",
+      "url": "/emotes/assets/7tv/wandFR-35ced37d3453.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "WatchingStream",
+      "url": "/emotes/assets/7tv/WatchingStream-1de0a2e155a4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "WAYTOODANK",
+      "url": "/emotes/assets/bttv/WAYTOODANK-4d8f5a82c325.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "WeCelebrating",
+      "url": "/emotes/assets/7tv/WeCelebrating-5197fba78637.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "WeebSmash",
+      "url": "/emotes/assets/7tv/WeebSmash-b74b6f262da4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "WeeWoo",
+      "url": "/emotes/assets/7tv/WeeWoo-4168d6c215fe.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "WideConcern",
+      "url": "/emotes/assets/ffz/WideConcern-5fa079028c0d.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "WideHard",
+      "url": "/emotes/assets/ffz/WideHard-ccf8b869eb72.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "wideNessie",
+      "url": "/emotes/assets/7tv/wideNessie-f67b37c8c5d1.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "widepeepoBlanket",
+      "url": "/emotes/assets/ffz/widepeepoBlanket-a401ab52b204.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "widepepOMEGAKEKHappyChampHands",
+      "url": "/emotes/assets/ffz/widepepOMEGAKEKHappyChampHands-9cfc1db0aac1.webp",
+      "provider": "ffz",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "wideRainTime",
+      "url": "/emotes/assets/7tv/wideRainTime-7257c2e6ed21.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "wideSpeedDesert",
+      "url": "/emotes/assets/7tv/wideSpeedDesert-56de267877ca.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "wiers",
+      "url": "/emotes/assets/7tv/wiers-0855582a1bfb.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "WineTime",
+      "url": "/emotes/assets/bttv/WineTime-0d78b67dee98.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "WIPERS",
+      "url": "/emotes/assets/bttv/WIPERS-3bdc9ee7f359.webp",
+      "provider": "bttv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "WiseTree",
+      "url": "/emotes/assets/7tv/WiseTree-e2c2500e032c.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "wrapitup",
+      "url": "/emotes/assets/7tv/wrapitup-a11d076ce3a9.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    },
+    {
+      "code": "wrrr",
+      "url": "/emotes/assets/7tv/wrrr-5ccec473f8ca.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "WTFMAN",
+      "url": "/emotes/assets/7tv/WTFMAN-c52dc92f98e9.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "WTHMAN",
+      "url": "/emotes/assets/7tv/WTHMAN-bcfed7785e29.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "xqcFingerDown",
+      "url": "/emotes/assets/7tv/xqcFingerDown-4344e1ddb319.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "xqcNugget",
+      "url": "/emotes/assets/7tv/xqcNugget-e789e9b219ee.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "xqcReacting",
+      "url": "/emotes/assets/7tv/xqcReacting-54adef9b8dcf.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "xqcShare",
+      "url": "/emotes/assets/7tv/xqcShare-d9b82d7405e0.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "yawner",
+      "url": "/emotes/assets/7tv/yawner-a5f4df6e8993.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 80,
+      "source": "channel:xqc"
+    },
+    {
+      "code": "YEPCOCK",
+      "url": "/emotes/assets/7tv/YEPCOCK-a954a6c707e4.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 77,
+      "source": "channel:lirik"
+    },
+    {
+      "code": "YIPPIE",
+      "url": "/emotes/assets/7tv/YIPPIE-6231fce8002b.webp",
+      "provider": "7tv",
+      "animated": false,
+      "priority": 78,
+      "source": "channel:sodapoppin"
+    }
+  ]
+}
