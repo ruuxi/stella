@@ -1,6 +1,6 @@
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import { v, ConvexError } from "convex/values";
+import { v, ConvexError, type Value } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { requireConversationOwner, requireUserId } from "./auth";
@@ -33,7 +33,7 @@ const usageSummaryValidator = v.object({
   totalTokens: v.optional(v.number()),
 });
 
-const sanitizeEventPayloadForStorage = (type: string, payload: unknown) => {
+const sanitizeEventPayloadForStorage = (type: string, payload: Value): Value => {
   if (type === "tool_result") {
     return sanitizeForToolResultPersistence(payload);
   }
@@ -43,14 +43,14 @@ const sanitizeEventPayloadForStorage = (type: string, payload: unknown) => {
   return payload;
 };
 
-const sanitizeEventPayloadForRead = (type: string, payload: unknown) => {
+const sanitizeEventPayloadForRead = (type: string, payload: Value): Value => {
   if (type === "tool_request" || type === "tool_result") {
     return sanitizeSensitiveData(payload, { redactFreeformStrings: true });
   }
   return payload;
 };
 
-const sanitizeEventForRead = <T extends { type: string; payload: unknown } | null>(
+const sanitizeEventForRead = <T extends { type: string; payload: Value } | null>(
   event: T,
 ): T => {
   if (!event) {
@@ -84,23 +84,36 @@ export const listOlderMessages = internalQuery({
   returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const afterTs = args.afterTimestamp ?? 0;
-    // Use index range to start scanning from afterTimestamp, up to beforeTimestamp.
-    // The by_conversation index is ["conversationId", "timestamp"], so we can
-    // bound the timestamp range efficiently.
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_conversation", (q) =>
-        q
-          .eq("conversationId", args.conversationId)
-          .gt("timestamp", afterTs)
-          .lt("timestamp", args.beforeTimestamp),
-      )
-      .order("asc")
-      .take(args.limit * 3);
+    // Use by_conversation_type index for efficient type-scoped queries.
+    const [userMessages, assistantMessages] = await Promise.all([
+      ctx.db
+        .query("events")
+        .withIndex("by_conversation_type", (q) =>
+          q
+            .eq("conversationId", args.conversationId)
+            .eq("type", "user_message")
+            .gt("timestamp", afterTs)
+            .lt("timestamp", args.beforeTimestamp),
+        )
+        .order("asc")
+        .take(args.limit),
+      ctx.db
+        .query("events")
+        .withIndex("by_conversation_type", (q) =>
+          q
+            .eq("conversationId", args.conversationId)
+            .eq("type", "assistant_message")
+            .gt("timestamp", afterTs)
+            .lt("timestamp", args.beforeTimestamp),
+        )
+        .order("asc")
+        .take(args.limit),
+    ]);
 
-    return events
-      .filter(
-        (e) => e.type === "user_message" || e.type === "assistant_message",
+    return [...userMessages, ...assistantMessages]
+      .sort(
+        (a, b) =>
+          a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
       )
       .slice(0, args.limit);
   },
@@ -431,7 +444,7 @@ type AppendEventArgs = {
   deviceId?: string;
   requestId?: string;
   targetDeviceId?: string;
-  payload: unknown;
+  payload: Value;
 };
 
 const resolveAppendEventPayload = (args: AppendEventArgs) => {
@@ -451,10 +464,14 @@ const resolveAppendEventPayload = (args: AppendEventArgs) => {
 
   const sanitizedPayload = sanitizeEventPayloadForStorage(args.type, args.payload ?? {});
   const payloadTargetDeviceId =
-    sanitizedPayload && typeof sanitizedPayload === "object"
-      ? (sanitizedPayload as { targetDeviceId?: string }).targetDeviceId
+    sanitizedPayload &&
+      typeof sanitizedPayload === "object" &&
+      !Array.isArray(sanitizedPayload)
+      ? (sanitizedPayload as { targetDeviceId?: Value }).targetDeviceId
       : undefined;
-  const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceId;
+  const payloadTargetDeviceIdString =
+    typeof payloadTargetDeviceId === "string" ? payloadTargetDeviceId : undefined;
+  const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceIdString;
 
   if (args.type === "tool_request" && !resolvedTargetDeviceId) {
     throw new ConvexError({
@@ -555,7 +572,6 @@ export const listEventsSince = internalQuery({
   },
   returns: v.array(eventValidator),
   handler: async (ctx, args) => {
-    await requireConversationOwner(ctx, args.conversationId);
     const afterTimestamp = args.afterTimestamp ?? 0;
     const requestedLimit = args.limit ?? 400;
     const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 1000);
@@ -581,7 +597,6 @@ export const getConversationEventHead = internalQuery({
     latestEventId: v.union(v.id("events"), v.null()),
   }),
   handler: async (ctx, args) => {
-    await requireConversationOwner(ctx, args.conversationId);
     const latest = await ctx.db
       .query("events")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))

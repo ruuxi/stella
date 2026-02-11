@@ -387,17 +387,6 @@ const getAgentConfigHandler = async (
     return toAgentConfig(builtinRecord);
   }
 
-  const legacyRecords = await ctx.db
-    .query("agents")
-    .withIndex("by_agent_key", (q) => q.eq("id", args.agentType))
-    .take(20);
-  const legacyBuiltin = legacyRecords.find(
-    (agent) => agent.ownerId === undefined && agent.source === "builtin",
-  );
-  if (legacyBuiltin) {
-    return toAgentConfig(legacyBuiltin);
-  }
-
   const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
   if (builtin) {
     return toAgentConfig({
@@ -448,15 +437,7 @@ export const listAgents = internalQuery({
   returns: v.array(agentClientValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
-    const [legacyBuiltins, builtinRecords, ownerRecords] = await Promise.all([
-      ctx.db
-        .query("agents")
-        .withIndex("by_updated")
-        .order("desc")
-        .take(200)
-        .then((rows) =>
-          rows.filter((agent) => agent.ownerId === undefined && agent.source === "builtin"),
-        ),
+    const [builtinRecords, ownerRecords] = await Promise.all([
       ctx.db
         .query("agents")
         .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
@@ -470,7 +451,6 @@ export const listAgents = internalQuery({
     ]);
 
     const merged = new Map<string, (typeof ownerRecords)[number]>();
-    for (const record of legacyBuiltins) merged.set(record.id, record);
     for (const record of builtinRecords) merged.set(record.id, record);
     for (const record of ownerRecords) merged.set(record.id, record);
 

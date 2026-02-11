@@ -1,7 +1,21 @@
-import { v } from "convex/values";
+import { type Validator, type Value, v } from "convex/values";
 
-// Shared loose validators for intentionally dynamic JSON-shaped data.
-export const jsonValueValidator = v.any();
+type JsonValidator = Validator<Value, "required", string>;
+
+// Build a JSON validator without using v.any().
+// Depth is bounded to keep validator construction finite.
+const jsonPrimitiveValidator = v.union(v.null(), v.boolean(), v.number(), v.string());
+const buildJsonValueValidator = (depth: number): JsonValidator => {
+  if (depth <= 0) return jsonPrimitiveValidator as JsonValidator;
+  const nested = buildJsonValueValidator(depth - 1);
+  return v.union(
+    jsonPrimitiveValidator,
+    v.array(nested),
+    v.record(v.string(), nested),
+  ) as JsonValidator;
+};
+
+export const jsonValueValidator = buildJsonValueValidator(8);
 export const jsonObjectValidator = v.record(v.string(), jsonValueValidator);
 export const jsonSchemaValidator = v.union(v.boolean(), jsonObjectValidator);
 export const optionalJsonValueValidator = v.optional(jsonValueValidator);

@@ -82,12 +82,14 @@ export const markStaleOffline = internalMutation({
   returns: v.null(),
   handler: async (ctx) => {
     const cutoff = Date.now() - STALE_THRESHOLD_MS;
-    // Scan all online devices — there should be very few
-    const devices = await ctx.db.query("devices").collect();
-    for (const device of devices) {
-      if (device.online && device.lastSeenAt < cutoff) {
-        await ctx.db.patch(device._id, { online: false });
-      }
+    const staleDevices = await ctx.db
+      .query("devices")
+      .withIndex("by_online_lastSeenAt", (q) =>
+        q.eq("online", true).lt("lastSeenAt", cutoff),
+      )
+      .collect();
+    for (const device of staleDevices) {
+      await ctx.db.patch(device._id, { online: false });
     }
     return null;
   },

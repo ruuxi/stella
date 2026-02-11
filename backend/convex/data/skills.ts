@@ -266,14 +266,7 @@ const listEnabledSkillsHandler = async (
   ctx: QueryCtx,
   args: { agentType: string; ownerId?: string },
 ) => {
-  const [legacyBuiltinSkills, builtinEnabled, ownerScoped] = await Promise.all([
-    ctx.db
-      .query("skills")
-      .withIndex("by_enabled", (q) => q.eq("enabled", true))
-      .take(400)
-      .then((rows) =>
-        rows.filter((skill) => skill.ownerId === undefined && skill.source === "builtin"),
-      ),
+  const [builtinEnabled, ownerScoped] = await Promise.all([
     ctx.db
       .query("skills")
       .withIndex("by_owner_and_enabled", (q) =>
@@ -290,12 +283,6 @@ const listEnabledSkillsHandler = async (
   ]);
 
   const merged = new Map<string, (typeof builtinEnabled)[number]>();
-
-  for (const skill of legacyBuiltinSkills) {
-    if (supportsAgentType(skill.agentTypes, args.agentType)) {
-      merged.set(skill.id, skill);
-    }
-  }
 
   for (const skill of builtinEnabled) {
     if (supportsAgentType(skill.agentTypes, args.agentType)) {
@@ -364,15 +351,6 @@ const getSkillByIdHandler = async (
     return builtinSkill;
   }
 
-  const legacyBuiltin = await ctx.db
-    .query("skills")
-    .withIndex("by_skill_key", (q) => q.eq("id", args.skillId))
-    .first();
-
-  if (legacyBuiltin && legacyBuiltin.ownerId === undefined && legacyBuiltin.source === "builtin") {
-    return legacyBuiltin;
-  }
-
   return null;
 };
 
@@ -403,15 +381,7 @@ export const listSkills = internalQuery({
   returns: v.array(skillValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
-    const [legacyBuiltinSkills, builtinSkills, ownerSkills] = await Promise.all([
-      ctx.db
-        .query("skills")
-        .withIndex("by_updated")
-        .order("desc")
-        .take(400)
-        .then((rows) =>
-          rows.filter((skill) => skill.ownerId === undefined && skill.source === "builtin"),
-        ),
+    const [builtinSkills, ownerSkills] = await Promise.all([
       ctx.db
         .query("skills")
         .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
@@ -425,7 +395,6 @@ export const listSkills = internalQuery({
     ]);
 
     const merged = new Map<string, (typeof ownerSkills)[number]>();
-    for (const skill of legacyBuiltinSkills) merged.set(skill.id, skill);
     for (const skill of builtinSkills) merged.set(skill.id, skill);
     for (const skill of ownerSkills) merged.set(skill.id, skill);
 
