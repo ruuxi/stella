@@ -79,7 +79,11 @@ Infrastructure:
 - **heartbeat_configs**: Scheduling system
 - **channel_connections**: Messaging channel links
 - **bridge_sessions**: WhatsApp/Signal bridge sessions
+- **bridge_outbound**: Outbound messages for bridge sessions
 - **cron_jobs**: User-scheduled cron jobs
+- **devices**: Device online status and platform tracking
+- **threads**: Thread persistence for subagent conversations
+- **thread_messages**: Individual messages within threads
 
 App store:
 - **store_packages**: Package definitions (with search index)
@@ -93,11 +97,11 @@ App store:
 
 | Agent | Purpose | Key Tools |
 |-------|---------|-----------|
-| `orchestrator` | Default entry point, delegates to subagents, handles scheduling/memory | TaskCreate, TaskOutput, TaskCancel, OpenCanvas, CloseCanvas, RecallMemories, SaveMemory, Heartbeat*, Cron*, SpawnRemoteMachine, NoResponse |
-| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, KillShell, Glob, Grep, WebFetch, WebSearch, RequestCredential, IntegrationRequest, SkillBash + skill-gated tools |
-| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, KillShell, Glob, Grep, OpenCanvas, CloseCanvas, WebFetch, WebSearch, AskUserQuestion, SelfMod* tools |
+| `orchestrator` | Default entry point, delegates to subagents, handles scheduling/memory | TaskCreate, TaskOutput, TaskCancel, OpenCanvas, CloseCanvas, AskUserQuestion, RecallMemories, SaveMemory, Heartbeat*, Cron*, SpawnRemoteMachine, NoResponse |
+| `general` | Full tool access for general tasks | Read, Write, Edit, Bash, KillShell, Glob, Grep, WebFetch, WebSearch, RequestCredential, IntegrationRequest, SkillBash, OpenApp, ListResources, StoreSearch, ManagePackage, GenerateApiSkill, MediaGenerate, ActivateSkill |
+| `self_mod` | Platform self-modification | Read, Write, Edit, Bash, KillShell, Glob, Grep, OpenCanvas, CloseCanvas, OpenApp, WebFetch, WebSearch, AskUserQuestion, ActivateSkill, SelfMod* tools |
 | `explore` | Lightweight read-only exploration | Read, Glob, Grep, WebFetch, WebSearch |
-| `browser` | Browser automation | Bash, KillShell, Read, OpenCanvas, CloseCanvas |
+| `browser` | Browser automation | Bash, KillShell, Read, OpenCanvas, CloseCanvas, ActivateSkill |
 
 Per-agent model configuration in `agent/model.ts`.
 
@@ -106,7 +110,7 @@ Per-agent model configuration in `agent/model.ts`.
 Tools are assembled in `tools/index.ts`:
 
 1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, ActivateSkill, HeartbeatGet, HeartbeatUpsert, HeartbeatRun, CronList, CronAdd, CronUpdate, CronRemove, CronRun, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint, SpawnRemoteMachine, NoResponse
-2. **Cloud tools** (when no local device, but cloud sandbox available): Bash, Read, Write, Edit, Glob, Grep, SqliteQuery via Sprites
+2. **Cloud tools** (when no local device, but cloud sandbox available): Bash, Read, Write, Edit, Glob, Grep via Sprites
 3. **Device tools** (`agent/device_tools.ts`): When Electron app is running — 22+ tools executed locally via request/response through the events table
 
 Device tool pattern:
