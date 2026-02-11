@@ -55,7 +55,7 @@ The main process runs a "local host" (`electron/local-host/`) that:
 - Generates a persistent device ID (`device.ts`)
 - Polls Convex for tool requests targeted at this device (`runner.ts`)
 - Executes tools locally and sends results back (`tools.ts`)
-- Syncs skills, agents, and plugins from `~/.stella/` to Convex (`skills.ts`, `agents.ts`, `plugins.ts`)
+- Syncs skills and agents from `~/.stella/` to Convex (`skills.ts`, `agents.ts`)
 
 See `electron/local-host/CLAUDE.md` for detailed tool system documentation.
 

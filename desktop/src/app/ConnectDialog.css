@@ -1,67 +1,152 @@
 /* ============================================
-   ConnectDialog — integration accordion rows
+   ConnectDialog — card grid + detail area
    ============================================ */
 
-/* Opaque dialog background */
-.connect-dialog {
-  background: var(--card);
+/* Opaque dialog background (matches settings dialog) */
+[data-slot="dialog-content"].connect-dialog {
+  background: var(--background);
   background-clip: border-box;
   border-color: var(--border);
 }
 
-/* Override default accordion trigger for richer layout */
-.connect-trigger {
-  gap: 12px;
-  height: auto !important;
-  min-height: 44px;
-  padding: 10px 12px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
+/* Body edge padding */
+.connect-dialog [data-slot="dialog-body"] {
+  padding: 0 24px 24px;
 }
 
-.connect-trigger-icon {
+/* Section title */
+.connect-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-weak);
+  margin: 0 0 8px 0;
+  padding: 0;
+}
+
+.connect-section-title:not(:first-child) {
+  margin-top: 16px;
+}
+
+/* 2-column card grid */
+.connect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+/* Grid card */
+.connect-grid-card {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border-radius: var(--radius-sm, 4px);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--foreground);
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+
+.connect-grid-card:hover {
+  border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.connect-grid-card-selected {
+  border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
-.connect-trigger-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.connect-trigger-name {
-  flex: 1;
-  text-align: left;
-}
-
-.connect-trigger-badge {
+/* Card icon */
+.connect-grid-card-icon {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text-weak);
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 6px;
 }
 
-.connect-trigger-badge-dot {
-  width: 6px;
-  height: 6px;
+.connect-grid-card-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Card name */
+.connect-grid-card-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Connected badge dot on card */
+.connect-grid-card-badge {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.connect-grid-card-badge-dot {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #7fd1ae;
+  background: #22c55e;
 }
 
-/* Expanded content area */
-.connect-content {
+/* Detail area */
+.connect-detail-area {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  animation: connect-detail-enter 0.2s ease-out;
+}
+
+@keyframes connect-detail-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.connect-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.connect-detail-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.connect-detail-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
+
+/* ============================================
+   Shared styles (retained from original)
+   ============================================ */
 
 .connect-instructions {
   font-size: 13px;
@@ -156,14 +241,14 @@
   gap: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: #7fd1ae;
+  color: #22c55e;
 }
 
 .connect-status-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #7fd1ae;
+  background: #22c55e;
 }
 
 /* Skeleton loading */

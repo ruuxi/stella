@@ -6,7 +6,6 @@ export type StellaHome = {
   homePath: string;
   agentsPath: string;
   skillsPath: string;
-  pluginsPath: string;
   statePath: string;
   logsPath: string;
   canvasPath: string;
@@ -21,7 +20,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
 
   const agentsPath = path.join(homePath, "agents");
   const skillsPath = path.join(homePath, "skills");
-  const pluginsPath = path.join(homePath, "plugins");
   const statePath = path.join(homePath, "state");
   const logsPath = path.join(homePath, "logs");
   const canvasPath = path.join(homePath, "canvas");
@@ -29,7 +27,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   await ensureDir(homePath);
   await ensureDir(agentsPath);
   await ensureDir(skillsPath);
-  await ensureDir(pluginsPath);
   await ensureDir(statePath);
   await ensureDir(logsPath);
   await ensureDir(canvasPath);
@@ -38,7 +35,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
     homePath,
     agentsPath,
     skillsPath,
-    pluginsPath,
     statePath,
     logsPath,
     canvasPath,

@@ -38,7 +38,6 @@ Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and
 | `device.ts` | Persistent device ID generation |
 | `skills.ts` | Load skills from `~/.stella/skills/` |
 | `agents.ts` | Load agents from `~/.stella/agents/` |
-| `plugins.ts` | Load plugins from `~/.stella/plugins/` |
 | `stella-home.ts` | `~/.stella/` directory utilities |
 | `skill_import.ts` | Import skills from `~/.claude/skills/` into `~/.stella/skills/` |
 | `identity_map.ts` | Persistent pseudonymization (maps real names to aliases) |

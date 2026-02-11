@@ -282,7 +282,7 @@ export const FullShell = () => {
               onSend={handleSend}
               hasExpanded={onboarding.hasExpanded}
               onboardingKey={onboarding.onboardingKey}
-              blackHoleRef={onboarding.blackHoleRef}
+              stellaAnimationRef={onboarding.stellaAnimationRef}
               triggerFlash={onboarding.triggerFlash}
               startBirthAnimation={onboarding.startBirthAnimation}
               completeOnboarding={onboarding.completeOnboarding}

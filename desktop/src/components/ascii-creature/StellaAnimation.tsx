@@ -1,5 +1,5 @@
 import React, { useEffect, useImperativeHandle, useRef } from "react";
-import "../AsciiBlackHole.css";
+import "../StellaAnimation.css";
 import {
   BIRTH_DURATION,
   FLASH_DURATION,
@@ -9,22 +9,22 @@ import {
 } from "./glyph-atlas";
 import { initRenderer } from "./renderer";
 
-export interface AsciiBlackHoleHandle {
+export interface StellaAnimationHandle {
   triggerFlash: () => void;
   startBirth: () => void;
   reset: (value?: number) => void;
 }
 
-interface AsciiBlackHoleProps {
+interface StellaAnimationProps {
   width?: number;
   height?: number;
   initialBirthProgress?: number;
   paused?: boolean;
 }
 
-export const AsciiBlackHole = React.forwardRef<
-  AsciiBlackHoleHandle,
-  AsciiBlackHoleProps
+export const StellaAnimation = React.forwardRef<
+  StellaAnimationHandle,
+  StellaAnimationProps
 >(
   (
     { width = 80, height = 40, initialBirthProgress = 1, paused = false },
@@ -222,7 +222,7 @@ export const AsciiBlackHole = React.forwardRef<
     }, [width, height]);
 
     return (
-      <div ref={containerRef} className="ascii-black-hole-container">
+      <div ref={containerRef} className="stella-animation-container">
         <canvas ref={canvasRef} className="ascii-canvas" />
         <span
           ref={darkRef}
@@ -253,4 +253,4 @@ export const AsciiBlackHole = React.forwardRef<
     );
   },
 );
-AsciiBlackHole.displayName = "AsciiBlackHole";
+StellaAnimation.displayName = "StellaAnimation";

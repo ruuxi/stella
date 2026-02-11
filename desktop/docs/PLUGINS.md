@@ -1,58 +1,19 @@
-# Plugins
+# Plugins (Disabled)
 
-Plugins can contribute tools, skills, and agents.
+Frontend plugin loading/installation is currently removed.
 
-Plugins live on disk at:
+## Current behavior
 
-- `~/.stella/plugins/<pluginId>/plugin.json`
+- The local host only syncs `~/.stella/skills` and `~/.stella/agents`.
+- No plugin manifests are loaded from `~/.stella/plugins`.
+- Store install paths support `skill`, `theme`, `canvas`, and `mod` (no `plugin`).
+- The renderer IPC surface does not expose plugin install APIs.
 
-## `plugin.json` format
+## Re-enable checklist
 
-```json
-{
-  "id": "git-tools",
-  "name": "Git Tools",
-  "version": "1.0.0",
-  "description": "Git helpers",
-  "skills": ["skills/git/SKILL.md"],
-  "agents": ["agents/reviewer/AGENT.md"],
-  "tools": [
-    {
-      "name": "GitStatus",
-      "description": "Show git status",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "repoPath": { "type": "string" }
-        },
-        "required": ["repoPath"]
-      },
-      "handler": "tools/git-status.js"
-    }
-  ]
-}
-```
-
-## Tool handlers
-
-Tool handlers are loaded on the local host via dynamic import. A handler can export:
-
-- `default`, or
-- `handler`, or
-- `run`
-
-The handler signature is:
-
-```ts
-export default async function run(args, context) {
-  return { result: "..." };
-}
-```
-
-## Sync behavior
-
-On startup and periodically, the local host:
-
-1. Loads plugins and their tools.
-2. Loads plugin-provided skills and agents.
-3. Syncs manifests to the backend via `plugins.upsertMany`, `skills.upsertMany`, and `agents.upsertMany`.
+1. Restore a plugin loader module under `electron/local-host/` and wire it into `tools.ts`.
+2. Add plugin sync mutation(s) in backend and re-register plugin tool descriptors.
+3. Re-add plugin install handling in `electron/local-host/tools_store.ts`.
+4. Re-add `store:installPlugin` IPC handlers in `electron/main.ts` and `electron/preload.ts`.
+5. Re-add renderer typings in `src/types/electron.d.ts` and UI install flow in `src/screens/full-shell/StoreView.tsx`.
+6. Restore `~/.stella/plugins` directory handling in `electron/local-host/stella-home.ts`.

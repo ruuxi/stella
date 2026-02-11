@@ -92,7 +92,7 @@ Direct imports (not re-exported from index.ts):
 - `ThemePicker.tsx` - Theme picker UI
 - `AuthStatus.tsx` - Authentication status
 - `CredentialModal.tsx` - Credential management modal
-- `AsciiBlackHole.tsx` - ASCII animation wrapper
+- `StellaAnimation.tsx` - Stella animation wrapper
 
 ### Other Subdirectories
 - `background/` - `ShiftingGradient.tsx` animated background

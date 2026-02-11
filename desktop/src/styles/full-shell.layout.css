@@ -208,7 +208,7 @@
   transition: opacity 12s cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-.onboarding-blackhole {
+.onboarding-stella-animation {
   position: absolute;
   top: 25%;
   left: 50%;
@@ -221,7 +221,7 @@
   transition: transform 0.3s ease;
 }
 
-.onboarding-blackhole[data-expanded="true"] {
+.onboarding-stella-animation[data-expanded="true"] {
   cursor: default;
 }
 

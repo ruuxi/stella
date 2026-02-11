@@ -8,10 +8,10 @@ export declare function deploy(bundle: BridgeBundle): Promise<{
     ok: boolean;
     error?: string;
 }>;
-export declare function start(provider: string): {
+export declare function start(provider: string): Promise<{
     ok: boolean;
     error?: string;
-};
+}>;
 export declare function stop(provider: string): {
     ok: boolean;
 };

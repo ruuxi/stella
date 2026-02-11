@@ -251,8 +251,8 @@
   overflow: hidden;
 }
 
-/* Override the AsciiBlackHole styles when in raycast icon */
-.raycast-search-icon .ascii-black-hole-container {
+/* Override the StellaAnimation styles when in raycast icon */
+.raycast-search-icon .stella-animation-container {
   width: 28px;
   height: 28px;
   animation: none;

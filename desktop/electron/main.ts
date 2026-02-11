@@ -36,7 +36,6 @@ import { collectAllSignals } from './local-host/collect-all.js'
 import type { AllUserSignalsResult } from './local-host/types.js'
 import {
   handleInstallCanvas,
-  handleInstallPlugin,
   handleInstallSkill,
   handleInstallTheme,
   handleUninstallPackage,
@@ -1524,18 +1523,6 @@ app.whenReady().then(async () => {
     source?: string
   }) => {
     return unwrapStoreResult(await handleInstallCanvas(payload as unknown as Record<string, unknown>))
-  })
-
-  ipcMain.handle('store:installPlugin', async (_event, payload: {
-    packageId: string
-    pluginId?: string
-    name?: string
-    version?: string
-    description?: string
-    manifest?: Record<string, unknown>
-    files?: Record<string, string>
-  }) => {
-    return unwrapStoreResult(await handleInstallPlugin(payload as unknown as Record<string, unknown>))
   })
 
   ipcMain.handle('store:uninstall', async (_event, payload: {

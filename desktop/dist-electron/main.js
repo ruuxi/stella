@@ -13,7 +13,7 @@ import { createLocalHostRunner } from './local-host/runner.js';
 import { resolveStellaHome } from './local-host/stella-home.js';
 import { collectBrowserData, coreMemoryExists, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
 import { collectAllSignals } from './local-host/collect-all.js';
-import { handleInstallCanvas, handleInstallPlugin, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from './local-host/tools_store.js';
+import { handleInstallCanvas, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from './local-host/tools_store.js';
 import * as bridgeManager from './local-host/bridge_manager.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1285,9 +1285,6 @@ app.whenReady().then(async () => {
     });
     ipcMain.handle('store:installCanvas', async (_event, payload) => {
         return unwrapStoreResult(await handleInstallCanvas(payload));
-    });
-    ipcMain.handle('store:installPlugin', async (_event, payload) => {
-        return unwrapStoreResult(await handleInstallPlugin(payload));
     });
     ipcMain.handle('store:uninstall', async (_event, payload) => {
         return unwrapStoreResult(await handleUninstallPackage(payload));

@@ -172,9 +172,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   storeInstallCanvas: (payload: {
     packageId: string; workspaceId?: string; name: string; dependencies?: Record<string, string>; source?: string
   }) => ipcRenderer.invoke('store:installCanvas', payload),
-  storeInstallPlugin: (payload: {
-    packageId: string; pluginId?: string; name?: string; version?: string; description?: string; manifest?: Record<string, unknown>; files?: Record<string, string>
-  }) => ipcRenderer.invoke('store:installPlugin', payload),
   storeUninstall: (payload: {
     packageId: string; type: string; localId: string
   }) => ipcRenderer.invoke('store:uninstall', payload),

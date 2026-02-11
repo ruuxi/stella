@@ -1,0 +1,63 @@
+.stella-animation-container {
+  --ascii-font-size: 11px;
+  --ascii-line-height: 11px;
+  --ascii-font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: transparent; 
+  font-smooth: never;
+  -webkit-font-smoothing: none;
+  animation: breathing 8s ease-in-out infinite;
+}
+
+.ascii-canvas {
+  position: absolute;
+  top: 55%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+  opacity: 0.85;
+  z-index: 2;
+}
+
+/* Character color classes based on brightness and theme */
+.stella-animation-container .char-dark {
+  color: var(--primary, var(--foreground));
+}
+
+.stella-animation-container .char-medium-dark {
+  color: var(--accent, var(--muted-foreground));
+}
+
+.stella-animation-container .char-medium {
+  color: var(--ring, var(--spinner-color-1, var(--accent)));
+}
+
+.stella-animation-container .char-bright {
+  color: var(--spinner-color-2, var(--accent));
+}
+
+.stella-animation-container .char-brightest {
+  color: var(--spinner-color-3, var(--accent));
+}
+
+.ascii-color-swatch {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Optional: Add a subtle pulse to the whole container */
+@keyframes breathing {
+  0% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.01); }
+  100% { opacity: 0.9; transform: scale(1); }
+}
