@@ -74,7 +74,7 @@ export const createOrchestrationTools = (
         "Create a new thread with this name, or reuse an existing active thread with the same name (short, descriptive, kebab-case).",
       ),
       activate_skills: z.array(z.string()).optional().describe(
-        "Skill IDs to pre-activate. Injects full skill documentation and grants access to the skill's specialized tools. Use for store operations (\"store-management\"), API skill creation (\"api-skill-generation\"), or media generation (\"media-generation\").",
+        "Skill IDs to pre-activate. Grants access to the skill's specialized tools only (no markdown injection). Use for store operations (\"store-management\"), API skill creation (\"api-skill-generation\"), or media generation (\"media-generation\").",
       ),
       recall_memory: z.object({
         query: z.string().optional().describe("What to recall — defaults to the task description"),

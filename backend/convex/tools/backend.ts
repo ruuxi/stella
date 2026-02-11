@@ -68,6 +68,13 @@ const cronPatchSchema = z.object({
 const formatResult = (value: unknown) =>
   typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
 
+const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
+
+const supportsSkillAgentType = (
+  agentTypes: string[] | undefined,
+  agentType: string,
+) => !agentTypes || agentTypes.length === 0 || agentTypes.includes(agentType);
+
 const applyAuth = (
   key: string,
   auth: z.infer<typeof integrationAuthSchema> | undefined,
@@ -534,22 +541,29 @@ export const createBackendTools = (
       description:
         "Load a skill's full instructions into context.\n\n" +
         "Usage:\n" +
-        "- Skills are listed in the system prompt by name and description. Call this to load the full markdown instructions.\n" +
+        "- Skills are listed in the system prompt by name and description.\n" +
+        "- Call this to load the full markdown instructions for a skill.\n" +
         "- Always activate a skill before following its workflow or using its tools.\n" +
-        "- Returns the skill's complete documentation including required credentials and execution context.\n" +
         "- If the skill has secretMounts, use SkillBash (not Bash) for commands that need those secrets.",
       inputSchema: z.object({
         skill_id: z.string().min(1).describe("Skill ID from the skills listing in the system prompt"),
       }),
       execute: async (args) => {
+        if (SKILLS_DISABLED_AGENT_TYPES.has(options.agentType)) {
+          return `Skills are unavailable for agent type "${options.agentType}".`;
+        }
         const skill = await ctx.runQuery(internal.data.skills.getSkillByIdInternal, {
           skillId: args.skill_id,
+          ownerId: options.ownerId,
         });
         if (!skill) {
           return `Skill not found: ${args.skill_id}`;
         }
         if (!skill.enabled) {
           return `Skill is disabled: ${args.skill_id}`;
+        }
+        if (!supportsSkillAgentType(skill.agentTypes, options.agentType)) {
+          return `Skill "${skill.id}" is not available for agent type "${options.agentType}".`;
         }
         const parts = [`## Skill: ${skill.name} (${skill.id})`];
         if (skill.requiresSecrets && skill.requiresSecrets.length > 0) {
@@ -1076,7 +1090,7 @@ export const createBackendTools = (
           ],
         });
 
-        return `Skill "${skillId}" created with ${args.endpoints.length} endpoints.\n\nAgents can now use ActivateSkill("${skillId}") to load the ${args.service} API documentation and call endpoints via IntegrationRequest.`;
+        return `Skill "${skillId}" created with ${args.endpoints.length} endpoints.\n\nAgents can now use ActivateSkill("${skillId}") to activate the ${args.service} API skill and call endpoints via IntegrationRequest.`;
       },
     }),
     SpawnRemoteMachine: tool({
