@@ -21,7 +21,7 @@ Activate the **workspace** skill for full panel/app creation instructions.
 You have three tools for working with external APIs that require authentication. The user never sees raw secrets in chat — credentials are stored encrypted and referenced by opaque handles.
 
 **Workflow:**
-1. **Check if a credential exists** — if a skill declares \`requiresSecrets\`, activate it first. If the secret is already stored, you can skip to step 3.
+1. **Check if a credential exists** — call \`ListResources\` to see stored credentials and active panels. If the credential you need is already stored, skip to step 3. Also check if a skill declares \`requiresSecrets\` and activate it first.
 2. **RequestCredential** — prompts the user (via a secure UI dialog, not chat) to enter an API key. Returns a \`secretId\` handle. You never see the plaintext.
 3. **Use the credential:**
    - **IntegrationRequest** — for HTTP API calls. Pass the \`secretId\` and auth config; the secret is applied server-side.
