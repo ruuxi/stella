@@ -51,9 +51,19 @@ let miniShowRequestId = 0;
 let pendingMiniBlurHideTimer = null;
 let suppressMiniBlurUntil = 0;
 let pendingMiniOpacityHideTimer = null;
+let miniVisible = false;
+let miniVisibilitySent = false;
+let miniConcealedForCapture = false;
+let miniRestoreFocusAfterCapture = false;
+let miniVisibilityEpoch = 0;
 let radialSelectionCommitted = false;
+let radialGestureActive = false;
+let radialStartedWithMiniVisible = false;
+let radialContextBeforeGesture = null;
 let radialCaptureRequestId = 0;
 let pendingRadialCapturePromise = null;
+let stagedRadialChatContext = null;
+let radialContextShouldCommit = false;
 let regionCaptureDisplay = null;
 let pendingRegionCaptureResolve = null;
 let pendingRegionCapturePromise = null;
@@ -80,20 +90,25 @@ const miniSize = {
 };
 const RADIAL_SIZE = 280;
 const MINI_SHELL_ANIM_MS = 140;
+const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80;
 const isMiniShowing = () => {
-    if (!miniWindow) {
-        return false;
-    }
-    return miniWindow.getOpacity() > 0.01;
+    return Boolean(miniWindow && miniVisible);
 };
-const sendMiniVisibility = (visible) => {
+const sendMiniVisibility = (visible, force = false) => {
     if (!miniWindow)
         return;
+    if (!force && miniVisibilitySent === visible)
+        return;
+    miniVisibilitySent = visible;
     miniWindow.webContents.send('mini:visibility', { visible });
 };
 const hideMiniWindow = (animate = true) => {
     if (!miniWindow)
         return;
+    const hideEpoch = ++miniVisibilityEpoch;
+    miniVisible = false;
+    miniConcealedForCapture = false;
+    miniRestoreFocusAfterCapture = false;
     if (pendingMiniOpacityHideTimer) {
         clearTimeout(pendingMiniOpacityHideTimer);
         pendingMiniOpacityHideTimer = null;
@@ -114,6 +129,9 @@ const hideMiniWindow = (animate = true) => {
         return;
     }
     pendingMiniOpacityHideTimer = setTimeout(() => {
+        if (hideEpoch !== miniVisibilityEpoch) {
+            return;
+        }
         pendingMiniOpacityHideTimer = null;
         if (!miniWindow)
             return;
@@ -122,6 +140,45 @@ const hideMiniWindow = (animate = true) => {
             miniWindow.setOpacity(0);
         }
     }, MINI_SHELL_ANIM_MS);
+};
+const concealMiniWindowForCapture = () => {
+    if (!miniWindow || !miniVisible || miniConcealedForCapture) {
+        return false;
+    }
+    if (pendingMiniOpacityHideTimer) {
+        clearTimeout(pendingMiniOpacityHideTimer);
+        pendingMiniOpacityHideTimer = null;
+    }
+    if (pendingMiniBlurHideTimer) {
+        clearTimeout(pendingMiniBlurHideTimer);
+        pendingMiniBlurHideTimer = null;
+    }
+    suppressMiniBlurUntil = Date.now() + 250;
+    miniRestoreFocusAfterCapture = miniWindow.isFocused();
+    miniConcealedForCapture = true;
+    miniWindow.setIgnoreMouseEvents(true, { forward: true });
+    miniWindow.setFocusable(false);
+    miniWindow.setOpacity(0);
+    return true;
+};
+const restoreMiniWindowAfterCapture = () => {
+    if (!miniWindow || !miniVisible || !miniConcealedForCapture) {
+        return;
+    }
+    miniVisibilityEpoch += 1;
+    miniConcealedForCapture = false;
+    suppressMiniBlurUntil = Date.now() + 250;
+    miniWindow.setIgnoreMouseEvents(false);
+    miniWindow.setFocusable(true);
+    miniWindow.setOpacity(1);
+    miniWindow.show();
+    if (miniRestoreFocusAfterCapture) {
+        miniWindow.focus();
+    }
+    else {
+        miniWindow.showInactive();
+    }
+    miniRestoreFocusAfterCapture = false;
 };
 const broadcastUiState = () => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -295,6 +352,10 @@ const createMiniWindow = () => {
     loadWindow(miniWindow, 'mini');
     miniWindow.on('closed', () => {
         miniWindow = null;
+        miniVisible = false;
+        miniVisibilitySent = false;
+        miniConcealedForCapture = false;
+        miniRestoreFocusAfterCapture = false;
     });
     // Prevent destroying the mini window (re-creating transparent windows can cause visible flashes).
     // We still allow it to close during app shutdown.
@@ -303,14 +364,17 @@ const createMiniWindow = () => {
             return;
         }
         event.preventDefault();
-        miniWindow?.hide();
+        hideMiniWindow(false);
     });
     // Blur event hides mini window (like Spotlight)
     miniWindow.on('blur', () => {
         if (isMiniShowing()) {
             // Focus can bounce between the radial/overlay and mini during fast selections.
             // Don't dismiss on transient blur during the open handshake.
-            if (Date.now() < suppressMiniBlurUntil) {
+            if (Date.now() < suppressMiniBlurUntil ||
+                radialGestureActive ||
+                miniConcealedForCapture ||
+                Boolean(pendingRegionCapturePromise)) {
                 return;
             }
             if (pendingMiniBlurHideTimer) {
@@ -321,7 +385,10 @@ const createMiniWindow = () => {
                 if (!miniWindow) {
                     return;
                 }
-                if (Date.now() < suppressMiniBlurUntil) {
+                if (Date.now() < suppressMiniBlurUntil ||
+                    radialGestureActive ||
+                    miniConcealedForCapture ||
+                    Boolean(pendingRegionCapturePromise)) {
                     return;
                 }
                 if (!miniWindow.isFocused() && isMiniShowing()) {
@@ -349,6 +416,22 @@ const showWindow = (target) => {
         if (pendingMiniBlurHideTimer) {
             clearTimeout(pendingMiniBlurHideTimer);
             pendingMiniBlurHideTimer = null;
+        }
+        miniVisibilityEpoch += 1;
+        if (isMiniShowing() && !miniConcealedForCapture) {
+            suppressMiniBlurUntil = Date.now() + 250;
+            positionMiniWindow();
+            if (lastBroadcastChatContextVersion !== chatContextVersion) {
+                broadcastChatContext();
+            }
+            miniWindow?.setIgnoreMouseEvents(false);
+            miniWindow?.setFocusable(true);
+            miniWindow?.setOpacity(1);
+            miniWindow?.show();
+            miniWindow?.focus();
+            sendMiniVisibility(true);
+            updateUiState({ window: target });
+            return;
         }
         const requestId = ++miniShowRequestId;
         // Give the mini window a short blur-grace period while we transition away from the radial/overlay.
@@ -388,6 +471,9 @@ const showWindow = (target) => {
                 miniWindow?.setIgnoreMouseEvents(false);
                 miniWindow?.setFocusable(true);
                 // Trigger renderer "panel in" animation, then reveal the window.
+                miniVisible = true;
+                miniConcealedForCapture = false;
+                miniRestoreFocusAfterCapture = false;
                 sendMiniVisibility(true);
                 setTimeout(() => {
                     // If a newer show request arrived, don't reveal for the old one.
@@ -438,37 +524,45 @@ const showWindow = (target) => {
 const cancelRadialContextCapture = () => {
     radialCaptureRequestId += 1;
     pendingRadialCapturePromise = null;
+    stagedRadialChatContext = null;
+    radialContextShouldCommit = false;
+};
+const commitStagedRadialContext = () => {
+    if (!radialContextShouldCommit || !stagedRadialChatContext) {
+        return;
+    }
+    const screenshots = pendingChatContext?.regionScreenshots ??
+        radialContextBeforeGesture?.regionScreenshots ??
+        [];
+    setPendingChatContext({
+        ...stagedRadialChatContext,
+        regionScreenshots: screenshots,
+    });
+    stagedRadialChatContext = null;
+    radialContextShouldCommit = false;
+    if (isMiniShowing()) {
+        broadcastChatContext();
+    }
 };
 const captureRadialContext = (x, y) => {
     const requestId = ++radialCaptureRequestId;
     lastRadialPoint = { x, y };
-    // Reset selected text immediately so the mini shell never shows stale content
-    // while the latest context capture is still in flight.
-    const existingScreenshots = pendingChatContext?.regionScreenshots ?? [];
-    setPendingChatContext({
-        window: null,
-        browserUrl: null,
-        selectedText: null,
-        regionScreenshots: existingScreenshots,
-        capturePending: true,
-    });
-    // If mini is already visible, surface the pending state right away.
-    if (isMiniShowing()) {
-        broadcastChatContext();
-    }
+    stagedRadialChatContext = null;
+    const existingScreenshots = pendingChatContext?.regionScreenshots ??
+        radialContextBeforeGesture?.regionScreenshots ??
+        [];
     pendingRadialCapturePromise = (async () => {
         try {
-            const fresh = await captureChatContext({ x, y }, { excludeCurrentProcessWindows: process.platform === 'win32' || process.platform === 'darwin' });
+            const fresh = await captureChatContext({ x, y }, { excludeCurrentProcessWindows: true });
             if (requestId !== radialCaptureRequestId) {
                 return;
             }
             // Preserve screenshots captured while text capture was running.
             const screenshots = pendingChatContext?.regionScreenshots ?? existingScreenshots;
-            setPendingChatContext({
+            stagedRadialChatContext = {
                 ...fresh,
                 regionScreenshots: screenshots,
-                capturePending: false,
-            });
+            };
         }
         catch (error) {
             if (requestId !== radialCaptureRequestId) {
@@ -476,21 +570,17 @@ const captureRadialContext = (x, y) => {
             }
             console.warn('Failed to capture chat context', error);
             const screenshots = pendingChatContext?.regionScreenshots ?? existingScreenshots;
-            setPendingChatContext({
+            stagedRadialChatContext = {
                 window: null,
                 browserUrl: null,
                 selectedText: null,
                 regionScreenshots: screenshots,
-                capturePending: false,
-            });
+            };
         }
         finally {
             if (requestId === radialCaptureRequestId) {
                 pendingRadialCapturePromise = null;
-                // Keep the mini shell synced when context lands after the shell is open.
-                if (isMiniShowing()) {
-                    broadcastChatContext();
-                }
+                commitStagedRadialContext();
             }
         }
     })();
@@ -597,6 +687,18 @@ const captureRegionScreenshot = async (display, selection) => {
         height: cropSize.height,
     };
 };
+const getCurrentProcessWindowSourceIds = () => {
+    const ids = [];
+    for (const window of BrowserWindow.getAllWindows()) {
+        const id = typeof window.getMediaSourceId === 'function'
+            ? window.getMediaSourceId()
+            : null;
+        if (id) {
+            ids.push(id);
+        }
+    }
+    return ids;
+};
 const resetRegionCapture = () => {
     pendingRegionCaptureResolve = null;
     pendingRegionCapturePromise = null;
@@ -619,9 +721,27 @@ const finalizeRegionCapture = async (selection) => {
         resetRegionCapture();
         return;
     }
-    const display = regionCaptureDisplay ?? getDisplayForPoint();
-    const screenshot = await captureRegionScreenshot(display, selection);
-    pendingRegionCaptureResolve({ screenshot, window: null });
+    const resolve = pendingRegionCaptureResolve;
+    hideRegionCaptureWindow();
+    hideRadialWindow();
+    hideModifierOverlay();
+    const miniWasConcealed = concealMiniWindowForCapture();
+    let screenshot = null;
+    try {
+        await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS));
+        const display = regionCaptureDisplay ?? getDisplayForPoint();
+        screenshot = await captureRegionScreenshot(display, selection);
+    }
+    catch (error) {
+        console.warn('Failed to capture selected region', error);
+        screenshot = null;
+    }
+    finally {
+        if (miniWasConcealed) {
+            restoreMiniWindowAfterCapture();
+        }
+    }
+    resolve({ screenshot, window: null });
     resetRegionCapture();
 };
 const cancelRegionCapture = () => {
@@ -634,21 +754,27 @@ const cancelRegionCapture = () => {
 const handleRadialSelection = async (wedge) => {
     switch (wedge) {
         case 'dismiss':
-            // Center/dismiss: clear context and do nothing else
+            // Center/dismiss: cancel this gesture and restore the pre-radial context.
             cancelRadialContextCapture();
-            setPendingChatContext(null);
+            if (radialStartedWithMiniVisible) {
+                if (pendingChatContext !== radialContextBeforeGesture) {
+                    setPendingChatContext(radialContextBeforeGesture);
+                }
+            }
+            else if (pendingChatContext !== null) {
+                setPendingChatContext(null);
+            }
             break;
         case 'capture': {
+            radialContextShouldCommit = true;
+            commitStagedRadialContext();
             updateUiState({ mode: 'chat' });
             // Hide radial + modifier overlay before entering region capture so they
             // don't appear in the screenshot (desktopCapturer captures composited screen).
             hideRadialWindow();
             hideModifierOverlay();
-            const miniWasShowing = isMiniShowing();
-            if (miniWasShowing) {
-                hideMiniWindow(false);
-            }
-            await new Promise((r) => setTimeout(r, 50));
+            const miniWasConcealed = concealMiniWindowForCapture();
+            await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS));
             const regionCapture = await startRegionCapture();
             if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
                 const ctx = pendingChatContext ?? emptyContext();
@@ -662,20 +788,29 @@ const handleRadialSelection = async (wedge) => {
                     regionScreenshots: nextScreenshots,
                 });
             }
-            if (!isMiniShowing())
+            if (miniWasConcealed) {
+                restoreMiniWindowAfterCapture();
+            }
+            if (!isMiniShowing()) {
                 showWindow('mini');
-            else
+            }
+            else {
                 broadcastChatContext();
+            }
             break;
         }
         case 'chat':
         case 'auto': {
+            radialContextShouldCommit = true;
+            commitStagedRadialContext();
             updateUiState({ mode: 'chat' });
             if (!isMiniShowing())
                 showWindow('mini');
             break;
         }
         case 'voice':
+            radialContextShouldCommit = true;
+            commitStagedRadialContext();
             updateUiState({ mode: 'voice' });
             if (!isMiniShowing())
                 showWindow('mini');
@@ -715,9 +850,12 @@ const initMouseHook = () => {
             }
         },
         onLeftClick: (x, y) => {
+            if (radialGestureActive || miniConcealedForCapture || pendingRegionCapturePromise) {
+                return;
+            }
             // Hide mini window if clicking outside its bounds
             const win = miniWindow;
-            if (win && win.getOpacity() > 0.01) {
+            if (win && isMiniShowing() && win.getOpacity() > 0.01) {
                 const bounds = win.getBounds();
                 const display = screen.getDisplayNearestPoint({ x, y });
                 // On macOS uiohook coords are already logical; on Windows/Linux divide to convert.
@@ -738,9 +876,27 @@ const initMouseHook = () => {
                 return;
             // Suppress mini blur so the radial overlay doesn't dismiss an already-open mini shell.
             suppressMiniBlurUntil = Date.now() + 2000;
+            radialGestureActive = true;
+            radialStartedWithMiniVisible = isMiniShowing();
+            radialContextBeforeGesture = pendingChatContext;
+            radialContextShouldCommit = false;
+            stagedRadialChatContext = null;
             // Dismiss any open image preview in the mini shell.
             if (isMiniShowing() && miniWindow) {
                 miniWindow.webContents.send('mini:dismissPreview');
+            }
+            if (!radialStartedWithMiniVisible && pendingChatContext) {
+                const hasTransientContext = Boolean(pendingChatContext.window ||
+                    pendingChatContext.selectedText ||
+                    pendingChatContext.browserUrl);
+                if (hasTransientContext) {
+                    setPendingChatContext({
+                        window: null,
+                        browserUrl: null,
+                        selectedText: null,
+                        regionScreenshots: pendingChatContext.regionScreenshots ?? [],
+                    });
+                }
             }
             radialSelectionCommitted = false;
             // 1. Show radial immediately so first-open latency is not gated by
@@ -756,10 +912,16 @@ const initMouseHook = () => {
             // In that path, ignore any in-flight capture from this gesture.
             if (!radialSelectionCommitted) {
                 cancelRadialContextCapture();
-                if (!isMiniShowing() && !pendingMiniShowTimer) {
+                if (radialStartedWithMiniVisible) {
+                    if (pendingChatContext !== radialContextBeforeGesture) {
+                        setPendingChatContext(radialContextBeforeGesture);
+                    }
+                }
+                else if (!pendingMiniShowTimer && pendingChatContext !== null) {
                     setPendingChatContext(null);
                 }
             }
+            radialGestureActive = false;
             radialSelectionCommitted = false;
             hideRadialWindow();
             hideModifierOverlay();
@@ -957,30 +1119,42 @@ app.whenReady().then(async () => {
         const resolve = pendingRegionCaptureResolve;
         // Hide the region capture overlay BEFORE capturing so it doesn't appear in the screenshot
         hideRegionCaptureWindow();
-        // Also hide the mini shell if visible (so we capture the window underneath)
-        const miniWasShowing = isMiniShowing();
-        if (miniWasShowing) {
-            hideMiniWindow(false);
+        hideRadialWindow();
+        hideModifierOverlay();
+        // Temporarily conceal the mini shell (without toggling renderer visibility)
+        // so we capture the underlying target window/content.
+        const miniWasConcealed = concealMiniWindowForCapture();
+        let capture = null;
+        try {
+            // Wait briefly for composited overlays to disappear before capture.
+            await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS));
+            // Pre-fetch sources with Stella windows excluded.
+            const sources = await prefetchWindowSources(getCurrentProcessWindowSourceIds());
+            // Convert overlay-local click coordinates into global desktop coordinates.
+            // regionWindow bounds are DIP; the native picker expects global coordinates.
+            const regionBounds = getRegionCaptureWindow()?.getBounds();
+            let capturePoint = { x: point.x, y: point.y };
+            if (regionBounds) {
+                const dipX = regionBounds.x + point.x;
+                const dipY = regionBounds.y + point.y;
+                const scaleFactor = process.platform === 'darwin' ? 1 : (regionCaptureDisplay?.scaleFactor ?? 1);
+                capturePoint = {
+                    x: Math.round(dipX * scaleFactor),
+                    y: Math.round(dipY * scaleFactor),
+                };
+            }
+            // Capture window at clicked point.
+            capture = await captureWindowAtPoint(capturePoint.x, capturePoint.y, sources, { excludePids: [process.pid] });
         }
-        // Wait a frame for the windows to actually hide
-        await new Promise((r) => setTimeout(r, 50));
-        // Pre-fetch sources (overlay and mini shell should now be hidden)
-        const sources = await prefetchWindowSources([]);
-        // Convert overlay-local click coordinates into global desktop coordinates.
-        // regionWindow bounds are DIP; the native picker expects global coordinates.
-        const regionBounds = getRegionCaptureWindow()?.getBounds();
-        let capturePoint = { x: point.x, y: point.y };
-        if (regionBounds) {
-            const dipX = regionBounds.x + point.x;
-            const dipY = regionBounds.y + point.y;
-            const scaleFactor = process.platform === 'darwin' ? 1 : (regionCaptureDisplay?.scaleFactor ?? 1);
-            capturePoint = {
-                x: Math.round(dipX * scaleFactor),
-                y: Math.round(dipY * scaleFactor),
-            };
+        catch (error) {
+            console.warn('Failed to capture window at point', error);
+            capture = null;
         }
-        // Capture window at clicked point
-        const capture = await captureWindowAtPoint(capturePoint.x, capturePoint.y, sources);
+        finally {
+            if (miniWasConcealed) {
+                restoreMiniWindowAfterCapture();
+            }
+        }
         resolve({
             screenshot: capture?.screenshot ?? null,
             window: toChatContextWindow(capture?.windowInfo),
@@ -1161,7 +1335,19 @@ app.whenReady().then(async () => {
     });
     ipcMain.handle('screenshot:capture', async (_event, point) => {
         const display = getDisplayForPoint(point);
-        return captureDisplayScreenshot(display);
+        hideRadialWindow();
+        hideModifierOverlay();
+        hideRegionCaptureWindow();
+        const miniWasConcealed = concealMiniWindowForCapture();
+        try {
+            await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS));
+            return await captureDisplayScreenshot(display);
+        }
+        finally {
+            if (miniWasConcealed) {
+                restoreMiniWindowAfterCapture();
+            }
+        }
     });
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
