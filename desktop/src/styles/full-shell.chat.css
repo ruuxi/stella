@@ -2,7 +2,7 @@
 .event-list {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 40px;
   flex: 1;
 }
 
@@ -11,7 +11,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 40px;
 }
 
 .session-turn-header {
@@ -30,29 +30,36 @@
   white-space: nowrap;
 }
 
-/* Event item - Aura-style semi-transparent cards */
+/* Event item - iOS-style speech bubbles */
 .event-item {
   padding: 12px;
-  border-radius: var(--radius-md);
+  border-radius: 18px;
   background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
   border: 1px solid var(--border-strong);
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
+  position: relative;
 }
 
 .event-item.user {
-  background: color-mix(in srgb, var(--surface-inset) 80%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
   margin-left: auto;
   max-width: 85%;
   width: fit-content;
+  border-bottom-right-radius: 4px;
 }
+
 
 .event-item.assistant {
   background: transparent;
-  border: none;
+  border: 1px solid var(--border-strong);
+  width: fit-content;
+  max-width: 85%;
+  border-bottom-left-radius: 4px;
 }
+
 
 .event-item.system {
   background: color-mix(in srgb, var(--surface-inset) 10%, transparent);
