@@ -32,9 +32,6 @@ export const createTools = (
   context: DeviceToolContext | undefined,
   options: ToolOptions & { spriteName?: string },
 ): ToolSet => {
-  const activateSkillAllowed =
-    options.agentType !== "explore" && options.agentType !== "memory";
-
   // Tier 2: Local device tools (if Electron app running)
   const coreTools = context ? createCoreDeviceTools(ctx, context) : {};
 
@@ -80,7 +77,6 @@ export const createTools = (
     ? Array.from(
         new Set([
           ...options.toolsAllowlist.map(sanitizeToolName),
-          ...(activateSkillAllowed ? (["ActivateSkill"] as const) : []),
           ...options.pluginTools.map((toolDef) => sanitizeToolName(toolDef.name)),
         ]),
       )

@@ -147,7 +147,7 @@ Tools are assembled in `tools/index.ts` in layered tiers:
 | Plugin (if device connected) | dynamic descriptors from `data/plugins.ts` | Sanitized plugin tool names mapped to device execution |
 | Orchestration | `tools/orchestration.ts` | TaskCreate, TaskOutput, TaskCancel, RecallMemories, SaveMemory |
 
-Tools are filtered by the agent's `toolsAllowlist` from `agents.ts` (plus plugin tool names, and `ActivateSkill` for non-`explore`/non-`memory` agents). Skills do not grant tools.
+Tools are filtered by the agent's `toolsAllowlist` from `agents.ts` (plus plugin tool names). Skills do not grant tools.
 
 When no device context exists, orchestration falls back to a deviceless set: memory tools only (`RecallMemories`, `SaveMemory`) without Task tools.
 
