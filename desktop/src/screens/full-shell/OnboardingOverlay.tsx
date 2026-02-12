@@ -1,5 +1,5 @@
 /**
- * Onboarding flow: creature animation, auth → ripple → theme → trust → birth.
+ * Onboarding flow: Start → Auth → Intro (center) → split layout steps.
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -13,11 +13,7 @@ import { InlineAuth } from "../../components/InlineAuth";
 
 const CREATURE_INITIAL_SIZE = 0.22;
 
-type DiscoveryCategory =
-  | "browsing_bookmarks"
-  | "dev_environment"
-  | "apps_system"
-  | "messages_notes";
+type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
 
 export type OnboardingOverlayProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
@@ -33,10 +29,8 @@ export function useOnboardingOverlay() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
+  const [splitMode, setSplitMode] = useState(false);
   const [onboardingKey, setOnboardingKey] = useState(0);
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
-  const [themeConfirmed, setThemeConfirmed] = useState(false);
-  const [hasSelectedTheme, setHasSelectedTheme] = useState(false);
   const stellaAnimationRef = useRef<StellaAnimationHandle | null>(null);
 
   const triggerFlash = useCallback(() => {
@@ -49,28 +43,17 @@ export function useOnboardingOverlay() {
     stellaAnimationRef.current?.startBirth();
   }, [hasExpanded]);
 
+  const handleEnterSplit = useCallback(() => {
+    setSplitMode(true);
+  }, []);
+
   const handleResetOnboarding = useCallback(() => {
     setHasExpanded(false);
+    setSplitMode(false);
     setOnboardingKey((k) => k + 1);
-    setThemeConfirmed(false);
-    setHasSelectedTheme(false);
-    setThemePickerOpen(false);
     stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
   }, [resetOnboarding]);
-
-  const handleOpenThemePicker = useCallback(() => {
-    setThemePickerOpen(true);
-  }, []);
-
-  const handleConfirmTheme = useCallback(() => {
-    setThemeConfirmed(true);
-    setThemePickerOpen(false);
-  }, []);
-
-  const handleThemeSelect = useCallback(() => {
-    setHasSelectedTheme(true);
-  }, []);
 
   return {
     onboardingDone,
@@ -78,18 +61,13 @@ export function useOnboardingOverlay() {
     isAuthenticated,
     isAuthLoading,
     hasExpanded,
+    splitMode,
     onboardingKey,
-    themePickerOpen,
-    setThemePickerOpen,
-    themeConfirmed,
-    hasSelectedTheme,
     stellaAnimationRef,
     triggerFlash,
     startBirthAnimation,
+    handleEnterSplit,
     handleResetOnboarding,
-    handleOpenThemePicker,
-    handleConfirmTheme,
-    handleThemeSelect,
   };
 }
 
@@ -98,36 +76,32 @@ export function OnboardingView({
   onboardingDone,
   isAuthenticated,
   isAuthLoading,
+  splitMode,
   stellaAnimationRef,
   onboardingKey,
   triggerFlash,
   startBirthAnimation,
   completeOnboarding,
   onSignIn,
-  handleOpenThemePicker,
-  handleConfirmTheme,
-  themeConfirmed,
-  hasSelectedTheme,
+  handleEnterSplit,
   onDiscoveryConfirm,
 }: {
   hasExpanded: boolean;
   onboardingDone: boolean;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
+  splitMode: boolean;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   onboardingKey: number;
   triggerFlash: () => void;
   startBirthAnimation: () => void;
   completeOnboarding: () => void;
   onSignIn: () => void;
-  handleOpenThemePicker: () => void;
-  handleConfirmTheme: () => void;
-  themeConfirmed: boolean;
-  hasSelectedTheme: boolean;
+  handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
 }) {
   return (
-    <div className="new-session-view">
+    <div className="new-session-view" data-split={splitMode}>
       <div
         className="new-session-title"
         data-expanded={hasExpanded ? "true" : "false"}
@@ -143,6 +117,7 @@ export function OnboardingView({
         }}
         className="onboarding-stella-animation"
         data-expanded={hasExpanded ? "true" : "false"}
+        data-split={splitMode}
         title={!hasExpanded ? "Click to awaken" : undefined}
       >
         <StellaAnimation
@@ -158,11 +133,8 @@ export function OnboardingView({
           onComplete={completeOnboarding}
           onAccept={startBirthAnimation}
           onInteract={triggerFlash}
-          onOpenThemePicker={handleOpenThemePicker}
-          onConfirmTheme={handleConfirmTheme}
           onDiscoveryConfirm={onDiscoveryConfirm}
-          themeConfirmed={themeConfirmed}
-          hasSelectedTheme={hasSelectedTheme}
+          onEnterSplit={handleEnterSplit}
           isAuthenticated={isAuthenticated}
         />
       )}

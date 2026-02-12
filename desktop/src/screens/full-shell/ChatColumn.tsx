@@ -9,11 +9,7 @@ import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
 
-type DiscoveryCategory =
-  | "browsing_bookmarks"
-  | "dev_environment"
-  | "apps_system"
-  | "messages_notes";
+type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
 
 type ChatColumnProps = {
   events: EventRecord[];
@@ -45,15 +41,13 @@ type ChatColumnProps = {
   onSend: () => void;
 
   hasExpanded: boolean;
+  splitMode: boolean;
   onboardingKey: number;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   triggerFlash: () => void;
   startBirthAnimation: () => void;
   completeOnboarding: () => void;
-  handleOpenThemePicker: () => void;
-  handleConfirmTheme: () => void;
-  themeConfirmed: boolean;
-  hasSelectedTheme: boolean;
+  handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSignIn: () => void;
 };
@@ -83,15 +77,13 @@ export function ChatColumn({
   canSubmit,
   onSend,
   hasExpanded,
+  splitMode,
   onboardingKey,
   stellaAnimationRef,
   triggerFlash,
   startBirthAnimation,
   completeOnboarding,
-  handleOpenThemePicker,
-  handleConfirmTheme,
-  themeConfirmed,
-  hasSelectedTheme,
+  handleEnterSplit,
   onDiscoveryConfirm,
   onSignIn,
 }: ChatColumnProps) {
@@ -122,16 +114,14 @@ export function ChatColumn({
             onboardingDone={onboardingDone}
             isAuthenticated={isAuthenticated}
             isAuthLoading={isAuthLoading}
+            splitMode={splitMode}
             stellaAnimationRef={stellaAnimationRef}
             onboardingKey={onboardingKey}
             triggerFlash={triggerFlash}
             startBirthAnimation={startBirthAnimation}
             completeOnboarding={completeOnboarding}
             onSignIn={onSignIn}
-            handleOpenThemePicker={handleOpenThemePicker}
-            handleConfirmTheme={handleConfirmTheme}
-            themeConfirmed={themeConfirmed}
-            hasSelectedTheme={hasSelectedTheme}
+            handleEnterSplit={handleEnterSplit}
             onDiscoveryConfirm={onDiscoveryConfirm}
           />
         )}
