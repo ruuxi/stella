@@ -208,6 +208,11 @@
   transition: opacity 12s cubic-bezier(0.33, 1, 0.68, 1);
 }
 
+.new-session-view[data-split="true"] .new-session-title {
+  opacity: 0;
+  transition: opacity 0.6s ease-out;
+}
+
 .onboarding-stella-animation {
   position: absolute;
   top: 35%;
@@ -218,11 +223,23 @@
   height: 50%;
   max-width: 900px;
   cursor: pointer;
-  transition: transform 0.3s ease;
+  transition: top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .onboarding-stella-animation[data-expanded="true"] {
   cursor: default;
+}
+
+/* Split mode: animation moves to left half and grows */
+.onboarding-stella-animation[data-split="true"] {
+  left: 25%;
+  top: 45%;
+  max-width: 600px;
+  height: 70%;
 }
 
 .onboarding-signin {
