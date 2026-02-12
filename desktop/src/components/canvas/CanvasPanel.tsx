@@ -1,10 +1,11 @@
-import { useCallback, useRef, lazy, Suspense } from 'react'
-import { useCanvas } from '@/app/state/canvas-state'
-import { ResizeHandle } from '@/components/resize-handle'
+import { useCallback, useRef, useState, useEffect, lazy, Suspense } from 'react'
+import { useCanvas, type CanvasPayload } from '@/app/state/canvas-state'
 import { Spinner } from '@/components/spinner'
 
 const PanelRenderer = lazy(() => import('./renderers/panel'))
 const AppframeRenderer = lazy(() => import('./renderers/appframe'))
+
+const ANIM_DURATION = 350 // ms, matches CSS close duration
 
 /** Extract port from a localhost URL, or null if not localhost. */
 const getLocalhostPort = (url?: string): number | null => {
@@ -23,59 +24,119 @@ export const CanvasPanel = () => {
   const { state, closeCanvas, setWidth } = useCanvas()
   const { isOpen, canvas, width } = state
   const panelRef = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+  const [closing, setClosing] = useState(false)
+  const lastCanvasRef = useRef<CanvasPayload | null>(null)
+  const lastWidthRef = useRef(width)
+
+  // Track the last valid canvas so we can render during close animation
+  if (canvas) {
+    lastCanvasRef.current = canvas
+    lastWidthRef.current = width
+  }
+
+  // Open: mount then trigger visible for animation
+  useEffect(() => {
+    if (isOpen && canvas) {
+      setClosing(false)
+      // Delay one frame so the element mounts at its start state before animating
+      requestAnimationFrame(() => setVisible(true))
+    }
+  }, [isOpen, canvas])
+
+  // Close: play exit animation then unmount
+  useEffect(() => {
+    if (!isOpen && visible) {
+      setClosing(true)
+      const timer = setTimeout(() => {
+        setVisible(false)
+        setClosing(false)
+      }, ANIM_DURATION)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, visible])
 
   const handleResize = useCallback(
     (delta: number) => {
-      // Dragging left (negative delta) should increase panel width
       setWidth(width - delta)
     },
     [width, setWidth],
   )
 
   const handleClose = useCallback(() => {
-    // Kill dev server shell if canvas had a localhost URL
-    const port = getLocalhostPort(canvas?.url)
+    const port = getLocalhostPort(canvas?.url ?? lastCanvasRef.current?.url)
     if (port) {
       window.electronAPI?.shellKillByPort(port)
     }
     closeCanvas()
   }, [canvas, closeCanvas])
 
-  if (!isOpen || !canvas) return null
+  const isDraggingRef = useRef(false)
+  const startXRef = useRef(0)
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      isDraggingRef.current = true
+      startXRef.current = e.clientX
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+
+      const handleMouseMove = (e: MouseEvent) => {
+        if (!isDraggingRef.current) return
+        const delta = e.clientX - startXRef.current
+        startXRef.current = e.clientX
+        handleResize(delta)
+      }
+
+      const handleMouseUp = () => {
+        isDraggingRef.current = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    },
+    [handleResize],
+  )
+
+  // Only render when visible (open or animating out)
+  if (!visible && !isOpen) return null
+
+  const displayCanvas = canvas ?? lastCanvasRef.current
+  const displayWidth = canvas ? width : lastWidthRef.current
+  if (!displayCanvas) return null
+
+  const animClass = closing ? 'canvas-closing' : (visible && isOpen) ? 'canvas-open' : ''
 
   return (
     <>
-      <ResizeHandle
-        orientation="horizontal"
-        onResize={handleResize}
-        className="canvas-resize-handle"
-      />
+      <div className={`canvas-resize-handle ${animClass}`} onMouseDown={handleMouseDown}>
+        <div className="canvas-resize-bar" />
+        <button
+          className="canvas-panel-close"
+          onClick={(e) => { e.stopPropagation(); handleClose() }}
+          onMouseDown={(e) => e.stopPropagation()}
+          aria-label="Close canvas"
+          title={displayCanvas.title ?? displayCanvas.name}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      </div>
       <div
         ref={panelRef}
-        className="canvas-panel"
-        style={{ width }}
+        className={`canvas-panel ${animClass}`}
+        style={{ width: displayWidth }}
       >
-        <div className="canvas-panel-header">
-          <div className="canvas-panel-header-left">
-            <span className="canvas-panel-title">{canvas.title ?? canvas.name}</span>
-          </div>
-          <div className="canvas-panel-header-right">
-            <button
-              className="canvas-panel-close"
-              onClick={handleClose}
-              aria-label="Close canvas"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
         <div className="canvas-panel-content">
           <Suspense fallback={<div className="canvas-vite-loading"><Spinner size="md" /></div>}>
-            {canvas.url
-              ? <AppframeRenderer canvas={canvas} />
-              : <PanelRenderer canvas={canvas} />
+            {displayCanvas.url
+              ? <AppframeRenderer canvas={displayCanvas} />
+              : <PanelRenderer canvas={displayCanvas} />
             }
           </Suspense>
         </div>
