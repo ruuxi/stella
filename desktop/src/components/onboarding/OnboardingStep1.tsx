@@ -24,11 +24,29 @@ const FADE_GAP_MS = 200;
 const STEP_TITLES: Partial<Record<Phase, string>> = {
   browser: "Let me get to know you.",
   memory: "You won't have to repeat yourself.",
-  creation: "I can build things.",
   phone: "You can reach me anywhere.",
   theme: "How should I look?",
   personality: "How should I talk?",
 };
+
+/* ── Creation conversation steps ── */
+const CREATION_STEPS = [
+  {
+    userText: "Make me a beat maker",
+    stellaReply: "Here — I built you a step sequencer.",
+    action: "djstudio" as const,
+  },
+  {
+    userText: "Show me live weather",
+    stellaReply: "Here — live weather, updating in real time.",
+    action: "weather" as const,
+  },
+  {
+    userText: "Become a better version of yourself",
+    stellaReply: "I can learn new skills and change how this app looks. Try it.",
+    action: "selfmod" as const,
+  },
+];
 
 export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onComplete,
@@ -61,28 +79,51 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   // Phone — hover reveal
   const [homeHovered, setHomeHovered] = useState(false);
 
-  // Creation examples — open real canvas panels
+  // Creation conversation — mock chat that opens real canvas panels
   const { openCanvas, closeCanvas } = useCanvas();
-  const [creationExample, setCreationExample] = useState<"djstudio" | "weather" | "selfmod" | null>(null);
+  type ChatMsg = { role: "stella" | "user"; text: string };
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
+    { role: "stella", text: "Anything you need, I can make it — apps, live dashboards, creative tools, things that appear right here while we talk. And I\u2019m not static. I can learn new abilities, change how I work, and even completely redesign my own interface. The way I look, the way I behave, what I can do — you shape all of it." },
+  ]);
+  const [chatStep, setChatStep] = useState(0);
+  const [chatTyping, setChatTyping] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const [selfmodLevel, setSelfmodLevel] = useState<"low" | "medium" | "high" | null>(null);
 
-  const handleCreationExample = useCallback((id: "djstudio" | "weather" | "selfmod") => {
-    if (creationExample === id) {
-      // Toggle off
-      setCreationExample(null);
-      closeCanvas();
-      return;
+  const handleChatSend = useCallback(() => {
+    if (chatStep >= CREATION_STEPS.length || chatTyping) return;
+    const step = CREATION_STEPS[chatStep];
+    setChatMessages((prev) => [...prev, { role: "user", text: step.userText }]);
+    setChatTyping(true);
+    setTimeout(() => {
+      setChatMessages((prev) => [...prev, { role: "stella", text: step.stellaReply }]);
+      setChatTyping(false);
+      setChatStep((prev) => prev + 1);
+      if (step.action === "djstudio") {
+        openCanvas({ name: "dj-studio", title: "Stella Beats" });
+      } else if (step.action === "weather") {
+        openCanvas({ name: "weather-station", title: "Weather Station" });
+      } else {
+        closeCanvas();
+      }
+    }, 700);
+  }, [chatStep, chatTyping, openCanvas, closeCanvas]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
-    setCreationExample(id);
-    if (id === "djstudio") {
-      openCanvas({ name: "dj-studio", title: "Stella Beats" });
-    } else if (id === "weather") {
-      openCanvas({ name: "weather-station", title: "Weather Station" });
-    } else {
-      // selfmod — no canvas panel
-      closeCanvas();
-    }
-  }, [creationExample, openCanvas, closeCanvas]);
+  }, [chatMessages, chatTyping]);
+
+  // Hide real sidebar during onboarding
+  useEffect(() => {
+    const shell = document.querySelector(".window-shell");
+    if (!shell) return;
+    shell.setAttribute("data-onboarding", "");
+    return () => shell.removeAttribute("data-onboarding");
+  }, []);
+
   const selfmodFading = useRef(false);
 
   // Fade-through when transitioning to/from "high" (layout changes can't CSS-transition)
@@ -128,7 +169,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   useEffect(() => {
     if (phase !== "creation") {
       closeCanvas();
-      setCreationExample(null);
     }
   }, [phase, closeCanvas]);
 
@@ -353,102 +393,134 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
               </div>
             )}
 
-            {/* ── Creation ── */}
+            {/* ── Creation (mock conversation with mimicked sidebar) ── */}
             {phase === "creation" && (
-              <div className="onboarding-step-content">
-                <p className="onboarding-step-desc">
-                  I can create apps, edit your files, build things right next to our conversation, and even improve myself over time.
-                </p>
-                <p className="onboarding-step-desc">
-                  Anything I make, you can share with others.
-                </p>
-
-                <div className="onboarding-step-label">Things I can make for you</div>
-                <div className="onboarding-creation-examples">
-                  <button
-                    className="onboarding-creation-card"
-                    data-active={creationExample === "djstudio"}
-                    onClick={() => handleCreationExample("djstudio")}
-                  >
-                    <span className="onboarding-creation-card-title">A beat maker</span>
-                    <span className="onboarding-creation-card-desc">Opens right next to our chat</span>
-                  </button>
-                  <button
-                    className="onboarding-creation-card"
-                    data-active={creationExample === "weather"}
-                    onClick={() => handleCreationExample("weather")}
-                  >
-                    <span className="onboarding-creation-card-title">A live weather station</span>
-                    <span className="onboarding-creation-card-desc">Real-time data in a side panel</span>
-                  </button>
-                  <button
-                    className="onboarding-creation-card"
-                    data-active={creationExample === "selfmod"}
-                    onClick={() => handleCreationExample("selfmod")}
-                  >
-                    <span className="onboarding-creation-card-title">A better version of me</span>
-                    <span className="onboarding-creation-card-desc">I can learn new skills over time</span>
-                  </button>
-                </div>
-                {creationExample === "selfmod" && (
-                  <div className="onboarding-creation-preview">
-                    <div className="onboarding-creation-mock-selfmod">
-                      <div className="mock-selfmod-item">
-                        <span className="mock-selfmod-badge">New skill</span>
-                        <span className="mock-selfmod-name">Daily briefing</span>
-                        <span className="mock-selfmod-desc">I'll bring you the news and your schedule every morning at 10am.</span>
+              <div className="onboarding-step-content onboarding-creation-chat">
+                <div className="onboarding-mock-app">
+                  {/* Mimicked sidebar — uses real class names so selfmod-demo CSS applies */}
+                  <aside className="sidebar" aria-hidden="true">
+                    <div className="sidebar-header" />
+                    <div className="sidebar-brand">
+                      <div className="sidebar-brand-logo" aria-hidden="true">
+                        <img src="stella-logo.svg" alt="" className="sidebar-brand-logo-art" />
                       </div>
-                      <div className="mock-selfmod-item">
-                        <span className="mock-selfmod-badge">Improved</span>
-                        <span className="mock-selfmod-name">Grocery lists</span>
-                        <span className="mock-selfmod-desc">I learned which stores you prefer and sort your list by aisle.</span>
-                      </div>
+                      <span className="sidebar-brand-text">Stella</span>
                     </div>
+                    <nav className="sidebar-nav">
+                      <div className="sidebar-nav-item">
+                        <span className="sidebar-nav-icon">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+                        </span>
+                        <span className="sidebar-nav-label">Apps</span>
+                      </div>
+                      <div className="sidebar-nav-item">
+                        <span className="sidebar-nav-icon">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                        </span>
+                        <span className="sidebar-nav-label">Chat</span>
+                      </div>
+                      <div className="sidebar-nav-item">
+                        <span className="sidebar-nav-icon">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                        </span>
+                        <span className="sidebar-nav-label">Connect</span>
+                      </div>
+                      <div className="sidebar-nav-item">
+                        <span className="sidebar-nav-icon">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                        </span>
+                        <span className="sidebar-nav-label">Settings</span>
+                      </div>
+                    </nav>
+                    <div className="sidebar-footer">
+                      <div className="sidebar-footer-item" />
+                    </div>
+                  </aside>
+
+                  {/* Mock main area */}
+                  <div className="onboarding-mock-main">
+                    <div className="onboarding-chat-messages" ref={chatScrollRef}>
+                      {chatMessages.map((msg, i) => (
+                        <div
+                          key={i}
+                          className={`onboarding-chat-msg onboarding-chat-msg--${msg.role}`}
+                        >
+                          <span className="onboarding-chat-bubble">{msg.text}</span>
+                        </div>
+                      ))}
+                      {chatTyping && (
+                        <div className="onboarding-chat-msg onboarding-chat-msg--stella">
+                          <span className="onboarding-chat-typing">
+                            <span /><span /><span />
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="onboarding-chat-composer">
+                      {chatStep < CREATION_STEPS.length ? (
+                        <>
+                          <span className="onboarding-chat-input">{CREATION_STEPS[chatStep].userText}</span>
+                          <button
+                            className="onboarding-chat-send"
+                            onClick={handleChatSend}
+                            disabled={chatTyping}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 19V5M5 12l7-7 7 7" />
+                            </svg>
+                          </button>
+                        </>
+                      ) : (
+                        <span className="onboarding-chat-input">Ask me anything...</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selfmod controls below mock app */}
+                {chatStep >= CREATION_STEPS.length && (
+                  <div className="onboarding-chat-selfmod">
+                    <div className="onboarding-selfmod-levels">
+                      <button
+                        className="onboarding-selfmod-level"
+                        data-active={selfmodLevel === "low"}
+                        onClick={() => handleSelfmodLevel("low")}
+                      >
+                        <span className="onboarding-selfmod-level-label">Small tweak</span>
+                        <span className="onboarding-selfmod-level-desc">A subtle change</span>
+                      </button>
+                      <button
+                        className="onboarding-selfmod-level"
+                        data-active={selfmodLevel === "medium"}
+                        onClick={() => handleSelfmodLevel("medium")}
+                      >
+                        <span className="onboarding-selfmod-level-label">New feature</span>
+                        <span className="onboarding-selfmod-level-desc">Something added</span>
+                      </button>
+                      <button
+                        className="onboarding-selfmod-level"
+                        data-active={selfmodLevel === "high"}
+                        onClick={() => handleSelfmodLevel("high")}
+                      >
+                        <span className="onboarding-selfmod-level-label">Full redesign</span>
+                        <span className="onboarding-selfmod-level-desc">A whole new look</span>
+                      </button>
+                    </div>
+                    <p className="onboarding-selfmod-caption" data-visible={selfmodLevel !== null}>
+                      {selfmodLevel === "low" && "Look — the sidebar and composer just changed a little."}
+                      {selfmodLevel === "medium" && "The sidebar is wider, the composer is different, and the layout shifted."}
+                      {selfmodLevel === "high" && "Cat mode — bottom dock, warm palette. I can theme the whole app anytime you ask."}
+                      {!selfmodLevel && "\u00A0"}
+                    </p>
                   </div>
                 )}
 
-                <div className="onboarding-section-divider" />
-
-                <div className="onboarding-step-label">I can also change how this app works</div>
-                <p className="onboarding-step-subdesc">
-                  Just ask, and I'll redesign parts of this app to fit you better.
-                </p>
-                <div className="onboarding-selfmod-levels">
-                  <button
-                    className="onboarding-selfmod-level"
-                    data-active={selfmodLevel === "low"}
-                    onClick={() => handleSelfmodLevel("low")}
-                  >
-                    <span className="onboarding-selfmod-level-label">Small tweak</span>
-                    <span className="onboarding-selfmod-level-desc">A subtle change</span>
+                {chatStep >= CREATION_STEPS.length && (
+                  <button className="onboarding-confirm" data-visible={true} onClick={nextSplitStep}>
+                    Continue
                   </button>
-                  <button
-                    className="onboarding-selfmod-level"
-                    data-active={selfmodLevel === "medium"}
-                    onClick={() => handleSelfmodLevel("medium")}
-                  >
-                    <span className="onboarding-selfmod-level-label">New feature</span>
-                    <span className="onboarding-selfmod-level-desc">Something added</span>
-                  </button>
-                  <button
-                    className="onboarding-selfmod-level"
-                    data-active={selfmodLevel === "high"}
-                    onClick={() => handleSelfmodLevel("high")}
-                  >
-                    <span className="onboarding-selfmod-level-label">Full redesign</span>
-                    <span className="onboarding-selfmod-level-desc">A whole new look</span>
-                  </button>
-                </div>
-                <p className="onboarding-selfmod-caption" data-visible={selfmodLevel !== null}>
-                  {selfmodLevel === "low" && "Look around — the sidebar and composer just changed a little."}
-                  {selfmodLevel === "medium" && "The sidebar is wider, the composer is different, and the layout shifted."}
-                  {selfmodLevel === "high" && "Cat mode — bottom dock, apps bar, paw cursor, warm palette. I can theme the whole app anytime you ask."}
-                  {!selfmodLevel && "\u00A0"}
-                </p>
-
-                <button className="onboarding-confirm" data-visible={true} onClick={nextSplitStep}>
-                  Continue
-                </button>
+                )}
               </div>
             )}
 
