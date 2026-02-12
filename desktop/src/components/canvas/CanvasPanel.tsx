@@ -56,13 +56,6 @@ export const CanvasPanel = () => {
     }
   }, [isOpen, visible])
 
-  const handleResize = useCallback(
-    (delta: number) => {
-      setWidth(width - delta)
-    },
-    [width, setWidth],
-  )
-
   const handleClose = useCallback(() => {
     const port = getLocalhostPort(canvas?.url ?? lastCanvasRef.current?.url)
     if (port) {
@@ -71,25 +64,22 @@ export const CanvasPanel = () => {
     closeCanvas()
   }, [canvas, closeCanvas])
 
-  const isDraggingRef = useRef(false)
-  const startXRef = useRef(0)
+  const widthRef = useRef(width)
+  widthRef.current = width
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      isDraggingRef.current = true
-      startXRef.current = e.clientX
+      const startX = e.clientX
+      const startWidth = widthRef.current
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
 
       const handleMouseMove = (e: MouseEvent) => {
-        if (!isDraggingRef.current) return
-        const delta = e.clientX - startXRef.current
-        startXRef.current = e.clientX
-        handleResize(delta)
+        const totalDelta = e.clientX - startX
+        setWidth(startWidth - totalDelta)
       }
 
       const handleMouseUp = () => {
-        isDraggingRef.current = false
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
         document.removeEventListener('mousemove', handleMouseMove)
@@ -99,7 +89,7 @@ export const CanvasPanel = () => {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
     },
-    [handleResize],
+    [setWidth],
   )
 
   // Only render when visible (open or animating out)
@@ -109,7 +99,7 @@ export const CanvasPanel = () => {
   const displayWidth = canvas ? width : lastWidthRef.current
   if (!displayCanvas) return null
 
-  const animClass = closing ? 'canvas-closing' : (visible && isOpen) ? 'canvas-open' : ''
+  const animClass = (closing || (!isOpen && visible)) ? 'canvas-closing' : (visible && isOpen) ? 'canvas-open' : ''
 
   return (
     <>

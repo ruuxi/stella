@@ -75,7 +75,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
     setCreationExample(id);
     if (id === "djstudio") {
-      openCanvas({ name: "dj-studio", title: "DJ Studio" });
+      openCanvas({ name: "dj-studio", title: "Stella Beats" });
     } else if (id === "weather") {
       openCanvas({ name: "weather-station", title: "Weather Station" });
     } else {
@@ -370,7 +370,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                     data-active={creationExample === "djstudio"}
                     onClick={() => handleCreationExample("djstudio")}
                   >
-                    <span className="onboarding-creation-card-title">A DJ studio</span>
+                    <span className="onboarding-creation-card-title">A beat maker</span>
                     <span className="onboarding-creation-card-desc">Opens right next to our chat</span>
                   </button>
                   <button
