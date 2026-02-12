@@ -51,6 +51,7 @@ import './styles/canvas-panel.css'
 import './styles/canvas-renderers.css'
 import './styles/store.css'
 import './styles/settings.css'
+import './styles/selfmod-demo.css'
 
 import App from './App.tsx'
 import { UiStateProvider } from './app/state/ui-state'

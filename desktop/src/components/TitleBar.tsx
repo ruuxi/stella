@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
+import { useCanvas } from '@/app/state/canvas-state';
 
 export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
+  const { state: canvasState } = useCanvas();
   const platform = window.electronAPI?.platform ?? 'unknown';
   const isMac = platform === 'darwin';
+  const canvasTitle = canvasState.isOpen && canvasState.canvas
+    ? (canvasState.canvas.title ?? canvasState.canvas.name)
+    : null;
 
   useEffect(() => {
     window.electronAPI?.isMaximized?.().then(setIsMaximized);
@@ -30,6 +35,7 @@ export const TitleBar = () => {
     return (
       <div className="title-bar title-bar-mac">
         <div className="title-bar-drag-region" />
+        {canvasTitle && <span className="title-bar-canvas-label">{canvasTitle}</span>}
       </div>
     );
   }
@@ -38,6 +44,7 @@ export const TitleBar = () => {
   return (
     <div className="title-bar">
       <div className="title-bar-drag-region" />
+      {canvasTitle && <span className="title-bar-canvas-label">{canvasTitle}</span>}
       <div className="title-bar-controls">
         <button
           className="title-bar-button"
