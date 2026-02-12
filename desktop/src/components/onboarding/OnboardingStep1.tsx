@@ -21,9 +21,8 @@ const FADE_GAP_MS = 200;
 
 /* ── Step title text (shown on left in split mode) ── */
 const STEP_TITLES: Partial<Record<Phase, string>> = {
-  browser: "I'll need a browser.",
-  discovery: "How well should I know you?",
-  memory: "I remember everything.",
+  browser: "Let me get to know you.",
+  memory: "You won't have to repeat yourself.",
   creation: "I can build things.",
   phone: "You can reach me anywhere.",
   theme: "How should I look?",
@@ -56,7 +55,13 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   });
 
   // Personality
-  const [useEmojis, setUseEmojis] = useState<boolean | null>(null);
+  const [expressionStyle, setExpressionStyle] = useState<"emotes" | "emoji" | "standard" | null>(null);
+
+  // Phone — hover reveal
+  const [homeHovered, setHomeHovered] = useState(false);
+
+  // Creation examples
+  const [creationExample, setCreationExample] = useState<"dashboard" | "selfmod" | null>(null);
 
   // Theme (inline)
   const {
@@ -68,6 +73,10 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     previewTheme,
     cancelThemePreview,
     cancelPreview,
+    gradientMode,
+    setGradientMode,
+    gradientColor,
+    setGradientColor,
   } = useTheme();
 
   const clearTimeoutRef = useCallback(() => {
@@ -88,10 +97,12 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   /* ── Center phase handlers ── */
 
   const handleStart = () => {
+    setLeaving(true);
     onAccept?.();
     onInteract?.();
     timeoutRef.current = setTimeout(() => {
-      transitionTo(isAuthenticated ? "intro" : "auth");
+      setLeaving(false);
+      setPhase(isAuthenticated ? "intro" : "auth");
     }, 1600);
   };
 
@@ -224,7 +235,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
               <div className="onboarding-split-title">{STEP_TITLES[phase]}</div>
             )}
 
-            {/* ── Browser ── */}
+            {/* ── Browser + Discovery (combined) ── */}
             {phase === "browser" && (
               <div className="onboarding-step-content">
                 <p className="onboarding-step-desc">
@@ -243,22 +254,13 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                     </button>
                   ))}
                 </div>
-                <button
-                  className="onboarding-confirm"
-                  data-visible={selectedBrowser !== null}
-                  onClick={nextSplitStep}
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-
-            {/* ── Discovery ── */}
-            {phase === "discovery" && (
-              <div className="onboarding-step-content">
-                <p className="onboarding-step-desc">
-                  The more I know, the more I can help. Pick what you're comfortable sharing.
+                <p className="onboarding-step-subdesc">
+                  Pick the browser you use most — your personal one works best.
                 </p>
+
+                <div className="onboarding-section-divider" />
+
+                <div className="onboarding-step-label">What can I learn about you?</div>
                 <OnboardingDiscovery
                   categoryStates={categoryStates}
                   onToggleCategory={handleToggleCategory}
@@ -291,6 +293,67 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 <p className="onboarding-step-desc">
                   Anything I make, you can share with others.
                 </p>
+                <div className="onboarding-creation-examples">
+                  <button
+                    className="onboarding-creation-card"
+                    data-active={creationExample === "dashboard"}
+                    onClick={() => setCreationExample(creationExample === "dashboard" ? null : "dashboard")}
+                  >
+                    <span className="onboarding-creation-card-title">A personal dashboard</span>
+                    <span className="onboarding-creation-card-desc">Built right next to our chat</span>
+                  </button>
+                  <button
+                    className="onboarding-creation-card"
+                    data-active={creationExample === "selfmod"}
+                    onClick={() => setCreationExample(creationExample === "selfmod" ? null : "selfmod")}
+                  >
+                    <span className="onboarding-creation-card-title">A better version of me</span>
+                    <span className="onboarding-creation-card-desc">I can learn new skills over time</span>
+                  </button>
+                </div>
+                {creationExample === "dashboard" && (
+                  <div className="onboarding-creation-preview">
+                    <div className="onboarding-creation-mock-dashboard">
+                      <div className="mock-dashboard-header">
+                        <span className="mock-dashboard-greeting">Good morning</span>
+                        <span className="mock-dashboard-date">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span>
+                      </div>
+                      <div className="mock-dashboard-grid">
+                        <div className="mock-dashboard-card">
+                          <span className="mock-card-label">Weather</span>
+                          <span className="mock-card-value">72°</span>
+                          <span className="mock-card-sub">Partly cloudy</span>
+                        </div>
+                        <div className="mock-dashboard-card">
+                          <span className="mock-card-label">Next meeting</span>
+                          <span className="mock-card-value">2:00 PM</span>
+                          <span className="mock-card-sub">Team standup</span>
+                        </div>
+                        <div className="mock-dashboard-card mock-card-wide">
+                          <span className="mock-card-label">Quick notes</span>
+                          <span className="mock-card-note">Finish the design review</span>
+                          <span className="mock-card-note">Reply to Sarah</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {creationExample === "selfmod" && (
+                  <div className="onboarding-creation-preview">
+                    <div className="onboarding-creation-mock-selfmod">
+                      <div className="mock-selfmod-item">
+                        <span className="mock-selfmod-badge">New skill</span>
+                        <span className="mock-selfmod-name">Smart scheduling</span>
+                        <span className="mock-selfmod-desc">I learned to check your calendar before suggesting times.</span>
+                      </div>
+                      <div className="mock-selfmod-item">
+                        <span className="mock-selfmod-badge">Improved</span>
+                        <span className="mock-selfmod-name">Writing style</span>
+                        <span className="mock-selfmod-desc">I adjusted my tone to match how you prefer emails written.</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <button className="onboarding-confirm" data-visible={true} onClick={nextSplitStep}>
                   Continue
                 </button>
@@ -304,14 +367,18 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   You can message me from your phone. If your computer is on, I can take action on it for you.
                 </p>
                 <p className="onboarding-step-desc">
-                  If your computer is off, I'll still respond, but I can't act unless you give me a{" "}
-                  <button className="onboarding-inline-link" onClick={() => { /* TODO: show Home info */ }}>
-                    Home
-                  </button>
+                  If your computer is off, I'll still respond, but I can't act unless you give me{" "}
+                  <span
+                    className="onboarding-inline-link"
+                    onMouseEnter={() => setHomeHovered(true)}
+                    onMouseLeave={() => setHomeHovered(false)}
+                  >
+                    another home
+                  </span>
                   .
                 </p>
-                <p className="onboarding-step-subdesc">
-                  A Home lets me work for you 24/7, even when your computer is off.
+                <p className="onboarding-home-hint" data-visible={homeHovered}>
+                  You can get me a server so I have another home and I'm always on.
                 </p>
                 <button className="onboarding-confirm" data-visible={true} onClick={nextSplitStep}>
                   Continue
@@ -332,6 +399,30 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       onClick={() => setColorMode(mode)}
                     >
                       {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="onboarding-step-label">Feel</div>
+                <div className="onboarding-theme-row">
+                  {(["soft", "crisp"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className="onboarding-pill"
+                      data-active={gradientMode === mode}
+                      onClick={() => setGradientMode(mode)}
+                    >
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                  ))}
+                  {(["relative", "strong"] as const).map((color) => (
+                    <button
+                      key={color}
+                      className="onboarding-pill"
+                      data-active={gradientColor === color}
+                      onClick={() => setGradientColor(color)}
+                    >
+                      {color.charAt(0).toUpperCase() + color.slice(1)}
                     </button>
                   ))}
                 </div>
@@ -363,28 +454,28 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
             {/* ── Personality ── */}
             {phase === "personality" && (
               <div className="onboarding-step-content">
-                <p className="onboarding-step-desc">
-                  Should I use emojis when we talk?
-                </p>
                 <div className="onboarding-pills">
-                  <button
-                    className="onboarding-pill"
-                    data-active={useEmojis === true}
-                    onClick={() => setUseEmojis(true)}
-                  >
-                    Expressive
-                  </button>
-                  <button
-                    className="onboarding-pill"
-                    data-active={useEmojis === false}
-                    onClick={() => setUseEmojis(false)}
-                  >
-                    Minimal
-                  </button>
+                  {(["emotes", "emoji", "standard"] as const).map((style) => (
+                    <button
+                      key={style}
+                      className="onboarding-pill"
+                      data-active={expressionStyle === style}
+                      onClick={() => setExpressionStyle(style)}
+                    >
+                      {style.charAt(0).toUpperCase() + style.slice(1)}
+                    </button>
+                  ))}
                 </div>
+                {expressionStyle && (
+                  <p className="onboarding-personality-preview">
+                    {expressionStyle === "emotes" && (<>Got it! I'll get that done for you <img src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp" alt="catNOD" className="onboarding-emote-preview" /></>)}
+                    {expressionStyle === "emoji" && "Got it! I'll get that done for you 😊"}
+                    {expressionStyle === "standard" && "Got it. I'll get that done for you."}
+                  </p>
+                )}
                 <button
                   className="onboarding-confirm"
-                  data-visible={useEmojis !== null}
+                  data-visible={expressionStyle !== null}
                   onClick={nextSplitStep}
                 >
                   Finish

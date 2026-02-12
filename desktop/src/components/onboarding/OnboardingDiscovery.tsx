@@ -16,22 +16,31 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
   const hasFDACategories = DISCOVERY_CATEGORIES.some(
     (cat) => cat.requiresFDA && categoryStates[cat.id]
   );
+  const noneSelected = Object.values(categoryStates).every((v) => !v);
 
   return (
     <div className="onboarding-discovery" data-visible={true}>
-      <div className="onboarding-pills">
+      <div className="onboarding-discovery-list">
         {DISCOVERY_CATEGORIES.map((cat) => (
           <button
             key={cat.id}
-            className="onboarding-pill"
+            className="onboarding-discovery-row"
             data-active={categoryStates[cat.id]}
             onClick={() => onToggleCategory(cat.id)}
-            title={cat.description}
           >
-            {cat.label}
+            <span className="onboarding-discovery-row-label">{cat.label}</span>
+            <span className="onboarding-discovery-row-desc">{cat.description}</span>
           </button>
         ))}
       </div>
+      {noneSelected && (
+        <div className="onboarding-discovery-warning">
+          <span className="onboarding-discovery-warning-badge">Not recommended</span>
+          <p className="onboarding-discovery-warning-text">
+            Without this, I'll learn about you over time through our conversations. But I won't be personal to you from the start.
+          </p>
+        </div>
+      )}
       {hasFDACategories && platform === "darwin" && (
         <div className="onboarding-fda-note">
           <span>Some options require Full Disk Access</span>
