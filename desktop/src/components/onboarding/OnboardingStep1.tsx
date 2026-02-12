@@ -14,6 +14,7 @@ import {
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { InlineAuth } from "../InlineAuth";
 import { useTheme } from "../../theme/theme-context";
+import { useCanvas } from "../../app/state/canvas-state";
 import "../Onboarding.css";
 
 const FADE_OUT_MS = 400;
@@ -60,9 +61,76 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   // Phone — hover reveal
   const [homeHovered, setHomeHovered] = useState(false);
 
-  // Creation examples
-  const [creationExample, setCreationExample] = useState<"dashboard" | "selfmod" | null>(null);
+  // Creation examples — open real canvas panels
+  const { openCanvas, closeCanvas } = useCanvas();
+  const [creationExample, setCreationExample] = useState<"djstudio" | "weather" | "selfmod" | null>(null);
   const [selfmodLevel, setSelfmodLevel] = useState<"low" | "medium" | "high" | null>(null);
+
+  const handleCreationExample = useCallback((id: "djstudio" | "weather" | "selfmod") => {
+    if (creationExample === id) {
+      // Toggle off
+      setCreationExample(null);
+      closeCanvas();
+      return;
+    }
+    setCreationExample(id);
+    if (id === "djstudio") {
+      openCanvas({ name: "dj-studio", title: "DJ Studio" });
+    } else if (id === "weather") {
+      openCanvas({ name: "weather-station", title: "Weather Station" });
+    } else {
+      // selfmod — no canvas panel
+      closeCanvas();
+    }
+  }, [creationExample, openCanvas, closeCanvas]);
+  const selfmodFading = useRef(false);
+
+  // Fade-through when transitioning to/from "high" (layout changes can't CSS-transition)
+  const handleSelfmodLevel = useCallback((next: "low" | "medium" | "high" | null) => {
+    const prev = selfmodLevel;
+    if (next === prev) next = null; // toggle off
+
+    const needsFade = prev === "high" || next === "high";
+    if (!needsFade || selfmodFading.current) {
+      setSelfmodLevel(next);
+      return;
+    }
+
+    const shell = document.querySelector(".window-shell");
+    if (!shell) { setSelfmodLevel(next); return; }
+
+    selfmodFading.current = true;
+    shell.setAttribute("data-selfmod-fading", "");
+    setTimeout(() => {
+      setSelfmodLevel(next);
+      setTimeout(() => {
+        shell.removeAttribute("data-selfmod-fading");
+        selfmodFading.current = false;
+      }, 50);
+    }, 300);
+  }, [selfmodLevel]);
+
+  // Apply/remove selfmod demo on the actual app shell
+  useEffect(() => {
+    const shell = document.querySelector(".window-shell");
+    if (!shell) return;
+    if (phase === "creation" && selfmodLevel) {
+      shell.setAttribute("data-selfmod-demo", selfmodLevel);
+    } else {
+      shell.removeAttribute("data-selfmod-demo");
+    }
+    return () => {
+      shell.removeAttribute("data-selfmod-demo");
+    };
+  }, [phase, selfmodLevel]);
+
+  // Close canvas when leaving creation phase
+  useEffect(() => {
+    if (phase !== "creation") {
+      closeCanvas();
+      setCreationExample(null);
+    }
+  }, [phase, closeCanvas]);
 
   // Theme (inline)
   const {
@@ -299,48 +367,29 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 <div className="onboarding-creation-examples">
                   <button
                     className="onboarding-creation-card"
-                    data-active={creationExample === "dashboard"}
-                    onClick={() => setCreationExample(creationExample === "dashboard" ? null : "dashboard")}
+                    data-active={creationExample === "djstudio"}
+                    onClick={() => handleCreationExample("djstudio")}
                   >
-                    <span className="onboarding-creation-card-title">A personal dashboard</span>
-                    <span className="onboarding-creation-card-desc">Built right next to our chat</span>
+                    <span className="onboarding-creation-card-title">A DJ studio</span>
+                    <span className="onboarding-creation-card-desc">Opens right next to our chat</span>
+                  </button>
+                  <button
+                    className="onboarding-creation-card"
+                    data-active={creationExample === "weather"}
+                    onClick={() => handleCreationExample("weather")}
+                  >
+                    <span className="onboarding-creation-card-title">A live weather station</span>
+                    <span className="onboarding-creation-card-desc">Real-time data in a side panel</span>
                   </button>
                   <button
                     className="onboarding-creation-card"
                     data-active={creationExample === "selfmod"}
-                    onClick={() => setCreationExample(creationExample === "selfmod" ? null : "selfmod")}
+                    onClick={() => handleCreationExample("selfmod")}
                   >
                     <span className="onboarding-creation-card-title">A better version of me</span>
                     <span className="onboarding-creation-card-desc">I can learn new skills over time</span>
                   </button>
                 </div>
-                {creationExample === "dashboard" && (
-                  <div className="onboarding-creation-preview">
-                    <div className="onboarding-creation-mock-dashboard">
-                      <div className="mock-dashboard-header">
-                        <span className="mock-dashboard-greeting">Good morning</span>
-                        <span className="mock-dashboard-date">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span>
-                      </div>
-                      <div className="mock-dashboard-grid">
-                        <div className="mock-dashboard-card">
-                          <span className="mock-card-label">Weather</span>
-                          <span className="mock-card-value">72°</span>
-                          <span className="mock-card-sub">Partly cloudy</span>
-                        </div>
-                        <div className="mock-dashboard-card">
-                          <span className="mock-card-label">Next meeting</span>
-                          <span className="mock-card-value">2:00 PM</span>
-                          <span className="mock-card-sub">Team standup</span>
-                        </div>
-                        <div className="mock-dashboard-card mock-card-wide">
-                          <span className="mock-card-label">Quick notes</span>
-                          <span className="mock-card-note">Finish the design review</span>
-                          <span className="mock-card-note">Reply to Sarah</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
                 {creationExample === "selfmod" && (
                   <div className="onboarding-creation-preview">
                     <div className="onboarding-creation-mock-selfmod">
@@ -368,7 +417,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   <button
                     className="onboarding-selfmod-level"
                     data-active={selfmodLevel === "low"}
-                    onClick={() => setSelfmodLevel(selfmodLevel === "low" ? null : "low")}
+                    onClick={() => handleSelfmodLevel("low")}
                   >
                     <span className="onboarding-selfmod-level-label">Small tweak</span>
                     <span className="onboarding-selfmod-level-desc">A subtle change</span>
@@ -376,7 +425,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   <button
                     className="onboarding-selfmod-level"
                     data-active={selfmodLevel === "medium"}
-                    onClick={() => setSelfmodLevel(selfmodLevel === "medium" ? null : "medium")}
+                    onClick={() => handleSelfmodLevel("medium")}
                   >
                     <span className="onboarding-selfmod-level-label">New feature</span>
                     <span className="onboarding-selfmod-level-desc">Something added</span>
@@ -384,125 +433,18 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   <button
                     className="onboarding-selfmod-level"
                     data-active={selfmodLevel === "high"}
-                    onClick={() => setSelfmodLevel(selfmodLevel === "high" ? null : "high")}
+                    onClick={() => handleSelfmodLevel("high")}
                   >
                     <span className="onboarding-selfmod-level-label">Full redesign</span>
                     <span className="onboarding-selfmod-level-desc">A whole new look</span>
                   </button>
                 </div>
-                {selfmodLevel && (
-                  <div className="onboarding-selfmod-app-mock" data-level={selfmodLevel}>
-                    {/* Full app window mock */}
-                    <div className="selfmod-app">
-                      <div className="selfmod-app-titlebar">
-                        <span className="selfmod-app-dot" />
-                        <span className="selfmod-app-dot" />
-                        <span className="selfmod-app-dot" />
-                        <span className="selfmod-app-title">Stella</span>
-                      </div>
-                      <div className="selfmod-app-body">
-                        {/* Sidebar */}
-                        <div className={`selfmod-app-sidebar ${selfmodLevel === "high" ? "selfmod-app-sidebar--expanded" : ""}`}>
-                          <div className="selfmod-app-sidebar-icon" data-active="true" />
-                          <div className="selfmod-app-sidebar-icon" />
-                          <div className="selfmod-app-sidebar-icon" />
-                          {selfmodLevel !== "low" && (
-                            <>
-                              <div className="selfmod-app-sidebar-divider" />
-                              <div className="selfmod-app-sidebar-icon selfmod-app-new-indicator" />
-                              {selfmodLevel === "high" && (
-                                <>
-                                  <div className="selfmod-app-sidebar-icon selfmod-app-new-indicator" />
-                                  <div className="selfmod-app-sidebar-icon selfmod-app-new-indicator" />
-                                </>
-                              )}
-                            </>
-                          )}
-                        </div>
-
-                        {/* Chat area */}
-                        <div className="selfmod-app-chat">
-                          {selfmodLevel === "low" && (
-                            <div className="selfmod-app-banner">
-                              <span className="selfmod-app-banner-text">Good morning — you have 3 things today</span>
-                            </div>
-                          )}
-                          {selfmodLevel === "high" && (
-                            <div className="selfmod-app-tabs">
-                              <span className="selfmod-app-tab" data-active="true">Chat</span>
-                              <span className="selfmod-app-tab">Dashboard</span>
-                              <span className="selfmod-app-tab">Projects</span>
-                            </div>
-                          )}
-                          <div className="selfmod-app-messages">
-                            <div className="selfmod-app-msg selfmod-app-msg--user">
-                              <div className="selfmod-app-msg-line" style={{ width: "60%" }} />
-                            </div>
-                            <div className="selfmod-app-msg selfmod-app-msg--stella">
-                              <div className="selfmod-app-msg-line" style={{ width: "80%" }} />
-                              <div className="selfmod-app-msg-line" style={{ width: "45%" }} />
-                            </div>
-                            <div className="selfmod-app-msg selfmod-app-msg--user">
-                              <div className="selfmod-app-msg-line" style={{ width: "40%" }} />
-                            </div>
-                          </div>
-                          <div className={`selfmod-app-composer ${selfmodLevel === "high" ? "selfmod-app-composer--enhanced" : ""}`}>
-                            <div className="selfmod-app-composer-input" />
-                            {selfmodLevel === "high" && (
-                              <div className="selfmod-app-composer-toolbar">
-                                <span className="selfmod-app-composer-tool" />
-                                <span className="selfmod-app-composer-tool" />
-                                <span className="selfmod-app-composer-tool" />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Canvas panel — visible in medium and high */}
-                        {selfmodLevel !== "low" && (
-                          <div className={`selfmod-app-canvas ${selfmodLevel === "high" ? "selfmod-app-canvas--wide" : ""}`}>
-                            <div className="selfmod-app-canvas-header">
-                              <span className="selfmod-app-canvas-title">
-                                {selfmodLevel === "medium" ? "Quick Actions" : "Command Center"}
-                              </span>
-                            </div>
-                            <div className="selfmod-app-canvas-body">
-                              {selfmodLevel === "medium" ? (
-                                <div className="selfmod-app-canvas-actions">
-                                  <div className="selfmod-app-canvas-action-btn">Check email</div>
-                                  <div className="selfmod-app-canvas-action-btn">Play music</div>
-                                  <div className="selfmod-app-canvas-action-btn">Set a timer</div>
-                                </div>
-                              ) : (
-                                <div className="selfmod-app-canvas-grid">
-                                  <div className="selfmod-app-canvas-widget">
-                                    <span className="selfmod-app-canvas-widget-label">Tasks</span>
-                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "70%" }} />
-                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "40%" }} />
-                                  </div>
-                                  <div className="selfmod-app-canvas-widget">
-                                    <span className="selfmod-app-canvas-widget-label">Calendar</span>
-                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "90%" }} />
-                                  </div>
-                                  <div className="selfmod-app-canvas-widget selfmod-app-canvas-widget--wide">
-                                    <span className="selfmod-app-canvas-widget-label">Recent</span>
-                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "55%" }} />
-                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "80%" }} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <p className="selfmod-mock-caption">
-                      {selfmodLevel === "low" && "A personalized banner shows your day at a glance"}
-                      {selfmodLevel === "medium" && "A new quick actions panel and extra sidebar shortcuts"}
-                      {selfmodLevel === "high" && "Tabs, an expanded sidebar, a command center, and a richer composer"}
-                    </p>
-                  </div>
-                )}
+                <p className="onboarding-selfmod-caption" data-visible={selfmodLevel !== null}>
+                  {selfmodLevel === "low" && "Look around — the sidebar and composer just changed a little."}
+                  {selfmodLevel === "medium" && "The sidebar is wider, the composer is different, and the layout shifted."}
+                  {selfmodLevel === "high" && "Cat mode — bottom dock, apps bar, paw cursor, warm palette. I can theme the whole app anytime you ask."}
+                  {!selfmodLevel && "\u00A0"}
+                </p>
 
                 <button className="onboarding-confirm" data-visible={true} onClick={nextSplitStep}>
                   Continue

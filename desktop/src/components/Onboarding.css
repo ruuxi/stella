@@ -443,85 +443,6 @@
   animation: momentFadeIn 0.4s ease-out forwards;
 }
 
-/* Mock dashboard */
-.onboarding-creation-mock-dashboard {
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  border-radius: 8px;
-  padding: 16px;
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-}
-
-.mock-dashboard-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 14px;
-}
-
-.mock-dashboard-greeting {
-  font-size: 15px;
-  font-weight: 400;
-  color: var(--foreground);
-  opacity: 0.8;
-}
-
-.mock-dashboard-date {
-  font-size: 11px;
-  font-weight: 300;
-  color: var(--foreground);
-  opacity: 0.4;
-}
-
-.mock-dashboard-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.mock-dashboard-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  border-radius: 6px;
-  background: color-mix(in oklch, var(--foreground) 2%, transparent);
-}
-
-.mock-card-wide {
-  grid-column: 1 / -1;
-}
-
-.mock-card-label {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--foreground);
-  opacity: 0.35;
-}
-
-.mock-card-value {
-  font-size: 18px;
-  font-weight: 300;
-  color: var(--foreground);
-  opacity: 0.8;
-}
-
-.mock-card-sub {
-  font-size: 11px;
-  font-weight: 300;
-  color: var(--foreground);
-  opacity: 0.4;
-}
-
-.mock-card-note {
-  font-size: 12px;
-  font-weight: 300;
-  color: var(--foreground);
-  opacity: 0.6;
-  line-height: 1.5;
-}
 
 /* Mock self-modification */
 .onboarding-creation-mock-selfmod {
@@ -615,7 +536,25 @@
   opacity: 0.5;
 }
 
-/* Self-mod full app mock */
+.onboarding-selfmod-caption {
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0;
+  line-height: 1.5;
+  margin: 0;
+  padding: 10px 14px;
+  min-height: 40px;
+  border-left: 2px solid color-mix(in oklch, var(--foreground) 15%, transparent);
+  transition: opacity 0.3s ease;
+}
+
+.onboarding-selfmod-caption[data-visible="true"] {
+  opacity: 0.5;
+}
+
+/* Self-mod full app mock (legacy) */
 
 .onboarding-selfmod-app-mock {
   display: flex;
