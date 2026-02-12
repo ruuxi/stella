@@ -62,6 +62,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   // Creation examples
   const [creationExample, setCreationExample] = useState<"dashboard" | "selfmod" | null>(null);
+  const [selfmodLevel, setSelfmodLevel] = useState<"low" | "medium" | "high" | null>(null);
 
   // Theme (inline)
   const {
@@ -293,6 +294,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 <p className="onboarding-step-desc">
                   Anything I make, you can share with others.
                 </p>
+
+                <div className="onboarding-step-label">Things I can make for you</div>
                 <div className="onboarding-creation-examples">
                   <button
                     className="onboarding-creation-card"
@@ -343,17 +346,141 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                     <div className="onboarding-creation-mock-selfmod">
                       <div className="mock-selfmod-item">
                         <span className="mock-selfmod-badge">New skill</span>
-                        <span className="mock-selfmod-name">Smart scheduling</span>
-                        <span className="mock-selfmod-desc">I learned to check your calendar before suggesting times.</span>
+                        <span className="mock-selfmod-name">Daily briefing</span>
+                        <span className="mock-selfmod-desc">I'll bring you the news and your schedule every morning at 10am.</span>
                       </div>
                       <div className="mock-selfmod-item">
                         <span className="mock-selfmod-badge">Improved</span>
-                        <span className="mock-selfmod-name">Writing style</span>
-                        <span className="mock-selfmod-desc">I adjusted my tone to match how you prefer emails written.</span>
+                        <span className="mock-selfmod-name">Grocery lists</span>
+                        <span className="mock-selfmod-desc">I learned which stores you prefer and sort your list by aisle.</span>
                       </div>
                     </div>
                   </div>
                 )}
+
+                <div className="onboarding-section-divider" />
+
+                <div className="onboarding-step-label">I can also change how this app works</div>
+                <p className="onboarding-step-subdesc">
+                  Just ask, and I'll redesign parts of this app to fit you better.
+                </p>
+                <div className="onboarding-selfmod-levels">
+                  <button
+                    className="onboarding-selfmod-level"
+                    data-active={selfmodLevel === "low"}
+                    onClick={() => setSelfmodLevel(selfmodLevel === "low" ? null : "low")}
+                  >
+                    <span className="onboarding-selfmod-level-label">Small tweak</span>
+                    <span className="onboarding-selfmod-level-desc">A subtle change</span>
+                  </button>
+                  <button
+                    className="onboarding-selfmod-level"
+                    data-active={selfmodLevel === "medium"}
+                    onClick={() => setSelfmodLevel(selfmodLevel === "medium" ? null : "medium")}
+                  >
+                    <span className="onboarding-selfmod-level-label">New feature</span>
+                    <span className="onboarding-selfmod-level-desc">Something added</span>
+                  </button>
+                  <button
+                    className="onboarding-selfmod-level"
+                    data-active={selfmodLevel === "high"}
+                    onClick={() => setSelfmodLevel(selfmodLevel === "high" ? null : "high")}
+                  >
+                    <span className="onboarding-selfmod-level-label">Full redesign</span>
+                    <span className="onboarding-selfmod-level-desc">A whole new look</span>
+                  </button>
+                </div>
+                {selfmodLevel === "low" && (
+                  <div className="onboarding-creation-preview">
+                    <div className="onboarding-selfmod-mock">
+                      <div className="selfmod-mock-window">
+                        <div className="selfmod-mock-titlebar">
+                          <span className="selfmod-mock-dot" />
+                          <span className="selfmod-mock-dot" />
+                          <span className="selfmod-mock-dot" />
+                        </div>
+                        <div className="selfmod-mock-body">
+                          <div className="selfmod-mock-sidebar">
+                            <div className="selfmod-mock-sidebar-item" data-active="true" />
+                            <div className="selfmod-mock-sidebar-item" />
+                            <div className="selfmod-mock-sidebar-item" />
+                          </div>
+                          <div className="selfmod-mock-content">
+                            <div className="selfmod-mock-change-badge">Changed</div>
+                            <div className="selfmod-mock-greeting">Welcome back, here's your day</div>
+                            <div className="selfmod-mock-line" />
+                            <div className="selfmod-mock-line selfmod-mock-line--short" />
+                          </div>
+                        </div>
+                      </div>
+                      <p className="selfmod-mock-caption">A personalized greeting when you open the app</p>
+                    </div>
+                  </div>
+                )}
+                {selfmodLevel === "medium" && (
+                  <div className="onboarding-creation-preview">
+                    <div className="onboarding-selfmod-mock">
+                      <div className="selfmod-mock-window">
+                        <div className="selfmod-mock-titlebar">
+                          <span className="selfmod-mock-dot" />
+                          <span className="selfmod-mock-dot" />
+                          <span className="selfmod-mock-dot" />
+                        </div>
+                        <div className="selfmod-mock-body">
+                          <div className="selfmod-mock-sidebar">
+                            <div className="selfmod-mock-sidebar-item" data-active="true" />
+                            <div className="selfmod-mock-sidebar-item" />
+                            <div className="selfmod-mock-sidebar-item selfmod-mock-sidebar-new">
+                              <div className="selfmod-mock-change-badge">New</div>
+                            </div>
+                          </div>
+                          <div className="selfmod-mock-content">
+                            <div className="selfmod-mock-line" />
+                            <div className="selfmod-mock-line" />
+                            <div className="selfmod-mock-widget">
+                              <div className="selfmod-mock-change-badge">New</div>
+                              <div className="selfmod-mock-widget-title">Quick actions</div>
+                              <div className="selfmod-mock-widget-buttons">
+                                <span className="selfmod-mock-widget-btn">Email</span>
+                                <span className="selfmod-mock-widget-btn">Notes</span>
+                                <span className="selfmod-mock-widget-btn">Music</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="selfmod-mock-caption">A quick actions bar and new sidebar section</p>
+                    </div>
+                  </div>
+                )}
+                {selfmodLevel === "high" && (
+                  <div className="onboarding-creation-preview">
+                    <div className="onboarding-selfmod-mock">
+                      <div className="selfmod-mock-window selfmod-mock-window--redesigned">
+                        <div className="selfmod-mock-titlebar">
+                          <span className="selfmod-mock-dot" />
+                          <span className="selfmod-mock-dot" />
+                          <span className="selfmod-mock-dot" />
+                        </div>
+                        <div className="selfmod-mock-body selfmod-mock-body--redesigned">
+                          <div className="selfmod-mock-change-badge">Redesigned</div>
+                          <div className="selfmod-mock-topbar">
+                            <span className="selfmod-mock-topbar-item" data-active="true">Home</span>
+                            <span className="selfmod-mock-topbar-item">Chat</span>
+                            <span className="selfmod-mock-topbar-item">Create</span>
+                          </div>
+                          <div className="selfmod-mock-grid">
+                            <div className="selfmod-mock-grid-card" />
+                            <div className="selfmod-mock-grid-card" />
+                            <div className="selfmod-mock-grid-card selfmod-mock-grid-card--wide" />
+                          </div>
+                        </div>
+                      </div>
+                      <p className="selfmod-mock-caption">A completely different layout with tabs and cards</p>
+                    </div>
+                  </div>
+                )}
+
                 <button className="onboarding-confirm" data-visible={true} onClick={nextSplitStep}>
                   Continue
                 </button>
