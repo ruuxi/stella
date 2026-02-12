@@ -390,94 +390,117 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                     <span className="onboarding-selfmod-level-desc">A whole new look</span>
                   </button>
                 </div>
-                {selfmodLevel === "low" && (
-                  <div className="onboarding-creation-preview">
-                    <div className="onboarding-selfmod-mock">
-                      <div className="selfmod-mock-window">
-                        <div className="selfmod-mock-titlebar">
-                          <span className="selfmod-mock-dot" />
-                          <span className="selfmod-mock-dot" />
-                          <span className="selfmod-mock-dot" />
-                        </div>
-                        <div className="selfmod-mock-body">
-                          <div className="selfmod-mock-sidebar">
-                            <div className="selfmod-mock-sidebar-item" data-active="true" />
-                            <div className="selfmod-mock-sidebar-item" />
-                            <div className="selfmod-mock-sidebar-item" />
-                          </div>
-                          <div className="selfmod-mock-content">
-                            <div className="selfmod-mock-change-badge">Changed</div>
-                            <div className="selfmod-mock-greeting">Welcome back, here's your day</div>
-                            <div className="selfmod-mock-line" />
-                            <div className="selfmod-mock-line selfmod-mock-line--short" />
-                          </div>
-                        </div>
+                {selfmodLevel && (
+                  <div className="onboarding-selfmod-app-mock" data-level={selfmodLevel}>
+                    {/* Full app window mock */}
+                    <div className="selfmod-app">
+                      <div className="selfmod-app-titlebar">
+                        <span className="selfmod-app-dot" />
+                        <span className="selfmod-app-dot" />
+                        <span className="selfmod-app-dot" />
+                        <span className="selfmod-app-title">Stella</span>
                       </div>
-                      <p className="selfmod-mock-caption">A personalized greeting when you open the app</p>
-                    </div>
-                  </div>
-                )}
-                {selfmodLevel === "medium" && (
-                  <div className="onboarding-creation-preview">
-                    <div className="onboarding-selfmod-mock">
-                      <div className="selfmod-mock-window">
-                        <div className="selfmod-mock-titlebar">
-                          <span className="selfmod-mock-dot" />
-                          <span className="selfmod-mock-dot" />
-                          <span className="selfmod-mock-dot" />
+                      <div className="selfmod-app-body">
+                        {/* Sidebar */}
+                        <div className={`selfmod-app-sidebar ${selfmodLevel === "high" ? "selfmod-app-sidebar--expanded" : ""}`}>
+                          <div className="selfmod-app-sidebar-icon" data-active="true" />
+                          <div className="selfmod-app-sidebar-icon" />
+                          <div className="selfmod-app-sidebar-icon" />
+                          {selfmodLevel !== "low" && (
+                            <>
+                              <div className="selfmod-app-sidebar-divider" />
+                              <div className="selfmod-app-sidebar-icon selfmod-app-new-indicator" />
+                              {selfmodLevel === "high" && (
+                                <>
+                                  <div className="selfmod-app-sidebar-icon selfmod-app-new-indicator" />
+                                  <div className="selfmod-app-sidebar-icon selfmod-app-new-indicator" />
+                                </>
+                              )}
+                            </>
+                          )}
                         </div>
-                        <div className="selfmod-mock-body">
-                          <div className="selfmod-mock-sidebar">
-                            <div className="selfmod-mock-sidebar-item" data-active="true" />
-                            <div className="selfmod-mock-sidebar-item" />
-                            <div className="selfmod-mock-sidebar-item selfmod-mock-sidebar-new">
-                              <div className="selfmod-mock-change-badge">New</div>
+
+                        {/* Chat area */}
+                        <div className="selfmod-app-chat">
+                          {selfmodLevel === "low" && (
+                            <div className="selfmod-app-banner">
+                              <span className="selfmod-app-banner-text">Good morning — you have 3 things today</span>
+                            </div>
+                          )}
+                          {selfmodLevel === "high" && (
+                            <div className="selfmod-app-tabs">
+                              <span className="selfmod-app-tab" data-active="true">Chat</span>
+                              <span className="selfmod-app-tab">Dashboard</span>
+                              <span className="selfmod-app-tab">Projects</span>
+                            </div>
+                          )}
+                          <div className="selfmod-app-messages">
+                            <div className="selfmod-app-msg selfmod-app-msg--user">
+                              <div className="selfmod-app-msg-line" style={{ width: "60%" }} />
+                            </div>
+                            <div className="selfmod-app-msg selfmod-app-msg--stella">
+                              <div className="selfmod-app-msg-line" style={{ width: "80%" }} />
+                              <div className="selfmod-app-msg-line" style={{ width: "45%" }} />
+                            </div>
+                            <div className="selfmod-app-msg selfmod-app-msg--user">
+                              <div className="selfmod-app-msg-line" style={{ width: "40%" }} />
                             </div>
                           </div>
-                          <div className="selfmod-mock-content">
-                            <div className="selfmod-mock-line" />
-                            <div className="selfmod-mock-line" />
-                            <div className="selfmod-mock-widget">
-                              <div className="selfmod-mock-change-badge">New</div>
-                              <div className="selfmod-mock-widget-title">Quick actions</div>
-                              <div className="selfmod-mock-widget-buttons">
-                                <span className="selfmod-mock-widget-btn">Email</span>
-                                <span className="selfmod-mock-widget-btn">Notes</span>
-                                <span className="selfmod-mock-widget-btn">Music</span>
+                          <div className={`selfmod-app-composer ${selfmodLevel === "high" ? "selfmod-app-composer--enhanced" : ""}`}>
+                            <div className="selfmod-app-composer-input" />
+                            {selfmodLevel === "high" && (
+                              <div className="selfmod-app-composer-toolbar">
+                                <span className="selfmod-app-composer-tool" />
+                                <span className="selfmod-app-composer-tool" />
+                                <span className="selfmod-app-composer-tool" />
                               </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Canvas panel — visible in medium and high */}
+                        {selfmodLevel !== "low" && (
+                          <div className={`selfmod-app-canvas ${selfmodLevel === "high" ? "selfmod-app-canvas--wide" : ""}`}>
+                            <div className="selfmod-app-canvas-header">
+                              <span className="selfmod-app-canvas-title">
+                                {selfmodLevel === "medium" ? "Quick Actions" : "Command Center"}
+                              </span>
+                            </div>
+                            <div className="selfmod-app-canvas-body">
+                              {selfmodLevel === "medium" ? (
+                                <div className="selfmod-app-canvas-actions">
+                                  <div className="selfmod-app-canvas-action-btn">Check email</div>
+                                  <div className="selfmod-app-canvas-action-btn">Play music</div>
+                                  <div className="selfmod-app-canvas-action-btn">Set a timer</div>
+                                </div>
+                              ) : (
+                                <div className="selfmod-app-canvas-grid">
+                                  <div className="selfmod-app-canvas-widget">
+                                    <span className="selfmod-app-canvas-widget-label">Tasks</span>
+                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "70%" }} />
+                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "40%" }} />
+                                  </div>
+                                  <div className="selfmod-app-canvas-widget">
+                                    <span className="selfmod-app-canvas-widget-label">Calendar</span>
+                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "90%" }} />
+                                  </div>
+                                  <div className="selfmod-app-canvas-widget selfmod-app-canvas-widget--wide">
+                                    <span className="selfmod-app-canvas-widget-label">Recent</span>
+                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "55%" }} />
+                                    <div className="selfmod-app-canvas-widget-bar" style={{ width: "80%" }} />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
-                        </div>
+                        )}
                       </div>
-                      <p className="selfmod-mock-caption">A quick actions bar and new sidebar section</p>
                     </div>
-                  </div>
-                )}
-                {selfmodLevel === "high" && (
-                  <div className="onboarding-creation-preview">
-                    <div className="onboarding-selfmod-mock">
-                      <div className="selfmod-mock-window selfmod-mock-window--redesigned">
-                        <div className="selfmod-mock-titlebar">
-                          <span className="selfmod-mock-dot" />
-                          <span className="selfmod-mock-dot" />
-                          <span className="selfmod-mock-dot" />
-                        </div>
-                        <div className="selfmod-mock-body selfmod-mock-body--redesigned">
-                          <div className="selfmod-mock-change-badge">Redesigned</div>
-                          <div className="selfmod-mock-topbar">
-                            <span className="selfmod-mock-topbar-item" data-active="true">Home</span>
-                            <span className="selfmod-mock-topbar-item">Chat</span>
-                            <span className="selfmod-mock-topbar-item">Create</span>
-                          </div>
-                          <div className="selfmod-mock-grid">
-                            <div className="selfmod-mock-grid-card" />
-                            <div className="selfmod-mock-grid-card" />
-                            <div className="selfmod-mock-grid-card selfmod-mock-grid-card--wide" />
-                          </div>
-                        </div>
-                      </div>
-                      <p className="selfmod-mock-caption">A completely different layout with tabs and cards</p>
-                    </div>
+                    <p className="selfmod-mock-caption">
+                      {selfmodLevel === "low" && "A personalized banner shows your day at a glance"}
+                      {selfmodLevel === "medium" && "A new quick actions panel and extra sidebar shortcuts"}
+                      {selfmodLevel === "high" && "Tabs, an expanded sidebar, a command center, and a richer composer"}
+                    </p>
                   </div>
                 )}
 
