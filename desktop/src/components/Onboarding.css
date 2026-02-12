@@ -387,7 +387,210 @@
   font-size: 12px;
 }
 
-/* ═══ Creation examples ═══ */
+/* ═══ Hide real sidebar during onboarding ═══ */
+
+.window-shell[data-onboarding] .full-body > .sidebar {
+  display: none;
+}
+
+.window-shell.full[data-onboarding] .title-bar {
+  left: 0;
+}
+
+/* ═══ Mock app preview (creation phase) ═══ */
+
+.onboarding-creation-chat {
+  max-width: 600px !important;
+  max-height: none;
+  overflow: visible;
+}
+
+.onboarding-mock-app {
+  display: flex;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+  transform: translate(0); /* Contain fixed positioning from selfmod "high" */
+  position: relative;
+  height: 380px;
+  flex-shrink: 0;
+}
+
+.onboarding-mock-app > .sidebar {
+  border-radius: 0;
+  pointer-events: none;
+}
+
+.onboarding-mock-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.onboarding-mock-main > .onboarding-chat-messages {
+  padding: 12px 14px 8px;
+}
+
+.onboarding-mock-main > .onboarding-chat-composer {
+  margin: 0 10px 10px;
+}
+
+/* ═══ Chat messages ═══ */
+
+.onboarding-chat-messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 4px 0 8px;
+  min-height: 0;
+}
+
+.onboarding-chat-msg {
+  display: flex;
+  max-width: 90%;
+  animation: chatMsgIn 0.3s ease-out both;
+}
+
+@keyframes chatMsgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.onboarding-chat-msg--stella {
+  align-self: flex-start;
+}
+
+.onboarding-chat-msg--user {
+  align-self: flex-end;
+}
+
+.onboarding-chat-bubble {
+  display: block;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+
+.onboarding-chat-msg--stella .onboarding-chat-bubble {
+  border-radius: 2px 10px 10px 10px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  opacity: 0.75;
+}
+
+.onboarding-chat-msg--user .onboarding-chat-bubble {
+  border-radius: 10px 2px 10px 10px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  opacity: 0.85;
+}
+
+/* Typing indicator */
+.onboarding-chat-typing {
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: 2px 10px 10px 10px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.onboarding-chat-typing span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--foreground);
+  opacity: 0.2;
+  animation: typingPulse 1.4s ease-in-out infinite;
+}
+
+.onboarding-chat-typing span:nth-child(2) { animation-delay: 0.2s; }
+.onboarding-chat-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingPulse {
+  0%, 60%, 100% { opacity: 0.12; transform: translateY(0); }
+  30% { opacity: 0.35; transform: translateY(-3px); }
+}
+
+/* Selfmod levels inline in chat */
+.onboarding-chat-selfmod {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: chatMsgIn 0.4s ease-out both;
+}
+
+/* Composer */
+.onboarding-chat-composer {
+  display: flex;
+  align-items: center;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  padding: 3px 3px 3px 12px;
+  flex-shrink: 0;
+  margin-top: 8px;
+  transition: border-color 0.2s ease;
+}
+
+.onboarding-chat-composer:hover {
+  border-color: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.onboarding-chat-input {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.onboarding-chat-send {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: none;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+}
+
+.onboarding-chat-send:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 15%, transparent);
+  opacity: 0.7;
+}
+
+.onboarding-chat-send:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.onboarding-chat-send:disabled {
+  opacity: 0.15;
+  cursor: default;
+}
+
+/* Continue button in creation phase */
+.onboarding-creation-chat > .onboarding-confirm {
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+/* ═══ Creation examples (legacy) ═══ */
 
 .onboarding-creation-examples {
   display: flex;
