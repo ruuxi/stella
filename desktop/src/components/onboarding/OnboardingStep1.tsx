@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   PHASES,
-  INTRO_PHASES,
   DISCOVERY_CATEGORIES_KEY,
   DISCOVERY_CATEGORIES,
-  getTypeDelay,
   type Phase,
   type DiscoveryCategory,
   type OnboardingStep1Props,
@@ -13,13 +11,25 @@ import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { InlineAuth } from "../InlineAuth";
 import "../Onboarding.css";
 
-export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, onAccept, onInteract, onOpenThemePicker, onConfirmTheme, onDiscoveryConfirm, themeConfirmed, hasSelectedTheme, isAuthenticated }) => {
-  const [phase, setPhase] = useState<Phase>("typing-intro");
-  const [displayed, setDisplayed] = useState("");
-  const [showCursor, setShowCursor] = useState(true);
+const FADE_OUT_MS = 400;
+const FADE_GAP_MS = 200;
+
+export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
+  onComplete,
+  onAccept,
+  onInteract,
+  onOpenThemePicker,
+  onConfirmTheme,
+  onDiscoveryConfirm,
+  themeConfirmed,
+  hasSelectedTheme,
+  isAuthenticated,
+}) => {
+  const [phase, setPhase] = useState<Phase>("start");
+  const [leaving, setLeaving] = useState(false);
+  const [rippleActive, setRippleActive] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Discovery category toggles
   const [categoryStates, setCategoryStates] = useState<Record<DiscoveryCategory, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     for (const cat of DISCOVERY_CATEGORIES) {
@@ -28,110 +38,80 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
     return initial as Record<DiscoveryCategory, boolean>;
   });
 
-  const clearTimeoutRef = () => {
+  const clearTimeoutRef = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+  }, []);
+
+  // Fade out current phase, then transition to next
+  const transitionTo = useCallback((next: Phase) => {
+    setLeaving(true);
+    timeoutRef.current = setTimeout(() => {
+      setLeaving(false);
+      setPhase(next);
+    }, FADE_OUT_MS + FADE_GAP_MS);
+  }, []);
+
+  const handleStart = () => {
+    onAccept?.(); // triggers birth/grow animation
+    onInteract?.();
+    // Let the birth animation play, then fade out start and move to auth
+    timeoutRef.current = setTimeout(() => {
+      transitionTo(isAuthenticated ? "ripple-reveal" : "auth");
+    }, 1600);
   };
 
-  const schedule = (fn: () => void, ms: number) => {
-    timeoutRef.current = setTimeout(fn, ms);
+  // Auto-advance from auth when user signs in
+  useEffect(() => {
+    if (isAuthenticated && phase === "auth" && !leaving) {
+      onInteract?.();
+      transitionTo("ripple-reveal");
+    }
+  }, [isAuthenticated, phase, leaving, onInteract, transitionTo]);
+
+  // Ripple reveal: trigger the fade-in animations
+  useEffect(() => {
+    if (phase !== "ripple-reveal") return;
+
+    const startTimer = setTimeout(() => {
+      setRippleActive(true);
+    }, 400);
+
+    return () => {
+      clearTimeout(startTimer);
+    };
+  }, [phase]);
+
+  const handleRippleContinue = () => {
+    onInteract?.();
+    transitionTo("theme");
   };
 
+  // Auto-advance from theme when confirmed
+  useEffect(() => {
+    if (themeConfirmed && phase === "theme" && !leaving) {
+      onInteract?.();
+      transitionTo("trust");
+    }
+  }, [themeConfirmed, phase, leaving, onInteract, transitionTo]);
+
+  // Complete transition
   useEffect(() => {
     clearTimeoutRef();
-
     const config = PHASES[phase];
-    if (config.kind === "typing") {
-      setShowCursor(true);
-      setDisplayed("");
-      let i = 0;
-      const type = () => {
-        if (i < config.text.length) {
-          i++;
-          setDisplayed(config.text.slice(0, i));
-          schedule(type, getTypeDelay());
-        } else {
-          schedule(() => {
-            setShowCursor(false);
-            setPhase(config.next);
-          }, 400);
-        }
-      };
-      schedule(type, config.startDelay);
-      return clearTimeoutRef;
-    }
 
-    if (config.kind === "fade") {
-      // Wait for fade animation (0.4s) + pause (0.2s) = 0.6s total
-      schedule(() => {
-        setDisplayed("");
-        setPhase(config.next);
+    if (config.kind === "complete") {
+      timeoutRef.current = setTimeout(() => {
+        setPhase("done");
+        onComplete();
       }, 600);
       return clearTimeoutRef;
     }
 
-    if (config.kind === "delay") {
-      schedule(() => {
-        setPhase(config.next);
-      }, config.delayMs);
-      return clearTimeoutRef;
-    }
-
-    if (config.kind === "declined") {
-      schedule(() => {
-        setDisplayed("");
-        setShowCursor(true);
-        setPhase("typing-question");
-      }, 2500);
-      return clearTimeoutRef;
-    }
-
-    if (config.kind === "accepted") {
-      // Wait for black hole animation, then complete onboarding
-      schedule(() => {
-        setPhase("done");
-        onComplete();
-      }, 3000);
-    }
-
     return clearTimeoutRef;
-  }, [phase, onComplete]);
-
-  // Auto-advance from waiting-click when user signs in
-  useEffect(() => {
-    if (isAuthenticated && phase === "waiting-click") {
-      onInteract?.();
-      setPhase("fading-out");
-    }
-  }, [isAuthenticated, phase, onInteract]);
-
-  // Auto-advance from waiting-theme when theme is confirmed
-  useEffect(() => {
-    if (themeConfirmed && phase === "waiting-theme") {
-      onInteract?.();
-      setPhase("fading-out-theme");
-    }
-  }, [themeConfirmed, phase, onInteract]);
-
-  const handleClick = () => {
-    onInteract?.();
-    if (phase === "waiting-click-preview") {
-      setPhase("fading-out-preview");
-    }
-  };
-
-  const handleYes = () => {
-    onInteract?.();
-    setPhase("fading-out-question");
-    onAccept?.();
-  };
-
-  const handleNo = () => {
-    onInteract?.();
-    setPhase("declined");
-  };
+  }, [phase, onComplete, clearTimeoutRef]);
 
   const handleOpenThemePicker = () => {
     onInteract?.();
@@ -150,7 +130,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
       .map(([id]) => id);
     localStorage.setItem(DISCOVERY_CATEGORIES_KEY, JSON.stringify(selected));
     onDiscoveryConfirm?.(selected);
-    setPhase("fading-out-discovery");
+    transitionTo("complete");
   };
 
   const handleToggleCategory = (id: DiscoveryCategory) => {
@@ -160,78 +140,92 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({ onComplete, on
     }));
   };
 
-  const phaseConfig = PHASES[phase];
-  const isIntro = INTRO_PHASES.has(phase);
-  const showInlineAuth = phase === "waiting-click";
-  const clickPromptText = phaseConfig.kind === "click" && phase !== "waiting-click" ? phaseConfig.prompt : "";
-  const showClickPrompt = Boolean(clickPromptText);
-  const showChoices = phaseConfig.kind === "choices";
-  const isDeclining = phaseConfig.kind === "declined";
-  const showThemePicker = phaseConfig.kind === "theme";
-  const showDiscovery = phaseConfig.kind === "discovery";
-
   if (phase === "done") return null;
 
+  const showStart = phase === "start";
+  const showAuth = phase === "auth";
+  const showRipple = phase === "ripple-reveal";
+  const showTheme = phase === "theme";
+  const showTrust = phase === "trust";
+  const isComplete = phase === "complete";
+
   return (
-    <>
-      {showClickPrompt && (
-        <div
-          className="onboarding-click-overlay"
-          onClick={handleClick}
-        />
+    <div
+      className="onboarding-dialogue"
+      data-phase={phase}
+      data-leaving={leaving}
+      style={{ display: isComplete ? "none" : "flex" }}
+    >
+      {/* Start — triggers birth animation */}
+      {showStart && (
+        <div className="onboarding-moment onboarding-moment--start">
+          <button className="onboarding-start-button" onClick={handleStart}>
+            Start Stella
+          </button>
+        </div>
       )}
-      <div
-        className="onboarding-dialogue"
-        data-declined={isDeclining}
-        data-phase={phase}
-        style={{ display: phase === "accepted" ? "none" : "flex" }}
-      >
-        <div
-          className="onboarding-text"
-          data-intro={isIntro}
-        >
-          {displayed}
-          <span className="onboarding-cursor" style={{ opacity: showCursor ? 1 : 0 }}>│</span>
-        </div>
 
-        {showInlineAuth && <InlineAuth />}
-
-        {showClickPrompt && (
-          <div className="onboarding-choices onboarding-choices--subtle" data-visible={true}>
-            <span className="onboarding-choice">
-              {clickPromptText}
-            </span>
+      {/* Auth */}
+      {showAuth && (
+        <div className="onboarding-moment onboarding-moment--auth">
+          <div className="onboarding-text">
+            Sign in to begin
           </div>
-        )}
-
-        <div className="onboarding-choices" data-visible={showChoices}>
-          <button className="onboarding-choice" onClick={handleYes}>
-            yes
-          </button>
-          <button className="onboarding-choice" onClick={handleNo}>
-            no
-          </button>
+          <InlineAuth />
         </div>
+      )}
 
-        {showThemePicker && (
-          <div className="onboarding-choices onboarding-choices--theme" data-visible={true}>
+      {/* Ripple reveal */}
+      {showRipple && (
+        <div className="onboarding-moment onboarding-moment--ripple" data-active={rippleActive}>
+          <div className="onboarding-ripple-content">
+            <div className="onboarding-text onboarding-text--fade-in">
+              Stella is an AI that runs on your computer.
+            </div>
+            <div className="onboarding-text onboarding-text--fade-in-delayed">
+              She's not made for everyone. She's made for you.
+            </div>
+          </div>
+          <div className="onboarding-choices onboarding-choices--subtle" data-visible={rippleActive}>
+            <button className="onboarding-choice" onClick={handleRippleContinue}>
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Theme */}
+      {showTheme && (
+        <div className="onboarding-moment onboarding-moment--theme">
+          <div className="onboarding-text">
+            How should I look?
+          </div>
+          <div className="onboarding-theme-actions">
             <button className="onboarding-choice" onClick={handleOpenThemePicker}>
-              choose
+              Browse Themes
             </button>
-            <button className="onboarding-confirm" data-visible={hasSelectedTheme} onClick={handleConfirmTheme}>
-              confirm
-            </button>
+            {hasSelectedTheme && (
+              <button className="onboarding-confirm" data-visible={true} onClick={handleConfirmTheme}>
+                Confirm
+              </button>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
-        {showDiscovery && (
+      {/* Trust */}
+      {showTrust && (
+        <div className="onboarding-moment onboarding-moment--trust">
+          <div className="onboarding-text">
+            How well should I know you?
+          </div>
           <OnboardingDiscovery
             categoryStates={categoryStates}
             onToggleCategory={handleToggleCategory}
             onConfirm={handleDiscoveryConfirm}
           />
-        )}
-      </div>
-    </>
+        </div>
+      )}
+    </div>
   );
 };
