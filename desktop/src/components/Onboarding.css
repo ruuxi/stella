@@ -1,8 +1,12 @@
-/* ===== Onboarding — 3-moment flow ===== */
+/* ===== Onboarding — 3-phase flow ===== */
+/* Phase 1: Center (start, auth, intro) */
+/* Phase 2: Split (browser, discovery, memory, creation, phone, theme, personality) */
+/* Phase 3: Complete */
 
 /* Ripple animation for reveal */
 
-/* Dialogue container — below creature */
+/* ═══ Dialogue container ═══ */
+
 .onboarding-dialogue {
   position: absolute;
   top: 55%;
@@ -18,7 +22,21 @@
   padding: 0 24px;
 }
 
-/* Shared text style */
+/* Split mode: dialogue becomes right-half panel */
+.onboarding-dialogue--split {
+  top: 0;
+  left: 50%;
+  transform: none;
+  flex-direction: row;
+  align-items: stretch;
+  max-width: none;
+  width: 50%;
+  height: 100%;
+  padding: 0;
+}
+
+/* ═══ Shared text ═══ */
+
 .onboarding-text {
   font-size: clamp(20px, 3.5vw, 28px);
   font-weight: 300;
@@ -29,7 +47,7 @@
   line-height: 1.4;
 }
 
-/* ===== Moments ===== */
+/* ═══ Moments (center phases) ═══ */
 
 .onboarding-moment {
   display: flex;
@@ -45,7 +63,8 @@
 }
 
 /* Fade out when leaving */
-.onboarding-dialogue[data-leaving="true"] .onboarding-moment {
+.onboarding-dialogue[data-leaving="true"] .onboarding-moment,
+.onboarding-dialogue[data-leaving="true"] .onboarding-split-right {
   animation: momentFadeOut 0.4s ease-out forwards;
 }
 
@@ -54,7 +73,7 @@
   to { opacity: 0; transform: translateY(-4px); }
 }
 
-/* ===== Moment 0: Start ===== */
+/* ═══ Moment 0: Start ═══ */
 
 .onboarding-start-button {
   background: none;
@@ -66,7 +85,7 @@
   color: var(--foreground);
   opacity: 0.6;
   cursor: pointer;
-  transition: opacity 0.3s ease, border-color 0.3s ease, background 0.3s ease, transform 0.15s ease;
+  transition: opacity 0.3s ease, transform 0.15s ease;
   font-family: inherit;
 }
 
@@ -78,7 +97,7 @@
   transform: scale(0.97);
 }
 
-/* ===== Moment 1: Auth ===== */
+/* ═══ Moment 1: Auth ═══ */
 
 .onboarding-moment--auth .onboarding-text {
   letter-spacing: 0.08em;
@@ -86,7 +105,7 @@
   margin-bottom: 8px;
 }
 
-/* ===== Moment 2: Ripple reveal ===== */
+/* ═══ Moment 2: Intro (ripple reveal) ═══ */
 
 .onboarding-text--fade-in {
   opacity: 0;
@@ -104,7 +123,7 @@
   to { opacity: 0.9; transform: translateY(0); }
 }
 
-/* Continue prompt below the text */
+/* Continue prompt below intro text */
 .onboarding-moment--ripple .onboarding-choices {
   position: relative;
   top: auto;
@@ -121,19 +140,7 @@
   pointer-events: auto;
 }
 
-/* ===== Theme moment ===== */
-
-.onboarding-theme-actions {
-  margin-top: 32px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  opacity: 0;
-  animation: momentFadeIn 0.5s ease-out 0.3s forwards;
-}
-
-/* ===== Choice button (reusable) ===== */
+/* ═══ Choice button (reusable) ═══ */
 
 .onboarding-choice {
   background: none;
@@ -147,7 +154,6 @@
   cursor: pointer;
   transition: opacity 0.3s ease, transform 0.2s ease;
   font-family: inherit;
-
   position: relative;
 }
 
@@ -177,7 +183,7 @@
   transform: scale(0.97);
 }
 
-/* ===== Confirm button ===== */
+/* ═══ Confirm button ═══ */
 
 .onboarding-confirm {
   background: none;
@@ -191,7 +197,6 @@
   cursor: pointer;
   transition: opacity 0.3s ease, transform 0.2s ease, border-color 0.3s ease, background 0.3s ease;
   font-family: inherit;
-
   opacity: 0;
   pointer-events: none;
 }
@@ -211,29 +216,101 @@
   transform: scale(0.97);
 }
 
-/* ===== Discovery (Trust) — pill layout ===== */
+/* ═══ SPLIT LAYOUT ═══ */
 
-.onboarding-discovery {
-  margin-top: 32px;
+.onboarding-split-left {
+  display: none;
+}
+
+.onboarding-split-right {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  height: 100%;
+  padding: 48px 48px 48px 32px;
+  animation: momentFadeIn 0.5s ease-out forwards;
+  overflow-y: auto;
+}
+
+.onboarding-split-title {
+  font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  color: var(--foreground);
+  opacity: 0.9;
+  line-height: 1.4;
+  margin-bottom: 24px;
+  animation: momentFadeIn 0.6s ease-out forwards;
+}
+
+/* ═══ Step content (right panel) ═══ */
+
+.onboarding-step-content {
+  display: flex;
+  flex-direction: column;
   gap: 20px;
   width: 100%;
-  max-width: 480px;
-  opacity: 0;
-  animation: momentFadeIn 0.5s ease-out 0.2s forwards;
+  max-width: 420px;
 }
 
-.onboarding-discovery[data-visible="true"] {
-  pointer-events: auto;
+.onboarding-step-desc {
+  font-size: 15px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0.7;
+  line-height: 1.6;
+  margin: 0;
 }
 
-/* Pill grid */
+.onboarding-step-subdesc {
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0.4;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.onboarding-step-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--foreground);
+  opacity: 0.4;
+  text-transform: uppercase;
+}
+
+/* Inline link (e.g. "Home") */
+.onboarding-inline-link {
+  background: none;
+  border: none;
+  font-size: inherit;
+  font-weight: 400;
+  color: var(--foreground);
+  opacity: 1;
+  cursor: pointer;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--foreground) 40%, transparent);
+  padding: 0;
+  transition: text-decoration-color 0.2s ease;
+  display: inline;
+}
+
+.onboarding-inline-link:hover {
+  text-decoration-color: var(--foreground);
+}
+
+/* ═══ Pills (reusable) ═══ */
+
 .onboarding-pills {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
   gap: 10px;
 }
 
@@ -272,6 +349,40 @@
   transform: scale(0.96);
 }
 
+/* ═══ Theme step ═══ */
+
+.onboarding-theme-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.onboarding-theme-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.onboarding-theme-grid .onboarding-pill {
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+/* ═══ Discovery (trust) ═══ */
+
+.onboarding-discovery {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.onboarding-discovery[data-visible="true"] {
+  pointer-events: auto;
+}
+
 /* FDA note */
 .onboarding-fda-note {
   display: flex;
@@ -304,11 +415,7 @@
   opacity: 1;
 }
 
-.onboarding-discovery .onboarding-confirm {
-  margin-top: 4px;
-}
-
-/* ===== Inline auth (sign-in form) ===== */
+/* ═══ Inline auth ═══ */
 
 .onboarding-inline-auth {
   margin-top: 28px;
@@ -328,7 +435,6 @@
   letter-spacing: 0.1em;
   color: var(--foreground);
   opacity: 0.6;
-
 }
 
 .onboarding-inline-auth-form {
@@ -374,7 +480,6 @@
   font-size: 13px;
   font-weight: 400;
   letter-spacing: 0.1em;
-
   cursor: pointer;
   opacity: 0.5;
   transition: opacity 0.2s ease, background 0.2s ease;
@@ -399,7 +504,6 @@
   opacity: 0.7;
   text-align: center;
   line-height: 1.5;
-
   white-space: nowrap;
 }
 
@@ -413,7 +517,6 @@
   letter-spacing: 0.1em;
   color: var(--foreground);
   opacity: 0.5;
-
   cursor: pointer;
   padding: 8px 20px;
   transition: opacity 0.2s ease, border-color 0.2s ease;
@@ -430,10 +533,9 @@
   letter-spacing: 0.06em;
   color: var(--foreground);
   opacity: 0.35;
-
 }
 
-/* Static variant (post-onboarding, in normal flow) */
+/* Static variant (post-onboarding) */
 .onboarding-inline-auth--static {
   position: relative;
   top: auto;
@@ -444,13 +546,14 @@
   animation: none;
 }
 
-/* ===== Reduced motion ===== */
+/* ═══ Reduced motion ═══ */
 
 @media (prefers-reduced-motion: reduce) {
   .onboarding-moment,
-  .onboarding-moment--fading,
-  .onboarding-theme-actions,
-  .onboarding-discovery,
+  .onboarding-dialogue[data-leaving="true"] .onboarding-moment,
+  .onboarding-dialogue[data-leaving="true"] .onboarding-split-right,
+  .onboarding-split-left .onboarding-text,
+  .onboarding-split-right,
   .onboarding-inline-auth {
     animation: none;
     opacity: 1;

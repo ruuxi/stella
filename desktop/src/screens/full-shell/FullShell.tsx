@@ -238,10 +238,6 @@ export const FullShell = () => {
 
       <div className="full-body">
         <Sidebar
-          hideThemePicker={!onboarding.onboardingDone}
-          themePickerOpen={onboarding.themePickerOpen}
-          onThemePickerOpenChange={onboarding.setThemePickerOpen}
-          onThemeSelect={onboarding.handleThemeSelect}
           onSignIn={() => setAuthDialogOpen(true)}
           onConnect={() => setConnectDialogOpen(true)}
           onSettings={() => setSettingsDialogOpen(true)}
@@ -285,15 +281,13 @@ export const FullShell = () => {
               canSubmit={canSubmit}
               onSend={handleSend}
               hasExpanded={onboarding.hasExpanded}
+              splitMode={onboarding.splitMode}
               onboardingKey={onboarding.onboardingKey}
               stellaAnimationRef={onboarding.stellaAnimationRef}
               triggerFlash={onboarding.triggerFlash}
               startBirthAnimation={onboarding.startBirthAnimation}
               completeOnboarding={onboarding.completeOnboarding}
-              handleOpenThemePicker={onboarding.handleOpenThemePicker}
-              handleConfirmTheme={onboarding.handleConfirmTheme}
-              themeConfirmed={onboarding.themeConfirmed}
-              hasSelectedTheme={onboarding.hasSelectedTheme}
+              handleEnterSplit={onboarding.handleEnterSplit}
               onDiscoveryConfirm={handleDiscoveryConfirm}
               onSignIn={() => setAuthDialogOpen(true)}
             />
