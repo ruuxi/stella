@@ -20,8 +20,9 @@
   padding: 10px 14px;
 }
 
-.window-shell[data-selfmod-demo="low"] .composer-form {
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+.window-shell[data-selfmod-demo="low"] .composer-form,
+.window-shell[data-selfmod-demo="low"] .onboarding-chat-composer {
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
 /* ═══ MEDIUM: New feature ═══ */
@@ -72,11 +73,15 @@
   border-radius: 12px;
 }
 
-.window-shell[data-selfmod-demo="medium"] .composer-form {
+.window-shell[data-selfmod-demo="medium"] .composer-form,
+.window-shell[data-selfmod-demo="medium"] .onboarding-chat-composer {
   border-radius: 20px;
-  max-width: 44rem;
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   box-shadow: 0 4px 24px color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.window-shell[data-selfmod-demo="medium"] .composer-form {
+  max-width: 44rem;
 }
 
 .window-shell[data-selfmod-demo="medium"] .session-messages {
@@ -85,12 +90,6 @@
 
 /* ═══ HIGH: Cat-themed full redesign ═══ */
 /* Bottom dock, apps rail, cat cursor, warm palette, paw accents */
-
-/* --- Cat cursor everywhere --- */
-.window-shell[data-selfmod-demo="high"],
-.window-shell[data-selfmod-demo="high"] * {
-  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='26'><ellipse cx='11' cy='18' rx='5.5' ry='4.5' fill='%23f97316'/><circle cx='5' cy='9' r='2.8' fill='%23fb923c'/><circle cx='11' cy='6.5' r='2.8' fill='%23fb923c'/><circle cx='17' cy='9' r='2.8' fill='%23fb923c'/></svg>") 11 18, auto !important;
-}
 
 /* --- Warm cat palette override --- */
 .window-shell[data-selfmod-demo="high"] {
@@ -268,8 +267,8 @@
   bottom: 72px; /* above the bottom dock */
 }
 
-.window-shell[data-selfmod-demo="high"] .composer-form {
-  max-width: 46rem;
+.window-shell[data-selfmod-demo="high"] .composer-form,
+.window-shell[data-selfmod-demo="high"] .onboarding-chat-composer {
   border-radius: 18px;
   background: color-mix(in oklch, var(--background) 88%, var(--cat-cream));
   border: 1px solid color-mix(in oklch, var(--cat-orange) 15%, transparent);
@@ -277,6 +276,10 @@
     0 0 0 1px color-mix(in oklch, var(--cat-orange) 6%, transparent),
     0 6px 32px color-mix(in oklch, var(--cat-orange) 10%, transparent);
   backdrop-filter: blur(20px);
+}
+
+.window-shell[data-selfmod-demo="high"] .composer-form {
+  max-width: 46rem;
 }
 
 .window-shell[data-selfmod-demo="high"] .composer-input {
@@ -299,14 +302,21 @@
   opacity: 0.7;
 }
 
+/* --- Mock main padding for bottom dock --- */
+.window-shell[data-selfmod-demo="high"] .onboarding-mock-main {
+  padding-bottom: 56px;
+}
+
 /* ═══ Fade-through for "high" layout swap ═══ */
 
-.window-shell[data-selfmod-fading] .full-body {
+.window-shell[data-selfmod-fading] .full-body,
+.window-shell[data-selfmod-fading] .onboarding-mock-app {
   opacity: 0;
   transition: opacity 0.3s ease !important;
 }
 
-.window-shell:not([data-selfmod-fading]) .full-body {
+.window-shell:not([data-selfmod-fading]) .full-body,
+.window-shell:not([data-selfmod-fading]) .onboarding-mock-app {
   opacity: 1;
   transition: opacity 0.3s ease;
 }
@@ -332,6 +342,8 @@
 .window-shell[data-selfmod-demo] .full-body-main,
 .window-shell[data-selfmod-demo] .app-badge,
 .window-shell[data-selfmod-demo] .event-item,
-.window-shell[data-selfmod-demo] .session-turn-title {
+.window-shell[data-selfmod-demo] .session-turn-title,
+.window-shell[data-selfmod-demo] .onboarding-chat-composer,
+.window-shell[data-selfmod-demo] .onboarding-mock-main {
   transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
