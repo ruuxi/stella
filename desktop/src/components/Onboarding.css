@@ -69,8 +69,8 @@
 }
 
 @keyframes momentFadeOut {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-4px); }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* ═══ Moment 0: Start ═══ */
@@ -306,6 +306,23 @@
   text-decoration-color: var(--foreground);
 }
 
+/* Home hover hint */
+.onboarding-home-hint {
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0;
+  line-height: 1.5;
+  margin: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.onboarding-home-hint[data-visible="true"] {
+  opacity: 0.5;
+}
+
 /* ═══ Pills (reusable) ═══ */
 
 .onboarding-pills {
@@ -370,6 +387,215 @@
   font-size: 12px;
 }
 
+/* ═══ Creation examples ═══ */
+
+.onboarding-creation-examples {
+  display: flex;
+  gap: 10px;
+}
+
+.onboarding-creation-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: none;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+  font-family: inherit;
+  text-align: left;
+  opacity: 0.4;
+}
+
+.onboarding-creation-card[data-active="true"] {
+  opacity: 0.9;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.onboarding-creation-card:hover {
+  opacity: 0.7;
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.onboarding-creation-card[data-active="true"]:hover {
+  opacity: 1;
+}
+
+.onboarding-creation-card-title {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+}
+
+.onboarding-creation-card-desc {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.onboarding-creation-preview {
+  animation: momentFadeIn 0.4s ease-out forwards;
+}
+
+/* Mock dashboard */
+.onboarding-creation-mock-dashboard {
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 8px;
+  padding: 16px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.mock-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+
+.mock-dashboard-greeting {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--foreground);
+  opacity: 0.8;
+}
+
+.mock-dashboard-date {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.4;
+}
+
+.mock-dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mock-dashboard-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+}
+
+.mock-card-wide {
+  grid-column: 1 / -1;
+}
+
+.mock-card-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.35;
+}
+
+.mock-card-value {
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.8;
+}
+
+.mock-card-sub {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.4;
+}
+
+.mock-card-note {
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.6;
+  line-height: 1.5;
+}
+
+/* Mock self-modification */
+.onboarding-creation-mock-selfmod {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mock-selfmod-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.mock-selfmod-badge {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.35;
+}
+
+.mock-selfmod-name {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--foreground);
+  opacity: 0.8;
+}
+
+.mock-selfmod-desc {
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.5;
+  line-height: 1.4;
+}
+
+/* ═══ Personality preview ═══ */
+
+.onboarding-personality-preview {
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0.6;
+  line-height: 1.5;
+  margin: 0;
+  padding: 12px 16px;
+  border-left: 2px solid color-mix(in oklch, var(--foreground) 15%, transparent);
+  animation: momentFadeIn 0.3s ease-out forwards;
+}
+
+.onboarding-emote-preview {
+  display: inline-block;
+  height: 48px;
+  width: auto;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+/* ═══ Section divider ═══ */
+
+.onboarding-section-divider {
+  width: 100%;
+  height: 1px;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  margin: 4px 0;
+}
+
 /* ═══ Discovery (trust) ═══ */
 
 .onboarding-discovery {
@@ -381,6 +607,88 @@
 
 .onboarding-discovery[data-visible="true"] {
   pointer-events: auto;
+}
+
+.onboarding-discovery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onboarding-discovery-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  background: none;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 8px;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: opacity 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+  font-family: inherit;
+  text-align: left;
+  opacity: 0.4;
+}
+
+.onboarding-discovery-row[data-active="true"] {
+  opacity: 0.9;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.onboarding-discovery-row:hover {
+  opacity: 0.7;
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.onboarding-discovery-row[data-active="true"]:hover {
+  opacity: 1;
+}
+
+.onboarding-discovery-row-label {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+}
+
+.onboarding-discovery-row-desc {
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+  opacity: 0.6;
+  line-height: 1.4;
+}
+
+.onboarding-discovery-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 2px solid color-mix(in oklch, var(--foreground) 20%, transparent);
+  animation: momentFadeIn 0.3s ease-out forwards;
+}
+
+.onboarding-discovery-warning-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.45;
+}
+
+.onboarding-discovery-warning-text {
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0.5;
+  line-height: 1.5;
+  margin: 0;
 }
 
 /* FDA note */

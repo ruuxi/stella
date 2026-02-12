@@ -7,7 +7,6 @@ export type Phase =
   | "auth"
   | "intro"
   | "browser"
-  | "discovery"
   | "memory"
   | "creation"
   | "phone"
@@ -21,12 +20,12 @@ export const CENTER_PHASES = new Set<Phase>(["start", "auth", "intro"]);
 
 /** Phases that use split layout */
 export const SPLIT_PHASES = new Set<Phase>([
-  "browser", "discovery", "memory", "creation", "phone", "theme", "personality",
+  "browser", "memory", "creation", "phone", "theme", "personality",
 ]);
 
 /** Ordered split steps for navigation */
 export const SPLIT_STEP_ORDER: Phase[] = [
-  "browser", "discovery", "memory", "creation", "phone", "theme", "personality",
+  "browser", "memory", "creation", "phone", "theme", "personality",
 ];
 
 export type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
@@ -38,9 +37,9 @@ export const DISCOVERY_CATEGORIES: {
   defaultEnabled: boolean;
   requiresFDA: boolean;
 }[] = [
-  { id: "dev_environment", label: "Dev Environment", description: "IDE extensions, git config, dotfiles, runtimes", defaultEnabled: true, requiresFDA: false },
-  { id: "apps_system", label: "Apps & System", description: "App usage patterns, dock pins, filesystem signals", defaultEnabled: true, requiresFDA: true },
-  { id: "messages_notes", label: "Messages & Notes", description: "Communication patterns, note titles, calendar (metadata only)", defaultEnabled: false, requiresFDA: true },
+  { id: "dev_environment", label: "Your coding setup", description: "Tools you use, projects you work on, and how your environment is configured", defaultEnabled: true, requiresFDA: false },
+  { id: "apps_system", label: "Your apps and computer", description: "Which apps you use most, how your desktop is organized, and your workflow", defaultEnabled: true, requiresFDA: true },
+  { id: "messages_notes", label: "Your notes and calendar", description: "What you're working on, your schedule, and how you organize your thoughts (only titles and metadata, never content)", defaultEnabled: false, requiresFDA: true },
 ];
 
 export const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
