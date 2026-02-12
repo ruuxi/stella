@@ -615,180 +615,278 @@
   opacity: 0.5;
 }
 
-/* Self-mod mock window */
+/* Self-mod full app mock */
 
-.onboarding-selfmod-mock {
+.onboarding-selfmod-app-mock {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   animation: momentFadeIn 0.4s ease-out forwards;
 }
 
-.selfmod-mock-window {
+.selfmod-app {
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
 }
 
-.selfmod-mock-titlebar {
+.selfmod-app-titlebar {
   display: flex;
+  align-items: center;
   gap: 5px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
-.selfmod-mock-dot {
-  width: 7px;
-  height: 7px;
+.selfmod-app-dot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: color-mix(in oklch, var(--foreground) 15%, transparent);
 }
 
-.selfmod-mock-body {
-  display: flex;
-  min-height: 100px;
+.selfmod-app-title {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.2;
 }
 
-.selfmod-mock-sidebar {
-  width: 48px;
-  border-right: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+.selfmod-app-body {
+  display: flex;
+  height: 180px;
+}
+
+/* Sidebar */
+.selfmod-app-sidebar {
+  width: 36px;
+  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   padding: 8px 6px;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  transition: width 0.3s ease;
 }
 
-.selfmod-mock-sidebar-item {
-  height: 8px;
-  border-radius: 3px;
+.selfmod-app-sidebar--expanded {
+  width: 52px;
+}
+
+.selfmod-app-sidebar-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  flex-shrink: 0;
+}
+
+.selfmod-app-sidebar-icon[data-active="true"] {
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.selfmod-app-sidebar-divider {
+  width: 14px;
+  height: 1px;
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  margin: 2px 0;
 }
 
-.selfmod-mock-sidebar-item[data-active="true"] {
-  background: color-mix(in oklch, var(--foreground) 20%, transparent);
+.selfmod-app-new-indicator {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--foreground) 18%, transparent);
 }
 
-.selfmod-mock-sidebar-new {
-  position: relative;
+/* Chat area */
+.selfmod-app-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-.selfmod-mock-content {
+.selfmod-app-banner {
+  padding: 6px 12px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.selfmod-app-banner-text {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.selfmod-app-tabs {
+  display: flex;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.selfmod-app-tab {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--foreground);
+  opacity: 0.25;
+  letter-spacing: 0.03em;
+}
+
+.selfmod-app-tab[data-active="true"] {
+  opacity: 0.6;
+}
+
+.selfmod-app-messages {
   flex: 1;
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  overflow: hidden;
 }
 
-.selfmod-mock-change-badge {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--foreground);
-  opacity: 0.5;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  padding: 2px 6px;
-  border-radius: 3px;
-  width: fit-content;
-}
-
-.selfmod-mock-greeting {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--foreground);
-  opacity: 0.6;
-}
-
-.selfmod-mock-line {
-  height: 6px;
-  border-radius: 3px;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  width: 80%;
-}
-
-.selfmod-mock-line--short {
-  width: 50%;
-}
-
-.selfmod-mock-widget {
-  margin-top: 4px;
-  padding: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  border-radius: 6px;
+.selfmod-app-msg {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
+  max-width: 75%;
 }
 
-.selfmod-mock-widget-title {
-  font-size: 10px;
+.selfmod-app-msg--user {
+  align-self: flex-end;
+}
+
+.selfmod-app-msg--stella {
+  align-self: flex-start;
+}
+
+.selfmod-app-msg-line {
+  height: 5px;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.selfmod-app-msg--user .selfmod-app-msg-line {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.selfmod-app-composer {
+  padding: 6px 10px;
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.selfmod-app-composer--enhanced {
+  padding: 6px 10px 4px;
+}
+
+.selfmod-app-composer-input {
+  height: 20px;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.selfmod-app-composer-toolbar {
+  display: flex;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.selfmod-app-composer-tool {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+/* Canvas panel */
+.selfmod-app-canvas {
+  width: 110px;
+  border-left: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.3s ease;
+}
+
+.selfmod-app-canvas--wide {
+  width: 140px;
+}
+
+.selfmod-app-canvas-header {
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.selfmod-app-canvas-title {
+  font-size: 9px;
   font-weight: 500;
+  letter-spacing: 0.04em;
   color: var(--foreground);
   opacity: 0.4;
 }
 
-.selfmod-mock-widget-buttons {
-  display: flex;
-  gap: 4px;
+.selfmod-app-canvas-body {
+  flex: 1;
+  padding: 8px;
+  overflow: hidden;
 }
 
-.selfmod-mock-widget-btn {
+.selfmod-app-canvas-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.selfmod-app-canvas-action-btn {
   font-size: 9px;
   font-weight: 400;
   color: var(--foreground);
-  opacity: 0.5;
-  padding: 3px 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  border-radius: 4px;
+  opacity: 0.45;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 5px;
+  text-align: center;
 }
 
-/* Redesigned variant */
-
-.selfmod-mock-window--redesigned {
-  border-color: color-mix(in oklch, var(--foreground) 15%, transparent);
+.selfmod-app-canvas-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
 }
 
-.selfmod-mock-body--redesigned {
-  flex-direction: column;
-  padding: 10px 12px;
-  gap: 8px;
-}
-
-.selfmod-mock-topbar {
+.selfmod-app-canvas-widget {
+  padding: 5px 6px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-radius: 5px;
   display: flex;
-  gap: 12px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  flex-direction: column;
+  gap: 3px;
 }
 
-.selfmod-mock-topbar-item {
-  font-size: 10px;
-  font-weight: 400;
+.selfmod-app-canvas-widget--wide {
+  grid-column: 1 / -1;
+}
+
+.selfmod-app-canvas-widget-label {
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--foreground);
   opacity: 0.3;
 }
 
-.selfmod-mock-topbar-item[data-active="true"] {
-  opacity: 0.7;
-}
-
-.selfmod-mock-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.selfmod-mock-grid-card {
-  height: 32px;
-  border-radius: 5px;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-}
-
-.selfmod-mock-grid-card--wide {
-  grid-column: 1 / -1;
+.selfmod-app-canvas-widget-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
 .selfmod-mock-caption {
