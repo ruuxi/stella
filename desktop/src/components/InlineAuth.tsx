@@ -39,19 +39,19 @@ export function InlineAuth({ className }: InlineAuthProps) {
       {status === "sent" ? (
         <>
           <div className="onboarding-inline-auth-sent">
-            check your inbox or spam for your sign-in link
+            Check your inbox or spam for your sign-in link
           </div>
           <button
             type="button"
             className="onboarding-inline-auth-retry"
             onClick={() => { setStatus("idle"); setEmail(""); }}
           >
-            go back
+            Go Back
           </button>
         </>
       ) : (
         <>
-          <div className="onboarding-inline-auth-label">enter email to get started</div>
+          <div className="onboarding-inline-auth-label">Enter email to get started</div>
           <form className="onboarding-inline-auth-form" onSubmit={handleSubmit}>
             <input
               type="email"
@@ -67,11 +67,11 @@ export function InlineAuth({ className }: InlineAuthProps) {
               className="onboarding-inline-auth-submit"
               disabled={status === "sending"}
             >
-              {status === "sending" ? "sending..." : "send"}
+              {status === "sending" ? "Sending..." : "Send"}
             </button>
           </form>
           {status === "error" && (
-            <div className="onboarding-inline-auth-error">something went wrong, try again</div>
+            <div className="onboarding-inline-auth-error">Something went wrong, try again</div>
           )}
         </>
       )}
