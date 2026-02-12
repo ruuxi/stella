@@ -19,38 +19,36 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
 
   return (
     <div className="onboarding-discovery" data-visible={true}>
-      {DISCOVERY_CATEGORIES.map((cat) => (
-        <div key={cat.id} className="onboarding-discovery-card">
-          <div className="onboarding-discovery-card-text">
-            <div className="onboarding-discovery-card-title">{cat.label}</div>
-            <div className="onboarding-discovery-card-desc">{cat.description}</div>
-            {cat.requiresFDA && platform === "darwin" && (
-              <div className="onboarding-discovery-fda">requires full disk access</div>
-            )}
-          </div>
+      <div className="onboarding-pills">
+        {DISCOVERY_CATEGORIES.map((cat) => (
           <button
-            className="onboarding-discovery-toggle"
+            key={cat.id}
+            className="onboarding-pill"
             data-active={categoryStates[cat.id]}
             onClick={() => onToggleCategory(cat.id)}
+            title={cat.description}
           >
-            <span className="onboarding-discovery-toggle-thumb" />
+            {cat.label}
+          </button>
+        ))}
+      </div>
+      {hasFDACategories && platform === "darwin" && (
+        <div className="onboarding-fda-note">
+          <span>Some options require Full Disk Access</span>
+          <button
+            className="onboarding-fda-link"
+            onClick={() => window.electronAPI?.openFullDiskAccess?.()}
+          >
+            Open Preferences
           </button>
         </div>
-      ))}
-      {hasFDACategories && platform === "darwin" && (
-        <button
-          className="onboarding-discovery-fda-button"
-          onClick={() => window.electronAPI?.openFullDiskAccess?.()}
-        >
-          open system preferences
-        </button>
       )}
       <button
         className="onboarding-confirm"
         data-visible={true}
         onClick={onConfirm}
       >
-        continue
+        Continue
       </button>
     </div>
   );

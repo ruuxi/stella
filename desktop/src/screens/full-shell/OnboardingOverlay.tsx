@@ -1,5 +1,5 @@
 /**
- * Onboarding flow: creature animation, step1/step2, shown before first message.
+ * Onboarding flow: creature animation, auth → ripple → theme → trust → birth.
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -158,7 +158,6 @@ export function OnboardingView({
           onComplete={completeOnboarding}
           onAccept={startBirthAnimation}
           onInteract={triggerFlash}
-          onSignIn={onSignIn}
           onOpenThemePicker={handleOpenThemePicker}
           onConfirmTheme={handleConfirmTheme}
           onDiscoveryConfirm={onDiscoveryConfirm}
