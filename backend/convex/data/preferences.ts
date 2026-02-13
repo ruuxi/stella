@@ -217,6 +217,37 @@ export const clearModelOverride = mutation({
   },
 });
 
+const EXPRESSION_STYLE_KEY = "expression_style";
+
+export const setExpressionStyle = mutation({
+  args: {
+    style: v.union(v.literal("emoji"), v.literal("none")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const existing = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", EXPRESSION_STYLE_KEY))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        value: args.style,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("user_preferences", {
+        ownerId,
+        key: EXPRESSION_STYLE_KEY,
+        value: args.style,
+        updatedAt: Date.now(),
+      });
+    }
+    return null;
+  },
+});
+
 export const getPreferenceForOwner = internalQuery({
   args: {
     ownerId: v.string(),

@@ -201,6 +201,23 @@ export const buildSystemPrompt = async (
     }
   }
 
+  // Inject expression style preference for orchestrator
+  if (agentType === "orchestrator" && options?.ownerId) {
+    try {
+      const style = await ctx.runQuery(
+        internal.data.preferences.getPreferenceForOwner,
+        { ownerId: options.ownerId, key: "expression_style" },
+      );
+      if (style === "none") {
+        dynamicParts.push("The user prefers responses without emoji.");
+      } else if (style === "emoji") {
+        dynamicParts.push("The user prefers responses with emoji.");
+      }
+    } catch {
+      // Preference query failed — skip
+    }
+  }
+
   const maxTaskDepthValue = Number(agent.maxTaskDepth ?? 2);
   const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue > 0
     ? Math.floor(maxTaskDepthValue)
