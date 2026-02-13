@@ -60,7 +60,8 @@ export const getByCommandId = internalQuery({
 });
 
 /**
- * Bulk upsert commands from frontend sync.
+ * One-time bulk upsert of bundled commands.
+ * Short-circuits if any command already exists (already seeded).
  */
 export const upsertMany = mutation({
   args: {
@@ -76,35 +77,26 @@ export const upsertMany = mutation({
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
+    // Skip if already seeded
+    const first = await ctx.db
+      .query("commands")
+      .withIndex("by_enabled", (q) => q.eq("enabled", true))
+      .first();
+    if (first) return { upserted: 0 };
+
     let upserted = 0;
     const now = Date.now();
 
     for (const cmd of args.commands) {
-      const existing = await ctx.db
-        .query("commands")
-        .withIndex("by_command_id", (q) => q.eq("commandId", cmd.commandId))
-        .first();
-
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          name: cmd.name,
-          description: cmd.description,
-          pluginName: cmd.pluginName,
-          content: cmd.content,
-          enabled: true,
-          updatedAt: now,
-        });
-      } else {
-        await ctx.db.insert("commands", {
-          commandId: cmd.commandId,
-          name: cmd.name,
-          description: cmd.description,
-          pluginName: cmd.pluginName,
-          content: cmd.content,
-          enabled: true,
-          updatedAt: now,
-        });
-      }
+      await ctx.db.insert("commands", {
+        commandId: cmd.commandId,
+        name: cmd.name,
+        description: cmd.description,
+        pluginName: cmd.pluginName,
+        content: cmd.content,
+        enabled: true,
+        updatedAt: now,
+      });
       upserted++;
     }
 

@@ -39,4 +39,10 @@ describe("security regressions", () => {
     expect(source).toContain("const CORS_ALLOWED_ORIGINS");
     expect(source).toContain("rejectDisallowedCorsOrigin");
   });
+
+  test("commands upsertMany short-circuits when already seeded", () => {
+    const commandSource = readBackendFile("convex/data/commands.ts");
+    expect(commandSource).toMatch(/if \(first\) return \{ upserted: 0 \}/);
+  });
 });
+

@@ -461,57 +461,120 @@ export const enableSelectedSkills = internalMutation({
   },
   returns: v.object({ enabled: v.number(), disabled: v.number() }),
   handler: async (ctx, args) => {
+    const now = Date.now();
     let enabled = 0;
+    let disabled = 0;
     const selectedSet = new Set(args.skillIds);
 
-    // Enable selected skills
-    for (const skillId of args.skillIds) {
-      // Check for owner-scoped skill first
-      const ownerSkill = await ctx.db
+    const [ownerSkills, builtinSkills] = await Promise.all([
+      ctx.db
         .query("skills")
-        .withIndex("by_owner_and_skill_key", (q) =>
-          q.eq("ownerId", args.ownerId).eq("id", skillId),
-        )
-        .first();
+        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+        .order("desc")
+        .take(400),
+      ctx.db
+        .query("skills")
+        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .order("desc")
+        .take(400),
+    ]);
 
+    const ownerById = new Map(ownerSkills.map((skill) => [skill.id, skill]));
+    const builtinById = new Map(builtinSkills.map((skill) => [skill.id, skill]));
+
+    // Enable selected skills by creating/enabling owner-scoped rows.
+    for (const skillId of selectedSet) {
+      const ownerSkill = ownerById.get(skillId);
       if (ownerSkill) {
         if (!ownerSkill.enabled) {
-          await ctx.db.patch(ownerSkill._id, { enabled: true, updatedAt: Date.now() });
+          await ctx.db.patch(ownerSkill._id, { enabled: true, updatedAt: now });
         }
         enabled += 1;
         continue;
       }
 
-      // Check for builtin skill — create owner-scoped override
-      const builtinSkill = await ctx.db
-        .query("skills")
-        .withIndex("by_owner_and_skill_key", (q) =>
-          q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", skillId),
-        )
-        .first();
+      const builtinSkill = builtinById.get(skillId);
+      if (!builtinSkill) continue;
 
-      if (builtinSkill) {
-        // Builtin skills are already enabled by default; no override needed
-        enabled += 1;
-        continue;
-      }
+      const insertedId = await ctx.db.insert("skills", {
+        ownerId: args.ownerId,
+        id: builtinSkill.id,
+        name: builtinSkill.name,
+        description: builtinSkill.description,
+        markdown: builtinSkill.markdown,
+        agentTypes: builtinSkill.agentTypes,
+        toolsAllowlist: builtinSkill.toolsAllowlist,
+        tags: builtinSkill.tags,
+        execution: builtinSkill.execution,
+        requiresSecrets: builtinSkill.requiresSecrets,
+        publicIntegration: builtinSkill.publicIntegration,
+        secretMounts: builtinSkill.secretMounts,
+        version: builtinSkill.version,
+        source: builtinSkill.source,
+        enabled: true,
+        updatedAt: now,
+      });
+
+      ownerById.set(skillId, {
+        ...builtinSkill,
+        _id: insertedId,
+        ownerId: args.ownerId,
+        enabled: true,
+        updatedAt: now,
+      });
+      enabled += 1;
     }
 
-    // Disable owner-scoped skills not in the selected set
-    let disabled = 0;
-    const ownerSkills = await ctx.db
-      .query("skills")
-      .withIndex("by_owner_and_enabled", (q) =>
-        q.eq("ownerId", args.ownerId).eq("enabled", true),
-      )
-      .collect();
+    // Disable unselected builtin skills by creating/enforcing disabled owner overrides.
+    for (const builtinSkill of builtinById.values()) {
+      if (selectedSet.has(builtinSkill.id)) continue;
 
-    const now = Date.now();
-    for (const skill of ownerSkills) {
-      if (!selectedSet.has(skill.id)) {
-        await ctx.db.patch(skill._id, { enabled: false, updatedAt: now });
-        disabled += 1;
+      const ownerOverride = ownerById.get(builtinSkill.id);
+      if (ownerOverride) {
+        if (ownerOverride.enabled) {
+          await ctx.db.patch(ownerOverride._id, { enabled: false, updatedAt: now });
+          disabled += 1;
+        }
+        continue;
       }
+
+      const insertedId = await ctx.db.insert("skills", {
+        ownerId: args.ownerId,
+        id: builtinSkill.id,
+        name: builtinSkill.name,
+        description: builtinSkill.description,
+        markdown: builtinSkill.markdown,
+        agentTypes: builtinSkill.agentTypes,
+        toolsAllowlist: builtinSkill.toolsAllowlist,
+        tags: builtinSkill.tags,
+        execution: builtinSkill.execution,
+        requiresSecrets: builtinSkill.requiresSecrets,
+        publicIntegration: builtinSkill.publicIntegration,
+        secretMounts: builtinSkill.secretMounts,
+        version: builtinSkill.version,
+        source: builtinSkill.source,
+        enabled: false,
+        updatedAt: now,
+      });
+
+      ownerById.set(builtinSkill.id, {
+        ...builtinSkill,
+        _id: insertedId,
+        ownerId: args.ownerId,
+        enabled: false,
+        updatedAt: now,
+      });
+      disabled += 1;
+    }
+
+    // Disable owner-only skills that were not selected.
+    for (const ownerSkill of ownerById.values()) {
+      if (builtinById.has(ownerSkill.id)) continue;
+      if (selectedSet.has(ownerSkill.id)) continue;
+      if (!ownerSkill.enabled) continue;
+
+      await ctx.db.patch(ownerSkill._id, { enabled: false, updatedAt: now });
+      disabled += 1;
     }
 
     return { enabled, disabled };
@@ -532,3 +595,4 @@ export const ensureBuiltinSkills = internalMutation({
     return { ok: true };
   },
 });
+

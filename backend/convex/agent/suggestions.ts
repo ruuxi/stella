@@ -56,12 +56,10 @@ export const generateSuggestions = internalAction({
       if (!payload) continue;
 
       if (event.type === "user_message") {
-        const text =
-          typeof payload.text === "string" ? payload.text : "";
+        const text = typeof payload.text === "string" ? payload.text : "";
         if (text) messageParts.push(`User: ${text.slice(0, 500)}`);
       } else if (event.type === "assistant_message") {
-        const text =
-          typeof payload.text === "string" ? payload.text : "";
+        const text = typeof payload.text === "string" ? payload.text : "";
         if (text) messageParts.push(`Assistant: ${text.slice(0, 500)}`);
       }
     }
@@ -80,11 +78,7 @@ export const generateSuggestions = internalAction({
 
     // 5. Call lightweight LLM
     try {
-      const resolvedConfig = await resolveModelConfig(
-        ctx,
-        "suggestions",
-        args.ownerId,
-      );
+      const resolvedConfig = await resolveModelConfig(ctx, "suggestions", args.ownerId);
 
       const result = await generateText({
         ...resolvedConfig,
@@ -130,3 +124,4 @@ export const generateSuggestions = internalAction({
     return null;
   },
 });
+
