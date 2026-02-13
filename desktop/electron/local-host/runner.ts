@@ -355,8 +355,9 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
       }
 
       try {
-        const watcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
-          log(`File ${eventType}: ${filename} in ${path.basename(dir)}`);
+        const watcher = fs.watch(dir, { recursive: true }, (_eventType, filename) => {
+          if (syncPromise) return; // Ignore events triggered by our own sync
+          log(`File change: ${filename} in ${path.basename(dir)}`);
           scheduleSyncManifests();
         });
 
@@ -378,8 +379,9 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
       }
 
       try {
-        const watcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
-          log(`External skill ${eventType}: ${filename} in ${path.basename(dir)}`);
+        const watcher = fs.watch(dir, { recursive: true }, (_eventType, filename) => {
+          if (syncPromise) return; // Ignore events triggered by our own sync
+          log(`File change: ${filename} in ${path.basename(dir)}`);
           scheduleSyncManifests();
         });
 
@@ -665,11 +667,9 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
       }, DEFERRED_DELETE_SWEEP_INTERVAL_MS);
     }
 
-    // Initial sync on startup
-    void syncManifests();
-
-    // Start file watchers for manifest changes
-    startWatchers();
+    // Initial sync on startup, then start file watchers after sync completes
+    // (avoids watcher triggering on files the sync itself creates)
+    void syncManifests().then(() => startWatchers());
 
     // Start real-time subscription for tool requests (only if auth is ready)
     startSubscription();
