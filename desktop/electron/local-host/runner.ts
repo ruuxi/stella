@@ -3,6 +3,7 @@ import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import { syncExternalSkills, syncBundledSkills } from "./skill_import.js";
+import { syncBundledCommands } from "./command_sync.js";
 import { loadIdentityMap, depseudonymize } from "./identity_map.js";
 import { purgeExpiredDeferredDeletes } from "./deferred_delete.js";
 import type { IdentityMap } from "./discovery_types.js";
@@ -176,6 +177,23 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     return null;
   })();
 
+  // Bundled commands (shipped with the app)
+  // Dev: frontendRoot/resources/bundled-commands
+  // Prod: extraResources copied to process.resourcesPath/bundled-commands
+  const bundledCommandsPath = (() => {
+    if (frontendRoot) {
+      const devPath = path.join(frontendRoot, "resources", "bundled-commands");
+      if (fs.existsSync(devPath)) return devPath;
+    }
+    try {
+      const prodPath = path.join(process.resourcesPath, "bundled-commands");
+      if (fs.existsSync(prodPath)) return prodPath;
+    } catch {
+      // process.resourcesPath may not exist outside Electron
+    }
+    return null;
+  })();
+
   const toConvexName = (name: string) => {
     // Convex expects "module:function" identifiers, not dot-separated paths.
     const firstDot = name.indexOf(".");
@@ -250,6 +268,15 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             );
           } catch (error) {
             logError("Bundled skill import failed:", error);
+          }
+        }
+
+        // Import bundled commands (disabled by default, no LLM call needed)
+        if (bundledCommandsPath) {
+          try {
+            await syncBundledCommands(bundledCommandsPath, callMutation);
+          } catch (error) {
+            logError("Bundled command import failed:", error);
           }
         }
 

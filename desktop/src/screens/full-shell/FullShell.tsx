@@ -28,6 +28,7 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
+import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
 
 const StoreView = lazy(() => import("./StoreView"));
 const SettingsDialog = lazy(() => import("./SettingsView"));
@@ -235,6 +236,18 @@ export const FullShell = () => {
     setMessage("");
   }, [message, selectedText, chatContext, sendMessage]);
 
+  const handleCommandSelect = useCallback(
+    (suggestion: CommandSuggestion) => {
+      void sendMessage({
+        text: `Run the command "${suggestion.name}" (${suggestion.description}). Create a task for the general agent with command_id "${suggestion.commandId}", using the current or most recently used thread.`,
+        selectedText: null,
+        chatContext: null,
+        onClear: () => {},
+      });
+    },
+    [sendMessage],
+  );
+
   const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasWindowContext = Boolean(chatContext?.window);
@@ -320,6 +333,7 @@ export const FullShell = () => {
               onDiscoveryConfirm={handleDiscoveryConfirm}
               onSignIn={() => setAuthDialogOpen(true)}
               onDemoChange={handleDemoChange}
+              onCommandSelect={handleCommandSelect}
             />
             {canvasOpen && <CanvasPanel />}
             {!canvasOpen && (activeDemo || demoClosing) && <OnboardingCanvas activeDemo={activeDemo} />}
