@@ -28,6 +28,7 @@ import { resolveStellaHome } from './local-host/stella-home.js'
 import {
   collectBrowserData,
   coreMemoryExists,
+  detectPreferredBrowserProfile,
   writeCoreMemory,
   formatBrowserDataForSynthesis,
   type BrowserData,
@@ -1453,6 +1454,10 @@ app.whenReady().then(async () => {
     } catch (error) {
       return { ok: false, error: (error as Error).message }
     }
+  })
+
+  ipcMain.handle('browserData:detectPreferredBrowser', async () => {
+    return detectPreferredBrowserProfile()
   })
 
   // Comprehensive user signal collection (with category support)
