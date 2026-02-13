@@ -17,6 +17,8 @@ import {
   buildWelcomeMessagePrompt,
   SKILL_METADATA_PROMPT,
   buildSkillMetadataUserMessage,
+  SKILL_SELECTION_PROMPT,
+  buildSkillSelectionUserMessage,
 } from "./prompts/index";
 import { verifyDiscordSignature } from "./channels/discord";
 import { verifySlackSignature } from "./channels/slack";
@@ -738,6 +740,126 @@ http.route({
       console.error("[generate-skill-metadata] Error:", error);
       return withCors(
         new Response(`Metadata generation failed: ${(error as Error).message}`, { status: 500 }),
+        origin,
+      );
+    }
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Default Skill Selection Endpoint (onboarding)
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/select-default-skills",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+http.route({
+  path: "/api/select-default-skills",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    let body: { coreMemory?: string } | null = null;
+    try {
+      body = (await request.json()) as { coreMemory?: string };
+    } catch {
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
+    }
+
+    if (!body?.coreMemory) {
+      return withCors(
+        new Response("coreMemory is required", { status: 400 }),
+        origin,
+      );
+    }
+
+    const apiKey = process.env.AI_GATEWAY_API_KEY;
+    if (!apiKey) {
+      console.error("[select-default-skills] Missing AI_GATEWAY_API_KEY");
+      return withCors(
+        new Response("Server configuration error", { status: 500 }),
+        origin,
+      );
+    }
+
+    try {
+      // 1. Fetch all skills for this user
+      const catalog = await ctx.runQuery(
+        internal.data.skills.listAllSkillsForSelection,
+        { ownerId: identity.subject },
+      );
+
+      if (catalog.length === 0) {
+        return withCors(
+          new Response(JSON.stringify({ selectedSkillIds: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+          origin,
+        );
+      }
+
+      // 2. Call LLM to select relevant skills
+      const gateway = createGateway({ apiKey });
+      const userMessage = buildSkillSelectionUserMessage(body.coreMemory, catalog);
+
+      const result = await generateText({
+        model: gateway("openai/gpt-4o-mini"),
+        system: SKILL_SELECTION_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+        maxOutputTokens: 300,
+        temperature: 0.3,
+      });
+
+      const text = (result.text ?? "").trim();
+
+      // 3. Parse JSON array of skill IDs
+      let selectedSkillIds: string[] = [];
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          selectedSkillIds = parsed.filter(
+            (id): id is string => typeof id === "string" && id.trim().length > 0,
+          );
+        }
+      } catch {
+        console.error("[select-default-skills] Failed to parse LLM response:", text);
+      }
+
+      // 4. Enable selected skills
+      if (selectedSkillIds.length > 0) {
+        await ctx.runMutation(internal.data.skills.enableSelectedSkills, {
+          ownerId: identity.subject,
+          skillIds: selectedSkillIds,
+        });
+      }
+
+      return withCors(
+        new Response(JSON.stringify({ selectedSkillIds }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    } catch (error) {
+      console.error("[select-default-skills] Error:", error);
+      return withCors(
+        new Response(`Skill selection failed: ${(error as Error).message}`, { status: 500 }),
         origin,
       );
     }

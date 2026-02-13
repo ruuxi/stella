@@ -67,6 +67,7 @@ import type * as prompts_memory from "../prompts/memory.js";
 import type * as prompts_orchestrator from "../prompts/orchestrator.js";
 import type * as prompts_self_mod from "../prompts/self_mod.js";
 import type * as prompts_skill_metadata from "../prompts/skill_metadata.js";
+import type * as prompts_skill_selection from "../prompts/skill_selection.js";
 import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as scheduling_cron_jobs from "../scheduling/cron_jobs.js";
 import type * as scheduling_heartbeat from "../scheduling/heartbeat.js";
@@ -144,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "prompts/orchestrator": typeof prompts_orchestrator;
   "prompts/self_mod": typeof prompts_self_mod;
   "prompts/skill_metadata": typeof prompts_skill_metadata;
+  "prompts/skill_selection": typeof prompts_skill_selection;
   "prompts/synthesis": typeof prompts_synthesis;
   "scheduling/cron_jobs": typeof scheduling_cron_jobs;
   "scheduling/heartbeat": typeof scheduling_heartbeat;
