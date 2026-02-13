@@ -494,6 +494,11 @@ const getBrowserHistoryPaths = (browserType, platform) => {
         return [];
     return relativePaths.map((rel) => path.join(basePath, rel));
 };
+const parseProfileFromHistoryPath = (historyPath) => {
+    const segments = historyPath.split(/[\\/]+/).filter(Boolean);
+    const profile = segments.find((segment) => segment === "Default" || /^Profile \d+$/i.test(segment));
+    return profile ?? null;
+};
 // ---------------------------------------------------------------------------
 // Chrome Time Conversion
 // ---------------------------------------------------------------------------
@@ -703,7 +708,7 @@ const findBrowser = async () => {
             const historyPath = await getHistoryPathForBrowserProfile(browser, lastProfile);
             if (historyPath) {
                 log(`Found ${browser} history (currently running, ${lastProfile} profile) at: ${historyPath}`);
-                return { type: browser, historyPath };
+                return { type: browser, historyPath, profile: lastProfile };
             }
         }
         log("Running browsers detected but history not accessible, continuing...");
@@ -715,13 +720,13 @@ const findBrowser = async () => {
         const historyPath = await getHistoryPathForBrowserProfile(defaultBrowser, lastProfile);
         if (historyPath) {
             log(`Found ${defaultBrowser} history (OS default, ${lastProfile} profile) at: ${historyPath}`);
-            return { type: defaultBrowser, historyPath };
+            return { type: defaultBrowser, historyPath, profile: lastProfile };
         }
         if (lastProfile !== "Default") {
             const defaultHistoryPath = await getHistoryPathForBrowserProfile(defaultBrowser, "Default");
             if (defaultHistoryPath) {
                 log(`Found ${defaultBrowser} history (OS default, Default profile) at: ${defaultHistoryPath}`);
-                return { type: defaultBrowser, historyPath: defaultHistoryPath };
+                return { type: defaultBrowser, historyPath: defaultHistoryPath, profile: "Default" };
             }
         }
         log(`OS default browser ${defaultBrowser} detected but history not accessible, falling back...`);
@@ -734,7 +739,11 @@ const findBrowser = async () => {
     const mostRecent = await findMostRecentlyModifiedBrowser();
     if (mostRecent) {
         log(`Using most recently modified: ${mostRecent.type} at ${mostRecent.historyPath}`);
-        return { type: mostRecent.type, historyPath: mostRecent.historyPath };
+        return {
+            type: mostRecent.type,
+            historyPath: mostRecent.historyPath,
+            profile: parseProfileFromHistoryPath(mostRecent.historyPath),
+        };
     }
     // Step 4: Check all browsers in priority order (exhaustive search)
     log("Most recent detection failed, checking all browsers in priority order...");
@@ -744,7 +753,11 @@ const findBrowser = async () => {
             try {
                 await fs.access(historyPath);
                 log(`Found ${config.type} history at: ${historyPath}`);
-                return { type: config.type, historyPath };
+                return {
+                    type: config.type,
+                    historyPath,
+                    profile: parseProfileFromHistoryPath(historyPath),
+                };
             }
             catch {
                 continue;
@@ -1017,18 +1030,6 @@ export const writeCoreMemory = async (StellaHome, content) => {
     await fs.writeFile(coreMemoryPath, content, "utf-8");
     log("Wrote CORE_MEMORY.MD");
 };
-/**
- * Read core memory profile from disk
- */
-export const readCoreMemory = async (StellaHome) => {
-    const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
-    try {
-        return await fs.readFile(coreMemoryPath, "utf-8");
-    }
-    catch {
-        return null;
-    }
-};
 const formatDomainList = (domains) => domains.map((d) => `${d.domain} (${d.visits})`).join("\n");
 /**
  * Format browser data for LLM synthesis input
@@ -1053,4 +1054,14 @@ export const formatBrowserDataForSynthesis = (data) => {
         }
     }
     return sections.join("\n");
+};
+export const detectPreferredBrowserProfile = async () => {
+    const browser = await findBrowser();
+    if (!browser) {
+        return { browser: null, profile: null };
+    }
+    return {
+        browser: browser.type,
+        profile: browser.profile,
+    };
 };
