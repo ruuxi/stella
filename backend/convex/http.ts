@@ -392,54 +392,32 @@ http.route({
           });
         }
 
-        // Track cumulative token usage on conversation
+        // Track cumulative token usage on conversation.
         const usageTotals = totalUsage ?? usage;
         const totalTokens = usageTotals?.totalTokens ?? 0;
+        let nextTokenCount = conversation.tokenCount ?? 0;
+
         if (totalTokens > 0) {
           await ctx.runMutation(internal.conversations.patchTokenCount, {
             conversationId,
             tokenDelta: totalTokens,
           });
+          nextTokenCount += totalTokens;
         }
 
-        // Check if current context size exceeds 50k input tokens.
-        // Use the larger of last-step vs total usage for safety.
-        const inputTokens = Math.max(usage?.inputTokens ?? 0, totalUsage?.inputTokens ?? 0);
-        if (inputTokens > 50_000) {
-          const oldestHistoryTimestamp =
-            historyEvents.length > 0
-              ? historyEvents[0]?.timestamp ?? Date.now()
-              : Date.now();
+        // 20K fallback trigger: extract from unprocessed conversation window.
+        const extractionBase = conversation.lastExtractionTokenCount ?? 0;
+        const tokensSinceExtraction = Math.max(0, nextTokenCount - extractionBase);
+        if (tokensSinceExtraction >= 20_000) {
           try {
-            const olderEvents = await ctx.runQuery(
-              internal.events.listOlderMessages,
-              {
-                conversationId,
-                beforeTimestamp: oldestHistoryTimestamp,
-                // Skip events already ingested in a previous run
-                afterTimestamp: conversation.lastIngestedAt ?? undefined,
-                limit: 50,
-              },
-            );
-            if (olderEvents.length > 0) {
-              const latestTimestamp = olderEvents[olderEvents.length - 1]?.timestamp ?? Date.now();
-              // Schedule ingestion as a separate job so it runs independently
-              await ctx.scheduler.runAfter(0, internal.data.memory.ingestSummary, {
-                conversationId,
-                ownerId: conversation.ownerId,
-                ingestedThroughTimestamp: latestTimestamp,
-                events: olderEvents.map((e: any) => ({
-                  type: e.type as string,
-                  text:
-                    (e.payload &&
-                      typeof e.payload === "object" &&
-                      (e.payload as { text?: string }).text) ??
-                    "",
-                })),
-              });
-            }
+            await ctx.scheduler.runAfter(0, internal.data.memory_architecture.extractConversationWindow, {
+              conversationId,
+              ownerId: conversation.ownerId,
+              trigger: "token_fallback",
+              windowEnd: Date.now(),
+            });
           } catch {
-            // Ingestion failure should not affect the chat response
+            // Extraction failure should not affect the chat response.
           }
         }
       },
@@ -1663,3 +1641,5 @@ http.route({
 });
 
 export default http;
+
+

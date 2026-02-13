@@ -184,7 +184,7 @@ const createRecallMemoriesTool = (ctx: ActionCtx, options: ToolOptions) =>
   tool({
     description:
       "Look up relevant memories from past conversations.\n\n" +
-      "Provide 1-3 category/subcategory pairs from the Memory Categories tree in your system prompt, " +
+      "Provide 3-5 category/subcategory pairs from the Memory Categories tree when possible, " +
       "plus a natural language query. Returns a synthesized context summary.\n\n" +
       "Use when:\n" +
       "- The user references something from a previous conversation (\"remember when...\", \"like last time\").\n" +
@@ -198,7 +198,7 @@ const createRecallMemoriesTool = (ctx: ActionCtx, options: ToolOptions) =>
       categories: z.array(z.object({
         category: z.string().describe("Memory category (e.g. \"preferences\", \"projects\")"),
         subcategory: z.string().describe("Memory subcategory (e.g. \"coding\", \"setup\")"),
-      })).min(1).max(3).describe("1-3 category/subcategory pairs to search"),
+      })).min(1).max(5).describe("1-5 category/subcategory pairs to search (prefer 3-5)"),
       query: z.string().min(1).describe("Natural language query describing what you need"),
     }),
     execute: async (args) => {
@@ -249,3 +249,4 @@ const createSaveMemoryTool = (ctx: ActionCtx, options: ToolOptions) =>
       }
     },
   });
+

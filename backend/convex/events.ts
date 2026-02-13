@@ -119,6 +119,49 @@ export const listOlderMessages = internalQuery({
   },
 });
 
+
+export const listMessagesInWindow = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    startTimestamp: v.number(),
+    endTimestamp: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    if (args.endTimestamp <= args.startTimestamp) {
+      return [];
+    }
+
+    const requestedLimit = args.limit ?? 400;
+    const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 2000);
+
+    const types = ["user_message", "assistant_message", "task_completed"] as const;
+    const perType = await Promise.all(
+      types.map((type) =>
+        ctx.db
+          .query("events")
+          .withIndex("by_conversation_type", (q) =>
+            q
+              .eq("conversationId", args.conversationId)
+              .eq("type", type)
+              .gt("timestamp", args.startTimestamp)
+              .lte("timestamp", args.endTimestamp),
+          )
+          .order("asc")
+          .take(limit),
+      ),
+    );
+
+    return perType
+      .flat()
+      .sort(
+        (a, b) =>
+          a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
+      )
+      .slice(0, limit);
+  },
+});
 export const getById = internalQuery({
   args: { id: v.id("events") },
   returns: v.union(eventValidator, v.null()),
@@ -658,3 +701,4 @@ export const listToolRequestsForDevice = query({
     };
   },
 });
+

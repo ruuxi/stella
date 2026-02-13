@@ -36,7 +36,6 @@ const factExtractionResultValidator = v.object({
   facts: v.array(memoryFactValidator),
   parseOk: v.boolean(),
 });
-
 // ---------------------------------------------------------------------------
 // Cheap LLM helper (for fact extraction, dedup, decay, recall, save)
 // Uses the AI SDK generateText, same provider routing as streamText.
@@ -444,7 +443,14 @@ export const recallMemories = internalAction({
     try {
       const parsed = JSON.parse(response.trim());
       const usedIds: string[] = Array.isArray(parsed.usedIds) ? parsed.usedIds : [];
-      const context: string = typeof parsed.context === "string" ? parsed.context : response;
+      const context = parsed.context;
+
+      // Null context means "nothing relevant" — return empty signal
+      if (context === null || context === undefined) {
+        return "";
+      }
+
+      const contextStr: string = typeof context === "string" ? context : response;
 
       const validIds = usedIds
         .map((id) => allMemories.find((m) => String(m._id) === id)?._id)
@@ -456,7 +462,7 @@ export const recallMemories = internalAction({
         });
       }
 
-      return context;
+      return contextStr;
     } catch {
       // LLM didn't return valid JSON — return raw text
       return response;
@@ -646,7 +652,7 @@ export const decayMemories = internalAction({
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const stale = await ctx.runQuery(internal.data.memory.listStaleMemories, {
       beforeTimestamp: sevenDaysAgo,
-      limit: 50,
+      limit: 200,
     });
 
     for (const memory of stale) {
@@ -799,7 +805,11 @@ export const seedFromDiscovery = internalAction({
       }
     }
 
+    await ctx.runAction(internal.data.memory_architecture.enforceGrowthLimitsForOwner, {
+      ownerId: args.ownerId,
+    });
     console.log("[memory] seedFromDiscovery: complete");
     return null;
   },
 });
+

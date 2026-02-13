@@ -44,6 +44,7 @@ import type * as data_attachments from "../data/attachments.js";
 import type * as data_canvas_states from "../data/canvas_states.js";
 import type * as data_integrations from "../data/integrations.js";
 import type * as data_memory from "../data/memory.js";
+import type * as data_memory_architecture from "../data/memory_architecture.js";
 import type * as data_preferences from "../data/preferences.js";
 import type * as data_secrets from "../data/secrets.js";
 import type * as data_secrets_crypto from "../data/secrets_crypto.js";
@@ -120,6 +121,7 @@ declare const fullApi: ApiFromModules<{
   "data/canvas_states": typeof data_canvas_states;
   "data/integrations": typeof data_integrations;
   "data/memory": typeof data_memory;
+  "data/memory_architecture": typeof data_memory_architecture;
   "data/preferences": typeof data_preferences;
   "data/secrets": typeof data_secrets;
   "data/secrets_crypto": typeof data_secrets_crypto;

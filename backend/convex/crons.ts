@@ -8,6 +8,9 @@ crons.interval("heartbeat tick", { minutes: 1 }, internal.scheduling.heartbeat.t
 crons.interval("cron jobs tick", { minutes: 1 }, internal.scheduling.cron_jobs.tick);
 crons.interval("bridge wake tick", { minutes: 1 }, internal.channels.bridge.bridgeWakeTick);
 crons.interval("device presence sweep", { minutes: 2 }, internal.agent.device_resolver.markStaleOffline);
+crons.interval("memory consolidation weekly", { hours: 24 * 7 }, internal.data.memory_architecture.weeklyConsolidation);
+crons.interval("thread lifecycle sweep", { hours: 24 }, internal.data.threads.sweepThreadLifecycle, {});
+
 crons.daily(
   "cleanup inactive cloud devices",
   { hourUTC: 5, minuteUTC: 0 },
@@ -16,3 +19,4 @@ crons.daily(
 );
 
 export default crons;
+

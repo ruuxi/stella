@@ -12,6 +12,8 @@ const conversationValidator = v.object({
   updatedAt: v.number(),
   tokenCount: v.optional(v.number()),
   lastIngestedAt: v.optional(v.number()),
+  lastExtractionAt: v.optional(v.number()),
+  lastExtractionTokenCount: v.optional(v.number()),
 });
 
 export const getById = internalQuery({
@@ -114,3 +116,33 @@ export const patchLastIngestedAt = internalMutation({
     return null;
   },
 });
+
+export const patchExtractionCursor = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    lastExtractionAt: v.number(),
+    lastExtractionTokenCount: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) {
+      return null;
+    }
+
+    const prevTime = conversation.lastExtractionAt ?? 0;
+    const nextTime = Math.max(prevTime, args.lastExtractionAt);
+    const nextTokenCount = args.lastExtractionTokenCount ?? conversation.tokenCount ?? conversation.lastExtractionTokenCount ?? 0;
+
+    if (nextTime === prevTime && nextTokenCount === (conversation.lastExtractionTokenCount ?? 0)) {
+      return null;
+    }
+
+    await ctx.db.patch(args.conversationId, {
+      lastExtractionAt: nextTime,
+      lastExtractionTokenCount: nextTokenCount,
+    });
+    return null;
+  },
+});
+
