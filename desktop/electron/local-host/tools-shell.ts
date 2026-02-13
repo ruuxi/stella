@@ -4,6 +4,7 @@
 
 import { spawn } from "child_process";
 import { existsSync } from "fs";
+import path from "path";
 import { fileURLToPath } from "url";
 import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord } from "./tools-types.js";
 import { removeSecretFile, truncate, writeSecretFile } from "./tools-utils.js";
@@ -298,12 +299,18 @@ export const handleSkillBash = async (
 
   const skill = state.skillCache.find((s) => s.id === skillId);
   if (!skill || !skill.secretMounts) {
+    // Even without secretMounts, default cwd to skill directory for script path resolution
+    if (skill?.filePath && !args.working_directory) {
+      args = { ...args, working_directory: path.dirname(skill.filePath) };
+    }
     return handleBash(state, args);
   }
 
   const command = String(args.command ?? "");
   const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
-  const cwd = String(args.working_directory ?? process.cwd());
+  // Default cwd to skill directory so relative script paths (e.g. scripts/...) resolve correctly
+  const skillDir = skill.filePath ? path.dirname(skill.filePath) : undefined;
+  const cwd = String(args.working_directory ?? skillDir ?? process.cwd());
   const runInBackground = Boolean(args.run_in_background ?? false);
 
   const envOverrides: Record<string, string> = {};
