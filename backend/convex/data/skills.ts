@@ -459,10 +459,12 @@ export const enableSelectedSkills = internalMutation({
     ownerId: v.string(),
     skillIds: v.array(v.string()),
   },
-  returns: v.object({ enabled: v.number() }),
+  returns: v.object({ enabled: v.number(), disabled: v.number() }),
   handler: async (ctx, args) => {
     let enabled = 0;
+    const selectedSet = new Set(args.skillIds);
 
+    // Enable selected skills
     for (const skillId of args.skillIds) {
       // Check for owner-scoped skill first
       const ownerSkill = await ctx.db
@@ -495,7 +497,24 @@ export const enableSelectedSkills = internalMutation({
       }
     }
 
-    return { enabled };
+    // Disable owner-scoped skills not in the selected set
+    let disabled = 0;
+    const ownerSkills = await ctx.db
+      .query("skills")
+      .withIndex("by_owner_and_enabled", (q) =>
+        q.eq("ownerId", args.ownerId).eq("enabled", true),
+      )
+      .collect();
+
+    const now = Date.now();
+    for (const skill of ownerSkills) {
+      if (!selectedSet.has(skill.id)) {
+        await ctx.db.patch(skill._id, { enabled: false, updatedAt: now });
+        disabled += 1;
+      }
+    }
+
+    return { enabled, disabled };
   },
 });
 

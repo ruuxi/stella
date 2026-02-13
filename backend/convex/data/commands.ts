@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "../_generated/server";
+import { mutation, internalQuery } from "../_generated/server";
 
 /**
  * List enabled commands (catalog view: id, name, description, plugin).
@@ -62,7 +62,7 @@ export const getByCommandId = internalQuery({
 /**
  * Bulk upsert commands from frontend sync.
  */
-export const upsertMany = internalMutation({
+export const upsertMany = mutation({
   args: {
     commands: v.array(
       v.object({
