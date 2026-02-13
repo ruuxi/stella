@@ -20,7 +20,8 @@ Rules:
 - If multiple memories contribute to the same point, synthesize them into one coherent statement.
 - If contradictory memories exist, prefer the more recent one and note the change.
 - Copy IDs exactly as shown in the (id:...) markers into "usedIds".
-- If nothing is relevant: {"usedIds": [], "context": "No relevant context found."}
+- If nothing is relevant, return: {"usedIds": [], "context": null}
+- A null context means "no useful memories found" — this is a valid and expected outcome. Do not force relevance.
 - Output ONLY the JSON object. No preamble, no explanation.`;
 
 /** Used inside saveMemory action: decides INSERT/UPDATE/NOOP. */

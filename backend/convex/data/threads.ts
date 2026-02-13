@@ -17,6 +17,49 @@ import {
 const MAX_THREADS_PER_CONVERSATION = 16;
 const MAX_CONTENT_LENGTH = 500_000;
 const MIN_MESSAGES_FOR_COMPACTION = 6;
+const THREAD_SWEEP_BATCH_SIZE = 200;
+
+export const THREAD_IDLE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+export const THREAD_ARCHIVE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+type ThreadLifecycleStatus = "active" | "idle" | "archived";
+
+const normalizeLifecycleStatus = (status: string): ThreadLifecycleStatus =>
+  status === "idle" || status === "archived" ? status : "active";
+
+const threadStatusRank = (status: string): number => {
+  switch (normalizeLifecycleStatus(status)) {
+    case "active":
+      return 0;
+    case "idle":
+      return 1;
+    case "archived":
+      return 2;
+  }
+};
+
+export const deriveThreadLifecycleStatus = (args: {
+  status: string;
+  lastUsedAt: number;
+  now: number;
+  idleAfterMs?: number;
+  archiveAfterMs?: number;
+}): ThreadLifecycleStatus => {
+  const idleAfterMs = args.idleAfterMs ?? THREAD_IDLE_AFTER_MS;
+  const archiveAfterMs = args.archiveAfterMs ?? THREAD_ARCHIVE_AFTER_MS;
+  const current = normalizeLifecycleStatus(args.status);
+
+  if (current === "archived") {
+    return "archived";
+  }
+  if (args.now - args.lastUsedAt >= archiveAfterMs) {
+    return "archived";
+  }
+  if (args.now - args.lastUsedAt >= idleAfterMs) {
+    return "idle";
+  }
+  return "active";
+};
 
 const THREAD_COMPACTION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
@@ -86,6 +129,7 @@ const threadValidator = v.object({
   totalTokenEstimate: v.number(),
   createdAt: v.number(),
   lastUsedAt: v.number(),
+  resurfacedAt: v.optional(v.number()),
   closedAt: v.optional(v.number()),
 });
 
@@ -137,14 +181,14 @@ export const createThread = internalMutation({
       const oldest = sorted[0];
       if (oldest) {
         await ctx.db.patch(oldest._id, {
-          status: "closed",
+          status: "archived",
           closedAt: Date.now(),
         });
       }
     }
 
     const now = Date.now();
-    return await ctx.db.insert("threads", {
+    const threadId = await ctx.db.insert("threads", {
       conversationId: args.conversationId,
       name: args.name,
       status: "active",
@@ -153,6 +197,18 @@ export const createThread = internalMutation({
       createdAt: now,
       lastUsedAt: now,
     });
+
+    const conversation = await ctx.db.get(args.conversationId);
+    if (conversation) {
+      await ctx.scheduler.runAfter(0, internal.data.memory_architecture.extractConversationWindow, {
+        conversationId: args.conversationId,
+        ownerId: conversation.ownerId,
+        trigger: "new_thread",
+        windowEnd: now,
+      });
+    }
+
+    return threadId;
   },
 });
 
@@ -167,12 +223,25 @@ export const getThreadByName = internalQuery({
   },
   returns: v.union(threadValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db
+    const matches = await ctx.db
       .query("threads")
       .withIndex("by_conversation_name", (q) =>
         q.eq("conversationId", args.conversationId).eq("name", args.name),
       )
-      .first();
+      .collect();
+
+    if (matches.length === 0) {
+      return null;
+    }
+
+    matches.sort(
+      (a, b) =>
+        threadStatusRank(a.status) - threadStatusRank(b.status) ||
+        b.lastUsedAt - a.lastUsedAt ||
+        String(a._id).localeCompare(String(b._id)),
+    );
+
+    return matches[0] ?? null;
   },
 });
 
@@ -222,10 +291,46 @@ export const touchThread = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const now = Date.now();
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) return null;
+
     await ctx.db.patch(args.threadId, {
-      lastUsedAt: Date.now(),
+      lastUsedAt: now,
+      ...(thread.status !== "active"
+        ? {
+            status: "active",
+            resurfacedAt: now,
+          }
+        : {}),
     });
     return null;
+  },
+});
+
+export const activateThread = internalMutation({
+  args: {
+    threadId: v.id("threads"),
+  },
+  returns: v.union(threadValidator, v.null()),
+  handler: async (ctx, args) => {
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) {
+      return null;
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.threadId, {
+      lastUsedAt: now,
+      ...(thread.status !== "active"
+        ? {
+            status: "active",
+            resurfacedAt: now,
+          }
+        : {}),
+    });
+
+    return await ctx.db.get(args.threadId);
   },
 });
 
@@ -241,7 +346,7 @@ export const closeThread = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     await ctx.db.patch(args.threadId, {
-      status: "closed",
+      status: "archived",
       closedAt: now,
     });
     return null;
@@ -324,6 +429,12 @@ export const saveThreadMessages = internalMutation({
       messageCount: thread.messageCount + args.messages.length,
       totalTokenEstimate: thread.totalTokenEstimate + addedTokens,
       lastUsedAt: now,
+      ...(thread.status !== "active"
+        ? {
+            status: "active",
+            resurfacedAt: now,
+          }
+        : {}),
     });
 
     return null;
@@ -379,7 +490,7 @@ export const evictOldestThread = internalMutation({
 
     if (oldest) {
       await ctx.db.patch(oldest._id, {
-        status: "closed",
+        status: "archived",
         closedAt: Date.now(),
       });
     }
@@ -389,7 +500,7 @@ export const evictOldestThread = internalMutation({
 });
 
 // ---------------------------------------------------------------------------
-// compactThread (internal action — uses LLM to summarize old messages)
+// compactThread (internal action - uses LLM to summarize old messages)
 // ---------------------------------------------------------------------------
 
 export const compactThread = internalAction({
@@ -509,6 +620,23 @@ export const compactThread = internalAction({
       totalTokenEstimate: remainingTokens,
     });
 
+    const conversation = await ctx.runQuery(internal.conversations.getById, {
+      id: thread.conversationId,
+    });
+    if (conversation) {
+      const windowEnd = oldMessages[oldMessages.length - 1]?.createdAt ?? Date.now();
+      await ctx.scheduler.runAfter(0, internal.data.memory_architecture.extractThreadCompactionWindow, {
+        conversationId: thread.conversationId,
+        ownerId: conversation.ownerId,
+        windowEnd,
+        events: oldMessages.map((message) => ({
+          type: `thread_${message.role}`,
+          text: message.content,
+          timestamp: message.createdAt,
+        })),
+      });
+    }
+
     return null;
   },
 });
@@ -530,7 +658,74 @@ export const patchThreadAfterCompaction = internalMutation({
       summary: args.summary,
       messageCount: args.messageCount,
       totalTokenEstimate: args.totalTokenEstimate,
+      lastUsedAt: Date.now(),
     });
     return null;
   },
 });
+
+export const sweepThreadLifecycle = internalMutation({
+  args: {
+    now: v.optional(v.number()),
+  },
+  returns: v.object({
+    idled: v.number(),
+    archived: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const idleCutoff = now - THREAD_IDLE_AFTER_MS;
+    const archiveCutoff = now - THREAD_ARCHIVE_AFTER_MS;
+
+    const activeCandidates = await ctx.db
+      .query("threads")
+      .withIndex("by_status_last_used", (q) =>
+        q.eq("status", "active").lt("lastUsedAt", idleCutoff),
+      )
+      .take(THREAD_SWEEP_BATCH_SIZE);
+
+    let idled = 0;
+    for (const thread of activeCandidates) {
+      const nextStatus = deriveThreadLifecycleStatus({
+        status: thread.status,
+        lastUsedAt: thread.lastUsedAt,
+        now,
+      });
+      if (nextStatus === "idle") {
+        await ctx.db.patch(thread._id, { status: "idle" });
+        idled += 1;
+      } else if (nextStatus === "archived") {
+        await ctx.db.patch(thread._id, {
+          status: "archived",
+          closedAt: now,
+        });
+      }
+    }
+
+    const idleCandidates = await ctx.db
+      .query("threads")
+      .withIndex("by_status_last_used", (q) =>
+        q.eq("status", "idle").lt("lastUsedAt", archiveCutoff),
+      )
+      .take(THREAD_SWEEP_BATCH_SIZE);
+
+    let archived = 0;
+    for (const thread of idleCandidates) {
+      const nextStatus = deriveThreadLifecycleStatus({
+        status: thread.status,
+        lastUsedAt: thread.lastUsedAt,
+        now,
+      });
+      if (nextStatus === "archived") {
+        await ctx.db.patch(thread._id, {
+          status: "archived",
+          closedAt: now,
+        });
+        archived += 1;
+      }
+    }
+
+    return { idled, archived };
+  },
+});
+

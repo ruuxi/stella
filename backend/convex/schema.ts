@@ -62,6 +62,8 @@ export default defineSchema({
     updatedAt: v.number(),
     tokenCount: v.optional(v.number()),
     lastIngestedAt: v.optional(v.number()),
+    lastExtractionAt: v.optional(v.number()),
+    lastExtractionTokenCount: v.optional(v.number()),
   })
     .index("by_owner_default", ["ownerId", "isDefault"])
     .index("by_owner_updated", ["ownerId", "updatedAt"]),
@@ -243,11 +245,13 @@ export default defineSchema({
     totalTokenEstimate: v.number(),
     createdAt: v.number(),
     lastUsedAt: v.number(),
+    resurfacedAt: v.optional(v.number()),
     closedAt: v.optional(v.number()),
   })
     .index("by_conversation_status", ["conversationId", "status", "lastUsedAt"])
     .index("by_conversation_name", ["conversationId", "name"])
-    .index("by_conversation_last_used", ["conversationId", "lastUsedAt"]),
+    .index("by_conversation_last_used", ["conversationId", "lastUsedAt"])
+    .index("by_status_last_used", ["status", "lastUsedAt"]),
   thread_messages: defineTable({
     threadId: v.id("threads"),
     ordinal: v.number(),
@@ -270,7 +274,24 @@ export default defineSchema({
     decay: v.number(),
   })
     .index("by_owner_category", ["ownerId", "category", "subcategory"])
+    .index("by_owner_accessed", ["ownerId", "accessedAt"])
     .index("by_decay", ["decay", "accessedAt"]),
+  memory_extraction_batches: defineTable({
+    ownerId: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    trigger: v.string(),
+    windowStart: v.number(),
+    windowEnd: v.number(),
+    snapshot: v.array(v.object({
+      category: v.string(),
+      subcategory: v.string(),
+      content: v.string(),
+      memoryId: v.optional(v.id("memories")),
+    })),
+    createdAt: v.number(),
+  })
+    .index("by_owner_created", ["ownerId", "createdAt"])
+    .index("by_owner_conversation_created", ["ownerId", "conversationId", "createdAt"]),
   heartbeat_configs: defineTable({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
@@ -450,3 +471,4 @@ export default defineSchema({
     .index("by_owner_updated", ["ownerId", "updatedAt"])
     .index("by_next_run", ["nextRunAtMs", "ownerId"]),
 });
+

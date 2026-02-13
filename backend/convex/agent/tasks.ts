@@ -1425,22 +1425,25 @@ export const runSubagent = internalAction({
 
     if (threadSupported) {
       if (args.threadId) {
-        // Verify thread exists
-        const thread = await ctx.runQuery(internal.data.threads.getThreadById, {
+        // Verify thread exists and reactivate if it was idle/archived.
+        const activated = await ctx.runMutation(internal.data.threads.activateThread, {
           threadId: args.threadId as Id<"threads">,
         });
-        if (thread && thread.status === "active") {
-          resolvedThreadId = thread._id;
+        if (activated) {
+          resolvedThreadId = activated._id;
         }
-        // If thread not found or closed, proceed without thread context
+        // If thread not found, proceed without thread context.
       } else if (args.threadName) {
-        // Look up existing active thread by name, or create new one
+        // Look up existing thread by name and reactivate it, or create new one.
         const existing = await ctx.runQuery(internal.data.threads.getThreadByName, {
           conversationId: args.conversationId,
           name: args.threadName,
         });
-        if (existing && existing.status === "active") {
-          resolvedThreadId = existing._id;
+        if (existing) {
+          const activated = await ctx.runMutation(internal.data.threads.activateThread, {
+            threadId: existing._id,
+          });
+          resolvedThreadId = activated?._id;
         } else {
           resolvedThreadId = await ctx.runMutation(internal.data.threads.createThread, {
             conversationId: args.conversationId,
