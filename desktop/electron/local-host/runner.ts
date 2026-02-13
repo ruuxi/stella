@@ -333,18 +333,12 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
   };
 
   const startWatchers = () => {
-    // Watch internal Stella directories
+    // Only watch ~/.stella/skills and ~/.stella/agents for runtime changes.
+    // External sources (.claude, .agents) and bundled skills are one-time imports
+    // handled by syncManifests — no need to watch them.
     const watchDirs = [skillsPath, agentsPath];
 
-    // Also watch external skill sources and bundled skills (if they exist)
-    const externalDirs = [
-      claudeSkillsPath,
-      agentsSkillsPath,
-      ...(bundledSkillsPath ? [bundledSkillsPath] : []),
-    ];
-
     for (const dir of watchDirs) {
-      // Ensure directory exists before watching
       if (!fs.existsSync(dir)) {
         try {
           fs.mkdirSync(dir, { recursive: true });
@@ -369,30 +363,6 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
         log(`Watching for changes: ${dir}`);
       } catch (error) {
         logError(`Failed to watch directory ${dir}:`, error);
-      }
-    }
-
-    // Watch external skill directories (don't create them if missing)
-    for (const dir of externalDirs) {
-      if (!fs.existsSync(dir)) {
-        continue;
-      }
-
-      try {
-        const watcher = fs.watch(dir, { recursive: true }, (_eventType, filename) => {
-          if (syncPromise) return; // Ignore events triggered by our own sync
-          log(`File change: ${filename} in ${path.basename(dir)}`);
-          scheduleSyncManifests();
-        });
-
-        watcher.on("error", (error) => {
-          logError(`Watcher error for external ${dir}:`, error);
-        });
-
-        watchers.push(watcher);
-        log(`Watching external skills: ${dir}`);
-      } catch (error) {
-        logError(`Failed to watch external directory ${dir}:`, error);
       }
     }
   };
