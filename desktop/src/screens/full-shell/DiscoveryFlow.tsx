@@ -25,6 +25,7 @@ const DEFAULT_DISCOVERY_CATEGORIES = [
 ] as const;
 
 const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
+const BROWSER_SELECTION_KEY = "stella-selected-browser";
 
 const parseStoredDiscoveryCategories = (
   raw: string | null,
@@ -54,6 +55,16 @@ const parseStoredDiscoveryCategories = (
   }
 };
 
+
+const withBrowserDiscoveryCategory = (
+  categories: DiscoveryCategory[],
+): DiscoveryCategory[] => {
+  const selectedBrowser = localStorage.getItem(BROWSER_SELECTION_KEY);
+  if (!selectedBrowser || categories.includes("browsing_bookmarks")) {
+    return categories;
+  }
+  return ["browsing_bookmarks", ...categories];
+};
 type UseDiscoveryFlowOptions = {
   isAuthenticated: boolean;
   onboardingDone: boolean;
@@ -80,8 +91,10 @@ export function useDiscoveryFlow({
     if (!onboardingDone) {
       return null;
     }
-    return parseStoredDiscoveryCategories(
-      localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
+    return withBrowserDiscoveryCategory(
+      parseStoredDiscoveryCategories(
+        localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
+      ),
     );
   });
 
@@ -103,7 +116,7 @@ export function useDiscoveryFlow({
 
   const handleDiscoveryConfirm = useCallback(
     (categories: DiscoveryCategory[]) => {
-      setDiscoveryCategories(categories);
+      setDiscoveryCategories(withBrowserDiscoveryCategory(categories));
     },
     [],
   );
@@ -115,8 +128,10 @@ export function useDiscoveryFlow({
     if (!onboardingDone) {
       return null;
     }
-    return parseStoredDiscoveryCategories(
-      localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
+    return withBrowserDiscoveryCategory(
+      parseStoredDiscoveryCategories(
+        localStorage.getItem(DISCOVERY_CATEGORIES_KEY),
+      ),
     );
   }, [discoveryCategories, onboardingDone]);
 

@@ -6,6 +6,8 @@ import {
   SPLIT_PHASES,
   SPLIT_STEP_ORDER,
   DISCOVERY_CATEGORIES_KEY,
+  BROWSER_SELECTION_KEY,
+  BROWSER_PROFILE_KEY,
   DISCOVERY_CATEGORIES,
   BROWSERS,
   type Phase,
@@ -66,6 +68,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   // Browser selection
   const [selectedBrowser, setSelectedBrowser] = useState<BrowserId | null>(null);
+  const [detectedBrowser, setDetectedBrowser] = useState<BrowserId | null>(null);
+  const [detectedProfile, setDetectedProfile] = useState<string | null>(null);
   const [homeHovered, setHomeHovered] = useState(false);
 
   // Discovery category toggles
@@ -80,6 +84,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   // Personality
   const [expressionStyle, setExpressionStyle] = useState<"emotes" | "emoji" | "none" | null>(null);
   const saveExpressionStyle = useMutation(api.data.preferences.setExpressionStyle);
+  const savePreferredBrowser = useMutation(api.data.preferences.setPreferredBrowser);
 
   // Phone — hover reveal
 
@@ -258,6 +263,35 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   /* ── Split phase navigation ── */
 
+  useEffect(() => {
+    if (phase !== "browser" || selectedBrowser) return;
+
+    let cancelled = false;
+
+    const preselectBrowser = async () => {
+      try {
+        const detected = await window.electronAPI?.detectPreferredBrowser?.();
+        if (cancelled || !detected?.browser) return;
+
+        const supportedBrowserIds = new Set(BROWSERS.map((browser) => browser.id));
+        const detectedId = detected.browser as BrowserId;
+        if (!supportedBrowserIds.has(detectedId)) return;
+
+        setSelectedBrowser(detectedId);
+        setDetectedBrowser(detectedId);
+        setDetectedProfile(detected.profile ?? null);
+      } catch {
+        // Detection is best-effort only.
+      }
+    };
+
+    void preselectBrowser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, selectedBrowser]);
+
   const nextSplitStep = () => {
     const idx = SPLIT_STEP_ORDER.indexOf(phase);
     if (idx < SPLIT_STEP_ORDER.length - 1) {
@@ -289,6 +323,25 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       .filter(([, enabled]) => enabled)
       .map(([id]) => id);
     localStorage.setItem(DISCOVERY_CATEGORIES_KEY, JSON.stringify(selected));
+
+    if (selectedBrowser) {
+      localStorage.setItem(BROWSER_SELECTION_KEY, selectedBrowser);
+      if (detectedBrowser === selectedBrowser && detectedProfile) {
+        localStorage.setItem(BROWSER_PROFILE_KEY, detectedProfile);
+      } else {
+        localStorage.removeItem(BROWSER_PROFILE_KEY);
+      }
+    } else {
+      localStorage.removeItem(BROWSER_SELECTION_KEY);
+      localStorage.removeItem(BROWSER_PROFILE_KEY);
+    }
+
+    void savePreferredBrowser({
+      browser: selectedBrowser ?? "none",
+    }).catch(() => {
+      // Browser preference sync is best-effort only.
+    });
+
     onDiscoveryConfirm?.(selected);
     nextSplitStep();
   };
@@ -384,12 +437,22 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       key={b.id}
                       className="onboarding-pill onboarding-pill--sm"
                       data-active={selectedBrowser === b.id}
-                      onClick={() => setSelectedBrowser(b.id)}
+                      onClick={() => {
+                        setSelectedBrowser(b.id);
+                        if (detectedBrowser !== b.id) {
+                          setDetectedProfile(null);
+                        }
+                      }}
                     >
                       {b.label}
                     </button>
                   ))}
                 </div>
+                {detectedBrowser === selectedBrowser && detectedProfile && (
+                  <p className="onboarding-step-subdesc">
+                    Detected profile: {detectedProfile}
+                  </p>
+                )}
 
                 <button className="onboarding-confirm" data-visible={true} onClick={handleDiscoveryConfirm}>
                   Continue
@@ -642,3 +705,4 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     </div>
   );
 };
+
