@@ -10,6 +10,7 @@ import {
   synthesizeCoreMemory,
   seedDiscoveryMemories,
 } from "../../services/synthesis";
+import { selectDefaultSkills } from "../../services/skill-selection";
 import type { AllUserSignalsResult } from "../../types/electron";
 
 type DiscoveryCategory =
@@ -192,6 +193,11 @@ export function useDiscoveryFlow({
         await window.electronAPI?.writeCoreMemory?.(synthesisResult.coreMemory);
 
         void seedDiscoveryMemories(result.formatted);
+
+        // Select default skills based on user profile (fire-and-forget)
+        void selectDefaultSkills(synthesisResult.coreMemory).catch(() => {
+          // Silent fail - skill selection is non-critical
+        });
 
         if (synthesisResult.welcomeMessage && conversationId) {
           const deviceId = await getOrCreateDeviceId();
