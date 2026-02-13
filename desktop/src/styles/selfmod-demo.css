@@ -428,6 +428,52 @@
 .window-shell[data-selfmod-demo] .onboarding-chat-bubble,
 .window-shell[data-selfmod-demo] .onboarding-chat-messages,
 .window-shell[data-selfmod-demo] .onboarding-bottom-bar,
-.window-shell[data-selfmod-demo] .onboarding-bottom-bar-item {
-  transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+.window-shell[data-selfmod-demo] .onboarding-bottom-bar-item,
+/* Smooth exit: revert selfmod styles with transition */
+.window-shell[data-selfmod-exiting] .sidebar {
+  background: var(--sidebar-bg) !important;
+  border-color: var(--border) !important;
+}
+
+.window-shell[data-selfmod-exiting] .sidebar-brand-text,
+.window-shell[data-selfmod-exiting] .sidebar-nav-item,
+.window-shell[data-selfmod-exiting] .sidebar-nav-icon,
+.window-shell[data-selfmod-exiting] .sidebar-footer {
+  color: unset !important;
+}
+
+.window-shell[data-selfmod-exiting] .sidebar-nav-item {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.window-shell[data-selfmod-exiting] .new-session-view::after {
+  opacity: 0 !important;
+}
+
+.window-shell[data-selfmod-exiting] .full-body-main::before {
+  opacity: 0;
+  width: 0;
+  min-width: 0;
+  border: none;
+}
+
+.window-shell[data-selfmod-exiting] .full-body {
+  background: unset !important;
+}
+
+.window-shell[data-selfmod-exiting] .sidebar,
+.window-shell[data-selfmod-exiting] .sidebar-header,
+.window-shell[data-selfmod-exiting] .sidebar-brand,
+.window-shell[data-selfmod-exiting] .sidebar-brand-logo,
+.window-shell[data-selfmod-exiting] .sidebar-brand-text,
+.window-shell[data-selfmod-exiting] .sidebar-nav,
+.window-shell[data-selfmod-exiting] .sidebar-nav-item,
+.window-shell[data-selfmod-exiting] .sidebar-nav-icon,
+.window-shell[data-selfmod-exiting] .sidebar-footer,
+.window-shell[data-selfmod-exiting] .full-body,
+.window-shell[data-selfmod-exiting] .full-body-main,
+.window-shell[data-selfmod-exiting] .full-body-main::before,
+.window-shell[data-selfmod-exiting] .new-session-view::after {
+  transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
 }

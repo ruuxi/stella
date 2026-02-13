@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/api";
 import {
   CENTER_PHASES,
   SPLIT_PHASES,
@@ -76,7 +78,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   });
 
   // Personality
-  const [expressionStyle, setExpressionStyle] = useState<"emotes" | "emoji" | "standard" | null>(null);
+  const [expressionStyle, setExpressionStyle] = useState<"emotes" | "emoji" | "none" | null>(null);
+  const saveExpressionStyle = useMutation(api.data.preferences.setExpressionStyle);
 
   // Phone — hover reveal
 
@@ -152,16 +155,33 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   }, [selfmodLevel]);
 
   // Apply/remove selfmod demo on the actual app shell
+  const selfmodExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const shell = document.querySelector(".window-shell");
     if (!shell) return;
     if (phase === "creation" && selfmodLevel) {
+      if (selfmodExitTimer.current) {
+        clearTimeout(selfmodExitTimer.current);
+        selfmodExitTimer.current = null;
+      }
+      shell.removeAttribute("data-selfmod-exiting");
       shell.setAttribute("data-selfmod-demo", selfmodLevel);
-    } else {
-      shell.removeAttribute("data-selfmod-demo");
+    } else if (shell.hasAttribute("data-selfmod-demo")) {
+      // Smooth exit: keep demo attr so pseudo-elements still exist, overlay exiting to fade out
+      shell.setAttribute("data-selfmod-exiting", "");
+      selfmodExitTimer.current = setTimeout(() => {
+        shell.removeAttribute("data-selfmod-demo");
+        shell.removeAttribute("data-selfmod-exiting");
+        selfmodExitTimer.current = null;
+      }, 600);
     }
     return () => {
       shell.removeAttribute("data-selfmod-demo");
+      shell.removeAttribute("data-selfmod-exiting");
+      if (selfmodExitTimer.current) {
+        clearTimeout(selfmodExitTimer.current);
+        selfmodExitTimer.current = null;
+      }
     };
   }, [phase, selfmodLevel]);
 
@@ -563,12 +583,16 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
             {phase === "personality" && (
               <div className="onboarding-step-content">
                 <div className="onboarding-pills">
-                  {(["emotes", "emoji", "standard"] as const).map((style) => (
+                  {(["emotes", "emoji", "none"] as const).map((style) => (
                     <button
                       key={style}
                       className="onboarding-pill"
                       data-active={expressionStyle === style}
-                      onClick={() => setExpressionStyle(style)}
+                      onClick={() => {
+                        setExpressionStyle(style);
+                        const backendStyle = style === "none" ? "none" as const : "emoji" as const;
+                        saveExpressionStyle({ style: backendStyle }).catch(() => {});
+                      }}
                     >
                       {style.charAt(0).toUpperCase() + style.slice(1)}
                     </button>
@@ -578,7 +602,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   <p className="onboarding-personality-preview">
                     {expressionStyle === "emotes" && (<>Got it! I'll get that done for you <img src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp" alt="catNOD" className="onboarding-emote-preview" /></>)}
                     {expressionStyle === "emoji" && "Got it! I'll get that done for you 😊"}
-                    {expressionStyle === "standard" && "Got it. I'll get that done for you."}
+                    {expressionStyle === "none" && "Got it. I'll get that done for you."}
                   </p>
                 )}
                 <button
@@ -592,8 +616,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
             )}
           </div>
 
-          {/* Bottom nav bar — full width, outside split-right */}
-          {phase === "creation" && (
+          {/* Bottom nav bar — full width, outside split-right (high selfmod only) */}
+          {phase === "creation" && selfmodLevel === "high" && (
             <nav className="onboarding-bottom-bar" aria-hidden="true">
               <div className="onboarding-bottom-bar-item">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
