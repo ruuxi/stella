@@ -127,6 +127,7 @@ type SubagentExecutionArgs = {
   threadId?: Id<"threads">;
   recallMemory?: RecallMemoryArgs;
   preExplore?: string;
+  commandId?: string;
   overflowRecoveryAttempt?: number;
 };
 
@@ -842,6 +843,22 @@ const executeSubagentRun = async (
       });
     }
     promptContent.push({ type: "text" as const, text: args.prompt.trim() || " " });
+    if (args.commandId) {
+      try {
+        const command = await ctx.runQuery(
+          internal.data.commands.getByCommandId,
+          { commandId: args.commandId },
+        );
+        if (command) {
+          promptContent.push({
+            type: "text" as const,
+            text: `\n\n<command-instructions name="${command.name}">\n${command.content}\n</command-instructions>`,
+          });
+        }
+      } catch {
+        // Command lookup failed — proceed without instructions
+      }
+    }
     if (promptBuild.dynamicContext) {
       promptContent.push({
         type: "text" as const,
@@ -1397,6 +1414,7 @@ export const runSubagent = internalAction({
       }))),
     })),
     preExplore: v.optional(v.string()),
+    commandId: v.optional(v.string()),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -1504,6 +1522,7 @@ export const runSubagent = internalAction({
       threadId: resolvedThreadId,
       recallMemory: args.recallMemory,
       preExplore: args.preExplore,
+      commandId: args.commandId,
     });
 
     return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
@@ -1531,6 +1550,7 @@ export const executeSubagent = internalAction({
       }))),
     })),
     preExplore: v.optional(v.string()),
+    commandId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1546,6 +1566,7 @@ export const executeSubagent = internalAction({
       threadId: args.threadId,
       recallMemory: args.recallMemory,
       preExplore: args.preExplore,
+      commandId: args.commandId,
     });
 
     // Deliver result to the orchestrator for top-level tasks only.
@@ -1725,6 +1746,14 @@ export const deliverTaskResult = internalAction({
                   }
                 : undefined,
             });
+
+            // Best-effort command suggestions after delivery.
+            try {
+              await ctx.scheduler.runAfter(0, internal.agent.suggestions.generateSuggestions, {
+                conversationId: args.conversationId,
+                ownerId: args.ownerId,
+              });
+            } catch { /* best-effort */ }
           }
           break;
         } catch (error) {

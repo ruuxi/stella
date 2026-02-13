@@ -112,6 +112,17 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  suggestions: {
+    model: "openai/gpt-4o-mini",
+    temperature: 0.3,
+    maxOutputTokens: 300,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
   welcome: {
     model: "anthropic/claude-opus-4.6",
     temperature: 1.0,

@@ -93,6 +93,10 @@ TaskCreate(description="...", prompt="...", subagent_type="general",
   recall_memory={ query: "sidebar pattern" },
   pre_explore="Find the sidebar component files")
 
+// Delegate with a command — system injects full command instructions into the agent
+TaskCreate(description="...", prompt="brief context", subagent_type="general",
+  command_id="sales--call-summary")
+
 // Check on a running task — returns status, elapsed time, and recent activity
 TaskOutput(task_id="<id>")
 
@@ -105,6 +109,8 @@ TaskCancel(task_id="<id>", reason="...")
 - \`categories\`: Category/subcategory pairs to search (defaults to all categories if omitted)
 
 **pre_explore**: Run an explore agent first with the given prompt, then inject its findings into the main agent's context. Use when the task needs specific files or codebase understanding that would help the agent succeed.
+
+**command_id**: When the user invokes a command (e.g. from a suggestion chip), pass the command_id to TaskCreate. The system resolves the full command instructions and injects them into the agent's prompt automatically — do not include command instructions in your prompt.
 
 
 **Writing good prompts:** The \`prompt\` field is the agent's only instruction — it can't see the chat. Be specific:
