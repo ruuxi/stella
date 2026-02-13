@@ -66,6 +66,12 @@ type TaskClient = Infer<typeof taskClientValidator>;
 const DEFAULT_MAX_TASK_DEPTH = 2;
 const TASK_CANCEL_POLL_INTERVAL_MS = 2000;
 const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
+const PREFERRED_BROWSER_KEY = "preferred_browser";
+const BROWSER_AGENT_SAFARI_DENIED_REASON =
+  "Browser Agent is unavailable when the selected browser is Safari. Use a Chromium-based browser for browser automation.";
+
+const isSafariBrowserPreference = (value: string | null): boolean =>
+  value?.trim().toLowerCase() === "safari";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -1395,6 +1401,17 @@ export const runSubagent = internalAction({
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const conversation: Doc<"conversations"> = await requireConversationOwner(ctx, args.conversationId);
+
+    if (args.subagentType === "browser") {
+      const preferredBrowser = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
+        ownerId: conversation.ownerId,
+        key: PREFERRED_BROWSER_KEY,
+      });
+      if (isSafariBrowserPreference(preferredBrowser)) {
+        return `Task denied.\nReason: ${BROWSER_AGENT_SAFARI_DENIED_REASON}`;
+      }
+    }
+
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
     await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
 
@@ -1723,5 +1740,6 @@ export const deliverTaskResult = internalAction({
     return null;
   },
 });
+
 
 

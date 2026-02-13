@@ -12,6 +12,9 @@ import { jsonSchemaValidator, jsonValueValidator } from "../shared_validators";
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
 const MAX_INPUT_CHARS = 40_000;
+const PREFERRED_BROWSER_KEY = "preferred_browser";
+const BROWSER_AGENT_SAFARI_DENIED_REASON =
+  "Browser Agent is unavailable when the selected browser is Safari. Use a Chromium-based browser for browser automation.";
 
 const truncate = (value: string, max = MAX_RAW_TEXT) =>
   value.length <= max ? value : `${value.slice(0, max)}\n\n... (truncated)`;
@@ -270,6 +273,20 @@ export const invoke = internalAction({
       ownerId = convo.ownerId;
     }
 
+    if (args.agentType === "browser" && ownerId) {
+      const preferredBrowser = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
+        ownerId,
+        key: PREFERRED_BROWSER_KEY,
+      });
+      if (preferredBrowser?.trim().toLowerCase() === "safari") {
+        return {
+          ok: false,
+          reason: BROWSER_AGENT_SAFARI_DENIED_REASON,
+          rawText: BROWSER_AGENT_SAFARI_DENIED_REASON,
+        };
+      }
+    }
+
     const promptBuild = await buildSystemPrompt(ctx, args.agentType, { ownerId });
 
     const deviceContext = await coerceDeviceContext(ctx, {
@@ -388,3 +405,4 @@ export const invoke = internalAction({
     };
   },
 });
+
