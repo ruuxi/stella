@@ -133,6 +133,11 @@
         "from": "resources/bundled-skills",
         "to": "bundled-skills",
         "filter": ["**/*"]
+      },
+      {
+        "from": "resources/bundled-commands",
+        "to": "bundled-commands",
+        "filter": ["**/*"]
       }
     ],
     "win": {

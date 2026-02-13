@@ -5,6 +5,8 @@
 import { ConversationEvents } from "../ConversationEvents";
 import { OnboardingView } from "./OnboardingOverlay";
 import { Composer } from "./Composer";
+import { CommandChips } from "../../components/chat/CommandChips";
+import { useCommandSuggestions, type CommandSuggestion } from "../../hooks/use-command-suggestions";
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
@@ -52,6 +54,7 @@ type ChatColumnProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSignIn: () => void;
   onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
+  onCommandSelect?: (suggestion: CommandSuggestion) => void;
 };
 
 export function ChatColumn({
@@ -90,7 +93,9 @@ export function ChatColumn({
   onDiscoveryConfirm,
   onSignIn,
   onDemoChange,
+  onCommandSelect,
 }: ChatColumnProps) {
+  const suggestions = useCommandSuggestions(events, isStreaming);
   const hasMessages = events.length > 0 || isStreaming;
   const showConversation = isAuthenticated && onboardingDone && hasMessages;
 
@@ -111,6 +116,12 @@ export function ChatColumn({
               pendingUserMessageId={pendingUserMessageId}
               scrollContainerRef={scrollContainerRef}
             />
+            {!isStreaming && suggestions.length > 0 && onCommandSelect && (
+              <CommandChips
+                suggestions={suggestions}
+                onSelect={onCommandSelect}
+              />
+            )}
           </div>
         ) : (
           <OnboardingView
