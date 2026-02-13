@@ -226,10 +226,10 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   width: 100%;
   height: 100%;
-  padding: 48px 48px 48px 32px;
+  padding: 48px 40px;
   animation: momentFadeIn 0.5s ease-out forwards;
   overflow-y: auto;
 }
@@ -252,7 +252,21 @@
   flex-direction: column;
   gap: 20px;
   width: 100%;
-  max-width: 420px;
+  max-width: 540px;
+}
+
+.onboarding-section-title {
+  font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  color: var(--foreground);
+  opacity: 0.9;
+  line-height: 1.4;
+  margin-top: 20px;
+}
+
+.onboarding-section-title:first-child {
+  margin-top: 0;
 }
 
 .onboarding-step-desc {
@@ -260,7 +274,7 @@
   font-weight: 300;
   letter-spacing: 0.02em;
   color: var(--foreground);
-  opacity: 0.7;
+  opacity: 0.8;
   line-height: 1.6;
   margin: 0;
 }
@@ -270,7 +284,7 @@
   font-weight: 300;
   letter-spacing: 0.02em;
   color: var(--foreground);
-  opacity: 0.4;
+  opacity: 0.65;
   line-height: 1.5;
   margin: 0;
 }
@@ -280,7 +294,7 @@
   font-weight: 500;
   letter-spacing: 0.08em;
   color: var(--foreground);
-  opacity: 0.4;
+  opacity: 0.65;
   text-transform: uppercase;
 }
 
@@ -329,6 +343,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  justify-content: center;
 }
 
 .onboarding-pill {
@@ -366,6 +381,11 @@
   transform: scale(0.96);
 }
 
+.onboarding-pill--sm {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
 /* ═══ Theme step ═══ */
 
 .onboarding-theme-row {
@@ -400,11 +420,11 @@
 /* ═══ Mock app preview (creation phase) ═══ */
 
 .onboarding-creation-chat {
-  max-width: 600px !important;
+  max-width: 680px !important;
   max-height: none;
   overflow: visible;
+  gap: 0 !important;
 }
-
 .onboarding-mock-app {
   display: flex;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
@@ -412,13 +432,43 @@
   overflow: hidden;
   transform: translate(0); /* Contain fixed positioning from selfmod "high" */
   position: relative;
-  height: 380px;
+  height: 50vh;
   flex-shrink: 0;
 }
 
-.onboarding-mock-app > .sidebar {
-  border-radius: 0;
+/* ── Bottom navigation bar (full-width, fixed to bottom) ── */
+.onboarding-bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  height: 52px;
+  background: color-mix(in oklch, var(--background) 80%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  z-index: 10;
   pointer-events: none;
+  user-select: none;
+}
+
+.onboarding-bottom-bar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  color: var(--foreground);
+  opacity: 0.35;
+}
+
+.onboarding-bottom-bar-item--active {
+  opacity: 0.8;
 }
 
 .onboarding-mock-main {
@@ -517,25 +567,56 @@
   30% { opacity: 0.35; transform: translateY(-3px); }
 }
 
-/* Selfmod levels inline in chat */
+/* Selfmod controls — CSS grid reveal (no layout shift) */
+.onboarding-creation-controls {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.onboarding-creation-controls[data-visible="true"] {
+  grid-template-rows: 1fr;
+}
+
+.onboarding-creation-controls-inner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 20px;
+  opacity: 0;
+  transition: opacity 0.4s ease 0.15s;
+}
+
+.onboarding-creation-controls[data-visible="true"] > .onboarding-creation-controls-inner {
+  opacity: 1;
+}
+
 .onboarding-chat-selfmod {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  animation: chatMsgIn 0.4s ease-out both;
 }
 
 /* Composer */
 .onboarding-chat-composer {
   display: flex;
   align-items: center;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border: 2px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   border-radius: 10px;
   background: color-mix(in oklch, var(--foreground) 3%, transparent);
   padding: 3px 3px 3px 12px;
   flex-shrink: 0;
   margin-top: 8px;
-  transition: border-color 0.2s ease;
+  animation: composerFlash 1.5s ease-in-out infinite;
+  transition: border-color 0.2s ease, border-radius 0.5s ease, background 0.5s ease,
+              box-shadow 0.5s ease, backdrop-filter 0.5s ease;
+}
+
+@keyframes composerFlash {
+  0%, 100% { border-color: color-mix(in oklch, var(--foreground) 10%, transparent); }
+  50% { border-color: oklch(0.65 0.2 260); }
 }
 
 .onboarding-chat-composer:hover {
@@ -552,6 +633,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  animation: chatInputFade 0.3s ease-out;
+}
+
+@keyframes chatInputFade {
+  from { opacity: 0; }
 }
 
 .onboarding-chat-send {
@@ -559,20 +645,30 @@
   height: 28px;
   border-radius: 7px;
   border: none;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--foreground);
+  background: var(--foreground);
+  color: var(--background);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  opacity: 0.4;
-  transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+  opacity: 0.85;
+  border: none;
+  transition: background 0.15s ease, opacity 0.2s ease, transform 0.1s ease,
+              width 0.3s ease, min-width 0.3s ease, padding 0.3s ease;
+}
+
+.onboarding-chat-send[data-hidden] {
+  opacity: 0;
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .onboarding-chat-send:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--foreground) 15%, transparent);
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .onboarding-chat-send:active:not(:disabled) {
@@ -580,13 +676,13 @@
 }
 
 .onboarding-chat-send:disabled {
-  opacity: 0.15;
+  opacity: 0.3;
   cursor: default;
 }
 
+
 /* Continue button in creation phase */
-.onboarding-creation-chat > .onboarding-confirm {
-  margin-top: 8px;
+.onboarding-creation-controls .onboarding-confirm {
   flex-shrink: 0;
 }
 
@@ -1051,6 +1147,9 @@
   line-height: 1.5;
   margin: 0;
   padding: 12px 16px;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
   border-left: 2px solid color-mix(in oklch, var(--foreground) 15%, transparent);
   animation: momentFadeIn 0.3s ease-out forwards;
 }
@@ -1104,7 +1203,7 @@
   transition: opacity 0.25s ease, background 0.25s ease, border-color 0.25s ease;
   font-family: inherit;
   text-align: left;
-  opacity: 0.4;
+  opacity: 0.55;
 }
 
 .onboarding-discovery-row[data-active="true"] {
@@ -1134,7 +1233,7 @@
   font-weight: 300;
   letter-spacing: 0.01em;
   color: var(--foreground);
-  opacity: 0.6;
+  opacity: 0.7;
   line-height: 1.4;
 }
 
@@ -1162,7 +1261,7 @@
   font-weight: 300;
   letter-spacing: 0.02em;
   color: var(--foreground);
-  opacity: 0.5;
+  opacity: 0.65;
   line-height: 1.5;
   margin: 0;
 }
@@ -1328,6 +1427,45 @@
   margin-top: 24px;
   opacity: 1;
   animation: none;
+}
+
+/* ═══ Onboarding canvas panel ═══ */
+
+.onboarding-canvas {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 0;
+  min-height: 0;
+  background: color-mix(in srgb, var(--surface-inset) 60%, transparent);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+  opacity: 0;
+}
+
+.onboarding-canvas-open {
+  animation: onboardingCanvasIn 0.5s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+.onboarding-canvas-closing {
+  animation: onboardingCanvasOut 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+@keyframes onboardingCanvasIn {
+  from { width: 0; opacity: 0; }
+  to { width: var(--canvas-panel-width, 420px); opacity: 1; }
+}
+
+@keyframes onboardingCanvasOut {
+  from { width: var(--canvas-panel-width, 420px); opacity: 1; }
+  to { width: 0; opacity: 0; }
+}
+
+.onboarding-canvas-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ═══ Reduced motion ═══ */

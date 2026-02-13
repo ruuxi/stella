@@ -2,7 +2,7 @@ import type { Theme } from "./types";
 
 const theme: Theme = {
   id: "onedarkpro",
-  name: "One Dark Pro",
+  name: "Graphite",
   light: {
     background: "#fafafa",
     backgroundWeak: "#f0f0f0",

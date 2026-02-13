@@ -2,7 +2,7 @@ import type { Theme } from "./types";
 
 const theme: Theme = {
   id: "catppuccin",
-  name: "Catppuccin",
+  name: "Rosé",
   light: {
     background: "#f5e0dc",
     backgroundWeak: "#f2d8d4",

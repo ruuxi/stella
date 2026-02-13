@@ -2,7 +2,7 @@ import type { Theme } from "./types";
 
 const theme: Theme = {
   id: "solarized",
-  name: "Solarized",
+  name: "Solstice",
   light: {
     background: "#fdf6e3",
     backgroundWeak: "#f5efdc",

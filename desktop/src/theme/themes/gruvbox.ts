@@ -2,7 +2,7 @@ import type { Theme } from "./types";
 
 const theme: Theme = {
   id: "gruvbox",
-  name: "Gruvbox",
+  name: "Autumn",
   light: {
     background: "#fbf1c7",
     backgroundWeak: "#f2e5bc",

@@ -4,7 +4,7 @@
    ============================================ */
 
 /* ═══ LOW: Small tweak ═══ */
-/* Subtle sidebar accent + greeting banner */
+/* Subtle refinements — rounder bubbles, accent border, tighter spacing */
 
 .window-shell[data-selfmod-demo="low"] .sidebar {
   border-right-color: color-mix(in oklch, var(--foreground) 12%, transparent);
@@ -23,6 +23,18 @@
 .window-shell[data-selfmod-demo="low"] .composer-form,
 .window-shell[data-selfmod-demo="low"] .onboarding-chat-composer {
   border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+/* Low — mock app changes: blue user messages */
+.window-shell[data-selfmod-demo="low"] .onboarding-chat-msg--user .onboarding-chat-bubble {
+  background: oklch(0.55 0.18 260);
+  color: #fff;
+  opacity: 1;
+}
+
+.window-shell[data-selfmod-demo="low"] .onboarding-chat-send {
+  background: oklch(0.55 0.18 260) !important;
+  color: #fff !important;
 }
 
 /* ═══ MEDIUM: New feature ═══ */
@@ -86,6 +98,49 @@
 
 .window-shell[data-selfmod-demo="medium"] .session-messages {
   max-width: 54rem;
+}
+
+/* Medium — mock app changes */
+.window-shell[data-selfmod-demo="medium"] .onboarding-mock-app {
+  border-radius: 18px;
+  border-color: color-mix(in oklch, var(--foreground) 6%, transparent);
+  box-shadow: 0 8px 32px color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--background) 97%, var(--foreground));
+}
+
+.window-shell[data-selfmod-demo="medium"] .onboarding-chat-msg--stella .onboarding-chat-bubble {
+  border-radius: 4px 16px 16px 16px;
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.window-shell[data-selfmod-demo="medium"] .onboarding-chat-msg--user .onboarding-chat-bubble {
+  border-radius: 16px 4px 16px 16px;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.window-shell[data-selfmod-demo="medium"] .onboarding-chat-composer {
+  border-radius: 20px;
+  box-shadow: 0 4px 24px color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.window-shell[data-selfmod-demo="medium"] .onboarding-chat-messages {
+  gap: 14px;
+}
+
+.window-shell[data-selfmod-demo="medium"] .onboarding-bottom-bar {
+  background: color-mix(in oklch, var(--background) 85%, var(--foreground));
+  border-top-color: color-mix(in oklch, var(--foreground) 6%, transparent);
+  box-shadow: 0 -4px 20px color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.window-shell[data-selfmod-demo="medium"] .onboarding-bottom-bar-item {
+  opacity: 0.45;
+}
+
+.window-shell[data-selfmod-demo="medium"] .onboarding-bottom-bar-item--active {
+  opacity: 0.9;
 }
 
 /* ═══ HIGH: Cat-themed full redesign ═══ */
@@ -195,21 +250,35 @@
 
 /* --- Fake apps rail on the left via ::before --- */
 .window-shell[data-selfmod-demo="high"] .full-body-main::before {
-  content: "🐱\a📷\a🎵\a🎮\a📁\a⚙️";
-  white-space: pre;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0;
-  padding: 52px 0 16px;
+  content: "";
+  display: block;
   width: 52px;
   min-width: 52px;
   flex-shrink: 0;
-  font-size: 20px;
-  line-height: 2.2;
   border-right: 1px solid color-mix(in oklch, var(--cat-orange) 10%, transparent);
-  background: color-mix(in oklch, var(--background) 96%, var(--cat-cream));
+  background-color: color-mix(in oklch, var(--background) 96%, var(--cat-cream));
+  background-repeat: no-repeat;
+  background-image:
+    /* Home */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 256 256'%3E%3Cpath fill='none' stroke='%23f97316' stroke-width='16' stroke-linecap='round' stroke-linejoin='round' d='M128 48l88 72v96a8 8 0 0 1-8 8h-56v-64h-48v64H48a8 8 0 0 1-8-8v-96Z'/%3E%3C/svg%3E"),
+    /* Camera */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 256 256'%3E%3Cpath fill='none' stroke='%23f97316' stroke-width='16' stroke-linecap='round' stroke-linejoin='round' d='M208 56h-28.7L164 36a8 8 0 0 0-6.7-4h-58.6A8 8 0 0 0 92 36L76.7 56H48a16 16 0 0 0-16 16v120a16 16 0 0 0 16 16h160a16 16 0 0 0 16-16V72a16 16 0 0 0-16-16Z'/%3E%3Ccircle fill='none' stroke='%23f97316' stroke-width='16' cx='128' cy='132' r='36'/%3E%3C/svg%3E"),
+    /* Music note */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 256 256'%3E%3Cpath fill='none' stroke='%23f97316' stroke-width='16' stroke-linecap='round' stroke-linejoin='round' d='M88 200a32 32 0 1 1-32-32h32V56l128-16v144'/%3E%3Ccircle fill='none' stroke='%23f97316' stroke-width='16' cx='216' cy='184' r='32'/%3E%3Cline stroke='%23f97316' stroke-width='16' x1='88' y1='56' x2='216' y2='40'/%3E%3C/svg%3E"),
+    /* Chat */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 256 256'%3E%3Cpath fill='none' stroke='%23f97316' stroke-width='16' stroke-linecap='round' stroke-linejoin='round' d='M216 48H40a8 8 0 0 0-8 8v128a8 8 0 0 0 8 8h96l48 32v-32h32a8 8 0 0 0 8-8V56a8 8 0 0 0-8-8Z'/%3E%3C/svg%3E"),
+    /* Folder */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 256 256'%3E%3Cpath fill='none' stroke='%23f97316' stroke-width='16' stroke-linecap='round' stroke-linejoin='round' d='M216 72H130.7L102.4 51.2A8 8 0 0 0 97.6 48H40a8 8 0 0 0-8 8v152a8 8 0 0 0 8 8h176a8 8 0 0 0 8-8V80a8 8 0 0 0-8-8Z'/%3E%3C/svg%3E"),
+    /* Gear */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 256 256'%3E%3Ccircle fill='none' stroke='%23f97316' stroke-width='16' cx='128' cy='128' r='40'/%3E%3Cpath fill='none' stroke='%23f97316' stroke-width='16' stroke-linecap='round' stroke-linejoin='round' d='M130.1 28h-4.2a8 8 0 0 0-7.9 6.8l-4.3 30a72 72 0 0 0-24.4 14.1l-28.2-11.3a8 8 0 0 0-10 3.4l-2.1 3.6a8 8 0 0 0 2 10.2l23.9 18.7a72 72 0 0 0 0 28.2l-23.9 18.7a8 8 0 0 0-2 10.2l2.1 3.6a8 8 0 0 0 10 3.4l28.2-11.3a72 72 0 0 0 24.4 14.1l4.3 30a8 8 0 0 0 7.9 6.8h4.2a8 8 0 0 0 7.9-6.8l4.3-30a72 72 0 0 0 24.4-14.1l28.2 11.3a8 8 0 0 0 10-3.4l2.1-3.6a8 8 0 0 0-2-10.2l-23.9-18.7a72 72 0 0 0 0-28.2l23.9-18.7a8 8 0 0 0 2-10.2l-2.1-3.6a8 8 0 0 0-10-3.4l-28.2 11.3a72 72 0 0 0-24.4-14.1l-4.3-30a8 8 0 0 0-7.9-6.8Z'/%3E%3C/svg%3E");
+  background-size: 20px 20px;
+  background-position:
+    center 52px,
+    center 92px,
+    center 132px,
+    center 172px,
+    center 212px,
+    center 252px;
   user-select: none;
   pointer-events: none;
 }
@@ -250,16 +319,26 @@
   border-bottom-left-radius: 4px;
 }
 
-/* --- New session paw accent via ::after --- */
+/* --- Cat silhouettes decorating the background --- */
 .window-shell[data-selfmod-demo="high"] .new-session-view::after {
-  content: "🐾";
+  content: "";
   position: absolute;
-  bottom: 140px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 32px;
-  opacity: 0.25;
+  bottom: 100px;
+  left: 0;
+  right: 0;
+  height: 120px;
   pointer-events: none;
+  opacity: 0.18;
+  background-repeat: no-repeat;
+  background-image:
+    /* Sleeping cat — left side */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 50'%3E%3Cg fill='%23f97316'%3E%3Cellipse cx='60' cy='38' rx='42' ry='14'/%3E%3Ccircle cx='28' cy='28' r='12'/%3E%3Cpolygon points='18,18 22,4 30,16'/%3E%3Cpolygon points='28,16 34,6 38,20'/%3E%3Cellipse cx='90' cy='34' rx='14' ry='6' transform='rotate(20 90 34)'/%3E%3Ccircle cx='24' cy='26' r='1.5'/%3E%3Ccircle cx='32' cy='26' r='1.5'/%3E%3C/g%3E%3C/svg%3E"),
+    /* Sitting cat — right side */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 110'%3E%3Cg fill='%2392400e'%3E%3Cpath d='M28,108 Q20,80 26,58 Q30,46 40,42 Q50,46 54,58 Q60,80 52,108 Z'/%3E%3Ccircle cx='40' cy='36' r='14'/%3E%3Cpolygon points='28,26 31,8 38,24'/%3E%3Cpolygon points='42,24 49,8 52,26'/%3E%3Ccircle cx='35' cy='34' r='1.8'/%3E%3Ccircle cx='45' cy='34' r='1.8'/%3E%3Cellipse cx='40' cy='38' rx='2.5' ry='1.2' fill='%23fdba74'/%3E%3Cellipse cx='30' cy='104' rx='8' ry='4'/%3E%3Cellipse cx='50' cy='104' rx='8' ry='4'/%3E%3Cpath d='M54,70 Q62,58 68,48 Q72,42 74,36' stroke='%2392400e' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E"),
+    /* Stretching cat — center */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 140 60'%3E%3Cg fill='%23f59e0b'%3E%3Cellipse cx='90' cy='40' rx='36' ry='14'/%3E%3Cellipse cx='44' cy='48' rx='16' ry='10'/%3E%3Ccircle cx='118' cy='30' r='11'/%3E%3Cpolygon points='110,20 113,6 120,18'/%3E%3Cpolygon points='118,18 125,8 128,22'/%3E%3Ccircle cx='114' cy='28' r='1.5'/%3E%3Ccircle cx='122' cy='28' r='1.5'/%3E%3Cpath d='M130,38 Q148,30 140,22' stroke='%23f59e0b' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 100px auto, 50px auto, 110px auto;
+  background-position: 15% bottom, 78% bottom, 48% bottom;
 }
 
 /* --- Composer --- */
@@ -344,6 +423,11 @@
 .window-shell[data-selfmod-demo] .event-item,
 .window-shell[data-selfmod-demo] .session-turn-title,
 .window-shell[data-selfmod-demo] .onboarding-chat-composer,
-.window-shell[data-selfmod-demo] .onboarding-mock-main {
+.window-shell[data-selfmod-demo] .onboarding-mock-main,
+.window-shell[data-selfmod-demo] .onboarding-mock-app,
+.window-shell[data-selfmod-demo] .onboarding-chat-bubble,
+.window-shell[data-selfmod-demo] .onboarding-chat-messages,
+.window-shell[data-selfmod-demo] .onboarding-bottom-bar,
+.window-shell[data-selfmod-demo] .onboarding-bottom-bar-item {
   transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
 }

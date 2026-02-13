@@ -26,7 +26,7 @@ export const getThemeById = (id: string): Theme | undefined => {
   return themes.find((t) => t.id === id);
 };
 
-export const defaultTheme = themes.find((t) => t.id === "tokyonight")!;
+export const defaultTheme = themes.find((t) => t.id === "carbonfox")!;
 
 export const registerTheme = (theme: Theme) => {
   const existing = themes.findIndex((t) => t.id === theme.id);
