@@ -146,6 +146,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Browser data collection for core memory
   checkCoreMemoryExists: () => ipcRenderer.invoke('browserData:exists'),
   collectBrowserData: () => ipcRenderer.invoke('browserData:collect'),
+  detectPreferredBrowser: () => ipcRenderer.invoke('browserData:detectPreferredBrowser'),
   writeCoreMemory: (content: string) => ipcRenderer.invoke('browserData:writeCoreMemory', content),
 
   // Comprehensive user signal collection (browser + dev projects + shell + apps)

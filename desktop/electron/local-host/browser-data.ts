@@ -60,6 +60,11 @@ export type BrowserData = {
   domainDetails: Record<string, DomainDetail[]>;
 };
 
+export type PreferredBrowserProfile = {
+  browser: BrowserType | null;
+  profile: string | null;
+};
+
 // ---------------------------------------------------------------------------
 // Platform Paths
 // ---------------------------------------------------------------------------
@@ -569,6 +574,14 @@ const getBrowserHistoryPaths = (
   return relativePaths.map((rel) => path.join(basePath, rel));
 };
 
+const parseProfileFromHistoryPath = (historyPath: string): string | null => {
+  const segments = historyPath.split(/[\\/]+/).filter(Boolean);
+  const profile = segments.find((segment) =>
+    segment === "Default" || /^Profile \d+$/i.test(segment)
+  );
+  return profile ?? null;
+};
+
 // ---------------------------------------------------------------------------
 // Chrome Time Conversion
 // ---------------------------------------------------------------------------
@@ -797,6 +810,7 @@ const findMostRecentlyModifiedBrowser = async (): Promise<{
 const findBrowser = async (): Promise<{
   type: BrowserType;
   historyPath: string;
+  profile: string | null;
 } | null> => {
   const platform = process.platform;
 
@@ -815,7 +829,7 @@ const findBrowser = async (): Promise<{
 
       if (historyPath) {
         log(`Found ${browser} history (currently running, ${lastProfile} profile) at: ${historyPath}`);
-        return { type: browser, historyPath };
+        return { type: browser, historyPath, profile: lastProfile };
       }
     }
     log("Running browsers detected but history not accessible, continuing...");
@@ -830,14 +844,14 @@ const findBrowser = async (): Promise<{
 
     if (historyPath) {
       log(`Found ${defaultBrowser} history (OS default, ${lastProfile} profile) at: ${historyPath}`);
-      return { type: defaultBrowser, historyPath };
+      return { type: defaultBrowser, historyPath, profile: lastProfile };
     }
 
     if (lastProfile !== "Default") {
       const defaultHistoryPath = await getHistoryPathForBrowserProfile(defaultBrowser, "Default");
       if (defaultHistoryPath) {
         log(`Found ${defaultBrowser} history (OS default, Default profile) at: ${defaultHistoryPath}`);
-        return { type: defaultBrowser, historyPath: defaultHistoryPath };
+        return { type: defaultBrowser, historyPath: defaultHistoryPath, profile: "Default" };
       }
     }
 
@@ -852,7 +866,11 @@ const findBrowser = async (): Promise<{
   
   if (mostRecent) {
     log(`Using most recently modified: ${mostRecent.type} at ${mostRecent.historyPath}`);
-    return { type: mostRecent.type, historyPath: mostRecent.historyPath };
+    return {
+      type: mostRecent.type,
+      historyPath: mostRecent.historyPath,
+      profile: parseProfileFromHistoryPath(mostRecent.historyPath),
+    };
   }
 
   // Step 4: Check all browsers in priority order (exhaustive search)
@@ -863,7 +881,11 @@ const findBrowser = async (): Promise<{
       try {
         await fs.access(historyPath);
         log(`Found ${config.type} history at: ${historyPath}`);
-        return { type: config.type, historyPath };
+        return {
+          type: config.type,
+          historyPath,
+          profile: parseProfileFromHistoryPath(historyPath),
+        };
       } catch {
         continue;
       }
@@ -1213,4 +1235,15 @@ export const formatBrowserDataForSynthesis = (data: BrowserData): string => {
   }
 
   return sections.join("\n");
+};
+
+export const detectPreferredBrowserProfile = async (): Promise<PreferredBrowserProfile> => {
+  const browser = await findBrowser();
+  if (!browser) {
+    return { browser: null, profile: null };
+  }
+  return {
+    browser: browser.type,
+    profile: browser.profile,
+  };
 };

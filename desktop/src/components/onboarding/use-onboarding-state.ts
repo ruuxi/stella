@@ -42,6 +42,8 @@ export const DISCOVERY_CATEGORIES: {
 ];
 
 export const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
+export const BROWSER_SELECTION_KEY = "stella-selected-browser";
+export const BROWSER_PROFILE_KEY = "stella-selected-browser-profile";
 
 export const BROWSERS = [
   { id: "chrome", label: "Google Chrome" },

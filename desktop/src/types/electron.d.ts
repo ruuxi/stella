@@ -55,6 +55,11 @@ export type BrowserDataResult = {
   error?: string
 }
 
+export type PreferredBrowserProfile = {
+  browser: BrowserType | null
+  profile: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Dev Projects Types
 // ---------------------------------------------------------------------------
@@ -170,6 +175,7 @@ export type ElectronApi = {
   // Browser data collection for core memory
   checkCoreMemoryExists: () => Promise<boolean>
   collectBrowserData: () => Promise<BrowserDataResult>
+  detectPreferredBrowser: () => Promise<PreferredBrowserProfile>
   writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
   // Comprehensive user signal collection (browser + dev projects + shell + apps)
   collectAllSignals: (options?: { categories?: string[] }) => Promise<AllUserSignalsResult>
