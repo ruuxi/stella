@@ -1074,6 +1074,7 @@ export const createTaskRecord = internalMutation({
     agentType: v.string(),
     parentTaskId: v.optional(v.id("tasks")),
     maxTaskDepth: v.optional(v.number()),
+    commandId: v.optional(v.string()),
   },
   returns: v.object({
     taskId: v.id("tasks"),
@@ -1101,6 +1102,7 @@ export const createTaskRecord = internalMutation({
       description: args.description,
       prompt: args.prompt,
       agentType: args.agentType,
+      commandId: args.commandId,
       status: "running" satisfies TaskStatus,
       taskDepth,
       createdAt: now,
@@ -1481,6 +1483,7 @@ export const runSubagent = internalAction({
         agentType: args.subagentType,
         parentTaskId: args.parentTaskId,
         maxTaskDepth: promptBuild.maxTaskDepth,
+        commandId: args.commandId,
       });
 
     const taskId: Id<"tasks"> = created.taskId;
