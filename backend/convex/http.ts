@@ -462,15 +462,6 @@ type SynthesizeResponse = {
   coreMemory: string;
   welcomeMessage: string;
 };
-
-type WelcomeMessageRequest = {
-  coreMemory: string;
-};
-
-type WelcomeMessageResponse = {
-  welcomeMessage: string;
-};
-
 const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 
 http.route({
@@ -582,94 +573,8 @@ http.route({
   }),
 });
 
-http.route({
-  path: "/api/welcome-message",
-  method: "OPTIONS",
-  handler: httpAction(async (_ctx, request) => {
-    const rejection = rejectDisallowedCorsOrigin(request);
-    if (rejection) return rejection;
-    const origin = request.headers.get("origin");
-    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
-  }),
-});
-
-http.route({
-  path: "/api/welcome-message",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const rejection = rejectDisallowedCorsOrigin(request);
-    if (rejection) return rejection;
-    const origin = request.headers.get("origin");
-
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return withCors(new Response("Unauthorized", { status: 401 }), origin);
-    }
-
-    let body: WelcomeMessageRequest | null = null;
-    try {
-      body = (await request.json()) as WelcomeMessageRequest;
-    } catch {
-      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
-    }
-
-    const coreMemory = body?.coreMemory?.trim();
-    if (!coreMemory) {
-      return withCors(
-        new Response("coreMemory is required", { status: 400 }),
-        origin,
-      );
-    }
-
-    const apiKey = process.env.AI_GATEWAY_API_KEY;
-    if (!apiKey) {
-      console.error("[welcome-message] Missing AI_GATEWAY_API_KEY environment variable");
-      return withCors(
-        new Response("Server configuration error", { status: 500 }),
-        origin,
-      );
-    }
-
-    const gateway = createGateway({ apiKey });
-
-    try {
-      const welcomeConfig = await resolveModelConfig(ctx, "welcome", identity.subject);
-      const welcomePrompt = buildWelcomeMessagePrompt(coreMemory);
-
-      const welcomeModel = typeof welcomeConfig.model === "string"
-        ? gateway(welcomeConfig.model)
-        : welcomeConfig.model;
-      const welcomeResult = await generateText({
-        model: welcomeModel,
-        messages: [{ role: "user", content: welcomePrompt }],
-        maxOutputTokens: welcomeConfig.maxOutputTokens,
-        temperature: welcomeConfig.temperature,
-        providerOptions: welcomeConfig.providerOptions,
-      });
-
-      const response: WelcomeMessageResponse = {
-        welcomeMessage: welcomeResult.text?.trim() || DEFAULT_WELCOME_MESSAGE,
-      };
-
-      return withCors(
-        new Response(JSON.stringify(response), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-        origin,
-      );
-    } catch (error) {
-      console.error("[welcome-message] Error:", error);
-      return withCors(
-        new Response(`Welcome generation failed: ${(error as Error).message}`, { status: 500 }),
-        origin,
-      );
-    }
-  }),
-});
-
 // ---------------------------------------------------------------------------
-// Memory Seeding Endpoint (discovery → ephemeral memory)
+// Memory Seeding Endpoint (discovery -> ephemeral memory)
 // ---------------------------------------------------------------------------
 
 http.route({
@@ -1642,7 +1547,7 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
-// Bridge Webhook (WhatsApp, Signal — persistent processes in Sprites)
+// Bridge Webhook (WhatsApp, Signal ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â persistent processes in Sprites)
 // ---------------------------------------------------------------------------
 
 http.route({
