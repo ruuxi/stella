@@ -2,7 +2,8 @@ import { ConvexClient } from "convex/browser";
 import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
-import { syncExternalSkills } from "./skill_import.js";
+import { syncExternalSkills, syncBundledSkills } from "./skill_import.js";
+import { syncBundledCommands } from "./command_sync.js";
 import { loadIdentityMap, depseudonymize } from "./identity_map.js";
 import { purgeExpiredDeferredDeletes } from "./deferred_delete.js";
 import { sanitizeForLogs } from "./tools-utils.js";
@@ -100,6 +101,44 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     // External skill sources
     const claudeSkillsPath = path.join(os.homedir(), ".claude", "skills");
     const agentsSkillsPath = path.join(os.homedir(), ".agents", "skills");
+    // Bundled Anthropic skills (shipped with the app)
+    // Dev: frontendRoot/resources/bundled-skills
+    // Prod: extraResources copied to process.resourcesPath/bundled-skills
+    const bundledSkillsPath = (() => {
+        if (frontendRoot) {
+            const devPath = path.join(frontendRoot, "resources", "bundled-skills");
+            if (fs.existsSync(devPath))
+                return devPath;
+        }
+        try {
+            const prodPath = path.join(process.resourcesPath, "bundled-skills");
+            if (fs.existsSync(prodPath))
+                return prodPath;
+        }
+        catch {
+            // process.resourcesPath may not exist outside Electron
+        }
+        return null;
+    })();
+    // Bundled commands (shipped with the app)
+    // Dev: frontendRoot/resources/bundled-commands
+    // Prod: extraResources copied to process.resourcesPath/bundled-commands
+    const bundledCommandsPath = (() => {
+        if (frontendRoot) {
+            const devPath = path.join(frontendRoot, "resources", "bundled-commands");
+            if (fs.existsSync(devPath))
+                return devPath;
+        }
+        try {
+            const prodPath = path.join(process.resourcesPath, "bundled-commands");
+            if (fs.existsSync(prodPath))
+                return prodPath;
+        }
+        catch {
+            // process.resourcesPath may not exist outside Electron
+        }
+        return null;
+    })();
     const toConvexName = (name) => {
         // Convex expects "module:function" identifiers, not dot-separated paths.
         const firstDot = name.indexOf(".");
@@ -154,7 +193,25 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             try {
                 log("Syncing manifests...");
                 await callMutation("agent/agents.ensureBuiltins", {});
-                // Import skills from external sources first
+                // Import bundled Anthropic skills first (disabled by default, no LLM call needed)
+                if (bundledSkillsPath) {
+                    try {
+                        await syncBundledSkills(bundledSkillsPath, skillsPath, statePath);
+                    }
+                    catch (error) {
+                        logError("Bundled skill import failed:", error);
+                    }
+                }
+                // Import bundled commands (disabled by default, no LLM call needed)
+                if (bundledCommandsPath) {
+                    try {
+                        await syncBundledCommands(bundledCommandsPath, callMutation);
+                    }
+                    catch (error) {
+                        logError("Bundled command import failed:", error);
+                    }
+                }
+                // Import skills from external sources
                 if (convexUrl && authToken) {
                     try {
                         await syncExternalSkills(claudeSkillsPath, agentsSkillsPath, skillsPath, statePath, generateMetadataViaBackend);
@@ -199,8 +256,12 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     const startWatchers = () => {
         // Watch internal Stella directories
         const watchDirs = [skillsPath, agentsPath];
-        // Also watch external skill sources (if they exist)
-        const externalDirs = [claudeSkillsPath, agentsSkillsPath];
+        // Also watch external skill sources and bundled skills (if they exist)
+        const externalDirs = [
+            claudeSkillsPath,
+            agentsSkillsPath,
+            ...(bundledSkillsPath ? [bundledSkillsPath] : []),
+        ];
         for (const dir of watchDirs) {
             // Ensure directory exists before watching
             if (!fs.existsSync(dir)) {

@@ -119,8 +119,8 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     // Browser data collection for core memory
     checkCoreMemoryExists: () => electron_1.ipcRenderer.invoke('browserData:exists'),
     collectBrowserData: () => electron_1.ipcRenderer.invoke('browserData:collect'),
+    detectPreferredBrowser: () => electron_1.ipcRenderer.invoke('browserData:detectPreferredBrowser'),
     writeCoreMemory: (content) => electron_1.ipcRenderer.invoke('browserData:writeCoreMemory', content),
-    readCoreMemory: () => electron_1.ipcRenderer.invoke('browserData:readCoreMemory'),
     // Comprehensive user signal collection (browser + dev projects + shell + apps)
     collectAllSignals: (options) => electron_1.ipcRenderer.invoke('signals:collectAll', options),
     // Identity map for pseudonymization

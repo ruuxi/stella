@@ -219,6 +219,10 @@ export const parseSkillMarkdown = async (filePath, source) => {
         }
     }
     const derivedRequires = Array.from(mergedRequires).filter((value) => value.trim().length > 0);
+    // Read enabled from stella.yaml (undefined means default — backend treats as true)
+    const enabled = stellaYaml && typeof stellaYaml.enabled === "boolean"
+        ? stellaYaml.enabled
+        : undefined;
     return {
         id,
         name,
@@ -231,6 +235,7 @@ export const parseSkillMarkdown = async (filePath, source) => {
         requiresSecrets: derivedRequires.length > 0 ? derivedRequires : undefined,
         publicIntegration,
         secretMounts,
+        enabled,
         version: coerceVersion(metadata.version),
         source,
         filePath,

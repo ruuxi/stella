@@ -23,6 +23,7 @@ export type ParsedSkill = {
             placeholder?: string;
         }>;
     };
+    enabled?: boolean;
     version: number;
     source: string;
     filePath: string;

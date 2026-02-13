@@ -8,7 +8,7 @@ export type SkillImportRecord = {
     sourceDir: string;
     sourceHash: string;
     importedAt: number;
-    priority: "claude" | "agents";
+    priority: "claude" | "agents" | "anthropic";
 };
 export type SkillImportIndex = {
     version: 1;
@@ -20,7 +20,8 @@ export type StellaYaml = {
     description: string;
     agentTypes: string[];
     version: number;
-    source: "claude" | "agents";
+    source: "claude" | "agents" | "anthropic";
+    enabled?: boolean;
     importedAt: number;
 };
 export type DiscoveredSkill = {
@@ -28,7 +29,7 @@ export type DiscoveredSkill = {
     dirName: string;
     sourceDir: string;
     skillMdPath: string;
-    priority: "claude" | "agents";
+    priority: "claude" | "agents" | "anthropic";
 };
 export type SkillImportPlan = DiscoveredSkill & {
     sourceHash: string;
@@ -43,6 +44,7 @@ export type GenerateMetadataFn = (markdown: string, dirName: string) => Promise<
 }>;
 export declare const loadImportIndex: (statePath: string) => Promise<SkillImportIndex>;
 export declare const saveImportIndex: (statePath: string, index: SkillImportIndex) => Promise<void>;
-export declare const discoverSkillsFromSource: (sourceDir: string, priority: "claude" | "agents") => Promise<DiscoveredSkill[]>;
+export declare const discoverSkillsFromSource: (sourceDir: string, priority: "claude" | "agents" | "anthropic") => Promise<DiscoveredSkill[]>;
 export declare const getSkillsToImport: (claudeSkills: DiscoveredSkill[], agentsSkills: DiscoveredSkill[], importIndex: SkillImportIndex, existingStellaIds: Set<string>) => Promise<SkillImportPlan[]>;
 export declare const syncExternalSkills: (claudeSkillsPath: string, agentsSkillsPath: string, stellaSkillsPath: string, statePath: string, generateMetadata: GenerateMetadataFn) => Promise<void>;
+export declare const syncBundledSkills: (bundledSourcePath: string, stellaSkillsPath: string, statePath: string) => Promise<void>;

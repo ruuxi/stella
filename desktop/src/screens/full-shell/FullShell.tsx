@@ -283,6 +283,7 @@ export const FullShell = () => {
           onConnect={() => setConnectDialogOpen(true)}
           onSettings={() => setSettingsDialogOpen(true)}
           onStore={() => setView(state.view === 'store' ? 'chat' : 'store')}
+          onHome={() => setView('chat')}
           storeActive={state.view === 'store'}
         />
         {state.view === 'store' ? (

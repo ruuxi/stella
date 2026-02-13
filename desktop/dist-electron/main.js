@@ -11,7 +11,7 @@ import { createModifierOverlay, showModifierOverlay, showModifierOverlayPreempti
 import { getOrCreateDeviceId } from './local-host/device.js';
 import { createLocalHostRunner } from './local-host/runner.js';
 import { resolveStellaHome } from './local-host/stella-home.js';
-import { collectBrowserData, coreMemoryExists, readCoreMemory, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
+import { collectBrowserData, coreMemoryExists, detectPreferredBrowserProfile, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
 import { collectAllSignals } from './local-host/collect-all.js';
 import { handleInstallCanvas, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from './local-host/tools_store.js';
 import * as bridgeManager from './local-host/bridge_manager.js';
@@ -256,7 +256,7 @@ const isAppUrl = (url) => {
     return false;
 };
 const setupExternalLinkHandlers = (window) => {
-    // Intercept target="_blank" / window.open — open in default browser
+    // Intercept target="_blank" / window.open Ã¢â‚¬â€ open in default browser
     window.webContents.setWindowOpenHandler(({ url }) => {
         if (!isAppUrl(url)) {
             shell.openExternal(url);
@@ -846,7 +846,7 @@ const initMouseHook = () => {
             }
             if (process.platform === 'darwin') {
                 // Hide preemptive overlay when modifier is released (unless radial is
-                // active — onRadialHide will handle cleanup in that case).
+                // active Ã¢â‚¬â€ onRadialHide will handle cleanup in that case).
                 if (!mouseHook?.isRadialActive()) {
                     hideModifierOverlay();
                 }
@@ -1232,11 +1232,8 @@ app.whenReady().then(async () => {
             return { ok: false, error: error.message };
         }
     });
-    ipcMain.handle('browserData:readCoreMemory', async () => {
-        if (!StellaHomePath) {
-            return null;
-        }
-        return readCoreMemory(StellaHomePath);
+    ipcMain.handle('browserData:detectPreferredBrowser', async () => {
+        return detectPreferredBrowserProfile();
     });
     // Comprehensive user signal collection (with category support)
     ipcMain.handle('signals:collectAll', async (_event, options) => {
