@@ -402,6 +402,103 @@ export const listSkills = internalQuery({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Skill Selection (onboarding)
+// ---------------------------------------------------------------------------
+
+const skillSelectionValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  description: v.string(),
+  tags: v.optional(v.array(v.string())),
+});
+
+export const listAllSkillsForSelection = internalQuery({
+  args: {
+    ownerId: v.string(),
+  },
+  returns: v.array(skillSelectionValidator),
+  handler: async (ctx, args) => {
+    const [builtinSkills, ownerSkills] = await Promise.all([
+      ctx.db
+        .query("skills")
+        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .order("desc")
+        .take(400),
+      ctx.db
+        .query("skills")
+        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+        .order("desc")
+        .take(400),
+    ]);
+
+    const merged = new Map<string, { id: string; name: string; description: string; tags?: string[] }>();
+    for (const skill of builtinSkills) {
+      merged.set(skill.id, {
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        tags: skill.tags,
+      });
+    }
+    for (const skill of ownerSkills) {
+      merged.set(skill.id, {
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        tags: skill.tags,
+      });
+    }
+
+    return Array.from(merged.values());
+  },
+});
+
+export const enableSelectedSkills = internalMutation({
+  args: {
+    ownerId: v.string(),
+    skillIds: v.array(v.string()),
+  },
+  returns: v.object({ enabled: v.number() }),
+  handler: async (ctx, args) => {
+    let enabled = 0;
+
+    for (const skillId of args.skillIds) {
+      // Check for owner-scoped skill first
+      const ownerSkill = await ctx.db
+        .query("skills")
+        .withIndex("by_owner_and_skill_key", (q) =>
+          q.eq("ownerId", args.ownerId).eq("id", skillId),
+        )
+        .first();
+
+      if (ownerSkill) {
+        if (!ownerSkill.enabled) {
+          await ctx.db.patch(ownerSkill._id, { enabled: true, updatedAt: Date.now() });
+        }
+        enabled += 1;
+        continue;
+      }
+
+      // Check for builtin skill — create owner-scoped override
+      const builtinSkill = await ctx.db
+        .query("skills")
+        .withIndex("by_owner_and_skill_key", (q) =>
+          q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", skillId),
+        )
+        .first();
+
+      if (builtinSkill) {
+        // Builtin skills are already enabled by default; no override needed
+        enabled += 1;
+        continue;
+      }
+    }
+
+    return { enabled };
+  },
+});
+
 export const ensureBuiltinSkills = internalMutation({
   args: {},
   returns: v.object({ ok: v.boolean() }),

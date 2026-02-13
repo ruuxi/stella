@@ -14,3 +14,7 @@ export {
   buildSkillMetadataUserMessage,
 } from "./skill_metadata";
 export { BUILTIN_SKILLS } from "./builtin_skills";
+export {
+  SKILL_SELECTION_PROMPT,
+  buildSkillSelectionUserMessage,
+} from "./skill_selection";
