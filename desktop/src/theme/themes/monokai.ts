@@ -2,7 +2,7 @@ import type { Theme } from "./types";
 
 const theme: Theme = {
   id: "monokai",
-  name: "Monokai",
+  name: "Neon",
   light: {
     background: "#fafaf8",
     backgroundWeak: "#f2f2ef",

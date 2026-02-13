@@ -23,6 +23,7 @@ import type { ChatContext, ChatContextUpdate } from "../../types/electron";
 
 import { ChatColumn } from "./ChatColumn";
 import { useOnboardingOverlay } from "./OnboardingOverlay";
+import { OnboardingCanvas, type OnboardingDemo } from "../../components/onboarding/OnboardingCanvas";
 import { useDiscoveryFlow } from "./DiscoveryFlow";
 import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
@@ -50,6 +51,29 @@ export const FullShell = () => {
   useBridgeAutoReconnect();
 
   const onboarding = useOnboardingOverlay();
+  const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
+  const [demoClosing, setDemoClosing] = useState(false);
+  const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleDemoChange = useCallback((demo: OnboardingDemo) => {
+    if (demo) {
+      if (demoCloseTimerRef.current) {
+        clearTimeout(demoCloseTimerRef.current);
+        demoCloseTimerRef.current = null;
+      }
+      setDemoClosing(false);
+      setActiveDemo(demo);
+    } else {
+      // Both state changes in same handler → batched into one render
+      // so the component never unmounts between frames
+      setActiveDemo(null);
+      setDemoClosing(true);
+      demoCloseTimerRef.current = setTimeout(() => {
+        setDemoClosing(false);
+        demoCloseTimerRef.current = null;
+      }, 400);
+    }
+  }, []);
 
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     isAuthenticated: onboarding.isAuthenticated,
@@ -224,10 +248,14 @@ export const FullShell = () => {
   const canSubmit = Boolean(
     state.conversationId && (message.trim() || hasComposerContext),
   );
-  const shellClassName = `window-shell full${canvasOpen ? " has-canvas" : ""}`;
+  const shellClassName = `window-shell full${canvasOpen || activeDemo || demoClosing ? " has-canvas" : ""}`;
   const canvasWidthVar = canvasOpen
     ? ({
         "--canvas-panel-width": `${canvasState.width}px`,
+      } as React.CSSProperties)
+    : (activeDemo || demoClosing)
+    ? ({
+        "--canvas-panel-width": "420px",
       } as React.CSSProperties)
     : undefined;
 
@@ -276,6 +304,7 @@ export const FullShell = () => {
               scrollToBottom={scrollToBottom}
               conversationId={state.conversationId}
               onboardingDone={onboarding.onboardingDone}
+              onboardingExiting={onboarding.onboardingExiting}
               isAuthenticated={onboarding.isAuthenticated}
               isAuthLoading={onboarding.isAuthLoading}
               canSubmit={canSubmit}
@@ -290,8 +319,10 @@ export const FullShell = () => {
               handleEnterSplit={onboarding.handleEnterSplit}
               onDiscoveryConfirm={handleDiscoveryConfirm}
               onSignIn={() => setAuthDialogOpen(true)}
+              onDemoChange={handleDemoChange}
             />
             {canvasOpen && <CanvasPanel />}
+            {!canvasOpen && (activeDemo || demoClosing) && <OnboardingCanvas activeDemo={activeDemo} />}
           </>
         )}
       </div>

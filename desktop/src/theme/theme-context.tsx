@@ -126,8 +126,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
 
   const [colorMode, setColorModeState] = useState<ColorMode>(() => {
-    if (typeof window === "undefined") return "system";
-    return (localStorage.getItem(COLOR_MODE_STORAGE_KEY) as ColorMode) ?? "system";
+    if (typeof window === "undefined") return "light";
+    return (localStorage.getItem(COLOR_MODE_STORAGE_KEY) as ColorMode) ?? "light";
   });
 
   const [gradientMode, setGradientModeState] = useState<GradientMode>(() => {
@@ -136,8 +136,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
 
   const [gradientColor, setGradientColorState] = useState<GradientColor>(() => {
-    if (typeof window === "undefined") return "relative";
-    return (localStorage.getItem(GRADIENT_COLOR_STORAGE_KEY) as GradientColor) ?? "relative";
+    if (typeof window === "undefined") return "strong";
+    return (localStorage.getItem(GRADIENT_COLOR_STORAGE_KEY) as GradientColor) ?? "strong";
   });
 
   const [systemMode, setSystemMode] = useState<"light" | "dark">(getSystemColorMode);
