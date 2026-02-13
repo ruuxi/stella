@@ -422,6 +422,14 @@ http.route({
             // Extraction failure should not affect the chat response.
           }
         }
+
+        // Best-effort command suggestions after each response.
+        try {
+          await ctx.scheduler.runAfter(0, internal.agent.suggestions.generateSuggestions, {
+            conversationId,
+            ownerId: conversation.ownerId,
+          });
+        } catch { /* best-effort */ }
       },
     });
 

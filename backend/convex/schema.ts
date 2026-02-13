@@ -108,6 +108,17 @@ export default defineSchema({
   })
     .index("by_owner_and_agent_key", ["ownerId", "id"])
     .index("by_owner_and_updated", ["ownerId", "updatedAt"]),
+  commands: defineTable({
+    commandId: v.string(),
+    name: v.string(),
+    description: v.string(),
+    pluginName: v.string(),
+    content: v.string(),
+    enabled: v.boolean(),
+    updatedAt: v.number(),
+  })
+    .index("by_command_id", ["commandId"])
+    .index("by_enabled", ["enabled", "updatedAt"]),
   skills: defineTable({
     ownerId: v.optional(v.string()),
     id: v.string(),
@@ -222,6 +233,7 @@ export default defineSchema({
     status: v.string(),
     taskDepth: v.number(),
     model: v.optional(v.string()),
+    commandId: v.optional(v.string()),
     result: v.optional(v.string()),
     error: v.optional(v.string()),
     statusUpdates: v.optional(v.array(v.object({

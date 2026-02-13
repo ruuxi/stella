@@ -85,6 +85,10 @@ export const createOrchestrationTools = (
       pre_explore: z.string().optional().describe(
         "Run an explore agent with this prompt first, then inject its findings into the main agent's context.",
       ),
+      command_id: z.string().optional().describe(
+        "Command ID to load full instructions into the subagent's prompt. " +
+        "The system resolves the content automatically — do not include command instructions in the prompt.",
+      ),
     }),
     execute: async (args) => {
       if (!context.userMessageId) {
@@ -104,6 +108,7 @@ export const createOrchestrationTools = (
         threadName: args.thread_name,
         recallMemory: args.recall_memory,
         preExplore: args.pre_explore,
+        commandId: args.command_id,
       });
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);
     },
