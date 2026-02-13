@@ -17,6 +17,7 @@ type StellaYamlData = {
   version?: number;
   source?: string;
   importedAt?: number;
+  enabled?: boolean;
 };
 
 const readStellaYaml = async (skillDir: string): Promise<StellaYamlData | null> => {
@@ -103,6 +104,7 @@ export type ParsedSkill = {
     env?: Record<string, { provider: string; label?: string; description?: string; placeholder?: string }>;
     files?: Record<string, { provider: string; label?: string; description?: string; placeholder?: string }>;
   };
+  enabled?: boolean;
   version: number;
   source: string;
   filePath: string;
@@ -317,6 +319,12 @@ export const parseSkillMarkdown = async (
   }
   const derivedRequires = Array.from(mergedRequires).filter((value) => value.trim().length > 0);
 
+  // Read enabled from stella.yaml (undefined means default — backend treats as true)
+  const enabled =
+    stellaYaml && typeof stellaYaml.enabled === "boolean"
+      ? stellaYaml.enabled
+      : undefined;
+
   return {
     id,
     name,
@@ -329,6 +337,7 @@ export const parseSkillMarkdown = async (
     requiresSecrets: derivedRequires.length > 0 ? derivedRequires : undefined,
     publicIntegration,
     secretMounts,
+    enabled,
     version: coerceVersion(metadata.version),
     source,
     filePath,
