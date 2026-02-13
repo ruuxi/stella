@@ -28,7 +28,6 @@ import { resolveStellaHome } from './local-host/stella-home.js'
 import {
   collectBrowserData,
   coreMemoryExists,
-  readCoreMemory,
   writeCoreMemory,
   formatBrowserDataForSynthesis,
   type BrowserData,
@@ -361,7 +360,7 @@ const isAppUrl = (url: string) => {
 }
 
 const setupExternalLinkHandlers = (window: BrowserWindow) => {
-  // Intercept target="_blank" / window.open — open in default browser
+  // Intercept target="_blank" / window.open Ã¢â‚¬â€ open in default browser
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (!isAppUrl(url)) {
       shell.openExternal(url)
@@ -1015,7 +1014,7 @@ const initMouseHook = () => {
       }
       if (process.platform === 'darwin') {
         // Hide preemptive overlay when modifier is released (unless radial is
-        // active — onRadialHide will handle cleanup in that case).
+        // active Ã¢â‚¬â€ onRadialHide will handle cleanup in that case).
         if (!mouseHook?.isRadialActive()) {
           hideModifierOverlay()
         }
@@ -1454,13 +1453,6 @@ app.whenReady().then(async () => {
     } catch (error) {
       return { ok: false, error: (error as Error).message }
     }
-  })
-
-  ipcMain.handle('browserData:readCoreMemory', async (): Promise<string | null> => {
-    if (!StellaHomePath) {
-      return null
-    }
-    return readCoreMemory(StellaHomePath)
   })
 
   // Comprehensive user signal collection (with category support)
