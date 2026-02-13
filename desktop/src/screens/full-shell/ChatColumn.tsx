@@ -35,6 +35,7 @@ type ChatColumnProps = {
 
   conversationId: string | null;
   onboardingDone: boolean;
+  onboardingExiting: boolean;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
   canSubmit: boolean;
@@ -50,6 +51,7 @@ type ChatColumnProps = {
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSignIn: () => void;
+  onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
 };
 
 export function ChatColumn({
@@ -72,6 +74,7 @@ export function ChatColumn({
   scrollToBottom,
   conversationId,
   onboardingDone,
+  onboardingExiting,
   isAuthenticated,
   isAuthLoading,
   canSubmit,
@@ -86,6 +89,7 @@ export function ChatColumn({
   handleEnterSplit,
   onDiscoveryConfirm,
   onSignIn,
+  onDemoChange,
 }: ChatColumnProps) {
   const hasMessages = events.length > 0 || isStreaming;
   const showConversation = isAuthenticated && onboardingDone && hasMessages;
@@ -112,6 +116,7 @@ export function ChatColumn({
           <OnboardingView
             hasExpanded={hasExpanded}
             onboardingDone={onboardingDone}
+            onboardingExiting={onboardingExiting}
             isAuthenticated={isAuthenticated}
             isAuthLoading={isAuthLoading}
             splitMode={splitMode}
@@ -123,6 +128,7 @@ export function ChatColumn({
             onSignIn={onSignIn}
             handleEnterSplit={handleEnterSplit}
             onDiscoveryConfirm={onDiscoveryConfirm}
+            onDemoChange={onDemoChange}
           />
         )}
       </div>
@@ -147,20 +153,22 @@ export function ChatColumn({
       )}
 
       {isAuthenticated && onboardingDone && (
-        <Composer
-          message={message}
-          setMessage={setMessage}
-          chatContext={chatContext}
-          setChatContext={setChatContext}
-          selectedText={selectedText}
-          setSelectedText={setSelectedText}
-          isStreaming={isStreaming}
-          queueNext={queueNext}
-          setQueueNext={setQueueNext}
-          canSubmit={canSubmit}
-          conversationId={conversationId}
-          onSend={onSend}
-        />
+        <div className={onboardingExiting ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
+          <Composer
+            message={message}
+            setMessage={setMessage}
+            chatContext={chatContext}
+            setChatContext={setChatContext}
+            selectedText={selectedText}
+            setSelectedText={setSelectedText}
+            isStreaming={isStreaming}
+            queueNext={queueNext}
+            setQueueNext={setQueueNext}
+            canSubmit={canSubmit}
+            conversationId={conversationId}
+            onSend={onSend}
+          />
+        </div>
       )}
     </div>
   );

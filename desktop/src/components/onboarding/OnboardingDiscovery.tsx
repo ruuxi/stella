@@ -52,13 +52,6 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
           </button>
         </div>
       )}
-      <button
-        className="onboarding-confirm"
-        data-visible={true}
-        onClick={onConfirm}
-      >
-        Continue
-      </button>
     </div>
   );
 };

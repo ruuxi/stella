@@ -30,8 +30,10 @@ export function useOnboardingOverlay() {
 
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
   const [splitMode, setSplitMode] = useState(false);
+  const [onboardingExiting, setOnboardingExiting] = useState(false);
   const [onboardingKey, setOnboardingKey] = useState(0);
   const stellaAnimationRef = useRef<StellaAnimationHandle | null>(null);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerFlash = useCallback(() => {
     stellaAnimationRef.current?.triggerFlash();
@@ -47,9 +49,23 @@ export function useOnboardingOverlay() {
     setSplitMode(true);
   }, []);
 
+  const handleCompleteOnboarding = useCallback(() => {
+    setSplitMode(false);
+    setOnboardingExiting(true);
+    exitTimerRef.current = setTimeout(() => {
+      completeOnboarding();
+      setTimeout(() => setOnboardingExiting(false), 400);
+    }, 800);
+  }, [completeOnboarding]);
+
   const handleResetOnboarding = useCallback(() => {
+    if (exitTimerRef.current) {
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
     setHasExpanded(false);
     setSplitMode(false);
+    setOnboardingExiting(false);
     setOnboardingKey((k) => k + 1);
     stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
@@ -57,7 +73,8 @@ export function useOnboardingOverlay() {
 
   return {
     onboardingDone,
-    completeOnboarding,
+    onboardingExiting,
+    completeOnboarding: handleCompleteOnboarding,
     isAuthenticated,
     isAuthLoading,
     hasExpanded,
@@ -74,6 +91,7 @@ export function useOnboardingOverlay() {
 export function OnboardingView({
   hasExpanded,
   onboardingDone,
+  onboardingExiting,
   isAuthenticated,
   isAuthLoading,
   splitMode,
@@ -85,9 +103,11 @@ export function OnboardingView({
   onSignIn,
   handleEnterSplit,
   onDiscoveryConfirm,
+  onDemoChange,
 }: {
   hasExpanded: boolean;
   onboardingDone: boolean;
+  onboardingExiting?: boolean;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
   splitMode: boolean;
@@ -99,9 +119,10 @@ export function OnboardingView({
   onSignIn: () => void;
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
+  onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
 }) {
   return (
-    <div className="new-session-view" data-split={splitMode}>
+    <div className="new-session-view" data-split={splitMode} data-exiting={onboardingExiting || undefined}>
       <div
         className="new-session-title"
         data-expanded={hasExpanded ? "true" : "false"}
@@ -135,6 +156,7 @@ export function OnboardingView({
           onInteract={triggerFlash}
           onDiscoveryConfirm={onDiscoveryConfirm}
           onEnterSplit={handleEnterSplit}
+          onDemoChange={onDemoChange}
           isAuthenticated={isAuthenticated}
         />
       )}
