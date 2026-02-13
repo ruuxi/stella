@@ -4,6 +4,18 @@ import { requireUserId } from "../auth";
 
 const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"));
 const RUNTIME_MODE_KEY = "runtime_mode";
+const PREFERRED_BROWSER_KEY = "preferred_browser";
+const preferredBrowserValidator = v.union(
+  v.literal("arc"),
+  v.literal("brave"),
+  v.literal("chrome"),
+  v.literal("edge"),
+  v.literal("firefox"),
+  v.literal("opera"),
+  v.literal("safari"),
+  v.literal("vivaldi"),
+  v.literal("none"),
+);
 
 const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
   value === "cloud_247" ? "cloud_247" : "local";
@@ -125,6 +137,35 @@ export const setRuntimeMode = internalMutation({
   },
 });
 
+export const setPreferredBrowser = mutation({
+  args: {
+    browser: preferredBrowserValidator,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const existing = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", PREFERRED_BROWSER_KEY))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        value: args.browser,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("user_preferences", {
+        ownerId,
+        key: PREFERRED_BROWSER_KEY,
+        value: args.browser,
+        updatedAt: Date.now(),
+      });
+    }
+
+    return null;
+  },
+});
 export const getRuntimeModeForOwner = internalQuery({
   args: {
     ownerId: v.string(),
@@ -262,3 +303,4 @@ export const getPreferenceForOwner = internalQuery({
     return record?.value ?? null;
   },
 });
+
