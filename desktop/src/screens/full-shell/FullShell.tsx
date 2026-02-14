@@ -236,6 +236,18 @@ export const FullShell = () => {
     setMessage("");
   }, [message, selectedText, chatContext, sendMessage]);
 
+  const handleWelcomeSuggestionSelect = useCallback(
+    (suggestion: { prompt: string }) => {
+      void sendMessage({
+        text: suggestion.prompt,
+        selectedText: null,
+        chatContext: null,
+        onClear: () => {},
+      });
+    },
+    [sendMessage],
+  );
+
   const handleCommandSelect = useCallback(
     (suggestion: CommandSuggestion) => {
       void sendMessage({
@@ -335,6 +347,7 @@ export const FullShell = () => {
               onSignIn={() => setAuthDialogOpen(true)}
               onDemoChange={handleDemoChange}
               onCommandSelect={handleCommandSelect}
+              onWelcomeSuggestionSelect={handleWelcomeSuggestionSelect}
             />
             {canvasOpen && <CanvasPanel />}
             {!canvasOpen && (activeDemo || demoClosing) && <OnboardingCanvas activeDemo={activeDemo} />}

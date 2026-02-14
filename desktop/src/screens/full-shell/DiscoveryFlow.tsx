@@ -207,6 +207,15 @@ export function useDiscoveryFlow({
             deviceId,
             payload: { text: synthesisResult.welcomeMessage },
           });
+
+          if (synthesisResult.suggestions?.length) {
+            await appendEvent({
+              conversationId,
+              type: "welcome_suggestions",
+              deviceId,
+              payload: { suggestions: synthesisResult.suggestions },
+            });
+          }
         }
       } catch {
         // Silent fail - discovery is non-critical
