@@ -8,9 +8,18 @@
 
 import { getAuthToken } from "./auth-token";
 
+export type WelcomeSuggestion = {
+  category: "cron" | "skill" | "app";
+  emoji: string;
+  title: string;
+  description: string;
+  prompt: string;
+};
+
 export type SynthesisResult = {
   coreMemory: string;
   welcomeMessage: string;
+  suggestions?: WelcomeSuggestion[];
 };
 
 export async function synthesizeCoreMemory(

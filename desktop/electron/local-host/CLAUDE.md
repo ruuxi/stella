@@ -29,7 +29,7 @@ This directory implements the local tool execution system that runs on the user'
 | `tools_store.ts` | ManagePackage |
 | `tools_self_mod.ts` | SelfModStart, SelfModApply, SelfModRevert, SelfModStatus, SelfModPackage |
 
-Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and are no longer registered as device tools. The `tools-web.ts` file still exists but its handlers are commented out of the registry.
+Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and are not registered in the device handler registry. The `tools-web.ts` file still contains functional implementations but its import is commented out in `tools.ts`.
 
 ### Other Modules
 
@@ -43,6 +43,11 @@ Note: WebFetch and WebSearch were promoted to backend tools (Convex actions) and
 | `identity_map.ts` | Persistent pseudonymization (maps real names to aliases) |
 | `manifests.ts` | Manifest file parsing |
 | `bridge_manager.ts` | Local bridge lifecycle (deploy/start/stop/stopAll/isRunning) |
+| `command_sync.ts` | Sync bundled commands to Convex |
+| `deferred_delete.ts` | Queue file deletions for later execution |
+| `deferred_delete_cli.ts` | CLI runner for deferred deletions |
+| `signal_processing.ts` | Process and format collected user signals |
+| `types.ts` | Shared type definitions |
 
 ### User Signal Collection
 
