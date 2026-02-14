@@ -23,7 +23,6 @@ export function WelcomeSuggestions({ suggestions, onSelect }: WelcomeSuggestions
           data-category={s.category}
           onClick={() => onSelect(s)}
         >
-          <span className="welcome-suggestion-emoji">{s.emoji}</span>
           <div className="welcome-suggestion-content">
             <div className="welcome-suggestion-header">
               <span className="welcome-suggestion-title">{s.title}</span>
