@@ -254,16 +254,11 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
         }, SYNC_DEBOUNCE_MS);
     };
     const startWatchers = () => {
-        // Watch internal Stella directories
+        // Only watch ~/.stella/skills and ~/.stella/agents for runtime changes.
+        // External sources (.claude, .agents) and bundled skills are one-time imports
+        // handled by syncManifests — no need to watch them.
         const watchDirs = [skillsPath, agentsPath];
-        // Also watch external skill sources and bundled skills (if they exist)
-        const externalDirs = [
-            claudeSkillsPath,
-            agentsSkillsPath,
-            ...(bundledSkillsPath ? [bundledSkillsPath] : []),
-        ];
         for (const dir of watchDirs) {
-            // Ensure directory exists before watching
             if (!fs.existsSync(dir)) {
                 try {
                     fs.mkdirSync(dir, { recursive: true });
@@ -274,8 +269,10 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
                 }
             }
             try {
-                const watcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
-                    log(`File ${eventType}: ${filename} in ${path.basename(dir)}`);
+                const watcher = fs.watch(dir, { recursive: true }, (_eventType, filename) => {
+                    if (syncPromise)
+                        return; // Ignore events triggered by our own sync
+                    log(`File change: ${filename} in ${path.basename(dir)}`);
                     scheduleSyncManifests();
                 });
                 watcher.on("error", (error) => {
@@ -286,26 +283,6 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             }
             catch (error) {
                 logError(`Failed to watch directory ${dir}:`, error);
-            }
-        }
-        // Watch external skill directories (don't create them if missing)
-        for (const dir of externalDirs) {
-            if (!fs.existsSync(dir)) {
-                continue;
-            }
-            try {
-                const watcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
-                    log(`External skill ${eventType}: ${filename} in ${path.basename(dir)}`);
-                    scheduleSyncManifests();
-                });
-                watcher.on("error", (error) => {
-                    logError(`Watcher error for external ${dir}:`, error);
-                });
-                watchers.push(watcher);
-                log(`Watching external skills: ${dir}`);
-            }
-            catch (error) {
-                logError(`Failed to watch external directory ${dir}:`, error);
             }
         }
     };
@@ -544,10 +521,9 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
                 void sweepDeferredDeletes("interval");
             }, DEFERRED_DELETE_SWEEP_INTERVAL_MS);
         }
-        // Initial sync on startup
-        void syncManifests();
-        // Start file watchers for manifest changes
-        startWatchers();
+        // Initial sync on startup, then start file watchers after sync completes
+        // (avoids watcher triggering on files the sync itself creates)
+        void syncManifests().then(() => startWatchers());
         // Start real-time subscription for tool requests (only if auth is ready)
         startSubscription();
         // Start device heartbeat (only sends if auth is available)
