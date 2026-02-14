@@ -3,7 +3,8 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { useConvexAuth } from "convex/react";
+import { useConvexAuth, useAction } from "convex/react";
+import { api } from "@/convex/api";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
@@ -27,6 +28,7 @@ export function useOnboardingOverlay() {
     reset: resetOnboarding,
   } = useOnboardingState();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+  const resetUserData = useAction(api.reset.resetAllUserData);
 
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
   const [splitMode, setSplitMode] = useState(false);
@@ -69,7 +71,10 @@ export function useOnboardingOverlay() {
     setOnboardingKey((k) => k + 1);
     stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
-  }, [resetOnboarding]);
+    resetUserData()
+      .then(() => window.location.reload())
+      .catch(console.error);
+  }, [resetOnboarding, resetUserData]);
 
   return {
     onboardingDone,
