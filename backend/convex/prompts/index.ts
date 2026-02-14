@@ -8,7 +8,9 @@ export {
   CORE_MEMORY_SYNTHESIS_PROMPT,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
+  buildWelcomeSuggestionsPrompt,
 } from "./synthesis";
+export type { WelcomeSuggestion } from "./synthesis";
 export {
   SKILL_METADATA_PROMPT,
   buildSkillMetadataUserMessage,
