@@ -141,7 +141,7 @@ Tools are assembled in `tools/index.ts` in layered tiers:
 
 | Tier | Source | Examples |
 |------|--------|----------|
-| Backend (always) | `tools/backend.ts` | WebSearch, WebFetch, OpenCanvas, CloseCanvas, IntegrationRequest |
+| Backend (always) | `tools/backend.ts` | WebSearch, WebFetch, OpenCanvas, CloseCanvas, IntegrationRequest, ListResources |
 | Device (if Electron connected) | `agent/device_tools.ts` | Read, Write, Edit, Bash, Glob, Grep, KillShell |
 | Cloud (if no device and `spriteName` is present) | `tools/cloud.ts` | Bash, Read, Write, Edit via Sprites VM |
 | Orchestration | `tools/orchestration.ts` | TaskCreate, TaskOutput, TaskCancel, RecallMemories, SaveMemory |

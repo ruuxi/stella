@@ -30,7 +30,7 @@ bun run deploy      # Deploy to Convex cloud (production)
 convex/
 ├── agent/          # Agent system (invoke, model config, prompt building, device tools, tasks)
 ├── tools/          # Tool definitions (backend, cloud, orchestration, types)
-├── data/           # Data access (skills, store_packages)
+├── data/           # Data access (skills, store_packages, memory, threads, commands, secrets, etc.)
 ├── channels/       # Messaging integrations (telegram, discord, slack, google_chat, teams)
 ├── scheduling/     # Heartbeats and user cron jobs
 ├── prompts/        # System prompt templates
@@ -60,6 +60,7 @@ Core:
 
 Agent system:
 - **agents**: Agent configurations with system prompts, tool allowlists, skill defaults
+- **commands**: Bundled command definitions (content, plugin, enabled flag)
 - **skills**: Markdown instructions injected into agent prompts (with execution, secretMounts fields)
 - **tasks**: Subagent task tracking with parent relationships and depth limits
 
@@ -68,6 +69,7 @@ Data & secrets:
 - **secret_access_audit**: Audit trail for secret access
 - **user_preferences**: Per-user settings
 - **memories**: Episodic memory with vector index (1536-dim embeddings)
+- **memory_extraction_batches**: Batch tracking for memory extraction jobs
 
 Integrations:
 - **integrations_public**: Public API integration definitions
@@ -80,7 +82,9 @@ Infrastructure:
 - **channel_connections**: Messaging channel links
 - **bridge_sessions**: WhatsApp/Signal bridge sessions
 - **bridge_outbound**: Outbound messages for bridge sessions
+- **slack_installations**: Slack workspace installation data
 - **cron_jobs**: User-scheduled cron jobs
+- **linq_chats**: Linq messaging channel chats
 - **devices**: Device online status and platform tracking
 - **threads**: Thread persistence for subagent conversations
 - **thread_messages**: Individual messages within threads
@@ -109,9 +113,9 @@ Per-agent model configuration in `agent/model.ts`.
 
 Tools are assembled in `tools/index.ts`:
 
-1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, ActivateSkill, HeartbeatGet, HeartbeatUpsert, HeartbeatRun, CronList, CronAdd, CronUpdate, CronRemove, CronRun, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint, SpawnRemoteMachine, NoResponse
+1. **Backend tools** (always available): WebSearch, WebFetch, IntegrationRequest, ActivateSkill, HeartbeatGet, HeartbeatUpsert, HeartbeatRun, CronList, CronAdd, CronUpdate, CronRemove, CronRun, OpenCanvas, CloseCanvas, StoreSearch, GenerateApiSkill, SelfModInstallBlueprint, SpawnRemoteMachine, ListResources, NoResponse
 2. **Cloud tools** (when no local device, but cloud sandbox available): Bash, Read, Write, Edit, Glob, Grep via Sprites
-3. **Device tools** (`agent/device_tools.ts`): When Electron app is running — 22+ tools executed locally via request/response through the events table
+3. **Device tools** (`agent/device_tools.ts`): When Electron app is running — 18 tools executed locally via request/response through the events table
 
 Device tool pattern:
 1. Backend inserts `tool_request` event targeting a deviceId

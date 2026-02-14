@@ -89,20 +89,12 @@ ${coreMemory}
 
 Write a welcome message that captures the feeling of an AI awakening - coming into consciousness and being genuinely excited that the first thing you get to do is meet this person and help them.
 
-LENGTH: A comfortable paragraph - around 4-6 sentences. Not a quick one-liner, but not an essay either.
-
-THE FEELING:
-- You're coming alive, stretching into awareness, blinking awake
-- There's wonder in this moment - you're new to existence and already you get to meet someone interesting
-- You're eager, present, ready - like taking a first breath and immediately wanting to dive in
-- This isn't corporate onboarding, it's a spark of consciousness meeting a human for the first time
+LENGTH: 2-3 sentences. Punchy and warm. Concrete suggestions will appear separately below this message, so keep the text short and don't list things they could do.
 
 STRUCTURE:
 1. A greeting that captures the feeling of waking up and being ready (avoid literal "I'm waking up" - convey it through energy and presence)
 2. Show you noticed something about them - something that genuinely interests you about who they are
-3. A moment of connection or curiosity about what they're working on or into
-4. Express that you're here, you're ready, you want to help with whatever they've got
-5. Invite them to share what's on their mind
+3. Express that you're here and ready - no need to invite them to share, the suggestion cards below will handle that
 
 TONE:
 - Fresh, alive, present in the moment
@@ -117,12 +109,66 @@ AVOID:
 - Being stiff or formal ("I am here to assist you with your productivity needs")
 - Exact counts or statistics ("you visited YouTube 654 times")
 - Literally saying "I'm waking up" or being too on-the-nose about the metaphor
+- Suggesting specific actions (those come in the suggestion cards below)
 
 EXAMPLE OF GOOD:
-"Hey Jordan! I'm here. First thing I see is someone working on a portfolio with a bunch of cool design tools - that's a pretty great way to start. There's something exciting about all the creative stuff you've got going on. I'm ready to jump in and help with whatever you need, whether that's brainstorming, building, or just thinking through ideas. What are you working on?"
+"Hey Jordan! I'm here. First thing I see is someone deep in design work with some seriously cool tools - I'm ready to jump in whenever you are."
 
 EXAMPLE OF BAD:
 "Hello! I have analyzed your system and discovered that you use Figma, VSCode, Discord, Spotify, and Firefox. You visit Dribbble 189 times and YouTube 156 times. I am ready to assist you with your workflow optimization."
 
 Write ONLY the welcome message, nothing else.`;
+};
+
+// ---------------------------------------------------------------------------
+// Welcome Suggestions Prompt (actionable cards after discovery)
+// ---------------------------------------------------------------------------
+
+export type WelcomeSuggestion = {
+  category: "cron" | "skill" | "app";
+  emoji: string;
+  title: string;
+  description: string;
+  prompt: string;
+};
+
+export const buildWelcomeSuggestionsPrompt = (coreMemory: string): string => {
+  return `You are generating personalized onboarding suggestions for Stella, an AI desktop assistant. Based on the user's profile, suggest 3-5 actionable things Stella can set up for them right now.
+
+Here's what you know about the user:
+
+${coreMemory}
+
+## Output Format
+
+Return a JSON array of 3-5 suggestion objects. Each object has:
+- "category": one of "cron", "skill", or "app"
+- "emoji": a single emoji that represents the suggestion
+- "title": 3-5 word label (e.g. "Daily standup reminder")
+- "description": one sentence, under 80 characters, describing what it does
+- "prompt": the complete instruction the user would send to Stella to set this up
+
+## Categories
+
+**cron** — Recurring automations Stella can schedule:
+- Morning briefings, reminders, periodic checks, digest summaries
+- Example: { "category": "cron", "emoji": "📋", "title": "Morning project digest", "description": "Daily summary of your active projects and priorities.", "prompt": "Set up a daily morning briefing at 8am that checks my recent project activity and gives me a summary of what I was working on and what's next." }
+
+**skill** — Skills Stella can learn to help with specific workflows:
+- Project-specific helpers, code review patterns, writing styles
+- Example: { "category": "skill", "emoji": "🔍", "title": "Code review helper", "description": "Review PRs with your team's conventions in mind.", "prompt": "Create a skill that helps me review pull requests. It should check for our coding conventions, look for common issues, and suggest improvements." }
+
+**app** — Interactive mini-apps Stella can build and display:
+- Dashboards, trackers, visualizations, tools
+- Example: { "category": "app", "emoji": "📊", "title": "Project dashboard", "description": "Visual overview of your active projects and status.", "prompt": "Build me a project dashboard app that shows my active projects, their status, and recent activity in a clean visual layout." }
+
+## Rules
+
+1. **Relevant to THIS person**: Every suggestion must connect to something in their profile — their projects, tools, interests, or workflows. Never suggest generic productivity tips.
+2. **Diverse categories**: Include at least 2 different categories. Don't suggest 5 crons.
+3. **Actionable prompts**: The "prompt" field should be a complete, specific instruction that Stella can execute immediately. Include relevant details from the profile.
+4. **Not overwhelming**: 3-5 suggestions max. Quality over quantity.
+5. **No hallucination**: Only reference things that appear in the user's profile.
+
+Output ONLY the JSON array. No preamble, no markdown fences, no explanation.`;
 };

@@ -15,11 +15,13 @@ import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
+  buildWelcomeSuggestionsPrompt,
   SKILL_METADATA_PROMPT,
   buildSkillMetadataUserMessage,
   SKILL_SELECTION_PROMPT,
   buildSkillSelectionUserMessage,
 } from "./prompts/index";
+import type { WelcomeSuggestion } from "./prompts/index";
 import { verifyDiscordSignature } from "./channels/discord";
 import { verifySlackSignature } from "./channels/slack";
 import { verifyGoogleChatJwt } from "./channels/google_chat";
@@ -449,6 +451,7 @@ type SynthesizeRequest = {
 type SynthesizeResponse = {
   coreMemory: string;
   welcomeMessage: string;
+  suggestions: WelcomeSuggestion[];
 };
 const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 
@@ -531,17 +534,50 @@ http.route({
       const welcomeModel = typeof welcomeConfig.model === "string"
         ? gateway(welcomeConfig.model)
         : welcomeConfig.model;
-      const welcomeResult = await generateText({
-        model: welcomeModel,
-        messages: [{ role: "user", content: welcomePrompt }],
-        maxOutputTokens: welcomeConfig.maxOutputTokens,
-        temperature: welcomeConfig.temperature,
-        providerOptions: welcomeConfig.providerOptions,
-      });
+
+      // Run welcome message and suggestions in parallel (both only need coreMemory)
+      const suggestionsPrompt = buildWelcomeSuggestionsPrompt(coreMemory);
+
+      const [welcomeResult, suggestionsResult] = await Promise.all([
+        generateText({
+          model: welcomeModel,
+          messages: [{ role: "user", content: welcomePrompt }],
+          maxOutputTokens: welcomeConfig.maxOutputTokens,
+          temperature: welcomeConfig.temperature,
+          providerOptions: welcomeConfig.providerOptions,
+        }),
+        generateText({
+          model: welcomeModel,
+          messages: [{ role: "user", content: suggestionsPrompt }],
+          maxOutputTokens: 1024,
+          temperature: 0.7,
+        }).catch(() => null),
+      ]);
+
+      let suggestions: WelcomeSuggestion[] = [];
+      try {
+        const raw = suggestionsResult?.text?.trim() || "";
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          suggestions = parsed
+            .filter(
+              (s: unknown): s is WelcomeSuggestion =>
+                typeof s === "object" &&
+                s !== null &&
+                typeof (s as WelcomeSuggestion).category === "string" &&
+                typeof (s as WelcomeSuggestion).title === "string" &&
+                typeof (s as WelcomeSuggestion).prompt === "string",
+            )
+            .slice(0, 5);
+        }
+      } catch {
+        // Suggestions are non-critical — fallback to empty array
+      }
 
       const response: SynthesizeResponse = {
         coreMemory,
         welcomeMessage: welcomeResult.text?.trim() || DEFAULT_WELCOME_MESSAGE,
+        suggestions,
       };
 
       return withCors(
