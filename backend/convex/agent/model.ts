@@ -98,6 +98,15 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  embedding: {
+    model: "alibaba/qwen3-embedding-8b",
+    providerOptions: {
+      deepinfra: {
+        dimensions: 1536,
+      },
+    },
+  },
+
   synthesis: {
     model: "openai/gpt-5.2-codex",
     temperature: 1.0,

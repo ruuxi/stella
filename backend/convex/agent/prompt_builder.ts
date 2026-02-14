@@ -46,28 +46,6 @@ const buildSkillsSection = (
   ].join("\n");
 };
 
-const buildCategoryTree = (
-  categories: Array<{ category: string; subcategory: string }>,
-): string => {
-  const grouped = new Map<string, string[]>();
-  for (const c of categories) {
-    const subs = grouped.get(c.category) ?? [];
-    subs.push(c.subcategory);
-    grouped.set(c.category, subs);
-  }
-
-  const lines: string[] = [];
-  const entries = Array.from(grouped.entries());
-  for (const [category, subcategories] of entries) {
-    lines.push(`${category}/`);
-    for (let i = 0; i < subcategories.length; i++) {
-      const isLast = i === subcategories.length - 1;
-      lines.push(`${isLast ? "└──" : "├──"} ${subcategories[i]}`);
-    }
-  }
-  return lines.join("\n");
-};
-
 export const buildSystemPrompt = async (
   ctx: ActionCtx,
   agentType: string,
@@ -137,23 +115,6 @@ export const buildSystemPrompt = async (
     }
   }
 
-  // Inject category tree for orchestrator
-  if (agentType === "orchestrator" && options?.ownerId) {
-    try {
-      const categories = await ctx.runQuery(internal.data.memory.listCategories, {
-        ownerId: options.ownerId,
-      });
-      if (categories.length > 0) {
-        const tree = buildCategoryTree(
-          categories as Array<{ category: string; subcategory: string; count: number }>,
-        );
-        dynamicParts.push(`# Memory Categories\n${tree}`);
-      }
-    } catch {
-      // Category query failed — skip
-    }
-  }
-
   // Inject active threads for orchestrator
   if (agentType === "orchestrator" && options?.conversationId) {
     try {
@@ -181,23 +142,6 @@ export const buildSystemPrompt = async (
       }
     } catch {
       // Thread query failed — skip
-    }
-  }
-
-  // Inject core memory for orchestrator
-  if (agentType === "orchestrator" && options?.ownerId) {
-    try {
-      const coreMemories = await ctx.runQuery(internal.data.memory.getExistingMemories, {
-        ownerId: options.ownerId,
-        category: "core",
-        subcategory: "identity",
-      });
-      if (coreMemories.length > 0) {
-        const coreContent = coreMemories.map((m: { content: string }) => m.content).join("\n");
-        dynamicParts.push(`# Core Memory\n${coreContent}`);
-      }
-    } catch {
-      // Core memory query failed — skip
     }
   }
 

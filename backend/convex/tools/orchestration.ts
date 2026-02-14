@@ -55,7 +55,7 @@ export const createOrchestrationTools = (
       "- subagent_type: which agent to use — \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
       "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.\n\n" +
       "Pre-gathered context:\n" +
-      "- recall_memory: automatically recall memories and inject them into the agent's context before it runs. Provide a query (defaults to task description) and optional category filters.\n" +
+      "- recall_memory: automatically recall memories and inject them into the agent's context before it runs. Provide a query (defaults to task description).\n" +
       "- pre_explore: run an explore agent first with the given prompt, then inject its findings into the main agent's context.\n\n" +
       "Threads (general and self_mod only):\n" +
       "- thread_id: continue an existing thread — the agent sees its full prior message history and picks up where it left off.\n" +
@@ -75,10 +75,6 @@ export const createOrchestrationTools = (
       ),
       recall_memory: z.object({
         query: z.string().optional().describe("What to recall — defaults to the task description"),
-        categories: z.array(z.object({
-          category: z.string(),
-          subcategory: z.string(),
-        })).optional().describe("Category/subcategory pairs to search — defaults to all categories"),
       }).optional().describe(
         "Automatically recall memories and inject into the agent's context before it runs.",
       ),
@@ -189,21 +185,15 @@ const createRecallMemoriesTool = (ctx: ActionCtx, options: ToolOptions) =>
   tool({
     description:
       "Look up relevant memories from past conversations.\n\n" +
-      "Provide 3-5 category/subcategory pairs from the Memory Categories tree when possible, " +
-      "plus a natural language query. Returns a synthesized context summary.\n\n" +
+      "Provide a natural language query describing what you need. Returns relevant memories ranked by similarity.\n\n" +
       "Use when:\n" +
       "- The user references something from a previous conversation (\"remember when...\", \"like last time\").\n" +
       "- You need historical context (user preferences, past decisions, prior work).\n" +
       "- You want to check if something was discussed or decided before.\n\n" +
       "Tips:\n" +
-      "- Check the Memory Categories tree to pick the right category/subcategory pairs.\n" +
       "- Use specific queries for better results (\"user's preferred programming language\" not just \"preferences\").\n" +
-      "- If no results match, try different category pairs or broader queries.",
+      "- If no results match, try rephrasing or using broader queries.",
     inputSchema: z.object({
-      categories: z.array(z.object({
-        category: z.string().describe("Memory category (e.g. \"preferences\", \"projects\")"),
-        subcategory: z.string().describe("Memory subcategory (e.g. \"coding\", \"setup\")"),
-      })).min(1).max(5).describe("1-5 category/subcategory pairs to search (prefer 3-5)"),
       query: z.string().min(1).describe("Natural language query describing what you need"),
     }),
     execute: async (args) => {
@@ -213,7 +203,6 @@ const createRecallMemoriesTool = (ctx: ActionCtx, options: ToolOptions) =>
       try {
         return await ctx.runAction(internal.data.memory.recallMemories, {
           ownerId: options.ownerId,
-          categories: args.categories,
           query: args.query,
         });
       } catch (error) {
@@ -228,13 +217,9 @@ const createSaveMemoryTool = (ctx: ActionCtx, options: ToolOptions) =>
       "Save something worth remembering across conversations.\n\n" +
       "Use when you learn something about the user worth persisting — preferences, decisions, personal details, " +
       "project context, or any fact that would be useful in future conversations.\n\n" +
-      "The system automatically deduplicates: if a similar memory already exists in the same category/subcategory, " +
-      "it will be updated rather than duplicated.\n\n" +
-      "Pick category/subcategory from the Memory Categories tree, or create new ones if needed.\n\n" +
+      "The system automatically deduplicates: if a similar memory already exists, it will be skipped.\n\n" +
       "Each memory should be a coherent thought (1-3 sentences), not a bare keyword or a long document.",
     inputSchema: z.object({
-      category: z.string().describe("Memory category (e.g. \"preferences\", \"projects\", \"personal\")"),
-      subcategory: z.string().describe("Memory subcategory (e.g. \"coding\", \"setup\", \"family\")"),
       content: z.string().min(1).describe("The information to remember (1-3 coherent sentences)"),
     }),
     execute: async (args) => {
@@ -244,8 +229,6 @@ const createSaveMemoryTool = (ctx: ActionCtx, options: ToolOptions) =>
       try {
         return await ctx.runAction(internal.data.memory.saveMemory, {
           ownerId: options.ownerId!,
-          category: args.category,
-          subcategory: args.subcategory,
           content: args.content,
           conversationId: options.conversationId,
         });

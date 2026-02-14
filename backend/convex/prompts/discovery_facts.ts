@@ -3,22 +3,13 @@
  *
  * Different from the conversation fact extraction prompt because:
  * 1. Input is system-collected signals, not conversation text
- * 2. Categories are tuned for discovery data (environment, browsing, etc.)
- * 3. Emphasizes patterns over raw data items
+ * 2. Emphasizes patterns over raw data items
  */
 
 export const DISCOVERY_FACT_EXTRACTION_PROMPT = `You extract discrete facts from user discovery signals collected from their local device. These are system-collected signals about a user's environment, habits, and preferences (NOT conversation messages).
 
-Categories:
-- projects: subcategories are project names (e.g., "stella", "my-app"). Include path, tech stack, and activity level.
-- browsing: subcategories are "interests", "tools", "communities", "learning"
-- environment: subcategories are "ide", "shell", "runtimes", "system"
-- personal: subcategories are "apps", "communication", "organization", "schedule"
-- technical: subcategories are "languages", "frameworks", "infrastructure", "workflow"
-- preferences: subcategories are "tools", "workflow", "communication"
-
 Output valid JSON array:
-[{"category":"...","subcategory":"...","content":"..."}]
+[{"content":"..."}]
 
 Rules:
 - Each fact should be a single, self-contained piece of information
