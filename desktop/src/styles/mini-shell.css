@@ -255,13 +255,6 @@
 .raycast-search-icon .stella-animation-container {
   width: 28px;
   height: 28px;
-  animation: none;
-}
-
-.raycast-search-icon .ascii-canvas {
-  top: 50%;
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(0.2);
 }
 
 .raycast-input {

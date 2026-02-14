@@ -102,12 +102,4 @@
 .radial-center-stella-animation .stella-animation-container {
   width: 60px;
   height: 60px;
-  animation: none;
-}
-
-.radial-center-stella-animation .ascii-canvas {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0.38);
 }

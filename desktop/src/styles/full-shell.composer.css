@@ -351,6 +351,24 @@
   background: var(--surface-raised-hover);
 }
 
+/* Ambient Stella animation — left of composer */
+.composer-stella-ambient {
+  position: absolute;
+  bottom: 20px;
+  left: 24px;
+  width: 400px;
+  height: 280px;
+  transform: scale(0.55);
+  transform-origin: bottom left;
+  pointer-events: none;
+  opacity: 0.12;
+  z-index: 1;
+}
+
+.composer-stella-ambient .stella-animation-container {
+  animation: none;
+}
+
 .side-panel .screen-card {
   border-radius: 16px;
   padding: 14px;
