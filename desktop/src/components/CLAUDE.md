@@ -77,6 +77,9 @@ Built on Radix UI with custom styling:
 - `ReasoningSection.tsx` - AI reasoning display
 - `TaskIndicator.tsx` - Task progress indicators
 - `WorkingIndicator.tsx` - Loading states
+- `CommandChips.tsx` - Command suggestion chips
+- `WelcomeSuggestions.tsx` - Welcome screen suggestions
+- `status-utils.ts` - Status formatting utilities
 - `emotes/` - Twitch emote integration (emoji resolver, remark plugin, message source)
 
 ### Canvas (`canvas/`)
@@ -92,13 +95,15 @@ Direct imports (not re-exported from index.ts):
 - `TitleBar.tsx` - Window title bar
 - `ThemePicker.tsx` - Theme picker UI
 - `AuthStatus.tsx` - Authentication status
+- `InlineAuth.tsx` - Inline authentication component
 - `CredentialModal.tsx` - Credential management modal
-- `Onboarding.tsx` - Top-level onboarding component
+- `Onboarding.tsx` - Top-level onboarding entry point
+- `StellaAnimation.tsx` - Animated Stella character
 
 ### Other Subdirectories
 - `background/` - `ShiftingGradient.tsx` animated background
-- `ascii-creature/` - WebGL ASCII art rendering (shader, glyph atlas, renderer)
-- `onboarding/` - Onboarding flow components (discovery, step1, state hook)
+- `ascii-creature/` - WebGL ASCII art rendering (StellaAnimation, shader, glyph atlas, renderer)
+- `onboarding/` - Onboarding flow: `Onboarding.tsx`, `OnboardingStep1.tsx`, `OnboardingDiscovery.tsx`, `OnboardingCanvas.tsx`, `use-onboarding-state.ts`, `panels/` (demo components)
 
 ## Styling Patterns
 

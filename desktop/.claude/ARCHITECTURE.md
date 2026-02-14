@@ -30,10 +30,10 @@
    - `tools-file.ts` — Read, Write, Edit
    - `tools-search.ts` — Glob, Grep
    - `tools-shell.ts` — Bash, SkillBash, KillShell
-   - `tools-web.ts` — WebFetch, WebSearch
-   - `tools-state.ts` — TodoWrite, TestWrite, Task, TaskOutput
+   - `tools-state.ts` — Task, TaskOutput
    - `tools-user.ts` — AskUserQuestion, RequestCredential
-   - `tools-database.ts` — SqliteQuery
+   - `tools_store.ts` — ManagePackage
+   - `tools_self_mod.ts` — SelfMod* tools
 
 ### "Change window behavior"
 - `electron/main.ts` — Main process, window creation
@@ -75,14 +75,13 @@ electron/
 │   ├── tools-file.ts   # Read/Write/Edit handlers
 │   ├── tools-search.ts # Glob/Grep handlers
 │   ├── tools-shell.ts  # Bash/SkillBash/KillShell handlers
-│   ├── tools-web.ts    # WebFetch/WebSearch handlers
-│   ├── tools-state.ts  # Todo/Test/Task handlers
+│   ├── tools-state.ts  # Task/TaskOutput handlers
 │   ├── tools-user.ts   # AskUser/RequestCredential handlers
-│   ├── tools-database.ts # SqliteQuery handler
+│   ├── tools_store.ts  # ManagePackage handler
+│   ├── tools_self_mod.ts # SelfMod* handlers
 │   ├── runner.ts       # Tool request runner (polls Convex)
 │   ├── skills.ts       # Skill loading from ~/.stella
-│   ├── agents.ts       # Agent loading from ~/.stella
-│   └── plugins.ts      # Plugin loading from ~/.stella
+│   └── agents.ts       # Agent loading from ~/.stella
 ├── radial-window.ts    # Radial menu window management
 └── region-capture-window.ts # Screen capture window
 ```
@@ -122,10 +121,11 @@ Global tokens in `src/index.css`:
 
 ## Multi-Window Architecture
 
-The app has three window types, determined by `?window=` query parameter:
+The app has four window types, determined by `?window=` query parameter:
 - **Full** (`FullShell.tsx`): Main application window with full chat interface
 - **Mini** (`MiniShell.tsx`): Spotlight-style overlay for quick interactions
 - **Radial** (`RadialShell.tsx`): Transparent overlay for the radial menu
+- **Region** (`RegionCapture.tsx`): Region capture overlay window
 
 ---
 

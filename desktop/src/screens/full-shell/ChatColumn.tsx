@@ -6,7 +6,10 @@ import { ConversationEvents } from "../ConversationEvents";
 import { OnboardingView } from "./OnboardingOverlay";
 import { Composer } from "./Composer";
 import { CommandChips } from "../../components/chat/CommandChips";
+import { WelcomeSuggestions } from "../../components/chat/WelcomeSuggestions";
 import { useCommandSuggestions, type CommandSuggestion } from "../../hooks/use-command-suggestions";
+import { useWelcomeSuggestions } from "../../hooks/use-welcome-suggestions";
+import type { WelcomeSuggestion } from "../../services/synthesis";
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
@@ -55,6 +58,7 @@ type ChatColumnProps = {
   onSignIn: () => void;
   onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
+  onWelcomeSuggestionSelect?: (suggestion: WelcomeSuggestion) => void;
 };
 
 export function ChatColumn({
@@ -94,8 +98,10 @@ export function ChatColumn({
   onSignIn,
   onDemoChange,
   onCommandSelect,
+  onWelcomeSuggestionSelect,
 }: ChatColumnProps) {
   const suggestions = useCommandSuggestions(events, isStreaming);
+  const welcomeSuggestions = useWelcomeSuggestions(events);
   const hasMessages = events.length > 0 || isStreaming;
   const showConversation = isAuthenticated && onboardingDone && hasMessages;
 
@@ -116,6 +122,12 @@ export function ChatColumn({
               pendingUserMessageId={pendingUserMessageId}
               scrollContainerRef={scrollContainerRef}
             />
+            {!isStreaming && welcomeSuggestions.length > 0 && onWelcomeSuggestionSelect && (
+              <WelcomeSuggestions
+                suggestions={welcomeSuggestions}
+                onSelect={onWelcomeSuggestionSelect}
+              />
+            )}
             {!isStreaming && suggestions.length > 0 && onCommandSelect && (
               <CommandChips
                 suggestions={suggestions}
