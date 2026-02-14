@@ -78,7 +78,6 @@ export const FullShell = () => {
 
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     isAuthenticated: onboarding.isAuthenticated,
-    onboardingDone: onboarding.onboardingDone,
     conversationId: state.conversationId,
   });
 
