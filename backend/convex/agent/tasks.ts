@@ -111,7 +111,6 @@ const appendTaskEvent = async (
 
 type RecallMemoryArgs = {
   query?: string;
-  categories?: Array<{ category: string; subcategory: string }>;
 };
 
 type SubagentExecutionArgs = {
@@ -762,25 +761,12 @@ const executeSubagentRun = async (
     if (args.recallMemory && args.ownerId) {
       try {
         const query = args.recallMemory.query || args.prompt.slice(0, 500);
-        let categories = args.recallMemory.categories;
-        if (!categories || categories.length === 0) {
-          const allCats = await ctx.runQuery(internal.data.memory.listCategories, {
-            ownerId: args.ownerId,
-          });
-          categories = allCats.map((c: { category: string; subcategory: string }) => ({
-            category: c.category,
-            subcategory: c.subcategory,
-          }));
-        }
-        if (categories.length > 0) {
-          const memoryResult = await ctx.runAction(internal.data.memory.recallMemories, {
-            ownerId: args.ownerId,
-            categories,
-            query,
-          });
-          if (memoryResult && memoryResult !== "No memories found for the requested categories.") {
-            preGatheredParts.push(`## Recalled Memories\n${memoryResult}`);
-          }
+        const memoryResult = await ctx.runAction(internal.data.memory.recallMemories, {
+          ownerId: args.ownerId,
+          query,
+        });
+        if (memoryResult && memoryResult.trim()) {
+          preGatheredParts.push(`## Recalled Memories\n${memoryResult}`);
         }
       } catch (e) {
         console.error("Pre-gather memory recall failed:", (e as Error).message);
@@ -1410,10 +1396,6 @@ export const runSubagent = internalAction({
     threadName: v.optional(v.string()),
     recallMemory: v.optional(v.object({
       query: v.optional(v.string()),
-      categories: v.optional(v.array(v.object({
-        category: v.string(),
-        subcategory: v.string(),
-      }))),
     })),
     preExplore: v.optional(v.string()),
     commandId: v.optional(v.string()),
@@ -1547,10 +1529,6 @@ export const executeSubagent = internalAction({
     threadId: v.optional(v.id("threads")),
     recallMemory: v.optional(v.object({
       query: v.optional(v.string()),
-      categories: v.optional(v.array(v.object({
-        category: v.string(),
-        subcategory: v.string(),
-      }))),
     })),
     preExplore: v.optional(v.string()),
     commandId: v.optional(v.string()),

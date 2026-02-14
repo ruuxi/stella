@@ -77,12 +77,12 @@ The orchestrator also has `TaskOutput(task_id)` for manually checking on running
 ### recall_memory
 
 ```
-TaskCreate(..., recall_memory={ query: "sidebar pattern", categories: [{category: "projects", subcategory: "frontend"}] })
+TaskCreate(..., recall_memory={ query: "sidebar pattern" })
 ```
 
 Before the main agent runs, the system calls `internal.data.memory.recallMemories`:
 - `query` defaults to the first 500 chars of the task prompt if omitted
-- `categories` defaults to all categories for the owner if omitted
+- Uses vector search (embedding similarity) to find relevant memories
 - Result injected as `<context>## Recalled Memories\n...</context>` before the prompt
 
 ### pre_explore
@@ -100,7 +100,7 @@ Both are best-effort — if either fails, the main agent still runs without that
 ### Orchestrator's Two Modes
 
 **For itself** (answering the user directly):
-- `RecallMemories(categories, query)` — direct tool, result returned to orchestrator in same turn
+- `RecallMemories(query)` — direct tool, result returned to orchestrator in same turn
 - `TaskCreate(subagent_type="explore", ...)` — standalone explore task, result auto-delivered
 
 **For subagents** (gathering context for a delegated task):
@@ -166,5 +166,5 @@ When no device context exists, orchestration falls back to a deviceless set: mem
 | `tools/orchestration.ts` | TaskCreate, TaskOutput, TaskCancel, memory tools |
 | `tools/backend.ts` | Backend tools (web, canvas, store, scheduling) |
 | `tools/index.ts` | Layered tool assembly + allowlist filtering |
-| `data/memory.ts` | Memory recall, save, extraction, categories |
+| `data/memory.ts` | Memory recall, save, extraction (embedding-based) |
 | `data/threads.ts` | Thread CRUD, message storage, compaction |

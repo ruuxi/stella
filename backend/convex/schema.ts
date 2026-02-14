@@ -277,17 +277,19 @@ export default defineSchema({
   memories: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
-    category: v.string(),
-    subcategory: v.string(),
     content: v.string(),
+    embedding: v.optional(v.array(v.float64())),
     accessedAt: v.number(),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
-    decay: v.number(),
   })
-    .index("by_owner_category", ["ownerId", "category", "subcategory"])
     .index("by_owner_accessed", ["ownerId", "accessedAt"])
-    .index("by_decay", ["decay", "accessedAt"]),
+    .index("by_accessed", ["accessedAt"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["ownerId"],
+    }),
   memory_extraction_batches: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
@@ -295,8 +297,6 @@ export default defineSchema({
     windowStart: v.number(),
     windowEnd: v.number(),
     snapshot: v.array(v.object({
-      category: v.string(),
-      subcategory: v.string(),
       content: v.string(),
       memoryId: v.optional(v.id("memories")),
     })),
