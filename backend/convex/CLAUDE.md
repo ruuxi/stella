@@ -16,7 +16,7 @@ Orchestrator (default coordinator for delegated work)
 
 Subagents are background workers — they execute and return results. There is no direct subagent-to-subagent channel; top-level subagent results are routed back through the orchestrator via `deliverTaskResult`.
 
-Built-in subagents (`general`, `self_mod`, `explore`, `browser`) use `maxTaskDepth: 0` (cannot create nested tasks). The orchestrator uses `maxTaskDepth: 2`.
+Built-in subagents (`self_mod`, `explore`, `browser`) use `maxTaskDepth: 0` (cannot create nested tasks). `general` uses `maxTaskDepth: 2` (can spawn explore sub-agents). The orchestrator uses `maxTaskDepth: 2`.
 
 ## Task Lifecycle
 
