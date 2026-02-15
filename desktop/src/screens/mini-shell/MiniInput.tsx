@@ -37,10 +37,6 @@ export const MiniInput = ({
   }, [shellVisible]);
 
   const hasScreenshots = Boolean(chatContext?.regionScreenshots?.length);
-  const hasInnerContext =
-    hasScreenshots ||
-    Boolean(selectedText) ||
-    Boolean(chatContext?.capturePending);
 
   const canSend =
     Boolean(message.trim()) ||
