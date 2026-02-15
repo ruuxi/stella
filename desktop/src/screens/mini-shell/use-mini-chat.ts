@@ -232,7 +232,7 @@ export function useMiniChat(opts: {
       ? rawText.slice(followUpMatch[0].length).trim()
       : rawText;
     const contextParts: string[] = [];
-    if (windowSnippet) contextParts.push(`[Window] ${windowSnippet}`);
+    if (windowSnippet) contextParts.push(`<active-window context="The user's currently focused window. May or may not be relevant to their request.">${windowSnippet}</active-window>`);
     if (selectedSnippet) contextParts.push(`"${selectedSnippet}"`);
     if (cleanedText) contextParts.push(cleanedText);
     const combinedText = contextParts.join("\n\n");
