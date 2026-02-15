@@ -1,6 +1,6 @@
 export type BridgeBundle = {
   code: string;
-  config: string;
+  env: Record<string, string>;
   dependencies: string;
 };
 
@@ -19,12 +19,25 @@ export async function deployAndStartLocalBridge(
     return false;
   }
 
-  const bundle = await getBridgeBundle({ provider });
+  const rawBundle = await getBridgeBundle({ provider }) as
+    | BridgeBundle
+    | (BridgeBundle & { config?: string });
+  const bundleEnv =
+    rawBundle.env ??
+    (() => {
+      if (!rawBundle.config) return {};
+      try {
+        return JSON.parse(rawBundle.config) as Record<string, string>;
+      } catch {
+        return {};
+      }
+    })();
+
   const deployResult = await electronApi.bridgeDeploy({
     provider,
-    code: bundle.code,
-    config: bundle.config,
-    dependencies: bundle.dependencies,
+    code: rawBundle.code,
+    env: bundleEnv,
+    dependencies: rawBundle.dependencies,
   });
   if (!deployResult.ok) {
     throw new Error(deployResult.error ?? "Failed to deploy bridge locally");

@@ -10,11 +10,12 @@ const BRIDGE_STARTUP_GRACE_MS = 1200
 type BridgeBundle = {
   provider: string
   code: string
-  config: string
+  env: Record<string, string>
   dependencies: string
 }
 
 const processes = new Map<string, ChildProcess>()
+const bridgeEnv = new Map<string, Record<string, string>>()
 
 async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true })
@@ -64,10 +65,10 @@ export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error
   const dir = path.join(BRIDGES_DIR, bundle.provider)
   try {
     await ensureDir(dir)
+    bridgeEnv.set(bundle.provider, bundle.env)
 
-    // Write bridge code and config
+    // Write bridge code
     await fs.writeFile(path.join(dir, 'bridge.js'), bundle.code, 'utf-8')
-    await fs.writeFile(path.join(dir, 'config.json'), bundle.config, 'utf-8')
 
     // Install npm dependencies if any
     if (bundle.dependencies.trim()) {
@@ -77,8 +78,19 @@ export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error
         private: true,
         dependencies: {} as Record<string, string>,
       }
-      for (const dep of bundle.dependencies.split(/\s+/).filter(Boolean)) {
-        pkgJson.dependencies[dep] = '*'
+      for (const spec of bundle.dependencies.split(/\s+/).filter(Boolean)) {
+        const trimmed = spec.trim()
+        if (!trimmed) continue
+        const atIndex = trimmed.startsWith('@')
+          ? trimmed.indexOf('@', 1)
+          : trimmed.lastIndexOf('@')
+        const hasVersion = atIndex > 0 && atIndex < trimmed.length - 1
+        if (!hasVersion) {
+          throw new Error(`Unpinned dependency spec rejected: ${trimmed}`)
+        }
+        const name = hasVersion ? trimmed.slice(0, atIndex) : trimmed
+        const version = trimmed.slice(atIndex + 1)
+        pkgJson.dependencies[name] = version
       }
       await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2), 'utf-8')
 
@@ -111,14 +123,19 @@ export async function start(provider: string): Promise<{ ok: boolean; error?: st
 
   const dir = path.join(BRIDGES_DIR, provider)
   const bridgePath = path.join(dir, 'bridge.js')
+  const env = bridgeEnv.get(provider)
 
   try {
     await fs.access(bridgePath)
+    if (!env) {
+      return { ok: false, error: `Bridge environment is missing for provider ${provider}` }
+    }
 
     const child = spawn('node', [bridgePath], {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
+      env: { ...process.env, ...env },
     })
 
     child.stdout?.on('data', (data: Buffer) => {
