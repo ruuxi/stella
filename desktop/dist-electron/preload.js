@@ -120,6 +120,7 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     checkCoreMemoryExists: () => electron_1.ipcRenderer.invoke('browserData:exists'),
     collectBrowserData: () => electron_1.ipcRenderer.invoke('browserData:collect'),
     detectPreferredBrowser: () => electron_1.ipcRenderer.invoke('browserData:detectPreferredBrowser'),
+    listBrowserProfiles: (browserType) => electron_1.ipcRenderer.invoke('browserData:listProfiles', browserType),
     writeCoreMemory: (content) => electron_1.ipcRenderer.invoke('browserData:writeCoreMemory', content),
     // Comprehensive user signal collection (browser + dev projects + shell + apps)
     collectAllSignals: (options) => electron_1.ipcRenderer.invoke('signals:collectAll', options),

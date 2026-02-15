@@ -1162,6 +1162,22 @@
   margin-left: 8px;
 }
 
+/* ═══ Browser expanded (inside discovery) ═══ */
+
+.onboarding-browser-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 4px;
+  animation: momentFadeIn 0.3s ease-out forwards;
+}
+
+.onboarding-browser-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ═══ Section divider ═══ */
 
 .onboarding-section-divider {
