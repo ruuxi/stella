@@ -227,7 +227,7 @@ export type ElectronApi = {
 
   // Bridge manager
   bridgeDeploy: (payload: {
-    provider: string; code: string; config: string; dependencies: string
+    provider: string; code: string; env: Record<string, string>; dependencies: string
   }) => Promise<{ ok: boolean; error?: string }>
   bridgeStart: (payload: { provider: string }) => Promise<{ ok: boolean; error?: string }>
   bridgeStop: (payload: { provider: string }) => Promise<{ ok: boolean }>

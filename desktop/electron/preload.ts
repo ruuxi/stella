@@ -183,7 +183,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Bridge manager
   bridgeDeploy: (payload: {
-    provider: string; code: string; config: string; dependencies: string
+    provider: string; code: string; env: Record<string, string>; dependencies: string
   }) => ipcRenderer.invoke('bridge:deploy', payload),
   bridgeStart: (payload: { provider: string }) => ipcRenderer.invoke('bridge:start', payload),
   bridgeStop: (payload: { provider: string }) => ipcRenderer.invoke('bridge:stop', payload),

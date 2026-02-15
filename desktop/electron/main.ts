@@ -22,7 +22,7 @@ import {
   hideModifierOverlay,
   destroyModifierOverlay,
 } from './modifier-overlay.js'
-import { getOrCreateDeviceId } from './local-host/device.js'
+import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
 import { resolveStellaHome } from './local-host/stella-home.js'
 import {
@@ -1200,12 +1200,17 @@ app.whenReady().then(async () => {
   }
   const StellaHome = await resolveStellaHome(app)
   StellaHomePath = StellaHome.homePath
-  deviceId = await getOrCreateDeviceId(StellaHome.statePath)
+  const deviceIdentity = await getOrCreateDeviceIdentity(StellaHome.statePath)
+  deviceId = deviceIdentity.deviceId
   localHostRunner = createLocalHostRunner({
     deviceId,
     StellaHome: StellaHome.homePath,
     frontendRoot: path.resolve(__dirname, '..'),
     requestCredential,
+    signHeartbeatPayload: async (signedAtMs: number) => ({
+      publicKey: deviceIdentity.publicKey,
+      signature: signDeviceHeartbeat(deviceIdentity, signedAtMs),
+    }),
   })
   if (pendingConvexUrl) {
     localHostRunner.setConvexUrl(pendingConvexUrl)
@@ -1556,7 +1561,7 @@ app.whenReady().then(async () => {
 
   // Bridge manager IPC handlers
   ipcMain.handle('bridge:deploy', async (_event, payload: {
-    provider: string; code: string; config: string; dependencies: string
+    provider: string; code: string; env: Record<string, string>; dependencies: string
   }) => {
     return bridgeManager.deploy(payload)
   })
