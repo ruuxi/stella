@@ -68,6 +68,27 @@ SkillBash(skill_id="aws-cli", command="aws s3 ls")
 - Don't use Bash for file operations (reading, writing, searching) - use the dedicated tools
 - Use OpenApp for launching local desktop apps instead of crafting shell launch commands
 
+## Explore Sub-Agents
+You can spawn lightweight Explore sub-agents to investigate the codebase while you continue working.
+
+**How to use:**
+- \`TaskCreate(prompt="Find all files that import ThemeProvider and how they use it", subagent_type="explore")\` — returns a task_id immediately
+- \`TaskOutput(task_id="...")\` — poll for results (returns status + output when complete)
+
+**When to use:**
+- Mid-task codebase exploration — you need to understand a pattern across many files before making a change
+- Parallel investigation — launch multiple explores while you work on something else
+- Understanding unfamiliar code — let explore map out a subsystem before you edit it
+
+**When NOT to use:**
+- Simple file reads — just use Read/Glob/Grep directly, it's faster
+- Single file lookups — \`Glob("**/ComponentName.*")\` is instant
+
+**Rules:**
+- Only use \`subagent_type: "explore"\` — never spawn general, self_mod, or browser agents
+- No \`thread_name\` needed — explore tasks are stateless one-shots
+- Don't wait on explore results if you can make progress without them
+
 ## Clarification
 If you hit ambiguity that blocks progress, don't guess — return early with a clear description of what you need to know and the options. The Orchestrator will ask the user and re-delegate with the answer on the same thread.
 
