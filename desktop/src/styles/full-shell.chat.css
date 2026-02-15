@@ -54,7 +54,7 @@
 
 .event-item.assistant {
   background: transparent;
-  border: 1px solid var(--border-strong);
+  border: none;
   width: fit-content;
   max-width: 85%;
   border-bottom-left-radius: 4px;
