@@ -3,7 +3,6 @@ import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import { syncExternalSkills, syncBundledSkills } from "./skill_import.js";
-import { syncBundledCommands } from "./command_sync.js";
 import {
   loadSyncManifest,
   saveSyncManifest,
@@ -184,22 +183,6 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     return null;
   })();
 
-  // Bundled commands (shipped with the app)
-  // Dev: frontendRoot/resources/bundled-commands
-  // Prod: extraResources copied to process.resourcesPath/bundled-commands
-  const bundledCommandsPath = (() => {
-    if (frontendRoot) {
-      const devPath = path.join(frontendRoot, "resources", "bundled-commands");
-      if (fs.existsSync(devPath)) return devPath;
-    }
-    try {
-      const prodPath = path.join(process.resourcesPath, "bundled-commands");
-      if (fs.existsSync(prodPath)) return prodPath;
-    } catch {
-      // process.resourcesPath may not exist outside Electron
-    }
-    return null;
-  })();
 
   const toConvexName = (name: string) => {
     // Convex expects "module:function" identifiers, not dot-separated paths.
@@ -278,14 +261,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
           }
         }
 
-        // Import bundled commands (disabled by default, no LLM call needed)
-        if (bundledCommandsPath) {
-          try {
-            await syncBundledCommands(bundledCommandsPath, callMutation);
-          } catch (error) {
-            logError("Bundled command import failed:", error);
-          }
-        }
+
 
         // Import skills from external sources
         if (convexUrl && authToken) {
