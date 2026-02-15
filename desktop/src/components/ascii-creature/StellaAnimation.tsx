@@ -20,6 +20,8 @@ interface StellaAnimationProps {
   height?: number;
   initialBirthProgress?: number;
   paused?: boolean;
+  maxDpr?: number;
+  frameSkip?: number;
 }
 
 export const StellaAnimation = React.forwardRef<
@@ -27,7 +29,7 @@ export const StellaAnimation = React.forwardRef<
   StellaAnimationProps
 >(
   (
-    { width = 80, height = 40, initialBirthProgress = 1, paused = false },
+    { width = 80, height = 40, initialBirthProgress = 1, paused = false, maxDpr, frameSkip = 0 },
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -122,7 +124,7 @@ export const StellaAnimation = React.forwardRef<
 
       const cssWidth = Math.max(1, Math.floor(width * glyphWidth));
       const cssHeight = Math.max(1, Math.floor(height * glyphHeight));
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, maxDpr ?? Infinity);
 
       canvas.style.width = `${cssWidth}px`;
       canvas.style.height = `${cssHeight}px`;
@@ -162,12 +164,20 @@ export const StellaAnimation = React.forwardRef<
       );
       if (!mainRenderer) return;
 
+      let frameCount = 0;
+
       const animate = () => {
         if (pausedRef.current) {
           requestRef.current = undefined;
           return;
         }
         timeRef.current += 0.008;
+
+        if (frameSkip > 0 && ++frameCount % (frameSkip + 1) !== 0) {
+          requestRef.current = requestAnimationFrame(animate);
+          return;
+        }
+
         const now = performance.now();
 
         const birthAnimation = birthAnimationRef.current;

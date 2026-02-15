@@ -166,30 +166,25 @@ export const getFragmentShader = (): string => {
     vec2 md = (uv - mouthPos) * u_gridSize;
     float lineW = 0.5;
 
-    // O — ring with vertical squish on close
-    vec2 mdO = md;
-    mdO.y /= max(mouthAnim, 0.15);
-    float oDist = length(mdO);
-    float oMask = smoothstep(1.8, 1.5, oDist) * smoothstep(0.5, 0.8, oDist);
-
-    // Smile — curved V
-    float smileDist = abs(md.y - 0.6 + 0.7 * abs(md.x));
-    float smileMask = (1.0 - smoothstep(lineW * 0.5, lineW, smileDist)) * step(abs(md.x), 1.8);
-
-    // Frown — inverted curved V
-    float frownDist = abs(md.y + 0.6 - 0.7 * abs(md.x));
-    float frownMask = (1.0 - smoothstep(lineW * 0.5, lineW, frownDist)) * step(abs(md.x), 1.8);
-
-    // Sideways V — skeptical >
-    float sideDist = abs(md.x - 0.8 + 0.6 * abs(md.y));
-    float sideMask = (1.0 - smoothstep(lineW * 0.5, lineW, sideDist)) * step(abs(md.y), 1.2);
-
-    // Dash — neutral line
-    float dashMask = (1.0 - smoothstep(lineW * 0.3, lineW * 0.7, abs(md.y))) * step(abs(md.x), 1.5);
-
-    // Combine selected shape
-    float mouthShape = oMask * isO + smileMask * isSmile + frownMask * isFrown
-                     + sideMask * isSideV + dashMask * isDash;
+    // Compute only the active mouth shape
+    float mouthShape = 0.0;
+    if (isO > 0.5) {
+      vec2 mdO = md;
+      mdO.y /= max(mouthAnim, 0.15);
+      float oDist = length(mdO);
+      mouthShape = smoothstep(1.8, 1.5, oDist) * smoothstep(0.5, 0.8, oDist);
+    } else if (isSmile > 0.5) {
+      float smileDist = abs(md.y - 0.6 + 0.7 * abs(md.x));
+      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, smileDist)) * step(abs(md.x), 1.8);
+    } else if (isFrown > 0.5) {
+      float frownDist = abs(md.y + 0.6 - 0.7 * abs(md.x));
+      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, frownDist)) * step(abs(md.x), 1.8);
+    } else if (isSideV > 0.5) {
+      float sideDist = abs(md.x - 0.8 + 0.6 * abs(md.y));
+      mouthShape = (1.0 - smoothstep(lineW * 0.5, lineW, sideDist)) * step(abs(md.y), 1.2);
+    } else if (isDash > 0.5) {
+      mouthShape = (1.0 - smoothstep(lineW * 0.3, lineW * 0.7, abs(md.y))) * step(abs(md.x), 1.5);
+    }
     mouthShape *= smoothstep(0.05, 0.2, mouthAnim);
     float mouthMask = mouthShape * smoothstep(0.3, 0.6, u_birth);
     gl_FragColor = mix(gl_FragColor, vec4(u_colors[4], 1.0), mouthMask);
@@ -204,6 +199,10 @@ export const getFragmentShader = (): string => {
       vec2 c = uv - 0.5;
       c.x *= u_canvasSize.x / u_canvasSize.y;
       float dist = length(c) * 2.0;
+
+      // Early discard — pixels far from center are always transparent
+      if (dist > 1.2) { gl_FragColor = vec4(0.0); return; }
+
       float angle = atan(c.y, c.x);
 
       float cycle = u_time * 0.15;
@@ -215,9 +214,9 @@ export const getFragmentShader = (): string => {
       float total = w1 + w2 + w3;
       w1 /= total; w2 /= total; w3 /= total;
 
-      // Phase 1: Flowing spiral disk
+      // Phase 1: Flowing spiral disk (skip when weight ≈ 0)
       float i1 = 0.0;
-      if (dist >= 0.15) {
+      if (w1 > 0.01 && dist >= 0.15) {
         float spiralOffset = 1.0 / (dist + 0.05);
         float wave1 = sin(angle * 3.0 + spiralOffset * 2.0 - u_time * 3.0);
         float wave2 = cos(angle * 5.0 - spiralOffset * 3.0 + u_time * 2.0);
@@ -226,29 +225,35 @@ export const getFragmentShader = (): string => {
         i1 = ((wave1 + wave2) * 0.5 + 0.5) * falloff + disk;
       }
 
-      // Phase 2: Pulsing rays with radial waves
-      float time1 = u_time * 2.0;
-      float p1 = sin(time1) * 0.5 + 0.5;
-      float p2 = sin(time1 + 2.094) * 0.5 + 0.5;
-      float p3 = sin(time1 + 4.188) * 0.5 + 0.5;
-      float s1 = exp(-abs(mod(angle + 0.0, 6.283) - 3.14) * 1.5) * p1;
-      float s2 = exp(-abs(mod(angle + 2.094, 6.283) - 3.14) * 1.5) * p2;
-      float s3 = exp(-abs(mod(angle + 4.188, 6.283) - 3.14) * 1.5) * p3;
-      float radialWave = sin(dist * 10.0 - u_time * 3.0) * 0.3 + 0.7;
-      float rays = max(max(s1, s2), s3) * radialWave;
-      float core2 = exp(-dist * 4.0) * 0.8;
-      float falloff2 = max(0.0, 1.0 - dist * 0.8);
-      float i2 = rays * falloff2 + core2;
+      // Phase 2: Pulsing rays with radial waves (skip when weight ≈ 0)
+      float i2 = 0.0;
+      if (w2 > 0.01) {
+        float time1 = u_time * 2.0;
+        float p1 = sin(time1) * 0.5 + 0.5;
+        float p2 = sin(time1 + 2.094) * 0.5 + 0.5;
+        float p3 = sin(time1 + 4.188) * 0.5 + 0.5;
+        float s1 = exp(-abs(mod(angle + 0.0, 6.283) - 3.14) * 1.5) * p1;
+        float s2 = exp(-abs(mod(angle + 2.094, 6.283) - 3.14) * 1.5) * p2;
+        float s3 = exp(-abs(mod(angle + 4.188, 6.283) - 3.14) * 1.5) * p3;
+        float radialWave = sin(dist * 10.0 - u_time * 3.0) * 0.3 + 0.7;
+        float rays = max(max(s1, s2), s3) * radialWave;
+        float core2 = exp(-dist * 4.0) * 0.8;
+        float falloff2 = max(0.0, 1.0 - dist * 0.8);
+        i2 = rays * falloff2 + core2;
+      }
 
-      // Phase 3: Organic breathing forms
-      float breathe = sin(u_time * 0.4) * 0.5 + 0.5;
-      float potential = sin(angle * 7.0 + dist * 8.0 + u_time * 0.5) * 0.5 + 0.5;
-      potential *= exp(-dist * 1.0);
-      float form = sin(angle * 3.0 - u_time * 0.3) * 0.5 + 0.5;
-      form *= sin(dist * 12.0 - u_time * 1.2) * 0.5 + 0.5;
-      form *= exp(-dist * 1.5);
-      float self = exp(-dist * 3.5) * (0.7 + breathe * 0.3);
-      float i3 = self + mix(potential, form, breathe) * 0.5;
+      // Phase 3: Organic breathing forms (skip when weight ≈ 0)
+      float i3 = 0.0;
+      if (w3 > 0.01) {
+        float breathe = sin(u_time * 0.4) * 0.5 + 0.5;
+        float potential = sin(angle * 7.0 + dist * 8.0 + u_time * 0.5) * 0.5 + 0.5;
+        potential *= exp(-dist * 1.0);
+        float form = sin(angle * 3.0 - u_time * 0.3) * 0.5 + 0.5;
+        form *= sin(dist * 12.0 - u_time * 1.2) * 0.5 + 0.5;
+        form *= exp(-dist * 1.5);
+        float self = exp(-dist * 3.5) * (0.7 + breathe * 0.3);
+        i3 = self + mix(potential, form, breathe) * 0.5;
+      }
 
       float intensity = i1 * w1 + i2 * w2 + i3 * w3;
       intensity = min(intensity, 1.0);

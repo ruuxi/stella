@@ -92,14 +92,13 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 60px;
-  height: 60px;
+  width: 70px;
+  height: 70px;
   pointer-events: none;
   overflow: hidden;
   border-radius: 50%;
 }
 
-.radial-center-stella-animation .stella-animation-container {
-  width: 60px;
-  height: 60px;
+.radial-center-stella-animation .ascii-canvas {
+  transform: translate(-50%, -50%) scale(0.5);
 }
