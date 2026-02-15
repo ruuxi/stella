@@ -205,6 +205,12 @@ export default defineSchema({
     .index("by_owner", ["ownerId"])
     .index("by_device", ["deviceId"])
     .index("by_online_lastSeenAt", ["online", "lastSeenAt"]),
+  auth_session_policies: defineTable({
+    ownerId: v.string(),
+    sessionVersion: v.number(),
+    minIssuedAtSec: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_owner", ["ownerId"]),
   cloud_devices: defineTable({
     ownerId: v.string(),
     provider: v.string(),

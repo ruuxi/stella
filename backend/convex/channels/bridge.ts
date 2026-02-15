@@ -9,7 +9,7 @@ import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import { requireUserId } from "../auth";
+import { requireSensitiveUserId } from "../auth";
 import { processIncomingMessage } from "./utils";
 import {
   getSpritesTokenForOwner,
@@ -737,7 +737,7 @@ export const setupBridge = action({
   args: { provider: v.string() },
   returns: setupBridgeResultValidator,
   handler: async (ctx, args): Promise<SetupBridgeResult> => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const runtimeMode = await ctx.runQuery(internal.data.preferences.getRuntimeModeForOwner, {
       ownerId,
     });
@@ -814,7 +814,7 @@ export const stopBridge = action({
   args: { provider: v.string() },
   returns: stopBridgeResultValidator,
   handler: async (ctx, args): Promise<StopBridgeResult> => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const session = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId,
       provider: args.provider,
@@ -865,7 +865,7 @@ export const getBridgeBundle = action({
     ctx,
     args,
   ): Promise<{ code: string; env: Record<string, string>; dependencies: string }> => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const session: { webhookSecret: string } | null = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId,
       provider: args.provider,

@@ -3,7 +3,7 @@ import { v, ConvexError } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
 import type { Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { requireUserId } from "../auth";
+import { requireSensitiveUserId } from "../auth";
 import { optionalJsonValueValidator } from "../shared_validators";
 
 const secretPublicFields = {
@@ -87,7 +87,7 @@ export const createSecret = mutation({
     updatedAt: v.number(),
   }),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const now = Date.now();
     const encryptedPayload = await encryptSecret(args.plaintext);
     const encryptedValue = JSON.stringify(encryptedPayload);
@@ -193,7 +193,7 @@ export const listSecrets = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const records = args.provider
       ? await ctx.db
           .query("secrets")
@@ -235,7 +235,7 @@ export const updateSecret = internalMutation({
     updatedAt: v.number(),
   }),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== ownerId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
@@ -269,7 +269,7 @@ export const deleteSecret = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== ownerId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Secret not found or access denied" });
@@ -291,7 +291,7 @@ export const getSecretHandle = internalQuery({
     }),
   ),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const records = await ctx.db
       .query("secrets")
       .withIndex("by_owner_and_provider_and_updated", (q) =>
@@ -325,7 +325,7 @@ export const getSecretValueForProvider = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     await assertSecretReadToolContext(ctx, ownerId, {
       requestId: args.requestId,
       toolName: args.toolName,
@@ -368,7 +368,7 @@ export const getSecretValueById = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     await assertSecretReadToolContext(ctx, ownerId, {
       requestId: args.requestId,
       toolName: args.toolName,
