@@ -126,17 +126,19 @@ export const CanvasPanel = () => {
           </svg>
         </button>
       </div>
-      <div
-        ref={panelRef}
-        className={`canvas-panel ${animClass}`}
-      >
-        <div className="canvas-panel-content">
-          <Suspense fallback={<div className="canvas-vite-loading"><Spinner size="md" /></div>}>
-            {displayCanvas.url
-              ? <AppframeRenderer canvas={displayCanvas} />
-              : <PanelRenderer canvas={displayCanvas} />
-            }
-          </Suspense>
+      <div className="canvas-panel-viewport">
+        <div
+          ref={panelRef}
+          className={`canvas-panel ${animClass}`}
+        >
+          <div className="canvas-panel-content">
+            <Suspense fallback={<div className="canvas-vite-loading"><Spinner size="md" /></div>}>
+              {displayCanvas.url
+                ? <AppframeRenderer canvas={displayCanvas} />
+                : <PanelRenderer canvas={displayCanvas} />
+              }
+            </Suspense>
+          </div>
         </div>
       </div>
     </div>
