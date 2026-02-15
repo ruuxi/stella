@@ -102,7 +102,25 @@ export const TurnItem = memo(function TurnItem({
       {/* User message (skip if empty, e.g., for standalone assistant messages) */}
       {hasUserContent && (
         <div className="event-item user">
-          <div className="event-body">{userText}</div>
+          {(() => {
+            const windowMatch = userText.match(
+              /^\[Window\] (.+?)(?:\n\n|$)/,
+            );
+            const windowContext = windowMatch ? windowMatch[1] : null;
+            const displayText = windowMatch
+              ? userText.slice(windowMatch[0].length)
+              : userText;
+            return (
+              <>
+                {windowContext && (
+                  <span className="event-window-badge">{windowContext}</span>
+                )}
+                {displayText.trim() && (
+                  <div className="event-body">{displayText}</div>
+                )}
+              </>
+            );
+          })()}
           {userAttachments.length > 0 && (
             <div className="event-attachments">
               {userAttachments.map((attachment, index) => {
