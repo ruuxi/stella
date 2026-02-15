@@ -14,6 +14,7 @@ import {
   type TurnViewModel,
   getEventText,
   getAttachments,
+  getChannelEnvelope,
 } from "./MessageTurn";
 
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
@@ -88,6 +89,7 @@ export function useTurnViewModels(opts: {
     return slicedTurns.map((turn): TurnViewModel => {
       const userText = getEventText(turn.userMessage);
       const userAttachments = getAttachments(turn.userMessage);
+      const userChannelEnvelope = getChannelEnvelope(turn.userMessage);
       const assistantText = turn.assistantMessage
         ? depseudonymize(getEventText(turn.assistantMessage))
         : "";
@@ -100,6 +102,7 @@ export function useTurnViewModels(opts: {
         id: turn.id,
         userText,
         userAttachments,
+        userChannelEnvelope,
         assistantText,
         assistantMessageId,
         assistantEmotesEnabled,

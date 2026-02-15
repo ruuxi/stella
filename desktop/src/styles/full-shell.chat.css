@@ -113,6 +113,34 @@
   white-space: nowrap;
 }
 
+.event-channel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.event-channel-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-base);
+  background: color-mix(in srgb, var(--surface-inset) 35%, transparent);
+  color: var(--text-weak);
+}
+
+.event-channel-badge.provider {
+  font-weight: 600;
+}
+
+.event-channel-badge.kind {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .event-attachments {
   display: flex;
   flex-wrap: wrap;
