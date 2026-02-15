@@ -10,6 +10,13 @@ export type GetBridgeBundle = (args: {
   provider: BridgeProvider;
 }) => Promise<BridgeBundle>;
 
+type CompatibleBridgeBundle = {
+  code: string;
+  dependencies: string;
+  env?: Record<string, string>;
+  config?: string;
+};
+
 export async function deployAndStartLocalBridge(
   provider: BridgeProvider,
   getBridgeBundle: GetBridgeBundle,
@@ -19,9 +26,7 @@ export async function deployAndStartLocalBridge(
     return false;
   }
 
-  const rawBundle = await getBridgeBundle({ provider }) as
-    | BridgeBundle
-    | (BridgeBundle & { config?: string });
+  const rawBundle = (await getBridgeBundle({ provider })) as CompatibleBridgeBundle;
   const bundleEnv =
     rawBundle.env ??
     (() => {

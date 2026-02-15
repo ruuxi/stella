@@ -12,6 +12,7 @@ export type EventRecord = {
   requestId?: string;
   targetDeviceId?: string;
   payload?: Record<string, unknown>;
+  channelEnvelope?: ChannelEnvelope;
 };
 
 // Tool request payload structure
@@ -36,6 +37,30 @@ export type Attachment = {
   url?: string;
   mimeType?: string;
   name?: string;
+  size?: number;
+  kind?: string;
+  providerMeta?: unknown;
+};
+
+export type ChannelReaction = {
+  emoji: string;
+  action: "add" | "remove";
+  targetMessageId?: string;
+};
+
+export type ChannelEnvelope = {
+  provider: string;
+  kind: "message" | "reaction" | "edit" | "delete" | "system";
+  chatType?: string;
+  externalUserId?: string;
+  externalChatId?: string;
+  externalMessageId?: string;
+  threadId?: string;
+  text?: string;
+  attachments?: Attachment[];
+  reactions?: ChannelReaction[];
+  sourceTimestamp?: number;
+  providerPayload?: unknown;
 };
 
 // Message payload structure
