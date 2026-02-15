@@ -45,6 +45,7 @@ type ChatColumnProps = {
 
   hasExpanded: boolean;
   splitMode: boolean;
+  hasDiscoverySelections?: boolean;
   onboardingKey: number;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   triggerFlash: () => void;
@@ -52,6 +53,7 @@ type ChatColumnProps = {
   completeOnboarding: () => void;
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
+  onSelectionChange?: (hasSelections: boolean) => void;
   onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
 };
@@ -82,6 +84,7 @@ export function ChatColumn({
   onSend,
   hasExpanded,
   splitMode,
+  hasDiscoverySelections,
   onboardingKey,
   stellaAnimationRef,
   triggerFlash,
@@ -89,6 +92,7 @@ export function ChatColumn({
   completeOnboarding,
   handleEnterSplit,
   onDiscoveryConfirm,
+  onSelectionChange,
   onDemoChange,
   onCommandSelect,
 }: ChatColumnProps) {
@@ -127,6 +131,7 @@ export function ChatColumn({
             onboardingExiting={onboardingExiting}
             isAuthenticated={isAuthenticated}
             splitMode={splitMode}
+            hasDiscoverySelections={hasDiscoverySelections}
             stellaAnimationRef={stellaAnimationRef}
             onboardingKey={onboardingKey}
             triggerFlash={triggerFlash}
@@ -134,6 +139,7 @@ export function ChatColumn({
             completeOnboarding={completeOnboarding}
             handleEnterSplit={handleEnterSplit}
             onDiscoveryConfirm={onDiscoveryConfirm}
+            onSelectionChange={onSelectionChange}
             onDemoChange={onDemoChange}
           />
         )}

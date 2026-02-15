@@ -4,19 +4,16 @@ import { type DiscoveryCategory, DISCOVERY_CATEGORIES } from "./use-onboarding-s
 interface OnboardingDiscoveryProps {
   categoryStates: Record<DiscoveryCategory, boolean>;
   onToggleCategory: (id: DiscoveryCategory) => void;
-  browserEnabled?: boolean;
 }
 
 export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
   categoryStates,
   onToggleCategory,
-  browserEnabled = false,
 }) => {
   const platform = window.electronAPI?.platform ?? "unknown";
   const hasFDACategories = DISCOVERY_CATEGORIES.some(
     (cat) => cat.requiresFDA && categoryStates[cat.id]
   );
-  const noneSelected = Object.values(categoryStates).every((v) => !v) && !browserEnabled;
 
   return (
     <div className="onboarding-discovery" data-visible={true}>
@@ -33,14 +30,6 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
           </button>
         ))}
       </div>
-      {noneSelected && (
-        <div className="onboarding-discovery-warning">
-          <span className="onboarding-discovery-warning-badge">Not recommended</span>
-          <p className="onboarding-discovery-warning-text">
-            Without this, I'll learn about you over time through our conversations. But I won't be personal to you from the start.
-          </p>
-        </div>
-      )}
       {hasFDACategories && platform === "darwin" && (
         <div className="onboarding-fda-note">
           <span>Some options require Full Disk Access</span>

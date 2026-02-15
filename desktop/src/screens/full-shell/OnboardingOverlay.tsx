@@ -32,6 +32,7 @@ export function useOnboardingOverlay() {
 
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
   const [splitMode, setSplitMode] = useState(false);
+  const [hasDiscoverySelections, setHasDiscoverySelections] = useState(false);
   const [onboardingExiting, setOnboardingExiting] = useState(false);
   const [onboardingKey, setOnboardingKey] = useState(0);
   const stellaAnimationRef = useRef<StellaAnimationHandle | null>(null);
@@ -84,6 +85,8 @@ export function useOnboardingOverlay() {
     isAuthLoading,
     hasExpanded,
     splitMode,
+    hasDiscoverySelections,
+    setHasDiscoverySelections,
     onboardingKey,
     stellaAnimationRef,
     triggerFlash,
@@ -99,6 +102,7 @@ export function OnboardingView({
   onboardingExiting,
   isAuthenticated,
   splitMode,
+  hasDiscoverySelections,
   stellaAnimationRef,
   onboardingKey,
   triggerFlash,
@@ -106,6 +110,7 @@ export function OnboardingView({
   completeOnboarding,
   handleEnterSplit,
   onDiscoveryConfirm,
+  onSelectionChange,
   onDemoChange,
 }: {
   hasExpanded: boolean;
@@ -113,6 +118,7 @@ export function OnboardingView({
   onboardingExiting?: boolean;
   isAuthenticated: boolean;
   splitMode: boolean;
+  hasDiscoverySelections?: boolean;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   onboardingKey: number;
   triggerFlash: () => void;
@@ -120,6 +126,7 @@ export function OnboardingView({
   completeOnboarding: () => void;
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
+  onSelectionChange?: (hasSelections: boolean) => void;
   onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
 }) {
   return (
@@ -140,6 +147,7 @@ export function OnboardingView({
         className="onboarding-stella-animation"
         data-expanded={hasExpanded ? "true" : "false"}
         data-split={splitMode}
+        data-has-selections={hasDiscoverySelections || undefined}
         title={!hasExpanded ? "Click to awaken" : undefined}
       >
         <StellaAnimation
@@ -157,6 +165,7 @@ export function OnboardingView({
           onInteract={triggerFlash}
           onDiscoveryConfirm={onDiscoveryConfirm}
           onEnterSplit={handleEnterSplit}
+          onSelectionChange={onSelectionChange}
           onDemoChange={onDemoChange}
           isAuthenticated={isAuthenticated}
         />
