@@ -259,7 +259,33 @@ export const FullShell = () => {
     [sendMessage],
   );
 
+  // Auto-open the dashboard panel when ready and no other canvas is active.
+  // Also re-opens dashboard when an agent canvas is closed.
   const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
+  useEffect(() => {
+    const ready = onboarding.isAuthenticated && onboarding.onboardingDone;
+    if (!ready || activeDemo || demoClosing) return;
+    if (canvasOpen) return;
+    openCanvas({ name: "dashboard" });
+  }, [onboarding.isAuthenticated, onboarding.onboardingDone, canvasOpen, activeDemo, demoClosing, openCanvas]);
+
+  // Listen for custom events from the dashboard panel (suggestion clicks)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ text: string }>).detail;
+      if (detail?.text) {
+        void sendMessage({
+          text: detail.text,
+          selectedText: null,
+          chatContext: null,
+          onClear: () => {},
+        });
+      }
+    };
+    window.addEventListener("stella:send-message", handler);
+    return () => window.removeEventListener("stella:send-message", handler);
+  }, [sendMessage]);
+
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasWindowContext = Boolean(chatContext?.window);
   const hasSelectedTextContext = Boolean(selectedText);
@@ -346,7 +372,6 @@ export const FullShell = () => {
               onSignIn={() => setAuthDialogOpen(true)}
               onDemoChange={handleDemoChange}
               onCommandSelect={handleCommandSelect}
-              onWelcomeSuggestionSelect={handleWelcomeSuggestionSelect}
             />
             {canvasOpen && <CanvasPanel />}
             {!canvasOpen && (activeDemo || demoClosing) && <OnboardingCanvas activeDemo={activeDemo} />}
