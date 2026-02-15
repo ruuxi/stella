@@ -104,7 +104,7 @@ export const TurnItem = memo(function TurnItem({
         <div className="event-item user">
           {(() => {
             const windowMatch = userText.match(
-              /^\[Window\] (.+?)(?:\n\n|$)/,
+              /^<active-window[^>]*>(.+?)<\/active-window>\s*/,
             );
             const windowContext = windowMatch ? windowMatch[1] : null;
             const displayText = windowMatch
