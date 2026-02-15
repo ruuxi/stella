@@ -21,6 +21,10 @@ import {
   encryptSecret,
   isEncryptedSecretSerialized,
 } from "../data/secrets_crypto";
+import {
+  channelAttachmentValidator,
+  optionalChannelEnvelopeValidator,
+} from "../shared_validators";
 
 const bridgeAuthStateValidator = v.optional(
   v.object({
@@ -1010,10 +1014,24 @@ export const handleBridgeMessage = internalAction({
     externalUserId: v.string(),
     text: v.string(),
     displayName: v.optional(v.string()),
+    groupId: v.optional(v.string()),
+    attachments: v.optional(v.array(channelAttachmentValidator)),
+    channelEnvelope: optionalChannelEnvelopeValidator,
+    respond: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    if (!args.externalUserId || !args.text.trim()) return null;
+    const hasText = args.text.trim().length > 0;
+    const hasAttachments = (args.attachments?.length ?? 0) > 0;
+    const hasEnvelopeEvent = Boolean(args.channelEnvelope?.kind);
+    if (!args.externalUserId || (!hasText && !hasAttachments && !hasEnvelopeEvent)) {
+      return null;
+    }
+    const effectiveText =
+      hasText
+        ? args.text
+        : args.channelEnvelope?.text?.trim() ||
+          `[${args.channelEnvelope?.kind ?? "message"}]`;
 
     // Bridge providers receive sender IDs that are not pre-linked via code.
     // Ensure owner-scoped routing exists for this sender before processing.
@@ -1039,7 +1057,11 @@ export const handleBridgeMessage = internalAction({
       ownerId: args.ownerId,
       provider: args.provider,
       externalUserId: args.externalUserId,
-      text: args.text,
+      text: effectiveText,
+      groupId: args.groupId,
+      attachments: args.attachments,
+      channelEnvelope: args.channelEnvelope,
+      respond: args.respond,
     });
 
     if (!result) return null;
@@ -1069,6 +1091,10 @@ export const handleBridgeMessage = internalAction({
       lastMessageAtMs: Date.now(),
       consecutiveEmptyWakes: 0,
     });
+
+    if (args.respond === false || !result.text.trim()) {
+      return null;
+    }
 
     // Instant promotion: if tier was COOL/COLD/FROZEN, reschedule aggressively (cloud only)
     const sessionMode = session.mode ?? "cloud";
@@ -1265,29 +1291,140 @@ async function startWhatsApp() {
   });
 
   sock.ev.on("messages.upsert", async ({ messages }) => {
+    const toSize = (value) => {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : undefined;
+    };
+
     for (const msg of messages) {
       if (msg.key.fromMe) continue;
       const message = msg.message || {};
+      const from = msg.key.remoteJid;
+      if (!from) continue;
+      const pushName = msg.pushName || "";
+      const isGroup = typeof from === "string" && from.endsWith("@g.us");
+      const groupId = isGroup ? from : undefined;
+      const externalMessageId = msg.key.id || undefined;
+      const sourceTimestamp = Number.isFinite(Number(msg.messageTimestamp))
+        ? Number(msg.messageTimestamp) * 1000
+        : undefined;
+
+      const attachments = [];
+      if (message.imageMessage) {
+        attachments.push({
+          id: externalMessageId,
+          mimeType: message.imageMessage.mimetype,
+          size: toSize(message.imageMessage.fileLength),
+          kind: "image",
+        });
+      }
+      if (message.videoMessage) {
+        attachments.push({
+          id: externalMessageId,
+          mimeType: message.videoMessage.mimetype,
+          size: toSize(message.videoMessage.fileLength),
+          kind: "video",
+        });
+      }
+      if (message.documentMessage) {
+        attachments.push({
+          id: externalMessageId,
+          name: message.documentMessage.fileName,
+          mimeType: message.documentMessage.mimetype,
+          size: toSize(message.documentMessage.fileLength),
+          kind: "document",
+        });
+      }
+      if (message.audioMessage) {
+        attachments.push({
+          id: externalMessageId,
+          mimeType: message.audioMessage.mimetype,
+          size: toSize(message.audioMessage.fileLength),
+          kind: message.audioMessage.ptt ? "voice" : "audio",
+        });
+      }
+      if (message.stickerMessage) {
+        attachments.push({
+          id: externalMessageId,
+          mimeType: message.stickerMessage.mimetype,
+          kind: "sticker",
+        });
+      }
+
+      const reactionEmoji = message.reactionMessage?.text || "";
+      if (reactionEmoji) {
+        const targetMessageId = message.reactionMessage?.key?.id || undefined;
+        const summary = \`WhatsApp reaction \${reactionEmoji} on message \${targetMessageId || "unknown"}\`;
+        await postWebhook({
+          type: "message",
+          externalUserId: from,
+          text: summary,
+          displayName: pushName,
+          groupId,
+          chatType: isGroup ? "group" : "dm",
+          kind: "reaction",
+          externalMessageId,
+          reactions: [{ emoji: reactionEmoji, action: "add", targetMessageId }],
+          sourceTimestamp,
+          respond: false,
+        });
+        continue;
+      }
+
+      if (message.protocolMessage?.key?.id) {
+        const targetMessageId = message.protocolMessage.key.id;
+        await postWebhook({
+          type: "message",
+          externalUserId: from,
+          text: \`WhatsApp deleted message \${targetMessageId}\`,
+          displayName: pushName,
+          groupId,
+          chatType: isGroup ? "group" : "dm",
+          kind: "delete",
+          externalMessageId: targetMessageId,
+          sourceTimestamp,
+          respond: false,
+        });
+        continue;
+      }
+
       const text =
         message.conversation ||
         message.extendedTextMessage?.text ||
         message.imageMessage?.caption ||
         message.videoMessage?.caption ||
         message.documentMessage?.caption ||
-        (message.imageMessage ? "[Image message]" : "") ||
-        (message.videoMessage ? "[Video message]" : "") ||
-        (message.documentMessage ? "[Document message]" : "") ||
-        (message.audioMessage ? "[Audio message]" : "");
-      if (!text) continue;
-
-      const from = msg.key.remoteJid;
-      const pushName = msg.pushName || "";
+        "";
+      const attachmentSummary =
+        attachments.length > 1
+          ? \`[\${attachments.length} attachments]\`
+          : attachments[0]?.kind === "image"
+            ? "[Image message]"
+            : attachments[0]?.kind === "video"
+              ? "[Video message]"
+              : attachments[0]?.kind === "voice"
+                ? "[Voice message]"
+                : attachments[0]?.kind === "audio"
+                  ? "[Audio message]"
+                  : attachments[0]?.kind === "document"
+                    ? "[Document message]"
+                    : attachments[0]?.kind === "sticker"
+                      ? "[Sticker]"
+                      : "";
+      const normalizedText = (text || attachmentSummary).trim();
+      if (!normalizedText) continue;
 
       await postWebhook({
         type: "message",
         externalUserId: from,
-        text,
+        text: normalizedText,
         displayName: pushName,
+        groupId,
+        chatType: isGroup ? "group" : "dm",
+        kind: "message",
+        externalMessageId,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        sourceTimestamp,
       });
     }
   });
@@ -1516,18 +1653,137 @@ function startDaemon() {
       if (!line.trim()) continue;
       try {
         const msg = JSON.parse(line);
-        if (msg.envelope?.dataMessage?.message) {
-          const from = msg.envelope.source || "";
-          const text = msg.envelope.dataMessage.message;
-          const displayName = msg.envelope.sourceName || "";
+        const envelope = msg.envelope || {};
+        const dataMessage = envelope.dataMessage || {};
+        const from = envelope.source || "";
+        if (!from) continue;
 
+        const groupId =
+          dataMessage.groupInfo?.groupId ||
+          dataMessage.groupV2?.id ||
+          undefined;
+        const chatType = groupId ? "group" : "dm";
+        const sourceTimestamp = Number.isFinite(Number(envelope.timestamp))
+          ? Number(envelope.timestamp)
+          : undefined;
+        const externalMessageId = Number.isFinite(Number(dataMessage.timestamp))
+          ? String(dataMessage.timestamp)
+          : Number.isFinite(Number(envelope.timestamp))
+            ? String(envelope.timestamp)
+            : undefined;
+        const displayName = envelope.sourceName || "";
+
+        const attachments = Array.isArray(dataMessage.attachments)
+          ? dataMessage.attachments
+              .map((attachment) => {
+                if (!attachment || typeof attachment !== "object") return null;
+                const contentType =
+                  typeof attachment.contentType === "string"
+                    ? attachment.contentType
+                    : undefined;
+                const kind = contentType
+                  ? contentType.startsWith("image/")
+                    ? "image"
+                    : contentType.startsWith("video/")
+                      ? "video"
+                      : contentType.startsWith("audio/")
+                        ? "audio"
+                        : "file"
+                  : "file";
+                const size = Number(attachment.size);
+                return {
+                  id:
+                    Number.isFinite(Number(attachment.id))
+                      ? String(attachment.id)
+                      : typeof attachment.id === "string"
+                        ? attachment.id
+                        : undefined,
+                  name:
+                    typeof attachment.filename === "string"
+                      ? attachment.filename
+                      : undefined,
+                  mimeType: contentType,
+                  size: Number.isFinite(size) ? size : undefined,
+                  kind,
+                };
+              })
+              .filter(Boolean)
+          : [];
+
+        if (dataMessage.reaction?.emoji) {
+          const action = dataMessage.reaction.remove ? "remove" : "add";
+          const targetMessageId = Number.isFinite(Number(dataMessage.reaction.targetSentTimestamp))
+            ? String(dataMessage.reaction.targetSentTimestamp)
+            : undefined;
+          const summary = \`Signal reaction \${action === "add" ? "added" : "removed"}: \${dataMessage.reaction.emoji}\`;
           postWebhook({
             type: "message",
             externalUserId: from,
-            text,
+            text: summary,
             displayName,
+            groupId,
+            chatType,
+            kind: "reaction",
+            externalMessageId,
+            reactions: [
+              {
+                emoji: dataMessage.reaction.emoji,
+                action,
+                targetMessageId,
+              },
+            ],
+            sourceTimestamp,
+            respond: false,
           });
+          continue;
         }
+
+        if (dataMessage.delete?.targetSentTimestamp) {
+          const targetMessageId = String(dataMessage.delete.targetSentTimestamp);
+          postWebhook({
+            type: "message",
+            externalUserId: from,
+            text: \`Signal deleted message \${targetMessageId}\`,
+            displayName,
+            groupId,
+            chatType,
+            kind: "delete",
+            externalMessageId: targetMessageId,
+            sourceTimestamp,
+            respond: false,
+          });
+          continue;
+        }
+
+        const text =
+          typeof dataMessage.message === "string" ? dataMessage.message.trim() : "";
+        const attachmentSummary =
+          attachments.length > 1
+            ? \`[\${attachments.length} attachments]\`
+            : attachments[0]?.kind === "image"
+              ? "[Image]"
+              : attachments[0]?.kind === "video"
+                ? "[Video]"
+                : attachments[0]?.kind === "audio"
+                  ? "[Audio]"
+                  : attachments.length === 1
+                    ? "[Attachment]"
+                    : "";
+        const normalizedText = text || attachmentSummary;
+        if (!normalizedText) continue;
+
+        postWebhook({
+          type: "message",
+          externalUserId: from,
+          text: normalizedText,
+          displayName,
+          groupId,
+          chatType,
+          kind: "message",
+          externalMessageId,
+          ...(attachments.length > 0 ? { attachments } : {}),
+          sourceTimestamp,
+        });
       } catch {}
     }
   });

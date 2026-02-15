@@ -1,6 +1,7 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./utils";
+import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
 // Ed25519 Signature Verification (Discord Interactions Endpoint)
@@ -163,18 +164,29 @@ export const handleAskCommand = internalAction({
     discordUserId: v.string(),
     text: v.string(),
     displayName: v.optional(v.string()),
+    groupId: v.optional(v.string()),
+    attachments: v.optional(v.array(channelAttachmentValidator)),
+    channelEnvelope: optionalChannelEnvelopeValidator,
+    respond: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const shouldRespond = args.respond !== false;
+
     try {
       const result = await processIncomingMessage({
         ctx,
         provider: "discord",
         externalUserId: args.discordUserId,
         text: args.text,
+        groupId: args.groupId,
+        attachments: args.attachments,
+        channelEnvelope: args.channelEnvelope,
+        respond: args.respond,
       });
 
       if (!result) {
+        if (!shouldRespond) return null;
         await editInteractionResponse(
           args.applicationId,
           args.interactionToken,
@@ -183,18 +195,22 @@ export const handleAskCommand = internalAction({
         return null;
       }
 
-      await editInteractionResponse(
-        args.applicationId,
-        args.interactionToken,
-        result.text,
-      );
+      if (shouldRespond) {
+        await editInteractionResponse(
+          args.applicationId,
+          args.interactionToken,
+          result.text,
+        );
+      }
     } catch (error) {
       console.error("[discord] Agent turn failed:", error);
-      await editInteractionResponse(
-        args.applicationId,
-        args.interactionToken,
-        "Sorry, something went wrong. Please try again.",
-      );
+      if (shouldRespond) {
+        await editInteractionResponse(
+          args.applicationId,
+          args.interactionToken,
+          "Sorry, something went wrong. Please try again.",
+        );
+      }
     }
     return null;
   },
@@ -226,7 +242,13 @@ export const registerCommands = internalAction({
             name: "message",
             description: "Your message to Stella",
             type: 3,
-            required: true,
+            required: false,
+          },
+          {
+            name: "attachment",
+            description: "Optional image/audio/file attachment",
+            type: 11,
+            required: false,
           },
         ],
         integration_types: [1],

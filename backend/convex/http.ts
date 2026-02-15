@@ -506,6 +506,152 @@ const summarizeTeamsMessage = (text: string | undefined, attachments: ConnectorA
   return `[${attachments.length} attachments]`;
 };
 
+const parseDiscordSnowflakeTimestampMs = (snowflake: string | undefined): number | undefined => {
+  if (!snowflake || !/^\d+$/.test(snowflake)) return undefined;
+  try {
+    return Number((BigInt(snowflake) >> 22n) + 1420070400000n);
+  } catch {
+    return undefined;
+  }
+};
+
+const extractDiscordResolvedAttachments = (
+  resolvedAttachments: unknown,
+  requestedAttachmentId?: string,
+): ConnectorAttachment[] => {
+  if (!resolvedAttachments || typeof resolvedAttachments !== "object") {
+    return [];
+  }
+  const entries = Object.entries(resolvedAttachments as Record<string, unknown>);
+  const attachments: ConnectorAttachment[] = [];
+  for (const [id, value] of entries) {
+    if (requestedAttachmentId && id !== requestedAttachmentId) continue;
+    if (!value || typeof value !== "object") continue;
+    const item = value as Record<string, unknown>;
+    const mimeType =
+      typeof item.content_type === "string" && item.content_type.length > 0
+        ? item.content_type
+        : undefined;
+    const kind = mimeType
+      ? mimeType.startsWith("image/")
+        ? "image"
+        : mimeType.startsWith("video/")
+          ? "video"
+          : mimeType.startsWith("audio/")
+            ? "voice"
+            : "file"
+      : "file";
+    attachments.push({
+      id: typeof item.id === "string" ? item.id : id,
+      name: typeof item.filename === "string" ? item.filename : undefined,
+      mimeType,
+      url:
+        typeof item.url === "string"
+          ? item.url
+          : typeof item.proxy_url === "string"
+            ? item.proxy_url
+            : undefined,
+      size: typeof item.size === "number" ? item.size : undefined,
+      kind,
+    });
+  }
+  return attachments;
+};
+
+const summarizeDiscordMessage = (text: string | undefined, attachments: ConnectorAttachment[]) => {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (trimmed.length > 0) return trimmed;
+  if (attachments.length === 0) return "";
+
+  const first = attachments[0];
+  const mime = (first?.mimeType ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return "[Image]";
+  if (mime.startsWith("video/")) return "[Video]";
+  if (mime.startsWith("audio/")) return "[Voice message]";
+  if (attachments.length === 1) return "[Attachment]";
+  return `[${attachments.length} attachments]`;
+};
+
+const extractLinqAttachments = (parts: unknown): ConnectorAttachment[] => {
+  if (!Array.isArray(parts)) return [];
+  const attachments: ConnectorAttachment[] = [];
+  for (const part of parts) {
+    if (!part || typeof part !== "object") continue;
+    const item = part as Record<string, unknown>;
+    const type = typeof item.type === "string" ? item.type : "";
+    if (type === "text") continue;
+    const value = typeof item.value === "string" ? item.value : undefined;
+    const mimeType = typeof item.mime_type === "string" ? item.mime_type : undefined;
+    const inferredKind = type.toLowerCase();
+    attachments.push({
+      id: typeof item.id === "string" ? item.id : undefined,
+      name: typeof item.name === "string" ? item.name : undefined,
+      mimeType,
+      url:
+        value && (value.startsWith("http://") || value.startsWith("https://"))
+          ? value
+          : typeof item.url === "string"
+            ? item.url
+            : undefined,
+      kind: inferredKind || "file",
+    });
+  }
+  return attachments;
+};
+
+const summarizeLinqMessage = (text: string, attachments: ConnectorAttachment[]) => {
+  const trimmed = text.trim();
+  if (trimmed.length > 0) return trimmed;
+  if (attachments.length === 0) return "";
+
+  const firstKind = (attachments[0]?.kind ?? "").toLowerCase();
+  if (firstKind.includes("image") || firstKind.includes("photo")) return "[Image]";
+  if (firstKind.includes("video")) return "[Video]";
+  if (firstKind.includes("audio") || firstKind.includes("voice")) return "[Audio]";
+  if (attachments.length === 1) return "[Attachment]";
+  return `[${attachments.length} attachments]`;
+};
+
+type ChannelEventKind = "message" | "reaction" | "edit" | "delete" | "system";
+
+const isChannelEventKind = (value: string | undefined): value is ChannelEventKind =>
+  value === "message" ||
+  value === "reaction" ||
+  value === "edit" ||
+  value === "delete" ||
+  value === "system";
+
+const extractBridgeAttachments = (attachments: unknown): ConnectorAttachment[] => {
+  if (!Array.isArray(attachments)) return [];
+  const result: ConnectorAttachment[] = [];
+  for (const attachment of attachments) {
+    if (!attachment || typeof attachment !== "object") continue;
+    const item = attachment as Record<string, unknown>;
+    result.push({
+      id: typeof item.id === "string" ? item.id : undefined,
+      name: typeof item.name === "string" ? item.name : undefined,
+      mimeType: typeof item.mimeType === "string" ? item.mimeType : undefined,
+      url: typeof item.url === "string" ? item.url : undefined,
+      size: typeof item.size === "number" ? item.size : undefined,
+      kind: typeof item.kind === "string" ? item.kind : "file",
+    });
+  }
+  return result;
+};
+
+const normalizeBridgeReactions = (reactions: unknown) => {
+  if (!Array.isArray(reactions)) return [];
+  return reactions
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
+    .map((entry) => ({
+      emoji: typeof entry.emoji === "string" ? entry.emoji : "",
+      action: entry.action === "remove" ? ("remove" as const) : ("add" as const),
+      targetMessageId:
+        typeof entry.targetMessageId === "string" ? entry.targetMessageId : undefined,
+    }))
+    .filter((entry) => entry.emoji.length > 0);
+};
+
 http.route({
   path: "/api/chat",
   method: "OPTIONS",
@@ -1459,9 +1605,24 @@ http.route({
       id: string;
       token: string;
       application_id: string;
+      guild_id?: string;
+      channel_id?: string;
       data?: {
         name?: string;
-        options?: Array<{ name: string; value: string }>;
+        options?: Array<{ name: string; value: string | number | boolean }>;
+        resolved?: {
+          attachments?: Record<
+            string,
+            {
+              id?: string;
+              filename?: string;
+              content_type?: string;
+              size?: number;
+              url?: string;
+              proxy_url?: string;
+            }
+          >;
+        };
       };
       user?: { id: string; username?: string; global_name?: string };
       member?: { user?: { id: string; username?: string; global_name?: string } };
@@ -1511,7 +1672,8 @@ http.route({
       }
 
       if (commandName === "link") {
-        const codeArg = options.find((o) => o.name === "code")?.value ?? "";
+        const codeRaw = options.find((o) => o.name === "code")?.value;
+        const codeArg = typeof codeRaw === "string" ? codeRaw : String(codeRaw ?? "");
 
         const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
           scope: "discord",
@@ -1541,13 +1703,22 @@ http.route({
       }
 
       if (commandName === "ask") {
-        const message = options.find((o) => o.name === "message")?.value ?? "";
+        const messageRaw = options.find((o) => o.name === "message")?.value;
+        const message =
+          typeof messageRaw === "string" ? messageRaw.trim() : String(messageRaw ?? "").trim();
+        const attachmentOption = options.find((o) => o.name === "attachment")?.value;
+        const attachmentId = typeof attachmentOption === "string" ? attachmentOption : undefined;
+        const attachments = extractDiscordResolvedAttachments(
+          interaction.data?.resolved?.attachments,
+          attachmentId,
+        );
+        const text = summarizeDiscordMessage(message, attachments);
 
-        if (!message.trim()) {
+        if (!text && attachments.length === 0) {
           return new Response(
             JSON.stringify({
               type: RESPONSE_CHANNEL_MESSAGE,
-              data: { content: "Please provide a message. Usage: `/ask your question here`" },
+              data: { content: "Please provide a message or attachment. Usage: `/ask message:...`" },
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
@@ -1565,12 +1736,34 @@ http.route({
         }
 
         // Defer response and process async
+        const chatType = interaction.guild_id ? "guild" : "dm";
+        const groupId =
+          interaction.guild_id && interaction.channel_id
+            ? `guild:${interaction.guild_id}:channel:${interaction.channel_id}`
+            : interaction.guild_id
+              ? `guild:${interaction.guild_id}`
+              : undefined;
+        const channelEnvelope = {
+          provider: "discord",
+          kind: "message" as const,
+          chatType,
+          externalUserId: discordUserId,
+          externalChatId: interaction.channel_id,
+          externalMessageId: interaction.id,
+          text,
+          ...(attachments.length > 0 ? { attachments } : {}),
+          sourceTimestamp: parseDiscordSnowflakeTimestampMs(interaction.id) ?? Date.now(),
+        };
+
         await ctx.scheduler.runAfter(0, internal.channels.discord.handleAskCommand, {
           applicationId,
           interactionToken,
           discordUserId,
-          text: message,
+          text,
           displayName,
+          groupId,
+          ...(attachments.length > 0 ? { attachments } : {}),
+          channelEnvelope,
         });
 
         return new Response(
@@ -2346,7 +2539,15 @@ http.route({
       data?: {
         chat?: { id?: string; is_group?: boolean; owner_handle?: { handle?: string } };
         sender_handle?: { handle?: string };
-        parts?: Array<{ type?: string; value?: string }>;
+        message?: { id?: string; created_at?: string; timestamp?: string };
+        parts?: Array<{
+          id?: string;
+          type?: string;
+          value?: string;
+          url?: string;
+          name?: string;
+          mime_type?: string;
+        }>;
       };
     };
     try {
@@ -2369,15 +2570,17 @@ http.route({
       return new Response("OK", { status: 200 });
     }
 
-    // Extract text from message parts
+    // Extract text + attachments from message parts
     const parts = envelope.data?.parts ?? [];
-    const text = parts
+    const textOnly = parts
       .filter((p) => p.type === "text")
       .map((p) => p.value ?? "")
       .join("\n")
       .trim();
+    const attachments = extractLinqAttachments(parts);
+    const text = summarizeLinqMessage(textOnly, attachments);
 
-    if (!text) {
+    if (!text && attachments.length === 0) {
       return new Response("OK", { status: 200 });
     }
 
@@ -2399,8 +2602,22 @@ http.route({
     console.log("[linq] Dispatching message from", senderPhone, "text:", text.slice(0, 100), "chatId:", incomingChatId);
 
     // Detect link code: bare 6-digit alphanumeric code, or "link CODE"
-    const linkPrefix = text.toLowerCase().startsWith("link ") ? text.slice(5).trim() : text.trim();
+    const linkPrefix = textOnly.toLowerCase().startsWith("link ") ? textOnly.slice(5).trim() : textOnly.trim();
     const isLinkCode = /^[A-Z0-9]{6}$/i.test(linkPrefix);
+    const sourceTimestamp = parseIsoTimestampMs(
+      envelope.data?.message?.created_at ?? envelope.data?.message?.timestamp,
+    );
+    const channelEnvelope = {
+      provider: "linq",
+      kind: "message" as const,
+      chatType: isGroup ? "group" : "dm",
+      externalUserId: senderPhone,
+      externalChatId: incomingChatId || undefined,
+      externalMessageId: envelope.data?.message?.id,
+      text,
+      ...(attachments.length > 0 ? { attachments } : {}),
+      sourceTimestamp,
+    };
 
     if (isLinkCode) {
       await ctx.scheduler.runAfter(0, internal.channels.linq.handleStartCommand, {
@@ -2414,6 +2631,8 @@ http.route({
         text,
         incomingChatId,
         groupId: isGroup ? incomingChatId : undefined,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        channelEnvelope,
       });
     }
 
@@ -2508,6 +2727,15 @@ http.route({
       externalUserId?: string;
       text?: string;
       displayName?: string;
+      groupId?: string;
+      chatType?: string;
+      kind?: string;
+      externalMessageId?: string;
+      threadId?: string;
+      attachments?: unknown;
+      reactions?: unknown;
+      sourceTimestamp?: number;
+      respond?: boolean;
       replyCallback?: string;
       authState?: unknown;
       status?: string;
@@ -2521,6 +2749,15 @@ http.route({
         externalUserId?: string;
         text?: string;
         displayName?: string;
+        groupId?: string;
+        chatType?: string;
+        kind?: string;
+        externalMessageId?: string;
+        threadId?: string;
+        attachments?: unknown;
+        reactions?: unknown;
+        sourceTimestamp?: number;
+        respond?: boolean;
         replyCallback?: string;
         authState?: unknown;
         status?: string;
@@ -2597,9 +2834,26 @@ http.route({
         status: payload.status ?? "awaiting_auth",
       });
     } else if (payload.type === "message") {
+      const kind = isChannelEventKind(payload.kind) ? payload.kind : "message";
+      const attachments = extractBridgeAttachments(payload.attachments);
+      const reactions = normalizeBridgeReactions(payload.reactions);
+      const text = (payload.text ?? "").trim();
+      const fallbackText =
+        kind !== "message"
+          ? `${payload.provider} ${kind} update`
+          : summarizeLinqMessage("", attachments);
+      const effectiveText = text || fallbackText;
+
+      if (!payload.externalUserId || !effectiveText) {
+        return new Response("OK", { status: 200 });
+      }
+
       const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "bridge",
-        key: `${payload.ownerId}:${payload.provider}:${payload.externalUserId ?? "unknown"}`,
+        key:
+          kind === "message"
+            ? `${payload.ownerId}:${payload.provider}:${payload.externalUserId}`
+            : `${payload.ownerId}:${payload.provider}:${payload.externalUserId}:${kind}`,
         limit: 40,
         windowMs: WEBHOOK_RATE_WINDOW_MS,
         blockMs: WEBHOOK_RATE_WINDOW_MS,
@@ -2608,12 +2862,30 @@ http.route({
         return rateLimitResponse(rateLimit.retryAfterMs);
       }
 
+      const channelEnvelope = {
+        provider: payload.provider,
+        kind,
+        chatType: payload.chatType,
+        externalUserId: payload.externalUserId,
+        externalChatId: payload.groupId,
+        externalMessageId: payload.externalMessageId,
+        threadId: payload.threadId,
+        text: effectiveText,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        ...(reactions.length > 0 ? { reactions } : {}),
+        sourceTimestamp: payload.sourceTimestamp,
+      };
+
       await ctx.scheduler.runAfter(0, internal.channels.bridge.handleBridgeMessage, {
         provider: payload.provider,
         ownerId: payload.ownerId,
-        externalUserId: payload.externalUserId ?? "",
-        text: payload.text ?? "",
+        externalUserId: payload.externalUserId,
+        text: effectiveText,
         displayName: payload.displayName,
+        groupId: payload.groupId,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        channelEnvelope,
+        respond: payload.respond,
       });
     } else if (payload.type === "error") {
       const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
