@@ -28,10 +28,15 @@ Format: "- project_name (path): what it is, key tech"
 Format: "- AppName: what they use it for (if clear from signals)"
 8-12 lines MAX. Only include apps they clearly use regularly, not every detected process.>
 
-[interests]
-<Significant interest areas — professional AND personal. Format: "- area: specific details"
-Include hobbies, entertainment, communities, content consumption, games — not just work.
-3-8 lines.>
+[professional_interests]
+<Work, career, or academic interest areas. Technologies they're learning, domains they work in, industry topics they follow.
+Format: "- area: specific details"
+2-5 lines.>
+
+[personal_interests]
+<Entertainment, hobbies, communities, content consumption, games, music, media — things they enjoy outside of work/school.
+Format: "- area: specific details"
+2-5 lines.>
 
 [environment]
 <2-4 sentences: OS, shell, primary languages/frameworks, editor, deployment platforms, package managers, and distinctive workflow patterns. Name specifics.>
@@ -51,7 +56,7 @@ Include hobbies, entertainment, communities, content consumption, games — not 
 
 2. **PRESERVE HIGH-SIGNAL DETAILS**: If the input has tiered signals, Tier 1 represents the most important data. Ensure Tier 1 items are reflected in the output.
 
-3. **FULL PERSON**: If the data shows entertainment, games, personal interests, hobbies, or communities, include them in [interests] and relevant apps in [apps]. The assistant helps with everything, not just work.
+3. **FULL PERSON**: If the data shows entertainment, games, hobbies, or communities, include them in [personal_interests] and relevant apps in [apps]. The assistant helps with everything, not just work.
 
 4. **ZERO HALLUCINATION**: Every name, path, app, service, or entity in your output must appear in the provided signals. If uncertain, omit.
 
@@ -126,7 +131,6 @@ Write ONLY the welcome message, nothing else.`;
 
 export type WelcomeSuggestion = {
   category: "cron" | "skill" | "app";
-  emoji: string;
   title: string;
   description: string;
   prompt: string;
@@ -143,7 +147,6 @@ ${coreMemory}
 
 Return a JSON array of 3-5 suggestion objects. Each object has:
 - "category": one of "cron", "skill", or "app"
-- "emoji": a single emoji that represents the suggestion
 - "title": 3-5 word label (e.g. "Daily standup reminder")
 - "description": one sentence, under 80 characters, describing what it does
 - "prompt": the complete instruction the user would send to Stella to set this up
@@ -152,15 +155,15 @@ Return a JSON array of 3-5 suggestion objects. Each object has:
 
 **cron** — Recurring automations Stella can schedule:
 - Morning briefings, reminders, periodic checks, digest summaries
-- Example: { "category": "cron", "emoji": "📋", "title": "Morning project digest", "description": "Daily summary of your active projects and priorities.", "prompt": "Set up a daily morning briefing at 8am that checks my recent project activity and gives me a summary of what I was working on and what's next." }
+- Example: { "category": "cron", "title": "Morning project digest", "description": "Daily summary of your active projects and priorities.", "prompt": "Set up a daily morning briefing at 8am that checks my recent project activity and gives me a summary of what I was working on and what's next." }
 
 **skill** — Skills Stella can learn to help with specific workflows:
 - Project-specific helpers, code review patterns, writing styles
-- Example: { "category": "skill", "emoji": "🔍", "title": "Code review helper", "description": "Review PRs with your team's conventions in mind.", "prompt": "Create a skill that helps me review pull requests. It should check for our coding conventions, look for common issues, and suggest improvements." }
+- Example: { "category": "skill", "title": "Code review helper", "description": "Review PRs with your team's conventions in mind.", "prompt": "Create a skill that helps me review pull requests. It should check for our coding conventions, look for common issues, and suggest improvements." }
 
 **app** — Interactive mini-apps Stella can build and display:
 - Dashboards, trackers, visualizations, tools
-- Example: { "category": "app", "emoji": "📊", "title": "Project dashboard", "description": "Visual overview of your active projects and status.", "prompt": "Build me a project dashboard app that shows my active projects, their status, and recent activity in a clean visual layout." }
+- Example: { "category": "app", "title": "Project dashboard", "description": "Visual overview of your active projects and status.", "prompt": "Build me a project dashboard app that shows my active projects, their status, and recent activity in a clean visual layout." }
 
 ## Rules
 
