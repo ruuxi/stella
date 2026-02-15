@@ -88,6 +88,111 @@ export const getFragmentShader = (): string => {
     color *= 1.0 + waveIntensity * 2.0;
 
     gl_FragColor = vec4(color, glyphAlpha);
+
+    // Eyes — rectangular dots
+    float eyeGap = 5.0 / u_gridSize.x;
+    float eyeUp = 2.5 / u_gridSize.y;
+
+    // Eyes follow animation phases via w1/w2/w3
+    // Phase 1: orbital drift matching spiral rotation
+    float eyeAngle = -u_time * 2.5;
+    vec2 drift1 = vec2(cos(eyeAngle), sin(eyeAngle)) * 1.1;
+
+    // Phase 2: pull toward dominant pulsing ray
+    float et = u_time * 2.0;
+    float ep1 = sin(et) * 0.5 + 0.5;
+    float ep2 = sin(et + 2.094) * 0.5 + 0.5;
+    float ep3 = sin(et + 4.188) * 0.5 + 0.5;
+    float epSum = ep1 + ep2 + ep3;
+    vec2 drift2 = (vec2(1.0, 0.0) * ep1
+                 + vec2(-0.5, 0.866) * ep2
+                 + vec2(-0.5, -0.866) * ep3) / epSum * 1.8;
+
+    // Phase 3: breathing vertical shift
+    vec2 drift3 = vec2(0.0, -sin(u_time * 0.4)) * 0.9;
+
+    vec2 eyeDrift = drift1 * w1 + drift2 * w2 + drift3 * w3;
+    vec2 eyeOrigin = vec2(0.5 + eyeDrift.x / u_gridSize.x, 0.5 - eyeUp + eyeDrift.y / u_gridSize.y);
+
+    // Pseudo-random blink — hash each time slot for natural timing
+    float blinkSlot = floor(u_time / 0.8);
+    float blinkHash = fract(sin(blinkSlot * 91.7) * 43758.5453);
+    float blinkLocal = fract(u_time / 0.8);
+    float doBlink = step(0.65, blinkHash);
+
+    // Quick V-shaped close-open
+    float bt = clamp(blinkLocal / 0.1, 0.0, 1.0);
+    float blinkCurve = smoothstep(0.0, 1.0, abs(bt * 2.0 - 1.0));
+    float blink = mix(1.0, blinkCurve, doBlink);
+
+    // Occasional double-blink (~20% of blinks)
+    float dblHash = fract(sin(blinkSlot * 73.3) * 28461.7);
+    float doDouble = step(0.8, dblHash) * doBlink;
+    float bt2 = clamp((blinkLocal - 0.15) / 0.1, 0.0, 1.0);
+    float dblCurve = smoothstep(0.0, 1.0, abs(bt2 * 2.0 - 1.0));
+    blink *= mix(1.0, dblCurve, doDouble);
+
+    vec2 eyeHalf = vec2(1.0 / u_gridSize.x, 1.5 / u_gridSize.y * blink);
+    float leftEye = step(abs(uv.x - eyeOrigin.x + eyeGap), eyeHalf.x)
+                  * step(abs(uv.y - eyeOrigin.y), eyeHalf.y);
+    float rightEye = step(abs(uv.x - eyeOrigin.x - eyeGap), eyeHalf.x)
+                   * step(abs(uv.y - eyeOrigin.y), eyeHalf.y);
+    float eyeMask = max(leftEye, rightEye) * smoothstep(0.3, 0.6, u_birth);
+    gl_FragColor = mix(gl_FragColor, vec4(u_colors[4], 1.0), eyeMask);
+
+    // Mouth — expressive shapes that follow the face
+    vec2 mouthPos = vec2(eyeOrigin.x, eyeOrigin.y + 3.5 / u_gridSize.y);
+
+    // Pseudo-random timing and shape selection
+    float mouthSlot = floor(u_time / 2.5);
+    float mouthHash = fract(sin(mouthSlot * 47.3) * 31718.9);
+    float shapeHash = fract(sin(mouthSlot * 113.1) * 18734.3);
+    float mouthLocal = fract(u_time / 2.5);
+
+    float doOpen = step(0.70, mouthHash);
+
+    // Shape selection — equal 20% each via separate hash
+    float isO =     (1.0 - step(0.2, shapeHash));
+    float isSmile = step(0.2, shapeHash) * (1.0 - step(0.4, shapeHash));
+    float isFrown = step(0.4, shapeHash) * (1.0 - step(0.6, shapeHash));
+    float isSideV = step(0.6, shapeHash) * (1.0 - step(0.8, shapeHash));
+    float isDash =  step(0.8, shapeHash);
+
+    // Open/close animation — longer hold
+    float openUp = smoothstep(0.0, 0.08, mouthLocal);
+    float closeDown = 1.0 - smoothstep(0.6, 0.8, mouthLocal);
+    float mouthAnim = openUp * closeDown * doOpen;
+
+    vec2 md = (uv - mouthPos) * u_gridSize;
+    float lineW = 0.5;
+
+    // O — ring with vertical squish on close
+    vec2 mdO = md;
+    mdO.y /= max(mouthAnim, 0.15);
+    float oDist = length(mdO);
+    float oMask = smoothstep(1.8, 1.5, oDist) * smoothstep(0.5, 0.8, oDist);
+
+    // Smile — curved V
+    float smileDist = abs(md.y - 0.6 + 0.7 * abs(md.x));
+    float smileMask = (1.0 - smoothstep(lineW * 0.5, lineW, smileDist)) * step(abs(md.x), 1.8);
+
+    // Frown — inverted curved V
+    float frownDist = abs(md.y + 0.6 - 0.7 * abs(md.x));
+    float frownMask = (1.0 - smoothstep(lineW * 0.5, lineW, frownDist)) * step(abs(md.x), 1.8);
+
+    // Sideways V — skeptical >
+    float sideDist = abs(md.x - 0.8 + 0.6 * abs(md.y));
+    float sideMask = (1.0 - smoothstep(lineW * 0.5, lineW, sideDist)) * step(abs(md.y), 1.2);
+
+    // Dash — neutral line
+    float dashMask = (1.0 - smoothstep(lineW * 0.3, lineW * 0.7, abs(md.y))) * step(abs(md.x), 1.5);
+
+    // Combine selected shape
+    float mouthShape = oMask * isO + smileMask * isSmile + frownMask * isFrown
+                     + sideMask * isSideV + dashMask * isDash;
+    mouthShape *= smoothstep(0.05, 0.2, mouthAnim);
+    float mouthMask = mouthShape * smoothstep(0.3, 0.6, u_birth);
+    gl_FragColor = mix(gl_FragColor, vec4(u_colors[4], 1.0), mouthMask);
   `;
 
   // Flowing organic patterns — 3 phases morphing smoothly
