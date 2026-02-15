@@ -40,7 +40,6 @@ type ChatColumnProps = {
   onboardingDone: boolean;
   onboardingExiting: boolean;
   isAuthenticated: boolean;
-  isAuthLoading: boolean;
   canSubmit: boolean;
   onSend: () => void;
 
@@ -53,7 +52,6 @@ type ChatColumnProps = {
   completeOnboarding: () => void;
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
-  onSignIn: () => void;
   onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
 };
@@ -80,7 +78,6 @@ export function ChatColumn({
   onboardingDone,
   onboardingExiting,
   isAuthenticated,
-  isAuthLoading,
   canSubmit,
   onSend,
   hasExpanded,
@@ -92,7 +89,6 @@ export function ChatColumn({
   completeOnboarding,
   handleEnterSplit,
   onDiscoveryConfirm,
-  onSignIn,
   onDemoChange,
   onCommandSelect,
 }: ChatColumnProps) {
@@ -130,14 +126,12 @@ export function ChatColumn({
             onboardingDone={onboardingDone}
             onboardingExiting={onboardingExiting}
             isAuthenticated={isAuthenticated}
-            isAuthLoading={isAuthLoading}
             splitMode={splitMode}
             stellaAnimationRef={stellaAnimationRef}
             onboardingKey={onboardingKey}
             triggerFlash={triggerFlash}
             startBirthAnimation={startBirthAnimation}
             completeOnboarding={completeOnboarding}
-            onSignIn={onSignIn}
             handleEnterSplit={handleEnterSplit}
             onDiscoveryConfirm={onDiscoveryConfirm}
             onDemoChange={onDemoChange}

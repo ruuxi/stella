@@ -398,7 +398,6 @@ export const FullShell = () => {
               onboardingDone={onboarding.onboardingDone}
               onboardingExiting={onboarding.onboardingExiting}
               isAuthenticated={onboarding.isAuthenticated}
-              isAuthLoading={onboarding.isAuthLoading}
               canSubmit={canSubmit}
               onSend={handleSend}
               hasExpanded={onboarding.hasExpanded}
@@ -410,7 +409,6 @@ export const FullShell = () => {
               completeOnboarding={onboarding.completeOnboarding}
               handleEnterSplit={onboarding.handleEnterSplit}
               onDiscoveryConfirm={handleDiscoveryConfirm}
-              onSignIn={() => setAuthDialogOpen(true)}
               onDemoChange={handleDemoChange}
               onCommandSelect={handleCommandSelect}
             />

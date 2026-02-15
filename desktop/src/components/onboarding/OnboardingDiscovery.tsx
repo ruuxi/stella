@@ -4,13 +4,11 @@ import { type DiscoveryCategory, DISCOVERY_CATEGORIES } from "./use-onboarding-s
 interface OnboardingDiscoveryProps {
   categoryStates: Record<DiscoveryCategory, boolean>;
   onToggleCategory: (id: DiscoveryCategory) => void;
-  onConfirm: () => void;
 }
 
 export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
   categoryStates,
   onToggleCategory,
-  onConfirm,
 }) => {
   const platform = window.electronAPI?.platform ?? "unknown";
   const hasFDACategories = DISCOVERY_CATEGORIES.some(

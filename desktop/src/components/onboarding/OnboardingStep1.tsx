@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import {
-  CENTER_PHASES,
   SPLIT_PHASES,
   SPLIT_STEP_ORDER,
   DISCOVERY_CATEGORIES_KEY,
@@ -18,7 +17,6 @@ import {
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { InlineAuth } from "../InlineAuth";
 import { useTheme } from "../../theme/theme-context";
-import { type OnboardingDemo } from "./OnboardingCanvas";
 import "../Onboarding.css";
 
 const FADE_OUT_MS = 400;
@@ -358,7 +356,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   if (phase === "done") return null;
 
-  const isCentered = CENTER_PHASES.has(phase);
   const isSplit = SPLIT_PHASES.has(phase);
   const isComplete = phase === "complete";
 
@@ -424,7 +421,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 <OnboardingDiscovery
                   categoryStates={categoryStates}
                   onToggleCategory={handleToggleCategory}
-                  onConfirm={handleDiscoveryConfirm}
                 />
 
                 <div className="onboarding-step-label">Your browser</div>

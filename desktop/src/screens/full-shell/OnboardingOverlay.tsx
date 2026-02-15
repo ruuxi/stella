@@ -98,14 +98,12 @@ export function OnboardingView({
   onboardingDone,
   onboardingExiting,
   isAuthenticated,
-  isAuthLoading,
   splitMode,
   stellaAnimationRef,
   onboardingKey,
   triggerFlash,
   startBirthAnimation,
   completeOnboarding,
-  onSignIn,
   handleEnterSplit,
   onDiscoveryConfirm,
   onDemoChange,
@@ -114,14 +112,12 @@ export function OnboardingView({
   onboardingDone: boolean;
   onboardingExiting?: boolean;
   isAuthenticated: boolean;
-  isAuthLoading: boolean;
   splitMode: boolean;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   onboardingKey: number;
   triggerFlash: () => void;
   startBirthAnimation: () => void;
   completeOnboarding: () => void;
-  onSignIn: () => void;
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
