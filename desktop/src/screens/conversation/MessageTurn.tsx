@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { Attachment, TaskItem } from "../../hooks/use-conversation-events";
+import type { Attachment, ChannelEnvelope, TaskItem } from "../../hooks/use-conversation-events";
 import { WorkingIndicator } from "../../components/chat/WorkingIndicator";
 import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import { Markdown } from "../../components/chat/Markdown";
@@ -10,6 +10,7 @@ export type TurnViewModel = {
   id: string;
   userText: string;
   userAttachments: Attachment[];
+  userChannelEnvelope?: ChannelEnvelope;
   assistantText: string;
   assistantMessageId: string | null;
   assistantEmotesEnabled: boolean;
@@ -35,10 +36,76 @@ export const getEventText = (event: EventRecord): string => {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const getAttachments = (event: EventRecord): Attachment[] => {
-  if (event.payload && typeof event.payload === "object") {
-    return (event.payload as MessagePayload).attachments ?? [];
+  const fromPayload =
+    event.payload && typeof event.payload === "object"
+      ? ((event.payload as MessagePayload).attachments ?? [])
+      : [];
+  const fromEnvelope = event.channelEnvelope?.attachments ?? [];
+  if (fromEnvelope.length === 0) {
+    return fromPayload;
   }
-  return [];
+
+  const deduped = new Map<string, Attachment>();
+  for (const attachment of [...fromPayload, ...fromEnvelope]) {
+    const key = [
+      attachment.id ?? "",
+      attachment.url ?? "",
+      attachment.name ?? "",
+      attachment.mimeType ?? "",
+      attachment.kind ?? "",
+    ].join("|");
+    if (!deduped.has(key)) {
+      deduped.set(key, attachment);
+    }
+  }
+  return Array.from(deduped.values());
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const getChannelEnvelope = (event: EventRecord): ChannelEnvelope | undefined => {
+  if (!event.channelEnvelope || typeof event.channelEnvelope !== "object") {
+    return undefined;
+  }
+  return event.channelEnvelope;
+};
+
+const getAttachmentLabel = (attachment: Attachment, index: number) => {
+  if (attachment.name) return attachment.name;
+  if (attachment.kind) {
+    const normalized = attachment.kind.replace(/[_-]+/g, " ").trim();
+    if (normalized.length > 0) {
+      return normalized[0].toUpperCase() + normalized.slice(1);
+    }
+  }
+  if (attachment.mimeType) return attachment.mimeType;
+  return `Attachment ${index + 1}`;
+};
+
+const formatChannelKind = (kind: ChannelEnvelope["kind"]) => {
+  if (kind === "message") return "message";
+  if (kind === "reaction") return "reaction";
+  if (kind === "edit") return "edited";
+  if (kind === "delete") return "deleted";
+  return "system";
+};
+
+const formatProvider = (provider: string) =>
+  provider
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+
+const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
+  const reactions = envelope.reactions ?? [];
+  if (reactions.length === 0) return null;
+  const labels = reactions.slice(0, 3).map((reaction) => {
+    const prefix = reaction.action === "remove" ? "-" : "+";
+    return `${prefix}${reaction.emoji}`;
+  });
+  const suffix = reactions.length > 3 ? ` +${reactions.length - 3}` : "";
+  return `Reactions ${labels.join(" ")}${suffix}`;
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -71,10 +138,15 @@ export const TurnItem = memo(function TurnItem({
 }) {
   const userText = turn.userText;
   const userAttachments = turn.userAttachments;
+  const userChannelEnvelope = turn.userChannelEnvelope;
   const assistantText = turn.assistantText;
   const hasAssistantContent = assistantText.trim().length > 0;
   const hasUserContent =
     userText.trim().length > 0 || userAttachments.length > 0;
+  const hasChannelMeta = Boolean(userChannelEnvelope?.provider);
+  const reactionSummary = userChannelEnvelope
+    ? summarizeReactions(userChannelEnvelope)
+    : null;
 
   const hasStreamingContent = Boolean(streaming?.streamingText?.trim().length);
   const hasReasoningContent = Boolean(streaming?.reasoningText?.trim().length);
@@ -115,6 +187,23 @@ export const TurnItem = memo(function TurnItem({
                 {windowContext && (
                   <span className="event-window-badge">{windowContext}</span>
                 )}
+                {hasChannelMeta && userChannelEnvelope && (
+                  <div className="event-channel-meta">
+                    <span className="event-channel-badge provider">
+                      {formatProvider(userChannelEnvelope.provider)}
+                    </span>
+                    {userChannelEnvelope.kind !== "message" && (
+                      <span className="event-channel-badge kind">
+                        {formatChannelKind(userChannelEnvelope.kind)}
+                      </span>
+                    )}
+                    {reactionSummary && (
+                      <span className="event-channel-badge reaction">
+                        {reactionSummary}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {displayText.trim() && (
                   <div className="event-body">{displayText}</div>
                 )}
@@ -150,7 +239,7 @@ export const TurnItem = memo(function TurnItem({
                     key={attachment.id ?? `${index}`}
                     className="event-attachment-fallback"
                   >
-                    Attachment {index + 1}
+                    {getAttachmentLabel(attachment, index)}
                   </div>
                 );
               })}
