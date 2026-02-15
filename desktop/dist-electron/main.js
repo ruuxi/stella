@@ -85,8 +85,8 @@ const toChatContextWindow = (windowInfo) => {
     };
 };
 const miniSize = {
-    width: 680,
-    height: 420,
+    width: 480,
+    height: 700,
 };
 const RADIAL_SIZE = 280;
 const MINI_SHELL_ANIM_MS = 140;

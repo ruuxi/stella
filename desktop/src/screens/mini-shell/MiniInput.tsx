@@ -37,10 +37,9 @@ export const MiniInput = ({
   }, [shellVisible]);
 
   const hasScreenshots = Boolean(chatContext?.regionScreenshots?.length);
-  const hasContext =
+  const hasInnerContext =
     hasScreenshots ||
     Boolean(selectedText) ||
-    Boolean(chatContext?.window) ||
     Boolean(chatContext?.capturePending);
 
   const canSend =
@@ -50,88 +49,88 @@ export const MiniInput = ({
 
   return (
     <div className="mini-composer">
-      <div className="mini-composer-inner">
-        {hasContext && (
-          <div className="mini-composer-context">
-            {chatContext?.regionScreenshots?.map((screenshot, index) => (
-              <div
-                key={index}
-                className="mini-context-chip mini-context-chip--screenshot"
+      {chatContext?.window && (
+        <div className="mini-composer-window-badge">
+          <span className="mini-composer-window-text">
+            {chatContext.window.title || chatContext.window.app}
+          </span>
+          <button
+            type="button"
+            className="mini-composer-window-dismiss"
+            aria-label="Remove window context"
+            onClick={() =>
+              setChatContext((prev) =>
+                prev ? { ...prev, window: null } : prev,
+              )
+            }
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {(hasScreenshots || Boolean(chatContext?.capturePending)) && (
+        <div className="mini-composer-screenshots">
+          {chatContext?.regionScreenshots?.map((screenshot, index) => (
+            <div
+              key={index}
+              className="mini-context-chip mini-context-chip--screenshot"
+            >
+              <img
+                src={screenshot.dataUrl}
+                className="mini-context-thumb"
+                alt={`Screenshot ${index + 1}`}
+                onClick={() => setPreviewIndex(index)}
+              />
+              <button
+                type="button"
+                className="mini-context-remove"
+                aria-label="Remove screenshot"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.electronAPI?.removeScreenshot?.(index);
+                  setChatContext((prev) => {
+                    if (!prev) return prev;
+                    const next = [...(prev.regionScreenshots ?? [])];
+                    next.splice(index, 1);
+                    return { ...prev, regionScreenshots: next };
+                  });
+                }}
               >
-                <img
-                  src={screenshot.dataUrl}
-                  className="mini-context-thumb"
-                  alt={`Screenshot ${index + 1}`}
-                  onClick={() => setPreviewIndex(index)}
-                />
-                <button
-                  type="button"
-                  className="mini-context-remove"
-                  aria-label="Remove screenshot"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.electronAPI?.removeScreenshot?.(index);
-                    setChatContext((prev) => {
-                      if (!prev) return prev;
-                      const next = [...(prev.regionScreenshots ?? [])];
-                      next.splice(index, 1);
-                      return { ...prev, regionScreenshots: next };
-                    });
-                  }}
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
-            {chatContext?.capturePending && (
-              <div className="mini-context-chip mini-context-chip--pending">
-                <div className="mini-context-pending-inner" />
-              </div>
-            )}
-            {selectedText && (
-              <div className="mini-context-chip mini-context-chip--text">
-                <span className="mini-context-text">
-                  &ldquo;{selectedText}&rdquo;
-                </span>
-                <button
-                  type="button"
-                  className="mini-context-remove"
-                  aria-label="Remove selected text"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedText(null);
-                    setChatContext((prev) =>
-                      prev ? { ...prev, selectedText: null } : prev,
-                    );
-                  }}
-                >
-                  &times;
-                </button>
-              </div>
-            )}
-            {chatContext?.window && (
-              <div className="mini-context-chip mini-context-chip--window">
-                <span className="mini-context-window">
-                  {chatContext.window.app}
-                  {chatContext.window.title
-                    ? ` - ${chatContext.window.title}`
-                    : ""}
-                </span>
-                <button
-                  type="button"
-                  className="mini-context-remove"
-                  aria-label="Remove window context"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setChatContext((prev) =>
-                      prev ? { ...prev, window: null } : prev,
-                    );
-                  }}
-                >
-                  &times;
-                </button>
-              </div>
-            )}
+                &times;
+              </button>
+            </div>
+          ))}
+          {chatContext?.capturePending && (
+            <div className="mini-context-chip mini-context-chip--pending">
+              <div className="mini-context-pending-inner" />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mini-composer-inner">
+        {selectedText && (
+          <div className="mini-composer-context">
+            <div className="mini-context-chip mini-context-chip--text">
+              <span className="mini-context-text">
+                &ldquo;{selectedText}&rdquo;
+              </span>
+              <button
+                type="button"
+                className="mini-context-remove"
+                aria-label="Remove selected text"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedText(null);
+                  setChatContext((prev) =>
+                    prev ? { ...prev, selectedText: null } : prev,
+                  );
+                }}
+              >
+                &times;
+              </button>
+            </div>
           </div>
         )}
 

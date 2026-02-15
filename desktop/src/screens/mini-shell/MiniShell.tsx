@@ -39,11 +39,8 @@ export const MiniShell = () => {
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
 
-  const firstUserEvent = [...events]
-    .reverse()
-    .find((e) => e.type === "user_message");
-  const conversationTitle = firstUserEvent?.payload?.text
-    ? String(firstUserEvent.payload.text).slice(0, 60)
+  const windowTitle = chatContext?.window
+    ? (chatContext.window.title || chatContext.window.app || null)
     : null;
 
   const handleShellClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -67,7 +64,7 @@ export const MiniShell = () => {
             <StellaAnimation width={40} height={40} paused={!shellVisible} />
           </div>
           <span className="mini-titlebar-title">
-            {conversationTitle ?? "Stella"}
+            {windowTitle ?? "Stella"}
           </span>
           <div className="mini-titlebar-right">
             <button

@@ -174,8 +174,8 @@ const toChatContextWindow = (windowInfo: WindowInfo | null | undefined): ChatCon
 }
 
 const miniSize = {
-  width: 680,
-  height: 420,
+  width: 480,
+  height: 700,
 }
 
 const RADIAL_SIZE = 280

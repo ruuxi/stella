@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConversationEvents } from "../ConversationEvents";
 import type { EventRecord } from "../../hooks/use-conversation-events";
 
@@ -20,18 +20,34 @@ export const MiniOutput = ({
   showConversation,
 }: Props) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [atTop, setAtTop] = useState(true);
+  const [atBottom, setAtBottom] = useState(true);
+
+  const updateEdges = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setAtTop(el.scrollTop <= 1);
+    setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [events.length, streamingText]);
+    updateEdges();
+  }, [events.length, streamingText, updateEdges]);
+
+  const cls = [
+    "mini-content",
+    showConversation && "has-messages",
+    atTop && "at-top",
+    atBottom && "at-bottom",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div
-      ref={scrollRef}
-      className={`mini-content${showConversation ? " has-messages" : ""}`}
-    >
+    <div ref={scrollRef} className={cls} onScroll={updateEdges}>
       {showConversation && (
         <div className="mini-conversation">
           <ConversationEvents

@@ -27,7 +27,7 @@
   position: relative;
   z-index: 10;
   width: 100%;
-  max-width: 680px;
+  max-width: 480px;
   display: flex;
   flex-direction: column;
   opacity: 0;
@@ -137,21 +137,63 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--foreground) 12%, transparent) transparent;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
 }
 
 .mini-content::-webkit-scrollbar {
-  width: 4px;
+  display: none;
 }
 
-.mini-content::-webkit-scrollbar-track {
-  background: transparent;
+/* Remove top fade when scrolled to top */
+.mini-content.at-top {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black 0px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
 }
 
-.mini-content::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--foreground) 15%, transparent);
-  border-radius: 2px;
+/* Remove bottom fade when scrolled to bottom */
+.mini-content.at-bottom {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black 100%
+  );
+}
+
+/* Remove both fades when at top and bottom (content fits) */
+.mini-content.at-top.at-bottom {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .mini-conversation {
@@ -179,7 +221,9 @@
 .mini-conversation .event-item.user {
   background: color-mix(in oklch, var(--primary) 12%, transparent);
   border-radius: 12px;
-  margin-left: 32px;
+  margin-left: auto;
+  max-width: 85%;
+  width: fit-content;
 }
 
 .mini-conversation .event-item.assistant {
@@ -198,7 +242,62 @@
 /* ========= Composer ========= */
 .mini-composer {
   flex-shrink: 0;
-  padding: 12px;
+  padding: 16px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Floating window badge above composer */
+.mini-composer-window-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  margin-left: 4px;
+}
+
+.mini-composer-window-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-composer-window-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-weaker);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+
+.mini-composer-window-dismiss:hover {
+  color: var(--text-strong);
+}
+
+/* Floating screenshot thumbnails above composer */
+.mini-composer-screenshots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
 }
 
 .mini-composer-inner {
@@ -301,38 +400,22 @@
   opacity: 1;
 }
 
-.mini-context-chip--text,
-.mini-context-chip--window {
+.mini-context-chip--text {
   padding: 4px 8px;
   border-radius: 8px;
   border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
-}
-
-.mini-context-chip--text {
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
 }
 
-.mini-context-chip--window {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
-}
-
-.mini-context-text,
-.mini-context-window {
+.mini-context-text {
   display: inline-block;
   max-width: 200px;
   font-size: 12px;
   line-height: 1.3;
+  color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.mini-context-text {
-  color: var(--text-strong);
-}
-
-.mini-context-window {
-  color: var(--text-weak);
 }
 
 /* Input field */
