@@ -4,6 +4,7 @@ import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
 import { syncExternalSkills, syncBundledSkills } from "./skill_import.js";
 import { syncBundledCommands } from "./command_sync.js";
+import { loadSyncManifest, saveSyncManifest, diffSkills, diffAgents, applyDiffToManifest, } from "./sync_manifest.js";
 import { loadIdentityMap, depseudonymize } from "./identity_map.js";
 import { purgeExpiredDeferredDeletes } from "./deferred_delete.js";
 import { sanitizeForLogs } from "./tools-utils.js";
@@ -224,13 +225,40 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
                 const skills = await loadSkillsFromHome(skillsPath);
                 const agents = await loadAgentsFromHome(agentsPath);
                 toolHost.setSkills(skills);
-                await callMutation("data/skills.upsertMany", {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    skills: skills.map(({ filePath: _, ...rest }) => rest),
-                });
-                await callMutation("agent/agents.upsertMany", {
-                    agents,
-                });
+                // Diff against persisted manifest to skip unchanged items
+                const manifest = await loadSyncManifest(statePath);
+                const skillsDiff = diffSkills(skills, manifest);
+                const agentsDiff = diffAgents(agents, manifest);
+                const dirtySkills = skillsDiff.upsert.length;
+                const dirtyAgents = agentsDiff.upsert.length;
+                const removedSkills = skillsDiff.removeIds.length;
+                const removedAgents = agentsDiff.removeIds.length;
+                if (dirtySkills === 0 && dirtyAgents === 0 && removedSkills === 0 && removedAgents === 0) {
+                    log("Manifest sync complete (no changes)");
+                    return;
+                }
+                if (dirtySkills > 0) {
+                    log(`Syncing ${dirtySkills} changed skill(s)`);
+                    await callMutation("data/skills.upsertMany", {
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        skills: skillsDiff.upsert.map(({ filePath: _, ...rest }) => rest),
+                    });
+                }
+                if (dirtyAgents > 0) {
+                    log(`Syncing ${dirtyAgents} changed agent(s)`);
+                    await callMutation("agent/agents.upsertMany", {
+                        agents: agentsDiff.upsert,
+                    });
+                }
+                if (removedSkills > 0) {
+                    log(`Removed ${removedSkills} skill(s) from manifest (deleted from disk)`);
+                }
+                if (removedAgents > 0) {
+                    log(`Removed ${removedAgents} agent(s) from manifest (deleted from disk)`);
+                }
+                // Persist updated manifest only after successful sync
+                const updatedManifest = applyDiffToManifest(manifest, skillsDiff, agentsDiff);
+                await saveSyncManifest(statePath, updatedManifest);
                 log("Manifest sync complete");
             }
             catch (error) {
