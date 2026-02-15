@@ -250,7 +250,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
 
       const contextParts: string[] = [];
       if (windowSnippet) {
-        contextParts.push(`[Window] ${windowSnippet}`);
+        contextParts.push(`<active-window context="The user's currently focused window. May or may not be relevant to their request.">${windowSnippet}</active-window>`);
       }
       if (selectedSnippet) {
         contextParts.push(`"${selectedSnippet}"`);
