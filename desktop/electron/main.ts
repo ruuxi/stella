@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen, shell, type Display } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell, type Display } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -117,6 +117,9 @@ let StellaHomePath: string | null = null
 let appReady = false // true when authenticated + onboarding complete
 let isQuitting = false
 let pendingConvexUrl: string | null = null
+let pendingConvexSiteUrl: string | null = null
+let hostAuthAuthenticated = false
+let authRefreshTimer: NodeJS.Timeout | null = null
 let pendingChatContext: ChatContext | null = null
 // Bump when pendingChatContext changes so we can avoid broadcasting the same payload
 // right before showing the mini window (which can cause a visible "flash" of old state).
@@ -183,6 +186,8 @@ const miniSize = {
 const RADIAL_SIZE = 280
 const MINI_SHELL_ANIM_MS = 140
 const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
+const TOKEN_REFRESH_INTERVAL_MS = 60 * 1000
+const STELLA_SESSION_PARTITION = 'persist:Stella'
 
 const isMiniShowing = () => {
   return Boolean(miniWindow && miniVisible)
@@ -1149,10 +1154,124 @@ const initMouseHook = () => {
   mouseHook.start()
 }
 
-const configureLocalHost = (convexUrl: string) => {
+const deriveConvexSiteUrl = (convexUrl: string | null, explicitSiteUrl?: string | null) => {
+  const explicit = explicitSiteUrl?.trim()
+  if (explicit) {
+    return explicit
+  }
+  const source = convexUrl?.trim()
+  if (!source) {
+    return null
+  }
+  if (source.includes('.convex.site')) {
+    return source
+  }
+  if (source.includes('.convex.cloud')) {
+    return source.replace('.convex.cloud', '.convex.site')
+  }
+  return null
+}
+
+const parseTokenResponse = async (response: Response): Promise<string | null> => {
+  try {
+    const payload = (await response.json()) as unknown
+    if (!payload || typeof payload !== 'object') {
+      return null
+    }
+    const record = payload as { token?: unknown; data?: { token?: unknown } }
+    const nestedToken = record.data?.token
+    if (typeof nestedToken === 'string' && nestedToken.trim()) {
+      return nestedToken
+    }
+    if (typeof record.token === 'string' && record.token.trim()) {
+      return record.token
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+const fetchRunnerAuthToken = async (): Promise<string | null> => {
+  const convexSiteUrl = deriveConvexSiteUrl(pendingConvexUrl, pendingConvexSiteUrl)
+  if (!convexSiteUrl) {
+    return null
+  }
+
+  const tokenUrl = new URL('/convex/token', convexSiteUrl).toString()
+  try {
+    const appSession = session.fromPartition(STELLA_SESSION_PARTITION)
+    const cookies = await appSession.cookies.get({ url: tokenUrl })
+    const cookieHeader = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ')
+    if (!cookieHeader) {
+      return null
+    }
+
+    const response = await fetch(tokenUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Cookie: cookieHeader,
+      },
+    })
+    if (!response.ok) {
+      if (response.status !== 401 && response.status !== 403) {
+        console.warn(`[auth] Failed to refresh runner token: ${response.status}`)
+      }
+      return null
+    }
+    return await parseTokenResponse(response)
+  } catch (error) {
+    console.warn('[auth] Failed to fetch runner token from session', error)
+    return null
+  }
+}
+
+const refreshRunnerAuthToken = async () => {
+  if (!hostAuthAuthenticated) {
+    localHostRunner?.setAuthToken(null)
+    return
+  }
+  const token = await fetchRunnerAuthToken()
+  localHostRunner?.setAuthToken(token)
+}
+
+const stopAuthRefreshLoop = () => {
+  if (authRefreshTimer) {
+    clearInterval(authRefreshTimer)
+    authRefreshTimer = null
+  }
+  localHostRunner?.setAuthToken(null)
+}
+
+const startAuthRefreshLoop = () => {
+  if (authRefreshTimer) {
+    return
+  }
+  void refreshRunnerAuthToken()
+  authRefreshTimer = setInterval(() => {
+    void refreshRunnerAuthToken()
+  }, TOKEN_REFRESH_INTERVAL_MS)
+}
+
+const setHostAuthState = (authenticated: boolean) => {
+  hostAuthAuthenticated = authenticated
+  if (!authenticated) {
+    stopAuthRefreshLoop()
+    return
+  }
+  startAuthRefreshLoop()
+}
+
+const configureLocalHost = (config: { convexUrl: string; convexSiteUrl?: string }) => {
+  const convexUrl = config.convexUrl
   pendingConvexUrl = convexUrl
+  pendingConvexSiteUrl = config.convexSiteUrl ?? null
   if (localHostRunner) {
     localHostRunner.setConvexUrl(convexUrl)
+  }
+  if (hostAuthAuthenticated) {
+    void refreshRunnerAuthToken()
   }
 }
 
@@ -1259,15 +1378,14 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('device:getId', () => deviceId)
-  ipcMain.handle('host:configure', (_event, config: { convexUrl?: string }) => {
+  ipcMain.handle('host:configure', (_event, config: { convexUrl?: string; convexSiteUrl?: string }) => {
     if (config?.convexUrl) {
-      configureLocalHost(config.convexUrl)
+      configureLocalHost({ convexUrl: config.convexUrl, convexSiteUrl: config.convexSiteUrl })
     }
     return { deviceId }
   })
-  ipcMain.handle('auth:setToken', (_event, payload: { token: string | null }) => {
-    const nextToken = payload?.token ?? null
-    localHostRunner?.setAuthToken(nextToken)
+  ipcMain.handle('auth:setState', (_event, payload: { authenticated?: boolean }) => {
+    setHostAuthState(Boolean(payload?.authenticated))
     return { ok: true }
   })
 
@@ -1659,6 +1777,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true
+  stopAuthRefreshLoop()
   if (localHostRunner) {
     localHostRunner.killAllShells()
   }

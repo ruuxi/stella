@@ -6,8 +6,6 @@
  * 2. Generate a personalized welcome message
  */
 
-import { getAuthToken } from "./auth-token";
-
 export type WelcomeSuggestion = {
   category: "cron" | "skill" | "app";
   title: string;
@@ -29,11 +27,6 @@ export async function synthesizeCoreMemory(
     throw new Error("VITE_CONVEX_URL is not set.");
   }
 
-  const token = await getAuthToken();
-  if (!token) {
-    throw new Error("Not authenticated");
-  }
-
   const httpBaseUrl =
     import.meta.env.VITE_CONVEX_HTTP_URL ??
     baseUrl.replace(".convex.cloud", ".convex.site");
@@ -43,8 +36,8 @@ export async function synthesizeCoreMemory(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
     },
+    credentials: "include",
     body: JSON.stringify({ formattedSignals }),
   });
 
@@ -55,4 +48,3 @@ export async function synthesizeCoreMemory(
 
   return (await response.json()) as SynthesisResult;
 }
-

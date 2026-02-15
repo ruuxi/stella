@@ -1,5 +1,3 @@
-import { getAuthToken } from "./auth-token";
-
 type ChatRequest = {
   conversationId: string;
   userMessageId: string;
@@ -79,8 +77,6 @@ export const streamChat = async (
     return;
   }
 
-  const token = await getAuthToken();
-
   const httpBaseUrl =
     import.meta.env.VITE_CONVEX_HTTP_URL ??
     baseUrl.replace(".convex.cloud", ".convex.site");
@@ -93,8 +89,8 @@ export const streamChat = async (
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      credentials: "include",
       body: JSON.stringify(payload),
       signal: options.signal,
     });
