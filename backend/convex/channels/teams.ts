@@ -2,6 +2,7 @@ import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./utils";
 import { retryFetch } from "../lib/retry_fetch";
+import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
 // Azure AD JWT Verification (Bot Framework)
@@ -225,18 +226,29 @@ export const handleIncomingMessage = internalAction({
     teamsUserId: v.string(),
     text: v.string(),
     displayName: v.optional(v.string()),
+    groupId: v.optional(v.string()),
+    attachments: v.optional(v.array(channelAttachmentValidator)),
+    channelEnvelope: optionalChannelEnvelopeValidator,
+    respond: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const shouldRespond = args.respond !== false;
+
     try {
       const result = await processIncomingMessage({
         ctx,
         provider: "teams",
         externalUserId: args.teamsUserId,
         text: args.text,
+        groupId: args.groupId,
+        attachments: args.attachments,
+        channelEnvelope: args.channelEnvelope,
+        respond: args.respond,
       });
 
       if (!result) {
+        if (!shouldRespond) return null;
         await sendTeamsMessage(
           args.serviceUrl,
           args.conversationIdTeams,
@@ -245,10 +257,14 @@ export const handleIncomingMessage = internalAction({
         return null;
       }
 
-      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, result.text);
+      if (shouldRespond) {
+        await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, result.text);
+      }
     } catch (error) {
       console.error("[teams] Agent turn failed:", error);
-      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Sorry, something went wrong. Please try again.");
+      if (shouldRespond) {
+        await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Sorry, something went wrong. Please try again.");
+      }
     }
     return null;
   },

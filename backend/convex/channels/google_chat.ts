@@ -2,6 +2,7 @@ import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./utils";
 import { retryFetch } from "../lib/retry_fetch";
+import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
 // Google Chat JWT Verification
@@ -252,18 +253,29 @@ export const handleIncomingMessage = internalAction({
     googleUserId: v.string(),
     text: v.string(),
     displayName: v.optional(v.string()),
+    groupId: v.optional(v.string()),
+    attachments: v.optional(v.array(channelAttachmentValidator)),
+    channelEnvelope: optionalChannelEnvelopeValidator,
+    respond: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const shouldRespond = args.respond !== false;
+
     try {
       const result = await processIncomingMessage({
         ctx,
         provider: "google_chat",
         externalUserId: args.googleUserId,
         text: args.text,
+        groupId: args.groupId,
+        attachments: args.attachments,
+        channelEnvelope: args.channelEnvelope,
+        respond: args.respond,
       });
 
       if (!result) {
+        if (!shouldRespond) return null;
         await sendGoogleChatMessage(
           args.spaceName,
           "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
@@ -271,10 +283,14 @@ export const handleIncomingMessage = internalAction({
         return null;
       }
 
-      await sendGoogleChatMessage(args.spaceName, result.text);
+      if (shouldRespond) {
+        await sendGoogleChatMessage(args.spaceName, result.text);
+      }
     } catch (error) {
       console.error("[google_chat] Agent turn failed:", error);
-      await sendGoogleChatMessage(args.spaceName, "Sorry, something went wrong. Please try again.");
+      if (shouldRespond) {
+        await sendGoogleChatMessage(args.spaceName, "Sorry, something went wrong. Please try again.");
+      }
     }
     return null;
   },
