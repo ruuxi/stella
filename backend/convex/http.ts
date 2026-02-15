@@ -385,6 +385,127 @@ const summarizeSlackMessage = (text: string | undefined, attachments: ConnectorA
   return `[${attachments.length} attachments]`;
 };
 
+const parseIsoTimestampMs = (value: string | undefined): number | undefined => {
+  if (!value) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const normalizeGoogleChatUserId = (senderName: string | undefined) => {
+  if (!senderName) return "";
+  return senderName.startsWith("users/") ? senderName.slice(6) : senderName;
+};
+
+const extractGoogleChatAttachments = (attachments: unknown): ConnectorAttachment[] => {
+  if (!Array.isArray(attachments)) return [];
+  const result: ConnectorAttachment[] = [];
+  for (const attachment of attachments) {
+    if (!attachment || typeof attachment !== "object") continue;
+    const item = attachment as Record<string, unknown>;
+    const attachmentDataRef =
+      item.attachmentDataRef && typeof item.attachmentDataRef === "object"
+        ? (item.attachmentDataRef as Record<string, unknown>)
+        : undefined;
+    const id =
+      typeof item.name === "string"
+        ? item.name
+        : typeof attachmentDataRef?.resourceName === "string"
+          ? attachmentDataRef.resourceName
+          : undefined;
+    const mimeType =
+      typeof item.contentType === "string" && item.contentType.length > 0
+        ? item.contentType
+        : undefined;
+    const contentName =
+      typeof item.contentName === "string" && item.contentName.length > 0
+        ? item.contentName
+        : undefined;
+    const downloadUri =
+      typeof item.downloadUri === "string" && item.downloadUri.length > 0
+        ? item.downloadUri
+        : typeof item.thumbnailUri === "string" && item.thumbnailUri.length > 0
+          ? item.thumbnailUri
+          : undefined;
+    const kind = mimeType
+      ? mimeType.startsWith("image/")
+        ? "image"
+        : mimeType.startsWith("video/")
+          ? "video"
+          : mimeType.startsWith("audio/")
+            ? "audio"
+            : "file"
+      : "file";
+    result.push({
+      id,
+      name: contentName,
+      mimeType,
+      url: downloadUri,
+      kind,
+    });
+  }
+  return result;
+};
+
+const summarizeGoogleChatMessage = (text: string | undefined, attachments: ConnectorAttachment[]) => {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (trimmed.length > 0) return trimmed;
+  if (attachments.length === 0) return "";
+
+  const first = attachments[0];
+  const mime = (first?.mimeType ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return "[Image]";
+  if (mime.startsWith("video/")) return "[Video]";
+  if (mime.startsWith("audio/")) return "[Audio]";
+  if (attachments.length === 1) return "[Attachment]";
+  return `[${attachments.length} attachments]`;
+};
+
+const extractTeamsAttachments = (attachments: unknown): ConnectorAttachment[] => {
+  if (!Array.isArray(attachments)) return [];
+  const result: ConnectorAttachment[] = [];
+  for (const attachment of attachments) {
+    if (!attachment || typeof attachment !== "object") continue;
+    const item = attachment as Record<string, unknown>;
+    const mimeType =
+      typeof item.contentType === "string" && item.contentType.length > 0
+        ? item.contentType
+        : undefined;
+    const kind = mimeType
+      ? mimeType.startsWith("image/")
+        ? "image"
+        : mimeType.startsWith("video/")
+          ? "video"
+          : mimeType.startsWith("audio/")
+            ? "audio"
+            : mimeType.includes("card")
+              ? "card"
+              : "file"
+      : "file";
+    result.push({
+      id: typeof item.id === "string" ? item.id : undefined,
+      name: typeof item.name === "string" ? item.name : undefined,
+      mimeType,
+      url: typeof item.contentUrl === "string" ? item.contentUrl : undefined,
+      kind,
+    });
+  }
+  return result;
+};
+
+const summarizeTeamsMessage = (text: string | undefined, attachments: ConnectorAttachment[]) => {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (trimmed.length > 0) return trimmed;
+  if (attachments.length === 0) return "";
+
+  const first = attachments[0];
+  const mime = (first?.mimeType ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return "[Image]";
+  if (mime.startsWith("video/")) return "[Video]";
+  if (mime.startsWith("audio/")) return "[Audio]";
+  if (attachments.length === 1) return "[Attachment]";
+  return `[${attachments.length} attachments]`;
+};
+
 http.route({
   path: "/api/chat",
   method: "OPTIONS",
@@ -1864,12 +1985,30 @@ http.route({
 
     let event: {
       type?: string;
+      eventType?: string;
+      eventTime?: string;
       message?: {
-        sender?: { name?: string; displayName?: string };
+        name?: string;
+        sender?: { name?: string; displayName?: string; type?: string };
         argumentText?: string;
         text?: string;
+        thread?: { name?: string };
+        attachment?: Array<{
+          name?: string;
+          contentName?: string;
+          contentType?: string;
+          thumbnailUri?: string;
+          downloadUri?: string;
+          source?: string;
+          attachmentDataRef?: { resourceName?: string; attachmentUploadToken?: string };
+        }>;
       };
-      space?: { name?: string };
+      reaction?: {
+        user?: { name?: string; displayName?: string };
+        emoji?: { unicode?: string };
+      };
+      user?: { name?: string; displayName?: string };
+      space?: { name?: string; type?: string; displayName?: string };
     };
     try {
       event = await request.json();
@@ -1877,17 +2016,34 @@ http.route({
       return new Response("Invalid JSON", { status: 400 });
     }
 
-    if (event.type === "MESSAGE") {
-      const text = (event.message?.argumentText ?? event.message?.text ?? "").trim();
-      const senderName = event.message?.sender?.name ?? "";
-      // Google Chat sender name format: "users/123456"
-      const googleUserId = senderName.startsWith("users/") ? senderName.slice(6) : senderName;
-      const displayName = event.message?.sender?.displayName;
+    const eventType = (event.type ?? event.eventType ?? "").toUpperCase();
+    if (eventType === "MESSAGE") {
       const spaceName = event.space?.name ?? "";
+      const spaceType = (event.space?.type ?? "").toLowerCase();
+      const groupId = spaceType && spaceType !== "dm" ? spaceName : undefined;
+      const sender = event.message?.sender ?? event.user;
+      const googleUserId = normalizeGoogleChatUserId(sender?.name);
+      const displayName = sender?.displayName;
+      const attachments = extractGoogleChatAttachments(event.message?.attachment);
+      const rawText = event.message?.argumentText ?? event.message?.text;
+      const text = summarizeGoogleChatMessage(rawText, attachments);
+
+      if (!spaceName || !googleUserId) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (!text && attachments.length === 0) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
       const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "google_chat",
-        key: googleUserId || "unknown",
+        key: googleUserId,
         limit: 30,
         windowMs: WEBHOOK_RATE_WINDOW_MS,
         blockMs: WEBHOOK_RATE_WINDOW_MS,
@@ -1896,7 +2052,20 @@ http.route({
         return rateLimitResponse(rateLimit.retryAfterMs);
       }
 
-      if (text.toLowerCase().startsWith("link ")) {
+      const envelope = {
+        provider: "google_chat",
+        kind: "message" as const,
+        chatType: spaceType || undefined,
+        externalUserId: googleUserId,
+        externalChatId: spaceName,
+        externalMessageId: event.message?.name,
+        threadId: event.message?.thread?.name,
+        text,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        sourceTimestamp: parseIsoTimestampMs(event.eventTime),
+      };
+
+      if (!groupId && text.toLowerCase().startsWith("link ")) {
         await ctx.scheduler.runAfter(0, internal.channels.google_chat.handleLinkCommand, {
           spaceName,
           googleUserId,
@@ -1909,8 +2078,59 @@ http.route({
           googleUserId,
           text,
           displayName,
+          groupId,
+          ...(attachments.length > 0 ? { attachments } : {}),
+          channelEnvelope: envelope,
         });
       }
+    } else if (eventType.includes("REACTION")) {
+      const spaceName = event.space?.name ?? "";
+      const spaceType = (event.space?.type ?? "").toLowerCase();
+      const groupId = spaceType && spaceType !== "dm" ? spaceName : undefined;
+      const googleUserId = normalizeGoogleChatUserId(
+        event.reaction?.user?.name ?? event.user?.name,
+      );
+      const emoji = (event.reaction?.emoji?.unicode ?? "").trim();
+      if (!spaceName || !googleUserId || !emoji) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const action: "add" | "remove" = eventType.includes("REMOVE") ? "remove" : "add";
+      const summary = `Google Chat reaction ${action === "add" ? "added" : "removed"}: ${emoji}`;
+
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        scope: "google_chat",
+        key: `${googleUserId}:reaction`,
+        limit: 30,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
+      });
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
+
+      await ctx.scheduler.runAfter(0, internal.channels.google_chat.handleIncomingMessage, {
+        spaceName,
+        googleUserId,
+        text: summary,
+        groupId,
+        channelEnvelope: {
+          provider: "google_chat",
+          kind: "reaction",
+          chatType: spaceType || undefined,
+          externalUserId: googleUserId,
+          externalChatId: spaceName,
+          externalMessageId: event.message?.name,
+          threadId: event.message?.thread?.name,
+          text: summary,
+          reactions: [{ emoji, action, targetMessageId: event.message?.name }],
+          sourceTimestamp: parseIsoTimestampMs(event.eventTime),
+        },
+        respond: false,
+      });
     }
 
     // Return empty response (async processing)
@@ -1943,10 +2163,22 @@ http.route({
 
     let activity: {
       type?: string;
+      id?: string;
+      replyToId?: string;
+      timestamp?: string;
+      localTimestamp?: string;
       text?: string;
       from?: { aadObjectId?: string; id?: string; name?: string };
       serviceUrl?: string;
-      conversation?: { id?: string };
+      conversation?: { id?: string; conversationType?: string };
+      attachments?: Array<{
+        id?: string;
+        name?: string;
+        contentType?: string;
+        contentUrl?: string;
+      }>;
+      reactionsAdded?: Array<{ type?: string }>;
+      reactionsRemoved?: Array<{ type?: string }>;
     };
     try {
       activity = await request.json();
@@ -1954,17 +2186,87 @@ http.route({
       return new Response("Invalid JSON", { status: 400 });
     }
 
-    if (activity.type === "message" && activity.text) {
-      // Strip @mentions (Teams wraps them in <at>...</at>)
-      const text = (activity.text ?? "").replace(/<at>.*?<\/at>/g, "").trim();
-      const teamsUserId = activity.from?.aadObjectId ?? activity.from?.id ?? "";
-      const displayName = activity.from?.name;
-      const serviceUrl = activity.serviceUrl ?? "";
-      const conversationId = activity.conversation?.id ?? "";
+    const activityType = (activity.type ?? "").toLowerCase();
+    const teamsUserId = activity.from?.aadObjectId ?? activity.from?.id ?? "";
+    const displayName = activity.from?.name;
+    const serviceUrl = activity.serviceUrl ?? "";
+    const conversationId = activity.conversation?.id ?? "";
+    const conversationType = (activity.conversation?.conversationType ?? "").toLowerCase();
+    const groupId =
+      conversationType === "groupchat" || conversationType === "channel"
+        ? conversationId
+        : undefined;
+    const attachments = extractTeamsAttachments(activity.attachments);
+    const cleanedText = (activity.text ?? "").replace(/<at>.*?<\/at>/g, "").trim();
+    const sourceTimestamp = parseIsoTimestampMs(activity.localTimestamp ?? activity.timestamp);
+    const externalMessageId = activity.id ?? activity.replyToId ?? undefined;
+
+    if (!teamsUserId || !conversationId) {
+      return new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (
+      activityType === "message" ||
+      activityType === "messageupdate" ||
+      activityType === "messagedelete" ||
+      activityType === "messagereaction"
+    ) {
+      let kind: "message" | "edit" | "delete" | "reaction";
+      let respond: boolean;
+      let text = "";
+      let reactions: Array<{ emoji: string; action: "add" | "remove"; targetMessageId?: string }> =
+        [];
+
+      if (activityType === "message") {
+        kind = "message";
+        respond = true;
+        text = summarizeTeamsMessage(cleanedText, attachments);
+        if (!text && attachments.length === 0) {
+          return new Response(JSON.stringify({ status: "ok" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      } else if (activityType === "messageupdate") {
+        kind = "edit";
+        respond = false;
+        text =
+          summarizeTeamsMessage(cleanedText, attachments) ||
+          `Teams edited message ${externalMessageId ?? "unknown"}`;
+      } else if (activityType === "messagedelete") {
+        kind = "delete";
+        respond = false;
+        text = `Teams deleted message ${externalMessageId ?? "unknown"}`;
+      } else {
+        kind = "reaction";
+        respond = false;
+        const targetMessageId = activity.replyToId ?? activity.id;
+        const added = (activity.reactionsAdded ?? [])
+          .map((reaction) => (reaction.type ?? "").trim())
+          .filter((emoji): emoji is string => emoji.length > 0)
+          .map((emoji) => ({ emoji, action: "add" as const, targetMessageId }));
+        const removed = (activity.reactionsRemoved ?? [])
+          .map((reaction) => (reaction.type ?? "").trim())
+          .filter((emoji): emoji is string => emoji.length > 0)
+          .map((emoji) => ({ emoji, action: "remove" as const, targetMessageId }));
+        reactions = [...removed, ...added];
+        if (reactions.length === 0) {
+          return new Response(JSON.stringify({ status: "ok" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const addedText = added.map((reaction) => reaction.emoji).join(", ") || "none";
+        const removedText = removed.map((reaction) => reaction.emoji).join(", ") || "none";
+        text = `Teams reaction update on message ${targetMessageId ?? "unknown"}: ${removedText} -> ${addedText}`;
+      }
 
       const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
         scope: "teams",
-        key: teamsUserId || "unknown",
+        key: kind === "message" ? teamsUserId : `${teamsUserId}:${kind}`,
         limit: 30,
         windowMs: WEBHOOK_RATE_WINDOW_MS,
         blockMs: WEBHOOK_RATE_WINDOW_MS,
@@ -1973,7 +2275,20 @@ http.route({
         return rateLimitResponse(rateLimit.retryAfterMs);
       }
 
-      if (text.toLowerCase().startsWith("link ")) {
+      const envelope = {
+        provider: "teams",
+        kind,
+        chatType: conversationType || undefined,
+        externalUserId: teamsUserId,
+        externalChatId: conversationId,
+        externalMessageId,
+        text,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        ...(reactions.length > 0 ? { reactions } : {}),
+        sourceTimestamp,
+      };
+
+      if (respond && !groupId && text.toLowerCase().startsWith("link ")) {
         await ctx.scheduler.runAfter(0, internal.channels.teams.handleLinkCommand, {
           serviceUrl,
           conversationIdTeams: conversationId,
@@ -1988,6 +2303,10 @@ http.route({
           teamsUserId,
           text,
           displayName,
+          groupId,
+          ...(attachments.length > 0 ? { attachments } : {}),
+          channelEnvelope: envelope,
+          ...(respond ? {} : { respond: false }),
         });
       }
     }
