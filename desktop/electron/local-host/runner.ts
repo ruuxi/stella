@@ -27,6 +27,9 @@ type HostRunnerOptions = {
   deviceId: string;
   StellaHome: string;
   frontendRoot?: string;
+  signHeartbeatPayload?: (
+    signedAtMs: number,
+  ) => Promise<{ publicKey: string; signature: string }> | { publicKey: string; signature: string };
   requestCredential?: (payload: {
     provider: string;
     label?: string;
@@ -61,7 +64,13 @@ const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
 const DEFERRED_DELETE_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 
-export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requestCredential }: HostRunnerOptions) => {
+export const createLocalHostRunner = ({
+  deviceId,
+  StellaHome,
+  frontendRoot,
+  requestCredential,
+  signHeartbeatPayload,
+}: HostRunnerOptions) => {
   const toolHost = createToolHost({
     StellaHome,
     frontendRoot,
@@ -115,17 +124,32 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   const HEARTBEAT_INTERVAL_MS = 30_000;
 
-  const sendHeartbeat = () => {
-    callMutation("agent/device_resolver.heartbeat", {
-      deviceId,
-      platform: process.platform,
-    }).catch((err) => logError("Heartbeat failed:", err));
+  const sendHeartbeat = async () => {
+    if (!signHeartbeatPayload) {
+      logError("Heartbeat signing callback missing; skipping heartbeat.");
+      return;
+    }
+    const signedAtMs = Date.now();
+    try {
+      const signed = await signHeartbeatPayload(signedAtMs);
+      await callMutation("agent/device_resolver.heartbeat", {
+        deviceId,
+        platform: process.platform,
+        signedAtMs,
+        signature: signed.signature,
+        publicKey: signed.publicKey,
+      });
+    } catch (err) {
+      logError("Heartbeat failed:", err);
+    }
   };
 
   const startHeartbeat = () => {
     if (heartbeatInterval) return;
-    sendHeartbeat();
-    heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    void sendHeartbeat();
+    heartbeatInterval = setInterval(() => {
+      void sendHeartbeat();
+    }, HEARTBEAT_INTERVAL_MS);
   };
 
   const stopHeartbeat = () => {
@@ -461,7 +485,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
       if (isRunning) {
         startSubscription();
         // Send immediate heartbeat when auth becomes available
-        sendHeartbeat();
+        void sendHeartbeat();
       }
     } else {
       // Stop subscription when auth is cleared (logout/unauthenticated).
