@@ -51,6 +51,21 @@ const buildProtectedCommand = (command: string) => {
     return command;
   }
 
+  // Dynamically detect python-like invocations (python, python3, python3.11, py, etc.)
+  const pythonPattern = /\b(python\d*(?:\.\d+)?|py)\b/g;
+  const pythonNames = new Set<string>();
+  let m;
+  while ((m = pythonPattern.exec(command)) !== null) {
+    pythonNames.add(m[1]);
+  }
+
+  const pythonFuncs = [...pythonNames]
+    .map(name => `${name}() { __stella_dd python "$PWD" "$(type -P ${name} || true)" "$@"; }`)
+    .join('\n');
+  const pythonExports = pythonNames.size > 0
+    ? ` ${[...pythonNames].join(' ')}`
+    : '';
+
   const preamble = `
 __stella_dd() {
   ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_DEFERRED_DELETE_HELPER" "$@"
@@ -63,9 +78,8 @@ erase() { rm "$@"; }
 rd() { rmdir "$@"; }
 powershell() { __stella_dd powershell "$PWD" "$(type -P powershell || true)" "$@"; }
 pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
-python() { __stella_dd python "$PWD" "$(type -P python || true)" "$@"; }
-python3() { __stella_dd python "$PWD" "$(type -P python3 || true)" "$@"; }
-export -f __stella_dd rm rmdir unlink del erase rd powershell pwsh python python3 >/dev/null 2>&1 || true
+${pythonFuncs}
+export -f __stella_dd rm rmdir unlink del erase rd powershell pwsh${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
