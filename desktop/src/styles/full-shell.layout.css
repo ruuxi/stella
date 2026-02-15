@@ -251,13 +251,23 @@
   cursor: default;
 }
 
-/* Split mode: animation moves to left half and grows */
+/* Split mode: animation moves to left half, centered vertically */
 .onboarding-stella-animation[data-split="true"] {
   left: 25%;
   top: 45%;
-  max-width: 780px;
-  height: 91%;
-  transform: translate(-50%, -50%) scale(1.4);
+  max-width: 400px;
+  height: 30%;
+  transform: translate(-50%, -50%) scale(1);
+  transition: top 0.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* With selections: shift animation up to make room for mock windows */
+.onboarding-stella-animation[data-split="true"][data-has-selections] {
+  top: 18%;
 }
 
 .onboarding-signin {

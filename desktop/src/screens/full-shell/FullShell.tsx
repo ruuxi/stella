@@ -402,6 +402,7 @@ export const FullShell = () => {
               onSend={handleSend}
               hasExpanded={onboarding.hasExpanded}
               splitMode={onboarding.splitMode}
+              hasDiscoverySelections={onboarding.hasDiscoverySelections}
               onboardingKey={onboarding.onboardingKey}
               stellaAnimationRef={onboarding.stellaAnimationRef}
               triggerFlash={onboarding.triggerFlash}
@@ -409,6 +410,7 @@ export const FullShell = () => {
               completeOnboarding={onboarding.completeOnboarding}
               handleEnterSplit={onboarding.handleEnterSplit}
               onDiscoveryConfirm={handleDiscoveryConfirm}
+              onSelectionChange={onboarding.setHasDiscoverySelections}
               onDemoChange={handleDemoChange}
               onCommandSelect={handleCommandSelect}
             />

@@ -15,6 +15,7 @@ import {
   type OnboardingStep1Props,
 } from "./use-onboarding-state";
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
+import { OnboardingMockWindows } from "./OnboardingMockWindows";
 import { InlineAuth } from "../InlineAuth";
 import { useTheme } from "../../theme/theme-context";
 import "../Onboarding.css";
@@ -56,6 +57,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onInteract,
   onDiscoveryConfirm,
   onEnterSplit,
+  onSelectionChange,
   onDemoChange,
   isAuthenticated,
 }) => {
@@ -70,6 +72,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const [detectedBrowser, setDetectedBrowser] = useState<BrowserId | null>(null);
   const [availableProfiles, setAvailableProfiles] = useState<{ id: string; name: string }[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
+  const [showNoneWarning, setShowNoneWarning] = useState(false);
+  const [activeMockId, setActiveMockId] = useState<string | null>(null);
   const [homeHovered, setHomeHovered] = useState(false);
 
   // Discovery category toggles
@@ -80,6 +84,12 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
     return initial as Record<DiscoveryCategory, boolean>;
   });
+
+  // Notify parent when selections change
+  useEffect(() => {
+    const hasAny = Object.values(categoryStates).some((v) => v) || browserEnabled;
+    onSelectionChange?.(hasAny);
+  }, [categoryStates, browserEnabled, onSelectionChange]);
 
   // Personality
   const [expressionStyle, setExpressionStyle] = useState<"emotes" | "emoji" | "none" | null>(null);
@@ -354,6 +364,14 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     const selected = (Object.entries(categoryStates) as [DiscoveryCategory, boolean][])
       .filter(([, enabled]) => enabled)
       .map(([id]) => id);
+
+    // Show warning on first attempt if nothing is selected
+    const nothingSelected = selected.length === 0 && !browserEnabled;
+    if (nothingSelected && !showNoneWarning) {
+      setShowNoneWarning(true);
+      return;
+    }
+
     localStorage.setItem(DISCOVERY_CATEGORIES_KEY, JSON.stringify(selected));
 
     if (browserEnabled && selectedBrowser) {
@@ -379,7 +397,18 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   };
 
   const handleToggleCategory = (id: DiscoveryCategory) => {
+    const wasEnabled = categoryStates[id];
     setCategoryStates((prev) => ({ ...prev, [id]: !prev[id] }));
+    setShowNoneWarning(false);
+    if (!wasEnabled) {
+      setActiveMockId(id);
+    } else if (activeMockId === id) {
+      // Toggled off the active one — show the first remaining enabled, or null
+      const remaining = Object.entries(categoryStates)
+        .filter(([k, v]) => k !== id && v)
+        .map(([k]) => k);
+      setActiveMockId(browserEnabled ? "browser" : remaining[0] ?? null);
+    }
   };
 
   /* ── Theme select ── */
@@ -442,6 +471,11 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
       {isSplit && (
         <>
+          {/* Left: mock data preview windows (browser phase only) */}
+          {phase === "browser" && (
+            <OnboardingMockWindows activeWindowId={activeMockId} />
+          )}
+
           {/* Right: title + step content */}
           <div className="onboarding-split-right">
             {STEP_TITLES[phase] && (
@@ -452,34 +486,43 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
             {phase === "browser" && (
               <div className="onboarding-step-content">
                 <div className="onboarding-step-label">What can I learn about you?</div>
-                <OnboardingDiscovery
-                  categoryStates={categoryStates}
-                  onToggleCategory={handleToggleCategory}
-                  browserEnabled={browserEnabled}
-                />
 
-                {/* Browser as a toggle button like discovery rows */}
+                {/* Browser as top choice with Recommended badge */}
                 <button
                   className="onboarding-discovery-row"
                   data-active={browserEnabled}
                   onClick={() => {
+                    const wasEnabled = browserEnabled;
                     setBrowserEnabled((prev) => !prev);
-                    if (browserEnabled) {
+                    setShowNoneWarning(false);
+                    if (wasEnabled) {
                       setSelectedBrowser(null);
                       setAvailableProfiles([]);
                       setSelectedProfile(null);
+                      // Toggled off — show first remaining enabled category, or null
+                      if (activeMockId === "browser") {
+                        const remaining = Object.entries(categoryStates)
+                          .filter(([, v]) => v)
+                          .map(([k]) => k);
+                        setActiveMockId(remaining[0] ?? null);
+                      }
+                    } else {
+                      setActiveMockId("browser");
                     }
                   }}
                 >
-                  <span className="onboarding-discovery-row-label">Your browser</span>
+                  <span className="onboarding-discovery-row-label">
+                    Your browser
+                    <span className="onboarding-discovery-recommended">Recommended</span>
+                  </span>
                   <span className="onboarding-discovery-row-desc">
                     I can browse the web for you, learn your favorite sites, and pick up on how you like things done
                   </span>
                 </button>
 
-                {/* Expanded browser options when enabled */}
-                {browserEnabled && (
-                  <div className="onboarding-browser-expanded">
+                {/* Expanded browser options — always rendered, CSS grid animates reveal */}
+                <div className="onboarding-browser-reveal" data-visible={browserEnabled || undefined}>
+                  <div className="onboarding-browser-reveal-inner">
                     <div className="onboarding-pills">
                       {BROWSERS.filter((b) => platform !== "darwin" ? b.id !== "safari" : true).map((b) => (
                         <button
@@ -493,9 +536,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       ))}
                     </div>
 
-                    {/* Profile selection */}
-                    {availableProfiles.length > 1 && (
-                      <div className="onboarding-browser-profiles">
+                    {/* Profile selection — grid reveal */}
+                    <div className="onboarding-profiles-reveal" data-visible={availableProfiles.length > 1 || undefined}>
+                      <div className="onboarding-profiles-reveal-inner">
                         <div className="onboarding-step-label">Profile</div>
                         <div className="onboarding-pills">
                           {availableProfiles.map((p) => (
@@ -510,9 +553,26 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                           ))}
                         </div>
                       </div>
-                    )}
+                    </div>
                   </div>
-                )}
+                </div>
+
+                <OnboardingDiscovery
+                  categoryStates={categoryStates}
+                  onToggleCategory={handleToggleCategory}
+                />
+
+                {/* Warning — always rendered, CSS grid animates reveal */}
+                <div className="onboarding-warning-reveal" data-visible={showNoneWarning || undefined}>
+                  <div className="onboarding-warning-reveal-inner">
+                    <div className="onboarding-discovery-warning">
+                      <span className="onboarding-discovery-warning-badge">Not recommended</span>
+                      <p className="onboarding-discovery-warning-text">
+                        Without this, I'll learn about you over time through our conversations. But I won't be personal to you from the start.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
                 <button className="onboarding-confirm" data-visible={true} onClick={handleDiscoveryConfirm}>
                   Continue
