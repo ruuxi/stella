@@ -235,18 +235,6 @@ export const FullShell = () => {
     setMessage("");
   }, [message, selectedText, chatContext, sendMessage]);
 
-  const handleWelcomeSuggestionSelect = useCallback(
-    (suggestion: { prompt: string }) => {
-      void sendMessage({
-        text: suggestion.prompt,
-        selectedText: null,
-        chatContext: null,
-        onClear: () => {},
-      });
-    },
-    [sendMessage],
-  );
-
   const handleCommandSelect = useCallback(
     (suggestion: CommandSuggestion) => {
       void sendMessage({
@@ -264,8 +252,33 @@ export const FullShell = () => {
   // manually closed the dashboard itself.
   const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
   const isDashboardCanvas = canvasState.canvas?.name === "dashboard";
-  const dashboardDismissedRef = useRef(false);
+  const [dashboardDismissed, setDashboardDismissed] = useState(false);
   const prevCanvasRef = useRef<{ isOpen: boolean; name?: string }>({ isOpen: false });
+
+  // Track closing animation so CanvasPanel stays mounted during exit
+  const CANVAS_ANIM_MS = 350; // matches CSS canvas-slide-out duration
+  const [canvasClosing, setCanvasClosing] = useState(false);
+  const canvasWasOpenRef = useRef(false);
+
+  useEffect(() => {
+    const wasOpen = canvasWasOpenRef.current;
+    canvasWasOpenRef.current = canvasOpen;
+
+    if (wasOpen && !canvasOpen) {
+      setCanvasClosing(true);
+      const timer = setTimeout(() => setCanvasClosing(false), CANVAS_ANIM_MS);
+      return () => clearTimeout(timer);
+    }
+    if (canvasOpen) {
+      setCanvasClosing(false);
+    }
+  }, [canvasOpen]);
+
+  // Keep panel mounted on the exact close-transition frame as well.
+  // Without this guard there is a one-render gap before canvasClosing turns true,
+  // which skips the exit animation.
+  const canvasJustClosed = canvasWasOpenRef.current && !canvasOpen;
+  const showCanvasPanel = canvasOpen || canvasClosing || canvasJustClosed;
 
   useEffect(() => {
     const wasOpen = prevCanvasRef.current.isOpen;
@@ -274,23 +287,28 @@ export const FullShell = () => {
 
     // Detect user closing the dashboard — mark as dismissed
     if (wasOpen && !canvasOpen && wasName === "dashboard") {
-      dashboardDismissedRef.current = true;
+      setDashboardDismissed(true);
       return;
     }
 
     // When a non-dashboard canvas opens, clear the dismissed flag
     // so dashboard returns when that canvas closes
     if (canvasOpen && !isDashboardCanvas) {
-      dashboardDismissedRef.current = false;
+      setDashboardDismissed(false);
       return;
     }
 
     const ready = onboarding.isAuthenticated && onboarding.onboardingDone;
     if (!ready || activeDemo || demoClosing) return;
-    if (canvasOpen) return;
-    if (dashboardDismissedRef.current) return;
+    if (canvasOpen || canvasClosing) return;
+    if (dashboardDismissed) return;
     openCanvas({ name: "dashboard" });
-  }, [onboarding.isAuthenticated, onboarding.onboardingDone, canvasOpen, isDashboardCanvas, canvasState.canvas?.name, activeDemo, demoClosing, openCanvas]);
+  }, [onboarding.isAuthenticated, onboarding.onboardingDone, canvasOpen, canvasClosing, isDashboardCanvas, canvasState.canvas?.name, activeDemo, demoClosing, dashboardDismissed, openCanvas]);
+
+  const handleOpenDashboard = useCallback(() => {
+    setDashboardDismissed(false);
+    openCanvas({ name: "dashboard" });
+  }, [openCanvas]);
 
   // Listen for custom events from the dashboard panel (suggestion clicks)
   useEffect(() => {
@@ -321,8 +339,8 @@ export const FullShell = () => {
   const canSubmit = Boolean(
     state.conversationId && (message.trim() || hasComposerContext),
   );
-  const shellClassName = `window-shell full${canvasOpen || activeDemo || demoClosing ? " has-canvas" : ""}`;
-  const canvasWidthVar = canvasOpen
+  const shellClassName = `window-shell full${showCanvasPanel || activeDemo || demoClosing ? " has-canvas" : ""}`;
+  const canvasWidthVar = showCanvasPanel
     ? ({
         "--canvas-panel-width": `${canvasState.width}px`,
       } as React.CSSProperties)
@@ -396,8 +414,19 @@ export const FullShell = () => {
               onDemoChange={handleDemoChange}
               onCommandSelect={handleCommandSelect}
             />
-            {canvasOpen && <CanvasPanel />}
-            {!canvasOpen && (activeDemo || demoClosing) && <OnboardingCanvas activeDemo={activeDemo} />}
+            {showCanvasPanel && <CanvasPanel />}
+            {!showCanvasPanel && (activeDemo || demoClosing) && <OnboardingCanvas activeDemo={activeDemo} />}
+            {!showCanvasPanel && !activeDemo && !demoClosing && dashboardDismissed && onboarding.isAuthenticated && onboarding.onboardingDone && (
+              <button
+                className="canvas-panel-toggle"
+                onClick={handleOpenDashboard}
+                aria-label="Open dashboard"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </button>
+            )}
           </>
         )}
       </div>
