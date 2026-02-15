@@ -4,6 +4,7 @@ import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
+import { StellaAnimation } from "../../components/StellaAnimation";
 
 export const MiniShell = () => {
   const { setWindow } = useUiState();
@@ -25,7 +26,6 @@ export const MiniShell = () => {
     streamingText,
     reasoningText,
     pendingUserMessageId,
-    expanded,
     events,
     sendMessage,
   } = useMiniChat({
@@ -38,7 +38,13 @@ export const MiniShell = () => {
   });
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
-  const showConversation = expanded && hasConversation;
+
+  const firstUserEvent = [...events]
+    .reverse()
+    .find((e) => e.type === "user_message");
+  const conversationTitle = firstUserEvent?.payload?.text
+    ? String(firstUserEvent.payload.text).slice(0, 60)
+    : null;
 
   const handleShellClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
@@ -56,6 +62,46 @@ export const MiniShell = () => {
       onClick={handleShellClick}
     >
       <div className="raycast-panel">
+        <div className="mini-titlebar">
+          <div className="mini-titlebar-left">
+            <StellaAnimation width={40} height={40} paused={!shellVisible} />
+          </div>
+          <span className="mini-titlebar-title">
+            {conversationTitle ?? "Stella"}
+          </span>
+          <div className="mini-titlebar-right">
+            <button
+              className="mini-titlebar-action"
+              type="button"
+              onClick={() => setWindow("full")}
+              title="Expand to full view"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <MiniOutput
+          events={events}
+          streamingText={streamingText}
+          reasoningText={reasoningText}
+          isStreaming={isStreaming}
+          pendingUserMessageId={pendingUserMessageId}
+          showConversation={hasConversation}
+        />
+
         <MiniInput
           message={message}
           setMessage={setMessage}
@@ -66,17 +112,8 @@ export const MiniShell = () => {
           shellVisible={shellVisible}
           previewIndex={previewIndex}
           setPreviewIndex={setPreviewIndex}
-          onSend={() => void sendMessage()}
-          onExpand={() => setWindow("full")}
-        />
-
-        <MiniOutput
-          events={events}
-          streamingText={streamingText}
-          reasoningText={reasoningText}
           isStreaming={isStreaming}
-          pendingUserMessageId={pendingUserMessageId}
-          showConversation={showConversation}
+          onSend={() => void sendMessage()}
         />
       </div>
 
