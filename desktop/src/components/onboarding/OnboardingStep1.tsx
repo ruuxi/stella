@@ -65,9 +65,11 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Browser selection
+  const [browserEnabled, setBrowserEnabled] = useState(false);
   const [selectedBrowser, setSelectedBrowser] = useState<BrowserId | null>(null);
   const [detectedBrowser, setDetectedBrowser] = useState<BrowserId | null>(null);
-  const [detectedProfile, setDetectedProfile] = useState<string | null>(null);
+  const [availableProfiles, setAvailableProfiles] = useState<{ id: string; name: string }[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [homeHovered, setHomeHovered] = useState(false);
 
   // Discovery category toggles
@@ -261,12 +263,13 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   /* ── Split phase navigation ── */
 
+  // When browser is toggled on, detect the default browser
   useEffect(() => {
-    if (phase !== "browser" || selectedBrowser) return;
+    if (!browserEnabled || detectedBrowser) return;
 
     let cancelled = false;
 
-    const preselectBrowser = async () => {
+    const detectBrowser = async () => {
       try {
         const detected = await window.electronAPI?.detectPreferredBrowser?.();
         if (cancelled || !detected?.browser) return;
@@ -275,20 +278,51 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
         const detectedId = detected.browser as BrowserId;
         if (!supportedBrowserIds.has(detectedId)) return;
 
-        setSelectedBrowser(detectedId);
         setDetectedBrowser(detectedId);
-        setDetectedProfile(detected.profile ?? null);
+        setSelectedBrowser(detectedId);
       } catch {
         // Detection is best-effort only.
       }
     };
 
-    void preselectBrowser();
+    void detectBrowser();
 
     return () => {
       cancelled = true;
     };
-  }, [phase, selectedBrowser]);
+  }, [browserEnabled, detectedBrowser]);
+
+  // Load profiles when browser selection changes
+  useEffect(() => {
+    if (!selectedBrowser) {
+      setAvailableProfiles([]);
+      setSelectedProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadProfiles = async () => {
+      try {
+        const profiles = await window.electronAPI?.listBrowserProfiles?.(selectedBrowser);
+        if (!cancelled && profiles) {
+          setAvailableProfiles(profiles);
+          setSelectedProfile(profiles.length > 0 ? profiles[0].id : null);
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableProfiles([]);
+          setSelectedProfile(null);
+        }
+      }
+    };
+
+    void loadProfiles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBrowser]);
 
   const nextSplitStep = () => {
     const idx = SPLIT_STEP_ORDER.indexOf(phase);
@@ -322,10 +356,10 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       .map(([id]) => id);
     localStorage.setItem(DISCOVERY_CATEGORIES_KEY, JSON.stringify(selected));
 
-    if (selectedBrowser) {
+    if (browserEnabled && selectedBrowser) {
       localStorage.setItem(BROWSER_SELECTION_KEY, selectedBrowser);
-      if (detectedBrowser === selectedBrowser && detectedProfile) {
-        localStorage.setItem(BROWSER_PROFILE_KEY, detectedProfile);
+      if (selectedProfile) {
+        localStorage.setItem(BROWSER_PROFILE_KEY, selectedProfile);
       } else {
         localStorage.removeItem(BROWSER_PROFILE_KEY);
       }
@@ -335,7 +369,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
 
     void savePreferredBrowser({
-      browser: selectedBrowser ?? "none",
+      browser: (browserEnabled && selectedBrowser) ? selectedBrowser : "none",
     }).catch(() => {
       // Browser preference sync is best-effort only.
     });
@@ -421,33 +455,63 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 <OnboardingDiscovery
                   categoryStates={categoryStates}
                   onToggleCategory={handleToggleCategory}
+                  browserEnabled={browserEnabled}
                 />
 
-                <div className="onboarding-step-label">Your browser</div>
-                <p className="onboarding-step-subdesc">
-                  I can browse the web for you, learn your favorite sites, and pick up on how you like things done.
-                </p>
-                <div className="onboarding-pills">
-                  {BROWSERS.filter((b) => platform !== "darwin" ? b.id !== "safari" : true).map((b) => (
-                    <button
-                      key={b.id}
-                      className="onboarding-pill onboarding-pill--sm"
-                      data-active={selectedBrowser === b.id}
-                      onClick={() => {
-                        setSelectedBrowser(b.id);
-                        if (detectedBrowser !== b.id) {
-                          setDetectedProfile(null);
-                        }
-                      }}
-                    >
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
-                {detectedBrowser === selectedBrowser && detectedProfile && (
-                  <p className="onboarding-step-subdesc">
-                    Detected profile: {detectedProfile}
-                  </p>
+                {/* Browser as a toggle button like discovery rows */}
+                <button
+                  className="onboarding-discovery-row"
+                  data-active={browserEnabled}
+                  onClick={() => {
+                    setBrowserEnabled((prev) => !prev);
+                    if (browserEnabled) {
+                      setSelectedBrowser(null);
+                      setAvailableProfiles([]);
+                      setSelectedProfile(null);
+                    }
+                  }}
+                >
+                  <span className="onboarding-discovery-row-label">Your browser</span>
+                  <span className="onboarding-discovery-row-desc">
+                    I can browse the web for you, learn your favorite sites, and pick up on how you like things done
+                  </span>
+                </button>
+
+                {/* Expanded browser options when enabled */}
+                {browserEnabled && (
+                  <div className="onboarding-browser-expanded">
+                    <div className="onboarding-pills">
+                      {BROWSERS.filter((b) => platform !== "darwin" ? b.id !== "safari" : true).map((b) => (
+                        <button
+                          key={b.id}
+                          className="onboarding-pill onboarding-pill--sm"
+                          data-active={selectedBrowser === b.id}
+                          onClick={() => setSelectedBrowser(b.id)}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Profile selection */}
+                    {availableProfiles.length > 1 && (
+                      <div className="onboarding-browser-profiles">
+                        <div className="onboarding-step-label">Profile</div>
+                        <div className="onboarding-pills">
+                          {availableProfiles.map((p) => (
+                            <button
+                              key={p.id}
+                              className="onboarding-pill onboarding-pill--sm"
+                              data-active={selectedProfile === p.id}
+                              onClick={() => setSelectedProfile(p.id)}
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 <button className="onboarding-confirm" data-visible={true} onClick={handleDiscoveryConfirm}>

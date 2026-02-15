@@ -65,6 +65,11 @@ export type PreferredBrowserProfile = {
   profile: string | null;
 };
 
+export type BrowserProfile = {
+  id: string;       // e.g. "Default", "Profile 1"
+  name: string;     // display name from Local State, e.g. "Work", "Personal"
+};
+
 // ---------------------------------------------------------------------------
 // Platform Paths
 // ---------------------------------------------------------------------------
@@ -1246,4 +1251,76 @@ export const detectPreferredBrowserProfile = async (): Promise<PreferredBrowserP
     browser: browser.type,
     profile: browser.profile,
   };
+};
+
+/**
+ * List all available profiles for a given browser type.
+ * Reads display names from the browser's Local State JSON when available.
+ */
+export const listBrowserProfiles = async (browserType: BrowserType): Promise<BrowserProfile[]> => {
+  const platform = process.platform;
+  const basePath = getBasePath(platform);
+
+  const browserDirs = [
+    BROWSER_BASE_DIRS[browserType]?.[platform as string],
+    platform === "win32" ? BROWSER_BASE_DIRS[browserType]?.win32Alt : null,
+  ].filter(Boolean) as string[];
+
+  if (browserDirs.length === 0) return [];
+
+  // Try to read display names from Local State JSON
+  const displayNames = new Map<string, string>();
+  for (const browserDir of browserDirs) {
+    const localStatePath = path.join(basePath, browserDir, "Local State");
+    try {
+      const raw = await fs.readFile(localStatePath, "utf-8");
+      const localState = JSON.parse(raw);
+      const infoCache = localState?.profile?.info_cache;
+      if (infoCache && typeof infoCache === "object") {
+        for (const [profileId, info] of Object.entries(infoCache)) {
+          const profileInfo = info as Record<string, unknown>;
+          const name = (profileInfo.name ?? profileInfo.gaia_name ?? profileId) as string;
+          displayNames.set(profileId, name);
+        }
+      }
+    } catch {
+      // Local State doesn't exist or can't be parsed — we'll fall back to folder names
+    }
+  }
+
+  // Scan for profile directories that have a History file
+  const profilePatterns = ["Default", "Profile 1", "Profile 2", "Profile 3", "Profile 4", "Profile 5",
+    "Profile 6", "Profile 7", "Profile 8", "Profile 9", "Profile 10"];
+
+  const checks = browserDirs.flatMap((browserDir) => {
+    const userDataPath = path.join(basePath, browserDir);
+    return profilePatterns.map(async (profile): Promise<BrowserProfile | null> => {
+      const profilePath = path.join(userDataPath, profile);
+      try {
+        const stat = await fs.stat(profilePath);
+        if (!stat.isDirectory()) return null;
+        // Verify a History file exists
+        await fs.access(path.join(profilePath, "History"));
+        return {
+          id: profile,
+          name: displayNames.get(profile) ?? profile,
+        };
+      } catch {
+        return null;
+      }
+    });
+  });
+
+  const results = await Promise.all(checks);
+  const seen = new Set<string>();
+  const profiles: BrowserProfile[] = [];
+  for (const r of results) {
+    if (r && !seen.has(r.id)) {
+      seen.add(r.id);
+      profiles.push(r);
+    }
+  }
+
+  log(`Found ${profiles.length} profile(s) for ${browserType}:`, profiles.map(p => `${p.id} (${p.name})`));
+  return profiles;
 };

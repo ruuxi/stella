@@ -11,7 +11,7 @@ import { createModifierOverlay, showModifierOverlay, showModifierOverlayPreempti
 import { getOrCreateDeviceId } from './local-host/device.js';
 import { createLocalHostRunner } from './local-host/runner.js';
 import { resolveStellaHome } from './local-host/stella-home.js';
-import { collectBrowserData, coreMemoryExists, detectPreferredBrowserProfile, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
+import { collectBrowserData, coreMemoryExists, detectPreferredBrowserProfile, listBrowserProfiles, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
 import { collectAllSignals } from './local-host/collect-all.js';
 import { handleInstallCanvas, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from './local-host/tools_store.js';
 import * as bridgeManager from './local-host/bridge_manager.js';
@@ -1243,6 +1243,9 @@ app.whenReady().then(async () => {
     });
     ipcMain.handle('browserData:detectPreferredBrowser', async () => {
         return detectPreferredBrowserProfile();
+    });
+    ipcMain.handle('browserData:listProfiles', async (_event, browserType) => {
+        return listBrowserProfiles(browserType);
     });
     // Comprehensive user signal collection (with category support)
     ipcMain.handle('signals:collectAll', async (_event, options) => {

@@ -60,6 +60,11 @@ export type PreferredBrowserProfile = {
   profile: string | null
 }
 
+export type BrowserProfile = {
+  id: string       // e.g. "Default", "Profile 1"
+  name: string     // display name, e.g. "Work", "Personal"
+}
+
 // ---------------------------------------------------------------------------
 // Dev Projects Types
 // ---------------------------------------------------------------------------
@@ -176,6 +181,7 @@ export type ElectronApi = {
   checkCoreMemoryExists: () => Promise<boolean>
   collectBrowserData: () => Promise<BrowserDataResult>
   detectPreferredBrowser: () => Promise<PreferredBrowserProfile>
+  listBrowserProfiles: (browserType: string) => Promise<BrowserProfile[]>
   writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
   // Comprehensive user signal collection (browser + dev projects + shell + apps)
   collectAllSignals: (options?: { categories?: string[] }) => Promise<AllUserSignalsResult>

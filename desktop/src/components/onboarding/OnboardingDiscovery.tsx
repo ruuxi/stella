@@ -4,17 +4,19 @@ import { type DiscoveryCategory, DISCOVERY_CATEGORIES } from "./use-onboarding-s
 interface OnboardingDiscoveryProps {
   categoryStates: Record<DiscoveryCategory, boolean>;
   onToggleCategory: (id: DiscoveryCategory) => void;
+  browserEnabled?: boolean;
 }
 
 export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
   categoryStates,
   onToggleCategory,
+  browserEnabled = false,
 }) => {
   const platform = window.electronAPI?.platform ?? "unknown";
   const hasFDACategories = DISCOVERY_CATEGORIES.some(
     (cat) => cat.requiresFDA && categoryStates[cat.id]
   );
-  const noneSelected = Object.values(categoryStates).every((v) => !v);
+  const noneSelected = Object.values(categoryStates).every((v) => !v) && !browserEnabled;
 
   return (
     <div className="onboarding-discovery" data-visible={true}>

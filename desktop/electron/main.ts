@@ -29,9 +29,11 @@ import {
   collectBrowserData,
   coreMemoryExists,
   detectPreferredBrowserProfile,
+  listBrowserProfiles,
   writeCoreMemory,
   formatBrowserDataForSynthesis,
   type BrowserData,
+  type BrowserType,
 } from './local-host/browser-data.js'
 import { collectAllSignals } from './local-host/collect-all.js'
 import type { AllUserSignalsResult } from './local-host/types.js'
@@ -1470,6 +1472,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('browserData:detectPreferredBrowser', async () => {
     return detectPreferredBrowserProfile()
+  })
+
+  ipcMain.handle('browserData:listProfiles', async (_event, browserType: string) => {
+    return listBrowserProfiles(browserType as BrowserType)
   })
 
   // Comprehensive user signal collection (with category support)
