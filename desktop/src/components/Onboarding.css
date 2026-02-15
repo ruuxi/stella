@@ -1162,20 +1162,80 @@
   margin-left: 8px;
 }
 
-/* ═══ Browser expanded (inside discovery) ═══ */
+/* ═══ Browser expanded — CSS grid reveal (no layout shift) ═══ */
 
-.onboarding-browser-expanded {
+.onboarding-browser-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.onboarding-browser-reveal[data-visible] {
+  grid-template-rows: 1fr;
+}
+
+.onboarding-browser-reveal-inner {
+  overflow: hidden;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding: 0 4px;
-  animation: momentFadeIn 0.3s ease-out forwards;
+  opacity: 0;
+  transition: opacity 0.3s ease 0.1s;
 }
 
-.onboarding-browser-profiles {
+.onboarding-browser-reveal[data-visible] > .onboarding-browser-reveal-inner {
+  opacity: 1;
+}
+
+/* Profiles sub-reveal inside browser expanded */
+
+.onboarding-profiles-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.onboarding-profiles-reveal[data-visible] {
+  grid-template-rows: 1fr;
+}
+
+.onboarding-profiles-reveal-inner {
+  overflow: hidden;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  opacity: 0;
+  transition: opacity 0.25s ease 0.1s;
+}
+
+.onboarding-profiles-reveal[data-visible] > .onboarding-profiles-reveal-inner {
+  opacity: 1;
+}
+
+/* ═══ Warning — CSS grid reveal (no layout shift) ═══ */
+
+.onboarding-warning-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.onboarding-warning-reveal[data-visible] {
+  grid-template-rows: 1fr;
+}
+
+.onboarding-warning-reveal-inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease 0.1s;
+}
+
+.onboarding-warning-reveal[data-visible] > .onboarding-warning-reveal-inner {
+  opacity: 1;
 }
 
 /* ═══ Section divider ═══ */
@@ -1242,6 +1302,22 @@
   font-weight: 400;
   letter-spacing: 0.02em;
   color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-discovery-recommended {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.4;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 2px 6px;
+  line-height: 1;
 }
 
 .onboarding-discovery-row-desc {
@@ -1259,8 +1335,7 @@
   gap: 6px;
   margin: 0;
   padding: 10px 14px;
-  border-left: 2px solid color-mix(in oklch, var(--foreground) 20%, transparent);
-  animation: momentFadeIn 0.3s ease-out forwards;
+  border-left: 2px solid oklch(0.55 0.2 25);
 }
 
 .onboarding-discovery-warning-badge {
@@ -1268,16 +1343,16 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--foreground);
-  opacity: 0.45;
+  color: oklch(0.55 0.2 25);
+  opacity: 0.9;
 }
 
 .onboarding-discovery-warning-text {
   font-size: 13px;
   font-weight: 300;
   letter-spacing: 0.02em;
-  color: var(--foreground);
-  opacity: 0.65;
+  color: oklch(0.55 0.2 25);
+  opacity: 0.85;
   line-height: 1.5;
   margin: 0;
 }
@@ -1484,15 +1559,151 @@
   justify-content: center;
 }
 
+/* ═══ Mock data preview windows (left side) ═══ */
+
+.onboarding-mock-windows {
+  position: fixed;
+  top: 36%;
+  left: calc(25% - 170px);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 340px;
+  max-height: 56%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  pointer-events: none;
+}
+
+.onboarding-mock-window {
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--background) 70%, transparent);
+  backdrop-filter: blur(16px);
+  animation: mockWindowIn 0.35s ease-out both;
+  flex-shrink: 0;
+}
+
+@keyframes mockWindowIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Titlebar */
+.onboarding-mock-window-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.onboarding-mock-window-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.onboarding-mock-window-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.onboarding-mock-window-title {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  opacity: 0.4;
+  flex: 1;
+  text-align: center;
+  padding-right: 30px; /* offset for dots */
+}
+
+/* Body */
+.onboarding-mock-window-body {
+  padding: 10px 12px;
+}
+
+/* Sections */
+.mock-window-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mock-window-section-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.35;
+  margin-bottom: 4px;
+}
+
+/* Tags (for simple lists like dev tools, dotfiles) */
+.mock-window-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mock-window-tag {
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0.6;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+/* Detail rows (name + value) */
+.mock-window-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.mock-window-detail-name {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--foreground);
+  opacity: 0.65;
+}
+
+.mock-window-detail-value {
+  font-size: 10px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.4;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ═══ Reduced motion ═══ */
+
+/* Fade out mock windows when leaving phase */
+.onboarding-dialogue[data-leaving="true"] .onboarding-mock-windows {
+  animation: momentFadeOut 0.4s ease-out forwards;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .onboarding-moment,
   .onboarding-dialogue[data-leaving="true"] .onboarding-moment,
   .onboarding-dialogue[data-leaving="true"] .onboarding-split-right,
+  .onboarding-dialogue[data-leaving="true"] .onboarding-mock-windows,
   .onboarding-split-left .onboarding-text,
   .onboarding-split-right,
-  .onboarding-inline-auth {
+  .onboarding-inline-auth,
+  .onboarding-mock-window {
     animation: none;
     opacity: 1;
     transform: none;
