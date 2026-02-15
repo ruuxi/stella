@@ -35,19 +35,19 @@ workspace/panels/*
 public/emotes/assets/
 
 # Agent Browser
-agent-browser/node_modules/
-agent-browser/dist/
-agent-browser/cli/target/
-agent-browser/cli/*.o
-agent-browser/bin/agent-browser-*
-agent-browser/*.png
-agent-browser/*.jpeg
-agent-browser/*.jpg
-agent-browser/.pnpm-store/
-agent-browser/opensrc/
-agent-browser/docs/node_modules/
-agent-browser/docs/.next/
-agent-browser/docs/out/
-agent-browser/nul
-agent-browser/_bench_chain.js
-agent-browser/bun.lock
+stella-browser/node_modules/
+stella-browser/dist/
+stella-browser/cli/target/
+stella-browser/cli/*.o
+stella-browser/bin/stella-browser-*
+stella-browser/*.png
+stella-browser/*.jpeg
+stella-browser/*.jpg
+stella-browser/.pnpm-store/
+stella-browser/opensrc/
+stella-browser/docs/node_modules/
+stella-browser/docs/.next/
+stella-browser/docs/out/
+stella-browser/nul
+stella-browser/_bench_chain.js
+stella-browser/bun.lock

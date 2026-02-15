@@ -260,14 +260,37 @@ export const FullShell = () => {
   );
 
   // Auto-open the dashboard panel when ready and no other canvas is active.
-  // Also re-opens dashboard when an agent canvas is closed.
+  // Re-opens dashboard after an agent canvas closes, but NOT if the user
+  // manually closed the dashboard itself.
   const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
+  const isDashboardCanvas = canvasState.canvas?.name === "dashboard";
+  const dashboardDismissedRef = useRef(false);
+  const prevCanvasRef = useRef<{ isOpen: boolean; name?: string }>({ isOpen: false });
+
   useEffect(() => {
+    const wasOpen = prevCanvasRef.current.isOpen;
+    const wasName = prevCanvasRef.current.name;
+    prevCanvasRef.current = { isOpen: canvasOpen, name: canvasState.canvas?.name };
+
+    // Detect user closing the dashboard — mark as dismissed
+    if (wasOpen && !canvasOpen && wasName === "dashboard") {
+      dashboardDismissedRef.current = true;
+      return;
+    }
+
+    // When a non-dashboard canvas opens, clear the dismissed flag
+    // so dashboard returns when that canvas closes
+    if (canvasOpen && !isDashboardCanvas) {
+      dashboardDismissedRef.current = false;
+      return;
+    }
+
     const ready = onboarding.isAuthenticated && onboarding.onboardingDone;
     if (!ready || activeDemo || demoClosing) return;
     if (canvasOpen) return;
+    if (dashboardDismissedRef.current) return;
     openCanvas({ name: "dashboard" });
-  }, [onboarding.isAuthenticated, onboarding.onboardingDone, canvasOpen, activeDemo, demoClosing, openCanvas]);
+  }, [onboarding.isAuthenticated, onboarding.onboardingDone, canvasOpen, isDashboardCanvas, canvasState.canvas?.name, activeDemo, demoClosing, openCanvas]);
 
   // Listen for custom events from the dashboard panel (suggestion clicks)
   useEffect(() => {
