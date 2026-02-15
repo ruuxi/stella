@@ -425,13 +425,25 @@ const positionMiniWindow = () => {
   if (!miniWindow) {
     return
   }
-  const anchor = fullWindow ?? miniWindow
-  const display = anchor ? screen.getDisplayMatching(anchor.getBounds()) : screen.getPrimaryDisplay()
-  const { x, y, width, height } = display.workArea
 
-  // Center horizontally, position near bottom of screen
-  const targetX = Math.round(x + (width - miniSize.width) / 2)
-  const targetY = Math.round(y + height - miniSize.height - 20)
+  // Place to the right of the mouse cursor
+  const cursor = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(cursor)
+  const wa = display.workArea
+  const GAP = 16
+
+  let targetX = cursor.x + GAP
+  // Vertically offset so the top third of the window aligns with the cursor
+  let targetY = cursor.y - Math.round(miniSize.height / 3)
+
+  // If the window would overflow the right edge, place it to the left of the cursor
+  if (targetX + miniSize.width > wa.x + wa.width) {
+    targetX = cursor.x - miniSize.width - GAP
+  }
+
+  // Clamp to work area bounds
+  targetX = Math.max(wa.x, Math.min(targetX, wa.x + wa.width - miniSize.width))
+  targetY = Math.max(wa.y, Math.min(targetY, wa.y + wa.height - miniSize.height))
 
   miniWindow.setBounds({
     x: targetX,
