@@ -4,16 +4,57 @@
    Conditionally shown when a canvas is active.
    ============================================ */
 
+/* --- Animated layout shell --- */
+
+.canvas-panel-shell {
+  --canvas-panel-width: 420px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  width: 0;
+  overflow: visible;
+  transition: width 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: width;
+}
+
+.canvas-panel-shell.canvas-open {
+  width: var(--canvas-panel-width);
+}
+
+.canvas-panel-shell.canvas-closing {
+  width: 0;
+  transition-duration: 0.35s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.7, 1);
+}
+
+.canvas-panel-shell.canvas-resizing {
+  transition: none;
+}
+
 /* --- Resize edge (invisible, just drag zone + close button) --- */
 
 .canvas-resize-handle {
   width: 12px;
-  margin: 0 -3px;
-  flex-shrink: 0;
   cursor: col-resize;
   z-index: 10;
-  position: relative;
+  position: absolute;
+  left: -6px;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
   -webkit-app-region: no-drag;
+  opacity: 0;
+  transform: translateX(10px);
+}
+
+.canvas-panel-shell.canvas-open .canvas-resize-handle,
+.canvas-panel-shell.canvas-closing .canvas-resize-handle {
+  pointer-events: auto;
 }
 
 .canvas-resize-bar {
@@ -49,13 +90,18 @@
 .canvas-panel {
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
   min-height: 0;
   background: color-mix(in srgb, var(--surface-inset) 60%, transparent);
   backdrop-filter: blur(16px);
+  border-left: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   overflow: hidden;
   opacity: 0;
   transform: translateX(40px);
+  will-change: transform, opacity;
 }
 
 /* --- Open / close animations --- */
@@ -66,11 +112,6 @@
 
 .canvas-panel.canvas-closing {
   animation: canvas-slide-out 0.35s cubic-bezier(0.4, 0, 0.7, 1) forwards;
-}
-
-.canvas-resize-handle {
-  opacity: 0;
-  transform: translateX(10px);
 }
 
 .canvas-resize-handle.canvas-open {
@@ -166,6 +207,33 @@
   font-size: 12px;
   color: var(--text-weak);
   line-height: 1.5;
+}
+
+/* --- Toggle button to re-open dismissed dashboard --- */
+
+.canvas-panel-toggle {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 44px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-right: none;
+  color: var(--text-weak);
+  cursor: pointer;
+  z-index: 10;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.canvas-panel-toggle:hover {
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  color: var(--text-strong);
 }
 
 /* Composer and scroll-to-bottom are position:absolute inside

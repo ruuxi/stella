@@ -26,6 +26,7 @@ export const CanvasPanel = () => {
   const panelRef = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
   const lastCanvasRef = useRef<CanvasPayload | null>(null)
   const lastWidthRef = useRef(width)
 
@@ -40,7 +41,8 @@ export const CanvasPanel = () => {
     if (isOpen && canvas) {
       setClosing(false)
       // Delay one frame so the element mounts at its start state before animating
-      requestAnimationFrame(() => setVisible(true))
+      const frame = requestAnimationFrame(() => setVisible(true))
+      return () => cancelAnimationFrame(frame)
     }
   }, [isOpen, canvas])
 
@@ -69,8 +71,10 @@ export const CanvasPanel = () => {
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      if (e.button !== 0) return
       const startX = e.clientX
       const startWidth = widthRef.current
+      setIsResizing(true)
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
 
@@ -80,6 +84,7 @@ export const CanvasPanel = () => {
       }
 
       const handleMouseUp = () => {
+        setIsResizing(false)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
         document.removeEventListener('mousemove', handleMouseMove)
@@ -100,9 +105,13 @@ export const CanvasPanel = () => {
   if (!displayCanvas) return null
 
   const animClass = (closing || (!isOpen && visible)) ? 'canvas-closing' : (visible && isOpen) ? 'canvas-open' : ''
+  const shellClass = `canvas-panel-shell ${animClass}${isResizing ? ' canvas-resizing' : ''}`
 
   return (
-    <>
+    <div
+      className={shellClass}
+      style={{ '--canvas-panel-width': `${displayWidth}px` } as React.CSSProperties}
+    >
       <div className={`canvas-resize-handle ${animClass}`} onMouseDown={handleMouseDown}>
         <div className="canvas-resize-bar" />
         <button
@@ -120,7 +129,6 @@ export const CanvasPanel = () => {
       <div
         ref={panelRef}
         className={`canvas-panel ${animClass}`}
-        style={{ width: displayWidth }}
       >
         <div className="canvas-panel-content">
           <Suspense fallback={<div className="canvas-vite-loading"><Spinner size="md" /></div>}>
@@ -131,6 +139,6 @@ export const CanvasPanel = () => {
           </Suspense>
         </div>
       </div>
-    </>
+    </div>
   )
 }
