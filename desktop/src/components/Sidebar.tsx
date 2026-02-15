@@ -1,6 +1,6 @@
 import { useConvexAuth, useQuery } from "convex/react";
-import { authClient } from "@/lib/auth-client";
 import { api } from "@/convex/api";
+import { secureSignOut } from "@/services/auth";
 import { ThemePicker } from "./ThemePicker";
 
 interface SidebarProps {
@@ -72,7 +72,7 @@ const AuthButton = ({
       className="sidebar-nav-item"
       onClick={() => {
         if (isAuthenticated) {
-          authClient.signOut();
+          void secureSignOut();
         } else {
           onSignIn?.();
         }

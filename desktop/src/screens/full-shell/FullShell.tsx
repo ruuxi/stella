@@ -11,6 +11,7 @@ import { useTheme } from "../../theme/theme-context";
 import { useConversationEvents } from "../../hooks/use-conversation-events";
 import { useCanvasCommands } from "../../hooks/use-canvas-commands";
 import { getElectronApi } from "../../services/electron";
+import { secureSignOut } from "../../services/auth";
 import { api } from "@/convex/api";
 import { ShiftingGradient } from "../../components/background/ShiftingGradient";
 import { TitleBar } from "../../components/TitleBar";
@@ -450,7 +451,7 @@ export const FullShell = () => {
           }}
           onSignOut={() => {
             setSettingsDialogOpen(false);
-            import("@/lib/auth-client").then(({ authClient }) => authClient.signOut());
+            void secureSignOut();
           }}
         />
       </Suspense>

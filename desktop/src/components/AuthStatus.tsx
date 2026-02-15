@@ -1,6 +1,6 @@
 import { useConvexAuth, useQuery } from "convex/react";
-import { authClient } from "@/lib/auth-client";
 import { api } from "@/convex/api";
+import { secureSignOut } from "@/services/auth";
 
 export const AuthStatus = () => {
   const { isAuthenticated } = useConvexAuth();
@@ -21,7 +21,9 @@ export const AuthStatus = () => {
       <button
         className="auth-status-button"
         type="button"
-        onClick={() => authClient.signOut()}
+        onClick={() => {
+          void secureSignOut();
+        }}
       >
         Sign out
       </button>
