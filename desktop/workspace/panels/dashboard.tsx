@@ -3,6 +3,7 @@ import { useConvexAuth, useQuery } from "convex/react"
 import { useUiState } from "../../src/app/state/ui-state"
 import { useConversationEvents, getRunningTasks } from "../../src/hooks/use-conversation-events"
 import { useWelcomeSuggestions } from "../../src/hooks/use-welcome-suggestions"
+import { StellaAnimation } from "../../src/components/StellaAnimation"
 import { api } from "../../src/convex/api"
 import type { WelcomeSuggestion } from "../../src/services/synthesis"
 
@@ -363,13 +364,31 @@ const css = `
     overflow: hidden;
   }
 
+  /* --- Stella orb --- */
+
+  .db-stella-orb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: color-mix(in oklch, var(--foreground) 3%, transparent);
+    border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+    flex-shrink: 0;
+    margin: 8px 0;
+  }
+
   /* --- Empty state --- */
 
   .db-empty {
     flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 16px;
     padding: 24px;
   }
   .db-empty-text {
@@ -408,93 +427,102 @@ export default function Dashboard() {
       <style>{css}</style>
       <div className="db-root">
         <div className="db-content">
-          {isEmpty && (
+          {isEmpty ? (
             <div className="db-empty">
+              <div className="db-stella-orb">
+                <StellaAnimation width={64} height={48} />
+              </div>
               <span className="db-empty-text">
                 Your dashboard will populate as you use Stella
               </span>
             </div>
-          )}
-
-          {hasSuggestions && (
-            <div>
-              <div className="db-section-label">Suggestions</div>
-              <div className="db-suggestions">
-                {welcomeSuggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    className="db-suggestion-card"
-                    onClick={() => handleSuggestionClick(s)}
-                  >
-                    <div className="db-suggestion-content">
-                      <div className="db-suggestion-header">
-                        <span className="db-suggestion-title">{s.title}</span>
-                        <span className="db-suggestion-badge" data-category={s.category}>
-                          {CATEGORY_LABELS[s.category]}
-                        </span>
-                      </div>
-                      <span className="db-suggestion-desc">{s.description}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {hasTasks && (
-            <div>
-              <div className="db-section-label">Active Tasks</div>
-              <div className="db-tasks">
-                {runningTasks.map((task) => (
-                  <div key={task.id} className="db-task-card">
-                    <div className="db-task-description">{task.description}</div>
-                    <div className="db-task-meta">
-                      <span className="db-task-agent-badge">{task.agentType}</span>
-                      {task.statusText && (
-                        <span className="db-task-status">{task.statusText}</span>
-                      )}
-                    </div>
+          ) : (
+            <>
+              {hasSuggestions && (
+                <div>
+                  <div className="db-section-label">Suggestions</div>
+                  <div className="db-suggestions">
+                    {welcomeSuggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        className="db-suggestion-card"
+                        onClick={() => handleSuggestionClick(s)}
+                      >
+                        <div className="db-suggestion-content">
+                          <div className="db-suggestion-header">
+                            <span className="db-suggestion-title">{s.title}</span>
+                            <span className="db-suggestion-badge" data-category={s.category}>
+                              {CATEGORY_LABELS[s.category]}
+                            </span>
+                          </div>
+                          <span className="db-suggestion-desc">{s.description}</span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </div>
+              )}
 
-          {hasSchedule && (
-            <div>
-              <div className="db-section-label">Activity</div>
-              <div className="db-conveyor">
-                {scheduleItems.map((item) => (
-                  <div key={item.id} className="db-schedule-card">
-                    <div className="db-schedule-header">
-                      <span className="db-schedule-name">{item.name}</span>
-                      <span className="db-schedule-kind" data-kind={item.kind}>
-                        {item.kind === "scheduled" ? "Scheduled" : "Monitoring"}
-                      </span>
-                    </div>
-                    <div className="db-schedule-status">
-                      <span
-                        className="db-schedule-dot"
-                        data-status={statusDotValue(item.lastStatus)}
-                      />
-                      <span className="db-schedule-time">
-                        {item.lastRunAtMs
-                          ? formatRelativeTime(item.lastRunAtMs)
-                          : "Not run yet"}
-                      </span>
-                    </div>
-                    {item.nextRunAtMs && (
-                      <div className="db-schedule-time">
-                        Next: {formatRelativeTime(item.nextRunAtMs)}
-                      </div>
-                    )}
-                    {item.outputPreview && (
-                      <div className="db-schedule-preview">{item.outputPreview}</div>
-                    )}
-                  </div>
-                ))}
+              <div className="db-stella-orb">
+                <StellaAnimation width={64} height={48} />
               </div>
-            </div>
+
+              {hasTasks && (
+                <div>
+                  <div className="db-section-label">Active Tasks</div>
+                  <div className="db-tasks">
+                    {runningTasks.map((task) => (
+                      <div key={task.id} className="db-task-card">
+                        <div className="db-task-description">{task.description}</div>
+                        <div className="db-task-meta">
+                          <span className="db-task-agent-badge">{task.agentType}</span>
+                          {task.statusText && (
+                            <span className="db-task-status">{task.statusText}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {hasSchedule && (
+                <div>
+                  <div className="db-section-label">Activity</div>
+                  <div className="db-conveyor">
+                    {scheduleItems.map((item) => (
+                      <div key={item.id} className="db-schedule-card">
+                        <div className="db-schedule-header">
+                          <span className="db-schedule-name">{item.name}</span>
+                          <span className="db-schedule-kind" data-kind={item.kind}>
+                            {item.kind === "scheduled" ? "Scheduled" : "Monitoring"}
+                          </span>
+                        </div>
+                        <div className="db-schedule-status">
+                          <span
+                            className="db-schedule-dot"
+                            data-status={statusDotValue(item.lastStatus)}
+                          />
+                          <span className="db-schedule-time">
+                            {item.lastRunAtMs
+                              ? formatRelativeTime(item.lastRunAtMs)
+                              : "Not run yet"}
+                          </span>
+                        </div>
+                        {item.nextRunAtMs && (
+                          <div className="db-schedule-time">
+                            Next: {formatRelativeTime(item.nextRunAtMs)}
+                          </div>
+                        )}
+                        {item.outputPreview && (
+                          <div className="db-schedule-preview">{item.outputPreview}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
