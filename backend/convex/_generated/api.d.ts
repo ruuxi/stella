@@ -72,6 +72,7 @@ import type * as prompts_skill_selection from "../prompts/skill_selection.js";
 import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as reset from "../reset.js";
 import type * as scheduling_cron_jobs from "../scheduling/cron_jobs.js";
+import type * as scheduling_dashboard_queries from "../scheduling/dashboard_queries.js";
 import type * as scheduling_heartbeat from "../scheduling/heartbeat.js";
 import type * as shared_validators from "../shared_validators.js";
 import type * as tools_backend from "../tools/backend.js";
@@ -152,6 +153,7 @@ declare const fullApi: ApiFromModules<{
   "prompts/synthesis": typeof prompts_synthesis;
   reset: typeof reset;
   "scheduling/cron_jobs": typeof scheduling_cron_jobs;
+  "scheduling/dashboard_queries": typeof scheduling_dashboard_queries;
   "scheduling/heartbeat": typeof scheduling_heartbeat;
   shared_validators: typeof shared_validators;
   "tools/backend": typeof tools_backend;
