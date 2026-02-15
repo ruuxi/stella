@@ -6,7 +6,6 @@ import { ConversationEvents } from "../ConversationEvents";
 import { OnboardingView } from "./OnboardingOverlay";
 import { Composer } from "./Composer";
 import { CommandChips } from "../../components/chat/CommandChips";
-import { StellaAnimation } from "../../components/StellaAnimation";
 import { useCommandSuggestions, type CommandSuggestion } from "../../hooks/use-command-suggestions";
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "../../components/StellaAnimation";
@@ -166,9 +165,6 @@ export function ChatColumn({
 
       {isAuthenticated && onboardingDone && (
         <div className={onboardingExiting ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
-          <div className="composer-stella-ambient">
-            <StellaAnimation width={80} height={40} />
-          </div>
           <Composer
             message={message}
             setMessage={setMessage}
