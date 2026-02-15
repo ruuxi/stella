@@ -1,6 +1,7 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
-import { spritesExec } from "../agent/cloud_devices";
+import type { ActionCtx } from "../_generated/server";
+import { getSpritesTokenForOwner, spritesExec } from "../agent/cloud_devices";
 
 const MAX_OUTPUT = 30_000;
 
@@ -35,7 +36,16 @@ const formatExecResult = (result: { stdout: string; stderr: string; exit_code: n
  * Each tool call translates to a REST API call to `POST /v1/sprites/{name}/exec`.
  * The sprite auto-wakes from sleep on the first call (1-2s latency).
  */
-export const createCloudTools = (spriteName: string): ToolSet => {
+export const createCloudTools = (
+  ctx: ActionCtx,
+  ownerId: string,
+  spriteName: string,
+): ToolSet => {
+  const execOnSprite = async (command: string) => {
+    const token = await getSpritesTokenForOwner(ctx, ownerId);
+    return await spritesExec(token, spriteName, command);
+  };
+
   return {
     Bash: tool({
       description:
@@ -51,7 +61,7 @@ export const createCloudTools = (spriteName: string): ToolSet => {
           ? `cd "${args.working_directory}" && ${args.command}`
           : args.command;
         try {
-          const result = await spritesExec(spriteName, cmd);
+          const result = await execOnSprite(cmd);
           return formatExecResult(result);
         } catch (error) {
           return `Bash failed: ${(error as Error).message}`;
@@ -71,12 +81,12 @@ export const createCloudTools = (spriteName: string): ToolSet => {
         try {
           // Use sed for offset/limit, cat -n for line numbers
           const cmd = `sed -n '${offset},${offset + limit - 1}p' "${args.file_path}" | cat -n`;
-          const result = await spritesExec(spriteName, cmd);
+          const result = await execOnSprite(cmd);
           if (result.exit_code !== 0) {
             return result.stderr || `Failed to read ${args.file_path}`;
           }
           // Count total lines for header
-          const wcResult = await spritesExec(spriteName, `wc -l < "${args.file_path}"`);
+          const wcResult = await execOnSprite(`wc -l < "${args.file_path}"`);
           const totalLines = wcResult.stdout.trim();
           return `File has ${totalLines} lines. Showing from line ${offset}.\n${renderTruncated(result.stdout)}`;
         } catch (error) {
@@ -95,7 +105,7 @@ export const createCloudTools = (spriteName: string): ToolSet => {
           // Base64 encode to safely handle special characters
           const encoded = Buffer.from(args.content).toString("base64");
           const cmd = `mkdir -p "$(dirname "${args.file_path}")" && echo '${encoded}' | base64 -d > "${args.file_path}"`;
-          const result = await spritesExec(spriteName, cmd);
+          const result = await execOnSprite(cmd);
           if (result.exit_code !== 0) {
             return `Write failed: ${result.stderr}`;
           }
@@ -141,7 +151,7 @@ with open(path, "w") as f:
     f.write(content)
 print(f"Replaced {count if ${replaceAll} else 1} occurrence(s) in {path}")
 `.trim();
-          const result = await spritesExec(spriteName, `python3 -c '${pyScript.replace(/'/g, "'\\''")}'`);
+          const result = await execOnSprite(`python3 -c '${pyScript.replace(/'/g, "'\\''")}'`);
           if (result.exit_code !== 0) {
             return result.stderr || "Edit failed";
           }
@@ -160,8 +170,7 @@ print(f"Replaced {count if ${replaceAll} else 1} occurrence(s) in {path}")
       execute: async (args) => {
         const searchPath = args.path || "/home/sprite";
         try {
-          const result = await spritesExec(
-            spriteName,
+          const result = await execOnSprite(
             `find "${searchPath}" -name "${args.pattern}" -type f 2>/dev/null | head -100`,
           );
           if (!result.stdout.trim()) {
@@ -200,7 +209,7 @@ print(f"Replaced {count if ${replaceAll} else 1} occurrence(s) in {path}")
         parts.push(`| head -${maxResults}`);
 
         try {
-          const result = await spritesExec(spriteName, parts.join(" "));
+          const result = await execOnSprite(parts.join(" "));
           if (!result.stdout.trim() && result.exit_code === 1) {
             return `No matches for "${args.pattern}" in ${searchPath}`;
           }

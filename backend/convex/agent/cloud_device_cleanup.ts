@@ -2,7 +2,7 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
-import { spritesApi } from "./cloud_devices";
+import { getSpritesTokenForOwner, spritesApi } from "./cloud_devices";
 
 const RUNTIME_MODE_KEY = "runtime_mode";
 const INACTIVITY_RETENTION_MS = 45 * 24 * 60 * 60 * 1000;
@@ -51,8 +51,21 @@ export const cleanupInactive = internalAction({
 
     for (const candidate of candidates) {
       let canDeleteRecord = true;
+      let spritesToken: string;
       try {
-        await spritesApi(`/sprites/${candidate.spriteName}`, "DELETE");
+        spritesToken = await getSpritesTokenForOwner(ctx, candidate.ownerId);
+      } catch (error) {
+        canDeleteRecord = false;
+        failedDeletes += 1;
+        console.error("[cloud_device_cleanup] Missing owner token during sprite deletion:", {
+          ownerId: candidate.ownerId,
+          spriteName: candidate.spriteName,
+          error,
+        });
+        continue;
+      }
+      try {
+        await spritesApi(spritesToken, `/sprites/${candidate.spriteName}`, "DELETE");
         deletedSprites += 1;
       } catch (error) {
         if (!isSpriteNotFoundError(error)) {

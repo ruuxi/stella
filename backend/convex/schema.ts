@@ -196,6 +196,8 @@ export default defineSchema({
   devices: defineTable({
     ownerId: v.string(),
     deviceId: v.string(),
+    devicePublicKey: v.optional(v.string()),
+    lastSignedAtMs: v.optional(v.number()),
     online: v.boolean(),
     lastSeenAt: v.number(),
     platform: v.optional(v.string()),
@@ -483,4 +485,3 @@ export default defineSchema({
     .index("by_owner_updated", ["ownerId", "updatedAt"])
     .index("by_next_run", ["nextRunAtMs", "ownerId"]),
 });
-

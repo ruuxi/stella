@@ -1,7 +1,46 @@
 import { mutation, internalMutation, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { requireUserId } from "../auth";
+
+const HEARTBEAT_SIGNATURE_MAX_AGE_MS = 2 * 60_000;
+
+const base64ToBytes = (value: string): Uint8Array => {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const verifyHeartbeatSignature = async (args: {
+  deviceId: string;
+  signedAtMs: number;
+  signature: string;
+  publicKey: string;
+}): Promise<boolean> => {
+  try {
+    const keyBytes = base64ToBytes(args.publicKey);
+    const sigBytes = base64ToBytes(args.signature);
+    const message = new TextEncoder().encode(`${args.deviceId}:${args.signedAtMs}`);
+    const key = await crypto.subtle.importKey(
+      "spki",
+      keyBytes.buffer as ArrayBuffer,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    return await crypto.subtle.verify(
+      "Ed25519",
+      key,
+      sigBytes.buffer as ArrayBuffer,
+      message.buffer as ArrayBuffer,
+    );
+  } catch {
+    return false;
+  }
+};
 
 // ---------------------------------------------------------------------------
 // Public Mutations — called from Electron app
@@ -15,20 +54,50 @@ export const heartbeat = mutation({
   args: {
     deviceId: v.string(),
     platform: v.optional(v.string()),
+    signedAtMs: v.number(),
+    signature: v.string(),
+    publicKey: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const now = Date.now();
+    if (Math.abs(now - args.signedAtMs) > HEARTBEAT_SIGNATURE_MAX_AGE_MS) {
+      throw new ConvexError({
+        code: "UNAUTHORIZED",
+        message: "Heartbeat signature timestamp expired.",
+      });
+    }
+    const signatureOk = await verifyHeartbeatSignature({
+      deviceId: args.deviceId,
+      signedAtMs: args.signedAtMs,
+      signature: args.signature,
+      publicKey: args.publicKey,
+    });
+    if (!signatureOk) {
+      throw new ConvexError({
+        code: "UNAUTHORIZED",
+        message: "Invalid device heartbeat signature.",
+      });
+    }
 
     const existing = await ctx.db
       .query("devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
       .first();
 
+    if (existing?.devicePublicKey && existing.devicePublicKey !== args.publicKey) {
+      throw new ConvexError({
+        code: "UNAUTHORIZED",
+        message: "Device key mismatch for owner.",
+      });
+    }
+
     if (existing) {
       await ctx.db.patch(existing._id, {
         deviceId: args.deviceId,
+        devicePublicKey: args.publicKey,
+        lastSignedAtMs: args.signedAtMs,
         online: true,
         lastSeenAt: now,
         ...(args.platform !== undefined ? { platform: args.platform } : {}),
@@ -37,6 +106,8 @@ export const heartbeat = mutation({
       await ctx.db.insert("devices", {
         ownerId,
         deviceId: args.deviceId,
+        devicePublicKey: args.publicKey,
+        lastSignedAtMs: args.signedAtMs,
         online: true,
         lastSeenAt: now,
         platform: args.platform,

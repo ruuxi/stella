@@ -114,6 +114,74 @@ export const createSecret = mutation({
   },
 });
 
+export const upsertManagedSecretForOwner = internalMutation({
+  args: {
+    ownerId: v.string(),
+    provider: v.string(),
+    label: v.string(),
+    plaintext: v.string(),
+    metadata: optionalJsonValueValidator,
+  },
+  returns: v.object({
+    secretId: v.id("secrets"),
+    provider: v.string(),
+    label: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const encryptedPayload = await encryptSecret(args.plaintext);
+    const encryptedValue = JSON.stringify(encryptedPayload);
+
+    const existing = await ctx.db
+      .query("secrets")
+      .withIndex("by_owner_and_provider_and_updated", (q) =>
+        q.eq("ownerId", args.ownerId).eq("provider", args.provider),
+      )
+      .order("desc")
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        label: args.label,
+        encryptedValue,
+        keyVersion: encryptedPayload.keyVersion,
+        status: "active",
+        metadata: args.metadata ?? existing.metadata,
+        updatedAt: now,
+      });
+      return {
+        secretId: existing._id,
+        provider: args.provider,
+        label: args.label,
+        createdAt: existing.createdAt,
+        updatedAt: now,
+      };
+    }
+
+    const secretId = await ctx.db.insert("secrets", {
+      ownerId: args.ownerId,
+      provider: args.provider,
+      label: args.label,
+      encryptedValue,
+      keyVersion: encryptedPayload.keyVersion,
+      status: "active",
+      metadata: args.metadata,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      secretId,
+      provider: args.provider,
+      label: args.label,
+      createdAt: now,
+      updatedAt: now,
+    };
+  },
+});
+
 export const listSecrets = query({
   args: {
     provider: v.optional(v.string()),

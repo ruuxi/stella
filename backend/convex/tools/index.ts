@@ -34,8 +34,8 @@ export const createTools = (
   const coreTools = context ? createCoreDeviceTools(ctx, context) : {};
 
   // Tier 1: Cloud tools (if 24/7 mode enabled and no local device)
-  const cloudTools = !context && options.spriteName
-    ? createCloudTools(options.spriteName)
+  const cloudTools = !context && options.spriteName && options.ownerId
+    ? createCloudTools(ctx, options.ownerId, options.spriteName)
     : {};
 
   // Tier 0: Backend tools (always available)

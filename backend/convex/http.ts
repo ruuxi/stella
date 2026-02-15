@@ -151,6 +151,9 @@ const rejectDisallowedCorsOrigin = (request: Request): Response | null => {
 };
 
 const WEBHOOK_RATE_WINDOW_MS = 60_000;
+const BRIDGE_REPLAY_WINDOW_MS = 5 * 60_000;
+const BRIDGE_MAX_CLOCK_SKEW_SECONDS = 300;
+const BRIDGE_NONCE_MAX_LENGTH = 128;
 
 const constantTimeEqual = (a: string, b: string): boolean => {
   if (a.length !== b.length) return false;
@@ -159,6 +162,58 @@ const constantTimeEqual = (a: string, b: string): boolean => {
     diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   return diff === 0;
+};
+
+const bytesToHex = (bytes: Uint8Array) =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+const computeHmacSha256Hex = async (secret: string, message: string) => {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  return bytesToHex(new Uint8Array(mac));
+};
+
+const verifyBridgeSignedRequest = async (
+  request: Request,
+  sessionSecret: string,
+  rawBody: string,
+): Promise<Response | { nonce: string }> => {
+  const timestamp = request.headers.get("x-bridge-timestamp") ?? "";
+  const nonce = request.headers.get("x-bridge-nonce") ?? "";
+  const signature = request.headers.get("x-bridge-signature") ?? "";
+
+  if (!timestamp || !nonce || !signature) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  if (nonce.length > BRIDGE_NONCE_MAX_LENGTH) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const timestampSeconds = Number(timestamp);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (
+    !Number.isFinite(timestampSeconds) ||
+    Math.abs(nowSeconds - timestampSeconds) > BRIDGE_MAX_CLOCK_SKEW_SECONDS
+  ) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const expected = await computeHmacSha256Hex(
+    sessionSecret,
+    `${timestamp}.${nonce}.${rawBody}`,
+  );
+  if (!constantTimeEqual(expected, signature)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  return { nonce };
 };
 
 const rateLimitResponse = (retryAfterMs: number) =>
@@ -1658,11 +1713,10 @@ http.route({
   path: "/api/bridge/poll",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = request.headers.get("x-bridge-secret") ?? "";
-
+    const rawBody = await request.text();
     let body: { provider?: string; ownerId?: string };
     try {
-      body = await request.json();
+      body = JSON.parse(rawBody) as { provider?: string; ownerId?: string };
     } catch {
       return new Response("Invalid JSON", { status: 400 });
     }
@@ -1675,8 +1729,39 @@ http.route({
       ownerId: body.ownerId,
       provider: body.provider,
     });
-    if (!session || !constantTimeEqual(secret, session.webhookSecret)) {
+    if (!session) {
       return new Response("Unauthorized", { status: 401 });
+    }
+
+    const signatureResult = await verifyBridgeSignedRequest(
+      request,
+      session.webhookSecret,
+      rawBody,
+    );
+    if (signatureResult instanceof Response) {
+      return signatureResult;
+    }
+
+    const nonceResult = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: "bridge_nonce",
+      key: `${body.ownerId}:${body.provider}:${signatureResult.nonce}`,
+      limit: 1,
+      windowMs: BRIDGE_REPLAY_WINDOW_MS,
+      blockMs: BRIDGE_REPLAY_WINDOW_MS,
+    });
+    if (!nonceResult.allowed) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: "bridge",
+      key: `${body.ownerId}:${body.provider}:poll`,
+      limit: 120,
+      windowMs: WEBHOOK_RATE_WINDOW_MS,
+      blockMs: WEBHOOK_RATE_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterMs);
     }
 
     const messages = await ctx.runMutation(internal.channels.bridge_outbound.claim, {
@@ -1698,8 +1783,7 @@ http.route({
   path: "/api/webhooks/bridge",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = request.headers.get("x-bridge-secret") ?? "";
-
+    const rawBody = await request.text();
     let payload: {
       type: string;
       provider?: string;
@@ -1713,7 +1797,18 @@ http.route({
       error?: string;
     };
     try {
-      payload = await request.json();
+      payload = JSON.parse(rawBody) as {
+        type: string;
+        provider?: string;
+        ownerId?: string;
+        externalUserId?: string;
+        text?: string;
+        displayName?: string;
+        replyCallback?: string;
+        authState?: unknown;
+        status?: string;
+        error?: string;
+      };
     } catch {
       return new Response("Invalid JSON", { status: 400 });
     }
@@ -1726,7 +1821,27 @@ http.route({
       ownerId: payload.ownerId,
       provider: payload.provider,
     });
-    if (!session || !constantTimeEqual(secret, session.webhookSecret)) {
+    if (!session) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const signatureResult = await verifyBridgeSignedRequest(
+      request,
+      session.webhookSecret,
+      rawBody,
+    );
+    if (signatureResult instanceof Response) {
+      return signatureResult;
+    }
+
+    const nonceResult = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: "bridge_nonce",
+      key: `${payload.ownerId}:${payload.provider}:${signatureResult.nonce}`,
+      limit: 1,
+      windowMs: BRIDGE_REPLAY_WINDOW_MS,
+      blockMs: BRIDGE_REPLAY_WINDOW_MS,
+    });
+    if (!nonceResult.allowed) {
       return new Response("Unauthorized", { status: 401 });
     }
 

@@ -16,6 +16,9 @@ import { requireUserId } from "../auth";
 // ---------------------------------------------------------------------------
 
 const SPRITES_API_BASE = "https://api.sprites.dev/v1";
+const SPRITES_SECRET_PROVIDER = "sprites_api_token";
+const SPRITES_OWNER_TOKEN_MAP_ENV = "SPRITES_TOKENS_JSON";
+const SPRITES_MANAGED_SECRET_LABEL = "Managed Sprites API token";
 
 export type SpritesExecResult = {
   stdout: string;
@@ -325,9 +328,78 @@ const parseExecResponse = (raw: string, rawBuffer?: ArrayBuffer): SpritesExecRes
   throw new Error(`Unexpected Sprites exec response: ${trimmed.slice(0, 240)}`);
 };
 
-export const spritesApi = async (path: string, method = "GET", body?: unknown) => {
-  const token = process.env.SPRITES_TOKEN;
-  if (!token) throw new Error("Missing SPRITES_TOKEN environment variable");
+type SpritesTokenQueryCtx = {
+  runQuery: ActionCtx["runQuery"];
+  runMutation: ActionCtx["runMutation"];
+};
+
+const resolveManagedSpritesToken = (ownerId: string): string | null => {
+  const ownerTokenMapRaw = process.env[SPRITES_OWNER_TOKEN_MAP_ENV];
+  if (ownerTokenMapRaw?.trim()) {
+    try {
+      const parsed = JSON.parse(ownerTokenMapRaw) as unknown;
+      if (parsed && typeof parsed === "object") {
+        const ownerToken = (parsed as Record<string, unknown>)[ownerId];
+        if (typeof ownerToken === "string" && ownerToken.trim()) {
+          return ownerToken.trim();
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `[cloud_devices] Failed to parse ${SPRITES_OWNER_TOKEN_MAP_ENV}:`,
+        error,
+      );
+    }
+  }
+  return null;
+};
+
+export const getSpritesTokenForOwner = async (
+  ctx: SpritesTokenQueryCtx,
+  ownerId: string,
+): Promise<string> => {
+  const token = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
+    ownerId,
+    provider: SPRITES_SECRET_PROVIDER,
+  });
+  if (token) {
+    return token;
+  }
+
+  const managedToken = resolveManagedSpritesToken(ownerId);
+  if (!managedToken) {
+    throw new Error(
+      `Missing Sprites API token for owner (${SPRITES_SECRET_PROVIDER}). Add an owner token entry to ${SPRITES_OWNER_TOKEN_MAP_ENV} in backend environment for automatic provisioning.`,
+    );
+  }
+
+  try {
+    await ctx.runMutation(internal.data.secrets.upsertManagedSecretForOwner, {
+      ownerId,
+      provider: SPRITES_SECRET_PROVIDER,
+      label: SPRITES_MANAGED_SECRET_LABEL,
+      plaintext: managedToken,
+      metadata: {
+        managed: true,
+        source: SPRITES_OWNER_TOKEN_MAP_ENV,
+      },
+    });
+  } catch (error) {
+    console.warn(
+      `[cloud_devices] Failed to persist managed ${SPRITES_SECRET_PROVIDER} for owner ${ownerId}:`,
+      error,
+    );
+  }
+
+  return managedToken;
+};
+
+export const spritesApi = async (
+  token: string,
+  path: string,
+  method = "GET",
+  body?: unknown,
+) => {
 
   const res = await fetch(`${SPRITES_API_BASE}${path}`, {
     method,
@@ -351,10 +423,12 @@ export const spritesApi = async (path: string, method = "GET", body?: unknown) =
  * Like spritesApi but returns raw text. Used for endpoints that return
  * streaming NDJSON (services start/stop, checkpoints create/restore).
  */
-export const spritesApiText = async (path: string, method = "GET", body?: unknown) => {
-  const token = process.env.SPRITES_TOKEN;
-  if (!token) throw new Error("Missing SPRITES_TOKEN environment variable");
-
+export const spritesApiText = async (
+  token: string,
+  path: string,
+  method = "GET",
+  body?: unknown,
+) => {
   const res = await fetch(`${SPRITES_API_BASE}${path}`, {
     method,
     headers: {
@@ -373,12 +447,10 @@ export const spritesApiText = async (path: string, method = "GET", body?: unknow
 };
 
 export const spritesExec = async (
+  token: string,
   spriteName: string,
   command: string,
 ): Promise<SpritesExecResult> => {
-  const token = process.env.SPRITES_TOKEN;
-  if (!token) throw new Error("Missing SPRITES_TOKEN environment variable");
-
   const params = new URLSearchParams();
   params.append("cmd", "bash");
   params.append("cmd", "-c");
@@ -403,11 +475,12 @@ export const spritesExec = async (
 };
 
 export const spritesExecChecked = async (
+  token: string,
   spriteName: string,
   command: string,
   context = "Sprites command",
 ): Promise<SpritesExecResult> => {
-  const result = await spritesExec(spriteName, command);
+  const result = await spritesExec(token, spriteName, command);
   if (result.exit_code !== 0) {
     const stderr = result.stderr?.trim();
     const stdout = result.stdout?.trim();
@@ -642,13 +715,16 @@ export const setupSprite = internalAction({
   args: {
     deviceId: v.id("cloud_devices"),
     spriteName: v.string(),
+    ownerId: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     try {
+      const spritesToken = await getSpritesTokenForOwner(ctx, args.ownerId);
       // Install additional tools the base image may not have
       // Sprites already include: Node 22, Python 3.13, Git, sqlite3, ripgrep
       await spritesExecChecked(
+        spritesToken,
         args.spriteName,
         "apt-get update -qq && apt-get install -y -qq jq curl > /dev/null 2>&1",
         "Sprite package install",
@@ -656,6 +732,7 @@ export const setupSprite = internalAction({
 
       // Install Playwright Chromium for browser automation
       await spritesExecChecked(
+        spritesToken,
         args.spriteName,
         "npx playwright install chromium --with-deps > /dev/null 2>&1",
         "Playwright install",
@@ -663,9 +740,12 @@ export const setupSprite = internalAction({
 
       // Create a checkpoint after setup for rollback safety
       // Checkpoint creation returns streaming NDJSON, use text variant
-      const checkpointResponse = await spritesApiText(`/sprites/${args.spriteName}/checkpoint`, "POST", {
-        comment: "initial-setup",
-      });
+      const checkpointResponse = await spritesApiText(
+        spritesToken,
+        `/sprites/${args.spriteName}/checkpoint`,
+        "POST",
+        { comment: "initial-setup" },
+      );
       assertNdjsonNoError(checkpointResponse, "Sprite checkpoint create");
 
       await ctx.runMutation(internal.agent.cloud_devices.updateStatus, {
@@ -744,6 +824,7 @@ export const getActive = internalQuery({
 const ensureSingleCloudDeviceForOwner = async (
   ctx: ActionCtx,
   ownerId: string,
+  spritesToken?: string,
 ): Promise<Doc<"cloud_devices"> | null> => {
   const records = await ctx.runQuery(internal.agent.cloud_devices.listForOwner, { ownerId });
   const primary = pickPrimaryCloudDevice(records);
@@ -761,8 +842,11 @@ const ensureSingleCloudDeviceForOwner = async (
       continue;
     }
     deletedSpriteNames.add(duplicate.spriteName);
+    if (!spritesToken) {
+      continue;
+    }
     try {
-      await spritesApi(`/sprites/${duplicate.spriteName}`, "DELETE");
+      await spritesApi(spritesToken, `/sprites/${duplicate.spriteName}`, "DELETE");
     } catch (error) {
       console.error("[cloud_devices] Duplicate sprite deletion error (continuing):", error);
     }
@@ -775,7 +859,8 @@ const ensure247ForOwner = async (
   ctx: ActionCtx,
   ownerId: string,
 ): Promise<Enable247Result> => {
-  const existing = await ensureSingleCloudDeviceForOwner(ctx, ownerId);
+  const spritesToken = await getSpritesTokenForOwner(ctx, ownerId);
+  const existing = await ensureSingleCloudDeviceForOwner(ctx, ownerId, spritesToken);
   if (existing && existing.status !== "error") {
     await ctx.runMutation(internal.agent.cloud_devices.touchActivity, { ownerId });
     await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
@@ -788,7 +873,7 @@ const ensure247ForOwner = async (
 
   if (existing && existing.status === "error") {
     try {
-      await spritesApi(`/sprites/${existing.spriteName}`, "DELETE");
+      await spritesApi(spritesToken, `/sprites/${existing.spriteName}`, "DELETE");
     } catch (error) {
       console.error("[cloud_devices] Error-state sprite deletion error (continuing):", error);
     }
@@ -799,7 +884,7 @@ const ensure247ForOwner = async (
 
   const spriteName = buildSpriteNameForOwner(ownerId);
   try {
-    await spritesApi("/sprites", "POST", { name: spriteName });
+    await spritesApi(spritesToken, "/sprites", "POST", { name: spriteName });
   } catch (error) {
     if (!isSpriteAlreadyExistsError(error)) {
       throw error;
@@ -817,6 +902,7 @@ const ensure247ForOwner = async (
     await ctx.scheduler.runAfter(0, internal.agent.cloud_devices.setupSprite, {
       deviceId: result.cloudDevice._id,
       spriteName: result.cloudDevice.spriteName,
+      ownerId,
     });
   }
 

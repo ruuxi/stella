@@ -11,7 +11,11 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { requireUserId } from "../auth";
 import { processIncomingMessage } from "./utils";
-import { spritesApi, spritesApiText, spritesExec, spritesExecChecked } from "../agent/cloud_devices";
+import {
+  getSpritesTokenForOwner,
+  spritesExec,
+  spritesExecChecked,
+} from "../agent/cloud_devices";
 import {
   decryptSecretIfNeeded,
   encryptSecret,
@@ -133,7 +137,9 @@ function getBridgeServiceCode(provider: string): string {
 }
 
 function getBridgeDependencies(provider: string): string {
-  if (provider === "whatsapp") return "@whiskeysockets/baileys qrcode pino";
+  if (provider === "whatsapp") {
+    return "@whiskeysockets/baileys@6.7.16 qrcode@1.5.4 pino@9.9.5";
+  }
   if (provider === "signal") return ""; // signal-cli is a standalone binary
   return "";
 }
@@ -154,6 +160,25 @@ function generateBridgeWebhookSecret(): string {
 
   throw new Error("Secure random generator unavailable for bridge webhook secret");
 }
+
+const shellSingleQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+
+const buildBridgeRuntimeEnv = (args: {
+  ownerId: string;
+  webhookSecret: string;
+}): Record<string, string> => ({
+  STELLA_BRIDGE_WEBHOOK_URL: `${process.env.CONVEX_SITE_URL}/api/webhooks/bridge`,
+  STELLA_BRIDGE_POLL_URL: `${process.env.CONVEX_SITE_URL}/api/bridge/poll`,
+  STELLA_BRIDGE_WEBHOOK_SECRET: args.webhookSecret,
+  STELLA_BRIDGE_OWNER_ID: args.ownerId,
+});
+
+const buildBridgeStartCommand = (env: Record<string, string>): string => {
+  const envPrefix = Object.entries(env)
+    .map(([key, value]) => `${key}=${shellSingleQuote(value)}`)
+    .join(" ");
+  return `cd /home/sprite/stella-bridge && ${envPrefix} nohup node bridge.js > bridge.log 2>&1 &`;
+};
 
 // ---------------------------------------------------------------------------
 // Adaptive Wake — AIMD with recency-based tiers
@@ -526,8 +551,11 @@ export const deployBridge = internalAction({
   returns: v.null(),
   handler: async (ctx, args) => {
     try {
+      const spritesToken = await getSpritesTokenForOwner(ctx, args.ownerId);
+
       // 1. Create bridge directory
       await spritesExecChecked(
+        spritesToken,
         args.spriteName,
         "mkdir -p /home/sprite/stella-bridge",
         "Bridge directory creation",
@@ -537,12 +565,13 @@ export const deployBridge = internalAction({
       const bridgeCode = getBridgeServiceCode(args.provider);
       const encodedCode = btoa(bridgeCode);
       await spritesExecChecked(
+        spritesToken,
         args.spriteName,
         `echo '${encodedCode}' | base64 -d > /home/sprite/stella-bridge/bridge.js`,
         "Bridge code write",
       );
 
-      // 3. Write config
+      // 3. Resolve runtime env (do not persist secrets to disk)
       const bridgeSession = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
         ownerId: args.ownerId,
         provider: args.provider,
@@ -554,26 +583,18 @@ export const deployBridge = internalAction({
       if (!webhookSecret) {
         throw new Error("Missing bridge webhook secret");
       }
-
-      const config = {
-        provider: args.provider,
-        webhookUrl: `${process.env.CONVEX_SITE_URL}/api/webhooks/bridge`,
-        webhookSecret,
+      const runtimeEnv = buildBridgeRuntimeEnv({
         ownerId: args.ownerId,
-      };
-      const encodedConfig = btoa(JSON.stringify(config));
-      await spritesExecChecked(
-        args.spriteName,
-        `echo '${encodedConfig}' | base64 -d > /home/sprite/stella-bridge/config.json`,
-        "Bridge config write",
-      );
+        webhookSecret,
+      });
 
       // 4. Install dependencies
       const deps = getBridgeDependencies(args.provider);
       if (deps) {
         await spritesExecChecked(
+          spritesToken,
           args.spriteName,
-          `cd /home/sprite/stella-bridge && npm install ${deps} 2>&1`,
+          `cd /home/sprite/stella-bridge && npm install --omit=dev ${deps} 2>&1`,
           "Bridge dependency install",
         );
       }
@@ -582,6 +603,7 @@ export const deployBridge = internalAction({
       if (args.provider === "signal") {
         // Wait for any existing apt-get to finish, then install Java + signal-cli
         await spritesExecChecked(
+          spritesToken,
           args.spriteName,
           `while fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done && ` +
             `if ! command -v java >/dev/null 2>&1; then ` +
@@ -598,8 +620,9 @@ export const deployBridge = internalAction({
       // NOTE: Sprites Services API is broken in rc31 ("service name required" routing bug).
       // Using exec as a workaround until the Services API is fixed.
       await spritesExecChecked(
+        spritesToken,
         args.spriteName,
-        `cd /home/sprite/stella-bridge && nohup node bridge.js > bridge.log 2>&1 &`,
+        buildBridgeStartCommand(runtimeEnv),
         "Bridge process start",
       );
 
@@ -641,7 +664,8 @@ export const wakeSprite = internalAction({
     const recentHeartbeat = session.lastHeartbeatAt && now - session.lastHeartbeatAt < 20_000;
     if (!recentHeartbeat) {
       try {
-        await spritesExec(session.spriteName, "echo ok");
+        const spritesToken = await getSpritesTokenForOwner(ctx, session.ownerId);
+        await spritesExec(spritesToken, session.spriteName, "echo ok");
         await ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
           ownerId: session.ownerId,
         });
@@ -802,7 +826,9 @@ export const stopBridge = action({
     if (sessionMode === "cloud" && session.spriteName) {
       // Kill the bridge process on the sprite
       try {
+        const spritesToken = await getSpritesTokenForOwner(ctx, ownerId);
         await spritesExecChecked(
+          spritesToken,
           session.spriteName,
           `pkill -f 'node.*bridge.js' || true`,
           "Bridge process stop",
@@ -832,10 +858,13 @@ export const getBridgeBundle = action({
   args: { provider: v.string() },
   returns: v.object({
     code: v.string(),
-    config: v.string(),
+    env: v.record(v.string(), v.string()),
     dependencies: v.string(),
   }),
-  handler: async (ctx, args): Promise<{ code: string; config: string; dependencies: string }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ code: string; env: Record<string, string>; dependencies: string }> => {
     const ownerId = await requireUserId(ctx);
     const session: { webhookSecret: string } | null = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId,
@@ -846,16 +875,13 @@ export const getBridgeBundle = action({
     }
 
     const code: string = getBridgeServiceCode(args.provider);
-    const configStr: string = JSON.stringify({
-      provider: args.provider,
-      webhookUrl: `${process.env.CONVEX_SITE_URL}/api/webhooks/bridge`,
-      pollUrl: `${process.env.CONVEX_SITE_URL}/api/bridge/poll`,
-      webhookSecret: session.webhookSecret,
+    const env = buildBridgeRuntimeEnv({
       ownerId,
+      webhookSecret: session.webhookSecret,
     });
     const dependencies: string = getBridgeDependencies(args.provider);
 
-    return { code, config: configStr, dependencies };
+    return { code, env, dependencies };
   },
 });
 
@@ -1090,23 +1116,74 @@ export const handleBridgeError = internalAction({
 
 const WHATSAPP_BRIDGE_CODE = `
 const path = require("path");
-const config = require("./config.json");
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const QRCode = require("qrcode");
 const pino = require("pino");
 
+const config = {
+  webhookUrl: process.env.STELLA_BRIDGE_WEBHOOK_URL || "",
+  pollUrl: process.env.STELLA_BRIDGE_POLL_URL || "",
+  webhookSecret: process.env.STELLA_BRIDGE_WEBHOOK_SECRET || "",
+  ownerId: process.env.STELLA_BRIDGE_OWNER_ID || "",
+};
+if (!config.webhookUrl || !config.pollUrl || !config.webhookSecret || !config.ownerId) {
+  throw new Error("Missing required bridge environment variables.");
+}
+
 const logger = pino({ level: "silent" });
 let sock = null;
+let bridgeMacKeyPromise = null;
+
+const bytesToHex = (bytes) =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+async function getBridgeMacKey() {
+  if (!bridgeMacKeyPromise) {
+    const encoder = new TextEncoder();
+    bridgeMacKeyPromise = crypto.subtle.importKey(
+      "raw",
+      encoder.encode(config.webhookSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+  }
+  return bridgeMacKeyPromise;
+}
+
+async function signedPost(url, body) {
+  const payload = JSON.stringify(body);
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : \`\${Date.now()}-\${Math.random().toString(16).slice(2)}\`;
+  const key = await getBridgeMacKey();
+  const encoder = new TextEncoder();
+  const mac = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(\`\${timestamp}.\${nonce}.\${payload}\`),
+  );
+  const signature = bytesToHex(new Uint8Array(mac));
+
+  return await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-bridge-timestamp": timestamp,
+      "x-bridge-nonce": nonce,
+      "x-bridge-signature": signature,
+    },
+    body: payload,
+  });
+}
 
 async function postWebhook(body) {
   try {
-    await fetch(config.webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-bridge-secret": config.webhookSecret,
-      },
-      body: JSON.stringify({ ...body, provider: "whatsapp", ownerId: config.ownerId }),
+    await signedPost(config.webhookUrl, {
+      ...body,
+      provider: "whatsapp",
+      ownerId: config.ownerId,
     });
   } catch (err) {
     console.error("[bridge] Webhook POST failed:", err.message);
@@ -1116,13 +1193,9 @@ async function postWebhook(body) {
 async function pollForReplies() {
   while (true) {
     try {
-      const res = await fetch(config.pollUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-bridge-secret": config.webhookSecret,
-        },
-        body: JSON.stringify({ provider: "whatsapp", ownerId: config.ownerId }),
+      const res = await signedPost(config.pollUrl, {
+        provider: "whatsapp",
+        ownerId: config.ownerId,
       });
       if (res.ok) {
         const data = await res.json();
@@ -1240,19 +1313,69 @@ pollForReplies();
 const SIGNAL_BRIDGE_CODE = `
 const path = require("path");
 const { spawn } = require("child_process");
-const config = require("./config.json");
+const config = {
+  webhookUrl: process.env.STELLA_BRIDGE_WEBHOOK_URL || "",
+  pollUrl: process.env.STELLA_BRIDGE_POLL_URL || "",
+  webhookSecret: process.env.STELLA_BRIDGE_WEBHOOK_SECRET || "",
+  ownerId: process.env.STELLA_BRIDGE_OWNER_ID || "",
+};
+if (!config.webhookUrl || !config.pollUrl || !config.webhookSecret || !config.ownerId) {
+  throw new Error("Missing required bridge environment variables.");
+}
 
 let signalProcess = null;
+let bridgeMacKeyPromise = null;
+
+const bytesToHex = (bytes) =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+async function getBridgeMacKey() {
+  if (!bridgeMacKeyPromise) {
+    const encoder = new TextEncoder();
+    bridgeMacKeyPromise = crypto.subtle.importKey(
+      "raw",
+      encoder.encode(config.webhookSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+  }
+  return bridgeMacKeyPromise;
+}
+
+async function signedPost(url, body) {
+  const payload = JSON.stringify(body);
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : \`\${Date.now()}-\${Math.random().toString(16).slice(2)}\`;
+  const key = await getBridgeMacKey();
+  const encoder = new TextEncoder();
+  const mac = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(\`\${timestamp}.\${nonce}.\${payload}\`),
+  );
+  const signature = bytesToHex(new Uint8Array(mac));
+
+  return await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-bridge-timestamp": timestamp,
+      "x-bridge-nonce": nonce,
+      "x-bridge-signature": signature,
+    },
+    body: payload,
+  });
+}
 
 async function postWebhook(body) {
   try {
-    await fetch(config.webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-bridge-secret": config.webhookSecret,
-      },
-      body: JSON.stringify({ ...body, provider: "signal", ownerId: config.ownerId }),
+    await signedPost(config.webhookUrl, {
+      ...body,
+      provider: "signal",
+      ownerId: config.ownerId,
     });
   } catch (err) {
     console.error("[bridge] Webhook POST failed:", err.message);
@@ -1265,13 +1388,9 @@ const SIGNAL_RPC_URL = "http://127.0.0.1:8081/api/v1/rpc";
 async function pollForReplies() {
   while (true) {
     try {
-      const res = await fetch(config.pollUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-bridge-secret": config.webhookSecret,
-        },
-        body: JSON.stringify({ provider: "signal", ownerId: config.ownerId }),
+      const res = await signedPost(config.pollUrl, {
+        provider: "signal",
+        ownerId: config.ownerId,
       });
       if (res.ok) {
         const data = await res.json();
