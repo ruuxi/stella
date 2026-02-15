@@ -5,11 +5,12 @@ import {
   query,
 } from "../_generated/server";
 import { components, internal } from "../_generated/api";
-import { v } from "convex/values";
+import { v, Infer } from "convex/values";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import type { ActionCtx } from "../_generated/server";
 import { runAgentTurn } from "../automation/runner";
 import { requireUserId } from "../auth";
+import { optionalChannelEnvelopeValidator } from "../shared_validators";
 
 type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
@@ -553,6 +554,16 @@ export async function processIncomingMessage(args: {
   externalUserId: string;
   text: string;
   groupId?: string;
+  attachments?: Array<{
+    id?: string;
+    name?: string;
+    mimeType?: string;
+    url?: string;
+    size?: number;
+    kind?: string;
+  }>;
+  channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
+  respond?: boolean;
 }): Promise<{ text: string } | null> {
   let connection = args.ownerId
     ? await args.ctx.runQuery(
@@ -651,8 +662,19 @@ export async function processIncomingMessage(args: {
     conversationId,
     type: "user_message",
     deviceId: `channel:${args.provider}`,
-    payload: { text: args.text },
+    payload: {
+      text: args.text,
+      source: `channel:${args.provider}`,
+      ...(args.attachments && args.attachments.length > 0
+        ? { attachments: args.attachments }
+        : {}),
+    },
+    channelEnvelope: args.channelEnvelope,
   });
+
+  if (args.respond === false) {
+    return { text: "" };
+  }
 
   // Resolve execution target: local device if online, else cloud, else backend-only
   const { targetDeviceId, spriteName } = await args.ctx.runQuery(

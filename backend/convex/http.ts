@@ -225,6 +225,166 @@ const rateLimitResponse = (retryAfterMs: number) =>
     },
   });
 
+type ConnectorAttachment = {
+  id?: string;
+  name?: string;
+  mimeType?: string;
+  url?: string;
+  size?: number;
+  kind?: string;
+};
+
+const extractTelegramAttachments = (message: {
+  photo?: Array<{ file_id?: string; file_size?: number }>;
+  video?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+  document?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+  audio?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+  voice?: { file_id?: string; file_size?: number; mime_type?: string };
+  sticker?: { file_id?: string; emoji?: string };
+}) => {
+  const attachments: ConnectorAttachment[] = [];
+
+  const largestPhoto = message.photo && message.photo.length > 0
+    ? message.photo[message.photo.length - 1]
+    : undefined;
+  if (largestPhoto?.file_id) {
+    attachments.push({
+      id: largestPhoto.file_id,
+      kind: "image",
+      size: largestPhoto.file_size,
+    });
+  }
+  if (message.video?.file_id) {
+    attachments.push({
+      id: message.video.file_id,
+      name: message.video.file_name,
+      mimeType: message.video.mime_type,
+      size: message.video.file_size,
+      kind: "video",
+    });
+  }
+  if (message.document?.file_id) {
+    attachments.push({
+      id: message.document.file_id,
+      name: message.document.file_name,
+      mimeType: message.document.mime_type,
+      size: message.document.file_size,
+      kind: "document",
+    });
+  }
+  if (message.audio?.file_id) {
+    attachments.push({
+      id: message.audio.file_id,
+      name: message.audio.file_name,
+      mimeType: message.audio.mime_type,
+      size: message.audio.file_size,
+      kind: "audio",
+    });
+  }
+  if (message.voice?.file_id) {
+    attachments.push({
+      id: message.voice.file_id,
+      mimeType: message.voice.mime_type,
+      size: message.voice.file_size,
+      kind: "voice",
+    });
+  }
+  if (message.sticker?.file_id) {
+    attachments.push({
+      id: message.sticker.file_id,
+      name: message.sticker.emoji,
+      kind: "sticker",
+    });
+  }
+
+  return attachments;
+};
+
+const summarizeTelegramMessage = (message: {
+  text?: string;
+  caption?: string;
+  photo?: unknown[];
+  video?: unknown;
+  document?: unknown;
+  audio?: unknown;
+  voice?: unknown;
+  sticker?: unknown;
+}) => {
+  if (typeof message.text === "string" && message.text.trim().length > 0) {
+    return message.text;
+  }
+  if (typeof message.caption === "string" && message.caption.trim().length > 0) {
+    return message.caption;
+  }
+  if (Array.isArray(message.photo) && message.photo.length > 0) return "[Image]";
+  if (message.video) return "[Video]";
+  if (message.document) return "[Document]";
+  if (message.audio) return "[Audio]";
+  if (message.voice) return "[Voice message]";
+  if (message.sticker) return "[Sticker]";
+  return "";
+};
+
+const extractSlackAttachments = (files: unknown): ConnectorAttachment[] => {
+  if (!Array.isArray(files)) return [];
+  const attachments: ConnectorAttachment[] = [];
+  for (const file of files) {
+    if (!file || typeof file !== "object") continue;
+    const item = file as Record<string, unknown>;
+    attachments.push({
+      id: typeof item.id === "string" ? item.id : undefined,
+      name: typeof item.name === "string" ? item.name : undefined,
+      mimeType: typeof item.mimetype === "string" ? item.mimetype : undefined,
+      url:
+        typeof item.url_private_download === "string"
+          ? item.url_private_download
+          : typeof item.url_private === "string"
+            ? item.url_private
+            : undefined,
+      size: typeof item.size === "number" ? item.size : undefined,
+      kind: typeof item.filetype === "string" ? item.filetype : "file",
+    });
+  }
+  return attachments;
+};
+
+const parseSlackTimestampMs = (value: string | undefined): number | undefined => {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.round(parsed * 1000);
+};
+
+const inferSlackChatType = (
+  channelType: string | undefined,
+  channelId: string | undefined,
+): string | undefined => {
+  if (channelType && channelType.trim().length > 0) return channelType;
+  if (!channelId) return undefined;
+  if (channelId.startsWith("D")) return "im";
+  if (channelId.startsWith("G")) return "group";
+  if (channelId.startsWith("C")) return "channel";
+  return undefined;
+};
+
+const summarizeSlackMessage = (text: string | undefined, attachments: ConnectorAttachment[]) => {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (trimmed.length > 0) return trimmed;
+  if (attachments.length === 0) return "";
+
+  const first = attachments[0];
+  const mime = (first?.mimeType ?? "").toLowerCase();
+  const kind = (first?.kind ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return "[Image]";
+  if (mime.startsWith("video/")) return "[Video]";
+  if (mime.startsWith("audio/") || kind.includes("audio") || kind.includes("voice")) {
+    return "[Audio]";
+  }
+  if (mime === "application/pdf" || kind === "pdf") return "[PDF]";
+  if (attachments.length === 1) return "[File]";
+  return `[${attachments.length} attachments]`;
+};
+
 http.route({
   path: "/api/chat",
   method: "OPTIONS",
@@ -983,10 +1143,37 @@ http.route({
 
     let update: {
       message?: {
-        chat?: { id?: number };
+        chat?: { id?: number; type?: string };
         from?: { id?: number; first_name?: string; username?: string };
         text?: string;
+        caption?: string;
         message_id?: number;
+        photo?: Array<{ file_id?: string; file_size?: number }>;
+        video?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+        document?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+        audio?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+        voice?: { file_id?: string; file_size?: number; mime_type?: string };
+        sticker?: { file_id?: string; emoji?: string };
+      };
+      edited_message?: {
+        chat?: { id?: number; type?: string };
+        from?: { id?: number; first_name?: string; username?: string };
+        text?: string;
+        caption?: string;
+        message_id?: number;
+        photo?: Array<{ file_id?: string; file_size?: number }>;
+        video?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+        document?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+        audio?: { file_id?: string; file_size?: number; mime_type?: string; file_name?: string };
+        voice?: { file_id?: string; file_size?: number; mime_type?: string };
+        sticker?: { file_id?: string; emoji?: string };
+      };
+      message_reaction?: {
+        chat?: { id?: number; type?: string };
+        user?: { id?: number; first_name?: string; username?: string };
+        message_id?: number;
+        old_reaction?: Array<{ emoji?: string }>;
+        new_reaction?: Array<{ emoji?: string }>;
       };
     };
     try {
@@ -995,42 +1182,111 @@ http.route({
       return new Response("Invalid JSON", { status: 400 });
     }
 
-    const message = update.message;
-    if (!message?.text || !message.chat?.id || !message.from?.id) {
-      // Ignore non-text messages (photos, stickers, etc.)
+    const message = update.message ?? update.edited_message;
+    if (message?.chat?.id && message.from?.id) {
+      const chatId = String(message.chat.id);
+      const telegramUserId = String(message.from.id);
+      const text = summarizeTelegramMessage(message);
+      const attachments = extractTelegramAttachments(message);
+      const displayName = message.from.first_name ?? message.from.username ?? undefined;
+      const groupId = message.chat.type === "private" ? undefined : chatId;
+
+      if (!text && attachments.length === 0) {
+        return new Response("OK", { status: 200 });
+      }
+
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        scope: "telegram",
+        key: telegramUserId,
+        limit: 30,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
+      });
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
+
+      const envelopeKind: "edit" | "message" = update.edited_message ? "edit" : "message";
+      const envelope = {
+        provider: "telegram",
+        kind: envelopeKind,
+        chatType: message.chat.type,
+        externalUserId: telegramUserId,
+        externalChatId: chatId,
+        externalMessageId:
+          typeof message.message_id === "number" ? String(message.message_id) : undefined,
+        text,
+        attachments,
+      };
+
+      if (!update.edited_message && text.startsWith("/start")) {
+        const codeArg = text.slice("/start".length).trim() || undefined;
+        await ctx.scheduler.runAfter(0, internal.channels.telegram.handleStartCommand, {
+          chatId,
+          telegramUserId,
+          codeArg,
+          displayName,
+        });
+      } else {
+        await ctx.scheduler.runAfter(0, internal.channels.telegram.handleIncomingMessage, {
+          chatId,
+          telegramUserId,
+          text,
+          displayName,
+          groupId,
+          attachments,
+          channelEnvelope: envelope,
+        });
+      }
+
+      // Return 200 immediately (non-blocking)
       return new Response("OK", { status: 200 });
     }
 
-    const chatId = String(message.chat.id);
-    const telegramUserId = String(message.from.id);
-    const text = message.text;
-    const displayName = message.from.first_name ?? message.from.username ?? undefined;
+    const reaction = update.message_reaction;
+    if (reaction?.chat?.id && reaction.user?.id) {
+      const chatId = String(reaction.chat.id);
+      const telegramUserId = String(reaction.user.id);
+      const groupId = reaction.chat.type === "private" ? undefined : chatId;
+      const oldEmojis = (reaction.old_reaction ?? [])
+        .map((entry) => entry.emoji)
+        .filter((emoji): emoji is string => typeof emoji === "string" && emoji.length > 0);
+      const newEmojis = (reaction.new_reaction ?? [])
+        .map((entry) => entry.emoji)
+        .filter((emoji): emoji is string => typeof emoji === "string" && emoji.length > 0);
 
-    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
-      scope: "telegram",
-      key: telegramUserId,
-      limit: 30,
-      windowMs: WEBHOOK_RATE_WINDOW_MS,
-      blockMs: WEBHOOK_RATE_WINDOW_MS,
-    });
-    if (!rateLimit.allowed) {
-      return rateLimitResponse(rateLimit.retryAfterMs);
-    }
+      const summary = `Telegram reaction update on message ${reaction.message_id ?? "unknown"}: ${oldEmojis.join(", ") || "none"} -> ${newEmojis.join(", ") || "none"}`;
 
-    if (text.startsWith("/start")) {
-      const codeArg = text.slice("/start".length).trim() || undefined;
-      await ctx.scheduler.runAfter(0, internal.channels.telegram.handleStartCommand, {
-        chatId,
-        telegramUserId,
-        codeArg,
-        displayName,
+      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        scope: "telegram",
+        key: `${telegramUserId}:reaction`,
+        limit: 30,
+        windowMs: WEBHOOK_RATE_WINDOW_MS,
+        blockMs: WEBHOOK_RATE_WINDOW_MS,
       });
-    } else {
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.retryAfterMs);
+      }
+
       await ctx.scheduler.runAfter(0, internal.channels.telegram.handleIncomingMessage, {
         chatId,
         telegramUserId,
-        text,
-        displayName,
+        text: summary,
+        groupId,
+        channelEnvelope: {
+          provider: "telegram",
+          kind: "reaction",
+          chatType: reaction.chat.type,
+          externalUserId: telegramUserId,
+          externalChatId: chatId,
+          externalMessageId:
+            typeof reaction.message_id === "number" ? String(reaction.message_id) : undefined,
+          reactions: [
+            ...oldEmojis.map((emoji) => ({ emoji, action: "remove" as const, targetMessageId: typeof reaction.message_id === "number" ? String(reaction.message_id) : undefined })),
+            ...newEmojis.map((emoji) => ({ emoji, action: "add" as const, targetMessageId: typeof reaction.message_id === "number" ? String(reaction.message_id) : undefined })),
+          ],
+        },
+        respond: false,
       });
     }
 
@@ -1378,11 +1634,39 @@ http.route({
       team_id?: string;
       event?: {
         type?: string;
+        subtype?: string;
         bot_id?: string;
+        hidden?: boolean;
         channel_type?: string;
         text?: string;
         user?: string;
         channel?: string;
+        ts?: string;
+        event_ts?: string;
+        files?: unknown;
+        deleted_ts?: string;
+        message?: {
+          type?: string;
+          subtype?: string;
+          user?: string;
+          text?: string;
+          channel?: string;
+          channel_type?: string;
+          ts?: string;
+          files?: unknown;
+        };
+        previous_message?: {
+          user?: string;
+          text?: string;
+          ts?: string;
+          files?: unknown;
+        };
+        reaction?: string;
+        item?: {
+          type?: string;
+          channel?: string;
+          ts?: string;
+        };
       };
     };
     try {
@@ -1402,19 +1686,62 @@ http.route({
     // Handle event callbacks
     if (payload.type === "event_callback") {
       const event = payload.event;
+      if (!event) {
+        return new Response("OK", { status: 200 });
+      }
 
-      // Only handle DMs (im) that aren't from bots
-      if (event?.type === "message" && !event.bot_id && event.channel_type === "im") {
-        const text = (event.text ?? "").trim();
-        const slackUserId = event.user;
-        const channelId = event.channel;
+      if (event.type === "message" && !event.bot_id) {
+        const subtype = event.subtype ?? "";
+        let slackUserId = event.user ?? "";
+        let channelId = event.channel ?? "";
+        let channelType = inferSlackChatType(event.channel_type, channelId);
+        let messageTs = event.ts;
+        let attachments = extractSlackAttachments(event.files);
+        let text = summarizeSlackMessage(event.text, attachments);
+        let kind: "message" | "edit" | "delete" = "message";
+        let respond = true;
+
+        if (subtype === "message_changed") {
+          const changed = event.message;
+          kind = "edit";
+          respond = false;
+          slackUserId = changed?.user ?? slackUserId;
+          channelId = changed?.channel ?? channelId;
+          channelType = inferSlackChatType(changed?.channel_type ?? channelType, channelId);
+          messageTs = changed?.ts ?? event.ts;
+          attachments = extractSlackAttachments(changed?.files);
+          text = summarizeSlackMessage(changed?.text, attachments);
+        } else if (subtype === "message_deleted") {
+          const previous = event.previous_message;
+          kind = "delete";
+          respond = false;
+          slackUserId = previous?.user ?? slackUserId;
+          messageTs = event.deleted_ts ?? previous?.ts ?? event.ts;
+          attachments = extractSlackAttachments(previous?.files);
+          text = summarizeSlackMessage(previous?.text, attachments);
+        } else if (subtype && subtype !== "file_share") {
+          return new Response("OK", { status: 200 });
+        }
+
         if (!slackUserId || !channelId) {
           return new Response("OK", { status: 200 });
         }
 
+        if (!text && attachments.length === 0 && kind === "message") {
+          return new Response("OK", { status: 200 });
+        }
+
+        if (!text) {
+          if (kind === "edit") {
+            text = `Slack edited message ${messageTs ?? "unknown"}`;
+          } else if (kind === "delete") {
+            text = `Slack deleted message ${messageTs ?? "unknown"}`;
+          }
+        }
+
         const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
           scope: "slack",
-          key: slackUserId,
+          key: kind === "message" ? slackUserId : `${slackUserId}:${kind}`,
           limit: 30,
           windowMs: WEBHOOK_RATE_WINDOW_MS,
           blockMs: WEBHOOK_RATE_WINDOW_MS,
@@ -1423,7 +1750,20 @@ http.route({
           return rateLimitResponse(rateLimit.retryAfterMs);
         }
 
-        if (text.toLowerCase().startsWith("link ")) {
+        const groupId = channelType === "im" ? undefined : channelId;
+        const envelope = {
+          provider: "slack",
+          kind,
+          chatType: channelType,
+          externalUserId: slackUserId,
+          externalChatId: channelId,
+          externalMessageId: messageTs,
+          text,
+          ...(attachments.length > 0 ? { attachments } : {}),
+          sourceTimestamp: parseSlackTimestampMs(event.event_ts ?? messageTs),
+        };
+
+        if (respond && channelType === "im" && text.toLowerCase().startsWith("link ")) {
           await ctx.scheduler.runAfter(0, internal.channels.slack.handleLinkCommand, {
             slackUserId,
             channelId,
@@ -1436,8 +1776,65 @@ http.route({
             channelId,
             text,
             teamId: payload.team_id,
+            groupId,
+            ...(attachments.length > 0 ? { attachments } : {}),
+            channelEnvelope: envelope,
+            ...(respond ? {} : { respond: false }),
           });
         }
+      } else if (
+        (event.type === "reaction_added" || event.type === "reaction_removed") &&
+        event.item?.type === "message"
+      ) {
+        const slackUserId = event.user ?? "";
+        const channelId = event.item.channel ?? "";
+        const targetMessageId = event.item.ts;
+        const reaction = (event.reaction ?? "").trim();
+        if (!slackUserId || !channelId || !reaction) {
+          return new Response("OK", { status: 200 });
+        }
+
+        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+          scope: "slack",
+          key: `${slackUserId}:reaction`,
+          limit: 30,
+          windowMs: WEBHOOK_RATE_WINDOW_MS,
+          blockMs: WEBHOOK_RATE_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) {
+          return rateLimitResponse(rateLimit.retryAfterMs);
+        }
+
+        const chatType = inferSlackChatType(event.channel_type, channelId);
+        const groupId = chatType === "im" ? undefined : channelId;
+        const action = event.type === "reaction_added" ? "add" : "remove";
+        const summary = `Slack reaction ${action === "add" ? "added" : "removed"}: :${reaction}: on message ${targetMessageId ?? "unknown"}`;
+
+        await ctx.scheduler.runAfter(0, internal.channels.slack.handleIncomingMessage, {
+          slackUserId,
+          channelId,
+          text: summary,
+          teamId: payload.team_id,
+          groupId,
+          channelEnvelope: {
+            provider: "slack",
+            kind: "reaction",
+            chatType,
+            externalUserId: slackUserId,
+            externalChatId: channelId,
+            externalMessageId: targetMessageId,
+            text: summary,
+            reactions: [
+              {
+                emoji: reaction,
+                action,
+                targetMessageId,
+              },
+            ],
+            sourceTimestamp: parseSlackTimestampMs(event.event_ts ?? targetMessageId),
+          },
+          respond: false,
+        });
       }
     }
 

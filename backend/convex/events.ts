@@ -1,10 +1,10 @@
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import { v, ConvexError, type Value } from "convex/values";
+import { v, ConvexError, Infer, type Value } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { requireConversationOwner, requireUserId } from "./auth";
-import { jsonValueValidator } from "./shared_validators";
+import { jsonValueValidator, optionalChannelEnvelopeValidator } from "./shared_validators";
 import {
   sanitizeForToolResultPersistence,
   sanitizeForToolRequestPersistence,
@@ -25,6 +25,7 @@ const eventValidator = v.object({
   requestId: v.optional(v.string()),
   targetDeviceId: v.optional(v.string()),
   payload: jsonValueValidator,
+  channelEnvelope: optionalChannelEnvelopeValidator,
 });
 
 const usageSummaryValidator = v.object({
@@ -488,6 +489,7 @@ type AppendEventArgs = {
   requestId?: string;
   targetDeviceId?: string;
   payload: Value;
+  channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
 };
 
 const resolveAppendEventPayload = (args: AppendEventArgs) => {
@@ -540,6 +542,7 @@ const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
     requestId: args.requestId,
     targetDeviceId: resolvedTargetDeviceId,
     payload: sanitizedPayload,
+    channelEnvelope: args.channelEnvelope,
   });
 
   await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
@@ -555,6 +558,7 @@ export const appendEvent = mutation({
     requestId: v.optional(v.string()),
     targetDeviceId: v.optional(v.string()),
     payload: jsonValueValidator,
+    channelEnvelope: optionalChannelEnvelopeValidator,
   },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
@@ -572,6 +576,7 @@ export const appendInternalEvent = internalMutation({
     requestId: v.optional(v.string()),
     targetDeviceId: v.optional(v.string()),
     payload: jsonValueValidator,
+    channelEnvelope: optionalChannelEnvelopeValidator,
   },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {

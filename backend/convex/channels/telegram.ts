@@ -2,6 +2,7 @@ import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./utils";
 import { retryFetch } from "../lib/retry_fetch";
+import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
 // Telegram API Helpers
@@ -139,18 +140,29 @@ export const handleIncomingMessage = internalAction({
     telegramUserId: v.string(),
     text: v.string(),
     displayName: v.optional(v.string()),
+    groupId: v.optional(v.string()),
+    attachments: v.optional(v.array(channelAttachmentValidator)),
+    channelEnvelope: optionalChannelEnvelopeValidator,
+    respond: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const shouldRespond = args.respond !== false;
+
     try {
       const result = await processIncomingMessage({
         ctx,
         provider: "telegram",
         externalUserId: args.telegramUserId,
         text: args.text,
+        groupId: args.groupId,
+        attachments: args.attachments,
+        channelEnvelope: args.channelEnvelope,
+        respond: args.respond,
       });
 
       if (!result) {
+        if (!shouldRespond) return null;
         await sendTelegramMessage(
           args.chatId,
           "Your account isn't linked yet. Send /start to get started.",
@@ -158,13 +170,17 @@ export const handleIncomingMessage = internalAction({
         return null;
       }
 
-      await sendTelegramMessage(args.chatId, result.text);
+      if (shouldRespond) {
+        await sendTelegramMessage(args.chatId, result.text);
+      }
     } catch (error) {
       console.error("[telegram] Agent turn failed:", error);
-      await sendTelegramMessage(
-        args.chatId,
-        "Sorry, something went wrong. Please try again.",
-      );
+      if (shouldRespond) {
+        await sendTelegramMessage(
+          args.chatId,
+          "Sorry, something went wrong. Please try again.",
+        );
+      }
     }
     return null;
   },
@@ -199,7 +215,12 @@ export const registerWebhook = internalAction({
         body: JSON.stringify({
           url: webhookUrl,
           secret_token: secret,
-          allowed_updates: ["message"],
+          allowed_updates: [
+            "message",
+            "edited_message",
+            "message_reaction",
+            "message_reaction_count",
+          ],
         }),
       },
     );

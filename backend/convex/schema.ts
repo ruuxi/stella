@@ -4,6 +4,7 @@ import {
   jsonObjectValidator,
   jsonValueValidator,
   optionalJsonValueValidator,
+  optionalChannelEnvelopeValidator,
   secretMountsValidator,
 } from "./shared_validators";
 
@@ -75,6 +76,7 @@ export default defineSchema({
     requestId: v.optional(v.string()),
     targetDeviceId: v.optional(v.string()),
     payload: jsonValueValidator,
+    channelEnvelope: optionalChannelEnvelopeValidator,
   })
     .index("by_conversation", ["conversationId", "timestamp"])
     .index("by_conversation_type", ["conversationId", "type", "timestamp"])
