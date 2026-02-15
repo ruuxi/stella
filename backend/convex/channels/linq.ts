@@ -8,6 +8,7 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { processIncomingMessage, processLinkCode } from "./utils";
 import { retryFetch } from "../lib/retry_fetch";
+import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
 // Linq API Helpers
@@ -278,9 +279,13 @@ export const handleIncomingMessage = internalAction({
     text: v.string(),
     incomingChatId: v.string(),
     groupId: v.optional(v.string()),
+    attachments: v.optional(v.array(channelAttachmentValidator)),
+    channelEnvelope: optionalChannelEnvelopeValidator,
+    respond: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const shouldRespond = args.respond !== false;
     console.log("[linq] handleIncomingMessage called:", args.senderPhone, args.text.slice(0, 100));
     try {
       const result = await processIncomingMessage({
@@ -289,11 +294,15 @@ export const handleIncomingMessage = internalAction({
         externalUserId: args.senderPhone,
         text: args.text,
         groupId: args.groupId,
+        attachments: args.attachments,
+        channelEnvelope: args.channelEnvelope,
+        respond: args.respond,
       });
 
       console.log("[linq] processIncomingMessage result:", result ? "got response" : "null (not linked)");
 
       if (!result) {
+        if (!shouldRespond) return null;
         console.log("[linq] Sending 'not linked' reply");
         await sendLinqReply(
           ctx,
@@ -304,10 +313,12 @@ export const handleIncomingMessage = internalAction({
         return null;
       }
 
+      if (!shouldRespond) return null;
       console.log("[linq] Sending agent reply:", result.text.slice(0, 100));
       await sendLinqReply(ctx, args.senderPhone, result.text, args.incomingChatId);
     } catch (error) {
       console.error("[linq] Agent turn failed:", error);
+      if (!shouldRespond) return null;
       await sendLinqReply(
         ctx,
         args.senderPhone,
