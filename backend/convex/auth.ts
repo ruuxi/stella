@@ -6,6 +6,9 @@ import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { jwt, magicLink } from "better-auth/plugins";
 import {
   internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
   query,
   type ActionCtx,
   type MutationCtx,
@@ -54,8 +57,117 @@ const getDeepLinkOrigin = () => {
   return `${protocol}://auth`;
 };
 
+const DEFAULT_SESSION_VERSION = 1;
+const JWT_EXPIRATION_TIME = process.env.STELLA_JWT_EXPIRATION?.trim() || "5m";
+
+const sessionPolicyValidator = v.object({
+  sessionVersion: v.number(),
+  minIssuedAtSec: v.optional(v.number()),
+  updatedAt: v.number(),
+});
+
+const parseNumericClaim = (
+  identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
+  claim: string,
+): number | null => {
+  if (!identity || typeof identity !== "object") {
+    return null;
+  }
+  const value = (identity as Record<string, unknown>)[claim];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
 export const authComponent = createClient<DataModel>(components.betterAuth);
 const resend = new Resend(components.resend, { testMode: false });
+
+const getSessionPolicyFromDb = async (
+  ctx: QueryCtx | MutationCtx,
+  ownerId: string,
+) => {
+  const policy = await ctx.db
+    .query("auth_session_policies")
+    .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+    .first();
+  if (!policy) {
+    return null;
+  }
+  return {
+    sessionVersion: policy.sessionVersion,
+    minIssuedAtSec: policy.minIssuedAtSec ?? undefined,
+    updatedAt: policy.updatedAt,
+  };
+};
+
+const getSessionPolicyForOwner = async (
+  ctx: QueryCtx | MutationCtx | ActionCtx,
+  ownerId: string,
+) => {
+  if ("db" in ctx) {
+    return await getSessionPolicyFromDb(ctx, ownerId);
+  }
+  return await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
+    ownerId,
+  });
+};
+
+const getSessionVersionForOwner = async (
+  ctx: GenericCtx<DataModel>,
+  ownerId: string,
+): Promise<number> => {
+  try {
+    const policy =
+      "db" in ctx
+        ? await getSessionPolicyFromDb(ctx, ownerId)
+        : await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
+            ownerId,
+          });
+    return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
+  } catch (error) {
+    console.warn(
+      `[auth] Failed to resolve session version for owner ${ownerId}:`,
+      error,
+    );
+    return DEFAULT_SESSION_VERSION;
+  }
+};
+
+const assertSensitiveSessionPolicy = async (
+  ctx: QueryCtx | MutationCtx | ActionCtx,
+  identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
+) => {
+  if (!identity) return;
+  const policy = await getSessionPolicyForOwner(ctx, identity.subject);
+  if (!policy) return;
+
+  const tokenVersion =
+    parseNumericClaim(identity, "stellaSessionVersion") ??
+    DEFAULT_SESSION_VERSION;
+  if (tokenVersion < policy.sessionVersion) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Session version is outdated. Please sign in again.",
+    });
+  }
+
+  if (policy.minIssuedAtSec !== undefined) {
+    const issuedAtSec = parseNumericClaim(identity, "iat");
+    if (issuedAtSec === null || issuedAtSec < policy.minIssuedAtSec) {
+      throw new ConvexError({
+        code: "UNAUTHENTICATED",
+        message: "Session has been revoked. Please sign in again.",
+      });
+    }
+  }
+};
 
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   const siteUrl = getRequiredEnv("SITE_URL");
@@ -147,6 +259,19 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
             alg: "RS256",
           },
         },
+        jwt: {
+          expirationTime: JWT_EXPIRATION_TIME,
+          definePayload: async (session) => {
+            const sessionVersion = await getSessionVersionForOwner(
+              ctx,
+              session.user.id,
+            );
+            return {
+              ...session.user,
+              stellaSessionVersion: sessionVersion,
+            };
+          },
+        },
       }),
       convex({ authConfig, jwksRotateOnTokenGenerationError: true }),
     ],
@@ -197,6 +322,101 @@ export const rotateKeys = internalAction({
   },
 });
 
+export const getSessionPolicyByOwnerInternal = internalQuery({
+  args: { ownerId: v.string() },
+  returns: v.union(sessionPolicyValidator, v.null()),
+  handler: async (ctx, args) => {
+    const policy = await ctx.db
+      .query("auth_session_policies")
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .first();
+    if (!policy) {
+      return null;
+    }
+    return {
+      sessionVersion: policy.sessionVersion,
+      minIssuedAtSec: policy.minIssuedAtSec ?? undefined,
+      updatedAt: policy.updatedAt,
+    };
+  },
+});
+
+export const getSessionPolicy = query({
+  args: {},
+  returns: sessionPolicyValidator,
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const policy = await getSessionPolicyFromDb(ctx, ownerId);
+    return (
+      policy ?? {
+        sessionVersion: DEFAULT_SESSION_VERSION,
+        updatedAt: 0,
+      }
+    );
+  },
+});
+
+const upsertSessionPolicy = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  patch: { sessionVersion?: number; minIssuedAtSec?: number },
+) => {
+  const now = Date.now();
+  const existing = await ctx.db
+    .query("auth_session_policies")
+    .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+    .first();
+  if (existing) {
+    const next = {
+      sessionVersion: patch.sessionVersion ?? existing.sessionVersion,
+      minIssuedAtSec:
+        patch.minIssuedAtSec ??
+        (existing.minIssuedAtSec !== undefined ? existing.minIssuedAtSec : undefined),
+      updatedAt: now,
+    };
+    await ctx.db.patch(existing._id, next);
+    return next;
+  }
+
+  const created = {
+    ownerId,
+    sessionVersion: patch.sessionVersion ?? DEFAULT_SESSION_VERSION,
+    minIssuedAtSec: patch.minIssuedAtSec,
+    updatedAt: now,
+  };
+  await ctx.db.insert("auth_session_policies", created);
+  return {
+    sessionVersion: created.sessionVersion,
+    minIssuedAtSec: created.minIssuedAtSec,
+    updatedAt: created.updatedAt,
+  };
+};
+
+export const revokeActiveSessions = mutation({
+  args: {},
+  returns: sessionPolicyValidator,
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const minIssuedAtSec = Math.floor(Date.now() / 1000);
+    return await upsertSessionPolicy(ctx, ownerId, { minIssuedAtSec });
+  },
+});
+
+export const bumpSessionVersion = mutation({
+  args: {},
+  returns: sessionPolicyValidator,
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const existing = await getSessionPolicyFromDb(ctx, ownerId);
+    const nextVersion = (existing?.sessionVersion ?? DEFAULT_SESSION_VERSION) + 1;
+    const minIssuedAtSec = Math.floor(Date.now() / 1000);
+    return await upsertSessionPolicy(ctx, ownerId, {
+      sessionVersion: nextVersion,
+      minIssuedAtSec,
+    });
+  },
+});
+
 export const requireUserIdentity = async (
   ctx: QueryCtx | MutationCtx | ActionCtx,
 ) => {
@@ -214,6 +434,21 @@ export const requireUserId = async (
   ctx: QueryCtx | MutationCtx | ActionCtx,
 ) => {
   const identity = await requireUserIdentity(ctx);
+  return identity.subject;
+};
+
+export const requireSensitiveUserIdentity = async (
+  ctx: QueryCtx | MutationCtx | ActionCtx,
+) => {
+  const identity = await requireUserIdentity(ctx);
+  await assertSensitiveSessionPolicy(ctx, identity);
+  return identity;
+};
+
+export const requireSensitiveUserId = async (
+  ctx: QueryCtx | MutationCtx | ActionCtx,
+) => {
+  const identity = await requireSensitiveUserIdentity(ctx);
   return identity.subject;
 };
 

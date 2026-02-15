@@ -1,7 +1,7 @@
 import { mutation, internalMutation, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
-import { requireUserId } from "../auth";
+import { requireSensitiveUserId } from "../auth";
 
 const HEARTBEAT_SIGNATURE_MAX_AGE_MS = 2 * 60_000;
 
@@ -60,7 +60,7 @@ export const heartbeat = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const now = Date.now();
     if (Math.abs(now - args.signedAtMs) > HEARTBEAT_SIGNATURE_MAX_AGE_MS) {
       throw new ConvexError({
@@ -125,7 +125,7 @@ export const goOffline = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireSensitiveUserId(ctx);
     const device = await ctx.db
       .query("devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
