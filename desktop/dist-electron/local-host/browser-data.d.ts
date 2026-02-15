@@ -30,6 +30,10 @@ export type PreferredBrowserProfile = {
     browser: BrowserType | null;
     profile: string | null;
 };
+export type BrowserProfile = {
+    id: string;
+    name: string;
+};
 /**
  * Collect browser data from the user's default browser
  */
@@ -47,3 +51,8 @@ export declare const writeCoreMemory: (StellaHome: string, content: string) => P
  */
 export declare const formatBrowserDataForSynthesis: (data: BrowserData) => string;
 export declare const detectPreferredBrowserProfile: () => Promise<PreferredBrowserProfile>;
+/**
+ * List all available profiles for a given browser type.
+ * Reads display names from the browser's Local State JSON when available.
+ */
+export declare const listBrowserProfiles: (browserType: BrowserType) => Promise<BrowserProfile[]>;
