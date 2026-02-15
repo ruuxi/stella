@@ -20,6 +20,44 @@ export const jsonObjectValidator = v.record(v.string(), jsonValueValidator);
 export const jsonSchemaValidator = v.union(v.boolean(), jsonObjectValidator);
 export const optionalJsonValueValidator = v.optional(jsonValueValidator);
 
+export const channelAttachmentValidator = v.object({
+  id: v.optional(v.string()),
+  name: v.optional(v.string()),
+  mimeType: v.optional(v.string()),
+  url: v.optional(v.string()),
+  size: v.optional(v.number()),
+  kind: v.optional(v.string()),
+  providerMeta: optionalJsonValueValidator,
+});
+
+export const channelReactionValidator = v.object({
+  emoji: v.string(),
+  action: v.union(v.literal("add"), v.literal("remove")),
+  targetMessageId: v.optional(v.string()),
+});
+
+export const channelEnvelopeValidator = v.object({
+  provider: v.string(),
+  kind: v.union(
+    v.literal("message"),
+    v.literal("reaction"),
+    v.literal("edit"),
+    v.literal("delete"),
+    v.literal("system"),
+  ),
+  chatType: v.optional(v.string()),
+  externalUserId: v.optional(v.string()),
+  externalChatId: v.optional(v.string()),
+  externalMessageId: v.optional(v.string()),
+  threadId: v.optional(v.string()),
+  text: v.optional(v.string()),
+  attachments: v.optional(v.array(channelAttachmentValidator)),
+  reactions: v.optional(v.array(channelReactionValidator)),
+  sourceTimestamp: v.optional(v.number()),
+  providerPayload: optionalJsonValueValidator,
+});
+export const optionalChannelEnvelopeValidator = v.optional(channelEnvelopeValidator);
+
 // Shared validators for skill secret mounts.
 export const secretMountSpecValidator = v.object({
   provider: v.string(),

@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { processIncomingMessage, processLinkCode } from "./utils";
 import { retryFetch } from "../lib/retry_fetch";
+import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
 // Slack Signature Verification (HMAC-SHA256)
@@ -152,14 +153,14 @@ export const handleIncomingMessage = internalAction({
     text: v.string(),
     displayName: v.optional(v.string()),
     teamId: v.optional(v.string()),
+    groupId: v.optional(v.string()),
+    attachments: v.optional(v.array(channelAttachmentValidator)),
+    channelEnvelope: optionalChannelEnvelopeValidator,
+    respond: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const token = await resolveSlackToken(ctx, args.teamId);
-    if (!token) {
-      console.error("[slack] No bot token available for team:", args.teamId);
-      return null;
-    }
+    const shouldRespond = args.respond !== false;
 
     try {
       const result = await processIncomingMessage({
@@ -167,21 +168,41 @@ export const handleIncomingMessage = internalAction({
         provider: "slack",
         externalUserId: args.slackUserId,
         text: args.text,
+        groupId: args.groupId,
+        attachments: args.attachments,
+        channelEnvelope: args.channelEnvelope,
+        respond: args.respond,
       });
 
       if (!result) {
-        await sendSlackMessage(
-          args.channelId,
-          "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.",
-          token,
-        );
+        if (!shouldRespond) return null;
+        const token = await resolveSlackToken(ctx, args.teamId);
+        if (!token) {
+          console.error("[slack] No bot token available for team:", args.teamId);
+          return null;
+        }
+        await sendSlackMessage(args.channelId, "Your account isn't linked yet. Send `link CODE` with your 6-digit code from Stella Settings.", token);
         return null;
       }
 
-      await sendSlackMessage(args.channelId, result.text, token);
+      if (shouldRespond) {
+        const token = await resolveSlackToken(ctx, args.teamId);
+        if (!token) {
+          console.error("[slack] No bot token available for team:", args.teamId);
+          return null;
+        }
+        await sendSlackMessage(args.channelId, result.text, token);
+      }
     } catch (error) {
       console.error("[slack] Agent turn failed:", error);
-      await sendSlackMessage(args.channelId, "Sorry, something went wrong. Please try again.", token);
+      if (shouldRespond) {
+        const token = await resolveSlackToken(ctx, args.teamId);
+        if (!token) {
+          console.error("[slack] No bot token available for team:", args.teamId);
+          return null;
+        }
+        await sendSlackMessage(args.channelId, "Sorry, something went wrong. Please try again.", token);
+      }
     }
     return null;
   },
