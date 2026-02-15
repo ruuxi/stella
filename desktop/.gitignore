@@ -29,6 +29,7 @@ dist-ssr
 # Workspace — keep templates, ignore generated content
 workspace/panels/*
 !workspace/panels/.gitkeep
+!workspace/panels/dashboard.tsx
  
 # Generated emote assets
 public/emotes/assets/
