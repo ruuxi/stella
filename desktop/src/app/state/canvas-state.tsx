@@ -29,7 +29,7 @@ type CanvasContextValue = {
   setWidth: (width: number) => void
 }
 
-const DEFAULT_WIDTH = 480
+const DEFAULT_WIDTH = 560
 const MIN_WIDTH = 320
 const MAX_WIDTH_RATIO = 0.6 // Never exceed 60% of viewport
 
