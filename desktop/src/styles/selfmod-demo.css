@@ -428,7 +428,10 @@
 .window-shell[data-selfmod-demo] .onboarding-chat-bubble,
 .window-shell[data-selfmod-demo] .onboarding-chat-messages,
 .window-shell[data-selfmod-demo] .onboarding-bottom-bar,
-.window-shell[data-selfmod-demo] .onboarding-bottom-bar-item,
+.window-shell[data-selfmod-demo] .onboarding-bottom-bar-item {
+  transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
 /* Smooth exit: revert selfmod styles with transition */
 .window-shell[data-selfmod-exiting] .sidebar {
   background: var(--sidebar-bg) !important;
