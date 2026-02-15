@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { ConversationEvents } from "../ConversationEvents";
 import type { EventRecord } from "../../hooks/use-conversation-events";
 
@@ -18,39 +19,31 @@ export const MiniOutput = ({
   pendingUserMessageId,
   showConversation,
 }: Props) => {
-  return (
-    <>
-      {/* Results/conversation area.
-          Keep the container mounted so its enter animation doesn't replay on every window show/hide. */}
-      <div
-        className={`raycast-results${showConversation ? " is-open" : ""}`}
-      >
-        {showConversation && (
-          <div className="raycast-section">
-            <div className="raycast-section-header">Conversation</div>
-            <div className="raycast-conversation-content">
-              <ConversationEvents
-                events={events}
-                maxItems={5}
-                streamingText={streamingText}
-                reasoningText={reasoningText}
-                isStreaming={isStreaming}
-                pendingUserMessageId={pendingUserMessageId}
-              />
-            </div>
-          </div>
-        )}
-      </div>
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-      {/* Footer hint - only when streaming */}
-      {showConversation && isStreaming && (
-        <div className="raycast-footer">
-          <div className="raycast-footer-hint">
-            <kbd className="raycast-kbd-small">/queue</kbd>
-            <span>to send next</span>
-          </div>
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [events.length, streamingText]);
+
+  return (
+    <div
+      ref={scrollRef}
+      className={`mini-content${showConversation ? " has-messages" : ""}`}
+    >
+      {showConversation && (
+        <div className="mini-conversation">
+          <ConversationEvents
+            events={events}
+            maxItems={5}
+            streamingText={streamingText}
+            reasoningText={reasoningText}
+            isStreaming={isStreaming}
+            pendingUserMessageId={pendingUserMessageId}
+          />
         </div>
       )}
-    </>
+    </div>
   );
 };
