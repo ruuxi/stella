@@ -240,7 +240,7 @@ export function RadialDial() {
         </svg>
 
         <div className="radial-center-stella-animation">
-          <StellaAnimation width={20} height={20} initialBirthProgress={1} />
+          <StellaAnimation width={20} height={20} initialBirthProgress={1} maxDpr={1} frameSkip={1} />
         </div>
       </div>
     </div>
