@@ -29,11 +29,12 @@ const generateFallbackDeviceId = () => {
 export const configureLocalHost = async () => {
   const api = getElectronApi();
   const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
+  const convexSiteUrl = import.meta.env.VITE_CONVEX_SITE_URL as string | undefined;
   if (!api?.configureHost || !convexUrl) {
     return;
   }
   try {
-    const response = await api.configureHost({ convexUrl });
+    const response = await api.configureHost({ convexUrl, convexSiteUrl });
     if (response?.deviceId) {
       cachedDeviceId = response.deviceId;
       writeLocalDeviceId(response.deviceId);

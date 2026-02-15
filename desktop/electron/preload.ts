@@ -52,8 +52,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
-  configureHost: (config: { convexUrl?: string }) => ipcRenderer.invoke('host:configure', config),
-  setAuthToken: (payload: { token: string | null }) => ipcRenderer.invoke('auth:setToken', payload),
+  configureHost: (config: { convexUrl?: string; convexSiteUrl?: string }) => ipcRenderer.invoke('host:configure', config),
+  setAuthState: (payload: { authenticated: boolean }) => ipcRenderer.invoke('auth:setState', payload),
   onAuthCallback: (callback: (data: { url: string }) => void) => {
     const handler = (_event: IpcRendererEvent, data: { url: string }) => {
       callback(data)

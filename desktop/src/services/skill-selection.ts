@@ -5,8 +5,6 @@
  * for the user based on their core memory profile.
  */
 
-import { getAuthToken } from "./auth-token";
-
 export type SkillSelectionResult = {
   selectedSkillIds: string[];
 };
@@ -19,11 +17,6 @@ export async function selectDefaultSkills(
     throw new Error("VITE_CONVEX_URL is not set.");
   }
 
-  const token = await getAuthToken();
-  if (!token) {
-    throw new Error("Not authenticated");
-  }
-
   const httpBaseUrl =
     import.meta.env.VITE_CONVEX_HTTP_URL ??
     baseUrl.replace(".convex.cloud", ".convex.site");
@@ -33,8 +26,8 @@ export async function selectDefaultSkills(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
     },
+    credentials: "include",
     body: JSON.stringify({ coreMemory }),
   });
 
