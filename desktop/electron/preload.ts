@@ -109,6 +109,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('region:select', payload),
   submitRegionClick: (point: { x: number; y: number }) =>
     ipcRenderer.send('region:click', point),
+  getWindowBoundsAtPoint: (point: { x: number; y: number }) =>
+    ipcRenderer.invoke('region:getWindowBounds', point) as Promise<{ x: number; y: number; width: number; height: number } | null>,
   cancelRegionCapture: () => ipcRenderer.send('region:cancel'),
   removeScreenshot: (index: number) => ipcRenderer.send('chatContext:removeScreenshot', index),
 

@@ -5,7 +5,7 @@ import { MouseHookManager } from './mouse-hook.js';
 import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCursor, getRadialWindow, calculateSelectedWedge, } from './radial-window.js';
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js';
 import { captureChatContext } from './chat-context.js';
-import { captureWindowAtPoint, prefetchWindowSources } from './window-capture.js';
+import { captureWindowAtPoint, getWindowInfoAtPoint, prefetchWindowSources } from './window-capture.js';
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js';
 import { createModifierOverlay, showModifierOverlay, showModifierOverlayPreemptive, hideModifierOverlay, destroyModifierOverlay, } from './modifier-overlay.js';
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js';
@@ -1249,6 +1249,28 @@ app.whenReady().then(async () => {
     });
     ipcMain.on('region:cancel', () => {
         cancelRegionCapture();
+    });
+    ipcMain.handle('region:getWindowBounds', async (_event, point) => {
+        const regionBounds = getRegionCaptureWindow()?.getBounds();
+        if (!regionBounds)
+            return null;
+        // Convert overlay-local coords to global screen coords
+        const dipX = regionBounds.x + point.x;
+        const dipY = regionBounds.y + point.y;
+        const clickDisplay = screen.getDisplayNearestPoint({ x: dipX, y: dipY });
+        const scaleFactor = process.platform === 'darwin' ? 1 : (clickDisplay.scaleFactor ?? 1);
+        const screenX = Math.round(dipX * scaleFactor);
+        const screenY = Math.round(dipY * scaleFactor);
+        const info = await getWindowInfoAtPoint(screenX, screenY, { excludePids: [process.pid] });
+        if (!info?.bounds)
+            return null;
+        // Convert window bounds from native screen coords back to overlay-local DIP coords
+        return {
+            x: Math.round(info.bounds.x / scaleFactor) - regionBounds.x,
+            y: Math.round(info.bounds.y / scaleFactor) - regionBounds.y,
+            width: Math.round(info.bounds.width / scaleFactor),
+            height: Math.round(info.bounds.height / scaleFactor),
+        };
     });
     ipcMain.on('region:click', async (_event, point) => {
         if (!pendingRegionCaptureResolve) {
