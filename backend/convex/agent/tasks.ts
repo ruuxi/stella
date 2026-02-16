@@ -755,7 +755,7 @@ const executeSubagentRun = async (
 
   try {
     const resolvedConfig = await resolveModelConfig(ctx, args.subagentType, args.ownerId);
-    const fallbackConfig = await resolveFallbackConfig(ctx, args.subagentType, args.ownerId);
+    const fallbackConfig = await resolveFallbackConfig(ctx, args.subagentType, args.ownerId).catch(() => null);
 
     // --- Pre-gathered context (memory recall + explore) ---
     const preGatheredParts: string[] = [];
@@ -1684,7 +1684,7 @@ export const deliverTaskResult = internalAction({
       ctx,
       "orchestrator",
       args.ownerId,
-    );
+    ).catch(() => null);
 
     try {
       let historyBudget = TASK_DELIVERY_HISTORY_MAX_TOKENS;

@@ -342,7 +342,7 @@ export const invoke = internalAction({
     let rawText = "";
     try {
       const resolvedConfig = await resolveModelConfig(ctx, args.agentType, ownerId);
-      const fallbackConfig = await resolveFallbackConfig(ctx, args.agentType, ownerId);
+      const fallbackConfig = await resolveFallbackConfig(ctx, args.agentType, ownerId).catch(() => null);
 
       const invokeSharedArgs = {
         system: `${promptBuild.systemPrompt}\n\n${invocationInstructions}`.trim(),
