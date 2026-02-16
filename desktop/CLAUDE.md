@@ -58,7 +58,7 @@ The main process runs a "local host" (`electron/local-host/`) that:
 - Executes tools locally and sends results back (`tools.ts`)
 - Syncs skills and agents from `~/.stella/` to Convex (`skills.ts`, `agents.ts`)
 
-See `electron/local-host/CLAUDE.md` for detailed tool system documentation.
+See `electron/local-host/CLAUDE.md` for tool handler patterns.
 
 ### Theming
 
@@ -70,9 +70,14 @@ Custom theme system in `src/theme/`:
 
 ### UI Components
 
-Components in `src/components/` are built on Radix UI primitives with custom styling. Component index at `src/components/index.ts`.
+Components in `src/components/` are built on Radix UI primitives with custom styling. Re-exported from `src/components/index.ts`.
 
-See `src/components/CLAUDE.md` for component conventions.
+Conventions:
+- Paired `.tsx` + `.css` files per component
+- Reusable primitives: lowercase with hyphens (`dropdown-menu.tsx`); app-level: PascalCase (`Sidebar.tsx`)
+- Variants via `data-*` attributes, not className props
+- Always use Radix primitives for dialogs, dropdowns, popovers, tooltips, selects
+- Tailwind utilities combined with component CSS using `cn()`
 
 ### Canvas System
 
