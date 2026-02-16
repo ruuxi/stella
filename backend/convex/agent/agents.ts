@@ -134,6 +134,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "OpenApp",
       "Bash",
       "KillShell",
+      "ShellStatus",
       "WebFetch",
       "WebSearch",
       "RequestCredential",
@@ -169,6 +170,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "OpenApp",
       "Bash",
       "KillShell",
+      "ShellStatus",
       "OpenCanvas", "CloseCanvas",
       "WebFetch",
       "WebSearch",
@@ -211,6 +213,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     toolsAllowlist: [
       "Bash",
       "KillShell",
+      "ShellStatus",
       "Read",
       "OpenCanvas", "CloseCanvas",
       "ActivateSkill",
