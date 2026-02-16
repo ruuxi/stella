@@ -13,7 +13,7 @@ import {
 } from './radial-window.js'
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js'
 import { captureChatContext, type ChatContext } from './chat-context.js'
-import { captureWindowAtPoint, prefetchWindowSources, type WindowInfo } from './window-capture.js'
+import { captureWindowAtPoint, captureWindowScreenshot, prefetchWindowSources, type WindowInfo } from './window-capture.js'
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js'
 import {
   createModifierOverlay,
@@ -885,22 +885,13 @@ const getCurrentProcessWindowSourceIds = () => {
 const resetRegionCapture = () => {
   pendingRegionCaptureResolve = null
   pendingRegionCapturePromise = null
-  cachedRegionSources = null
   hideRegionCaptureWindow()
 }
-
-let cachedRegionSources: Awaited<ReturnType<typeof desktopCapturer.getSources>> | null = null
 
 const startRegionCapture = async () => {
   if (pendingRegionCapturePromise) {
     return pendingRegionCapturePromise
   }
-
-  // Pre-fetch window thumbnails before overlay appears (screen is still clean)
-  cachedRegionSources = await desktopCapturer.getSources({
-    types: ['window'],
-    thumbnailSize: { width: 1280, height: 960 },
-  })
 
   await showRegionCaptureWindow(cancelRegionCapture)
 
@@ -1491,7 +1482,7 @@ app.whenReady().then(async () => {
     const screenX = Math.round(dipX * scaleFactor)
     const screenY = Math.round(dipY * scaleFactor)
 
-    const capture = await captureWindowAtPoint(screenX, screenY, cachedRegionSources ?? undefined, { excludePids: [process.pid] })
+    const capture = await captureWindowScreenshot(screenX, screenY, { excludePids: [process.pid] })
     if (!capture) return null
 
     const { bounds } = capture.windowInfo
