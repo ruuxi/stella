@@ -14,10 +14,15 @@ import {
   readFileSafe,
   truncate,
 } from "./tools-utils.js";
+import { isBlockedPath } from "./command_safety.js";
 
 export const handleGlob = async (args: Record<string, unknown>): Promise<ToolResult> => {
   const pattern = String(args.pattern ?? "");
   const basePath = expandHomePath(String(args.path ?? process.cwd()));
+
+  // Safety check: block system directories
+  const pathBlock = isBlockedPath(basePath);
+  if (pathBlock) return { error: pathBlock };
 
   try {
     const stat = await fs.stat(basePath);
@@ -95,6 +100,10 @@ export const handleGrep = async (args: Record<string, unknown>): Promise<ToolRes
   const caseInsensitive = Boolean(args.case_insensitive ?? false);
   const contextLines = args.context_lines ? Number(args.context_lines) : undefined;
   const maxResults = args.max_results ? Number(args.max_results) : 100;
+
+  // Safety check: block system directories
+  const pathBlock = isBlockedPath(basePath);
+  if (pathBlock) return { error: pathBlock };
 
   try {
     await fs.access(basePath);
