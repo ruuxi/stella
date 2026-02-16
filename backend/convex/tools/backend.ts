@@ -68,6 +68,13 @@ const cronPatchSchema = z.object({
 const formatResult = (value: unknown) =>
   typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
 
+/**
+ * Wrap external content with safety markers so the LLM knows it's untrusted.
+ * Only wraps successful content responses — not error messages.
+ */
+const wrapExternalContent = (content: string, source: string): string =>
+  `[External Content - Untrusted Source: ${source}]\n${content}\n[End External Content]`;
+
 const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
 
 const supportsSkillAgentType = (
@@ -406,7 +413,10 @@ export const createBackendTools = (
               return parts.join("\n");
             })
             .join("\n\n");
-          return `Web search results for "${args.query}":\n\n${formatted}`;
+          return wrapExternalContent(
+            `Web search results for "${args.query}":\n\n${formatted}`,
+            `web search: ${args.query}`,
+          );
         } catch (error) {
           return `WebSearch failed: ${(error as Error).message}`;
         }
@@ -436,7 +446,10 @@ export const createBackendTools = (
           const text = await response.text();
           const contentType = response.headers.get("content-type") ?? "";
           const body = contentType.includes("text/html") ? stripHtml(text) : text;
-          return `Content from ${secureUrl}\nPrompt: ${args.prompt}\n\n${truncateText(body, 15_000)}`;
+          return wrapExternalContent(
+            `Content from ${secureUrl}\nPrompt: ${args.prompt}\n\n${truncateText(body, 15_000)}`,
+            secureUrl,
+          );
         } catch (error) {
           return `Error fetching URL: ${(error as Error).message}`;
         }
@@ -498,16 +511,28 @@ export const createBackendTools = (
             return `Public integration is missing env var: ${policy.envVar}.`;
           }
 
-          return await runIntegrationRequest(args, key);
+          const publicResult = await runIntegrationRequest(args, key);
+          if (publicResult.startsWith("IntegrationRequest")) {
+            return publicResult; // Error message — don't wrap
+          }
+          return wrapExternalContent(publicResult, args.request.url);
         }
 
         if (!args.secretId) {
           return "IntegrationRequest requires secretId when mode is private.";
         }
 
-        return await withSecret(String(args.secretId), "IntegrationRequest", async (secret) =>
+        const privateResult = await withSecret(String(args.secretId), "IntegrationRequest", async (secret) =>
           runIntegrationRequest(args, secret),
         );
+        // Wrap successful content, but not error messages from withSecret or runIntegrationRequest
+        if (
+          privateResult.startsWith("Secret access failed") ||
+          privateResult.startsWith("IntegrationRequest")
+        ) {
+          return privateResult;
+        }
+        return wrapExternalContent(privateResult, args.request.url);
       },
     }),
     ActivateSkill: tool({
