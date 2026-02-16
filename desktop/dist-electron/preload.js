@@ -94,6 +94,11 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     submitRegionClick: (point) => electron_1.ipcRenderer.send('region:click', point),
     getWindowCapture: (point) => electron_1.ipcRenderer.invoke('region:getWindowCapture', point),
     cancelRegionCapture: () => electron_1.ipcRenderer.send('region:cancel'),
+    onRegionReset: (callback) => {
+        const handler = () => callback();
+        electron_1.ipcRenderer.on('region:reset', handler);
+        return () => { electron_1.ipcRenderer.removeListener('region:reset', handler); };
+    },
     removeScreenshot: (index) => electron_1.ipcRenderer.send('chatContext:removeScreenshot', index),
     // Theme sync across windows
     onThemeChange: (callback) => {

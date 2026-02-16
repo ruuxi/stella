@@ -169,6 +169,7 @@ export type ElectronApi = {
     thumbnail: string;
   } | null>
   cancelRegionCapture: () => void
+  onRegionReset: (callback: () => void) => () => void
   removeScreenshot: (index: number) => void
   // Theme sync across windows
   onThemeChange: (callback: (event: unknown, data: { key: string; value: string }) => void) => () => void

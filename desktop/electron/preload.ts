@@ -115,6 +115,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       thumbnail: string;
     } | null>,
   cancelRegionCapture: () => ipcRenderer.send('region:cancel'),
+  onRegionReset: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('region:reset', handler)
+    return () => { ipcRenderer.removeListener('region:reset', handler) }
+  },
   removeScreenshot: (index: number) => ipcRenderer.send('chatContext:removeScreenshot', index),
 
   // Theme sync across windows
