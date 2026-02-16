@@ -14,6 +14,7 @@ import { fileURLToPath } from "url";
 
 import type { ToolResult } from "./tools-types.js";
 import { trashPathForDeferredDelete } from "./deferred_delete.js";
+import { validateSkillContent } from "./command_safety.js";
 
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
 
@@ -72,6 +73,17 @@ export const handleInstallSkill = async (
 
   if (!skillId || !name || !markdown) {
     return { error: "Skill install requires skillId, name, and markdown." };
+  }
+
+  // Safety check: validate skill content for unsafe patterns
+  const validation = validateSkillContent(markdown);
+  if (!validation.safe) {
+    const issues = validation.issues
+      .map((issue) => `- [${issue.category}] ${issue.description}`)
+      .join("\n");
+    return {
+      error: `Skill install blocked: unsafe patterns detected in skill content.\n${issues}`,
+    };
   }
 
   const skillDir = path.join(getStellaRoot(), "skills", skillId);

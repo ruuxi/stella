@@ -13,6 +13,7 @@ import {
   readFileSafe,
   formatWithLineNumbers,
 } from "./tools-utils.js";
+import { isBlockedPath } from "./command_safety.js";
 import {
   stageFile,
   readStaged,
@@ -167,6 +168,10 @@ export const handleRead = async (
   const pathCheck = ensureAbsolutePath(filePath);
   if (!pathCheck.ok) return { error: pathCheck.error };
 
+  // Safety check: block system directories
+  const pathBlock = isBlockedPath(filePath);
+  if (pathBlock) return { error: pathBlock };
+
   // Self-mod intercept: check staging first
   if (context?.agentType === "self_mod") {
     const relativePath = getSrcRelativePath(filePath);
@@ -216,6 +221,10 @@ export const handleWrite = async (
   const pathCheck = ensureAbsolutePath(filePath);
   if (!pathCheck.ok) return { error: pathCheck.error };
 
+  // Safety check: block system directories
+  const pathBlock = isBlockedPath(filePath);
+  if (pathBlock) return { error: pathBlock };
+
   // Self-mod intercept: redirect to staging
   if (context?.agentType === "self_mod") {
     const relativePath = getSrcRelativePath(filePath);
@@ -252,6 +261,10 @@ export const handleEdit = async (
   const replaceAll = Boolean(args.replace_all ?? false);
   const pathCheck = ensureAbsolutePath(filePath);
   if (!pathCheck.ok) return { error: pathCheck.error };
+
+  // Safety check: block system directories
+  const pathBlock = isBlockedPath(filePath);
+  if (pathBlock) return { error: pathBlock };
 
   // Self-mod intercept: check staging, apply edit, re-stage
   if (context?.agentType === "self_mod") {
