@@ -1,5 +1,5 @@
 // window_info - Returns JSON info about the window at a given screen point
-// Usage: window_info <x> <y>
+// Usage: window_info <x> <y> [--exclude-pids=1,2,3] [--screenshot=path.png]
 // Build: swiftc -O -o window_info src/window_info.swift -framework CoreGraphics -framework AppKit
 // Output: {"title":"...","process":"...","pid":123,"bounds":{"x":0,"y":0,"width":800,"height":600}}
 
@@ -22,6 +22,15 @@ func parseExcludedPids(_ args: ArraySlice<String>) -> Set<Int> {
     }
 
     return pids
+}
+
+func parseScreenshotPath(_ args: ArraySlice<String>) -> String? {
+    let prefix = "--screenshot="
+    for arg in args {
+        guard arg.hasPrefix(prefix) else { continue }
+        return String(arg.dropFirst(prefix.count))
+    }
+    return nil
 }
 
 func escapeJson(_ s: String) -> String {
@@ -47,7 +56,9 @@ guard CommandLine.arguments.count >= 3,
 }
 
 let point = CGPoint(x: x, y: y)
-let excludedPids = parseExcludedPids(CommandLine.arguments.dropFirst(3))
+let extraArgs = CommandLine.arguments.dropFirst(3)
+let excludedPids = parseExcludedPids(extraArgs)
+let screenshotPath = parseScreenshotPath(extraArgs)
 
 // Get all on-screen windows (excluding desktop elements)
 guard let windowList = CGWindowListCopyWindowInfo(
@@ -78,10 +89,29 @@ for window in windowList {
     let pid = (window[kCGWindowOwnerPID as String] as? Int) ?? 0
     if excludedPids.contains(pid) { continue }
 
+    let windowID = (window[kCGWindowNumber as String] as? CGWindowID) ?? 0
+
     let json = """
     {"title":"\(escapeJson(title))","process":"\(escapeJson(ownerName))","pid":\(pid),"bounds":{"x":\(Int(wx)),"y":\(Int(wy)),"width":\(Int(ww)),"height":\(Int(wh))}}
     """
     print(json.trimmingCharacters(in: .whitespacesAndNewlines))
+
+    // Capture screenshot if requested
+    if let ssPath = screenshotPath, windowID != 0 {
+        if let cgImage = CGWindowListCreateImage(
+            .null,
+            .optionIncludingWindow,
+            windowID,
+            [.boundsIgnoreFraming]
+        ) {
+            let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
+            if let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+                let url = URL(fileURLWithPath: ssPath)
+                try? pngData.write(to: url)
+            }
+        }
+    }
+
     exit(0)
 }
 

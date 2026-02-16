@@ -30,4 +30,10 @@ export declare const getWindowInfoAtPoint: (x: number, y: number, options?: Quer
  */
 export declare const prefetchWindowSources: (excludeSourceIds?: string[]) => Promise<DesktopSource[]>;
 export declare const captureWindowAtPoint: (x: number, y: number, prefetchedSources?: DesktopSource[], options?: QueryWindowInfoOptions) => Promise<WindowCapture | null>;
+/**
+ * Capture a window screenshot using the native binary's --screenshot flag.
+ * Returns window info + base64 PNG data URL, or null on failure.
+ * This avoids desktopCapturer.getSources() entirely (~15ms vs 100-500ms).
+ */
+export declare const captureWindowScreenshot: (x: number, y: number, options?: QueryWindowInfoOptions) => Promise<WindowCapture | null>;
 export {};

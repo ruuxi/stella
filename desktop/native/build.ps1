@@ -7,18 +7,18 @@ $targets = @(
 )
 
 function Build-WithMSVC($vcvars, $srcFile, $outFile) {
-    $cmd = "`"$vcvars`" && cl /O2 /EHsc /nologo $srcFile /link user32.lib /OUT:$outFile"
+    $cmd = "`"$vcvars`" && cl /O2 /EHsc /nologo $srcFile /link user32.lib gdi32.lib gdiplus.lib ole32.lib /OUT:$outFile"
     cmd /c $cmd
     return (Test-Path $outFile)
 }
 
 function Build-WithGpp($srcFile, $outFile) {
-    & g++ -O2 -static $srcFile -o $outFile -luser32
+    & g++ -O2 -static $srcFile -o $outFile -luser32 -lgdi32 -lgdiplus -lole32
     return (Test-Path $outFile)
 }
 
 function Build-WithClang($srcFile, $outFile) {
-    & clang++ -O2 $srcFile -o $outFile -luser32
+    & clang++ -O2 $srcFile -o $outFile -luser32 -lgdi32 -lgdiplus -lole32
     return (Test-Path $outFile)
 }
 

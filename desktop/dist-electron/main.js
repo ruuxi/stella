@@ -5,7 +5,7 @@ import { MouseHookManager } from './mouse-hook.js';
 import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCursor, getRadialWindow, calculateSelectedWedge, } from './radial-window.js';
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js';
 import { captureChatContext } from './chat-context.js';
-import { captureWindowAtPoint, prefetchWindowSources } from './window-capture.js';
+import { captureWindowAtPoint, captureWindowScreenshot, prefetchWindowSources } from './window-capture.js';
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js';
 import { createModifierOverlay, showModifierOverlay, showModifierOverlayPreemptive, hideModifierOverlay, destroyModifierOverlay, } from './modifier-overlay.js';
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js';
@@ -1260,11 +1260,7 @@ app.whenReady().then(async () => {
         const scaleFactor = process.platform === 'darwin' ? 1 : (clickDisplay.scaleFactor ?? 1);
         const screenX = Math.round(dipX * scaleFactor);
         const screenY = Math.round(dipY * scaleFactor);
-        const sources = await desktopCapturer.getSources({
-            types: ['window'],
-            thumbnailSize: { width: 1280, height: 960 },
-        });
-        const capture = await captureWindowAtPoint(screenX, screenY, sources, { excludePids: [process.pid] });
+        const capture = await captureWindowScreenshot(screenX, screenY, { excludePids: [process.pid] });
         if (!capture)
             return null;
         const { bounds } = capture.windowInfo;
