@@ -1,6 +1,6 @@
 # Agent System — Flow Reference
 
-## Architecture
+## Agent Hierarchy
 
 5 agents in a flat 2-level hierarchy:
 
