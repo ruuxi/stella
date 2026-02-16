@@ -6,12 +6,19 @@ type Point = {
   y: number;
 };
 
+type Ripple = {
+  cx: number;
+  cy: number;
+  bounds: { x: number; y: number; width: number; height: number };
+};
+
 const MIN_SELECTION_SIZE = 6;
 
 export function RegionCapture() {
   const api = getElectronApi();
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
+  const [ripple, setRipple] = useState<Ripple | null>(null);
 
   const selection = startPoint && currentPoint ? {
     x: Math.min(startPoint.x, currentPoint.x),
@@ -60,7 +67,7 @@ export function RegionCapture() {
     setCurrentPoint({ x: event.clientX, y: event.clientY });
   };
 
-  const handleMouseUp = (event: MouseEvent<HTMLDivElement>) => {
+  const handleMouseUp = async (event: MouseEvent<HTMLDivElement>) => {
     if (!startPoint) {
       return;
     }
@@ -77,13 +84,26 @@ export function RegionCapture() {
       resolvedSelection.width < MIN_SELECTION_SIZE ||
       resolvedSelection.height < MIN_SELECTION_SIZE
     ) {
-      api?.submitRegionClick?.(endPoint);
       clearSelection();
+
+      const bounds = await api?.getWindowBoundsAtPoint?.(endPoint);
+      if (bounds) {
+        setRipple({ cx: endPoint.x, cy: endPoint.y, bounds });
+        setTimeout(() => {
+          api?.submitRegionClick?.(endPoint);
+        }, 380);
+      } else {
+        api?.submitRegionClick?.(endPoint);
+      }
       return;
     }
     api?.submitRegionSelection?.(resolvedSelection);
     clearSelection();
   };
+
+  const rippleSize = ripple
+    ? Math.hypot(ripple.bounds.width, ripple.bounds.height) * 2
+    : 0;
 
   return (
     <div
@@ -104,6 +124,28 @@ export function RegionCapture() {
             height: selection.height,
           }}
         />
+      )}
+      {ripple && (
+        <div
+          className="region-capture-ripple-clip"
+          style={{
+            left: ripple.bounds.x,
+            top: ripple.bounds.y,
+            width: ripple.bounds.width,
+            height: ripple.bounds.height,
+          }}
+        >
+          <div
+            className="region-capture-ripple"
+            style={{
+              left: ripple.cx - ripple.bounds.x,
+              top: ripple.cy - ripple.bounds.y,
+              width: rippleSize,
+              height: rippleSize,
+            }}
+            onAnimationEnd={() => setRipple(null)}
+          />
+        </div>
       )}
       <div className="region-capture-hint">Click to capture window - drag to capture region - Right-click or Esc to cancel</div>
     </div>
