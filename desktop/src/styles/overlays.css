@@ -22,6 +22,12 @@
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.35);
+  animation: region-dim-enter 0.4s ease-out forwards;
+}
+
+@keyframes region-dim-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .region-capture-selection {
@@ -43,6 +49,112 @@
   font-size: 12px;
   letter-spacing: 0.2px;
   pointer-events: none;
+}
+
+/* ── Capture Ripple ── */
+
+.capture-ripple {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Click variant — small flash at impact point */
+.capture-ripple--click::before {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  transform: translate(-50%, -50%);
+  animation: capture-ripple-flash 0.35s ease-out forwards;
+}
+
+.capture-ripple-ring {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+}
+
+/* ── Entry variant (from center) ── */
+
+.capture-ripple--enter .capture-ripple-ring {
+  width: 80vmax;
+  height: 80vmax;
+}
+
+.capture-ripple--enter .chromatic-r {
+  border: 1.5px solid rgba(255, 90, 70, 0.16);
+  box-shadow: 0 0 10px 2px rgba(255, 90, 70, 0.06);
+  animation: capture-ripple-expand 1.1s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.capture-ripple--enter .chromatic-g {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 0 8px 1px rgba(255, 255, 255, 0.03);
+  animation: capture-ripple-expand 1.1s cubic-bezier(0.22, 0.61, 0.36, 1) 0.04s forwards;
+}
+
+.capture-ripple--enter .chromatic-b {
+  border: 1.5px solid rgba(70, 90, 255, 0.16);
+  box-shadow: 0 0 10px 2px rgba(70, 90, 255, 0.06);
+  animation: capture-ripple-expand 1.1s cubic-bezier(0.22, 0.61, 0.36, 1) 0.08s forwards;
+}
+
+/* ── Click variant (from tap point) ── */
+
+.capture-ripple--click .capture-ripple-ring {
+  width: 50vmax;
+  height: 50vmax;
+}
+
+.capture-ripple--click .chromatic-r {
+  border: 1.5px solid rgba(255, 90, 70, 0.2);
+  box-shadow: 0 0 8px 2px rgba(255, 90, 70, 0.08);
+  animation: capture-ripple-expand 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.capture-ripple--click .chromatic-g {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 6px 1px rgba(255, 255, 255, 0.04);
+  animation: capture-ripple-expand 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.03s forwards;
+}
+
+.capture-ripple--click .chromatic-b {
+  border: 1.5px solid rgba(70, 90, 255, 0.2);
+  box-shadow: 0 0 8px 2px rgba(70, 90, 255, 0.08);
+  animation: capture-ripple-expand 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.06s forwards;
+}
+
+/* ── Keyframes ── */
+
+@keyframes capture-ripple-expand {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes capture-ripple-flash {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(4);
+  }
 }
 
 .radial-shell {

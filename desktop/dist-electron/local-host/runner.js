@@ -17,7 +17,7 @@ const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
 const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
 const DEFERRED_DELETE_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
-export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requestCredential }) => {
+export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requestCredential, signHeartbeatPayload, }) => {
     const toolHost = createToolHost({
         StellaHome,
         frontendRoot,
@@ -57,17 +57,33 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
     let deferredDeleteSweepInterval = null;
     let heartbeatInterval = null;
     const HEARTBEAT_INTERVAL_MS = 30000;
-    const sendHeartbeat = () => {
-        callMutation("agent/device_resolver.heartbeat", {
-            deviceId,
-            platform: process.platform,
-        }).catch((err) => logError("Heartbeat failed:", err));
+    const sendHeartbeat = async () => {
+        if (!signHeartbeatPayload) {
+            logError("Heartbeat signing callback missing; skipping heartbeat.");
+            return;
+        }
+        const signedAtMs = Date.now();
+        try {
+            const signed = await signHeartbeatPayload(signedAtMs);
+            await callMutation("agent/device_resolver.heartbeat", {
+                deviceId,
+                platform: process.platform,
+                signedAtMs,
+                signature: signed.signature,
+                publicKey: signed.publicKey,
+            });
+        }
+        catch (err) {
+            logError("Heartbeat failed:", err);
+        }
     };
     const startHeartbeat = () => {
         if (heartbeatInterval)
             return;
-        sendHeartbeat();
-        heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+        void sendHeartbeat();
+        heartbeatInterval = setInterval(() => {
+            void sendHeartbeat();
+        }, HEARTBEAT_INTERVAL_MS);
     };
     const stopHeartbeat = () => {
         if (heartbeatInterval) {
@@ -353,7 +369,7 @@ export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requ
             if (isRunning) {
                 startSubscription();
                 // Send immediate heartbeat when auth becomes available
-                sendHeartbeat();
+                void sendHeartbeat();
             }
         }
         else {

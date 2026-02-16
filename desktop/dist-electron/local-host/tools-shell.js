@@ -6,6 +6,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { removeSecretFile, truncate, writeSecretFile } from "./tools-utils.js";
+import { isDangerousCommand } from "./command_safety.js";
 export const createShellState = (resolveSecretValue) => ({
     shells: new Map(),
     skillCache: [],
@@ -223,6 +224,13 @@ export const handleOpenApp = async (args) => {
 export const handleBash = async (state, args, context) => {
     void context; // Unused but kept for interface consistency
     const command = String(args.command ?? "");
+    // Safety check: reject dangerous commands
+    const dangerReason = isDangerousCommand(command);
+    if (dangerReason) {
+        return {
+            error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
+        };
+    }
     const timeout = Math.min(Number(args.timeout ?? 120000), 600000);
     const cwd = String(args.working_directory ?? process.cwd());
     const runInBackground = Boolean(args.run_in_background ?? false);
@@ -239,6 +247,14 @@ export const handleSkillBash = async (state, args, context) => {
     const skillId = String(args.skill_id ?? "").trim();
     if (!skillId) {
         return { error: "skill_id is required." };
+    }
+    // Safety check: reject dangerous commands
+    const commandStr = String(args.command ?? "");
+    const dangerReason = isDangerousCommand(commandStr);
+    if (dangerReason) {
+        return {
+            error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
+        };
     }
     const skill = state.skillCache.find((s) => s.id === skillId);
     if (!skill || !skill.secretMounts) {
@@ -314,6 +330,39 @@ export const handleSkillBash = async (state, args, context) => {
     finally {
         await cleanupMountedSecretFiles();
     }
+};
+export const handleShellStatus = async (state, args) => {
+    const shellId = String(args.shell_id ?? "");
+    // If no shell_id provided, list all active shells
+    if (!shellId) {
+        const shells = [...state.shells.entries()].map(([id, r]) => ({
+            id,
+            command: r.command.slice(0, 100),
+            running: r.running,
+            exitCode: r.exitCode,
+            elapsed: r.running ? `${Math.round((Date.now() - r.startedAt) / 1000)}s` : undefined,
+        }));
+        if (shells.length === 0)
+            return { result: "No active shells." };
+        return { result: JSON.stringify(shells, null, 2) };
+    }
+    const record = state.shells.get(shellId);
+    if (!record)
+        return { error: `Shell not found: ${shellId}` };
+    const tail_lines = Number(args.tail_lines ?? 50);
+    const output = record.output || "(no output yet)";
+    // Get last N lines
+    const lines = output.split("\n");
+    const tail = truncate(lines.slice(-tail_lines).join("\n"));
+    const status = record.running ? "running" : "completed";
+    const elapsed = Math.round(((record.completedAt ?? Date.now()) - record.startedAt) / 1000);
+    let result = `Shell ${shellId}: ${status}`;
+    if (!record.running)
+        result += ` (exit code: ${record.exitCode ?? "?"})`;
+    result += ` | elapsed: ${elapsed}s`;
+    result += `\nCommand: ${record.command.slice(0, 200)}`;
+    result += `\n\n--- Output (last ${Math.min(tail_lines, lines.length)} lines) ---\n${tail}`;
+    return { result };
 };
 export const handleKillShell = async (state, args) => {
     const shellId = String(args.shell_id ?? "");

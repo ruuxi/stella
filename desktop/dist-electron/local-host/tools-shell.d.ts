@@ -13,4 +13,5 @@ export declare const runShell: (command: string, cwd: string, timeoutMs: number,
 export declare const handleOpenApp: (args: Record<string, unknown>) => Promise<ToolResult>;
 export declare const handleBash: (state: ShellState, args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
 export declare const handleSkillBash: (state: ShellState, args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
+export declare const handleShellStatus: (state: ShellState, args: Record<string, unknown>) => Promise<ToolResult>;
 export declare const handleKillShell: (state: ShellState, args: Record<string, unknown>) => Promise<ToolResult>;

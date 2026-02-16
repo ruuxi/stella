@@ -50,7 +50,7 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     },
     getDeviceId: () => electron_1.ipcRenderer.invoke('device:getId'),
     configureHost: (config) => electron_1.ipcRenderer.invoke('host:configure', config),
-    setAuthToken: (payload) => electron_1.ipcRenderer.invoke('auth:setToken', payload),
+    setAuthState: (payload) => electron_1.ipcRenderer.invoke('auth:setState', payload),
     onAuthCallback: (callback) => {
         const handler = (_event, data) => {
             callback(data);

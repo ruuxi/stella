@@ -107,48 +107,61 @@ beforeEach(() => {
 
 describe("OnboardingStep1", () => {
   describe("start phase", () => {
-    it("renders Start Stella button in the start phase", () => {
-      render(<OnboardingStep1 {...makeProps()} />);
+    it("renders Start Stella button in the start phase when authenticated", () => {
+      render(<OnboardingStep1 {...makeProps({ isAuthenticated: true })} />);
       expect(screen.getByText("Start Stella")).toBeTruthy();
     });
 
-    it("renders with data-phase='start'", () => {
-      const { container } = render(<OnboardingStep1 {...makeProps()} />);
+    it("renders with data-phase='start' when authenticated", () => {
+      const { container } = render(<OnboardingStep1 {...makeProps({ isAuthenticated: true })} />);
       const dialogue = container.querySelector(".onboarding-dialogue");
       expect(dialogue?.getAttribute("data-phase")).toBe("start");
     });
 
     it("does not show auth or intro content in start phase", () => {
-      render(<OnboardingStep1 {...makeProps()} />);
+      render(<OnboardingStep1 {...makeProps({ isAuthenticated: true })} />);
       expect(screen.queryByText("Sign in to begin")).toBeNull();
       expect(screen.queryByText("Continue")).toBeNull();
     });
   });
 
-  describe("start -> auth transition", () => {
+  describe("auth -> start transition", () => {
+    it("starts in auth phase when not authenticated", () => {
+      const { container } = render(<OnboardingStep1 {...makeProps({ isAuthenticated: false })} />);
+      const dialogue = container.querySelector(".onboarding-dialogue");
+      expect(dialogue?.getAttribute("data-phase")).toBe("auth");
+      expect(screen.getByTestId("inline-auth")).toBeTruthy();
+    });
+
+    it("auto-advances to start phase when isAuthenticated becomes true", () => {
+      const props = makeProps({ isAuthenticated: false });
+      const { container, rerender } = render(<OnboardingStep1 {...props} />);
+
+      // Initially in auth phase
+      expect(container.querySelector(".onboarding-dialogue")?.getAttribute("data-phase")).toBe("auth");
+
+      // Reuse same props object to keep callback refs stable (avoids
+      // the "complete" effect re-running and clearing the transition timer)
+      rerender(<OnboardingStep1 {...props} isAuthenticated={true} />);
+
+      // Advance past the transition timeout (FADE_OUT_MS + FADE_GAP_MS = 600)
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(container.querySelector(".onboarding-dialogue")?.getAttribute("data-phase")).toBe("start");
+      expect(screen.getByText("Start Stella")).toBeTruthy();
+    });
+
     it("calls onAccept and onInteract when Start Stella is clicked", () => {
-      const props = makeProps();
+      const props = makeProps({ isAuthenticated: true });
       render(<OnboardingStep1 {...props} />);
       fireEvent.click(screen.getByText("Start Stella"));
       expect(props.onAccept).toHaveBeenCalledOnce();
       expect(props.onInteract).toHaveBeenCalledOnce();
     });
 
-    it("transitions to auth phase after timeout when not authenticated", () => {
-      const props = makeProps({ isAuthenticated: false });
-      render(<OnboardingStep1 {...props} />);
-      fireEvent.click(screen.getByText("Start Stella"));
-
-      // Advance past the 1600ms timeout
-      act(() => {
-        vi.advanceTimersByTime(1600);
-      });
-
-      expect(screen.getByText("Sign in to begin")).toBeTruthy();
-      expect(screen.getByTestId("inline-auth")).toBeTruthy();
-    });
-
-    it("transitions to intro phase after timeout when already authenticated", () => {
+    it("transitions to intro phase after clicking Start Stella", () => {
       const props = makeProps({ isAuthenticated: true });
       render(<OnboardingStep1 {...props} />);
       fireEvent.click(screen.getByText("Start Stella"));
@@ -164,16 +177,8 @@ describe("OnboardingStep1", () => {
   });
 
   describe("auth phase", () => {
-    it("renders InlineAuth in auth phase", () => {
-      const props = makeProps({ isAuthenticated: false });
-      render(<OnboardingStep1 {...props} />);
-
-      // Go to auth phase
-      fireEvent.click(screen.getByText("Start Stella"));
-      act(() => {
-        vi.advanceTimersByTime(1600);
-      });
-
+    it("renders InlineAuth in auth phase when not authenticated", () => {
+      render(<OnboardingStep1 {...makeProps({ isAuthenticated: false })} />);
       expect(screen.getByTestId("inline-auth")).toBeTruthy();
       expect(screen.getByText("Sign in to begin")).toBeTruthy();
     });
