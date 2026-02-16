@@ -23,6 +23,12 @@ const renderTruncated = (value: string, max = MAX_OUTPUT) => {
   return `${result.text}\n\n[Output truncated: chars=${result.outputChars}/${result.totalChars}]`;
 };
 
+const shellSingleQuote = (value: string): string =>
+  `'${value.replace(/'/g, "'\\''")}'`;
+
+const WORKSPACE_USER = "workspace";
+const WORKSPACE_HOME = "/home/workspace";
+
 const formatExecResult = (result: { stdout: string; stderr: string; exit_code: number }) => {
   const parts: string[] = [];
   if (result.stdout) parts.push(result.stdout);
@@ -41,9 +47,31 @@ export const createCloudTools = (
   ownerId: string,
   spriteName: string,
 ): ToolSet => {
-  const execOnSprite = async (command: string) => {
+  let workspaceReady = false;
+
+  const ensureWorkspace = async () => {
+    if (workspaceReady) return;
     const token = await getSpritesTokenForOwner(ctx, ownerId);
-    return await spritesExec(token, spriteName, command);
+    await spritesExec(
+      token,
+      spriteName,
+      "id workspace >/dev/null 2>&1 || (" +
+        "useradd -m -d /home/workspace -s /bin/bash workspace && " +
+        "chown -R workspace:workspace /home/workspace && " +
+        "chmod 700 /home/sprite/stella-bridge 2>/dev/null; true" +
+        ")",
+    );
+    workspaceReady = true;
+  };
+
+  const execOnSprite = async (command: string) => {
+    await ensureWorkspace();
+    const token = await getSpritesTokenForOwner(ctx, ownerId);
+    return await spritesExec(
+      token,
+      spriteName,
+      `sudo -u ${WORKSPACE_USER} -H bash -c ${shellSingleQuote(command)}`,
+    );
   };
 
   return {
@@ -168,7 +196,7 @@ print(f"Replaced {count if ${replaceAll} else 1} occurrence(s) in {path}")
         path: z.string().optional(),
       }),
       execute: async (args) => {
-        const searchPath = args.path || "/home/sprite";
+        const searchPath = args.path || WORKSPACE_HOME;
         try {
           const result = await execOnSprite(
             `find "${searchPath}" -name "${args.pattern}" -type f 2>/dev/null | head -100`,
@@ -195,7 +223,7 @@ print(f"Replaced {count if ${replaceAll} else 1} occurrence(s) in {path}")
         max_results: z.number().optional(),
       }),
       execute: async (args) => {
-        const searchPath = args.path || "/home/sprite";
+        const searchPath = args.path || WORKSPACE_HOME;
         const parts = ["rg"];
         if (args.case_insensitive) parts.push("-i");
         if (args.output_mode === "files_with_matches") parts.push("-l");

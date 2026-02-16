@@ -738,6 +738,15 @@ export const setupSprite = internalAction({
         "Playwright install",
       );
 
+      // Create isolated workspace user for agent tool execution
+      await spritesExecChecked(
+        spritesToken,
+        args.spriteName,
+        "useradd -m -d /home/workspace -s /bin/bash workspace && " +
+          "chown -R workspace:workspace /home/workspace",
+        "Workspace user creation",
+      );
+
       // Create a checkpoint after setup for rollback safety
       // Checkpoint creation returns streaming NDJSON, use text variant
       const checkpointResponse = await spritesApiText(
