@@ -5,6 +5,8 @@
  * for the user based on their core memory profile.
  */
 
+import { getAuthHeaders } from "./auth-token";
+
 export type SkillSelectionResult = {
   selectedSkillIds: string[];
 };
@@ -22,12 +24,10 @@ export async function selectDefaultSkills(
     baseUrl.replace(".convex.cloud", ".convex.site");
 
   const endpoint = new URL("/api/select-default-skills", httpBaseUrl).toString();
+  const headers = await getAuthHeaders({ "Content-Type": "application/json" });
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    credentials: "include",
+    headers,
     body: JSON.stringify({ coreMemory }),
   });
 

@@ -69,11 +69,10 @@ describe("ChatColumn", () => {
     expect(screen.queryByTestId("conversation-events")).toBeNull();
   });
 
-  it("shows ConversationEvents when authenticated + onboardingDone + has events", () => {
-    const events = [{ id: "1", type: "user", body: "hello" }] as any;
+  it("shows ConversationEvents when authenticated + onboardingDone", () => {
     render(
       <ChatColumn
-        {...makeProps({ isAuthenticated: true, onboardingDone: true, events })}
+        {...makeProps({ isAuthenticated: true, onboardingDone: true })}
       />,
     );
     expect(screen.getByTestId("conversation-events")).toBeTruthy();
@@ -109,19 +108,31 @@ describe("ChatColumn", () => {
     expect(screen.getByLabelText("Scroll to bottom")).toBeTruthy();
   });
 
-  it("hides scroll-to-bottom button when no conversation", () => {
+  it("hides scroll-to-bottom button when not authenticated", () => {
     render(
       <ChatColumn
         {...makeProps({
           showScrollButton: true,
-          isAuthenticated: true,
+          isAuthenticated: false,
           onboardingDone: true,
-          events: [],
-          isStreaming: false,
         })}
       />,
     );
     expect(screen.queryByLabelText("Scroll to bottom")).toBeNull();
+  });
+
+  it("shows nothing when auth is loading and onboarding done", () => {
+    render(
+      <ChatColumn
+        {...makeProps({
+          isAuthenticated: false,
+          isAuthLoading: true,
+          onboardingDone: true,
+        })}
+      />,
+    );
+    expect(screen.queryByTestId("onboarding-view")).toBeNull();
+    expect(screen.queryByTestId("conversation-events")).toBeNull();
   });
 
   it('calls scrollToBottom("smooth") when scroll button clicked', () => {
