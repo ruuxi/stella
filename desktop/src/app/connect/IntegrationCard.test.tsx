@@ -54,7 +54,7 @@ describe("IntegrationCard", () => {
 
     mockUseAction.mockReturnValue(vi.fn().mockResolvedValue(null));
 
-    Object.defineProperty(global.navigator, "clipboard", {
+    Object.defineProperty(globalThis.navigator, "clipboard", {
       value: {
         writeText: vi.fn(),
       },

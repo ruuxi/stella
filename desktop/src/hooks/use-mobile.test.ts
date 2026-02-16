@@ -21,7 +21,7 @@ describe("useIsMobile", () => {
           dispatchEvent: () => true,
           addListener: () => {},
           removeListener: () => {},
-        }) as MediaQueryList,
+        }) as unknown as MediaQueryList,
     });
 
     Object.defineProperty(window, "innerWidth", { value: 640, configurable: true });
@@ -53,7 +53,7 @@ describe("useIsMobile", () => {
           dispatchEvent: () => true,
           addListener: () => {},
           removeListener: () => {},
-        }) as MediaQueryList,
+        }) as unknown as MediaQueryList,
     });
 
     Object.defineProperty(window, "innerWidth", { value: 900, configurable: true });
