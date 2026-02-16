@@ -164,6 +164,7 @@ export type ElectronApi = {
   ) => () => void
   submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) => void
   submitRegionClick: (point: { x: number; y: number }) => void
+  getWindowBoundsAtPoint: (point: { x: number; y: number }) => Promise<{ x: number; y: number; width: number; height: number } | null>
   cancelRegionCapture: () => void
   removeScreenshot: (index: number) => void
   // Theme sync across windows
