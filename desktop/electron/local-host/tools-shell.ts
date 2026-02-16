@@ -420,6 +420,46 @@ export const handleSkillBash = async (
   }
 };
 
+export const handleShellStatus = async (
+  state: ShellState,
+  args: Record<string, unknown>,
+): Promise<ToolResult> => {
+  const shellId = String(args.shell_id ?? "");
+
+  // If no shell_id provided, list all active shells
+  if (!shellId) {
+    const shells = [...state.shells.entries()].map(([id, r]) => ({
+      id,
+      command: r.command.slice(0, 100),
+      running: r.running,
+      exitCode: r.exitCode,
+      elapsed: r.running ? `${Math.round((Date.now() - r.startedAt) / 1000)}s` : undefined,
+    }));
+    if (shells.length === 0) return { result: "No active shells." };
+    return { result: JSON.stringify(shells, null, 2) };
+  }
+
+  const record = state.shells.get(shellId);
+  if (!record) return { error: `Shell not found: ${shellId}` };
+
+  const tail_lines = Number(args.tail_lines ?? 50);
+  const output = record.output || "(no output yet)";
+  // Get last N lines
+  const lines = output.split("\n");
+  const tail = truncate(lines.slice(-tail_lines).join("\n"));
+
+  const status = record.running ? "running" : "completed";
+  const elapsed = Math.round(((record.completedAt ?? Date.now()) - record.startedAt) / 1000);
+
+  let result = `Shell ${shellId}: ${status}`;
+  if (!record.running) result += ` (exit code: ${record.exitCode ?? "?"})`;
+  result += ` | elapsed: ${elapsed}s`;
+  result += `\nCommand: ${record.command.slice(0, 200)}`;
+  result += `\n\n--- Output (last ${Math.min(tail_lines, lines.length)} lines) ---\n${tail}`;
+
+  return { result };
+};
+
 export const handleKillShell = async (
   state: ShellState,
   args: Record<string, unknown>,
