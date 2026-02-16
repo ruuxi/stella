@@ -1,15 +1,13 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { getElectronApi } from "../services/electron";
+import { runVacuumEffect } from "./region-capture-vacuum";
 
-type Point = {
-  x: number;
-  y: number;
-};
+type Point = { x: number; y: number };
 
-type Ripple = {
-  cx: number;
-  cy: number;
+type VacuumState = {
+  clickPoint: Point;
   bounds: { x: number; y: number; width: number; height: number };
+  thumbnail: string;
 };
 
 const MIN_SELECTION_SIZE = 6;
@@ -18,7 +16,8 @@ export function RegionCapture() {
   const api = getElectronApi();
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
-  const [ripple, setRipple] = useState<Ripple | null>(null);
+  const [vacuum, setVacuum] = useState<VacuumState | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const selection = startPoint && currentPoint ? {
     x: Math.min(startPoint.x, currentPoint.x),
@@ -44,6 +43,18 @@ export function RegionCapture() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    if (!vacuum || !canvasRef.current) return;
+    const { clickPoint, bounds, thumbnail } = vacuum;
+    const cx = (clickPoint.x - bounds.x) / bounds.width;
+    const cy = (clickPoint.y - bounds.y) / bounds.height;
+
+    runVacuumEffect(canvasRef.current, thumbnail, cx, cy).then(() => {
+      api?.submitRegionClick?.(clickPoint);
+      setVacuum(null);
+    });
+  }, [vacuum]);
+
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     api?.cancelRegionCapture?.();
@@ -51,26 +62,19 @@ export function RegionCapture() {
   };
 
   const handleMouseDown = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0) {
-      return;
-    }
+    if (event.button !== 0) return;
     event.preventDefault();
-    const point = { x: event.clientX, y: event.clientY };
-    setStartPoint(point);
-    setCurrentPoint(point);
+    setStartPoint({ x: event.clientX, y: event.clientY });
+    setCurrentPoint({ x: event.clientX, y: event.clientY });
   };
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
-    if (!startPoint) {
-      return;
-    }
+    if (!startPoint) return;
     setCurrentPoint({ x: event.clientX, y: event.clientY });
   };
 
   const handleMouseUp = async (event: MouseEvent<HTMLDivElement>) => {
-    if (!startPoint) {
-      return;
-    }
+    if (!startPoint) return;
     event.preventDefault();
     const endPoint = currentPoint ?? { x: event.clientX, y: event.clientY };
     const resolvedSelection = {
@@ -85,13 +89,9 @@ export function RegionCapture() {
       resolvedSelection.height < MIN_SELECTION_SIZE
     ) {
       clearSelection();
-
-      const bounds = await api?.getWindowBoundsAtPoint?.(endPoint);
-      if (bounds) {
-        setRipple({ cx: endPoint.x, cy: endPoint.y, bounds });
-        setTimeout(() => {
-          api?.submitRegionClick?.(endPoint);
-        }, 380);
+      const capture = await api?.getWindowCapture?.(endPoint);
+      if (capture) {
+        setVacuum({ clickPoint: endPoint, ...capture });
       } else {
         api?.submitRegionClick?.(endPoint);
       }
@@ -101,10 +101,6 @@ export function RegionCapture() {
     clearSelection();
   };
 
-  const rippleSize = ripple
-    ? Math.hypot(ripple.bounds.width, ripple.bounds.height) * 2
-    : 0;
-
   return (
     <div
       className="region-capture-root"
@@ -113,7 +109,7 @@ export function RegionCapture() {
       onMouseUp={handleMouseUp}
       onContextMenu={handleContextMenu}
     >
-      {!selection && <div className="region-capture-dim" />}
+      {!selection && !vacuum && <div className="region-capture-dim" />}
       {selection && (
         <div
           className="region-capture-selection"
@@ -125,27 +121,17 @@ export function RegionCapture() {
           }}
         />
       )}
-      {ripple && (
-        <div
-          className="region-capture-ripple-clip"
+      {vacuum && (
+        <canvas
+          ref={canvasRef}
+          className="region-capture-vacuum"
           style={{
-            left: ripple.bounds.x,
-            top: ripple.bounds.y,
-            width: ripple.bounds.width,
-            height: ripple.bounds.height,
+            left: vacuum.bounds.x,
+            top: vacuum.bounds.y,
+            width: vacuum.bounds.width,
+            height: vacuum.bounds.height,
           }}
-        >
-          <div
-            className="region-capture-ripple"
-            style={{
-              left: ripple.cx - ripple.bounds.x,
-              top: ripple.cy - ripple.bounds.y,
-              width: rippleSize,
-              height: rippleSize,
-            }}
-            onAnimationEnd={() => setRipple(null)}
-          />
-        </div>
+        />
       )}
       <div className="region-capture-hint">Click to capture window - drag to capture region - Right-click or Esc to cancel</div>
     </div>
