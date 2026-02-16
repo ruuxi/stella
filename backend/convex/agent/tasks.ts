@@ -17,7 +17,8 @@ import {
 } from "./context_budget";
 import type { DeviceToolContext } from "./device_tools";
 import { createTools } from "../tools/index";
-import { resolveModelConfig } from "./model_resolver";
+import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
+import { withModelFailoverAsync } from "./model_failover";
 import { requireConversationOwner } from "../auth";
 
 const taskValidator = v.object({
@@ -754,6 +755,7 @@ const executeSubagentRun = async (
 
   try {
     const resolvedConfig = await resolveModelConfig(ctx, args.subagentType, args.ownerId);
+    const fallbackConfig = await resolveFallbackConfig(ctx, args.subagentType, args.ownerId);
 
     // --- Pre-gathered context (memory recall + explore) ---
     const preGatheredParts: string[] = [];
@@ -853,8 +855,7 @@ const executeSubagentRun = async (
     }
     messages.push({ role: "user" as const, content: promptContent });
 
-    const result = await generateText({
-      ...resolvedConfig,
+    const generateTextSharedArgs = {
       system: effectiveSystemPrompt,
       tools: createTools(
         ctx,
@@ -870,7 +871,7 @@ const executeSubagentRun = async (
       ),
       messages: messages as any[],
       abortSignal: abortController.signal,
-      onStepFinish: async ({ toolCalls }) => {
+      onStepFinish: async ({ toolCalls }: { toolCalls?: Array<{ toolName: string; args?: unknown }> }) => {
         if (!toolCalls || toolCalls.length === 0) return;
         const descriptions = toolCalls.map(
           (tc) => describeToolCall(
@@ -889,7 +890,14 @@ const executeSubagentRun = async (
           }
         }
       },
-    });
+    };
+
+    const result = await withModelFailoverAsync(
+      () => generateText({ ...resolvedConfig, ...generateTextSharedArgs }),
+      fallbackConfig
+        ? () => generateText({ ...fallbackConfig, ...generateTextSharedArgs })
+        : undefined,
+    );
 
     const text: string = result.text ?? "";
     finished = true;
@@ -1672,6 +1680,11 @@ export const deliverTaskResult = internalAction({
       "orchestrator",
       args.ownerId,
     );
+    const deliveryFallbackConfig = await resolveFallbackConfig(
+      ctx,
+      "orchestrator",
+      args.ownerId,
+    );
 
     try {
       let historyBudget = TASK_DELIVERY_HISTORY_MAX_TOKENS;
@@ -1686,8 +1699,7 @@ export const deliverTaskResult = internalAction({
         const historyMessages = eventsToHistoryMessages(historyEvents);
 
         try {
-          const genResult = await generateText({
-            ...resolvedConfig,
+          const deliverySharedArgs = {
             system: promptBuild.systemPrompt,
             tools: createTools(ctx, toolContext, {
               agentType: "orchestrator",
@@ -1699,13 +1711,20 @@ export const deliverTaskResult = internalAction({
             messages: [
               ...historyMessages,
               {
-                role: "user",
+                role: "user" as const,
                 content: promptBuild.dynamicContext
                   ? `${deliveryMessage}\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`
                   : deliveryMessage,
               },
             ],
-          });
+          };
+
+          const genResult = await withModelFailoverAsync(
+            () => generateText({ ...resolvedConfig, ...deliverySharedArgs }),
+            deliveryFallbackConfig
+              ? () => generateText({ ...deliveryFallbackConfig, ...deliverySharedArgs })
+              : undefined,
+          );
 
           // Check if NoResponse was called in any step
           const noResponseCalled = genResult.steps?.some(

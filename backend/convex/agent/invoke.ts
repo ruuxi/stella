@@ -4,7 +4,8 @@ import { streamText, stepCountIs } from "ai";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "../tools/index";
-import { resolveModelConfig } from "./model_resolver";
+import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
+import { withModelFailover } from "./model_failover";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwner } from "../auth";
 import { jsonSchemaValidator, jsonValueValidator } from "../shared_validators";
@@ -341,18 +342,26 @@ export const invoke = internalAction({
     let rawText = "";
     try {
       const resolvedConfig = await resolveModelConfig(ctx, args.agentType, ownerId);
-      const result = await streamText({
-        ...resolvedConfig,
+      const fallbackConfig = await resolveFallbackConfig(ctx, args.agentType, ownerId);
+
+      const invokeSharedArgs = {
         system: `${promptBuild.systemPrompt}\n\n${invocationInstructions}`.trim(),
         tools,
         stopWhen: stepCountIs(maxSteps),
         messages: [
           {
-            role: "user",
-            content: [{ type: "text", text: userBlocks.join("\n\n") }],
+            role: "user" as const,
+            content: [{ type: "text" as const, text: userBlocks.join("\n\n") }],
           },
         ],
-      });
+      };
+
+      const result = await withModelFailover(
+        () => streamText({ ...resolvedConfig, ...invokeSharedArgs }),
+        fallbackConfig
+          ? () => streamText({ ...fallbackConfig, ...invokeSharedArgs })
+          : undefined,
+      );
 
       rawText = scrubProviderTerms(truncate(await result.text));
     } catch (error) {

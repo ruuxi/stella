@@ -8,7 +8,8 @@ import {
   AUTOMATION_HISTORY_MAX_TOKENS,
 } from "../agent/context_budget";
 import { createTools } from "../tools/index";
-import { resolveModelConfig } from "../agent/model_resolver";
+import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
+import { withModelFailover } from "../agent/model_failover";
 
 export type RunAgentTurnResult = {
   text: string;
@@ -98,23 +99,24 @@ export async function runAgentTurn({
   let noResponseCalled = false;
 
   const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
-  const result = await streamText({
-    ...resolvedConfig,
+  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId);
+
+  const runnerSharedArgs = {
     system: promptBuild.systemPrompt,
     tools,
     messages: [
       ...historyMessages,
       {
-        role: "user",
-        content: [{ type: "text", text: prompt.trim() || " " }],
+        role: "user" as const,
+        content: [{ type: "text" as const, text: prompt.trim() || " " }],
       },
     ],
-    onStepFinish: ({ toolCalls }) => {
+    onStepFinish: ({ toolCalls }: { toolCalls?: Array<{ toolName: string }> }) => {
       if (toolCalls?.some((tc: { toolName: string }) => tc.toolName === "NoResponse")) {
         noResponseCalled = true;
       }
     },
-    onFinish: ({ usage, totalUsage }) => {
+    onFinish: ({ usage, totalUsage }: { usage: any; totalUsage: any }) => {
       const usageTotals = totalUsage ?? usage;
       const hasUsage =
         usageTotals &&
@@ -129,7 +131,14 @@ export async function runAgentTurn({
           }
         : undefined;
     },
-  });
+  };
+
+  const result = await withModelFailover(
+    () => streamText({ ...resolvedConfig, ...runnerSharedArgs }),
+    fallbackConfig
+      ? () => streamText({ ...fallbackConfig, ...runnerSharedArgs })
+      : undefined,
+  );
 
   const text = await result.text;
 

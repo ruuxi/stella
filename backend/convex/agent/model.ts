@@ -3,8 +3,9 @@
  * Update this file to switch models or providers per agent type.
  */
 
-type ModelConfig = {
+export type ModelConfig = {
   model: string;
+  fallback?: string; // fallback model if primary fails
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: {
@@ -22,6 +23,7 @@ type ModelConfig = {
 
 const DEFAULT_MODEL: ModelConfig = {
   model: "zai/glm-4.7",
+  fallback: "moonshotai/kimi-k2.5",
   temperature: 1.0,
   maxOutputTokens: 4096,
   providerOptions: {
@@ -34,6 +36,7 @@ const DEFAULT_MODEL: ModelConfig = {
 const AGENT_MODELS: Record<string, ModelConfig> = {
   orchestrator: {
     model: "anthropic/claude-opus-4.6",
+    fallback: "anthropic/claude-opus-4.5",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -45,6 +48,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   general: {
     model: "anthropic/claude-opus-4.6",
+    fallback: "anthropic/claude-opus-4.5",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -56,6 +60,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   explore: {
     model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -67,6 +72,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   browser: {
     model: "moonshotai/kimi-k2.5",
+    fallback: "anthropic/claude-sonnet-4-5",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -78,17 +84,19 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   self_mod: {
     model: "anthropic/claude-opus-4.6",
+    fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["cerebras, fireworks"],
       },
     },
   },
 
   memory_ops: {
     model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
     maxOutputTokens: 8096,
     providerOptions: {
@@ -109,6 +117,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   synthesis: {
     model: "openai/gpt-5.2-codex",
+    fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 2500,
     providerOptions: {
@@ -122,7 +131,8 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   suggestions: {
-    model: "openai/gpt-4o-mini",
+    model: "moonshotai/kimi-k2.5",
+    fallback: "zai/glm-4.7",
     temperature: 0.3,
     maxOutputTokens: 300,
     providerOptions: {
@@ -134,6 +144,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-opus-4.6",
+    fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
     maxOutputTokens: 1000,
     providerOptions: {
