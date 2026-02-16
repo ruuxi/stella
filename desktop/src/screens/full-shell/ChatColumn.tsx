@@ -39,6 +39,7 @@ type ChatColumnProps = {
   onboardingDone: boolean;
   onboardingExiting: boolean;
   isAuthenticated: boolean;
+  isAuthLoading?: boolean;
   canSubmit: boolean;
   onSend: () => void;
 
@@ -79,6 +80,7 @@ export function ChatColumn({
   onboardingDone,
   onboardingExiting,
   isAuthenticated,
+  isAuthLoading,
   canSubmit,
   onSend,
   hasExpanded,
@@ -96,8 +98,8 @@ export function ChatColumn({
   onCommandSelect,
 }: ChatColumnProps) {
   const suggestions = useCommandSuggestions(events, isStreaming);
-  const hasMessages = events.length > 0 || isStreaming;
-  const showConversation = isAuthenticated && onboardingDone && hasMessages;
+  const showConversation = isAuthenticated && onboardingDone;
+  const showLoading = !isAuthenticated && onboardingDone && (isAuthLoading ?? false);
 
   return (
     <div className="full-body-main">
@@ -106,7 +108,7 @@ export function ChatColumn({
         ref={scrollContainerRef}
         onScroll={handleScroll}
       >
-        {showConversation ? (
+        {showLoading ? null : showConversation ? (
           <div className="session-messages">
             <ConversationEvents
               events={events}

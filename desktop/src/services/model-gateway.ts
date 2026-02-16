@@ -1,3 +1,5 @@
+import { getAuthHeaders } from "./auth-token";
+
 type ChatRequest = {
   conversationId: string;
   userMessageId: string;
@@ -26,6 +28,7 @@ type UiStreamEvent = {
   type?: string;
   text?: string;
   delta?: string;
+  errorText?: string;
 };
 
 const handleUiEvent = (
@@ -48,6 +51,12 @@ const handleUiEvent = (
     if (delta) {
       handlers.onReasoningDelta?.(delta);
     }
+  }
+  // Surface streaming errors from the AI SDK so they're not silently swallowed
+  if (event.type === "error") {
+    const errorMsg = event.errorText ?? "Unknown streaming error";
+    console.error("[stream] Model error event:", errorMsg);
+    handlers.onError?.(new Error(errorMsg));
   }
   if (event.type === "text-end" || event.type === "finish") {
     if (!state.done) {
@@ -82,15 +91,16 @@ export const streamChat = async (
     baseUrl.replace(".convex.cloud", ".convex.site");
 
   const endpoint = new URL("/api/chat", httpBaseUrl).toString();
+  const headers = await getAuthHeaders({
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  });
+
   let response: Response;
   try {
     response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      },
-      credentials: "include",
+      headers,
       body: JSON.stringify(payload),
       signal: options.signal,
     });
