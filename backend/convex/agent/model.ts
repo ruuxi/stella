@@ -22,10 +22,10 @@ export type ModelConfig = {
 };
 
 const DEFAULT_MODEL: ModelConfig = {
-  model: "zai/glm-4.7",
+  model: "anthropic/claude-opus-4.6",
   fallback: "moonshotai/kimi-k2.5",
   temperature: 1.0,
-  maxOutputTokens: 4096,
+  maxOutputTokens: 16096,
   providerOptions: {
     gateway: {
       order: ["cerebras"],
@@ -38,7 +38,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     model: "anthropic/claude-opus-4.6",
     fallback: "anthropic/claude-opus-4.5",
     temperature: 1.0,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
@@ -50,7 +50,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     model: "anthropic/claude-opus-4.6",
     fallback: "anthropic/claude-opus-4.5",
     temperature: 1.0,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
@@ -62,7 +62,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
@@ -74,7 +74,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     model: "moonshotai/kimi-k2.5",
     fallback: "anthropic/claude-sonnet-4-5",
     temperature: 1.0,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
         order: ["fireworks"],
@@ -86,7 +86,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     model: "anthropic/claude-opus-4.6",
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 16000,
     providerOptions: {
       gateway: {
         order: ["cerebras, fireworks"],
@@ -98,7 +98,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
-    maxOutputTokens: 8096,
+    maxOutputTokens: 12096,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
@@ -119,7 +119,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     model: "openai/gpt-5.2-codex",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
-    maxOutputTokens: 2500,
+    maxOutputTokens: 9500,
     providerOptions: {
       gateway: {
         order: ["cerebras", "groq"],
@@ -133,8 +133,8 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   suggestions: {
     model: "moonshotai/kimi-k2.5",
     fallback: "zai/glm-4.7",
-    temperature: 0.3,
-    maxOutputTokens: 300,
+    temperature: 1.0,
+    maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
@@ -146,7 +146,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     model: "anthropic/claude-opus-4.6",
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
-    maxOutputTokens: 1000,
+    maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
         order: ["cerebras"],
