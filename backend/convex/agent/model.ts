@@ -89,7 +89,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     maxOutputTokens: 16000,
     providerOptions: {
       gateway: {
-        order: ["cerebras, fireworks"],
+        order: ["cerebras", "fireworks"],
       },
     },
   },
