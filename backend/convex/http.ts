@@ -824,7 +824,7 @@ http.route({
     }
 
     const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
-    const fallbackConfig = await resolveFallbackConfig(ctx, agentType, conversation.ownerId);
+    const fallbackConfig = await resolveFallbackConfig(ctx, agentType, conversation.ownerId).catch(() => null);
 
     const streamTextSharedArgs = {
       system: promptBuild.systemPrompt,

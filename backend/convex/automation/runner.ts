@@ -99,7 +99,7 @@ export async function runAgentTurn({
   let noResponseCalled = false;
 
   const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
-  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId);
+  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId).catch(() => null);
 
   const runnerSharedArgs = {
     system: promptBuild.systemPrompt,
