@@ -13,7 +13,7 @@ import {
 } from './radial-window.js'
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js'
 import { captureChatContext, type ChatContext } from './chat-context.js'
-import { captureWindowAtPoint, getWindowInfoAtPoint, prefetchWindowSources, type WindowInfo } from './window-capture.js'
+import { captureWindowAtPoint, prefetchWindowSources, type WindowInfo } from './window-capture.js'
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js'
 import {
   createModifierOverlay,
@@ -885,13 +885,22 @@ const getCurrentProcessWindowSourceIds = () => {
 const resetRegionCapture = () => {
   pendingRegionCaptureResolve = null
   pendingRegionCapturePromise = null
+  cachedRegionSources = null
   hideRegionCaptureWindow()
 }
+
+let cachedRegionSources: Awaited<ReturnType<typeof desktopCapturer.getSources>> | null = null
 
 const startRegionCapture = async () => {
   if (pendingRegionCapturePromise) {
     return pendingRegionCapturePromise
   }
+
+  // Pre-fetch window thumbnails before overlay appears (screen is still clean)
+  cachedRegionSources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: { width: 1280, height: 960 },
+  })
 
   await showRegionCaptureWindow(cancelRegionCapture)
 
@@ -1471,11 +1480,10 @@ app.whenReady().then(async () => {
     cancelRegionCapture()
   })
 
-  ipcMain.handle('region:getWindowBounds', async (_event, point: { x: number; y: number }) => {
+  ipcMain.handle('region:getWindowCapture', async (_event, point: { x: number; y: number }) => {
     const regionBounds = getRegionCaptureWindow()?.getBounds()
     if (!regionBounds) return null
 
-    // Convert overlay-local coords to global screen coords
     const dipX = regionBounds.x + point.x
     const dipY = regionBounds.y + point.y
     const clickDisplay = screen.getDisplayNearestPoint({ x: dipX, y: dipY })
@@ -1483,15 +1491,18 @@ app.whenReady().then(async () => {
     const screenX = Math.round(dipX * scaleFactor)
     const screenY = Math.round(dipY * scaleFactor)
 
-    const info = await getWindowInfoAtPoint(screenX, screenY, { excludePids: [process.pid] })
-    if (!info?.bounds) return null
+    const capture = await captureWindowAtPoint(screenX, screenY, cachedRegionSources ?? undefined, { excludePids: [process.pid] })
+    if (!capture) return null
 
-    // Convert window bounds from native screen coords back to overlay-local DIP coords
+    const { bounds } = capture.windowInfo
     return {
-      x: Math.round(info.bounds.x / scaleFactor) - regionBounds.x,
-      y: Math.round(info.bounds.y / scaleFactor) - regionBounds.y,
-      width: Math.round(info.bounds.width / scaleFactor),
-      height: Math.round(info.bounds.height / scaleFactor),
+      bounds: {
+        x: Math.round(bounds.x / scaleFactor) - regionBounds.x,
+        y: Math.round(bounds.y / scaleFactor) - regionBounds.y,
+        width: Math.round(bounds.width / scaleFactor),
+        height: Math.round(bounds.height / scaleFactor),
+      },
+      thumbnail: capture.screenshot.dataUrl,
     }
   })
 
