@@ -3,10 +3,16 @@ import {
   extractStepsFromEvents,
   groupEventsIntoTurns,
   getCurrentRunningTool,
+  extractTasksFromEvents,
+  getRunningTasks,
   isToolRequest,
   isToolResult,
   isUserMessage,
   isAssistantMessage,
+  isTaskStarted,
+  isTaskCompleted,
+  isTaskFailed,
+  isTaskProgress,
   extractToolTitle,
   type EventRecord,
 } from "./use-conversation-events";
@@ -241,6 +247,194 @@ describe("getCurrentRunningTool", () => {
       createToolRequest("write", { path: "/b.txt" }, "req-2"),
     ];
     expect(getCurrentRunningTool(events)).toBe("write");
+  });
+});
+
+describe("extractTasksFromEvents", () => {
+  it("returns empty array for no events", () => {
+    expect(extractTasksFromEvents([])).toEqual([]);
+  });
+
+  it("creates running tasks from task_started events", () => {
+    const events = [
+      createEvent({
+        type: "task_started",
+        payload: { taskId: "t1", description: "Research", agentType: "explore" },
+      }),
+    ];
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      id: "t1",
+      description: "Research",
+      agentType: "explore",
+      status: "running",
+    });
+  });
+
+  it("marks tasks as completed", () => {
+    const events = [
+      createEvent({
+        type: "task_started",
+        payload: { taskId: "t1", description: "Work", agentType: "general" },
+      }),
+      createEvent({
+        type: "task_completed",
+        payload: { taskId: "t1", result: "Done" },
+      }),
+    ];
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks[0].status).toBe("completed");
+  });
+
+  it("marks tasks as error on failure", () => {
+    const events = [
+      createEvent({
+        type: "task_started",
+        payload: { taskId: "t1", description: "Work", agentType: "general" },
+      }),
+      createEvent({
+        type: "task_failed",
+        payload: { taskId: "t1", error: "timeout" },
+      }),
+    ];
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks[0].status).toBe("error");
+  });
+
+  it("attaches statusText from task_progress", () => {
+    const events = [
+      createEvent({
+        type: "task_started",
+        payload: { taskId: "t1", description: "Work", agentType: "general" },
+      }),
+      createEvent({
+        type: "task_progress",
+        payload: { taskId: "t1", statusText: "50% done" },
+      }),
+    ];
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks[0].statusText).toBe("50% done");
+  });
+});
+
+describe("getRunningTasks", () => {
+  it("returns only running tasks", () => {
+    const events = [
+      createEvent({
+        type: "task_started",
+        payload: { taskId: "t1", description: "A", agentType: "explore" },
+      }),
+      createEvent({
+        type: "task_started",
+        payload: { taskId: "t2", description: "B", agentType: "general" },
+      }),
+      createEvent({
+        type: "task_completed",
+        payload: { taskId: "t1" },
+      }),
+    ];
+    const running = getRunningTasks(events);
+    expect(running).toHaveLength(1);
+    expect(running[0].id).toBe("t2");
+  });
+});
+
+describe("type guards - tasks", () => {
+  it("isTaskStarted identifies task_started events", () => {
+    expect(
+      isTaskStarted(
+        createEvent({
+          type: "task_started",
+          payload: { taskId: "t1", description: "d", agentType: "general" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isTaskStarted(createEvent({ type: "task_started", payload: {} })),
+    ).toBe(false);
+  });
+
+  it("isTaskCompleted identifies task_completed events", () => {
+    expect(
+      isTaskCompleted(
+        createEvent({ type: "task_completed", payload: { taskId: "t1" } }),
+      ),
+    ).toBe(true);
+    expect(
+      isTaskCompleted(createEvent({ type: "task_completed" })),
+    ).toBe(false);
+  });
+
+  it("isTaskFailed identifies task_failed events", () => {
+    expect(
+      isTaskFailed(
+        createEvent({ type: "task_failed", payload: { taskId: "t1" } }),
+      ),
+    ).toBe(true);
+  });
+
+  it("isTaskProgress identifies task_progress events", () => {
+    expect(
+      isTaskProgress(
+        createEvent({
+          type: "task_progress",
+          payload: { taskId: "t1", statusText: "Working" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isTaskProgress(
+        createEvent({ type: "task_progress", payload: { taskId: "t1" } }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("extractToolTitle - additional cases", () => {
+  it("extracts filename from Edit tool", () => {
+    const event = createToolRequest("edit", { path: "/src/foo/bar.ts" });
+    expect(extractToolTitle(event)).toBe("bar.ts");
+  });
+
+  it("returns default for Write without path", () => {
+    const event = createToolRequest("write", {});
+    expect(extractToolTitle(event)).toBe("Writing file");
+  });
+
+  it("returns default for Glob without pattern", () => {
+    const event = createToolRequest("glob", {});
+    expect(extractToolTitle(event)).toBe("Finding files");
+  });
+
+  it("returns default for Bash without command", () => {
+    const event = createToolRequest("bash", {});
+    expect(extractToolTitle(event)).toBe("Running command");
+  });
+
+  it("extracts description from Task tool", () => {
+    const event = createToolRequest("task", {
+      description: "Explore the codebase",
+    });
+    expect(extractToolTitle(event)).toBe("Explore the codebase");
+  });
+
+  it("returns toolName for unknown tools", () => {
+    const event = createToolRequest("CustomTool", {});
+    expect(extractToolTitle(event)).toBe("CustomTool");
+  });
+
+  it("returns empty string for non-tool events", () => {
+    expect(extractToolTitle(createUserMessage("hi"))).toBe("");
+  });
+});
+
+describe("groupEventsIntoTurns - standalone assistant", () => {
+  it("handles standalone assistant message (no user turn)", () => {
+    const events = [createAssistantMessage("Welcome")];
+    const turns = groupEventsIntoTurns(events);
+    expect(turns).toHaveLength(1);
+    expect(turns[0].userMessage._id).toMatch(/^synthetic-/);
   });
 });
 
