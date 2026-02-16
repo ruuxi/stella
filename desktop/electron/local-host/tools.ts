@@ -36,6 +36,7 @@ import {
   handleBash,
   handleKillShell,
   handleOpenApp,
+  handleShellStatus,
   handleSkillBash,
   type ShellState,
 } from "./tools-shell.js";
@@ -140,6 +141,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     OpenApp: (args) => handleOpenApp(args),
     Bash: (args, context) => handleBash(shellState, args, context),
     KillShell: (args) => handleKillShell(shellState, args),
+    ShellStatus: (args) => handleShellStatus(shellState, args),
     SkillBash: (args, context) => handleSkillBash(shellState, args, context),
 
     // State tools
