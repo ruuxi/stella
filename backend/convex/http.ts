@@ -86,10 +86,8 @@ const http = httpRouter();
 authComponent.registerRoutes(http, createAuth, { cors: true });
 
 const DEFAULT_CORS_ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:4173",
+  "http://localhost:5714",
+  "https://fromyou.ai",
   "null",
 ];
 
@@ -114,6 +112,7 @@ const CORS_ALLOWED_ORIGINS = (() => {
 
 const isAllowedCorsOrigin = (origin: string | null) => {
   if (!origin) return true;
+  if (origin.match(/^http:\/\/localhost(:\d+)?$/)) return true;
   return CORS_ALLOWED_ORIGINS.has(origin);
 };
 
