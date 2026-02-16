@@ -348,13 +348,12 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   // Complete
   useEffect(() => {
-    clearTimeoutRef();
     if (phase === "complete") {
+      clearTimeoutRef();
       timeoutRef.current = setTimeout(() => {
         setPhase("done");
         onComplete();
       }, 600);
-      return clearTimeoutRef;
     }
     return clearTimeoutRef;
   }, [phase, onComplete, clearTimeoutRef]);
