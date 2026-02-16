@@ -22,6 +22,7 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "OpenApp",
   "Bash",
   "KillShell",
+  "ShellStatus",
   "AskUserQuestion",
   "RequestCredential",
   "SkillBash",
@@ -320,6 +321,20 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         shell_id: z.string().describe("Shell ID returned by Bash with run_in_background=true"),
       }),
       execute: (args) => call("KillShell", args),
+    }),
+    ShellStatus: tool({
+      description:
+        "Check the status and output of a background shell process without killing it.\n\n" +
+        "Usage:\n" +
+        "- If shell_id is provided, returns status, elapsed time, and tail of output.\n" +
+        "- If shell_id is omitted, lists all active/completed shells.\n" +
+        "- Use tail_lines to control how many lines of output to retrieve (default 50).\n" +
+        "- Use this to monitor long-running commands before deciding to KillShell.",
+      inputSchema: z.object({
+        shell_id: z.string().optional().describe("Shell ID to check. Omit to list all shells."),
+        tail_lines: z.number().optional().describe("Number of output lines to return from the end (default 50)"),
+      }),
+      execute: (args) => call("ShellStatus", args),
     }),
     AskUserQuestion: tool({
       description:
