@@ -1,7 +1,7 @@
 type BridgeBundle = {
     provider: string;
     code: string;
-    config: string;
+    env: Record<string, string>;
     dependencies: string;
 };
 export declare function deploy(bundle: BridgeBundle): Promise<{

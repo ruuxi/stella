@@ -61,7 +61,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onDemoChange,
   isAuthenticated,
 }) => {
-  const [phase, setPhase] = useState<Phase>("start");
+  const [phase, setPhase] = useState<Phase>(() => isAuthenticated ? "start" : "auth");
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -246,15 +246,15 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     onInteract?.();
     timeoutRef.current = setTimeout(() => {
       setLeaving(false);
-      setPhase(isAuthenticated ? "intro" : "auth");
+      setPhase("intro");
     }, 1600);
   };
 
-  // Auto-advance from auth
+  // Auto-advance from auth to start once signed in
   useEffect(() => {
     if (isAuthenticated && phase === "auth" && !leaving) {
       onInteract?.();
-      transitionTo("intro");
+      transitionTo("start");
     }
   }, [isAuthenticated, phase, leaving, onInteract, transitionTo]);
 

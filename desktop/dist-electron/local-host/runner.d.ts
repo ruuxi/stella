@@ -2,6 +2,13 @@ type HostRunnerOptions = {
     deviceId: string;
     StellaHome: string;
     frontendRoot?: string;
+    signHeartbeatPayload?: (signedAtMs: number) => Promise<{
+        publicKey: string;
+        signature: string;
+    }> | {
+        publicKey: string;
+        signature: string;
+    };
     requestCredential?: (payload: {
         provider: string;
         label?: string;
@@ -13,7 +20,7 @@ type HostRunnerOptions = {
         label: string;
     }>;
 };
-export declare const createLocalHostRunner: ({ deviceId, StellaHome, frontendRoot, requestCredential }: HostRunnerOptions) => {
+export declare const createLocalHostRunner: ({ deviceId, StellaHome, frontendRoot, requestCredential, signHeartbeatPayload, }: HostRunnerOptions) => {
     deviceId: string;
     setConvexUrl: (url: string) => void;
     setAuthToken: (token: string | null) => void;

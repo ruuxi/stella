@@ -1,22 +1,65 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { createPrivateKey, generateKeyPairSync, sign } from "crypto";
 const DEVICE_FILE = "device.json";
 export const getDeviceRecordPath = (statePath) => path.join(statePath, DEVICE_FILE);
 export const getOrCreateDeviceId = async (statePath) => {
+    const identity = await getOrCreateDeviceIdentity(statePath);
+    return identity.deviceId;
+};
+const generateDeviceKeyPair = () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    return {
+        publicKey: publicKey
+            .export({ format: "der", type: "spki" })
+            .toString("base64"),
+        privateKey: privateKey
+            .export({ format: "der", type: "pkcs8" })
+            .toString("base64"),
+    };
+};
+export const getOrCreateDeviceIdentity = async (statePath) => {
     const recordPath = getDeviceRecordPath(statePath);
     try {
         const raw = await fs.readFile(recordPath, "utf-8");
         const parsed = JSON.parse(raw);
+        if (parsed.deviceId && parsed.publicKey && parsed.privateKey) {
+            return {
+                deviceId: parsed.deviceId,
+                publicKey: parsed.publicKey,
+                privateKey: parsed.privateKey,
+            };
+        }
         if (parsed.deviceId) {
-            return parsed.deviceId;
+            const keyPair = generateDeviceKeyPair();
+            const upgraded = {
+                deviceId: parsed.deviceId,
+                ...keyPair,
+            };
+            await fs.writeFile(recordPath, JSON.stringify(upgraded, null, 2), "utf-8");
+            return upgraded;
         }
     }
     catch {
         // Fall through to create.
     }
     const deviceId = crypto.randomUUID();
-    const payload = { deviceId };
+    const keyPair = generateDeviceKeyPair();
+    const payload = {
+        deviceId,
+        ...keyPair,
+    };
     await fs.mkdir(path.dirname(recordPath), { recursive: true });
     await fs.writeFile(recordPath, JSON.stringify(payload, null, 2), "utf-8");
-    return deviceId;
+    return payload;
+};
+export const signDeviceHeartbeat = (identity, signedAtMs) => {
+    const privateKey = createPrivateKey({
+        key: Buffer.from(identity.privateKey, "base64"),
+        format: "der",
+        type: "pkcs8",
+    });
+    const payload = Buffer.from(`${identity.deviceId}:${signedAtMs}`);
+    const signature = sign(null, payload, privateKey);
+    return signature.toString("base64");
 };

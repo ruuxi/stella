@@ -10,35 +10,26 @@ import os from "os";
 // ---------------------------------------------------------------------------
 // 1. Dangerous Command Blocklist
 // ---------------------------------------------------------------------------
+// NOTE: Normal rm/del operations are handled by the deferred-delete trash system
+// (see deferred_delete.ts + buildProtectedCommand in tools-shell.ts) which intercepts
+// rm/rmdir/unlink/del/erase and moves files to ~/.stella/state/deferred-delete/trash/
+// with 24h retention. The blocklist here only catches things the trash CAN'T protect
+// against: filesystem-level destruction, fork bombs, and system power commands.
 const DANGEROUS_COMMAND_PATTERNS = [
-    // Recursive force-delete of root or home
-    { pattern: /\brm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+(-[a-zA-Z]*r[a-zA-Z]*\s+)?|(-[a-zA-Z]*r[a-zA-Z]*\s+)?-[a-zA-Z]*f[a-zA-Z]*\s+)[/"']?\s*\/\s*$/i, reason: "rm -rf /" },
-    { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+\/\s*$/i, reason: "rm -rf /" },
+    // Root / home directory wipe — trash intercepts rm but these are catastrophic scope
     { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
     { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
     { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
     { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
-    // Windows destructive commands
-    { pattern: /\bdel\s+\/[fF]\s+\/[sS]\s+\/[qQ]\s+[cC]:\\/i, reason: "del /f /s /q C:\\" },
+    // Drive-level destruction (not caught by trash)
     { pattern: /\bformat\s+[a-zA-Z]:\s*/i, reason: "format drive" },
-    // Disk/filesystem destruction
     { pattern: /\bdd\s+if=/i, reason: "dd if= (raw disk write)" },
     { pattern: /\bmkfs\b/i, reason: "mkfs (format filesystem)" },
-    // Fork bomb
+    // Fork bomb — process-level, trash can't help
     { pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/i, reason: "fork bomb" },
-    // System power commands
+    // System power — not a file operation, trash irrelevant
     { pattern: /\bshutdown\b/i, reason: "shutdown" },
     { pattern: /\breboot\b/i, reason: "reboot" },
-    // System directory targeting — catch commands that operate on system dirs
-    { pattern: /\brm\s+.*\/etc\b/i, reason: "targeting /etc" },
-    { pattern: /\brm\s+.*\/usr\b/i, reason: "targeting /usr" },
-    { pattern: /\brm\s+.*\/bin\b/i, reason: "targeting /bin" },
-    { pattern: /\brm\s+.*\/sbin\b/i, reason: "targeting /sbin" },
-    { pattern: /\brm\s+.*\/boot\b/i, reason: "targeting /boot" },
-    { pattern: /\brm\s+.*[cC]:\\Windows\b/i, reason: "targeting C:\\Windows" },
-    { pattern: /\brm\s+.*[cC]:\\Program\s+Files\b/i, reason: "targeting C:\\Program Files" },
-    { pattern: /\bSystem32\b.*\b(del|rm|rmdir|erase|rd)\b/i, reason: "targeting System32" },
-    { pattern: /\b(del|rm|rmdir|erase|rd)\b.*\bSystem32\b/i, reason: "targeting System32" },
 ];
 /**
  * Check if a command string contains dangerous/destructive patterns.

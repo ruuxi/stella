@@ -11,6 +11,7 @@ import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { trashPathForDeferredDelete } from "./deferred_delete.js";
+import { validateSkillContent } from "./command_safety.js";
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
 const normalizeAppName = (value) => {
     const normalized = value
@@ -56,6 +57,16 @@ export const handleInstallSkill = async (args) => {
     const tags = args.tags ?? [];
     if (!skillId || !name || !markdown) {
         return { error: "Skill install requires skillId, name, and markdown." };
+    }
+    // Safety check: validate skill content for unsafe patterns
+    const validation = validateSkillContent(markdown);
+    if (!validation.safe) {
+        const issues = validation.issues
+            .map((issue) => `- [${issue.category}] ${issue.description}`)
+            .join("\n");
+        return {
+            error: `Skill install blocked: unsafe patterns detected in skill content.\n${issues}`,
+        };
     }
     const skillDir = path.join(getStellaRoot(), "skills", skillId);
     await fs.mkdir(skillDir, { recursive: true });

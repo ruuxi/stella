@@ -6,6 +6,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { ensureAbsolutePath, expandHomePath, readFileSafe, formatWithLineNumbers, } from "./tools-utils.js";
+import { isBlockedPath } from "./command_safety.js";
 import { stageFile, readStaged, getActiveFeature, createFeature, getFeature, getHistory, listStagedFiles, setActiveFeature, updateFeature, } from "../self-mod/index.js";
 let _config = {};
 const FEATURE_IDLE_MS = 15 * 60 * 1000;
@@ -102,6 +103,10 @@ export const handleRead = async (args, context) => {
     const pathCheck = ensureAbsolutePath(filePath);
     if (!pathCheck.ok)
         return { error: pathCheck.error };
+    // Safety check: block system directories
+    const pathBlock = isBlockedPath(filePath);
+    if (pathBlock)
+        return { error: pathBlock };
     // Self-mod intercept: check staging first
     if (context?.agentType === "self_mod") {
         const relativePath = getSrcRelativePath(filePath);
@@ -147,6 +152,10 @@ export const handleWrite = async (args, context) => {
     const pathCheck = ensureAbsolutePath(filePath);
     if (!pathCheck.ok)
         return { error: pathCheck.error };
+    // Safety check: block system directories
+    const pathBlock = isBlockedPath(filePath);
+    if (pathBlock)
+        return { error: pathBlock };
     // Self-mod intercept: redirect to staging
     if (context?.agentType === "self_mod") {
         const relativePath = getSrcRelativePath(filePath);
@@ -180,6 +189,10 @@ export const handleEdit = async (args, context) => {
     const pathCheck = ensureAbsolutePath(filePath);
     if (!pathCheck.ok)
         return { error: pathCheck.error };
+    // Safety check: block system directories
+    const pathBlock = isBlockedPath(filePath);
+    if (pathBlock)
+        return { error: pathBlock };
     // Self-mod intercept: check staging, apply edit, re-stage
     if (context?.agentType === "self_mod") {
         const relativePath = getSrcRelativePath(filePath);
