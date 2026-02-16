@@ -953,7 +953,14 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
           setPendingChatContext(radialContextBeforeGesture)
         }
       } else if (pendingChatContext !== null) {
-        setPendingChatContext(null)
+        if (pendingChatContext.regionScreenshots?.length) {
+          setPendingChatContext({
+            ...emptyContext(),
+            regionScreenshots: pendingChatContext.regionScreenshots,
+          })
+        } else {
+          setPendingChatContext(null)
+        }
       }
       break
     case 'capture': {
@@ -968,7 +975,6 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
       hideRadialWindow()
       hideModifierOverlay()
       const miniWasConcealed = concealMiniWindowForCapture()
-      await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
       const regionCapture = await startRegionCapture()
       if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
         const ctx = pendingChatContext ?? emptyContext()
@@ -1028,10 +1034,16 @@ const initMouseHook = () => {
       }
     },
     onModifierUp: () => {
-      // Clear any unused context, but not if the mini shell is already showing
-      // (the user selected a wedge and the context is in use)
+      // Clear transient context (window, text) but preserve accumulated screenshots.
       if (!isMiniShowing() && !pendingMiniShowTimer && !pendingRadialCapturePromise) {
-        setPendingChatContext(null)
+        if (pendingChatContext?.regionScreenshots?.length) {
+          setPendingChatContext({
+            ...emptyContext(),
+            regionScreenshots: pendingChatContext.regionScreenshots,
+          })
+        } else {
+          setPendingChatContext(null)
+        }
       }
       if (process.platform === 'darwin') {
         // Hide preemptive overlay when modifier is released (unless radial is
@@ -1113,7 +1125,14 @@ const initMouseHook = () => {
             setPendingChatContext(radialContextBeforeGesture)
           }
         } else if (!pendingMiniShowTimer && pendingChatContext !== null) {
-          setPendingChatContext(null)
+          if (pendingChatContext.regionScreenshots?.length) {
+            setPendingChatContext({
+              ...emptyContext(),
+              regionScreenshots: pendingChatContext.regionScreenshots,
+            })
+          } else {
+            setPendingChatContext(null)
+          }
         }
       }
       radialGestureActive = false
