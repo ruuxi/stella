@@ -9,7 +9,8 @@ import {
   ORCHESTRATOR_HISTORY_MAX_TOKENS,
 } from "./agent/context_budget";
 import { createTools } from "./tools/index";
-import { resolveModelConfig } from "./agent/model_resolver";
+import { resolveModelConfig, resolveFallbackConfig } from "./agent/model_resolver";
+import { withModelFailover } from "./agent/model_failover";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
 import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
@@ -824,9 +825,9 @@ http.route({
     }
 
     const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
+    const fallbackConfig = await resolveFallbackConfig(ctx, agentType, conversation.ownerId);
 
-    const result = await streamText({
-      ...resolvedConfig,
+    const streamTextSharedArgs = {
       system: promptBuild.systemPrompt,
       tools: createTools(
         ctx,
@@ -851,12 +852,12 @@ http.route({
       messages: [
         ...historyMessages,
         {
-          role: "user",
+          role: "user" as const,
           content: contentParts,
         },
       ],
       abortSignal: request.signal,
-      onFinish: async ({ text, usage, totalUsage }) => {
+      onFinish: async ({ text, usage, totalUsage }: { text: string; usage: any; totalUsage: any }) => {
         if (text.trim().length > 0) {
           const usageTotals = totalUsage ?? usage;
           const hasUsage =
@@ -916,7 +917,14 @@ http.route({
           });
         } catch { /* best-effort */ }
       },
-    });
+    };
+
+    const result = await withModelFailover(
+      () => streamText({ ...resolvedConfig, ...streamTextSharedArgs }),
+      fallbackConfig
+        ? () => streamText({ ...fallbackConfig, ...streamTextSharedArgs })
+        : undefined,
+    );
 
     const response = result.toUIMessageStreamResponse();
     return withCors(response, origin);

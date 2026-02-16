@@ -19,7 +19,7 @@ import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getModelConfig } from "./model";
 
-type ResolvedModelConfig = {
+export type ResolvedModelConfig = {
   model: string | LanguageModel;
   temperature?: number;
   maxOutputTokens?: number;
@@ -201,5 +201,80 @@ export async function resolveModelConfig(
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
     providerOptions: defaults.providerOptions as ProviderOptions | undefined,
+  };
+}
+
+/**
+ * Resolve a fallback model config for an agent type.
+ *
+ * Returns null if the agent has no fallback configured.
+ * Uses the same BYOK chain as resolveModelConfig but with the fallback model string.
+ * Temperature and maxOutputTokens are inherited from the primary config.
+ */
+export async function resolveFallbackConfig(
+  ctx: { runQuery: ActionCtx["runQuery"] },
+  agentType: string,
+  ownerId?: string,
+): Promise<ResolvedModelConfig | null> {
+  const defaults = getModelConfig(agentType);
+  if (!defaults.fallback) return null;
+
+  const fallbackModel = defaults.fallback;
+
+  if (!ownerId) {
+    return {
+      model: fallbackModel,
+      temperature: defaults.temperature,
+      maxOutputTokens: defaults.maxOutputTokens,
+      // No gateway-specific options for fallback — use platform gateway defaults
+    };
+  }
+
+  // BYOK chain for the fallback model (same logic as primary)
+  const provider = extractProvider(fallbackModel);
+
+  // 1. Direct provider key
+  if (provider) {
+    const secretKey = providerToSecretKey(provider);
+    if (secretKey) {
+      const apiKey = await getUserKey(ctx, ownerId, secretKey);
+      if (apiKey) {
+        const directModel = createProviderModel(fallbackModel, apiKey);
+        if (directModel) {
+          return {
+            model: directModel,
+            temperature: defaults.temperature,
+            maxOutputTokens: defaults.maxOutputTokens,
+          };
+        }
+      }
+    }
+  }
+
+  // 2. OpenRouter fallback
+  const openrouterKey = await getUserKey(ctx, ownerId, "llm:openrouter");
+  if (openrouterKey) {
+    return {
+      model: createOpenRouterModel(fallbackModel, openrouterKey),
+      temperature: defaults.temperature,
+      maxOutputTokens: defaults.maxOutputTokens,
+    };
+  }
+
+  // 3. User's own Vercel AI Gateway key
+  const gatewayKey = await getUserKey(ctx, ownerId, "llm:gateway");
+  if (gatewayKey) {
+    return {
+      model: createGatewayModel(fallbackModel, gatewayKey),
+      temperature: defaults.temperature,
+      maxOutputTokens: defaults.maxOutputTokens,
+    };
+  }
+
+  // 4. No BYOK — return fallback model string (platform gateway will resolve it)
+  return {
+    model: fallbackModel,
+    temperature: defaults.temperature,
+    maxOutputTokens: defaults.maxOutputTokens,
   };
 }
