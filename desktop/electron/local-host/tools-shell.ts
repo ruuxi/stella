@@ -8,6 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord } from "./tools-types.js";
 import { removeSecretFile, truncate, writeSecretFile } from "./tools-utils.js";
+import { isDangerousCommand } from "./command_safety.js";
 
 export type ShellState = {
   shells: Map<string, ShellRecord>;
@@ -284,6 +285,15 @@ export const handleBash = async (
   void context; // Unused but kept for interface consistency
 
   const command = String(args.command ?? "");
+
+  // Safety check: reject dangerous commands
+  const dangerReason = isDangerousCommand(command);
+  if (dangerReason) {
+    return {
+      error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
+    };
+  }
+
   const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
   const cwd = String(args.working_directory ?? process.cwd());
   const runInBackground = Boolean(args.run_in_background ?? false);
@@ -309,6 +319,15 @@ export const handleSkillBash = async (
   const skillId = String(args.skill_id ?? "").trim();
   if (!skillId) {
     return { error: "skill_id is required." };
+  }
+
+  // Safety check: reject dangerous commands
+  const commandStr = String(args.command ?? "");
+  const dangerReason = isDangerousCommand(commandStr);
+  if (dangerReason) {
+    return {
+      error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
+    };
   }
 
   const skill = state.skillCache.find((s) => s.id === skillId);
