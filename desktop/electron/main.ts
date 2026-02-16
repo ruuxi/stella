@@ -13,7 +13,7 @@ import {
 } from './radial-window.js'
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js'
 import { captureChatContext, type ChatContext } from './chat-context.js'
-import { captureWindowAtPoint, captureWindowScreenshot, prefetchWindowSources, type WindowInfo } from './window-capture.js'
+import { captureWindowScreenshot, type WindowInfo } from './window-capture.js'
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js'
 import {
   createModifierOverlay,
@@ -868,20 +868,6 @@ const captureRegionScreenshot = async (
   }
 }
 
-const getCurrentProcessWindowSourceIds = () => {
-  const ids: string[] = []
-  for (const window of BrowserWindow.getAllWindows()) {
-    const id =
-      typeof window.getMediaSourceId === 'function'
-        ? window.getMediaSourceId()
-        : null
-    if (id) {
-      ids.push(id)
-    }
-  }
-  return ids
-}
-
 const resetRegionCapture = () => {
   pendingRegionCaptureResolve = null
   pendingRegionCapturePromise = null
@@ -1515,13 +1501,10 @@ app.whenReady().then(async () => {
     // so we capture the underlying target window/content.
     const miniWasConcealed = concealMiniWindowForCapture()
 
-    let capture: Awaited<ReturnType<typeof captureWindowAtPoint>> = null
+    let capture: Awaited<ReturnType<typeof captureWindowScreenshot>> = null
     try {
       // Wait briefly for composited overlays to disappear before capture.
       await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
-
-      // Pre-fetch sources with Stella windows excluded.
-      const sources = await prefetchWindowSources(getCurrentProcessWindowSourceIds())
 
       // Convert overlay-local click coordinates into global desktop coordinates.
       // regionWindow bounds are DIP; the native picker expects global coordinates.
@@ -1538,11 +1521,10 @@ app.whenReady().then(async () => {
         }
       }
 
-      // Capture window at clicked point.
-      capture = await captureWindowAtPoint(
+      // Capture window at clicked point using native screenshot.
+      capture = await captureWindowScreenshot(
         capturePoint.x,
         capturePoint.y,
-        sources,
         { excludePids: [process.pid] },
       )
     } catch (error) {
@@ -1783,11 +1765,9 @@ app.whenReady().then(async () => {
 
     try {
       await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
-      const sources = await prefetchWindowSources(getCurrentProcessWindowSourceIds())
-      const windowCapture = await captureWindowAtPoint(
+      const windowCapture = await captureWindowScreenshot(
         capturePoint.x,
         capturePoint.y,
-        sources,
         { excludePids: [process.pid] },
       )
       if (windowCapture?.screenshot) {

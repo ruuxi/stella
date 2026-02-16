@@ -5,7 +5,7 @@ import { MouseHookManager } from './mouse-hook.js';
 import { createRadialWindow, showRadialWindow, hideRadialWindow, updateRadialCursor, getRadialWindow, calculateSelectedWedge, } from './radial-window.js';
 import { createRegionCaptureWindow, showRegionCaptureWindow, hideRegionCaptureWindow, getRegionCaptureWindow } from './region-capture-window.js';
 import { captureChatContext } from './chat-context.js';
-import { captureWindowAtPoint, captureWindowScreenshot, prefetchWindowSources } from './window-capture.js';
+import { captureWindowScreenshot } from './window-capture.js';
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js';
 import { createModifierOverlay, showModifierOverlay, showModifierOverlayPreemptive, hideModifierOverlay, destroyModifierOverlay, } from './modifier-overlay.js';
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js';
@@ -701,18 +701,6 @@ const captureRegionScreenshot = async (display, selection) => {
         height: cropSize.height,
     };
 };
-const getCurrentProcessWindowSourceIds = () => {
-    const ids = [];
-    for (const window of BrowserWindow.getAllWindows()) {
-        const id = typeof window.getMediaSourceId === 'function'
-            ? window.getMediaSourceId()
-            : null;
-        if (id) {
-            ids.push(id);
-        }
-    }
-    return ids;
-};
 const resetRegionCapture = () => {
     pendingRegionCaptureResolve = null;
     pendingRegionCapturePromise = null;
@@ -1292,8 +1280,6 @@ app.whenReady().then(async () => {
         try {
             // Wait briefly for composited overlays to disappear before capture.
             await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS));
-            // Pre-fetch sources with Stella windows excluded.
-            const sources = await prefetchWindowSources(getCurrentProcessWindowSourceIds());
             // Convert overlay-local click coordinates into global desktop coordinates.
             // regionWindow bounds are DIP; the native picker expects global coordinates.
             const regionBounds = getRegionCaptureWindow()?.getBounds();
@@ -1308,8 +1294,8 @@ app.whenReady().then(async () => {
                     y: Math.round(dipY * scaleFactor),
                 };
             }
-            // Capture window at clicked point.
-            capture = await captureWindowAtPoint(capturePoint.x, capturePoint.y, sources, { excludePids: [process.pid] });
+            // Capture window at clicked point using native screenshot.
+            capture = await captureWindowScreenshot(capturePoint.x, capturePoint.y, { excludePids: [process.pid] });
         }
         catch (error) {
             console.warn('Failed to capture window at point', error);
@@ -1514,8 +1500,7 @@ app.whenReady().then(async () => {
         const miniWasConcealed = concealMiniWindowForCapture();
         try {
             await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS));
-            const sources = await prefetchWindowSources(getCurrentProcessWindowSourceIds());
-            const windowCapture = await captureWindowAtPoint(capturePoint.x, capturePoint.y, sources, { excludePids: [process.pid] });
+            const windowCapture = await captureWindowScreenshot(capturePoint.x, capturePoint.y, { excludePids: [process.pid] });
             if (windowCapture?.screenshot) {
                 return windowCapture.screenshot;
             }
