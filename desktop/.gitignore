@@ -51,3 +51,4 @@ stella-browser/docs/out/
 stella-browser/nul
 stella-browser/_bench_chain.js
 stella-browser/bun.lock
+coverage/
