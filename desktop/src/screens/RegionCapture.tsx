@@ -43,6 +43,16 @@ export function RegionCapture() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Listen for reset from main process (e.g. global Escape shortcut swallows
+  // the keypress before the renderer's keydown handler fires).
+  useEffect(() => {
+    const cleanup = getElectronApi()?.onRegionReset?.(() => {
+      clearSelection();
+      setVacuum(null);
+    });
+    return () => cleanup?.();
+  }, []);
+
   useEffect(() => {
     if (!vacuum || !canvasRef.current) return;
     const { clickPoint, bounds, thumbnail } = vacuum;

@@ -117,6 +117,7 @@ export const hideRegionCaptureWindow = () => {
   globalShortcut.unregister('Escape')
   onEscapeCancel = null
   if (regionWindow) {
+    regionWindow.webContents.send('region:reset')
     regionWindow.hide()
   }
 }
