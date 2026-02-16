@@ -399,6 +399,7 @@ export const FullShell = () => {
               onboardingDone={onboarding.onboardingDone}
               onboardingExiting={onboarding.onboardingExiting}
               isAuthenticated={onboarding.isAuthenticated}
+              isAuthLoading={onboarding.isAuthLoading}
               canSubmit={canSubmit}
               onSend={handleSend}
               hasExpanded={onboarding.hasExpanded}

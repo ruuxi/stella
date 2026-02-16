@@ -6,6 +6,8 @@
  * 2. Generate a personalized welcome message
  */
 
+import { getAuthHeaders } from "./auth-token";
+
 export type WelcomeSuggestion = {
   category: "cron" | "skill" | "app";
   title: string;
@@ -32,12 +34,10 @@ export async function synthesizeCoreMemory(
     baseUrl.replace(".convex.cloud", ".convex.site");
 
   const endpoint = new URL("/api/synthesize", httpBaseUrl).toString();
+  const headers = await getAuthHeaders({ "Content-Type": "application/json" });
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    credentials: "include",
+    headers,
     body: JSON.stringify({ formattedSignals }),
   });
 

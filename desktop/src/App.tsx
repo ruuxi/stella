@@ -4,12 +4,9 @@ import { getElectronApi } from './services/electron'
 import { Authenticated } from 'convex/react'
 import { AuthTokenBridge } from './app/AuthTokenBridge'
 import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
+import { AppBootstrap } from './app/AppBootstrap'
 
 type WindowType = 'full' | 'mini' | 'radial' | 'region'
-
-const AppBootstrap = lazy(() =>
-  import('./app/AppBootstrap').then((module) => ({ default: module.AppBootstrap })),
-)
 const CredentialRequestLayer = lazy(() =>
   import('./app/CredentialRequestLayer').then((module) => ({
     default: module.CredentialRequestLayer,
