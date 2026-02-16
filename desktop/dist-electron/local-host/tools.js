@@ -19,7 +19,7 @@ import { log, logError } from "./tools-utils.js";
 // Tool handlers
 import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./tools-file.js";
 import { handleGlob, handleGrep } from "./tools-search.js";
-import { createShellState, handleBash, handleKillShell, handleOpenApp, handleSkillBash, } from "./tools-shell.js";
+import { createShellState, handleBash, handleKillShell, handleOpenApp, handleShellStatus, handleSkillBash, } from "./tools-shell.js";
 // WebFetch and WebSearch have been promoted to backend tools (Convex actions).
 // import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import { createStateContext, handleTask, handleTaskOutput, } from "./tools-state.js";
@@ -87,6 +87,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
         OpenApp: (args) => handleOpenApp(args),
         Bash: (args, context) => handleBash(shellState, args, context),
         KillShell: (args) => handleKillShell(shellState, args),
+        ShellStatus: (args) => handleShellStatus(shellState, args),
         SkillBash: (args, context) => handleSkillBash(shellState, args, context),
         // State tools
         Task: (args) => handleTask(stateContext, args),

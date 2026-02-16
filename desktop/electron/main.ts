@@ -24,6 +24,7 @@ import {
 } from './modifier-overlay.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
+import { getDevServerUrl } from './dev-url.js'
 import { resolveStellaHome } from './local-host/stella-home.js'
 import {
   collectBrowserData,
@@ -350,7 +351,7 @@ const updateUiState = (partial: Partial<UiState>) => {
 }
 
 const getDevUrl = (windowMode: WindowMode) => {
-  const url = new URL('http://localhost:5173')
+  const url = new URL(getDevServerUrl())
   url.searchParams.set('window', windowMode)
   return url.toString()
 }

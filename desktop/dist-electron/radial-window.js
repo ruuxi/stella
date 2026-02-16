@@ -1,6 +1,7 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getDevServerUrl } from './dev-url.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -15,7 +16,7 @@ let radialWindow = null;
 // Using getBounds() during the first few ms after setBounds() can return stale values on some systems.
 let radialBounds = null;
 let radialScaleFactor = 1;
-const getDevUrl = () => 'http://localhost:5173/radial.html';
+const getDevUrl = () => `${getDevServerUrl()}/radial.html`;
 const getProdPath = () => path.join(__dirname, '../dist/radial.html');
 export const createRadialWindow = () => {
     if (radialWindow)

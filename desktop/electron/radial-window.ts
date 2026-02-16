@@ -1,6 +1,7 @@
 import { BrowserWindow, screen } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { getDevServerUrl } from './dev-url.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -21,7 +22,7 @@ let radialWindow: BrowserWindow | null = null
 let radialBounds: { x: number; y: number } | null = null
 let radialScaleFactor = 1
 
-const getDevUrl = () => 'http://localhost:5173/radial.html'
+const getDevUrl = () => `${getDevServerUrl()}/radial.html`
 
 const getProdPath = () => path.join(__dirname, '../dist/radial.html')
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { MouseHookManager } from './mouse-hook.js';
@@ -8,8 +8,9 @@ import { captureChatContext } from './chat-context.js';
 import { captureWindowAtPoint, prefetchWindowSources } from './window-capture.js';
 import { initSelectedTextProcess, cleanupSelectedTextProcess, getSelectedText } from './selected-text.js';
 import { createModifierOverlay, showModifierOverlay, showModifierOverlayPreemptive, hideModifierOverlay, destroyModifierOverlay, } from './modifier-overlay.js';
-import { getOrCreateDeviceId } from './local-host/device.js';
+import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js';
 import { createLocalHostRunner } from './local-host/runner.js';
+import { getDevServerUrl } from './dev-url.js';
 import { resolveStellaHome } from './local-host/stella-home.js';
 import { collectBrowserData, coreMemoryExists, detectPreferredBrowserProfile, listBrowserProfiles, writeCoreMemory, formatBrowserDataForSynthesis, } from './local-host/browser-data.js';
 import { collectAllSignals } from './local-host/collect-all.js';
@@ -38,6 +39,9 @@ let StellaHomePath = null;
 let appReady = false; // true when authenticated + onboarding complete
 let isQuitting = false;
 let pendingConvexUrl = null;
+let pendingConvexSiteUrl = null;
+let hostAuthAuthenticated = false;
+let authRefreshTimer = null;
 let pendingChatContext = null;
 // Bump when pendingChatContext changes so we can avoid broadcasting the same payload
 // right before showing the mini window (which can cause a visible "flash" of old state).
@@ -91,6 +95,8 @@ const miniSize = {
 const RADIAL_SIZE = 280;
 const MINI_SHELL_ANIM_MS = 140;
 const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80;
+const TOKEN_REFRESH_INTERVAL_MS = 60 * 1000;
+const STELLA_SESSION_PARTITION = 'persist:Stella';
 const isMiniShowing = () => {
     return Boolean(miniWindow && miniVisible);
 };
@@ -238,7 +244,7 @@ const updateUiState = (partial) => {
     broadcastUiState();
 };
 const getDevUrl = (windowMode) => {
-    const url = new URL('http://localhost:5173');
+    const url = new URL(getDevServerUrl());
     url.searchParams.set('window', windowMode);
     return url.toString();
 };
@@ -962,10 +968,117 @@ const initMouseHook = () => {
     });
     mouseHook.start();
 };
-const configureLocalHost = (convexUrl) => {
+const deriveConvexSiteUrl = (convexUrl, explicitSiteUrl) => {
+    const explicit = explicitSiteUrl?.trim();
+    if (explicit) {
+        return explicit;
+    }
+    const source = convexUrl?.trim();
+    if (!source) {
+        return null;
+    }
+    if (source.includes('.convex.site')) {
+        return source;
+    }
+    if (source.includes('.convex.cloud')) {
+        return source.replace('.convex.cloud', '.convex.site');
+    }
+    return null;
+};
+const parseTokenResponse = async (response) => {
+    try {
+        const payload = (await response.json());
+        if (!payload || typeof payload !== 'object') {
+            return null;
+        }
+        const record = payload;
+        const nestedToken = record.data?.token;
+        if (typeof nestedToken === 'string' && nestedToken.trim()) {
+            return nestedToken;
+        }
+        if (typeof record.token === 'string' && record.token.trim()) {
+            return record.token;
+        }
+        return null;
+    }
+    catch {
+        return null;
+    }
+};
+const fetchRunnerAuthToken = async () => {
+    const convexSiteUrl = deriveConvexSiteUrl(pendingConvexUrl, pendingConvexSiteUrl);
+    if (!convexSiteUrl) {
+        return null;
+    }
+    const tokenUrl = new URL('/convex/token', convexSiteUrl).toString();
+    try {
+        const appSession = session.fromPartition(STELLA_SESSION_PARTITION);
+        const cookies = await appSession.cookies.get({ url: tokenUrl });
+        const cookieHeader = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
+        if (!cookieHeader) {
+            return null;
+        }
+        const response = await fetch(tokenUrl, {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json',
+                Cookie: cookieHeader,
+            },
+        });
+        if (!response.ok) {
+            if (response.status !== 401 && response.status !== 403) {
+                console.warn(`[auth] Failed to refresh runner token: ${response.status}`);
+            }
+            return null;
+        }
+        return await parseTokenResponse(response);
+    }
+    catch (error) {
+        console.warn('[auth] Failed to fetch runner token from session', error);
+        return null;
+    }
+};
+const refreshRunnerAuthToken = async () => {
+    if (!hostAuthAuthenticated) {
+        localHostRunner?.setAuthToken(null);
+        return;
+    }
+    const token = await fetchRunnerAuthToken();
+    localHostRunner?.setAuthToken(token);
+};
+const stopAuthRefreshLoop = () => {
+    if (authRefreshTimer) {
+        clearInterval(authRefreshTimer);
+        authRefreshTimer = null;
+    }
+    localHostRunner?.setAuthToken(null);
+};
+const startAuthRefreshLoop = () => {
+    if (authRefreshTimer) {
+        return;
+    }
+    void refreshRunnerAuthToken();
+    authRefreshTimer = setInterval(() => {
+        void refreshRunnerAuthToken();
+    }, TOKEN_REFRESH_INTERVAL_MS);
+};
+const setHostAuthState = (authenticated) => {
+    hostAuthAuthenticated = authenticated;
+    if (!authenticated) {
+        stopAuthRefreshLoop();
+        return;
+    }
+    startAuthRefreshLoop();
+};
+const configureLocalHost = (config) => {
+    const convexUrl = config.convexUrl;
     pendingConvexUrl = convexUrl;
+    pendingConvexSiteUrl = config.convexSiteUrl ?? null;
     if (localHostRunner) {
         localHostRunner.setConvexUrl(convexUrl);
+    }
+    if (hostAuthAuthenticated) {
+        void refreshRunnerAuthToken();
     }
 };
 const requestCredential = async (payload) => {
@@ -1004,12 +1117,17 @@ app.whenReady().then(async () => {
     }
     const StellaHome = await resolveStellaHome(app);
     StellaHomePath = StellaHome.homePath;
-    deviceId = await getOrCreateDeviceId(StellaHome.statePath);
+    const deviceIdentity = await getOrCreateDeviceIdentity(StellaHome.statePath);
+    deviceId = deviceIdentity.deviceId;
     localHostRunner = createLocalHostRunner({
         deviceId,
         StellaHome: StellaHome.homePath,
         frontendRoot: path.resolve(__dirname, '..'),
         requestCredential,
+        signHeartbeatPayload: async (signedAtMs) => ({
+            publicKey: deviceIdentity.publicKey,
+            signature: signDeviceHeartbeat(deviceIdentity, signedAtMs),
+        }),
     });
     if (pendingConvexUrl) {
         localHostRunner.setConvexUrl(pendingConvexUrl);
@@ -1052,13 +1170,12 @@ app.whenReady().then(async () => {
     ipcMain.handle('device:getId', () => deviceId);
     ipcMain.handle('host:configure', (_event, config) => {
         if (config?.convexUrl) {
-            configureLocalHost(config.convexUrl);
+            configureLocalHost({ convexUrl: config.convexUrl, convexSiteUrl: config.convexSiteUrl });
         }
         return { deviceId };
     });
-    ipcMain.handle('auth:setToken', (_event, payload) => {
-        const nextToken = payload?.token ?? null;
-        localHostRunner?.setAuthToken(nextToken);
+    ipcMain.handle('auth:setState', (_event, payload) => {
+        setHostAuthState(Boolean(payload?.authenticated));
         return { ok: true };
     });
     // Window control handlers for custom title bar
@@ -1391,6 +1508,7 @@ app.on('window-all-closed', () => {
 });
 app.on('before-quit', () => {
     isQuitting = true;
+    stopAuthRefreshLoop();
     if (localHostRunner) {
         localHostRunner.killAllShells();
     }

@@ -1,6 +1,7 @@
 import { BrowserWindow, globalShortcut, screen } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { getDevServerUrl } from './dev-url.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -12,7 +13,7 @@ let contentReady = false
 let onEscapeCancel: (() => void) | null = null
 
 const getDevUrl = () => {
-  const url = new URL('http://localhost:5173')
+  const url = new URL(getDevServerUrl())
   url.searchParams.set('window', 'region')
   return url.toString()
 }
