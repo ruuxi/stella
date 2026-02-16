@@ -58,19 +58,28 @@ export const createRegionCaptureWindow = () => {
     });
     return regionWindow;
 };
-export const showRegionCaptureWindow = async (display = screen.getPrimaryDisplay(), cancelCallback) => {
+/**
+ * Compute the bounding rectangle that spans all displays (in DIP coordinates).
+ */
+const getAllDisplaysBounds = () => {
+    const displays = screen.getAllDisplays();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const d of displays) {
+        minX = Math.min(minX, d.bounds.x);
+        minY = Math.min(minY, d.bounds.y);
+        maxX = Math.max(maxX, d.bounds.x + d.bounds.width);
+        maxY = Math.max(maxY, d.bounds.y + d.bounds.height);
+    }
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+};
+export const showRegionCaptureWindow = async (cancelCallback) => {
     if (!regionWindow) {
         createRegionCaptureWindow();
     }
     if (!regionWindow)
         return;
-    const bounds = display.bounds;
-    regionWindow.setBounds({
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-    });
+    const bounds = getAllDisplaysBounds();
+    regionWindow.setBounds(bounds);
     if (!contentReady) {
         await new Promise((resolve) => {
             regionWindow.webContents.once('did-finish-load', () => resolve());
