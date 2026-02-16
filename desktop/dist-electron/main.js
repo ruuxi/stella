@@ -68,7 +68,6 @@ let radialCaptureRequestId = 0;
 let pendingRadialCapturePromise = null;
 let stagedRadialChatContext = null;
 let radialContextShouldCommit = false;
-let regionCaptureDisplay = null;
 let pendingRegionCaptureResolve = null;
 let pendingRegionCapturePromise = null;
 const pendingCredentialRequests = new Map();
@@ -717,15 +716,13 @@ const getCurrentProcessWindowSourceIds = () => {
 const resetRegionCapture = () => {
     pendingRegionCaptureResolve = null;
     pendingRegionCapturePromise = null;
-    regionCaptureDisplay = null;
     hideRegionCaptureWindow();
 };
 const startRegionCapture = async () => {
     if (pendingRegionCapturePromise) {
         return pendingRegionCapturePromise;
     }
-    regionCaptureDisplay = getDisplayForPoint(screen.getCursorScreenPoint());
-    await showRegionCaptureWindow(regionCaptureDisplay, cancelRegionCapture);
+    await showRegionCaptureWindow(cancelRegionCapture);
     pendingRegionCapturePromise = new Promise((resolve) => {
         pendingRegionCaptureResolve = resolve;
     });
@@ -744,8 +741,21 @@ const finalizeRegionCapture = async (selection) => {
     let screenshot = null;
     try {
         await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS));
-        const display = regionCaptureDisplay ?? getDisplayForPoint();
-        screenshot = await captureRegionScreenshot(display, selection);
+        // Convert overlay-relative selection to global DIP coordinates
+        const regionBounds = getRegionCaptureWindow()?.getBounds();
+        const globalX = (regionBounds?.x ?? 0) + selection.x;
+        const globalY = (regionBounds?.y ?? 0) + selection.y;
+        const centerX = globalX + selection.width / 2;
+        const centerY = globalY + selection.height / 2;
+        const display = screen.getDisplayNearestPoint({ x: centerX, y: centerY });
+        // Make selection coordinates relative to the target display
+        const displayRelativeSelection = {
+            x: globalX - display.bounds.x,
+            y: globalY - display.bounds.y,
+            width: selection.width,
+            height: selection.height,
+        };
+        screenshot = await captureRegionScreenshot(display, displayRelativeSelection);
     }
     catch (error) {
         console.warn('Failed to capture selected region', error);
@@ -1267,7 +1277,8 @@ app.whenReady().then(async () => {
             if (regionBounds) {
                 const dipX = regionBounds.x + point.x;
                 const dipY = regionBounds.y + point.y;
-                const scaleFactor = process.platform === 'darwin' ? 1 : (regionCaptureDisplay?.scaleFactor ?? 1);
+                const clickDisplay = screen.getDisplayNearestPoint({ x: dipX, y: dipY });
+                const scaleFactor = process.platform === 'darwin' ? 1 : (clickDisplay.scaleFactor ?? 1);
                 capturePoint = {
                     x: Math.round(dipX * scaleFactor),
                     y: Math.round(dipY * scaleFactor),
@@ -1291,7 +1302,6 @@ app.whenReady().then(async () => {
         });
         pendingRegionCaptureResolve = null;
         pendingRegionCapturePromise = null;
-        regionCaptureDisplay = null;
     });
     // Theme sync across windows
     ipcMain.on('theme:broadcast', (_event, data) => {
