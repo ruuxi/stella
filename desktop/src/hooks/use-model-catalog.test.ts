@@ -12,7 +12,7 @@ describe("useModelCatalog", () => {
   });
 
   it("uses fallback models when fetch fails", async () => {
-    vi.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network"));
 
     const { result } = renderHook(() => useModelCatalog());
 
@@ -29,7 +29,7 @@ describe("useModelCatalog", () => {
   });
 
   it("loads language models from catalog and groups by provider", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue({
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({
         data: [
@@ -66,7 +66,7 @@ describe("useModelCatalog", () => {
   });
 
   it("keeps fallback models when catalog responds with empty list", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue({
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ data: [] }),
     } as Response);
