@@ -29,6 +29,7 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
+import { useVoiceInput } from "../../hooks/use-voice-input";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
 
 const StoreView = lazy(() => import("./StoreView"));
@@ -49,10 +50,31 @@ export const FullShell = () => {
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [runtimeModeDialogOpen, setRuntimeModeDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [partialTranscript, setPartialTranscript] = useState("");
 
   useBridgeAutoReconnect();
 
   const onboarding = useOnboardingOverlay();
+
+  // STT voice input
+  const sttResult = useQuery(
+    api.data.stt.checkSttAvailable,
+    onboarding.isAuthenticated ? {} : "skip",
+  ) as { available: boolean } | undefined;
+  const sttAvailable = sttResult?.available ?? false;
+
+  const voice = useVoiceInput({
+    onPartialTranscript: setPartialTranscript,
+    onFinalTranscript: useCallback((text: string) => {
+      setMessage((prev) => (prev ? prev + " " + text : text));
+      setPartialTranscript("");
+    }, []),
+    onError: useCallback((err: string) => {
+      console.warn("STT error:", err);
+      setPartialTranscript("");
+    }, []),
+  });
+
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -415,6 +437,11 @@ export const FullShell = () => {
               onSelectionChange={onboarding.setHasDiscoverySelections}
               onDemoChange={handleDemoChange}
               onCommandSelect={handleCommandSelect}
+              sttAvailable={sttAvailable}
+              voiceState={voice.state}
+              onStartVoice={voice.startRecording}
+              onStopVoice={voice.stopRecording}
+              partialTranscript={partialTranscript}
             />
             {showCanvasPanel && <CanvasPanel />}
             {!showCanvasPanel && (activeDemo || demoClosing) && <OnboardingCanvas activeDemo={activeDemo} />}

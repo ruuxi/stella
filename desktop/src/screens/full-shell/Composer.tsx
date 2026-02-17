@@ -4,6 +4,7 @@
 
 import { useRef, useState } from "react";
 import type { ChatContext } from "../../types/electron";
+import type { VoiceInputState } from "../../hooks/use-voice-input";
 
 type ComposerProps = {
   message: string;
@@ -18,6 +19,11 @@ type ComposerProps = {
   canSubmit: boolean;
   conversationId: string | null;
   onSend: () => void;
+  sttAvailable?: boolean;
+  voiceState?: VoiceInputState;
+  onStartVoice?: () => void;
+  onStopVoice?: () => void;
+  partialTranscript?: string;
 };
 
 export function Composer({
@@ -33,6 +39,11 @@ export function Composer({
   canSubmit,
   conversationId,
   onSend,
+  sttAvailable,
+  voiceState,
+  onStartVoice,
+  onStopVoice,
+  partialTranscript,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
@@ -157,15 +168,21 @@ export function Composer({
           ref={textareaRef}
           className="composer-input"
           placeholder={
-            chatContext?.capturePending
-              ? "Capturing screen..."
-              : hasScreenshotContext
-                ? "Ask about the capture..."
-                : hasWindowContext
-                  ? "Ask about this window..."
-                  : hasSelectedTextContext
-                    ? "Ask about the selection..."
-                    : "Ask anything"
+            voiceState === "recording" && partialTranscript
+              ? partialTranscript
+              : voiceState === "recording"
+                ? "Listening..."
+                : voiceState === "processing"
+                  ? "Processing speech..."
+                  : chatContext?.capturePending
+                    ? "Capturing screen..."
+                    : hasScreenshotContext
+                      ? "Ask about the capture..."
+                      : hasWindowContext
+                        ? "Ask about this window..."
+                        : hasSelectedTextContext
+                          ? "Ask about the selection..."
+                          : "Ask anything"
           }
           value={message}
           onChange={(event) => {
@@ -230,6 +247,66 @@ export function Composer({
           </div>
 
           <div className="composer-toolbar-right">
+            {sttAvailable && voiceState === "recording" ? (
+              <button
+                type="button"
+                className="composer-mic composer-mic--recording"
+                onClick={onStopVoice}
+                title="Stop recording"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                </svg>
+              </button>
+            ) : sttAvailable && voiceState !== "processing" ? (
+              <button
+                type="button"
+                className="composer-mic"
+                onClick={onStartVoice}
+                title="Voice input"
+                disabled={!conversationId || voiceState === "requesting-token" || voiceState === "connecting"}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </button>
+            ) : sttAvailable && voiceState === "processing" ? (
+              <button
+                type="button"
+                className="composer-mic composer-mic--processing"
+                disabled
+                title="Processing..."
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </button>
+            ) : null}
             <button
               type="submit"
               className="composer-submit"
