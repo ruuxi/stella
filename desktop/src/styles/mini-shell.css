@@ -503,6 +503,58 @@
   color: var(--text-strong);
 }
 
+/* Mic button — voice input */
+.mini-composer-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--text-weaker);
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.mini-composer-mic:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  border-color: var(--text-base);
+}
+
+.mini-composer-mic:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mini-composer-mic--recording {
+  background: oklch(0.65 0.2 25);
+  border-color: oklch(0.65 0.2 25);
+  color: white;
+  animation: mini-mic-pulse 1.2s ease-in-out infinite;
+}
+
+.mini-composer-mic--recording:hover {
+  background: oklch(0.58 0.2 25);
+  border-color: oklch(0.58 0.2 25);
+  color: white;
+}
+
+.mini-composer-mic--processing {
+  opacity: 0.6;
+  animation: mini-mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mini-mic-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.85; }
+}
+
 /* Send button */
 .mini-composer-send {
   display: inline-flex;

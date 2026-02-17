@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/api";
 import { useUiState } from "../../app/state/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
+import { useVoiceInput } from "../../hooks/use-voice-input";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
 import { StellaAnimation } from "../../components/StellaAnimation";
@@ -35,6 +38,25 @@ export const MiniShell = () => {
     setSelectedText,
     isStreaming,
     setIsStreaming,
+  });
+
+  // STT voice input
+  const sttResult = useQuery(api.data.stt.checkSttAvailable) as
+    | { available: boolean }
+    | undefined;
+  const sttAvailable = sttResult?.available ?? false;
+  const [partialTranscript, setPartialTranscript] = useState("");
+
+  const voice = useVoiceInput({
+    onPartialTranscript: setPartialTranscript,
+    onFinalTranscript: useCallback((text: string) => {
+      setMessage((prev: string) => (prev ? prev + " " + text : text));
+      setPartialTranscript("");
+    }, [setMessage]),
+    onError: useCallback((err: string) => {
+      console.warn("STT error:", err);
+      setPartialTranscript("");
+    }, []),
   });
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
@@ -111,6 +133,11 @@ export const MiniShell = () => {
           setPreviewIndex={setPreviewIndex}
           isStreaming={isStreaming}
           onSend={() => void sendMessage()}
+          sttAvailable={sttAvailable}
+          voiceState={voice.state}
+          onStartVoice={voice.startRecording}
+          onStopVoice={voice.stopRecording}
+          partialTranscript={partialTranscript}
         />
       </div>
 
