@@ -16,6 +16,7 @@ import type * as agent_context_window from "../agent/context_window.js";
 import type * as agent_device_resolver from "../agent/device_resolver.js";
 import type * as agent_device_tools from "../agent/device_tools.js";
 import type * as agent_history_messages from "../agent/history_messages.js";
+import type * as agent_hooks from "../agent/hooks.js";
 import type * as agent_invoke from "../agent/invoke.js";
 import type * as agent_model from "../agent/model.js";
 import type * as agent_model_failover from "../agent/model_failover.js";
@@ -99,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   "agent/device_resolver": typeof agent_device_resolver;
   "agent/device_tools": typeof agent_device_tools;
   "agent/history_messages": typeof agent_history_messages;
+  "agent/hooks": typeof agent_hooks;
   "agent/invoke": typeof agent_invoke;
   "agent/model": typeof agent_model;
   "agent/model_failover": typeof agent_model_failover;
