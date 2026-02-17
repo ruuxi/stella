@@ -470,6 +470,22 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_phone", ["phoneNumber"]),
+  usage_logs: defineTable({
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    agentType: v.string(),
+    model: v.string(),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    totalTokens: v.optional(v.number()),
+    durationMs: v.number(),
+    success: v.boolean(),
+    fallbackUsed: v.optional(v.boolean()),
+    toolCalls: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_owner", ["ownerId", "createdAt"])
+    .index("by_conversation", ["conversationId", "createdAt"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),

@@ -133,6 +133,7 @@ export async function runAgentTurn({
     },
   };
 
+  const runnerStartTime = Date.now();
   const result = await withModelFailover(
     () => streamText({ ...resolvedConfig, ...runnerSharedArgs }),
     fallbackConfig
@@ -142,13 +143,18 @@ export async function runAgentTurn({
 
   const text = await result.text;
 
-  const totalTokens = usageSummary?.totalTokens ?? 0;
-  if (totalTokens > 0) {
-    await ctx.runMutation(internal.conversations.patchTokenCount, {
-      conversationId,
-      tokenDelta: totalTokens,
-    });
-  }
+  // Fire afterChat hook asynchronously for usage logging + token tracking
+  await ctx.scheduler.runAfter(0, internal.agent.hooks.logUsageAsync, {
+    ownerId: resolvedOwnerId,
+    conversationId,
+    agentType,
+    model: resolvedConfig.model as string,
+    inputTokens: usageSummary?.inputTokens,
+    outputTokens: usageSummary?.outputTokens,
+    totalTokens: usageSummary?.totalTokens,
+    durationMs: Date.now() - runnerStartTime,
+    success: true,
+  });
 
   return { text, silent: noResponseCalled, usage: usageSummary };
 }

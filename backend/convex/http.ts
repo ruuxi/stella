@@ -11,6 +11,7 @@ import {
 import { createTools } from "./tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./agent/model_resolver";
 import { withModelFailover } from "./agent/model_failover";
+import { beforeChat, afterChat } from "./agent/hooks";
 import { authComponent, createAuth, requireConversationOwner } from "./auth";
 import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
@@ -826,6 +827,19 @@ http.route({
     const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
     const fallbackConfig = await resolveFallbackConfig(ctx, agentType, conversation.ownerId).catch(() => null);
 
+    // --- beforeChat hook: rate limiting ---
+    const beforeResult = await beforeChat(ctx, {
+      ownerId: conversation.ownerId,
+      conversationId,
+      agentType,
+      modelString: resolvedConfig.model as string,
+    });
+    if (!beforeResult.allowed) {
+      return withCors(rateLimitResponse(beforeResult.retryAfterMs ?? 60_000), origin);
+    }
+
+    const chatStartTime = Date.now();
+
     const streamTextSharedArgs = {
       system: promptBuild.systemPrompt,
       tools: createTools(
@@ -879,20 +893,34 @@ http.route({
           });
         }
 
-        // Track cumulative token usage on conversation.
-        const usageTotals = totalUsage ?? usage;
-        const totalTokens = usageTotals?.totalTokens ?? 0;
-        let nextTokenCount = conversation.tokenCount ?? 0;
+        // --- afterChat hook: usage logging + token count patching ---
+        const finishUsageTotals = totalUsage ?? usage;
+        const finishHasUsage =
+          finishUsageTotals &&
+          (typeof finishUsageTotals.inputTokens === "number" ||
+            typeof finishUsageTotals.outputTokens === "number" ||
+            typeof finishUsageTotals.totalTokens === "number");
+        const finishUsageSummary = finishHasUsage
+          ? {
+              inputTokens: finishUsageTotals.inputTokens,
+              outputTokens: finishUsageTotals.outputTokens,
+              totalTokens: finishUsageTotals.totalTokens,
+            }
+          : undefined;
 
-        if (totalTokens > 0) {
-          await ctx.runMutation(internal.conversations.patchTokenCount, {
-            conversationId,
-            tokenDelta: totalTokens,
-          });
-          nextTokenCount += totalTokens;
-        }
+        await afterChat(ctx, {
+          ownerId: conversation.ownerId,
+          conversationId,
+          agentType,
+          modelString: resolvedConfig.model as string,
+          usage: finishUsageSummary,
+          durationMs: Date.now() - chatStartTime,
+          success: true,
+        });
 
         // 20K fallback trigger: extract from unprocessed conversation window.
+        const finishTotalTokens = finishUsageTotals?.totalTokens ?? 0;
+        let nextTokenCount = (conversation.tokenCount ?? 0) + finishTotalTokens;
         const extractionBase = conversation.lastExtractionTokenCount ?? 0;
         const tokensSinceExtraction = Math.max(0, nextTokenCount - extractionBase);
         if (tokensSinceExtraction >= 20_000) {

@@ -892,12 +892,28 @@ const executeSubagentRun = async (
       },
     };
 
+    const subagentStartTime = Date.now();
     const result = await withModelFailoverAsync(
       () => generateText({ ...resolvedConfig, ...generateTextSharedArgs }),
       fallbackConfig
         ? () => generateText({ ...fallbackConfig, ...generateTextSharedArgs })
         : undefined,
     );
+
+    // Fire afterChat hook asynchronously for usage logging
+    if (args.ownerId) {
+      await ctx.scheduler.runAfter(0, internal.agent.hooks.logUsageAsync, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        agentType: args.subagentType,
+        model: resolvedConfig.model as string,
+        inputTokens: result.usage?.inputTokens,
+        outputTokens: result.usage?.outputTokens,
+        totalTokens: result.usage?.totalTokens,
+        durationMs: Date.now() - subagentStartTime,
+        success: true,
+      });
+    }
 
     const text: string = result.text ?? "";
     finished = true;
