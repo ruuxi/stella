@@ -53,6 +53,7 @@ import type * as data_secrets from "../data/secrets.js";
 import type * as data_secrets_crypto from "../data/secrets_crypto.js";
 import type * as data_skills from "../data/skills.js";
 import type * as data_store_packages from "../data/store_packages.js";
+import type * as data_stt from "../data/stt.js";
 import type * as data_thread_compaction_format from "../data/thread_compaction_format.js";
 import type * as data_threads from "../data/threads.js";
 import type * as events from "../events.js";
@@ -135,6 +136,7 @@ declare const fullApi: ApiFromModules<{
   "data/secrets_crypto": typeof data_secrets_crypto;
   "data/skills": typeof data_skills;
   "data/store_packages": typeof data_store_packages;
+  "data/stt": typeof data_stt;
   "data/thread_compaction_format": typeof data_thread_compaction_format;
   "data/threads": typeof data_threads;
   events: typeof events;
