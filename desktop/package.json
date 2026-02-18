@@ -72,7 +72,7 @@
     "convex": "^1.31.6",
     "date-fns": "^4.1.0",
     "dompurify": "^3.3.1",
-    "hera-browser": "^0.0.56",
+    "hera-browser": "^0.0.57",
     "hono": "^4.11.9",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.563.0",
@@ -121,7 +121,15 @@
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
     "vitest": "^4.0.18",
-    "wait-on": "^9.0.3"
+    "wait-on": "^9.0.4"
+  },
+  "overrides": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "ajv": "^8.18.0",
+    "axios": "^1.13.5",
+    "cross-spawn": "^7.0.6",
+    "qs": "^6.15.0",
+    "tar": "^7.5.9"
   },
   "build": {
     "appId": "com.stella.app",
