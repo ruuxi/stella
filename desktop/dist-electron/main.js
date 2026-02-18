@@ -16,6 +16,8 @@ import { collectBrowserData, coreMemoryExists, detectPreferredBrowserProfile, li
 import { collectAllSignals } from './local-host/collect-all.js';
 import { handleInstallCanvas, handleInstallSkill, handleInstallTheme, handleUninstallPackage, } from './local-host/tools_store.js';
 import * as bridgeManager from './local-host/bridge_manager.js';
+import { startLocalServer, stopLocalServer, setRuntimeConfig } from './local-host/server.js';
+import { initRuntime } from './local-host/agent/runtime.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
@@ -1005,6 +1007,18 @@ const deriveConvexSiteUrl = (convexUrl, explicitSiteUrl) => {
     }
     return null;
 };
+const syncLocalRuntimeConfig = () => {
+    if (!deviceId || !localHostRunner) {
+        return;
+    }
+    setRuntimeConfig({
+        deviceId,
+        ownerId: 'local',
+        toolHost: localHostRunner,
+        proxyUrl: deriveConvexSiteUrl(pendingConvexUrl, pendingConvexSiteUrl) ?? undefined,
+        authToken: localHostRunner.getAuthToken() ?? undefined,
+    });
+};
 const parseTokenResponse = async (response) => {
     try {
         const payload = (await response.json());
@@ -1061,10 +1075,12 @@ const fetchRunnerAuthToken = async () => {
 const refreshRunnerAuthToken = async () => {
     if (!hostAuthAuthenticated) {
         localHostRunner?.setAuthToken(null);
+        syncLocalRuntimeConfig();
         return;
     }
     const token = await fetchRunnerAuthToken();
     localHostRunner?.setAuthToken(token);
+    syncLocalRuntimeConfig();
 };
 const stopAuthRefreshLoop = () => {
     if (authRefreshTimer) {
@@ -1072,6 +1088,7 @@ const stopAuthRefreshLoop = () => {
         authRefreshTimer = null;
     }
     localHostRunner?.setAuthToken(null);
+    syncLocalRuntimeConfig();
 };
 const startAuthRefreshLoop = () => {
     if (authRefreshTimer) {
@@ -1097,6 +1114,7 @@ const configureLocalHost = (config) => {
     if (localHostRunner) {
         localHostRunner.setConvexUrl(convexUrl);
     }
+    syncLocalRuntimeConfig();
     if (hostAuthAuthenticated) {
         void refreshRunnerAuthToken();
     }
@@ -1153,6 +1171,29 @@ app.whenReady().then(async () => {
         localHostRunner.setConvexUrl(pendingConvexUrl);
     }
     localHostRunner.start();
+    syncLocalRuntimeConfig();
+    // ── Local-first server startup ──────────────────────────────────────
+    let localServerPort = 9714;
+    try {
+        localServerPort = await startLocalServer(9714);
+        // Configure runtime with tool host from the existing runner
+        const convexHttpUrl = deriveConvexSiteUrl(pendingConvexUrl, pendingConvexSiteUrl) ?? undefined;
+        syncLocalRuntimeConfig();
+        initRuntime({
+            deviceId,
+            ownerId: 'local',
+            toolHost: localHostRunner,
+            proxyUrl: convexHttpUrl,
+            authToken: localHostRunner.getAuthToken() ?? undefined,
+        });
+        console.log(`[main] Local server started on port ${localServerPort}`);
+    }
+    catch (err) {
+        console.error('[main] Failed to start local server:', err);
+    }
+    // IPC: expose local server port to renderer
+    ipcMain.handle('local:getServerPort', () => localServerPort);
+    ipcMain.handle('local:getMode', () => 'local');
     createFullWindow();
     createMiniWindow();
     createRadialWindow(); // Pre-create radial window for faster display
@@ -1567,4 +1608,6 @@ app.on('will-quit', () => {
         localHostRunner.stop();
         localHostRunner = null;
     }
+    // Stop local server and close SQLite
+    stopLocalServer();
 });
