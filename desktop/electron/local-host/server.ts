@@ -9,6 +9,7 @@ import { streamSSE } from "hono/streaming";
 import {
   getDb, closeDb, newId, insert, update, remove,
   findById, query, rawQuery, rawRun, transaction,
+  markSyncRowsDirty,
 } from "./db";
 import type { Server } from "http";
 import { handleChat, type ChatRequest, type RuntimeConfig } from "./agent/runtime";
@@ -393,7 +394,17 @@ app.put("/api/preferences/:key", async (c) => {
 app.delete("/api/preferences/:key", (c) => {
   const key = c.req.param("key");
   const ownerId = c.req.query("ownerId") || "local";
+  const existing = rawQuery<{ id: string }>(
+    "SELECT id FROM user_preferences WHERE owner_id = ? AND key = ?",
+    [ownerId, key],
+  );
   rawRun("DELETE FROM user_preferences WHERE owner_id = ? AND key = ?", [ownerId, key]);
+  if (existing.length > 0) {
+    markSyncRowsDirty(
+      "user_preferences",
+      existing.map((row) => row.id),
+    );
+  }
   return c.json({ ok: true });
 });
 
@@ -525,10 +536,20 @@ app.delete("/api/canvas/state", (c) => {
   const conversationId = c.req.query("conversationId");
   const ownerId = c.req.query("ownerId") || "local";
   if (conversationId) {
+    const existing = rawQuery<{ id: string }>(
+      "SELECT id FROM canvas_states WHERE owner_id = ? AND conversation_id = ?",
+      [ownerId, conversationId],
+    );
     rawRun(
       "DELETE FROM canvas_states WHERE owner_id = ? AND conversation_id = ?",
       [ownerId, conversationId],
     );
+    if (existing.length > 0) {
+      markSyncRowsDirty(
+        "canvas_states",
+        existing.map((row) => row.id),
+      );
+    }
   }
   return c.json({ ok: true });
 });
@@ -658,10 +679,17 @@ app.post("/api/memories/save", async (c) => {
   );
   if (countResult[0]?.cnt >= 500) {
     // Delete least-accessed
+    const toDelete = rawQuery<{ id: string }>(
+      "SELECT id FROM memories WHERE owner_id = ? ORDER BY accessed_at ASC LIMIT 1",
+      [ownerId],
+    );
     rawRun(
       "DELETE FROM memories WHERE id IN (SELECT id FROM memories WHERE owner_id = ? ORDER BY accessed_at ASC LIMIT 1)",
       [ownerId],
     );
+    if (toDelete.length > 0) {
+      markSyncRowsDirty("memories", toDelete.map((row) => row.id));
+    }
   }
 
   const id = insert("memories", {
@@ -750,10 +778,20 @@ app.post("/api/store/install", async (c) => {
 app.post("/api/store/uninstall", async (c) => {
   const body = await c.req.json<{ ownerId?: string; packageId: string }>();
   const ownerId = body.ownerId || "local";
+  const existing = rawQuery<{ id: string }>(
+    "SELECT id FROM store_installs WHERE owner_id = ? AND package_id = ?",
+    [ownerId, body.packageId],
+  );
   rawRun(
     "DELETE FROM store_installs WHERE owner_id = ? AND package_id = ?",
     [ownerId, body.packageId],
   );
+  if (existing.length > 0) {
+    markSyncRowsDirty(
+      "store_installs",
+      existing.map((row) => row.id),
+    );
+  }
   return c.json({ ok: true });
 });
 
@@ -903,6 +941,21 @@ app.post("/api/select-default-skills", async (c) => {
 
 app.post("/api/reset", (c) => {
   const db = getDb();
+  rawRun(
+    `UPDATE _sync_state
+        SET dirty = 1, synced_at = NULL
+      WHERE table_name IN (
+        'events',
+        'tasks',
+        'threads',
+        'thread_messages',
+        'memories',
+        'memory_extraction_batches',
+        'canvas_states',
+        'conversations',
+        'usage_logs'
+      )`,
+  );
   db.exec(`
     DELETE FROM events;
     DELETE FROM tasks;
