@@ -262,6 +262,47 @@ app.post("/api/events", async (c) => {
   return c.json(event, 201);
 });
 
+app.post("/api/attachments/create", async (c) => {
+  const body = await c.req.json<{
+    conversationId: string;
+    deviceId: string;
+    dataUrl: string;
+  }>();
+  if (!body?.conversationId || !body?.deviceId || !body?.dataUrl) {
+    return c.json({ error: "conversationId, deviceId, and dataUrl are required" }, 400);
+  }
+
+  const parsed = parseDataUrl(body.dataUrl);
+  if (!parsed) {
+    return c.json({ error: "Invalid data URL" }, 400);
+  }
+
+  const id = newId();
+  const storageKey = `local:${id}`;
+  insert("attachments", {
+    id,
+    conversation_id: body.conversationId,
+    device_id: body.deviceId,
+    storage_key: storageKey,
+    // Keep local attachments directly addressable in message payloads.
+    url: body.dataUrl,
+    mime_type: parsed.mimeType,
+    size: parsed.size,
+    created_at: Date.now(),
+  });
+
+  return c.json(
+    {
+      _id: id,
+      storageKey,
+      url: body.dataUrl,
+      mimeType: parsed.mimeType,
+      size: parsed.size,
+    },
+    201,
+  );
+});
+
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
 app.get("/api/tasks", (c) => {
@@ -421,6 +462,16 @@ app.get("/api/canvas/state", (c) => {
   const ownerId = c.req.query("ownerId") || "local";
   if (!conversationId) return c.json(null);
 
+  const rows = rawQuery(
+    "SELECT * FROM canvas_states WHERE owner_id = ? AND conversation_id = ?",
+    [ownerId, conversationId],
+  );
+  return c.json(rows.length > 0 ? rows[0] : null);
+});
+
+app.get("/api/canvas-states/:conversationId", (c) => {
+  const conversationId = c.req.param("conversationId");
+  const ownerId = c.req.query("ownerId") || "local";
   const rows = rawQuery(
     "SELECT * FROM canvas_states WHERE owner_id = ? AND conversation_id = ?",
     [ownerId, conversationId],
@@ -711,6 +762,7 @@ app.get("/api/stt/available", (c) => {
   // (can be extended when local Whisper or system STT is integrated)
   return c.json({ available: false });
 });
+app.get("/api/stt/check-available", (c) => c.json({ available: false }));
 
 // ─── Usage Logs ──────────────────────────────────────────────────────────────
 
@@ -878,6 +930,18 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
+function parseDataUrl(dataUrl: string): { mimeType: string; size: number } | null {
+  const match = /^data:([^;]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUrl);
+  if (!match) {
+    return null;
+  }
+  const mimeType = match[1];
+  const base64 = match[2].replace(/\s+/g, "");
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const size = Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+  return { mimeType, size };
+}
+
 // ─── Server lifecycle ────────────────────────────────────────────────────────
 
 let server: ReturnType<typeof serve> | null = null;
@@ -919,3 +983,4 @@ export {
   broadcastGlobal,
   app,
 };
+

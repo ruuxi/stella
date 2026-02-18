@@ -2,6 +2,8 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { useMemo } from "react";
 import { api } from "../convex/api";
 import type { StepItem } from "../components/steps-container";
+import { useLocalQuery } from "./use-local-query";
+import { useIsLocalMode } from "@/providers/DataProvider";
 
 // Base event record from Convex
 export type EventRecord = {
@@ -418,20 +420,86 @@ export function getRunningTasks(events: EventRecord[]): TaskItem[] {
   return tasks.filter((t) => t.status === "running");
 }
 
+type LocalEventRow = {
+  id?: string;
+  _id?: string;
+  timestamp?: number;
+  type?: string;
+  device_id?: string;
+  deviceId?: string;
+  request_id?: string;
+  requestId?: string;
+  target_device_id?: string;
+  targetDeviceId?: string;
+  payload?: unknown;
+  channel_envelope?: unknown;
+  channelEnvelope?: unknown;
+};
+
+const normalizeEventRecord = (event: LocalEventRow): EventRecord | null => {
+  const id = typeof event._id === "string" ? event._id : event.id;
+  const type = typeof event.type === "string" ? event.type : null;
+  if (!id || !type) {
+    return null;
+  }
+  return {
+    _id: id,
+    timestamp:
+      typeof event.timestamp === "number" ? event.timestamp : Date.now(),
+    type,
+    deviceId:
+      typeof event.deviceId === "string"
+        ? event.deviceId
+        : event.device_id,
+    requestId:
+      typeof event.requestId === "string"
+        ? event.requestId
+        : event.request_id,
+    targetDeviceId:
+      typeof event.targetDeviceId === "string"
+        ? event.targetDeviceId
+        : event.target_device_id,
+    payload:
+      event.payload && typeof event.payload === "object"
+        ? (event.payload as Record<string, unknown>)
+        : undefined,
+    channelEnvelope:
+      event.channelEnvelope && typeof event.channelEnvelope === "object"
+        ? (event.channelEnvelope as ChannelEnvelope)
+        : event.channel_envelope && typeof event.channel_envelope === "object"
+          ? (event.channel_envelope as ChannelEnvelope)
+          : undefined,
+  };
+};
+
 // Main hook to fetch conversation events
 export const useConversationEvents = (conversationId?: string) => {
+  const isLocalMode = useIsLocalMode();
   const { isAuthenticated } = useConvexAuth();
-  const result = useQuery(
+  const cloudResult = useQuery(
     api.events.listEvents,
-    isAuthenticated && conversationId
+    !isLocalMode && isAuthenticated && conversationId
       ? { conversationId, paginationOpts: { cursor: null, numItems: 200 } }
       : "skip"
   ) as { page: EventRecord[] } | undefined;
+  const localPath = isLocalMode && conversationId
+    ? `/api/events?conversationId=${encodeURIComponent(conversationId)}&limit=200`
+    : null;
+  const localResult = useLocalQuery<LocalEventRow[]>(localPath, {
+    pollInterval: 1500,
+  });
 
   return useMemo(() => {
-    const events = result?.page ?? [];
+    if (isLocalMode) {
+      const events = (localResult.data ?? [])
+        .map(normalizeEventRecord)
+        .filter((event): event is EventRecord => event !== null);
+      return events.sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    const events = cloudResult?.page ?? [];
     return [...events].reverse();
-  }, [result?.page]);
+  }, [isLocalMode, localResult.data, cloudResult?.page]);
 };
 
 // Hook to extract steps from events

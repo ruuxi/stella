@@ -8,6 +8,8 @@ import { api } from "../../convex/api";
 import { getOrCreateDeviceId } from "../../services/device";
 import { synthesizeCoreMemory } from "../../services/synthesis";
 import { selectDefaultSkills } from "../../services/skill-selection";
+import { useIsLocalMode } from "@/providers/DataProvider";
+import { localPost } from "@/services/local-client";
 
 type DiscoveryCategory =
   | "browsing_bookmarks"
@@ -36,6 +38,7 @@ export function useDiscoveryFlow({
   isAuthenticated,
   conversationId,
 }: UseDiscoveryFlowOptions) {
+  const isLocalMode = useIsLocalMode();
   const appendEvent = useMutation(api.events.appendEvent);
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
@@ -80,20 +83,30 @@ export function useDiscoveryFlow({
 
         if (synthesisResult.welcomeMessage) {
           const deviceId = await getOrCreateDeviceId();
-          await appendEvent({
+          const eventPayload = {
             conversationId,
             type: "assistant_message",
             deviceId,
             payload: { text: synthesisResult.welcomeMessage },
-          });
+          };
+          if (isLocalMode) {
+            await localPost("/api/events", eventPayload);
+          } else {
+            await appendEvent(eventPayload);
+          }
 
           if (synthesisResult.suggestions?.length) {
-            await appendEvent({
+            const suggestionPayload = {
               conversationId,
               type: "welcome_suggestions",
               deviceId,
               payload: { suggestions: synthesisResult.suggestions },
-            });
+            };
+            if (isLocalMode) {
+              await localPost("/api/events", suggestionPayload);
+            } else {
+              await appendEvent(suggestionPayload);
+            }
           }
         }
       } catch {
@@ -102,7 +115,7 @@ export function useDiscoveryFlow({
     };
 
     void run();
-  }, [discoveryCategories, isAuthenticated, conversationId, appendEvent]);
+  }, [discoveryCategories, isAuthenticated, conversationId, appendEvent, isLocalMode]);
 
   return {
     handleDiscoveryConfirm,

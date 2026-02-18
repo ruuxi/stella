@@ -142,12 +142,6 @@ describe("useMiniChat", () => {
     vi.restoreAllMocks();
   });
 
-  const flushRaf = () => {
-    const callbacks = [...rafCallbacks];
-    rafCallbacks = [];
-    for (const cb of callbacks) cb(performance.now());
-  };
-
   // ----------------------------------------------------------------
   // 1. Initial state
   // ----------------------------------------------------------------
@@ -989,7 +983,7 @@ describe("useMiniChat", () => {
   describe("cancelCurrentStream", () => {
     it("is callable and does not throw when nothing is streaming", () => {
       const opts = makeOpts();
-      const { result } = renderHook(() => useMiniChat(opts));
+      renderHook(() => useMiniChat(opts));
 
       // cancelCurrentStream is not directly returned, but we can test it
       // indirectly via steer mode behavior. Let's verify no error occurs
@@ -1063,7 +1057,7 @@ describe("useMiniChat", () => {
       // resetStreamingState should have been triggered, calling setIsStreaming(false)
       // It's called once in startStream(true) and then in resetStreamingState(false)
       const falseCall = setIsStreaming.mock.calls.find(
-        (c: [boolean]) => c[0] === false,
+        (c) => c[0] === false,
       );
       expect(falseCall).toBeDefined();
     });

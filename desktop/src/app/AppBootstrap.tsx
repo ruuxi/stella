@@ -1,12 +1,15 @@
 import { useEffect } from "react";
-import { useMutation } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
 import { useUiState } from "./state/ui-state";
 import { api } from "../convex/api";
 import { configureLocalHost, getOrCreateDeviceId } from "../services/device";
-import { isLocalMode, localPost } from "../services/local-client";
+import { localPost } from "../services/local-client";
+import { useIsLocalMode } from "@/providers/DataProvider";
 
 export const AppBootstrap = () => {
   const { setConversationId } = useUiState();
+  const isLocalMode = useIsLocalMode();
+  const { isAuthenticated } = useConvexAuth();
   const getOrCreateDefaultConversation = useMutation(
     api.conversations.getOrCreateDefaultConversation,
   );
@@ -17,7 +20,7 @@ export const AppBootstrap = () => {
       const hostPromise = configureLocalHost();
       const devicePromise = getOrCreateDeviceId();
 
-      if (isLocalMode()) {
+      if (isLocalMode) {
         // Local mode: get/create default conversation from local server
         try {
           const conversation = await localPost<{ id: string }>(
@@ -30,7 +33,7 @@ export const AppBootstrap = () => {
         } catch (err) {
           console.error("[AppBootstrap] Local conversation setup failed:", err);
         }
-      } else {
+      } else if (isAuthenticated) {
         // Cloud mode: use Convex mutation
         const conversation = await getOrCreateDefaultConversation({});
         if (!cancelled && conversation?._id) {
@@ -44,7 +47,12 @@ export const AppBootstrap = () => {
     return () => {
       cancelled = true;
     };
-  }, [getOrCreateDefaultConversation, setConversationId]);
+  }, [
+    getOrCreateDefaultConversation,
+    isAuthenticated,
+    isLocalMode,
+    setConversationId,
+  ]);
 
   return null;
 };

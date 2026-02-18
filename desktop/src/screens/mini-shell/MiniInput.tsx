@@ -33,7 +33,6 @@ export const MiniInput = ({
   isStreaming,
   shellVisible,
   onSend,
-  sttAvailable,
   voiceState,
   onStartVoice,
   onStopVoice,
