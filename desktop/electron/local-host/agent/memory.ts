@@ -3,7 +3,7 @@
  * Ported from backend/convex/data/memory.ts
  */
 
-import { rawQuery, rawRun, insert, update } from "../db";
+import { rawQuery, rawRun, insert, update, markSyncRowsDirty } from "../db";
 
 const RECALL_MIN_SCORE = 0.7;
 const RECALL_TOP_K = 10;
@@ -160,10 +160,17 @@ export function saveMemory(
     [ownerId],
   );
   if ((countResult[0]?.cnt ?? 0) >= MAX_MEMORIES_PER_OWNER) {
+    const toDelete = rawQuery<{ id: string }>(
+      "SELECT id FROM memories WHERE owner_id = ? ORDER BY accessed_at ASC LIMIT 1",
+      [ownerId],
+    );
     rawRun(
       "DELETE FROM memories WHERE id IN (SELECT id FROM memories WHERE owner_id = ? ORDER BY accessed_at ASC LIMIT 1)",
       [ownerId],
     );
+    if (toDelete.length > 0) {
+      markSyncRowsDirty("memories", toDelete.map((row) => row.id));
+    }
   }
 
   const now = Date.now();
@@ -184,9 +191,16 @@ export function saveMemory(
 /** Delete memories not accessed in 30 days */
 export function decayOldMemories(): number {
   const cutoff = Date.now() - DECAY_DAYS * 24 * 60 * 60 * 1000;
+  const toDelete = rawQuery<{ id: string }>(
+    "SELECT id FROM memories WHERE accessed_at < ?",
+    [cutoff],
+  );
   const result = rawRun(
     "DELETE FROM memories WHERE accessed_at < ?",
     [cutoff],
   );
+  if (toDelete.length > 0) {
+    markSyncRowsDirty("memories", toDelete.map((row) => row.id));
+  }
   return result.changes;
 }
