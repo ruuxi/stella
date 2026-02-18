@@ -12,8 +12,10 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-electron
 dist-ssr
 *.local
+*.tsbuildinfo
 .vite-dev-url
 
 # Editor directories and files

@@ -78,6 +78,22 @@ describe("AuthDeepLinkHandler", () => {
     expect(mockClientFetch).not.toHaveBeenCalled();
   });
 
+  it("rejects callbacks from non-auth host", async () => {
+    render(<AuthDeepLinkHandler />);
+
+    await authCallback!({ url: "stella://evil?ott=test-token-123" });
+
+    expect(mockClientFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects callbacks with non-stella scheme", async () => {
+    render(<AuthDeepLinkHandler />);
+
+    await authCallback!({ url: "https://auth.example.com/?ott=test-token-123" });
+
+    expect(mockClientFetch).not.toHaveBeenCalled();
+  });
+
   it("handles verify errors gracefully without throwing", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockClientFetch.mockRejectedValue(new Error("verify failed"));

@@ -17,6 +17,10 @@ import { trashPathForDeferredDelete } from "./deferred_delete.js";
 import { validateSkillContent } from "./command_safety.js";
 
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
+const NPM_PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i;
+const NPM_PACKAGE_VERSION_PATTERN = /^[a-z0-9*^~<>=|.+-]+$/i;
+const MAX_CANVAS_SOURCE_CHARS = 250_000;
+const MAX_CANVAS_DEPENDENCIES = 64;
 
 const normalizeAppName = (value: string): string | null => {
   const normalized = value
@@ -30,6 +34,27 @@ const normalizeAppName = (value: string): string | null => {
     return null;
   }
   return normalized.slice(0, 64);
+};
+
+const sanitizeCanvasDependencies = (
+  value: unknown,
+): Record<string, string> | null => {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > MAX_CANVAS_DEPENDENCIES) {
+    return null;
+  }
+  const next: Record<string, string> = {};
+  for (const [name, versionValue] of entries) {
+    const version = typeof versionValue === "string" ? versionValue.trim() : "";
+    if (!NPM_PACKAGE_NAME_PATTERN.test(name) || !NPM_PACKAGE_VERSION_PATTERN.test(version)) {
+      return null;
+    }
+    next[name] = version;
+  }
+  return next;
 };
 
 const runCommand = async (
@@ -165,14 +190,17 @@ export const handleInstallCanvas = async (
     // Write custom App.tsx if provided
     const source = typeof args.source === "string" ? args.source : undefined;
     if (source) {
+      if (source.length > MAX_CANVAS_SOURCE_CHARS) {
+        return { error: "Canvas source is too large." };
+      }
       await fs.writeFile(path.join(appPath, "src", "App.tsx"), source, "utf-8");
     }
 
     // Add extra dependencies if provided
-    const dependencies =
-      args.dependencies && typeof args.dependencies === "object"
-        ? (args.dependencies as Record<string, string>)
-        : undefined;
+    const dependencies = sanitizeCanvasDependencies(args.dependencies);
+    if (dependencies === null) {
+      return { error: "Canvas dependencies contain invalid package names or versions." };
+    }
     if (dependencies && Object.keys(dependencies).length > 0) {
       const pkgPath = path.join(appPath, "package.json");
       const pkg = JSON.parse(await fs.readFile(pkgPath, "utf-8"));

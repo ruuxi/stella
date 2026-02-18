@@ -9,6 +9,27 @@ type CanvasCommandPayload = {
   url?: string
 }
 
+const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
+
+const normalizeCanvasName = (value?: string): string | null => {
+  if (!value) return null
+  const normalized = value.trim().replace(/\.tsx$/i, '')
+  if (!PANEL_NAME_PATTERN.test(normalized)) {
+    return null
+  }
+  return normalized
+}
+
+const isSafeCanvasUrl = (value?: string): boolean => {
+  if (!value) return true
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 /** Extract port from a localhost URL, or null if not localhost. */
 const getLocalhostPort = (url?: string): number | null => {
   if (!url) return null
@@ -51,9 +72,11 @@ export const useCanvasCommands = (events: EventRecord[]) => {
 
       switch (payload.action) {
         case 'open': {
-          if (!payload.name) break
+          const normalizedName = normalizeCanvasName(payload.name)
+          if (!normalizedName) break
+          if (!isSafeCanvasUrl(payload.url)) break
           openCanvas({
-            name: payload.name,
+            name: normalizedName,
             title: payload.title,
             url: payload.url,
           })

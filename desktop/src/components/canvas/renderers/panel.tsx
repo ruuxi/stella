@@ -3,6 +3,16 @@ import { CanvasErrorBoundary } from '../CanvasErrorBoundary'
 import { Spinner } from '@/components/spinner'
 import type { CanvasPayload } from '@/app/state/canvas-state'
 
+const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
+
+const normalizePanelName = (value: string): string | null => {
+  const base = value.trim().replace(/\.tsx$/i, '')
+  if (!PANEL_NAME_PATTERN.test(base)) {
+    return null
+  }
+  return base
+}
+
 const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
   const { name } = canvas
   const [Component, setComponent] = useState<React.ComponentType<Record<string, unknown>> | null>(null)
@@ -17,11 +27,18 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
       return
     }
 
+    const normalizedName = normalizePanelName(name)
+    if (!normalizedName) {
+      setError('Invalid panel name. Use letters, numbers, "_" or "-".')
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     setError(null)
 
     try {
-      const file = name.endsWith('.tsx') ? name : `${name}.tsx`
+      const file = `${normalizedName}.tsx`
       const mod = await import(/* @vite-ignore */ `/workspace/panels/${file}?t=${Date.now()}`)
       const comp = mod.default
       if (typeof comp !== 'function') {

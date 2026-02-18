@@ -1,4 +1,5 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell, type Display } from 'electron'
+import { promises as fs } from 'fs'
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, shell, type Display, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -191,6 +192,10 @@ const MINI_SHELL_ANIM_MS = 140
 const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
 const TOKEN_REFRESH_INTERVAL_MS = 60 * 1000
 const STELLA_SESSION_PARTITION = 'persist:Stella'
+const SECURITY_POLICY_VERSION = 1
+const SECURITY_APPROVAL_PREFIX = `v${SECURITY_POLICY_VERSION}:`
+const trustedPrivilegedActions = new Set<string>()
+let securityPolicyPath: string | null = null
 
 const isMiniShowing = () => {
   return Boolean(miniWindow && miniVisible)
@@ -309,6 +314,10 @@ const handleAuthCallback = (url: string) => {
   if (!url) {
     return
   }
+  if (!isTrustedAuthCallbackUrl(url)) {
+    console.warn('[security] Rejected untrusted auth callback URL.')
+    return
+  }
   pendingAuthCallback = url
   if (app.isReady()) {
     showWindow('full')
@@ -368,6 +377,136 @@ const isAppUrl = (url: string) => {
   if (url.startsWith('file://')) return true
   if (url === 'about:blank') return true
   return false
+}
+
+const isTrustedRendererUrl = (url: string) => {
+  if (url.startsWith('http://localhost:')) return true
+  if (url.startsWith('file://')) return true
+  return false
+}
+
+const getSenderUrl = (event: IpcMainEvent | IpcMainInvokeEvent) =>
+  event.senderFrame?.url || event.sender.getURL() || ''
+
+const assertPrivilegedSender = (
+  event: IpcMainEvent | IpcMainInvokeEvent,
+  channel: string,
+) => {
+  const senderUrl = getSenderUrl(event)
+  if (isTrustedRendererUrl(senderUrl)) {
+    return true
+  }
+  console.warn(`[security] Blocked privileged IPC "${channel}" from untrusted sender: ${senderUrl || '(unknown)'}`)
+  return false
+}
+
+const approvalKey = (action: string) => `${SECURITY_APPROVAL_PREFIX}${action}`
+
+const loadSecurityPolicy = async () => {
+  if (!securityPolicyPath) return
+  try {
+    const raw = await fs.readFile(securityPolicyPath, 'utf-8')
+    const parsed = JSON.parse(raw) as { approved?: unknown }
+    const approved = Array.isArray(parsed?.approved) ? parsed.approved : []
+    trustedPrivilegedActions.clear()
+    for (const entry of approved) {
+      if (typeof entry === 'string' && entry.startsWith(SECURITY_APPROVAL_PREFIX)) {
+        trustedPrivilegedActions.add(entry)
+      }
+    }
+  } catch {
+    // File missing/invalid -> treat as no approvals.
+  }
+}
+
+const persistSecurityPolicy = async () => {
+  if (!securityPolicyPath) return
+  try {
+    await fs.mkdir(path.dirname(securityPolicyPath), { recursive: true })
+    await fs.writeFile(
+      securityPolicyPath,
+      JSON.stringify(
+        {
+          version: SECURITY_POLICY_VERSION,
+          approved: [...trustedPrivilegedActions].sort(),
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    )
+  } catch (error) {
+    console.warn('[security] Failed to persist security policy', error)
+  }
+}
+
+const ensurePrivilegedActionApproval = async (
+  action: string,
+  message: string,
+  detail: string,
+  event?: IpcMainEvent | IpcMainInvokeEvent,
+) => {
+  const key = approvalKey(action)
+  if (trustedPrivilegedActions.has(key)) {
+    return true
+  }
+
+  const ownerWindow =
+    (event ? BrowserWindow.fromWebContents(event.sender) : null) ??
+    BrowserWindow.getFocusedWindow() ??
+    fullWindow ??
+    undefined
+
+  const dialogOptions: MessageBoxOptions = {
+    type: 'warning',
+    title: 'Stella Security Confirmation',
+    message,
+    detail,
+    buttons: ['Allow', 'Deny'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+    checkboxLabel: 'Remember this decision on this device',
+    checkboxChecked: true,
+  }
+
+  const choice = ownerWindow
+    ? await dialog.showMessageBox(ownerWindow, dialogOptions)
+    : await dialog.showMessageBox(dialogOptions)
+
+  if (choice.response !== 0) {
+    return false
+  }
+
+  if (choice.checkboxChecked) {
+    trustedPrivilegedActions.add(key)
+    await persistSecurityPolicy()
+  }
+
+  return true
+}
+
+const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
+
+const isTrustedAuthCallbackUrl = (value: string) => {
+  try {
+    const parsed = new URL(value)
+    if (parsed.protocol.toLowerCase() !== `${AUTH_PROTOCOL.toLowerCase()}:`) {
+      return false
+    }
+    const host = parsed.hostname.trim().toLowerCase()
+    if (host !== 'auth') {
+      return false
+    }
+    const normalizedPath = parsed.pathname.replace(/\/+$/g, '') || '/'
+    if (normalizedPath !== '/' && normalizedPath !== '/auth' && normalizedPath !== '/callback') {
+      return false
+    }
+    const token = parsed.searchParams.get('ott')
+    return Boolean(token && AUTH_CALLBACK_TOKEN_PATTERN.test(token))
+  } catch {
+    return false
+  }
 }
 
 const setupExternalLinkHandlers = (window: BrowserWindow) => {
@@ -1360,6 +1499,8 @@ app.whenReady().then(async () => {
   }
   const StellaHome = await resolveStellaHome(app)
   StellaHomePath = StellaHome.homePath
+  securityPolicyPath = path.join(StellaHome.statePath, 'security_policy.json')
+  await loadSecurityPolicy()
   const deviceIdentity = await getOrCreateDeviceIdentity(StellaHome.statePath)
   deviceId = deviceIdentity.deviceId
   localHostRunner = createLocalHostRunner({
@@ -1739,46 +1880,121 @@ app.whenReady().then(async () => {
     return result.result ?? {}
   }
 
-  ipcMain.handle('store:installSkill', async (_event, payload: {
+  ipcMain.handle('store:installSkill', async (event, payload: {
     packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]
   }) => {
+    if (!assertPrivilegedSender(event, 'store:installSkill')) {
+      throw new Error('Blocked untrusted store install request.')
+    }
+    const approved = await ensurePrivilegedActionApproval(
+      'store.install.skill',
+      'Allow Stella to install a skill package?',
+      'Skills write files under ~/.stella/skills. This keeps Stella autonomous while preventing hidden renderer abuse.',
+      event,
+    )
+    if (!approved) {
+      throw new Error('Skill install denied.')
+    }
     return unwrapStoreResult(await handleInstallSkill(payload as unknown as Record<string, unknown>))
   })
 
-  ipcMain.handle('store:installTheme', async (_event, payload: {
+  ipcMain.handle('store:installTheme', async (event, payload: {
     packageId: string; themeId: string; name: string; light: Record<string, string>; dark: Record<string, string>
   }) => {
+    if (!assertPrivilegedSender(event, 'store:installTheme')) {
+      throw new Error('Blocked untrusted store theme install request.')
+    }
+    const approved = await ensurePrivilegedActionApproval(
+      'store.install.theme',
+      'Allow Stella to install a theme package?',
+      'Themes write files under ~/.stella/themes.',
+      event,
+    )
+    if (!approved) {
+      throw new Error('Theme install denied.')
+    }
     return unwrapStoreResult(await handleInstallTheme(payload as unknown as Record<string, unknown>))
   })
 
-  ipcMain.handle('store:installCanvas', async (_event, payload: {
+  ipcMain.handle('store:installCanvas', async (event, payload: {
     packageId: string
     workspaceId?: string
     name: string
     dependencies?: Record<string, string>
     source?: string
   }) => {
+    if (!assertPrivilegedSender(event, 'store:installCanvas')) {
+      throw new Error('Blocked untrusted store canvas install request.')
+    }
+    const approved = await ensurePrivilegedActionApproval(
+      'store.install.canvas',
+      'Allow Stella to install a canvas app?',
+      'Canvas installs can write local app code and dependencies under ~/.stella/apps.',
+      event,
+    )
+    if (!approved) {
+      throw new Error('Canvas install denied.')
+    }
     return unwrapStoreResult(await handleInstallCanvas(payload as unknown as Record<string, unknown>))
   })
 
-  ipcMain.handle('store:uninstall', async (_event, payload: {
+  ipcMain.handle('store:uninstall', async (event, payload: {
     packageId: string; type: string; localId: string
   }) => {
+    if (!assertPrivilegedSender(event, 'store:uninstall')) {
+      throw new Error('Blocked untrusted store uninstall request.')
+    }
+    const approved = await ensurePrivilegedActionApproval(
+      'store.uninstall',
+      'Allow Stella to uninstall local package files?',
+      'Uninstall may remove files under ~/.stella.',
+      event,
+    )
+    if (!approved) {
+      throw new Error('Package uninstall denied.')
+    }
     return unwrapStoreResult(await handleUninstallPackage(payload as unknown as Record<string, unknown>))
   })
 
   // Bridge manager IPC handlers
-  ipcMain.handle('bridge:deploy', async (_event, payload: {
+  ipcMain.handle('bridge:deploy', async (event, payload: {
     provider: string; code: string; env: Record<string, string>; dependencies: string
   }) => {
+    if (!assertPrivilegedSender(event, 'bridge:deploy')) {
+      throw new Error('Blocked untrusted bridge deploy request.')
+    }
+    const approved = await ensurePrivilegedActionApproval(
+      'bridge.deploy',
+      'Allow Stella to deploy local bridge code?',
+      'Bridge deploy writes executable code under ~/.stella/bridges and may install dependencies.',
+      event,
+    )
+    if (!approved) {
+      throw new Error('Bridge deploy denied.')
+    }
     return bridgeManager.deploy(payload)
   })
 
-  ipcMain.handle('bridge:start', async (_event, payload: { provider: string }) => {
+  ipcMain.handle('bridge:start', async (event, payload: { provider: string }) => {
+    if (!assertPrivilegedSender(event, 'bridge:start')) {
+      throw new Error('Blocked untrusted bridge start request.')
+    }
+    const approved = await ensurePrivilegedActionApproval(
+      'bridge.start',
+      'Allow Stella to start local bridge processes?',
+      'Starting a bridge runs local Node.js code with configured bridge environment variables.',
+      event,
+    )
+    if (!approved) {
+      throw new Error('Bridge start denied.')
+    }
     return bridgeManager.start(payload.provider)
   })
 
-  ipcMain.handle('bridge:stop', async (_event, payload: { provider: string }) => {
+  ipcMain.handle('bridge:stop', async (event, payload: { provider: string }) => {
+    if (!assertPrivilegedSender(event, 'bridge:stop')) {
+      throw new Error('Blocked untrusted bridge stop request.')
+    }
     return bridgeManager.stop(payload.provider)
   })
 
