@@ -90,12 +90,14 @@ const syncErrorItemValidator = v.object({
 
 const syncGateStatusValidator = v.object({
   enabled: v.boolean(),
+  hasCloudPrimary: v.boolean(),
   has247: v.boolean(),
   hasConnector: v.boolean(),
   connectedProviders: v.array(v.string()),
 });
 
 const LOCAL_SYNC_MAP_PREFIX = "local_sync_map";
+const CLOUD_PRIMARY_KEY = "cloud_primary";
 const RUNTIME_MODE_KEY = "runtime_mode";
 const ACTIVE_BRIDGE_STATUSES = new Set([
   "connected",
@@ -1072,13 +1074,22 @@ export const getSyncGateStatus = query({
   returns: syncGateStatusValidator,
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
-    const runtimeMode = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_owner_key", (q) =>
-        q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY),
-      )
-      .first();
+    const [runtimeMode, cloudPrimaryPreference] = await Promise.all([
+      ctx.db
+        .query("user_preferences")
+        .withIndex("by_owner_key", (q) =>
+          q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY),
+        )
+        .first(),
+      ctx.db
+        .query("user_preferences")
+        .withIndex("by_owner_key", (q) =>
+          q.eq("ownerId", ownerId).eq("key", CLOUD_PRIMARY_KEY),
+        )
+        .first(),
+    ]);
     const has247 = runtimeMode?.value === "cloud_247";
+    const hasCloudPrimary = cloudPrimaryPreference?.value === "true";
 
     const channelConnections = await ctx.db
       .query("channel_connections")
@@ -1102,7 +1113,8 @@ export const getSyncGateStatus = query({
     const hasConnector = providers.length > 0;
 
     return {
-      enabled: has247 || hasConnector,
+      enabled: hasCloudPrimary || has247 || hasConnector,
+      hasCloudPrimary,
       has247,
       hasConnector,
       connectedProviders: providers,
