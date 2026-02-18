@@ -3,7 +3,7 @@
  * Tools run synchronously via the existing tool host, eliminating the poll-based round-trip.
  */
 
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { insert, update, rawQuery, newId } from "../db";
 import { broadcastSSE } from "../server";
@@ -40,7 +40,7 @@ type ToolAssemblyOptions = {
  * Device tools execute in-process via the tool host.
  * Orchestration tools (TaskCreate, etc.) use local SQLite.
  */
-export function createLocalTools(options: ToolAssemblyOptions): Record<string, ReturnType<typeof tool>> {
+export function createLocalTools(options: ToolAssemblyOptions): Record<string, Tool<any, any>> {
   const {
     agentType,
     toolsAllowlist,
@@ -51,7 +51,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
     toolHost,
   } = options;
 
-  const tools: Record<string, ReturnType<typeof tool>> = {};
+  const tools: Record<string, Tool<any, any>> = {};
 
   // ─── Device Tools (execute via tool host) ──────────────────────────────
 
@@ -67,7 +67,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
 
     tools[toolName] = tool({
       description: `Execute the ${toolName} tool locally`,
-      parameters: z.record(z.unknown()),
+      inputSchema: z.record(z.string(), z.unknown()),
       execute: async (args) => {
         const requestId = newId();
         log(`Executing device tool: ${toolName}`, { requestId });
@@ -131,7 +131,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("AskUserQuestion")) {
     tools["AskUserQuestion"] = tool({
       description: "Ask the user a question and wait for their response",
-      parameters: z.object({
+      inputSchema: z.object({
         question: z.string().describe("The question to ask"),
         suggestions: z.array(z.string()).optional().describe("Suggested answers"),
       }),
@@ -156,7 +156,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("OpenCanvas")) {
     tools["OpenCanvas"] = tool({
       description: "Open a canvas panel",
-      parameters: z.object({
+      inputSchema: z.object({
         name: z.string(),
         title: z.string().optional(),
         url: z.string().optional(),
@@ -198,7 +198,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("CloseCanvas")) {
     tools["CloseCanvas"] = tool({
       description: "Close the canvas panel",
-      parameters: z.object({}),
+      inputSchema: z.object({}),
       execute: async () => {
         insert("events", {
           conversation_id: conversationId,
@@ -218,7 +218,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("SaveMemory")) {
     tools["SaveMemory"] = tool({
       description: "Save a fact or memory for future recall",
-      parameters: z.object({
+      inputSchema: z.object({
         content: z.string().describe("The content to remember"),
       }),
       execute: async ({ content }) => {
@@ -238,7 +238,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("RecallMemories")) {
     tools["RecallMemories"] = tool({
       description: "Search memories for relevant information",
-      parameters: z.object({
+      inputSchema: z.object({
         query: z.string().describe("Search query"),
       }),
       execute: async ({ query }) => {
@@ -256,7 +256,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("NoResponse")) {
     tools["NoResponse"] = tool({
       description: "Indicate that no response to the user is needed",
-      parameters: z.object({
+      inputSchema: z.object({
         reason: z.string().optional(),
       }),
       execute: async ({ reason }) => {
@@ -270,7 +270,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (maxTaskDepth > 0 && (!toolsAllowlist || toolsAllowlist.includes("TaskCreate"))) {
     tools["TaskCreate"] = tool({
       description: "Create a background task to be executed by a subagent",
-      parameters: z.object({
+      inputSchema: z.object({
         description: z.string(),
         prompt: z.string(),
         agentType: z.string().default("general"),
@@ -291,7 +291,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (maxTaskDepth > 0 && (!toolsAllowlist || toolsAllowlist.includes("TaskOutput"))) {
     tools["TaskOutput"] = tool({
       description: "Check the status and output of a previously created task",
-      parameters: z.object({
+      inputSchema: z.object({
         taskId: z.string(),
       }),
       execute: async ({ taskId }) => {
@@ -308,7 +308,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("TaskCancel")) {
     tools["TaskCancel"] = tool({
       description: "Cancel a running task",
-      parameters: z.object({
+      inputSchema: z.object({
         taskId: z.string(),
       }),
       execute: async ({ taskId }) => {
@@ -321,7 +321,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("ActivateSkill")) {
     tools["ActivateSkill"] = tool({
       description: "Load a skill's full instructions",
-      parameters: z.object({
+      inputSchema: z.object({
         skillId: z.string(),
       }),
       execute: async ({ skillId }) => {
@@ -340,7 +340,7 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, R
   if (!toolsAllowlist || toolsAllowlist.includes("StoreSearch")) {
     tools["StoreSearch"] = tool({
       description: "Search the package store",
-      parameters: z.object({
+      inputSchema: z.object({
         query: z.string(),
         type: z.string().optional(),
       }),

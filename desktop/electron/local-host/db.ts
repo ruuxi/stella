@@ -64,7 +64,7 @@ export function insert(
 ): string {
   const d = getDb();
   const id = data.id as string || newId();
-  const row = { ...data, id };
+  const row: Record<string, unknown> = { ...data, id };
 
   const cols = Object.keys(row);
   const placeholders = cols.map(() => "?").join(", ");

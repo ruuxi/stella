@@ -2,6 +2,7 @@ import { ConvexClient } from "convex/browser";
 import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
+import { rawQuery } from "./db";
 import { syncExternalSkills, syncBundledSkills } from "./skill_import.js";
 import { loadSyncManifest, saveSyncManifest, diffSkills, diffAgents, applyDiffToManifest, } from "./sync_manifest.js";
 import { loadIdentityMap, depseudonymize } from "./identity_map.js";
@@ -18,11 +19,39 @@ const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
 const DEFERRED_DELETE_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 export const createLocalHostRunner = ({ deviceId, StellaHome, frontendRoot, requestCredential, signHeartbeatPayload, }) => {
+    const resolveLocalSecret = ({ provider, secretId, }) => {
+        if (secretId) {
+            const byId = rawQuery("SELECT id, provider, label, encrypted_value FROM secrets WHERE owner_id = ? AND id = ? AND status = 'active' LIMIT 1", ["local", secretId]);
+            if (byId.length > 0 && byId[0].encrypted_value) {
+                return {
+                    secretId: byId[0].id,
+                    provider: byId[0].provider,
+                    label: byId[0].label,
+                    plaintext: byId[0].encrypted_value,
+                };
+            }
+            return null;
+        }
+        const byProvider = rawQuery("SELECT id, provider, label, encrypted_value FROM secrets WHERE owner_id = ? AND provider = ? AND status = 'active' ORDER BY updated_at DESC LIMIT 1", ["local", provider]);
+        if (byProvider.length === 0 || !byProvider[0].encrypted_value) {
+            return null;
+        }
+        return {
+            secretId: byProvider[0].id,
+            provider: byProvider[0].provider,
+            label: byProvider[0].label,
+            plaintext: byProvider[0].encrypted_value,
+        };
+    };
     const toolHost = createToolHost({
         StellaHome,
         frontendRoot,
         requestCredential,
         resolveSecret: async ({ provider, secretId, requestId, toolName, deviceId: contextDeviceId }) => {
+            const localSecret = resolveLocalSecret({ provider, secretId });
+            if (localSecret) {
+                return localSecret;
+            }
             if (!client)
                 return null;
             if (!requestId || !toolName)
