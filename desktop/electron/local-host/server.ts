@@ -425,16 +425,18 @@ app.post("/api/secrets", async (c) => {
     "SELECT id FROM secrets WHERE owner_id = ? AND provider = ?",
     [ownerId, body.provider],
   );
+  let secretId: string;
 
   if (existing.length > 0) {
+    secretId = (existing[0] as { id: string }).id;
     update("secrets", {
       label: body.label,
       encrypted_value: body.encryptedValue,
       key_version: body.keyVersion || 1,
       updated_at: now,
-    }, { id: (existing[0] as { id: string }).id });
+    }, { id: secretId });
   } else {
-    insert("secrets", {
+    secretId = insert("secrets", {
       owner_id: ownerId,
       provider: body.provider,
       label: body.label,
@@ -446,7 +448,7 @@ app.post("/api/secrets", async (c) => {
     });
   }
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, secretId });
 });
 
 app.delete("/api/secrets/:id", (c) => {

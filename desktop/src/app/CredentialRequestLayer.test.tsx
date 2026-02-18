@@ -23,6 +23,16 @@ vi.mock("../services/electron", () => ({
   getElectronApi: () => mockElectronApi,
 }));
 
+const mockUseIsLocalMode = vi.fn(() => false);
+vi.mock("@/providers/DataProvider", () => ({
+  useIsLocalMode: () => mockUseIsLocalMode(),
+}));
+
+const mockLocalPost = vi.fn();
+vi.mock("@/services/local-client", () => ({
+  localPost: (...args: unknown[]) => mockLocalPost(...args),
+}));
+
 let capturedOnSubmit: ((payload: { label: string; secret: string }) => Promise<void>) | undefined;
 let capturedOnCancel: (() => void) | undefined;
 
@@ -64,6 +74,7 @@ describe("CredentialRequestLayer", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseIsLocalMode.mockReturnValue(false);
     credentialCallback = null;
     capturedOnSubmit = undefined;
     capturedOnCancel = undefined;
@@ -79,6 +90,7 @@ describe("CredentialRequestLayer", () => {
       cancelCredential: mockCancelCredential,
     };
     mockCreateSecret.mockResolvedValue({ secretId: "secret-123" });
+    mockLocalPost.mockResolvedValue({ ok: true, secretId: "local-secret-123" });
   });
 
   it("renders CredentialModal closed initially", () => {
@@ -155,6 +167,35 @@ describe("CredentialRequestLayer", () => {
 
     expect(mockCancelCredential).toHaveBeenCalledWith({ requestId: "req-2" });
     expect(screen.getByTestId("credential-modal")).toHaveAttribute("data-open", "false");
+  });
+
+  it("stores credential locally in local mode", async () => {
+    mockUseIsLocalMode.mockReturnValue(true);
+    render(<CredentialRequestLayer />);
+
+    act(() => {
+      credentialCallback?.(null, {
+        requestId: "req-local-1",
+        provider: "openai",
+      });
+    });
+
+    await act(async () => {
+      await capturedOnSubmit!({ label: "Local Key", secret: "sk-local" });
+    });
+
+    expect(mockLocalPost).toHaveBeenCalledWith("/api/secrets", {
+      provider: "openai",
+      label: "Local Key",
+      encryptedValue: "sk-local",
+    });
+    expect(mockCreateSecret).not.toHaveBeenCalled();
+    expect(mockSubmitCredential).toHaveBeenCalledWith({
+      requestId: "req-local-1",
+      secretId: "local-secret-123",
+      provider: "openai",
+      label: "Local Key",
+    });
   });
 
   it("does not crash when electronAPI is not available", () => {
