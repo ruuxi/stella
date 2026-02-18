@@ -45,6 +45,9 @@ import {
   handleUninstallPackage,
 } from './local-host/tools_store.js'
 import * as bridgeManager from './local-host/bridge_manager.js'
+import { startLocalServer, stopLocalServer, setRuntimeConfig } from './local-host/server.js'
+import { initRuntime } from './local-host/agent/runtime.js'
+import { closeDb } from './local-host/db.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1192,6 +1195,20 @@ const deriveConvexSiteUrl = (convexUrl: string | null, explicitSiteUrl?: string 
   return null
 }
 
+const syncLocalRuntimeConfig = () => {
+  if (!deviceId || !localHostRunner) {
+    return
+  }
+
+  setRuntimeConfig({
+    deviceId,
+    ownerId: 'local',
+    toolHost: localHostRunner as unknown as Parameters<typeof setRuntimeConfig>[0]['toolHost'],
+    proxyUrl: deriveConvexSiteUrl(pendingConvexUrl, pendingConvexSiteUrl) ?? undefined,
+    authToken: localHostRunner.getAuthToken() ?? undefined,
+  })
+}
+
 const parseTokenResponse = async (response: Response): Promise<string | null> => {
   try {
     const payload = (await response.json()) as unknown
@@ -1250,10 +1267,12 @@ const fetchRunnerAuthToken = async (): Promise<string | null> => {
 const refreshRunnerAuthToken = async () => {
   if (!hostAuthAuthenticated) {
     localHostRunner?.setAuthToken(null)
+    syncLocalRuntimeConfig()
     return
   }
   const token = await fetchRunnerAuthToken()
   localHostRunner?.setAuthToken(token)
+  syncLocalRuntimeConfig()
 }
 
 const stopAuthRefreshLoop = () => {
@@ -1262,6 +1281,7 @@ const stopAuthRefreshLoop = () => {
     authRefreshTimer = null
   }
   localHostRunner?.setAuthToken(null)
+  syncLocalRuntimeConfig()
 }
 
 const startAuthRefreshLoop = () => {
@@ -1290,6 +1310,7 @@ const configureLocalHost = (config: { convexUrl: string; convexSiteUrl?: string 
   if (localHostRunner) {
     localHostRunner.setConvexUrl(convexUrl)
   }
+  syncLocalRuntimeConfig()
   if (hostAuthAuthenticated) {
     void refreshRunnerAuthToken()
   }
@@ -1355,6 +1376,33 @@ app.whenReady().then(async () => {
     localHostRunner.setConvexUrl(pendingConvexUrl)
   }
   localHostRunner.start()
+  syncLocalRuntimeConfig()
+
+  // ── Local-first server startup ──────────────────────────────────────
+  let localServerPort = 9714
+  try {
+    localServerPort = await startLocalServer(9714)
+
+    // Configure runtime with tool host from the existing runner
+    const convexHttpUrl = deriveConvexSiteUrl(pendingConvexUrl, pendingConvexSiteUrl) ?? undefined
+    syncLocalRuntimeConfig()
+
+    initRuntime({
+      deviceId,
+      ownerId: 'local',
+      toolHost: localHostRunner as unknown as Parameters<typeof initRuntime>[0]['toolHost'],
+      proxyUrl: convexHttpUrl,
+      authToken: localHostRunner.getAuthToken() ?? undefined,
+    })
+
+    console.log(`[main] Local server started on port ${localServerPort}`)
+  } catch (err) {
+    console.error('[main] Failed to start local server:', err)
+  }
+
+  // IPC: expose local server port to renderer
+  ipcMain.handle('local:getServerPort', () => localServerPort)
+  ipcMain.handle('local:getMode', () => 'local')
 
   createFullWindow()
   createMiniWindow()
@@ -1836,4 +1884,6 @@ app.on('will-quit', () => {
     localHostRunner.stop()
     localHostRunner = null
   }
+  // Stop local server and close SQLite
+  stopLocalServer()
 })
