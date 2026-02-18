@@ -67,6 +67,7 @@ type PaginatedResult<T> = {
 
 type SyncGateStatus = {
   enabled: boolean;
+  hasCloudPrimary: boolean;
   has247: boolean;
   hasConnector: boolean;
   connectedProviders: string[];
@@ -78,7 +79,6 @@ const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
 const DEFERRED_DELETE_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 const SYNC_GATE_POLL_INTERVAL_MS = 30_000;
-const LOCAL_CLOUD_SYNC_INTERVAL_MS = 15_000;
 const LOCAL_CLOUD_SYNC_BATCH_SIZE = 100;
 
 export const createLocalHostRunner = ({
@@ -197,9 +197,9 @@ export const createLocalHostRunner = ({
   const watchers: fs.FSWatcher[] = [];
   let deferredDeleteSweepInterval: ReturnType<typeof setInterval> | null = null;
   let syncGatePollInterval: ReturnType<typeof setInterval> | null = null;
-  let localCloudSyncInterval: ReturnType<typeof setInterval> | null = null;
   let syncGateStatus: SyncGateStatus = {
     enabled: false,
+    hasCloudPrimary: false,
     has247: false,
     hasConnector: false,
     connectedProviders: [],
@@ -330,6 +330,7 @@ export const createLocalHostRunner = ({
     if (!client || !authToken) {
       syncGateStatus = {
         enabled: false,
+        hasCloudPrimary: false,
         has247: false,
         hasConnector: false,
         connectedProviders: [],
@@ -347,6 +348,7 @@ export const createLocalHostRunner = ({
       const prev = syncGateStatus;
       syncGateStatus = {
         enabled: Boolean(next.enabled),
+        hasCloudPrimary: Boolean(next.hasCloudPrimary),
         has247: Boolean(next.has247),
         hasConnector: Boolean(next.hasConnector),
         connectedProviders: Array.isArray(next.connectedProviders)
@@ -358,6 +360,7 @@ export const createLocalHostRunner = ({
       const isEnabled = syncGateStatus.enabled;
       const changed =
         wasEnabled !== isEnabled ||
+        prev.hasCloudPrimary !== syncGateStatus.hasCloudPrimary ||
         prev.has247 !== syncGateStatus.has247 ||
         prev.hasConnector !== syncGateStatus.hasConnector ||
         prev.connectedProviders.join(",") !== syncGateStatus.connectedProviders.join(",");
@@ -391,7 +394,7 @@ export const createLocalHostRunner = ({
         }
 
         let iterations = 0;
-        while (isCloudSyncEnabled() && iterations < 20) {
+        while (isCloudSyncEnabled() && iterations < 200) {
           iterations += 1;
           const batch = buildLocalSyncBatch(LOCAL_CLOUD_SYNC_BATCH_SIZE);
           if (batch.upserts.length === 0 && batch.deletes.length === 0) {
@@ -422,15 +425,6 @@ export const createLocalHostRunner = ({
               errors: result.errors.slice(0, 3),
               totalErrors: result.errors.length,
             });
-          }
-
-          // Prevent tight-looping on unrecoverable failures.
-          if (
-            result.errors.length > 0 &&
-            result.upserts.length === 0 &&
-            result.deletes.length === 0
-          ) {
-            break;
           }
         }
       } catch (error) {
@@ -709,6 +703,7 @@ export const createLocalHostRunner = ({
       client.setAuth(() => Promise.resolve(null));
       syncGateStatus = {
         enabled: false,
+        hasCloudPrimary: false,
         has247: false,
         hasConnector: false,
         connectedProviders: [],
@@ -914,11 +909,6 @@ export const createLocalHostRunner = ({
         void refreshSyncGateStatus();
       }, SYNC_GATE_POLL_INTERVAL_MS);
     }
-    if (!localCloudSyncInterval) {
-      localCloudSyncInterval = setInterval(() => {
-        void syncLocalCloudData();
-      }, LOCAL_CLOUD_SYNC_INTERVAL_MS);
-    }
     void syncLocalCloudData();
   };
 
@@ -927,10 +917,6 @@ export const createLocalHostRunner = ({
     if (syncGatePollInterval) {
       clearInterval(syncGatePollInterval);
       syncGatePollInterval = null;
-    }
-    if (localCloudSyncInterval) {
-      clearInterval(localCloudSyncInterval);
-      localCloudSyncInterval = null;
     }
     if (deferredDeleteSweepInterval) {
       clearInterval(deferredDeleteSweepInterval);
@@ -949,6 +935,7 @@ export const createLocalHostRunner = ({
     }
     syncGateStatus = {
       enabled: false,
+      hasCloudPrimary: false,
       has247: false,
       hasConnector: false,
       connectedProviders: [],

@@ -419,4 +419,12 @@ export const applyLocalSyncBatchResult = (
     if (!syncStateId) continue;
     rawRun("DELETE FROM _sync_state WHERE id = ?", [syncStateId]);
   }
+
+  // Keep failed entries dirty, but bump synced_at so other dirty rows can run first.
+  for (const error of result.errors) {
+    const key = `${error.table}:${error.localId}`;
+    const syncStateId = upsertStateByKey.get(key) ?? deleteStateByKey.get(key);
+    if (!syncStateId) continue;
+    rawRun("UPDATE _sync_state SET synced_at = ? WHERE id = ?", [now, syncStateId]);
+  }
 };
