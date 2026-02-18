@@ -25,6 +25,8 @@ import type * as agent_prompt_builder from "../agent/prompt_builder.js";
 import type * as agent_self_mod_features from "../agent/self_mod_features.js";
 import type * as agent_suggestions from "../agent/suggestions.js";
 import type * as agent_tasks from "../agent/tasks.js";
+import type * as ai_proxy from "../ai_proxy.js";
+import type * as ai_proxy_data from "../ai_proxy_data.js";
 import type * as auth from "../auth.js";
 import type * as automation_index from "../automation/index.js";
 import type * as automation_runner from "../automation/runner.js";
@@ -109,6 +111,8 @@ declare const fullApi: ApiFromModules<{
   "agent/self_mod_features": typeof agent_self_mod_features;
   "agent/suggestions": typeof agent_suggestions;
   "agent/tasks": typeof agent_tasks;
+  ai_proxy: typeof ai_proxy;
+  ai_proxy_data: typeof ai_proxy_data;
   auth: typeof auth;
   "automation/index": typeof automation_index;
   "automation/runner": typeof automation_runner;
