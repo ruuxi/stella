@@ -1604,6 +1604,7 @@ http.route({
 // Discord interaction types
 const INTERACTION_PING = 1;
 const INTERACTION_APPLICATION_COMMAND = 2;
+const DISCORD_TIMESTAMP_MAX_SKEW_SECONDS = 5 * 60;
 
 // Discord interaction response types
 const RESPONSE_PONG = 1;
@@ -1627,6 +1628,14 @@ http.route({
 
     if (!signature || !timestamp) {
       return new Response("Missing signature headers", { status: 401 });
+    }
+    const timestampSeconds = Number(timestamp);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (
+      !Number.isFinite(timestampSeconds) ||
+      Math.abs(nowSeconds - timestampSeconds) > DISCORD_TIMESTAMP_MAX_SKEW_SECONDS
+    ) {
+      return new Response("Stale request timestamp", { status: 401 });
     }
 
     const isValid = await verifyDiscordSignature(rawBody, signature, timestamp, publicKey);
