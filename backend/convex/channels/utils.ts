@@ -3,6 +3,7 @@ import {
   internalQuery,
   mutation,
   query,
+  type MutationCtx,
 } from "../_generated/server";
 import { components, internal } from "../_generated/api";
 import { v, Infer } from "convex/values";
@@ -15,6 +16,7 @@ import { optionalChannelEnvelopeValidator } from "../shared_validators";
 type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
 const DM_POLICY_DEFAULT: DmPolicy = "pairing";
+const CLOUD_PRIMARY_KEY = "cloud_primary";
 const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const channelConnectionValidator = v.object({
   _id: v.id("channel_connections"),
@@ -59,6 +61,31 @@ const parseStringList = (value: string | null | undefined): string[] => {
 };
 
 const uniqueSorted = (values: string[]) => [...new Set(values)].sort();
+
+const ensureCloudPrimaryPreference = async (
+  ctx: MutationCtx,
+  ownerId: string,
+) => {
+  const existing = await ctx.db
+    .query("user_preferences")
+    .withIndex("by_owner_key", (q) =>
+      q.eq("ownerId", ownerId).eq("key", CLOUD_PRIMARY_KEY),
+    )
+    .first();
+  const updatedAt = Date.now();
+  if (existing) {
+    if (existing.value !== "true") {
+      await ctx.db.patch(existing._id, { value: "true", updatedAt });
+    }
+    return;
+  }
+  await ctx.db.insert("user_preferences", {
+    ownerId,
+    key: CLOUD_PRIMARY_KEY,
+    value: "true",
+    updatedAt,
+  });
+};
 
 const webhookRateLimiter = new RateLimiter(components.rateLimiter);
 
@@ -219,10 +246,11 @@ export const createConnection = internalMutation({
           updatedAt: now,
         });
       }
+      await ensureCloudPrimaryPreference(ctx, args.ownerId);
       return existing._id;
     }
 
-    return await ctx.db.insert("channel_connections", {
+    const connectionId = await ctx.db.insert("channel_connections", {
       ownerId: args.ownerId,
       provider: args.provider,
       externalUserId: args.externalUserId,
@@ -230,6 +258,8 @@ export const createConnection = internalMutation({
       linkedAt: now,
       updatedAt: now,
     });
+    await ensureCloudPrimaryPreference(ctx, args.ownerId);
+    return connectionId;
   },
 });
 
@@ -427,7 +457,10 @@ export const deleteConnection = mutation({
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .first();
-    if (conn) await ctx.db.delete(conn._id);
+    if (conn) {
+      await ensureCloudPrimaryPreference(ctx, ownerId);
+      await ctx.db.delete(conn._id);
+    }
     return null;
   },
 });
