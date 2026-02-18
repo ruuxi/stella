@@ -39,7 +39,6 @@ export function Composer({
   canSubmit,
   conversationId,
   onSend,
-  sttAvailable,
   voiceState,
   onStartVoice,
   onStopVoice,

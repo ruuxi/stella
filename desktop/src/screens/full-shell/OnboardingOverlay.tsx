@@ -5,6 +5,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useConvexAuth, useAction } from "convex/react";
 import { api } from "@/convex/api";
+import { useIsLocalMode } from "@/providers/DataProvider";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
@@ -27,8 +28,11 @@ export function useOnboardingOverlay() {
     complete: completeOnboarding,
     reset: resetOnboarding,
   } = useOnboardingState();
+  const isLocalMode = useIsLocalMode();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const resetUserData = useAction(api.reset.resetAllUserData);
+  const effectiveAuthenticated = isLocalMode || isAuthenticated;
+  const effectiveAuthLoading = isLocalMode ? false : isAuthLoading;
 
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
   const [splitMode, setSplitMode] = useState(false);
@@ -72,17 +76,21 @@ export function useOnboardingOverlay() {
     setOnboardingKey((k) => k + 1);
     stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
+    if (isLocalMode) {
+      window.location.reload();
+      return;
+    }
     resetUserData()
       .then(() => window.location.reload())
       .catch(console.error);
-  }, [resetOnboarding, resetUserData]);
+  }, [isLocalMode, resetOnboarding, resetUserData]);
 
   return {
     onboardingDone,
     onboardingExiting,
     completeOnboarding: handleCompleteOnboarding,
-    isAuthenticated,
-    isAuthLoading,
+    isAuthenticated: effectiveAuthenticated,
+    isAuthLoading: effectiveAuthLoading,
     hasExpanded,
     splitMode,
     hasDiscoverySelections,

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
-import React from "react";
 
 // ---------- Mocks ----------
 
@@ -46,7 +45,6 @@ import { RadialDial } from "./RadialDial";
 // Constants from RadialDial.tsx
 const SIZE = 280;
 const CENTER = SIZE / 2; // 140
-const DEAD_ZONE_RADIUS = 30;
 
 // Capture the IPC handler callbacks so tests can invoke them
 let showCallback: Function;

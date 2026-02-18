@@ -10,6 +10,8 @@ import { streamChat } from "../../services/model-gateway";
 import { getOrCreateDeviceId } from "../../services/device";
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { ChatContext } from "../../types/electron";
+import { useIsLocalMode } from "@/providers/DataProvider";
+import { localPost } from "@/services/local-client";
 
 export type AttachmentRef = {
   id?: string;
@@ -21,7 +23,37 @@ type UseStreamingChatOptions = {
   conversationId: string | null;
 };
 
+type AppendEventArgs = {
+  conversationId: string;
+  type: string;
+  deviceId?: string;
+  requestId?: string;
+  targetDeviceId?: string;
+  payload?: unknown;
+};
+
+type AppendedEventResponse = {
+  _id?: string;
+  id?: string;
+};
+
+type AttachmentResponse = {
+  _id?: string;
+  storageKey?: string;
+  url?: string | null;
+  mimeType?: string;
+  size?: number;
+};
+
+const toEventId = (event: AppendedEventResponse | null | undefined): string | null => {
+  if (!event) return null;
+  if (typeof event._id === "string" && event._id.length > 0) return event._id;
+  if (typeof event.id === "string" && event.id.length > 0) return event.id;
+  return null;
+};
+
 export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
+  const isLocalMode = useIsLocalMode();
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
@@ -55,7 +87,49 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       });
     },
   );
-  const createAttachment = useAction(api.data.attachments.createFromDataUrl);
+  const createAttachmentAction = useAction(api.data.attachments.createFromDataUrl);
+
+  const appendConversationEvent = useCallback(
+    async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
+      if (isLocalMode) {
+        const event = await localPost<AppendedEventResponse>("/api/events", args);
+        return event ?? null;
+      }
+      const event = await appendEvent({
+        conversationId: args.conversationId as never,
+        type: args.type,
+        deviceId: args.deviceId,
+        requestId: args.requestId,
+        targetDeviceId: args.targetDeviceId,
+        payload: args.payload,
+      });
+      return event as AppendedEventResponse | null;
+    },
+    [isLocalMode, appendEvent],
+  );
+
+  const createAttachment = useCallback(
+    async (args: {
+      conversationId: string;
+      deviceId: string;
+      dataUrl: string;
+    }): Promise<AttachmentResponse | null> => {
+      if (isLocalMode) {
+        const attachment = await localPost<AttachmentResponse>(
+          "/api/attachments/create",
+          args,
+        );
+        return attachment ?? null;
+      }
+      const attachment = await createAttachmentAction({
+        conversationId: args.conversationId as never,
+        deviceId: args.deviceId,
+        dataUrl: args.dataUrl,
+      });
+      return attachment as AttachmentResponse | null;
+    },
+    [isLocalMode, createAttachmentAction],
+  );
 
   const resetStreamingState = useCallback(
     (runId?: number) => {
@@ -275,13 +349,16 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
                   deviceId,
                   dataUrl: screenshot.dataUrl,
                 });
-                if (!attachment?._id) {
+                const attachmentId = attachment?._id ?? attachment?.storageKey;
+                if (!attachmentId) {
                   return null;
                 }
+                const attachmentUrl = attachment?.url ?? undefined;
+                const attachmentMimeType = attachment?.mimeType;
                 return {
-                  id: attachment._id as string,
-                  url: attachment.url,
-                  mimeType: attachment.mimeType,
+                  id: attachmentId,
+                  url: attachmentUrl,
+                  mimeType: attachmentMimeType,
                 };
               } catch (error) {
                 console.error("Screenshot upload failed", error);
@@ -311,7 +388,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         resetStreamingState();
       }
 
-      const event = await appendEvent({
+      const event = await appendConversationEvent({
         conversationId,
         type: "user_message",
         deviceId,
@@ -323,14 +400,15 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         },
       });
 
-      if (event?._id) {
+      const eventId = toEventId(event);
+      if (eventId) {
         if (mode === "follow_up") {
           setQueueNext(false);
           return;
         }
         setQueueNext(false);
         opts.onClear();
-        startStream({ userMessageId: event._id, attachments });
+        startStream({ userMessageId: eventId, attachments });
       }
     },
     [
@@ -339,7 +417,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       queueNext,
       cancelCurrentStream,
       resetStreamingState,
-      appendEvent,
+      appendConversationEvent,
       createAttachment,
       startStream,
     ],

@@ -269,7 +269,14 @@ describe("useDiscoveryFlow", () => {
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
       coreMemory: "User is a developer",
       welcomeMessage: "Hello! Welcome to Stella.",
-      suggestions: [{ label: "Tell me about yourself", message: "Tell me about yourself" }],
+      suggestions: [
+        {
+          category: "skill",
+          title: "Tell me about yourself",
+          description: "Tell me about yourself",
+          prompt: "Tell me about yourself",
+        },
+      ],
     });
 
     const writeCoreMemory = vi.fn(() => Promise.resolve());
@@ -318,7 +325,12 @@ describe("useDiscoveryFlow", () => {
           conversationId: "conv-1",
           type: "welcome_suggestions",
           payload: {
-            suggestions: [{ label: "Tell me about yourself", message: "Tell me about yourself" }],
+            suggestions: [
+              expect.objectContaining({
+                title: "Tell me about yourself",
+                prompt: "Tell me about yourself",
+              }),
+            ],
           },
         }),
       );

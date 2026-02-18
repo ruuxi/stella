@@ -10,8 +10,36 @@ import {
 import { getOrCreateDeviceId } from "../../services/device";
 import { streamChat } from "../../services/model-gateway";
 import type { ChatContext } from "../../types/electron";
+import { useIsLocalMode } from "@/providers/DataProvider";
+import { localPost } from "@/services/local-client";
 
 export type AttachmentRef = { id?: string; url?: string; mimeType?: string };
+
+type AppendEventArgs = {
+  conversationId: string;
+  type: string;
+  deviceId?: string;
+  requestId?: string;
+  targetDeviceId?: string;
+  payload?: unknown;
+};
+
+type AppendedEventResponse = { _id?: string; id?: string };
+
+type AttachmentResponse = {
+  _id?: string;
+  storageKey?: string;
+  url?: string | null;
+  mimeType?: string;
+  size?: number;
+};
+
+const toEventId = (event: AppendedEventResponse | null | undefined): string | null => {
+  if (!event) return null;
+  if (typeof event._id === "string" && event._id.length > 0) return event._id;
+  if (typeof event.id === "string" && event.id.length > 0) return event.id;
+  return null;
+};
 
 export function useMiniChat(opts: {
   chatContext: ChatContext | null;
@@ -23,6 +51,7 @@ export function useMiniChat(opts: {
 }) {
   const { chatContext, selectedText, setChatContext, setSelectedText, isStreaming, setIsStreaming } =
     opts;
+  const isLocalMode = useIsLocalMode();
   const { state } = useUiState();
   const [message, setMessage] = useState("");
   const [streamingText, appendStreamingDelta, resetStreamingText] =
@@ -62,8 +91,50 @@ export function useMiniChat(opts: {
     });
   });
 
-  const createAttachment = useAction(api.data.attachments.createFromDataUrl);
+  const createAttachmentAction = useAction(api.data.attachments.createFromDataUrl);
   const events = useConversationEvents(state.conversationId ?? undefined);
+
+  const appendConversationEvent = useCallback(
+    async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
+      if (isLocalMode) {
+        const event = await localPost<AppendedEventResponse>("/api/events", args);
+        return event ?? null;
+      }
+      const event = await appendEvent({
+        conversationId: args.conversationId as never,
+        type: args.type,
+        deviceId: args.deviceId,
+        requestId: args.requestId,
+        targetDeviceId: args.targetDeviceId,
+        payload: args.payload,
+      });
+      return event as AppendedEventResponse | null;
+    },
+    [isLocalMode, appendEvent],
+  );
+
+  const createAttachment = useCallback(
+    async (args: {
+      conversationId: string;
+      deviceId: string;
+      dataUrl: string;
+    }): Promise<AttachmentResponse | null> => {
+      if (isLocalMode) {
+        const attachment = await localPost<AttachmentResponse>(
+          "/api/attachments/create",
+          args,
+        );
+        return attachment ?? null;
+      }
+      const attachment = await createAttachmentAction({
+        conversationId: args.conversationId as never,
+        deviceId: args.deviceId,
+        dataUrl: args.dataUrl,
+      });
+      return attachment as AttachmentResponse | null;
+    },
+    [isLocalMode, createAttachmentAction],
+  );
 
   const resetStreamingState = useCallback(
     (runId?: number) => {
@@ -223,6 +294,7 @@ export function useMiniChat(opts: {
       (!rawText && !selectedSnippet && !windowSnippet)
     )
       return;
+    const conversationId = state.conversationId;
 
     const deviceId = await getOrCreateDeviceId();
     setMessage("");
@@ -246,15 +318,18 @@ export function useMiniChat(opts: {
           chatContext.regionScreenshots.map(async (screenshot) => {
             try {
               const attachment = await createAttachment({
-                conversationId: state.conversationId,
+                conversationId,
                 deviceId,
                 dataUrl: screenshot.dataUrl,
               });
-              if (!attachment?._id) return null;
+              const attachmentId = attachment?._id ?? attachment?.storageKey;
+              if (!attachmentId) return null;
+              const attachmentUrl = attachment?.url ?? undefined;
+              const attachmentMimeType = attachment?.mimeType;
               return {
-                id: attachment._id as string,
-                url: attachment.url,
-                mimeType: attachment.mimeType,
+                id: attachmentId,
+                url: attachmentUrl,
+                mimeType: attachmentMimeType,
               };
             } catch (error) {
               console.error("Screenshot upload failed", error);
@@ -281,8 +356,8 @@ export function useMiniChat(opts: {
       resetStreamingState();
     }
 
-    const event = await appendEvent({
-      conversationId: state.conversationId,
+    const event = await appendConversationEvent({
+      conversationId,
       type: "user_message",
       deviceId,
       payload: {
@@ -293,12 +368,13 @@ export function useMiniChat(opts: {
       },
     });
 
-    if (event?._id) {
+    const eventId = toEventId(event);
+    if (eventId) {
       if (mode === "follow_up") return;
       setSelectedText(null);
       setChatContext(null);
       setExpanded(true);
-      startStream({ userMessageId: event._id, attachments });
+      startStream({ userMessageId: eventId, attachments });
     }
   };
 

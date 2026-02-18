@@ -93,6 +93,12 @@ function defaultProps(overrides: Partial<Parameters<typeof StoreView>[0]> = {}) 
   };
 }
 
+function mockUseMutation(
+  impl: (mutationPath: unknown) => unknown,
+) {
+  vi.mocked(useMutation).mockImplementation(impl as any);
+}
+
 /** Click a header tab (Browse, Installed, Updates) by targeting .store-header-tab buttons */
 function clickTab(tabText: string) {
   const tabs = document.querySelectorAll(".store-header-tab");
@@ -1085,7 +1091,7 @@ describe("Install and Uninstall actions", () => {
 
   it("calls installMutation when Get button is clicked on a card", async () => {
     const mockInstall = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       if (mutationPath === "store_packages.install") return mockInstall;
       if (mutationPath === "store_packages.uninstall") return vi.fn();
       return vi.fn();
@@ -1115,7 +1121,7 @@ describe("Install and Uninstall actions", () => {
 
   it("calls uninstallMutation when Installed button is clicked on a card", async () => {
     const mockUninstall = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       if (mutationPath === "store_packages.install") return vi.fn();
       if (mutationPath === "store_packages.uninstall") return mockUninstall;
       return vi.fn();
@@ -1145,7 +1151,7 @@ describe("Install and Uninstall actions", () => {
 
   it("calls uninstallMutation when Uninstall is clicked in InstalledList", async () => {
     const mockUninstall = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       if (mutationPath === "store_packages.install") return vi.fn();
       if (mutationPath === "store_packages.uninstall") return mockUninstall;
       return vi.fn();
@@ -1174,7 +1180,7 @@ describe("Install and Uninstall actions", () => {
 
   it("calls installMutation when Update is clicked in UpdatesList", async () => {
     const mockInstall = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       if (mutationPath === "store_packages.install") return mockInstall;
       if (mutationPath === "store_packages.uninstall") return vi.fn();
       return vi.fn();
@@ -1216,7 +1222,7 @@ describe("Skill install with electronAPI", () => {
   it("calls electronAPI.storeInstallSkill for skill type packages", async () => {
     const mockInstall = vi.fn().mockResolvedValue(undefined);
     const mockStoreInstallSkill = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       if (mutationPath === "store_packages.install") return mockInstall;
       return vi.fn();
     });
@@ -1262,7 +1268,7 @@ describe("Skill install with electronAPI", () => {
   it("throws when skill package has no markdown in modPayload", async () => {
     const mockInstall = vi.fn().mockResolvedValue(undefined);
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       if (mutationPath === "store_packages.install") return mockInstall;
       return vi.fn();
     });
@@ -1318,7 +1324,7 @@ describe("Theme install/uninstall", () => {
     const { registerTheme } = await import("@/theme/themes");
     const mockInstall = vi.fn().mockResolvedValue(undefined);
     const mockStoreInstallTheme = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       if (mutationPath === "store_packages.install") return mockInstall;
       return vi.fn();
     });
@@ -1361,7 +1367,7 @@ describe("Theme install/uninstall", () => {
   it("calls unregisterTheme when uninstalling a theme", async () => {
     const { unregisterTheme } = await import("@/theme/themes");
     const mockUninstall = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       if (mutationPath === "store_packages.uninstall") return mockUninstall;
       return vi.fn();
     });
