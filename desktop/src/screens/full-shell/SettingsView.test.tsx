@@ -102,6 +102,18 @@ function defaultProps(
   };
 }
 
+function mockUseQuery(
+  impl: (queryPath: unknown, args?: unknown) => unknown,
+) {
+  vi.mocked(useQuery).mockImplementation(impl as any);
+}
+
+function mockUseMutation(
+  impl: (mutationPath: unknown) => unknown,
+) {
+  vi.mocked(useMutation).mockImplementation(impl as any);
+}
+
 /**
  * Configure useQuery mock to return different values based on query key.
  */
@@ -109,7 +121,7 @@ function setupUseQuery(opts: {
   modelOverrides?: string;
   secrets?: Array<{ _id: string; provider: string; label: string; status: string }>;
 } = {}) {
-  vi.mocked(useQuery).mockImplementation((queryPath: unknown) => {
+  mockUseQuery((queryPath: unknown) => {
     const path = queryPath as string;
     if (path === "preferences.getModelOverrides") {
       return opts.modelOverrides ?? undefined;
@@ -453,7 +465,7 @@ describe("ModelConfigSection", () => {
   it("calls setModelOverride mutation when a model is selected", () => {
     const mockSetOverride = vi.fn();
     const mockClearOverride = vi.fn();
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "preferences.setModelOverride") return mockSetOverride;
       if (path === "preferences.clearModelOverride") return mockClearOverride;
@@ -476,7 +488,7 @@ describe("ModelConfigSection", () => {
   it("calls clearModelOverride mutation when empty value is selected", () => {
     const mockSetOverride = vi.fn();
     const mockClearOverride = vi.fn();
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "preferences.setModelOverride") return mockSetOverride;
       if (path === "preferences.clearModelOverride") return mockClearOverride;
@@ -497,7 +509,7 @@ describe("ModelConfigSection", () => {
 
   it("calls clearModelOverride when reset icon is clicked", () => {
     const mockClearOverride = vi.fn();
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "preferences.clearModelOverride") return mockClearOverride;
       return vi.fn();
@@ -517,7 +529,7 @@ describe("ModelConfigSection", () => {
 
   it("Reset All clears all overrides", () => {
     const mockClearOverride = vi.fn();
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "preferences.clearModelOverride") return mockClearOverride;
       return vi.fn();
@@ -657,7 +669,7 @@ describe("ApiKeysSection", () => {
   it("calls createSecret mutation when Save is clicked with input", async () => {
     const mockCreateSecret = vi.fn().mockResolvedValue(undefined);
     const mockDeleteSecret = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "secrets.createSecret") return mockCreateSecret;
       if (path === "secrets.deleteSecret") return mockDeleteSecret;
@@ -691,7 +703,7 @@ describe("ApiKeysSection", () => {
 
   it("does not call createSecret when Save is clicked with empty input", async () => {
     const mockCreateSecret = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "secrets.createSecret") return mockCreateSecret;
       return vi.fn();
@@ -715,7 +727,7 @@ describe("ApiKeysSection", () => {
   it("calls deleteSecret then createSecret when updating an existing key", async () => {
     const mockCreateSecret = vi.fn().mockResolvedValue(undefined);
     const mockDeleteSecret = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "secrets.createSecret") return mockCreateSecret;
       if (path === "secrets.deleteSecret") return mockDeleteSecret;
@@ -754,7 +766,7 @@ describe("ApiKeysSection", () => {
 
   it("calls deleteSecret when Remove button is clicked", async () => {
     const mockDeleteSecret = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "secrets.deleteSecret") return mockDeleteSecret;
       return vi.fn();
@@ -777,7 +789,7 @@ describe("ApiKeysSection", () => {
 
   it("calls createSecret on Enter keypress in input", async () => {
     const mockCreateSecret = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useMutation).mockImplementation((mutationPath: unknown) => {
+    mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
       if (path === "secrets.createSecret") return mockCreateSecret;
       return vi.fn();

@@ -8,9 +8,12 @@ import { useVoiceInput } from "../../hooks/use-voice-input";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
 import { StellaAnimation } from "../../components/StellaAnimation";
+import { useIsLocalMode } from "@/providers/DataProvider";
+import { useLocalQuery } from "@/hooks/use-local-query";
 
 export const MiniShell = () => {
   const { setWindow } = useUiState();
+  const isLocalMode = useIsLocalMode();
   const [isStreaming, setIsStreaming] = useState(false);
 
   const {
@@ -41,10 +44,18 @@ export const MiniShell = () => {
   });
 
   // STT voice input
-  const sttResult = useQuery(api.data.stt.checkSttAvailable) as
+  const sttCloud = useQuery(
+    api.data.stt.checkSttAvailable,
+    !isLocalMode ? {} : "skip",
+  ) as
     | { available: boolean }
     | undefined;
-  const sttAvailable = sttResult?.available ?? false;
+  const sttLocal = useLocalQuery<{ available: boolean }>(
+    isLocalMode ? "/api/stt/check-available" : null,
+  );
+  const sttAvailable = isLocalMode
+    ? (sttLocal.data?.available ?? false)
+    : (sttCloud?.available ?? false);
   const [partialTranscript, setPartialTranscript] = useState("");
 
   const voice = useVoiceInput({

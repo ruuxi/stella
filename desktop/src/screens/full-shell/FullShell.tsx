@@ -31,12 +31,15 @@ import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 import { useVoiceInput } from "../../hooks/use-voice-input";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
+import { useIsLocalMode } from "@/providers/DataProvider";
+import { useLocalQuery } from "@/hooks/use-local-query";
 
 const StoreView = lazy(() => import("./StoreView"));
 const SettingsDialog = lazy(() => import("./SettingsView"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
+  const isLocalMode = useIsLocalMode();
   const { state: canvasState, openCanvas, closeCanvas, setWidth } = useCanvas();
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
@@ -57,11 +60,16 @@ export const FullShell = () => {
   const onboarding = useOnboardingOverlay();
 
   // STT voice input
-  const sttResult = useQuery(
+  const sttCloudResult = useQuery(
     api.data.stt.checkSttAvailable,
-    onboarding.isAuthenticated ? {} : "skip",
+    !isLocalMode && onboarding.isAuthenticated ? {} : "skip",
   ) as { available: boolean } | undefined;
-  const sttAvailable = sttResult?.available ?? false;
+  const sttLocalResult = useLocalQuery<{ available: boolean }>(
+    isLocalMode ? "/api/stt/check-available" : null,
+  );
+  const sttAvailable = isLocalMode
+    ? (sttLocalResult.data?.available ?? false)
+    : (sttCloudResult?.available ?? false);
 
   const voice = useVoiceInput({
     onPartialTranscript: setPartialTranscript,
@@ -171,9 +179,9 @@ export const FullShell = () => {
   const events = useConversationEvents(state.conversationId ?? undefined);
   useCanvasCommands(events);
 
-  const savedCanvasState = useQuery(
+  const savedCanvasCloudState = useQuery(
     api.data.canvas_states.getForConversation,
-    state.conversationId && onboarding.isAuthenticated
+    !isLocalMode && state.conversationId && onboarding.isAuthenticated
       ? { conversationId: state.conversationId }
       : "skip",
   ) as
@@ -185,6 +193,34 @@ export const FullShell = () => {
       }
     | null
     | undefined;
+  const savedCanvasLocalState = useLocalQuery<
+    | {
+        name?: string;
+        title?: string | null;
+        url?: string | null;
+        width?: number | null;
+      }
+    | null
+  >(
+    isLocalMode && state.conversationId
+      ? `/api/canvas-states/${encodeURIComponent(state.conversationId)}`
+      : null,
+  );
+  const savedCanvasState = isLocalMode
+    ? savedCanvasLocalState.data === undefined
+      ? undefined
+      : savedCanvasLocalState.data
+        ? {
+            name: savedCanvasLocalState.data.name ?? "",
+            title: savedCanvasLocalState.data.title ?? undefined,
+            url: savedCanvasLocalState.data.url ?? undefined,
+            width:
+              typeof savedCanvasLocalState.data.width === "number"
+                ? savedCanvasLocalState.data.width
+                : undefined,
+          }
+        : null
+    : savedCanvasCloudState;
 
   useEffect(() => {
     if (!state.conversationId) {

@@ -75,9 +75,7 @@ function App() {
       </div>
     ) : (
       <div className={`app window-${windowType}`}>
-        <Authenticated>
-          <AppBootstrap />
-        </Authenticated>
+        <AppBootstrap />
         <CredentialRequestLayer />
         {windowType === 'mini' ? <MiniShell /> : <FullShell />}
       </div>

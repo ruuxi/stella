@@ -8,8 +8,13 @@ vi.mock("./state/ui-state", () => ({
 }));
 
 const mockGetOrCreateDefaultConversation = vi.fn();
+const mockUseConvexAuth = vi.fn(() => ({
+  isAuthenticated: true,
+  isLoading: false,
+}));
 vi.mock("convex/react", () => ({
   useMutation: () => mockGetOrCreateDefaultConversation,
+  useConvexAuth: () => mockUseConvexAuth(),
 }));
 
 vi.mock("../convex/api", () => ({
@@ -27,9 +32,22 @@ vi.mock("../services/device", () => ({
   getOrCreateDeviceId: () => mockGetOrCreateDeviceId(),
 }));
 
+const mockUseIsLocalMode = vi.fn(() => false);
+vi.mock("../providers/DataProvider", () => ({
+  useIsLocalMode: () => mockUseIsLocalMode(),
+}));
+
+const mockLocalPost = vi.fn();
+vi.mock("../services/local-client", () => ({
+  localPost: (...args: unknown[]) => mockLocalPost(...args),
+}));
+
 describe("AppBootstrap", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseConvexAuth.mockReturnValue({ isAuthenticated: true, isLoading: false });
+    mockUseIsLocalMode.mockReturnValue(false);
+    mockLocalPost.mockResolvedValue({ id: "local-conv-123" });
     mockConfigureLocalHost.mockResolvedValue(undefined);
     mockGetOrCreateDeviceId.mockResolvedValue("device-id-123");
     mockGetOrCreateDefaultConversation.mockResolvedValue({
@@ -117,5 +135,33 @@ describe("AppBootstrap", () => {
       expect(mockSetConversationId).toHaveBeenCalledWith("conv-123");
     });
     // Should not throw -- Promise.allSettled handles the rejection
+  });
+
+  it("uses local conversation bootstrap in local mode", async () => {
+    mockUseIsLocalMode.mockReturnValue(true);
+    mockUseConvexAuth.mockReturnValue({ isAuthenticated: false, isLoading: false });
+    mockLocalPost.mockResolvedValue({ id: "local-conv-1" });
+
+    render(<AppBootstrap />);
+
+    await waitFor(() => {
+      expect(mockLocalPost).toHaveBeenCalledWith("/api/conversations/default", {});
+      expect(mockSetConversationId).toHaveBeenCalledWith("local-conv-1");
+    });
+    expect(mockGetOrCreateDefaultConversation).not.toHaveBeenCalled();
+  });
+
+  it("skips cloud conversation bootstrap when unauthenticated in cloud mode", async () => {
+    mockUseIsLocalMode.mockReturnValue(false);
+    mockUseConvexAuth.mockReturnValue({ isAuthenticated: false, isLoading: false });
+
+    render(<AppBootstrap />);
+
+    await waitFor(() => {
+      expect(mockConfigureLocalHost).toHaveBeenCalled();
+      expect(mockGetOrCreateDeviceId).toHaveBeenCalled();
+    });
+    expect(mockGetOrCreateDefaultConversation).not.toHaveBeenCalled();
+    expect(mockSetConversationId).not.toHaveBeenCalled();
   });
 });
