@@ -11,6 +11,24 @@ import { runMigrations } from "./db_migrations";
 
 let db: Database.Database | null = null;
 
+const SYNCABLE_TABLES = new Set([
+  "conversations",
+  "events",
+  "attachments",
+  "tasks",
+  "threads",
+  "thread_messages",
+  "memories",
+  "memory_extraction_batches",
+  "heartbeat_configs",
+  "cron_jobs",
+  "usage_logs",
+  "self_mod_features",
+  "store_installs",
+  "canvas_states",
+  "user_preferences",
+]);
+
 /** Generate a new ULID (time-sortable, globally unique) */
 export function newId(): string {
   return ulid();
@@ -57,6 +75,56 @@ export interface QueryOptions {
   offset?: number;
 }
 
+function isSyncableTable(table: string): boolean {
+  return SYNCABLE_TABLES.has(table);
+}
+
+const findMatchingIds = (
+  d: Database.Database,
+  table: string,
+  where: Record<string, unknown>,
+): string[] => {
+  if (!isSyncableTable(table)) return [];
+  const whereCols = Object.keys(where);
+  if (whereCols.length === 0) return [];
+  const whereClause = whereCols.map((c) => `${c} = ?`).join(" AND ");
+  const sql = `SELECT id FROM ${table} WHERE ${whereClause}`;
+  const rows = d.prepare(sql).all(
+    ...whereCols.map((c) => serializeValue(where[c])),
+  ) as Array<{ id?: unknown }>;
+  return rows
+    .map((row) => (typeof row.id === "string" ? row.id : null))
+    .filter((id): id is string => Boolean(id));
+};
+
+const markSyncDirty = (
+  d: Database.Database,
+  table: string,
+  ids: string[],
+) => {
+  if (!isSyncableTable(table) || ids.length === 0) {
+    return;
+  }
+
+  const insertStmt = d.prepare(
+    "INSERT OR IGNORE INTO _sync_state (id, table_name, record_id, dirty, synced_at) VALUES (?, ?, ?, 1, NULL)",
+  );
+  const updateStmt = d.prepare(
+    "UPDATE _sync_state SET dirty = 1, synced_at = NULL WHERE table_name = ? AND record_id = ?",
+  );
+
+  for (const id of ids) {
+    insertStmt.run(newId(), table, id);
+    updateStmt.run(table, id);
+  }
+};
+
+/** Mark specific sync-state rows dirty for manual SQL mutation paths */
+export function markSyncRowsDirty(table: string, ids: string[]): void {
+  const d = getDb();
+  markSyncDirty(d, table, ids);
+}
+
 /** Insert a row and return its id */
 export function insert(
   table: string,
@@ -70,6 +138,7 @@ export function insert(
   const placeholders = cols.map(() => "?").join(", ");
   const sql = `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`;
   d.prepare(sql).run(...cols.map((c) => serializeValue(row[c])));
+  markSyncDirty(d, table, [id]);
   return id;
 }
 
@@ -80,6 +149,7 @@ export function update(
   where: Record<string, unknown>,
 ): number {
   const d = getDb();
+  const affectedIds = findMatchingIds(d, table, where);
   const setCols = Object.keys(data);
   const setClause = setCols.map((c) => `${c} = ?`).join(", ");
   const whereCols = Object.keys(where);
@@ -90,6 +160,9 @@ export function update(
     ...setCols.map((c) => serializeValue(data[c])),
     ...whereCols.map((c) => serializeValue(where[c])),
   );
+  if (result.changes > 0) {
+    markSyncDirty(d, table, affectedIds);
+  }
   return result.changes;
 }
 
@@ -99,12 +172,16 @@ export function remove(
   where: Record<string, unknown>,
 ): number {
   const d = getDb();
+  const affectedIds = findMatchingIds(d, table, where);
   const whereCols = Object.keys(where);
   const whereClause = whereCols.map((c) => `${c} = ?`).join(" AND ");
   const sql = `DELETE FROM ${table} WHERE ${whereClause}`;
   const result = d.prepare(sql).run(
     ...whereCols.map((c) => serializeValue(where[c])),
   );
+  if (result.changes > 0) {
+    markSyncDirty(d, table, affectedIds);
+  }
   return result.changes;
 }
 
