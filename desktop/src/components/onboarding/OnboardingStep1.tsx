@@ -18,6 +18,8 @@ import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 import { InlineAuth } from "../InlineAuth";
 import { useTheme } from "../../theme/theme-context";
+import { useIsLocalMode } from "@/providers/DataProvider";
+import { localPut } from "@/services/local-client";
 import "../Onboarding.css";
 
 const FADE_OUT_MS = 400;
@@ -61,6 +63,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onDemoChange,
   isAuthenticated,
 }) => {
+  const isLocalMode = useIsLocalMode();
   const [phase, setPhase] = useState<Phase>(() => isAuthenticated ? "start" : "auth");
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(false);
@@ -385,11 +388,20 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       localStorage.removeItem(BROWSER_PROFILE_KEY);
     }
 
-    void savePreferredBrowser({
-      browser: (browserEnabled && selectedBrowser) ? selectedBrowser : "none",
-    }).catch(() => {
-      // Browser preference sync is best-effort only.
-    });
+    const preferredBrowser = (browserEnabled && selectedBrowser) ? selectedBrowser : "none";
+    if (isLocalMode) {
+      void localPut("/api/preferences/preferred_browser", {
+        value: preferredBrowser,
+      }).catch(() => {
+        // Browser preference sync is best-effort only.
+      });
+    } else {
+      void savePreferredBrowser({
+        browser: preferredBrowser,
+      }).catch(() => {
+        // Browser preference sync is best-effort only.
+      });
+    }
 
     onDiscoveryConfirm?.(selected);
     nextSplitStep();
@@ -773,7 +785,13 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       onClick={() => {
                         setExpressionStyle(style);
                         const backendStyle = style === "none" ? "none" as const : "emoji" as const;
-                        saveExpressionStyle({ style: backendStyle }).catch(() => {});
+                        if (isLocalMode) {
+                          localPut("/api/preferences/expression_style", {
+                            value: backendStyle,
+                          }).catch(() => {});
+                        } else {
+                          saveExpressionStyle({ style: backendStyle }).catch(() => {});
+                        }
                       }}
                     >
                       {style.charAt(0).toUpperCase() + style.slice(1)}
@@ -824,4 +842,3 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     </div>
   );
 };
-
