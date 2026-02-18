@@ -2945,6 +2945,26 @@ http.route({
   }),
 });
 
+// ---------------------------------------------------------------------------
+// Stella AI Proxy — thin LLM/embed/search proxy for local-first mode
+// ---------------------------------------------------------------------------
+
+import { proxyChat, proxyEmbed, proxySearch } from "./ai_proxy";
+
+const proxyOptionsHandler = httpAction(async (_ctx, request) => {
+  const origin = request.headers.get("origin");
+  return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+});
+
+http.route({ path: "/api/ai/proxy", method: "OPTIONS", handler: proxyOptionsHandler });
+http.route({ path: "/api/ai/proxy", method: "POST", handler: proxyChat });
+
+http.route({ path: "/api/ai/embed", method: "OPTIONS", handler: proxyOptionsHandler });
+http.route({ path: "/api/ai/embed", method: "POST", handler: proxyEmbed });
+
+http.route({ path: "/api/ai/search", method: "OPTIONS", handler: proxyOptionsHandler });
+http.route({ path: "/api/ai/search", method: "POST", handler: proxySearch });
+
 export default http;
 
 

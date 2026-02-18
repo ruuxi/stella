@@ -486,6 +486,13 @@ export default defineSchema({
   })
     .index("by_owner", ["ownerId", "createdAt"])
     .index("by_conversation", ["conversationId", "createdAt"]),
+  anon_device_usage: defineTable({
+    deviceId: v.string(),
+    requestCount: v.number(),
+    firstRequestAt: v.number(),
+    lastRequestAt: v.number(),
+  })
+    .index("by_device", ["deviceId"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
