@@ -49,8 +49,29 @@ export type DeviceToolContext = {
 
 const TOOL_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 750;
+const DANGEROUS_COMMAND_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
+  { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
+  { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
+  { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
+  { pattern: /\bformat\s+[a-zA-Z]:\s*/i, reason: "format drive" },
+  { pattern: /\bdd\s+if=/i, reason: "dd if= (raw disk write)" },
+  { pattern: /\bmkfs\b/i, reason: "mkfs (format filesystem)" },
+  { pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/i, reason: "fork bomb" },
+  { pattern: /\bshutdown\b/i, reason: "shutdown" },
+  { pattern: /\breboot\b/i, reason: "reboot" },
+];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getDangerousCommandReason = (command: string): string | null => {
+  for (const { pattern, reason } of DANGEROUS_COMMAND_PATTERNS) {
+    if (pattern.test(command)) {
+      return reason;
+    }
+  }
+  return null;
+};
 
 const formatTruncationNote = (value: unknown): string | null => {
   if (!value || typeof value !== "object") return null;
@@ -309,7 +330,13 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         working_directory: z.string().optional().describe("Working directory for the command"),
         run_in_background: z.boolean().optional().describe("Run in background and return a shell_id immediately"),
       }),
-      execute: (args) => call("Bash", args),
+      execute: (args) => {
+        const reason = getDangerousCommandReason(args.command);
+        if (reason) {
+          return `ERROR: Bash command blocked for safety (${reason}).`;
+        }
+        return call("Bash", args);
+      },
     }),
     KillShell: tool({
       description:
@@ -393,7 +420,13 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         working_directory: z.string().optional().describe("Working directory for the command"),
         run_in_background: z.boolean().optional().describe("Run in background and return a shell_id"),
       }),
-      execute: (args) => call("SkillBash", args),
+      execute: (args) => {
+        const reason = getDangerousCommandReason(args.command);
+        if (reason) {
+          return `ERROR: SkillBash command blocked for safety (${reason}).`;
+        }
+        return call("SkillBash", args);
+      },
     }),
     MediaGenerate: tool({
       description:

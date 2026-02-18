@@ -195,6 +195,27 @@ type PublicIntegrationPolicy = {
   allowedHosts: string[];
 };
 
+const CANVAS_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+const PRIVATE_HOST_PREF_PREFIX = "integration_private_hosts";
+
+const normalizeCanvasName = (value: string): string | null => {
+  const normalized = value.trim().replace(/\.tsx$/i, "");
+  if (!CANVAS_NAME_PATTERN.test(normalized)) {
+    return null;
+  }
+  return normalized;
+};
+
+const normalizeProviderToken = (value: string) =>
+  value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const providersCompatible = (requestedProvider: string, secretProvider: string) => {
+  const requested = normalizeProviderToken(requestedProvider);
+  const secret = normalizeProviderToken(secretProvider);
+  if (!requested || !secret) return false;
+  return requested === secret || requested.includes(secret) || secret.includes(requested);
+};
+
 const normalizeHostPattern = (value: string) =>
   value.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
 
@@ -263,6 +284,30 @@ const parsePublicPoliciesEnv = () => {
 
 const publicPoliciesFromEnv = parsePublicPoliciesEnv();
 
+const parsePrivatePoliciesEnv = () => {
+  const raw = process.env.STELLA_PRIVATE_INTEGRATION_RULES?.trim();
+  if (!raw) {
+    return {} as Partial<Record<string, string[]>>;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const result: Partial<Record<string, string[]>> = {};
+    for (const [provider, candidate] of Object.entries(parsed)) {
+      const normalized = provider.trim().toLowerCase();
+      if (!normalized) continue;
+      const allowedHosts = parseAllowedHosts(candidate);
+      if (allowedHosts.length > 0) {
+        result[normalized] = allowedHosts;
+      }
+    }
+    return result;
+  } catch {
+    return {} as Partial<Record<string, string[]>>;
+  }
+};
+
+const privatePoliciesFromEnv = parsePrivatePoliciesEnv();
+
 const hostAllowed = (hostname: string, allowedHosts: string[]) => {
   const normalized = hostname.trim().toLowerCase();
   if (!normalized) return false;
@@ -278,6 +323,38 @@ const hostAllowed = (hostname: string, allowedHosts: string[]) => {
     return normalized === host;
   });
 };
+
+const parseStoredAllowedHosts = (value: string | null): string[] => {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parseAllowedHosts(parsed);
+  } catch {
+    return parseAllowedHosts(value);
+  }
+};
+
+const deriveHostPatterns = (hostname: string): string[] => {
+  const normalized = normalizeHostPattern(hostname);
+  if (!normalized) {
+    return [];
+  }
+  const parts = normalized.split(".");
+  const patterns = new Set<string>([normalized]);
+  if (parts.length >= 2 && !/^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
+    const base = parts.slice(-2).join(".");
+    patterns.add(base);
+    if (base !== normalized) {
+      patterns.add(`*.${base}`);
+    }
+  }
+  return [...patterns];
+};
+
+const privateHostPrefKey = (provider: string, secretId: string) =>
+  `${PRIVATE_HOST_PREF_PREFIX}:${provider}:${secretId}`;
 
 
 const parsePublicPolicyFromUsagePolicy = (usagePolicy: string): PublicIntegrationPolicy | null => {
@@ -303,7 +380,14 @@ export const createBackendTools = (
   const withSecret = async (
     secretId: string,
     toolName: string,
-    handler: (plaintext: string) => Promise<string>,
+    handler: (secret: {
+      secretId: Id<"secrets">;
+      provider: string;
+      label: string;
+      plaintext: string;
+      status: string;
+      metadata?: unknown;
+    }) => Promise<string>,
   ) => {
     if (!secretId || secretId === "undefined" || secretId === "null") {
       return `${toolName} requires a secretId.`;
@@ -331,7 +415,7 @@ export const createBackendTools = (
         requestId,
         status: "allowed",
       });
-      return await handler(secret.plaintext);
+      return await handler(secret);
     } catch (error) {
       try {
         await ctx.runMutation(internal.data.secrets.auditSecretAccess, {
@@ -467,16 +551,18 @@ export const createBackendTools = (
       execute: async (args) => {
         const mode =
           args.mode ?? (args.secretId ? "private" : args.publicKeyEnv ? "public" : "private");
+        let requestUrl: URL;
+        try {
+          requestUrl = new URL(args.request.url);
+        } catch {
+          return "IntegrationRequest requires a valid URL.";
+        }
+        if (!["http:", "https:"].includes(requestUrl.protocol)) {
+          return "IntegrationRequest only supports http(s) URLs.";
+        }
+        const providerKey = args.provider.trim().toLowerCase();
 
         if (mode === "public") {
-          let requestUrl: URL;
-          try {
-            requestUrl = new URL(args.request.url);
-          } catch {
-            return "IntegrationRequest requires a valid URL.";
-          }
-
-          const providerKey = args.provider.trim().toLowerCase();
           let policy = publicPoliciesFromEnv[providerKey] ?? null;
 
           if (!policy) {
@@ -521,10 +607,45 @@ export const createBackendTools = (
         if (!args.secretId) {
           return "IntegrationRequest requires secretId when mode is private.";
         }
+        const ownerCheck = requireOwnerId("IntegrationRequest");
+        if (ownerCheck) {
+          return ownerCheck;
+        }
 
-        const privateResult = await withSecret(String(args.secretId), "IntegrationRequest", async (secret) =>
-          runIntegrationRequest(args, secret),
-        );
+        const ownerId = options.ownerId as string;
+        const secretId = String(args.secretId);
+        const privateResult = await withSecret(secretId, "IntegrationRequest", async (secret) => {
+          if (!providersCompatible(args.provider, secret.provider)) {
+            return `IntegrationRequest provider "${args.provider}" is not compatible with secret provider "${secret.provider}".`;
+          }
+
+          const envPolicyHosts = privatePoliciesFromEnv[providerKey] ?? [];
+          let allowedHosts = envPolicyHosts;
+          if (allowedHosts.length === 0) {
+            const prefValue = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
+              ownerId,
+              key: privateHostPrefKey(providerKey, String(secret.secretId)),
+            });
+            allowedHosts = parseStoredAllowedHosts(prefValue);
+          }
+
+          if (allowedHosts.length === 0) {
+            allowedHosts = deriveHostPatterns(requestUrl.hostname);
+            if (allowedHosts.length > 0) {
+              await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
+                ownerId,
+                key: privateHostPrefKey(providerKey, String(secret.secretId)),
+                value: JSON.stringify(allowedHosts),
+              });
+            }
+          }
+
+          if (allowedHosts.length > 0 && !hostAllowed(requestUrl.hostname, allowedHosts)) {
+            return `Private integration host "${requestUrl.hostname}" is not allowed for provider "${args.provider}". Allowed hosts: ${allowedHosts.join(", ")}.`;
+          }
+
+          return runIntegrationRequest(args, secret.plaintext);
+        });
         // Wrap successful content, but not error messages from withSecret or runIntegrationRequest
         if (
           privateResult.startsWith("Secret access failed") ||
@@ -757,13 +878,32 @@ export const createBackendTools = (
         if (!conversationId) {
           return "OpenCanvas requires a conversation context.";
         }
+        const normalizedName = normalizeCanvasName(args.name);
+        if (!normalizedName) {
+          return "OpenCanvas name is invalid. Use letters, numbers, '_' or '-'.";
+        }
+        if (args.url) {
+          let parsedUrl: URL;
+          try {
+            parsedUrl = new URL(args.url);
+          } catch {
+            return "OpenCanvas url must be a valid URL.";
+          }
+          if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+            return "OpenCanvas url must use http(s).";
+          }
+          const host = parsedUrl.hostname.toLowerCase();
+          if (host !== "localhost" && host !== "127.0.0.1") {
+            return "OpenCanvas only allows localhost URLs for app frames.";
+          }
+        }
         await ctx.runMutation(internal.events.appendInternalEvent, {
           conversationId: conversationId as Id<"conversations">,
           type: "canvas_command",
           payload: {
             action: "open",
-            name: args.name,
-            title: args.title ?? args.name,
+            name: normalizedName,
+            title: args.title ?? normalizedName,
             ...(args.url ? { url: args.url } : {}),
           },
         });
@@ -773,15 +913,15 @@ export const createBackendTools = (
             await ctx.runMutation(internal.data.canvas_states.save, {
               ownerId: options.ownerId,
               conversationId: conversationId as Id<"conversations">,
-              name: args.name,
-              title: args.title ?? args.name,
+              name: normalizedName,
+              title: args.title ?? normalizedName,
               ...(args.url ? { url: args.url } : {}),
             });
           } catch {
             // Best-effort: canvas state persistence should not fail tool execution.
           }
         }
-        return `Canvas opened: ${args.name}`;
+        return `Canvas opened: ${normalizedName}`;
       },
     }),
     CloseCanvas: tool({
