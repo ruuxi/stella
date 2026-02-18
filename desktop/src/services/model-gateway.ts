@@ -1,4 +1,5 @@
 import { getAuthHeaders } from "./auth-token";
+import { isLocalMode, getLocalPort } from "./local-client";
 
 type ChatRequest = {
   conversationId: string;
@@ -76,25 +77,36 @@ export const streamChat = async (
   handlers: StreamHandlers = {},
   options: StreamOptions = {},
 ) => {
-  const baseUrl = import.meta.env.VITE_CONVEX_URL;
-  if (!baseUrl) {
-    throw new Error("VITE_CONVEX_URL is not set.");
-  }
-
   if (options.signal?.aborted) {
     handlers.onAbort?.();
     return;
   }
 
-  const httpBaseUrl =
-    import.meta.env.VITE_CONVEX_HTTP_URL ??
-    baseUrl.replace(".convex.cloud", ".convex.site");
+  let endpoint: string;
+  let headers: Record<string, string>;
 
-  const endpoint = new URL("/api/chat", httpBaseUrl).toString();
-  const headers = await getAuthHeaders({
-    "Content-Type": "application/json",
-    Accept: "text/event-stream",
-  });
+  if (isLocalMode()) {
+    // Local mode: point to local server
+    endpoint = `http://localhost:${getLocalPort()}/api/chat`;
+    headers = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    };
+  } else {
+    // Cloud mode: point to Convex
+    const baseUrl = import.meta.env.VITE_CONVEX_URL;
+    if (!baseUrl) {
+      throw new Error("VITE_CONVEX_URL is not set.");
+    }
+    const httpBaseUrl =
+      import.meta.env.VITE_CONVEX_HTTP_URL ??
+      baseUrl.replace(".convex.cloud", ".convex.site");
+    endpoint = new URL("/api/chat", httpBaseUrl).toString();
+    headers = await getAuthHeaders({
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    });
+  }
 
   let response: Response;
   try {
