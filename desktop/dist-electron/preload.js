@@ -150,4 +150,7 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     bridgeStop: (payload) => electron_1.ipcRenderer.invoke('bridge:stop', payload),
     bridgeStatus: (payload) => electron_1.ipcRenderer.invoke('bridge:status', payload),
     shellKillByPort: (port) => electron_1.ipcRenderer.invoke('shell:killByPort', { port }),
+    // Local-first mode
+    getLocalServerPort: () => electron_1.ipcRenderer.invoke('local:getServerPort'),
+    getLocalMode: () => electron_1.ipcRenderer.invoke('local:getMode'),
 });
