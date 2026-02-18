@@ -148,5 +148,31 @@ describe("useCanvasCommands", () => {
     expect(openCanvas).not.toHaveBeenCalled();
     expect(closeCanvas).not.toHaveBeenCalled();
   });
+
+  it("ignores unsafe panel names and URLs", () => {
+    const openCanvas = vi.fn();
+    const closeCanvas = vi.fn();
+    mockUseCanvas.mockReturnValue({
+      state: { canvas: null },
+      openCanvas,
+      closeCanvas,
+    });
+
+    const events: EventRecord[] = [
+      createEvent({
+        _id: "unsafe-name",
+        type: "canvas_command",
+        payload: { action: "open", name: "../escape", url: "http://localhost:3000" },
+      }),
+      createEvent({
+        _id: "unsafe-url",
+        type: "canvas_command",
+        payload: { action: "open", name: "safe-panel", url: "javascript:alert(1)" },
+      }),
+    ];
+
+    renderHook(() => useCanvasCommands(events));
+    expect(openCanvas).not.toHaveBeenCalled();
+  });
 });
 

@@ -6,6 +6,9 @@ import os from 'os'
 const BRIDGES_DIR = path.join(os.homedir(), '.stella', 'bridges')
 const SIGKILL_TIMEOUT_MS = 5000
 const BRIDGE_STARTUP_GRACE_MS = 1200
+const PROVIDER_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
+const NPM_PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i
+const NPM_PACKAGE_VERSION_PATTERN = /^[a-z0-9*^~<>=|.+-]+$/i
 
 type BridgeBundle = {
   provider: string
@@ -16,6 +19,46 @@ type BridgeBundle = {
 
 const processes = new Map<string, ChildProcess>()
 const bridgeEnv = new Map<string, Record<string, string>>()
+
+const normalizeProviderId = (provider: string): string => {
+  const trimmed = provider.trim()
+  if (!PROVIDER_ID_PATTERN.test(trimmed)) {
+    throw new Error(
+      'Bridge provider must match /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/ for safety.',
+    )
+  }
+  return trimmed
+}
+
+const resolveProviderDir = (provider: string) => {
+  const providerId = normalizeProviderId(provider)
+  const dir = path.resolve(BRIDGES_DIR, providerId)
+  const relative = path.relative(BRIDGES_DIR, dir)
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Invalid bridge provider path.')
+  }
+  return { providerId, dir }
+}
+
+const parseDependencySpec = (spec: string): { name: string; version: string } => {
+  const trimmed = spec.trim()
+  const atIndex = trimmed.startsWith('@')
+    ? trimmed.indexOf('@', 1)
+    : trimmed.lastIndexOf('@')
+  const hasVersion = atIndex > 0 && atIndex < trimmed.length - 1
+  if (!hasVersion) {
+    throw new Error(`Unpinned dependency spec rejected: ${trimmed}`)
+  }
+  const name = trimmed.slice(0, atIndex)
+  const version = trimmed.slice(atIndex + 1)
+  if (!NPM_PACKAGE_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid package name in dependency spec: ${trimmed}`)
+  }
+  if (!NPM_PACKAGE_VERSION_PATTERN.test(version)) {
+    throw new Error(`Invalid package version in dependency spec: ${trimmed}`)
+  }
+  return { name, version }
+}
 
 async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true })
@@ -62,10 +105,10 @@ async function runCommand(
 }
 
 export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error?: string }> {
-  const dir = path.join(BRIDGES_DIR, bundle.provider)
   try {
+    const { providerId, dir } = resolveProviderDir(bundle.provider)
     await ensureDir(dir)
-    bridgeEnv.set(bundle.provider, bundle.env)
+    bridgeEnv.set(providerId, bundle.env)
 
     // Write bridge code
     await fs.writeFile(path.join(dir, 'bridge.js'), bundle.code, 'utf-8')
@@ -73,23 +116,13 @@ export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error
     // Install npm dependencies if any
     if (bundle.dependencies.trim()) {
       const pkgJson = {
-        name: `stella-bridge-${bundle.provider}`,
+        name: `stella-bridge-${providerId}`,
         version: '1.0.0',
         private: true,
         dependencies: {} as Record<string, string>,
       }
       for (const spec of bundle.dependencies.split(/\s+/).filter(Boolean)) {
-        const trimmed = spec.trim()
-        if (!trimmed) continue
-        const atIndex = trimmed.startsWith('@')
-          ? trimmed.indexOf('@', 1)
-          : trimmed.lastIndexOf('@')
-        const hasVersion = atIndex > 0 && atIndex < trimmed.length - 1
-        if (!hasVersion) {
-          throw new Error(`Unpinned dependency spec rejected: ${trimmed}`)
-        }
-        const name = hasVersion ? trimmed.slice(0, atIndex) : trimmed
-        const version = trimmed.slice(atIndex + 1)
+        const { name, version } = parseDependencySpec(spec)
         pkgJson.dependencies[name] = version
       }
       await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2), 'utf-8')
@@ -113,22 +146,31 @@ export async function deploy(bundle: BridgeBundle): Promise<{ ok: boolean; error
 }
 
 export async function start(provider: string): Promise<{ ok: boolean; error?: string }> {
-  if (processes.has(provider)) {
-    const existing = processes.get(provider)!
+  let providerId: string
+  let dir: string
+  try {
+    const resolved = resolveProviderDir(provider)
+    providerId = resolved.providerId
+    dir = resolved.dir
+  } catch (error) {
+    return { ok: false, error: (error as Error).message }
+  }
+
+  if (processes.has(providerId)) {
+    const existing = processes.get(providerId)!
     if (!existing.killed && existing.exitCode === null) {
       return { ok: true } // Already running
     }
-    processes.delete(provider)
+    processes.delete(providerId)
   }
 
-  const dir = path.join(BRIDGES_DIR, provider)
   const bridgePath = path.join(dir, 'bridge.js')
-  const env = bridgeEnv.get(provider)
+  const env = bridgeEnv.get(providerId)
 
   try {
     await fs.access(bridgePath)
     if (!env) {
-      return { ok: false, error: `Bridge environment is missing for provider ${provider}` }
+      return { ok: false, error: `Bridge environment is missing for provider ${providerId}` }
     }
 
     const child = spawn('node', [bridgePath], {
@@ -139,24 +181,24 @@ export async function start(provider: string): Promise<{ ok: boolean; error?: st
     })
 
     child.stdout?.on('data', (data: Buffer) => {
-      console.log(`[bridge:${provider}]`, data.toString().trimEnd())
+      console.log(`[bridge:${providerId}]`, data.toString().trimEnd())
     })
 
     child.stderr?.on('data', (data: Buffer) => {
-      console.error(`[bridge:${provider}]`, data.toString().trimEnd())
+      console.error(`[bridge:${providerId}]`, data.toString().trimEnd())
     })
 
     child.on('exit', (code) => {
-      console.log(`[bridge:${provider}] Process exited with code ${code}`)
-      processes.delete(provider)
+      console.log(`[bridge:${providerId}] Process exited with code ${code}`)
+      processes.delete(providerId)
     })
 
     child.on('error', (err) => {
-      console.error(`[bridge:${provider}] Process error:`, err.message)
-      processes.delete(provider)
+      console.error(`[bridge:${providerId}] Process error:`, err.message)
+      processes.delete(providerId)
     })
 
-    processes.set(provider, child)
+    processes.set(providerId, child)
 
     const startupResult = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const timer = setTimeout(() => {
@@ -191,7 +233,7 @@ export async function start(provider: string): Promise<{ ok: boolean; error?: st
       } catch {
         // Already dead
       }
-      processes.delete(provider)
+      processes.delete(providerId)
       return startupResult
     }
 
@@ -202,7 +244,13 @@ export async function start(provider: string): Promise<{ ok: boolean; error?: st
 }
 
 export function stop(provider: string): { ok: boolean } {
-  const child = processes.get(provider)
+  let providerId: string
+  try {
+    providerId = normalizeProviderId(provider)
+  } catch {
+    return { ok: true }
+  }
+  const child = processes.get(providerId)
   if (!child) return { ok: true }
 
   try {
@@ -222,7 +270,7 @@ export function stop(provider: string): { ok: boolean } {
     // Already dead
   }
 
-  processes.delete(provider)
+  processes.delete(providerId)
   return { ok: true }
 }
 
@@ -233,7 +281,13 @@ export function stopAll(): void {
 }
 
 export function isRunning(provider: string): boolean {
-  const child = processes.get(provider)
+  let providerId: string
+  try {
+    providerId = normalizeProviderId(provider)
+  } catch {
+    return false
+  }
+  const child = processes.get(providerId)
   if (!child) return false
   return !child.killed && child.exitCode === null
 }

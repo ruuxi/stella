@@ -38,6 +38,17 @@ describe("PanelRenderer", () => {
     expect(screen.getByText("No panel name specified")).toBeTruthy();
   });
 
+  it("shows error for unsafe panel names", async () => {
+    render(<PanelRenderer canvas={{ name: "../escape" }} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Panel Error")).toBeTruthy();
+    });
+    expect(
+      screen.getByText('Invalid panel name. Use letters, numbers, "_" or "-".'),
+    ).toBeTruthy();
+  });
+
   it("shows error when dynamic import fails", async () => {
     render(<PanelRenderer canvas={{ name: "nonexistent" }} />);
 
