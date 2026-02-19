@@ -10,6 +10,7 @@ import { synthesizeCoreMemory } from "../../services/synthesis";
 import { selectDefaultSkills } from "../../services/skill-selection";
 import { useIsLocalMode } from "@/providers/DataProvider";
 import { localPost } from "@/services/local-client";
+import { toCloudConversationId } from "@/lib/conversation-id";
 
 type DiscoveryCategory =
   | "browsing_bookmarks"
@@ -39,6 +40,9 @@ export function useDiscoveryFlow({
   conversationId,
 }: UseDiscoveryFlowOptions) {
   const isLocalMode = useIsLocalMode();
+  const activeConversationId = isLocalMode
+    ? conversationId
+    : toCloudConversationId(conversationId);
   const appendEvent = useMutation(api.events.appendEvent);
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
@@ -56,7 +60,7 @@ export function useDiscoveryFlow({
 
   // Collect signals → synthesize → post welcome as soon as collection finishes
   useEffect(() => {
-    if (!discoveryCategories || !isAuthenticated || !conversationId) return;
+    if (!discoveryCategories || !isAuthenticated || !activeConversationId) return;
     if (synthesizedRef.current) return;
     synthesizedRef.current = true;
 
@@ -84,7 +88,7 @@ export function useDiscoveryFlow({
         if (synthesisResult.welcomeMessage) {
           const deviceId = await getOrCreateDeviceId();
           const eventPayload = {
-            conversationId,
+            conversationId: activeConversationId,
             type: "assistant_message",
             deviceId,
             payload: { text: synthesisResult.welcomeMessage },
@@ -97,7 +101,7 @@ export function useDiscoveryFlow({
 
           if (synthesisResult.suggestions?.length) {
             const suggestionPayload = {
-              conversationId,
+              conversationId: activeConversationId,
               type: "welcome_suggestions",
               deviceId,
               payload: { suggestions: synthesisResult.suggestions },
@@ -115,7 +119,7 @@ export function useDiscoveryFlow({
     };
 
     void run();
-  }, [discoveryCategories, isAuthenticated, conversationId, appendEvent, isLocalMode]);
+  }, [discoveryCategories, isAuthenticated, activeConversationId, appendEvent, isLocalMode]);
 
   return {
     handleDiscoveryConfirm,

@@ -4,6 +4,7 @@ import { api } from "../convex/api";
 import type { StepItem } from "../components/steps-container";
 import { useLocalQuery } from "./use-local-query";
 import { useIsLocalMode } from "@/providers/DataProvider";
+import { toCloudConversationId } from "@/lib/conversation-id";
 
 // Base event record from Convex
 export type EventRecord = {
@@ -476,10 +477,14 @@ const normalizeEventRecord = (event: LocalEventRow): EventRecord | null => {
 export const useConversationEvents = (conversationId?: string) => {
   const isLocalMode = useIsLocalMode();
   const { isAuthenticated } = useConvexAuth();
+  const cloudConversationId = toCloudConversationId(conversationId);
   const cloudResult = useQuery(
     api.events.listEvents,
-    !isLocalMode && isAuthenticated && conversationId
-      ? { conversationId, paginationOpts: { cursor: null, numItems: 200 } }
+    !isLocalMode && isAuthenticated && cloudConversationId
+      ? {
+          conversationId: cloudConversationId,
+          paginationOpts: { cursor: null, numItems: 200 },
+        }
       : "skip"
   ) as { page: EventRecord[] } | undefined;
   const localPath = isLocalMode && conversationId

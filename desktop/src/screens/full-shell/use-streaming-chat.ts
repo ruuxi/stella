@@ -12,6 +12,7 @@ import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { ChatContext } from "../../types/electron";
 import { useIsLocalMode } from "@/providers/DataProvider";
 import { localPost } from "@/services/local-client";
+import { toCloudConversationId } from "@/lib/conversation-id";
 
 export type AttachmentRef = {
   id?: string;
@@ -54,6 +55,10 @@ const toEventId = (event: AppendedEventResponse | null | undefined): string | nu
 
 export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
   const isLocalMode = useIsLocalMode();
+  const cloudConversationId = toCloudConversationId(conversationId);
+  const activeConversationId = isLocalMode
+    ? conversationId
+    : cloudConversationId;
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
@@ -161,7 +166,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
 
   const startStream = useCallback(
     (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
-      if (!conversationId) {
+      if (!activeConversationId) {
         return;
       }
       const runId = streamRunIdRef.current + 1;
@@ -175,7 +180,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
 
       void streamChat(
         {
-          conversationId,
+          conversationId: activeConversationId,
           userMessageId: args.userMessageId,
           attachments: args.attachments ?? [],
         },
@@ -214,7 +219,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
     },
     [
       resetStreamingState,
-      conversationId,
+      activeConversationId,
       resetStreamingText,
       resetReasoningText,
       appendStreamingDelta,
@@ -274,7 +279,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
   // Auto-start queued follow-ups
   const processFollowUpQueue = useCallback(
     (events: EventRecord[]) => {
-      if (isStreaming || pendingUserMessageId || !conversationId) return;
+      if (isStreaming || pendingUserMessageId || !activeConversationId) return;
       const queued = findQueuedFollowUp(events);
       if (!queued) return;
       startStream({
@@ -287,7 +292,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       isStreaming,
       pendingUserMessageId,
       startStream,
-      conversationId,
+      activeConversationId,
     ],
   );
 
@@ -298,6 +303,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       chatContext: ChatContext | null;
       onClear: () => void;
     }) => {
+      const resolvedConversationId = activeConversationId;
       const selectedSnippet = opts.selectedText?.trim() ?? "";
       const windowSnippet = opts.chatContext?.window
         ? [opts.chatContext.window.app, opts.chatContext.window.title]
@@ -309,7 +315,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       );
 
       if (
-        !conversationId ||
+        !resolvedConversationId ||
         (!opts.text.trim() && !selectedSnippet && !windowSnippet && !hasScreenshotContext)
       ) {
         return;
@@ -345,7 +351,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
             opts.chatContext.regionScreenshots.map(async (screenshot) => {
               try {
                 const attachment = await createAttachment({
-                  conversationId,
+                  conversationId: resolvedConversationId,
                   deviceId,
                   dataUrl: screenshot.dataUrl,
                 });
@@ -389,7 +395,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       }
 
       const event = await appendConversationEvent({
-        conversationId,
+        conversationId: resolvedConversationId,
         type: "user_message",
         deviceId,
         payload: {
@@ -412,7 +418,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       }
     },
     [
-      conversationId,
+      activeConversationId,
       isStreaming,
       queueNext,
       cancelCurrentStream,
