@@ -5,6 +5,15 @@ import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
 import { hexToRgb } from '../theme/color'
 import { StellaAnimation } from '../components/StellaAnimation'
+import {
+  initBlob,
+  startOpen,
+  startClose,
+  cancelAnimation,
+  destroyBlob,
+  cssToVec3,
+  type BlobColors,
+} from './radial-blob'
 
 const WEDGES: { id: RadialWedge; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
   { id: 'capture', label: 'Capture', icon: Camera },
@@ -21,6 +30,9 @@ const OUTER_RADIUS = 125
 const WEDGE_ANGLE = 72 // 360 / 5 wedges
 const DEAD_ZONE_RADIUS = 30 // Center zone for "dismiss"
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
+
+// How long into the open animation before SVG content starts fading in
+const CONTENT_FADE_DELAY = 180 // ms
 
 const toRgba = (color: string, alpha: number): string => {
   if (color.startsWith('#')) {
@@ -62,13 +74,71 @@ const getContentPosition = (index: number) => {
   }
 }
 
+type Phase = 'hidden' | 'opening' | 'open' | 'closing'
+
 export function RadialDial() {
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
-  const [animateIn, setAnimateIn] = useState(false)
+  const [phase, setPhase] = useState<Phase>('hidden')
+  const [contentVisible, setContentVisible] = useState(false)
   const visibleRef = useRef(false)
-  const animateFrameRef = useRef<number | null>(null)
+  const phaseRef = useRef<Phase>('hidden')
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const blobReady = useRef(false)
+  const selectedIdxRef = useRef(-1)
+  const contentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const colorsRef = useRef<BlobColors>({
+    fills: Array(5).fill([0.2, 0.2, 0.2] as [number, number, number]),
+    selectedFill: [0.4, 0.4, 0.8],
+    centerBg: [0.1, 0.1, 0.1],
+    stroke: [0.3, 0.3, 0.3],
+  })
   const api = getElectronApi()
   const { colors } = useTheme()
+
+  // Keep phaseRef in sync
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
+
+  // Init WebGL on mount
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (canvas && !blobReady.current) {
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = SIZE * dpr
+      canvas.height = SIZE * dpr
+      blobReady.current = initBlob(canvas)
+    }
+    return () => {
+      destroyBlob()
+      blobReady.current = false
+      if (contentTimerRef.current) clearTimeout(contentTimerRef.current)
+    }
+  }, [])
+
+  // Sync theme colors to blob renderer
+  useEffect(() => {
+    const cardVec = cssToVec3(colors.card)
+    colorsRef.current = {
+      fills: Array(5).fill(cardVec),
+      selectedFill: cssToVec3(colors.interactive),
+      centerBg: cssToVec3(colors.background),
+      stroke: cssToVec3(colors.border),
+    }
+  }, [colors])
+
+  // Sync selection to refs
+  useEffect(() => {
+    const idx = WEDGES.findIndex((w) => w.id === selectedWedge)
+    selectedIdxRef.current = idx
+
+    const cardVec = cssToVec3(colors.card)
+    const selVec = cssToVec3(colors.interactive)
+    colorsRef.current = {
+      ...colorsRef.current,
+      fills: WEDGES.map((_, i) => (i === idx ? selVec : cardVec)),
+    }
+  }, [selectedWedge, colors])
 
   const calculateWedge = useCallback(
     (x: number, y: number, centerX: number, centerY: number): RadialWedge => {
@@ -88,7 +158,7 @@ export function RadialDial() {
       const wedgeIndex = Math.floor(angle / WEDGE_ANGLE)
       return WEDGES[wedgeIndex]?.id ?? 'dismiss'
     },
-    []
+    [],
   )
 
   useEffect(() => {
@@ -96,41 +166,82 @@ export function RadialDial() {
 
     const handleShow = (
       _event: unknown,
-      data: { centerX: number; centerY: number; x?: number; y?: number }
+      data: { centerX: number; centerY: number; x?: number; y?: number },
     ) => {
       visibleRef.current = true
+
       if (typeof data.x === 'number' && typeof data.y === 'number') {
         const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
         setSelectedWedge(wedge)
       } else {
         setSelectedWedge('dismiss')
       }
-      // Restart on the next frame so first-open paints don't skip the keyframe.
-      if (animateFrameRef.current !== null) {
-        cancelAnimationFrame(animateFrameRef.current)
+
+      // Cancel any running animation + pending content timer
+      cancelAnimation()
+      if (contentTimerRef.current) {
+        clearTimeout(contentTimerRef.current)
+        contentTimerRef.current = null
       }
-      setAnimateIn(false)
-      animateFrameRef.current = requestAnimationFrame(() => {
-        animateFrameRef.current = null
-        if (!visibleRef.current) return
-        setAnimateIn(true)
-      })
+      setContentVisible(false)
+
+      if (blobReady.current) {
+        setPhase('opening')
+        phaseRef.current = 'opening'
+
+        // Fade in SVG content midway through the blob animation
+        contentTimerRef.current = setTimeout(() => {
+          contentTimerRef.current = null
+          if (visibleRef.current) {
+            setContentVisible(true)
+          }
+        }, CONTENT_FADE_DELAY)
+
+        startOpen(selectedIdxRef, colorsRef, () => {
+          if (visibleRef.current) {
+            setPhase('open')
+            phaseRef.current = 'open'
+            setContentVisible(true)
+          }
+        })
+      } else {
+        // Fallback: show immediately if WebGL unavailable
+        setPhase('open')
+        phaseRef.current = 'open'
+        setContentVisible(true)
+      }
     }
 
     const handleHide = () => {
-      visibleRef.current = false
-      setSelectedWedge('dismiss')
-      if (animateFrameRef.current !== null) {
-        cancelAnimationFrame(animateFrameRef.current)
-        animateFrameRef.current = null
+      // Kill content fade timer
+      if (contentTimerRef.current) {
+        clearTimeout(contentTimerRef.current)
+        contentTimerRef.current = null
       }
-      // Reset immediately; the window is parked off-screen, so users never see this.
-      setAnimateIn(false)
+      setContentVisible(false)
+
+      if (blobReady.current && phaseRef.current !== 'hidden') {
+        setPhase('closing')
+        phaseRef.current = 'closing'
+        startClose(selectedIdxRef, colorsRef, () => {
+          visibleRef.current = false
+          setPhase('hidden')
+          phaseRef.current = 'hidden'
+          setSelectedWedge('dismiss')
+          window.electronAPI?.radialAnimDone?.()
+        })
+      } else {
+        cancelAnimation()
+        visibleRef.current = false
+        setPhase('hidden')
+        phaseRef.current = 'hidden'
+        setSelectedWedge('dismiss')
+      }
     }
 
     const handleCursor = (
       _event: unknown,
-      data: { x: number; y: number; centerX: number; centerY: number }
+      data: { x: number; y: number; centerX: number; centerY: number },
     ) => {
       if (!visibleRef.current) return
       const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
@@ -144,10 +255,8 @@ export function RadialDial() {
       const cleanupCursor = electronAPI.onRadialCursor(handleCursor)
 
       return () => {
-        if (animateFrameRef.current !== null) {
-          cancelAnimationFrame(animateFrameRef.current)
-          animateFrameRef.current = null
-        }
+        cancelAnimation()
+        if (contentTimerRef.current) clearTimeout(contentTimerRef.current)
         cleanupShow()
         cleanupHide()
         cleanupCursor()
@@ -155,9 +264,30 @@ export function RadialDial() {
     }
   }, [api, calculateWedge])
 
+  // Canvas visible during blob animation (opening/closing) and during the crossfade overlap
+  const showCanvas = phase === 'opening' || phase === 'closing'
+
   return (
     <div className="radial-dial-container">
-      <div className={`radial-dial-frame${animateIn ? ' radial-dial-frame--visible' : ''}`}>
+      <canvas
+        ref={canvasRef}
+        className="radial-blob-canvas"
+        style={{
+          width: SIZE,
+          height: SIZE,
+          opacity: showCanvas ? 1 : 0,
+          pointerEvents: 'none',
+        }}
+      />
+
+      <div
+        className="radial-dial-frame"
+        style={{
+          opacity: contentVisible ? 1 : 0,
+          transition: phase === 'opening' ? 'opacity 0.15s ease-out' : 'none',
+          pointerEvents: phase === 'open' ? 'auto' : 'none',
+        }}
+      >
         <svg
           width={SIZE}
           height={SIZE}
@@ -170,17 +300,17 @@ export function RadialDial() {
             const isSelected = selectedWedge === wedge.id
             const contentPos = getContentPosition(index)
             const Icon = wedge.icon
-            
-            const fillColor = isSelected 
-              ? toRgba(colors.interactive, 0.9) 
-              : colors.card // Card often has transparency
-            
+
+            const fillColor = isSelected
+              ? toRgba(colors.interactive, 0.9)
+              : colors.card
+
             const strokeColor = isSelected
               ? colors.interactive
               : toRgba(colors.border, 0.2)
-              
-            const iconColor = isSelected 
-              ? colors.primaryForeground 
+
+            const iconColor = isSelected
+              ? colors.primaryForeground
               : colors.mutedForeground
 
             return (
@@ -193,7 +323,7 @@ export function RadialDial() {
                   className="wedge-path"
                   style={{
                     transition: 'fill 0.15s ease, stroke 0.15s ease',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
                   }}
                 />
                 <foreignObject
@@ -205,19 +335,19 @@ export function RadialDial() {
                 >
                   <div className="flex flex-col items-center justify-center w-full h-full gap-0.5">
                     <Icon
-                      style={{ 
+                      style={{
                         color: iconColor,
                         width: '16px',
                         height: '16px',
-                        transition: 'color 0.1s'
+                        transition: 'color 0.1s',
                       }}
                     />
                     <span
-                      style={{ 
+                      style={{
                         color: iconColor,
                         fontSize: '10px',
                         fontWeight: 500,
-                        transition: 'color 0.1s'
+                        transition: 'color 0.1s',
                       }}
                     >
                       {wedge.label}

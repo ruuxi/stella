@@ -58,22 +58,28 @@
   justify-content: center;
 }
 
-@keyframes radial-enter {
-  from { opacity: 0; transform: scale(0.85); }
-  to   { opacity: 1; transform: scale(1); }
+.radial-dial-container {
+  position: relative;
+  width: 280px;
+  height: 280px;
+}
+
+.radial-blob-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 280px;
+  height: 280px;
+  pointer-events: none;
 }
 
 .radial-dial-frame {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  opacity: 0;
-  transform: scale(0.85);
-  will-change: opacity, transform;
-}
-
-.radial-dial-frame.radial-dial-frame--visible {
-  animation: radial-enter 0.12s ease-out forwards;
+  will-change: opacity;
 }
 
 .radial-dial {
@@ -84,12 +90,6 @@
 
 .wedge-path {
   cursor: pointer;
-}
-
-.radial-dial-container {
-  position: relative;
-  width: 280px;
-  height: 280px;
 }
 
 .radial-center-stella-animation {
