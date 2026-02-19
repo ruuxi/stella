@@ -5,7 +5,7 @@
  * for backend/convex/sync/local_cloud.ts.
  */
 
-import { getDb, rawQuery, rawRun } from "./db";
+import { getDb, rawQuery, rawRun } from "./db.js";
 
 export type SyncTableName =
   | "conversations"

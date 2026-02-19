@@ -4,10 +4,10 @@
  */
 
 import { generateText } from "ai";
-import { rawQuery } from "../db";
-import { insert } from "../db";
-import { broadcastSSE } from "../server";
-import { resolveModelConfig } from "./model_resolver";
+import { rawQuery } from "../db.js";
+import { insert } from "../db.js";
+import { broadcastSSE } from "../server.js";
+import { resolveModelConfig } from "./model_resolver.js";
 
 type Suggestion = {
   commandId: string;

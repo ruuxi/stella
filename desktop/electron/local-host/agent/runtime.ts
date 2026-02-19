@@ -13,21 +13,21 @@
  */
 
 import { streamText } from "ai";
-import { insert, update, rawQuery, findById, newId } from "../db";
-import { broadcastSSE } from "../server";
-import { buildSystemPrompt } from "./prompt_builder";
-import { loadRecentEvents, eventsToHistoryMessages, ORCHESTRATOR_HISTORY_MAX_TOKENS } from "./history";
-import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
-import { withModelFailover } from "./model_failover";
-import { createLocalTools } from "./tools";
-import { generateSuggestions } from "./suggestions";
+import { insert, update, rawQuery, findById, newId } from "../db.js";
+import { broadcastSSE } from "../server.js";
+import { buildSystemPrompt } from "./prompt_builder.js";
+import { loadRecentEvents, eventsToHistoryMessages, ORCHESTRATOR_HISTORY_MAX_TOKENS } from "./history.js";
+import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver.js";
+import { withModelFailover } from "./model_failover.js";
+import { createLocalTools } from "./tools.js";
+import { generateSuggestions } from "./suggestions.js";
 import {
   createTask,
   updateTaskStatus,
   setTaskCompletionCallback,
   type TaskRow,
-} from "./tasks_local";
-import type { createToolHost } from "../tools";
+} from "./tasks_local.js";
+import type { createToolHost } from "../tools.js";
 
 const log = (...args: unknown[]) => console.log("[local-runtime]", ...args);
 const logError = (...args: unknown[]) => console.error("[local-runtime]", ...args);

@@ -3,7 +3,7 @@
  * Ported from backend/convex/agent/prompt_builder.ts
  */
 
-import { rawQuery } from "../db";
+import { rawQuery } from "../db.js";
 
 export type PromptBuildResult = {
   systemPrompt: string;

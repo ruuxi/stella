@@ -10,9 +10,9 @@ import {
   getDb, closeDb, newId, insert, update, remove,
   findById, query, rawQuery, rawRun, transaction,
   markSyncRowsDirty,
-} from "./db";
+} from "./db.js";
 import type { Server } from "http";
-import { handleChat, type ChatRequest, type RuntimeConfig } from "./agent/runtime";
+import { handleChat, type ChatRequest, type RuntimeConfig } from "./agent/runtime.js";
 
 const log = (...args: unknown[]) => console.log("[local-server]", ...args);
 const logError = (...args: unknown[]) => console.error("[local-server]", ...args);
