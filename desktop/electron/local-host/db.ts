@@ -7,7 +7,7 @@ import path from "path";
 import fs from "fs";
 import { ulid } from "ulid";
 import os from "os";
-import { runMigrations } from "./db_migrations";
+import { runMigrations } from "./db_migrations.js";
 
 let db: Database.Database | null = null;
 

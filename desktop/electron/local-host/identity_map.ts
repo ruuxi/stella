@@ -11,7 +11,7 @@ import { createHash } from "crypto";
 import type {
   IdentityMap,
   IdentityMappingSource,
-} from "./discovery_types";
+} from "./discovery_types.js";
 
 const log = (...args: unknown[]) => console.log("[identity-map]", ...args);
 

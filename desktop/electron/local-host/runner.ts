@@ -2,7 +2,7 @@ import { ConvexClient } from "convex/browser";
 import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
-import { rawQuery } from "./db";
+import { rawQuery } from "./db.js";
 import { syncExternalSkills, syncBundledSkills } from "./skill_import.js";
 import {
   loadSyncManifest,

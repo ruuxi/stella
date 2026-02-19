@@ -3,7 +3,7 @@
  * Ported from backend/convex/data/memory.ts
  */
 
-import { rawQuery, rawRun, insert, update, markSyncRowsDirty } from "../db";
+import { rawQuery, rawRun, insert, update, markSyncRowsDirty } from "../db.js";
 
 const RECALL_MIN_SCORE = 0.7;
 const RECALL_TOP_K = 10;
