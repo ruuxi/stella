@@ -33,6 +33,7 @@ import { useVoiceInput } from "../../hooks/use-voice-input";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
 import { useIsLocalMode } from "@/providers/DataProvider";
 import { useLocalQuery } from "@/hooks/use-local-query";
+import { toCloudConversationId } from "@/lib/conversation-id";
 
 const StoreView = lazy(() => import("./StoreView"));
 const SettingsDialog = lazy(() => import("./SettingsView"));
@@ -40,6 +41,10 @@ const SettingsDialog = lazy(() => import("./SettingsView"));
 export const FullShell = () => {
   const { state, setView } = useUiState();
   const isLocalMode = useIsLocalMode();
+  const cloudConversationId = toCloudConversationId(state.conversationId);
+  const activeConversationId = isLocalMode
+    ? state.conversationId
+    : cloudConversationId;
   const { state: canvasState, openCanvas, closeCanvas, setWidth } = useCanvas();
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
@@ -104,7 +109,7 @@ export const FullShell = () => {
 
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     isAuthenticated: onboarding.isAuthenticated,
-    conversationId: state.conversationId,
+    conversationId: activeConversationId,
   });
 
   const {
@@ -118,7 +123,7 @@ export const FullShell = () => {
     syncWithEvents,
     processFollowUpQueue,
   } = useStreamingChat({
-    conversationId: state.conversationId,
+    conversationId: activeConversationId,
   });
 
   const {
@@ -171,13 +176,13 @@ export const FullShell = () => {
     };
   }, []);
 
-  const events = useConversationEvents(state.conversationId ?? undefined);
+  const events = useConversationEvents(activeConversationId ?? undefined);
   useCanvasCommands(events);
 
   const savedCanvasCloudState = useQuery(
     api.data.canvas_states.getForConversation,
-    !isLocalMode && state.conversationId && onboarding.isAuthenticated
-      ? { conversationId: state.conversationId }
+    !isLocalMode && cloudConversationId && onboarding.isAuthenticated
+      ? { conversationId: cloudConversationId }
       : "skip",
   ) as
     | {
@@ -391,7 +396,7 @@ export const FullShell = () => {
       chatContext?.capturePending,
   );
   const canSubmit = Boolean(
-    state.conversationId && (message.trim() || hasComposerContext),
+    activeConversationId && (message.trim() || hasComposerContext),
   );
   const shellClassName = `window-shell full${showCanvasPanel || activeDemo || demoClosing ? " has-canvas" : ""}`;
   const canvasWidthVar = showCanvasPanel
@@ -448,7 +453,7 @@ export const FullShell = () => {
               handleScroll={handleScroll}
               showScrollButton={showScrollButton}
               scrollToBottom={scrollToBottom}
-              conversationId={state.conversationId}
+              conversationId={activeConversationId}
               onboardingDone={onboarding.onboardingDone}
               onboardingExiting={onboarding.onboardingExiting}
               isAuthenticated={onboarding.isAuthenticated}

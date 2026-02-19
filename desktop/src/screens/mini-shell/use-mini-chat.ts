@@ -12,6 +12,7 @@ import { streamChat } from "../../services/model-gateway";
 import type { ChatContext } from "../../types/electron";
 import { useIsLocalMode } from "@/providers/DataProvider";
 import { localPost } from "@/services/local-client";
+import { toCloudConversationId } from "@/lib/conversation-id";
 
 export type AttachmentRef = { id?: string; url?: string; mimeType?: string };
 
@@ -51,8 +52,12 @@ export function useMiniChat(opts: {
 }) {
   const { chatContext, selectedText, setChatContext, setSelectedText, isStreaming, setIsStreaming } =
     opts;
-  const isLocalMode = useIsLocalMode();
   const { state } = useUiState();
+  const isLocalMode = useIsLocalMode();
+  const cloudConversationId = toCloudConversationId(state.conversationId);
+  const activeConversationId = isLocalMode
+    ? state.conversationId
+    : cloudConversationId;
   const [message, setMessage] = useState("");
   const [streamingText, appendStreamingDelta, resetStreamingText] =
     useRafStringAccumulator();
@@ -92,7 +97,7 @@ export function useMiniChat(opts: {
   });
 
   const createAttachmentAction = useAction(api.data.attachments.createFromDataUrl);
-  const events = useConversationEvents(state.conversationId ?? undefined);
+  const events = useConversationEvents(activeConversationId ?? undefined);
 
   const appendConversationEvent = useCallback(
     async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
@@ -159,7 +164,7 @@ export function useMiniChat(opts: {
 
   const startStream = useCallback(
     (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
-      if (!state.conversationId) return;
+      if (!activeConversationId) return;
       const runId = streamRunIdRef.current + 1;
       streamRunIdRef.current = runId;
       const controller = new AbortController();
@@ -171,7 +176,7 @@ export function useMiniChat(opts: {
 
       void streamChat(
         {
-          conversationId: state.conversationId,
+          conversationId: activeConversationId,
           userMessageId: args.userMessageId,
           attachments: args.attachments ?? [],
         },
@@ -205,7 +210,7 @@ export function useMiniChat(opts: {
     },
     [
       resetStreamingState,
-      state.conversationId,
+      activeConversationId,
       resetStreamingText,
       resetReasoningText,
       setIsStreaming,
@@ -256,7 +261,7 @@ export function useMiniChat(opts: {
 
   // Process follow-up queue
   useEffect(() => {
-    if (isStreaming || pendingUserMessageId || !state.conversationId) return;
+    if (isStreaming || pendingUserMessageId || !activeConversationId) return;
     const queued = findQueuedFollowUp(events);
     if (!queued) return;
 
@@ -278,7 +283,7 @@ export function useMiniChat(opts: {
     isStreaming,
     pendingUserMessageId,
     startStream,
-    state.conversationId,
+    activeConversationId,
   ]);
 
   const sendMessage = async () => {
@@ -290,11 +295,11 @@ export function useMiniChat(opts: {
       : "";
     const rawText = message.trim();
     if (
-      !state.conversationId ||
+      !activeConversationId ||
       (!rawText && !selectedSnippet && !windowSnippet)
     )
       return;
-    const conversationId = state.conversationId;
+    const conversationId = activeConversationId;
 
     const deviceId = await getOrCreateDeviceId();
     setMessage("");

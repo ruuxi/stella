@@ -88,7 +88,8 @@ describe("AppBootstrap", () => {
     await waitFor(() => {
       expect(mockGetOrCreateDefaultConversation).toHaveBeenCalled();
     });
-    expect(mockSetConversationId).not.toHaveBeenCalled();
+    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
+    expect(mockSetConversationId).toHaveBeenCalledWith(null);
   });
 
   it("does not set conversation ID when conversation is null", async () => {
@@ -97,7 +98,8 @@ describe("AppBootstrap", () => {
     await waitFor(() => {
       expect(mockGetOrCreateDefaultConversation).toHaveBeenCalled();
     });
-    expect(mockSetConversationId).not.toHaveBeenCalled();
+    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
+    expect(mockSetConversationId).toHaveBeenCalledWith(null);
   });
 
   it("does not set conversation ID after unmount (cancelled)", async () => {
@@ -116,7 +118,8 @@ describe("AppBootstrap", () => {
     await waitFor(() => {
       expect(mockGetOrCreateDefaultConversation).toHaveBeenCalled();
     });
-    expect(mockSetConversationId).not.toHaveBeenCalled();
+    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
+    expect(mockSetConversationId).toHaveBeenCalledWith(null);
   });
 
   it("handles configureLocalHost failure gracefully", async () => {
@@ -162,6 +165,7 @@ describe("AppBootstrap", () => {
       expect(mockGetOrCreateDeviceId).toHaveBeenCalled();
     });
     expect(mockGetOrCreateDefaultConversation).not.toHaveBeenCalled();
-    expect(mockSetConversationId).not.toHaveBeenCalled();
+    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
+    expect(mockSetConversationId).toHaveBeenCalledWith(null);
   });
 });
