@@ -17,6 +17,27 @@ import { handleChat, type ChatRequest, type RuntimeConfig } from "./agent/runtim
 const log = (...args: unknown[]) => console.log("[local-server]", ...args);
 const logError = (...args: unknown[]) => console.error("[local-server]", ...args);
 
+const LOCAL_ORIGIN_PATTERN =
+  /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i;
+const DEFAULT_CORS_ALLOW_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+const DEFAULT_CORS_ALLOW_HEADERS =
+  "Content-Type, Authorization, X-Device-ID, Accept, Cache-Control, Last-Event-ID";
+
+function resolveAllowedOrigin(origin?: string): string | null {
+  if (!origin) return null;
+  if (origin === "null") return "null";
+  return LOCAL_ORIGIN_PATTERN.test(origin) ? origin : null;
+}
+
+function appendVary(current: string | null, value: string): string {
+  if (!current || current.trim() === "") return value;
+  const parts = current
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  return parts.includes(value.toLowerCase()) ? current : `${current}, ${value}`;
+}
+
 // Runtime config, set during server startup
 let runtimeConfig: RuntimeConfig | null = null;
 
@@ -58,6 +79,33 @@ function broadcastGlobal(event: string, data: unknown) {
 // ─── Hono App ────────────────────────────────────────────────────────────────
 
 const app = new Hono();
+
+// Local renderer runs on a different localhost port in dev mode, so local host
+// APIs must support CORS preflight and explicit origin allowlisting.
+app.use("*", async (c, next) => {
+  const allowedOrigin = resolveAllowedOrigin(c.req.header("origin"));
+
+  if (c.req.method === "OPTIONS") {
+    if (allowedOrigin) {
+      c.header("Access-Control-Allow-Origin", allowedOrigin);
+      c.header("Vary", appendVary(c.res.headers.get("Vary"), "Origin"));
+    }
+    c.header("Access-Control-Allow-Methods", DEFAULT_CORS_ALLOW_METHODS);
+    c.header(
+      "Access-Control-Allow-Headers",
+      c.req.header("Access-Control-Request-Headers") || DEFAULT_CORS_ALLOW_HEADERS,
+    );
+    c.header("Access-Control-Max-Age", "600");
+    return c.body(null, 204);
+  }
+
+  await next();
+
+  if (allowedOrigin) {
+    c.header("Access-Control-Allow-Origin", allowedOrigin);
+    c.header("Vary", appendVary(c.res.headers.get("Vary"), "Origin"));
+  }
+});
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 
