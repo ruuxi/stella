@@ -19,6 +19,7 @@ export const AppBootstrap = () => {
     const run = async () => {
       const hostPromise = configureLocalHost();
       const devicePromise = getOrCreateDeviceId();
+      setConversationId(null);
 
       if (isLocalMode) {
         // Local mode: get/create default conversation from local server
@@ -32,12 +33,22 @@ export const AppBootstrap = () => {
           }
         } catch (err) {
           console.error("[AppBootstrap] Local conversation setup failed:", err);
+          if (!cancelled) {
+            setConversationId(null);
+          }
         }
       } else if (isAuthenticated) {
         // Cloud mode: use Convex mutation
-        const conversation = await getOrCreateDefaultConversation({});
-        if (!cancelled && conversation?._id) {
-          setConversationId(conversation._id);
+        try {
+          const conversation = await getOrCreateDefaultConversation({});
+          if (!cancelled && conversation?._id) {
+            setConversationId(conversation._id);
+          }
+        } catch (err) {
+          console.error("[AppBootstrap] Cloud conversation setup failed:", err);
+          if (!cancelled) {
+            setConversationId(null);
+          }
         }
       }
 
