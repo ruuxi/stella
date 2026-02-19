@@ -21,7 +21,6 @@ type CronPayload =
       message: string;
       agentType?: string;
       deliver?: boolean;
-      includeHistory?: boolean;
     };
 
 const cronScheduleValidator = v.union(
@@ -53,7 +52,6 @@ const cronPayloadValidator = v.union(
     message: v.string(),
     agentType: v.optional(v.string()),
     deliver: v.optional(v.boolean()),
-    includeHistory: v.optional(v.boolean()),
   }),
 );
 
@@ -154,12 +152,22 @@ function assertValidPayload(payload: unknown): CronPayload {
     }
     const agentType = typeof record.agentType === "string" ? record.agentType.trim() : undefined;
     const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
-    const includeHistory =
-      typeof record.includeHistory === "boolean" ? record.includeHistory : undefined;
-    return { kind: "agentTurn", message, agentType, deliver, includeHistory };
+    return { kind: "agentTurn", message, agentType, deliver };
   }
   throw new Error('payload.kind must be "systemEvent" or "agentTurn"');
 }
+
+const sanitizeCronJobForReturn = <T extends { payload: unknown } | null>(
+  job: T,
+): T => {
+  if (!job) {
+    return job;
+  }
+  return {
+    ...job,
+    payload: assertValidPayload(job.payload),
+  };
+};
 
 function computeNextRunAtMs(schedule: CronSchedule, nowMs: number): number | undefined {
   if (schedule.kind === "at") {
@@ -213,7 +221,7 @@ export const list = internalQuery({
       .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(200);
-    return jobs;
+    return jobs.map((job) => sanitizeCronJobForReturn(job));
   },
 });
 
@@ -277,7 +285,7 @@ export const add = internalMutation({
       updatedAt: now,
     });
 
-    return await ctx.db.get(id);
+    return sanitizeCronJobForReturn(await ctx.db.get(id));
   },
 });
 
@@ -348,7 +356,7 @@ export const update = internalMutation({
       updatedAt: now,
     });
 
-    return await ctx.db.get(job._id);
+    return sanitizeCronJobForReturn(await ctx.db.get(job._id));
   },
 });
 
@@ -394,7 +402,7 @@ export const run = internalMutation({
       jobId: job._id,
       forced: true,
     });
-    return job;
+    return sanitizeCronJobForReturn(job);
   },
 });
 
@@ -410,7 +418,7 @@ export const listDue = internalQuery({
       .query("cron_jobs")
       .withIndex("by_next_run", (q) => q.lte("nextRunAtMs", args.nowMs))
       .take(limit);
-    return due;
+    return due.map((job) => sanitizeCronJobForReturn(job));
   },
 });
 
@@ -420,7 +428,7 @@ export const getById = internalQuery({
   },
   returns: v.union(cronJobValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    return sanitizeCronJobForReturn(await ctx.db.get(args.id));
   },
 });
 
@@ -564,9 +572,6 @@ export const execute = internalAction({
       const targetDeviceId = target.targetDeviceId ?? undefined;
       const spriteName = target.spriteName ?? undefined;
 
-      const includeHistory =
-        job.sessionTarget === "main" ||
-        (payloadResolved.kind === "agentTurn" && payloadResolved.includeHistory === true);
       const agentType = payloadResolved.agentType ?? "orchestrator";
 
       const result = await runAgentTurn({
@@ -577,7 +582,6 @@ export const execute = internalAction({
         ownerId: job.ownerId,
         targetDeviceId: targetDeviceId ?? undefined,
         spriteName: spriteName ?? undefined,
-        includeHistory,
       });
       outputText = (result.text ?? "").trim();
     } catch (err) {

@@ -50,7 +50,6 @@ const cronPayloadValidator = v.union(
     message: v.string(),
     agentType: v.optional(v.string()),
     deliver: v.optional(v.boolean()),
-    includeHistory: v.optional(v.boolean()),
   }),
 );
 

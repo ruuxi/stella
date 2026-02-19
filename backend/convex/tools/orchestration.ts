@@ -55,11 +55,8 @@ const createTaskTools = (
       "Usage:\n" +
       "- description: short summary for logging (e.g. \"Search for React components\").\n" +
       "- prompt: the full instructions the subagent will follow. Be specific - the subagent only sees this prompt.\n" +
-      "- subagent_type: which agent to use - \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
-      "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.\n\n" +
-      "Pre-gathered context:\n" +
-      "- recall_memory: automatically recall memories and inject them into the agent's context before it runs. Provide a query (defaults to task description).\n" +
-      "- pre_explore: run an explore agent first with the given prompt, then inject its findings into the main agent's context.\n\n" +
+      "- subagent_type: which agent to use - \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n\n" +
+      "Explore tasks are standalone discovery tasks, not context prep for other agents.\n\n" +
       "Threads (general and self_mod only):\n" +
       "- thread_id: continue an existing thread - the agent sees its full prior message history and picks up where it left off.\n" +
       "- thread_name: create or reuse a named thread (short, kebab-case, e.g. \"sidebar-refactor\"). If an active thread with this name exists, it's reused.\n" +
@@ -69,20 +66,11 @@ const createTaskTools = (
       description: z.string().describe("Short summary for logging"),
       prompt: z.string().describe("Full instructions for the subagent"),
       subagent_type: subagentTypeSchema.describe("Agent type: general, self_mod, explore, or browser"),
-      include_history: z.boolean().optional().describe("Pass conversation context to the subagent"),
       thread_id: z.string().optional().describe(
         "Continue an existing thread by ID. Agent sees full prior history.",
       ),
       thread_name: z.string().optional().describe(
         "Create a new thread with this name, or reuse an existing active thread with the same name (short, descriptive, kebab-case).",
-      ),
-      recall_memory: z.object({
-        query: z.string().optional().describe("What to recall - defaults to the task description"),
-      }).optional().describe(
-        "Automatically recall memories and inject into the agent's context before it runs.",
-      ),
-      pre_explore: z.string().optional().describe(
-        "Run an explore agent with this prompt first, then inject its findings into the main agent's context.",
       ),
       command_id: z.string().optional().describe(
         "Command ID to load full instructions into the subagent's prompt. " +
@@ -106,11 +94,8 @@ const createTaskTools = (
         prompt: args.prompt,
         subagentType: args.subagent_type,
         parentTaskId: options.currentTaskId,
-        includeHistory: args.include_history,
         threadId: args.thread_id,
         threadName: args.thread_name,
-        recallMemory: args.recall_memory,
-        preExplore: args.pre_explore,
         commandId: args.command_id,
       });
       return typeof result === "string" ? result : JSON.stringify(result, null, 2);

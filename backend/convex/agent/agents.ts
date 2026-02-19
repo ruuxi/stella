@@ -146,6 +146,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "GenerateApiSkill",
       "MediaGenerate",
       "ActivateSkill",
+      "RecallMemories",
       "TaskCreate",
       "TaskOutput",
     ],
