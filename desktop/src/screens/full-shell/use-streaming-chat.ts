@@ -10,6 +10,15 @@ import { streamChat } from "../../services/model-gateway";
 import { getOrCreateDeviceId } from "../../services/device";
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { ChatContext } from "../../types/electron";
+import {
+  findQueuedFollowUp,
+  toEventId,
+  type AppendedEventResponse,
+} from "./streaming/streaming-event-utils";
+import {
+  uploadScreenshotAttachments,
+  type AttachmentUploadResponse,
+} from "./streaming/attachment-upload";
 import { useIsLocalMode } from "@/providers/DataProvider";
 import { localPost } from "@/services/local-client";
 import { toCloudConversationId } from "@/lib/conversation-id";
@@ -31,26 +40,6 @@ type AppendEventArgs = {
   requestId?: string;
   targetDeviceId?: string;
   payload?: unknown;
-};
-
-type AppendedEventResponse = {
-  _id?: string;
-  id?: string;
-};
-
-type AttachmentResponse = {
-  _id?: string;
-  storageKey?: string;
-  url?: string | null;
-  mimeType?: string;
-  size?: number;
-};
-
-const toEventId = (event: AppendedEventResponse | null | undefined): string | null => {
-  if (!event) return null;
-  if (typeof event._id === "string" && event._id.length > 0) return event._id;
-  if (typeof event.id === "string" && event.id.length > 0) return event.id;
-  return null;
 };
 
 export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
@@ -118,9 +107,9 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       conversationId: string;
       deviceId: string;
       dataUrl: string;
-    }): Promise<AttachmentResponse | null> => {
+    }): Promise<AttachmentUploadResponse | null> => {
       if (isLocalMode) {
-        const attachment = await localPost<AttachmentResponse>(
+        const attachment = await localPost<AttachmentUploadResponse>(
           "/api/attachments/create",
           args,
         );
@@ -131,7 +120,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         deviceId: args.deviceId,
         dataUrl: args.dataUrl,
       });
-      return attachment as AttachmentResponse | null;
+      return attachment as AttachmentUploadResponse | null;
     },
     [isLocalMode, createAttachmentAction],
   );
@@ -229,32 +218,6 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
     ],
   );
 
-  const findQueuedFollowUp = useCallback((source: EventRecord[]) => {
-    const responded = new Set<string>();
-    for (const event of source) {
-      if (event.type !== "assistant_message") continue;
-      if (event.payload && typeof event.payload === "object") {
-        const payload = event.payload as { userMessageId?: string };
-        if (payload.userMessageId) {
-          responded.add(payload.userMessageId);
-        }
-      }
-    }
-
-    for (const event of source) {
-      if (event.type !== "user_message") continue;
-      if (!event.payload || typeof event.payload !== "object") continue;
-      const payload = event.payload as {
-        mode?: string;
-        attachments?: AttachmentRef[];
-      };
-      if (payload.mode !== "follow_up") continue;
-      if (responded.has(event._id)) continue;
-      return { event, attachments: payload.attachments ?? [] };
-    }
-    return null;
-  }, []);
-
   // Auto-clear streaming when assistant reply arrives
   const syncWithEvents = useCallback(
     (events: EventRecord[]) => {
@@ -280,20 +243,14 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
   const processFollowUpQueue = useCallback(
     (events: EventRecord[]) => {
       if (isStreaming || pendingUserMessageId || !activeConversationId) return;
-      const queued = findQueuedFollowUp(events);
+      const queued = findQueuedFollowUp<AttachmentRef>(events);
       if (!queued) return;
       startStream({
         userMessageId: queued.event._id,
         attachments: queued.attachments,
       });
     },
-    [
-      findQueuedFollowUp,
-      isStreaming,
-      pendingUserMessageId,
-      startStream,
-      activeConversationId,
-    ],
+    [isStreaming, pendingUserMessageId, startStream, activeConversationId],
   );
 
   const sendMessage = useCallback(
@@ -344,41 +301,12 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         return;
       }
 
-      const attachments: AttachmentRef[] = [];
-      if (opts.chatContext?.regionScreenshots?.length) {
-        const uploadedAttachments: Array<AttachmentRef | null> =
-          await Promise.all(
-            opts.chatContext.regionScreenshots.map(async (screenshot) => {
-              try {
-                const attachment = await createAttachment({
-                  conversationId: resolvedConversationId,
-                  deviceId,
-                  dataUrl: screenshot.dataUrl,
-                });
-                const attachmentId = attachment?._id ?? attachment?.storageKey;
-                if (!attachmentId) {
-                  return null;
-                }
-                const attachmentUrl = attachment?.url ?? undefined;
-                const attachmentMimeType = attachment?.mimeType;
-                return {
-                  id: attachmentId,
-                  url: attachmentUrl,
-                  mimeType: attachmentMimeType,
-                };
-              } catch (error) {
-                console.error("Screenshot upload failed", error);
-                return null;
-              }
-            }),
-          );
-
-        for (const attachment of uploadedAttachments) {
-          if (attachment) {
-            attachments.push(attachment);
-          }
-        }
-      }
+      const attachments: AttachmentRef[] = await uploadScreenshotAttachments({
+        screenshots: opts.chatContext?.regionScreenshots,
+        conversationId: resolvedConversationId,
+        deviceId,
+        createAttachment,
+      });
 
       const platform = window.electronAPI?.platform ?? "unknown";
       const shouldQueue =
