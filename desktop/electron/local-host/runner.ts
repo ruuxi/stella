@@ -476,7 +476,7 @@ export const createLocalHostRunner = ({
 
     syncPromise = (async () => {
       try {
-        log("Refreshing manifests...");
+        log("Refreshing local manifests...");
 
         // Import bundled skills only when cloud sync is enabled.
         if (canSyncCloud && bundledSkillsPath) {
@@ -515,7 +515,7 @@ export const createLocalHostRunner = ({
         toolHost.setSkills(skills);
 
         if (!canSyncCloud) {
-          log("Manifest cloud sync skipped (gate disabled)");
+          log("Cloud manifest sync skipped (gate disabled); local manifests refreshed");
           return;
         }
 
@@ -703,11 +703,12 @@ export const createLocalHostRunner = ({
     if (authToken) {
       client.setAuth(() => Promise.resolve(authToken));
     }
-    void refreshSyncGateStatus();
-    void syncManifests();
-    void syncLocalCloudData();
-    // Restart subscription with new client if runner is running (and auth is set)
+    // Defer sync work until runner start to avoid duplicate startup refreshes.
+    // If already running, refresh immediately for live updates.
     if (isRunning) {
+      void refreshSyncGateStatus();
+      void syncManifests();
+      void syncLocalCloudData();
       startSubscription();
       startSyncGateSubscription();
     }
@@ -720,18 +721,18 @@ export const createLocalHostRunner = ({
     }
     if (authToken) {
       client.setAuth(() => Promise.resolve(authToken));
-      void refreshSyncGateStatus();
       // Start subscription if runner is running and we now have auth.
       // Note: avoid restarting an active subscription on token refresh; Convex
       // will re-authenticate as needed via the updated auth callback.
       if (isRunning) {
+        void refreshSyncGateStatus();
         startSubscription();
         startSyncGateSubscription();
         // Send immediate heartbeat when auth becomes available
         void sendHeartbeat();
+        void syncManifests();
+        void syncLocalCloudData();
       }
-      void syncManifests();
-      void syncLocalCloudData();
     } else {
       // Stop subscription when auth is cleared (logout/unauthenticated).
       stopSubscription();
