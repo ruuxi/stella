@@ -6,8 +6,7 @@
  * 2. Generate a personalized welcome message
  */
 
-import { getAuthHeaders } from "./auth-token";
-import { getLocalPort, isLocalMode } from "./local-client";
+import { createServiceRequest } from "./http/service-request";
 
 export type WelcomeSuggestion = {
   category: "cron" | "skill" | "app";
@@ -25,21 +24,10 @@ export type SynthesisResult = {
 export async function synthesizeCoreMemory(
   formattedSignals: string,
 ): Promise<SynthesisResult> {
-  const endpoint = isLocalMode()
-    ? `http://localhost:${getLocalPort()}/api/synthesize`
-    : (() => {
-        const baseUrl = import.meta.env.VITE_CONVEX_URL;
-        if (!baseUrl) {
-          throw new Error("VITE_CONVEX_URL is not set.");
-        }
-        const httpBaseUrl =
-          import.meta.env.VITE_CONVEX_HTTP_URL ??
-          baseUrl.replace(".convex.cloud", ".convex.site");
-        return new URL("/api/synthesize", httpBaseUrl).toString();
-      })();
-  const headers = isLocalMode()
-    ? { "Content-Type": "application/json" }
-    : await getAuthHeaders({ "Content-Type": "application/json" });
+  const { endpoint, headers } = await createServiceRequest("/api/synthesize", {
+    "Content-Type": "application/json",
+  });
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
