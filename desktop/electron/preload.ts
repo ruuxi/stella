@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('radial:hide', handler)
     }
   },
+  radialAnimDone: () => ipcRenderer.send('radial:animDone'),
   onRadialCursor: (
     callback: (event: IpcRendererEvent, data: { x: number; y: number; centerX: number; centerY: number }) => void
   ) => {
