@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useUiState } from "../../app/state/ui-state";
 import { useContextCapture } from "./use-context-capture";
@@ -8,12 +8,10 @@ import { useVoiceInput } from "../../hooks/use-voice-input";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
 import { StellaAnimation } from "../../components/StellaAnimation";
-import { useIsLocalMode } from "@/providers/DataProvider";
-import { useLocalQuery } from "@/hooks/use-local-query";
 
 export const MiniShell = () => {
   const { setWindow } = useUiState();
-  const isLocalMode = useIsLocalMode();
+  const { isAuthenticated } = useConvexAuth();
   const [isStreaming, setIsStreaming] = useState(false);
 
   const {
@@ -46,16 +44,11 @@ export const MiniShell = () => {
   // STT voice input
   const sttCloud = useQuery(
     api.data.stt.checkSttAvailable,
-    !isLocalMode ? {} : "skip",
+    isAuthenticated ? {} : "skip",
   ) as
     | { available: boolean }
     | undefined;
-  const sttLocal = useLocalQuery<{ available: boolean }>(
-    isLocalMode ? "/api/stt/check-available" : null,
-  );
-  const sttAvailable = isLocalMode
-    ? (sttLocal.data?.available ?? false)
-    : (sttCloud?.available ?? false);
+  const sttAvailable = sttCloud?.available ?? false;
   const [partialTranscript, setPartialTranscript] = useState("");
 
   const voice = useVoiceInput({
