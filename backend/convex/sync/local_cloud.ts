@@ -1110,7 +1110,7 @@ export const getSyncGateStatus = query({
     const hasConnector = providers.length > 0;
 
     return {
-      enabled: hasCloudPrimary || has247 || hasConnector,
+      enabled: hasCloudPrimary || hasConnector,
       hasCloudPrimary,
       has247,
       hasConnector,

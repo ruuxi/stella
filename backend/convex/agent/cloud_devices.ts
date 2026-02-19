@@ -74,7 +74,6 @@ const ensureSingleRecordResultValidator = v.object({
 });
 
 const RUNTIME_MODE_KEY = "runtime_mode";
-const CLOUD_PRIMARY_KEY = "cloud_primary";
 const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
   value === "cloud_247" ? "cloud_247" : "local";
 
@@ -878,11 +877,6 @@ const ensure247ForOwner = async (
       key: RUNTIME_MODE_KEY,
       value: "cloud_247",
     });
-    await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
-      ownerId,
-      key: CLOUD_PRIMARY_KEY,
-      value: "true",
-    });
     return { status: "already_enabled", spriteName: existing.spriteName };
   }
 
@@ -925,11 +919,6 @@ const ensure247ForOwner = async (
     ownerId,
     key: RUNTIME_MODE_KEY,
     value: "cloud_247",
-  });
-  await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
-    ownerId,
-    key: CLOUD_PRIMARY_KEY,
-    value: "true",
   });
 
   return { status: "provisioning", spriteName: result.cloudDevice.spriteName };
