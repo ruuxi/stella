@@ -39,6 +39,7 @@ export function Composer({
   canSubmit,
   conversationId,
   onSend,
+  sttAvailable,
   voiceState,
   onStartVoice,
   onStopVoice,
@@ -288,8 +289,13 @@ export function Composer({
                 type="button"
                 className="composer-mic"
                 onClick={onStartVoice}
-                title="Voice input"
-                disabled={!conversationId || voiceState === "requesting-token" || voiceState === "connecting"}
+                title={sttAvailable ? "Voice input" : "Voice input unavailable"}
+                disabled={
+                  !sttAvailable ||
+                  !conversationId ||
+                  voiceState === "requesting-token" ||
+                  voiceState === "connecting"
+                }
               >
                 <svg
                   width="16"
