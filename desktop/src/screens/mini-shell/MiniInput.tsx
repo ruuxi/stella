@@ -33,6 +33,7 @@ export const MiniInput = ({
   isStreaming,
   shellVisible,
   onSend,
+  sttAvailable,
   voiceState,
   onStartVoice,
   onStopVoice,
@@ -259,8 +260,12 @@ export const MiniInput = ({
                 type="button"
                 className="mini-composer-mic"
                 onClick={onStartVoice}
-                title="Voice input"
-                disabled={voiceState === "requesting-token" || voiceState === "connecting"}
+                title={sttAvailable ? "Voice input" : "Voice input unavailable"}
+                disabled={
+                  !sttAvailable ||
+                  voiceState === "requesting-token" ||
+                  voiceState === "connecting"
+                }
               >
                 <svg
                   width="14"
