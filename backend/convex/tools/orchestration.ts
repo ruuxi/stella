@@ -6,8 +6,12 @@ import type { ActionCtx } from "../_generated/server";
 import type { DeviceToolContext } from "../agent/device_tools";
 import { type ToolOptions } from "./types";
 
+const SUBAGENT_TYPES = ["general", "self_mod", "explore", "browser"] as const;
+const subagentTypeSchema = z.enum(SUBAGENT_TYPES);
+
 const formatTaskResult = (task: {
   _id: Id<"tasks">;
+  conversationId: Id<"conversations">;
   status: string;
   result?: string;
   error?: string;
@@ -31,7 +35,6 @@ const formatTaskResult = (task: {
       task.error ?? "(no error)"
     }`;
   }
-  // Running — include recent activity if available
   const updates = task.statusUpdates ?? [];
   if (updates.length > 0) {
     const activity = updates.map((u) => `- ${u.text}`).join("\n");
@@ -40,10 +43,10 @@ const formatTaskResult = (task: {
   return `Task running.\nTask ID: ${task._id}\nElapsed: ${duration}ms`;
 };
 
-export const createOrchestrationTools = (
+const createTaskTools = (
   ctx: ActionCtx,
-  context: DeviceToolContext,
   options: ToolOptions,
+  context?: DeviceToolContext,
 ): ToolSet => {
   const TaskCreate = tool({
     description:
@@ -51,21 +54,21 @@ export const createOrchestrationTools = (
       "The task runs in the background and returns immediately with a task_id. Results are auto-delivered when the agent finishes.\n\n" +
       "Usage:\n" +
       "- description: short summary for logging (e.g. \"Search for React components\").\n" +
-      "- prompt: the full instructions the subagent will follow. Be specific — the subagent only sees this prompt.\n" +
-      "- subagent_type: which agent to use — \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
+      "- prompt: the full instructions the subagent will follow. Be specific - the subagent only sees this prompt.\n" +
+      "- subagent_type: which agent to use - \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n" +
       "- include_history=true: passes conversation context to the subagent. Use for follow-up requests or when the subagent needs to understand what was discussed.\n\n" +
       "Pre-gathered context:\n" +
       "- recall_memory: automatically recall memories and inject them into the agent's context before it runs. Provide a query (defaults to task description).\n" +
       "- pre_explore: run an explore agent first with the given prompt, then inject its findings into the main agent's context.\n\n" +
       "Threads (general and self_mod only):\n" +
-      "- thread_id: continue an existing thread — the agent sees its full prior message history and picks up where it left off.\n" +
+      "- thread_id: continue an existing thread - the agent sees its full prior message history and picks up where it left off.\n" +
       "- thread_name: create or reuse a named thread (short, kebab-case, e.g. \"sidebar-refactor\"). If an active thread with this name exists, it's reused.\n" +
       "- Use threads for multi-step work, iterative tasks, or follow-ups on the same topic. Skip for one-shot tasks or explore agents.\n\n" +
-      "Multiple tasks can run in parallel — call TaskCreate multiple times.",
+      "Multiple tasks can run in parallel - call TaskCreate multiple times.",
     inputSchema: z.object({
       description: z.string().describe("Short summary for logging"),
       prompt: z.string().describe("Full instructions for the subagent"),
-      subagent_type: z.string().describe("Agent type: general, self_mod, explore, or browser"),
+      subagent_type: subagentTypeSchema.describe("Agent type: general, self_mod, explore, or browser"),
       include_history: z.boolean().optional().describe("Pass conversation context to the subagent"),
       thread_id: z.string().optional().describe(
         "Continue an existing thread by ID. Agent sees full prior history.",
@@ -74,7 +77,7 @@ export const createOrchestrationTools = (
         "Create a new thread with this name, or reuse an existing active thread with the same name (short, descriptive, kebab-case).",
       ),
       recall_memory: z.object({
-        query: z.string().optional().describe("What to recall — defaults to the task description"),
+        query: z.string().optional().describe("What to recall - defaults to the task description"),
       }).optional().describe(
         "Automatically recall memories and inject into the agent's context before it runs.",
       ),
@@ -83,18 +86,22 @@ export const createOrchestrationTools = (
       ),
       command_id: z.string().optional().describe(
         "Command ID to load full instructions into the subagent's prompt. " +
-        "The system resolves the content automatically — do not include command instructions in the prompt.",
+        "The system resolves the content automatically - do not include command instructions in the prompt.",
       ),
     }),
     execute: async (args) => {
-      if (!context.userMessageId) {
-        return "Cannot create a task without a user message context.";
+      const conversationId = context?.conversationId ?? options.conversationId;
+      const userMessageId = context?.userMessageId ?? options.userMessageId;
+      const targetDeviceId = context?.targetDeviceId ?? options.targetDeviceId;
+
+      if (!conversationId || !userMessageId) {
+        return "Cannot create a task without a conversation and user message context.";
       }
 
       const result = await ctx.runAction(internal.agent.tasks.runSubagent, {
-        conversationId: context.conversationId,
-        userMessageId: context.userMessageId,
-        targetDeviceId: context.targetDeviceId,
+        conversationId,
+        userMessageId,
+        targetDeviceId,
         description: args.description,
         prompt: args.prompt,
         subagentType: args.subagent_type,
@@ -119,17 +126,24 @@ export const createOrchestrationTools = (
       "- Task running: the task is still in progress. Wait and poll again.\n" +
       "- Task failed/canceled: includes the error or cancellation reason.\n\n" +
       "Tips:\n" +
-      "- If running multiple tasks, poll them in sequence — avoid tight polling loops.\n" +
+      "- If running multiple tasks, poll them in sequence - avoid tight polling loops.\n" +
       "- The task_id is returned by TaskCreate.",
     inputSchema: z.object({
       task_id: z.string().describe("Task ID returned by TaskCreate"),
     }),
     execute: async (args) => {
+      const conversationId = context?.conversationId ?? options.conversationId;
+      if (!conversationId) {
+        return "TaskOutput requires a conversation context.";
+      }
+
       try {
         const record = await ctx.runQuery(internal.agent.tasks.getOutputByExternalIdInternal, {
           taskId: args.task_id,
         });
-        if (!record) return `Task not found: ${args.task_id}`;
+        if (!record || record.conversationId !== conversationId) {
+          return `Task not found: ${args.task_id}`;
+        }
         return formatTaskResult(record as any);
       } catch {
         return `Failed to load task: ${args.task_id}`;
@@ -140,7 +154,7 @@ export const createOrchestrationTools = (
   const TaskCancel = tool({
     description:
       "Cancel a running subagent task.\n\n" +
-      "Use to stop a background task that is no longer needed — for example, if the user changes their mind " +
+      "Use to stop a background task that is no longer needed - for example, if the user changes their mind " +
       "or if a parallel task already produced the answer.\n\n" +
       "The task will be marked as canceled. If the subagent has already finished, cancellation has no effect " +
       "and you'll receive the completed result instead.",
@@ -149,11 +163,25 @@ export const createOrchestrationTools = (
       reason: z.string().optional().describe("Why the task is being canceled (logged for debugging)"),
     }),
     execute: async (args) => {
+      const conversationId = context?.conversationId ?? options.conversationId;
+      if (!conversationId) {
+        return "TaskCancel requires a conversation context.";
+      }
+
+      const current = await ctx.runQuery(internal.agent.tasks.getOutputByExternalIdInternal, {
+        taskId: args.task_id,
+      });
+      if (!current || current.conversationId !== conversationId) {
+        return `Task not found: ${args.task_id}`;
+      }
+
       const record = await ctx.runMutation(internal.agent.tasks.cancelTaskInternal, {
         taskId: args.task_id as Id<"tasks">,
         reason: args.reason,
       });
-      if (!record) return `Task not found: ${args.task_id}`;
+      if (!record || record.conversationId !== conversationId) {
+        return `Task not found: ${args.task_id}`;
+      }
       return formatTaskResult(record as any);
     },
   });
@@ -162,22 +190,41 @@ export const createOrchestrationTools = (
     TaskCreate,
     TaskOutput,
     TaskCancel,
+  };
+};
+
+export const createOrchestrationTools = (
+  ctx: ActionCtx,
+  context: DeviceToolContext,
+  options: ToolOptions,
+): ToolSet => {
+  return {
+    ...createTaskTools(ctx, options, context),
     RecallMemories: createRecallMemoriesTool(ctx, options),
     SaveMemory: createSaveMemoryTool(ctx, options),
   };
 };
 
 /**
- * Deviceless orchestration tools — includes memory tools (pure DB query + cheap LLM)
- * but excludes Task tools (which need device context for subagent tools).
+ * Deviceless orchestration tools - include memory tools always.
+ * Task tools are enabled when conversation + user message context is available.
  */
 export const createOrchestrationToolsWithoutDevice = (
   ctx: ActionCtx,
   options: ToolOptions,
 ): ToolSet => {
-  return {
+  const baseTools: ToolSet = {
     RecallMemories: createRecallMemoriesTool(ctx, options),
     SaveMemory: createSaveMemoryTool(ctx, options),
+  };
+
+  if (!options.conversationId || !options.userMessageId) {
+    return baseTools;
+  }
+
+  return {
+    ...createTaskTools(ctx, options),
+    ...baseTools,
   };
 };
 
@@ -215,7 +262,7 @@ const createSaveMemoryTool = (ctx: ActionCtx, options: ToolOptions) =>
   tool({
     description:
       "Save something worth remembering across conversations.\n\n" +
-      "Use when you learn something about the user worth persisting — preferences, decisions, personal details, " +
+      "Use when you learn something about the user worth persisting - preferences, decisions, personal details, " +
       "project context, or any fact that would be useful in future conversations.\n\n" +
       "The system automatically deduplicates: if a similar memory already exists, it will be skipped.\n\n" +
       "Each memory should be a coherent thought (1-3 sentences), not a bare keyword or a long document.",
@@ -228,7 +275,7 @@ const createSaveMemoryTool = (ctx: ActionCtx, options: ToolOptions) =>
       }
       try {
         return await ctx.runAction(internal.data.memory.saveMemory, {
-          ownerId: options.ownerId!,
+          ownerId: options.ownerId,
           content: args.content,
           conversationId: options.conversationId,
         });
@@ -237,4 +284,3 @@ const createSaveMemoryTool = (ctx: ActionCtx, options: ToolOptions) =>
       }
     },
   });
-

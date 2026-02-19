@@ -13,7 +13,7 @@ import { eventsToHistoryMessages } from "./history_messages";
 import {
   computeCompactionTriggerTokens,
   SUBAGENT_HISTORY_MAX_TOKENS,
-  TASK_DELIVERY_HISTORY_MAX_TOKENS,
+  SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
 } from "./context_budget";
 import type { DeviceToolContext } from "./device_tools";
 import { createTools } from "../tools/index";
@@ -70,6 +70,7 @@ const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
 const PREFERRED_BROWSER_KEY = "preferred_browser";
 const BROWSER_AGENT_SAFARI_DENIED_REASON =
   "Browser Agent is unavailable when the selected browser is Safari. Use a Chromium-based browser for browser automation.";
+const ALLOWED_SUBAGENT_TYPES = new Set(["general", "self_mod", "explore", "browser"]);
 
 const isSafariBrowserPreference = (value: string | null): boolean =>
   value?.trim().toLowerCase() === "safari";
@@ -118,9 +119,9 @@ const appendTaskEvent = async (
   args: {
     conversationId: Id<"conversations">;
     type: string;
-    deviceId: string;
+    deviceId?: string;
     payload: Record<string, Value | undefined>;
-    targetDeviceId: string;
+    targetDeviceId?: string;
   },
 ): Promise<void> => {
   await ctx.runMutation(internal.events.appendInternalEvent, {
@@ -139,7 +140,8 @@ type RecallMemoryArgs = {
 type SubagentExecutionArgs = {
   conversationId: Id<"conversations">;
   userMessageId: Id<"events">;
-  targetDeviceId: string;
+  targetDeviceId?: string;
+  spriteName?: string;
   prompt: string;
   subagentType: string;
   taskId: Id<"tasks">;
@@ -247,6 +249,34 @@ const replayThreadMessage = (message: { role: "user" | "assistant" | "tool"; con
     role: "user" as const,
     content: typeof payload === "string" ? payload : asThreadMessageText(payload),
   };
+};
+
+const selectRecentThreadMessagesByTokens = <
+  T extends { content: string; tokenEstimate?: number },
+>(
+  messages: T[],
+  maxTokens: number,
+): T[] => {
+  if (messages.length === 0) return messages;
+  const safeBudget = Math.max(1, Math.floor(maxTokens));
+  const selected: T[] = [];
+  let used = 0;
+
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    const estimate = Math.max(
+      1,
+      Math.floor(message.tokenEstimate ?? Math.ceil(message.content.length / 4)),
+    );
+    if (selected.length > 0 && used + estimate > safeBudget) {
+      break;
+    }
+    selected.push(message);
+    used += estimate;
+  }
+
+  selected.reverse();
+  return selected;
 };
 
 const STATUS_DESCRIPTIONS: Record<string, string[]> = {
@@ -706,7 +736,12 @@ const executeSubagentRun = async (
 
   // --- Thread loading ---
   const threadSupported = args.subagentType === "general" || args.subagentType === "self_mod";
-  let threadMessages: Array<{ role: "user" | "assistant" | "tool"; content: string; toolCallId?: string }> = [];
+  let threadMessages: Array<{
+    role: "user" | "assistant" | "tool";
+    content: string;
+    toolCallId?: string;
+    tokenEstimate?: number;
+  }> = [];
   let summaryPair: Array<{ role: "user" | "assistant"; content: string }> = [];
 
   if (args.threadId && threadSupported) {
@@ -732,24 +767,30 @@ const executeSubagentRun = async (
         threadId: args.threadId,
       });
 
-      threadMessages = rawMessages.map((m) => ({
-        role: m.role as "user" | "assistant" | "tool",
-        content: m.content,
-        ...(m.toolCallId ? { toolCallId: m.toolCallId } : {}),
-      }));
+      threadMessages = selectRecentThreadMessagesByTokens(
+        rawMessages.map((m) => ({
+          role: m.role as "user" | "assistant" | "tool",
+          content: m.content,
+          ...(m.toolCallId ? { toolCallId: m.toolCallId } : {}),
+          ...(typeof m.tokenEstimate === "number" ? { tokenEstimate: m.tokenEstimate } : {}),
+        })),
+        SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
+      );
     } catch {
       // Thread loading failed — proceed without thread context
     }
   }
 
-  const toolContext: DeviceToolContext = {
-    conversationId: args.conversationId,
-    userMessageId: args.userMessageId,
-    targetDeviceId: args.targetDeviceId,
-    agentType: args.subagentType,
-    sourceDeviceId: args.targetDeviceId,
-    currentTaskId: args.taskId,
-  };
+  const toolContext: DeviceToolContext | undefined = args.targetDeviceId
+    ? {
+        conversationId: args.conversationId,
+        userMessageId: args.userMessageId,
+        targetDeviceId: args.targetDeviceId,
+        agentType: args.subagentType,
+        sourceDeviceId: args.targetDeviceId,
+        currentTaskId: args.taskId,
+      }
+    : undefined;
 
   let finished = false;
   let canceled = false;
@@ -812,6 +853,9 @@ const executeSubagentRun = async (
           maxTaskDepth: 0,
           ownerId: args.ownerId,
           conversationId: args.conversationId,
+          userMessageId: args.userMessageId,
+          targetDeviceId: args.targetDeviceId,
+          spriteName: args.spriteName,
         });
         const exploreResult = await generateText({
           ...exploreModelConfig,
@@ -900,6 +944,9 @@ const executeSubagentRun = async (
           ownerId: args.ownerId,
           currentTaskId: args.taskId,
           conversationId: args.conversationId,
+          userMessageId: args.userMessageId,
+          targetDeviceId: args.targetDeviceId,
+          spriteName: args.spriteName,
         },
       ),
       messages: messages as any[],
@@ -1111,7 +1158,7 @@ export const createTaskRecord = internalMutation({
   args: {
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
-    targetDeviceId: v.string(),
+    targetDeviceId: v.optional(v.string()),
     description: v.string(),
     prompt: v.string(),
     agentType: v.string(),
@@ -1125,7 +1172,7 @@ export const createTaskRecord = internalMutation({
     maxTaskDepth: v.number(),
   }),
   handler: async (ctx, args) => {
-    const maxTaskDepth = Math.max(1, Math.floor(args.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH));
+    const maxTaskDepth = Math.max(0, Math.floor(args.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH));
 
     let taskDepth = 1;
     if (args.parentTaskId) {
@@ -1443,7 +1490,7 @@ export const runSubagent = internalAction({
   args: {
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
-    targetDeviceId: v.string(),
+    targetDeviceId: v.optional(v.string()),
     description: v.string(),
     prompt: v.string(),
     subagentType: v.string(),
@@ -1460,6 +1507,9 @@ export const runSubagent = internalAction({
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const conversation: Doc<"conversations"> = await requireConversationOwner(ctx, args.conversationId);
+    if (!ALLOWED_SUBAGENT_TYPES.has(args.subagentType)) {
+      return `Task denied.\nReason: Unsupported subagent type: ${args.subagentType}`;
+    }
 
     if (args.subagentType === "browser") {
       const preferredBrowser = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
@@ -1477,6 +1527,15 @@ export const runSubagent = internalAction({
     const promptBuild = await buildSystemPrompt(ctx, args.subagentType, {
       ownerId: conversation.ownerId,
     });
+
+    const executionTarget = await ctx.runQuery(
+      internal.agent.device_resolver.resolveExecutionTarget,
+      { ownerId: conversation.ownerId },
+    );
+    const resolvedTargetDeviceId = executionTarget.targetDeviceId ?? args.targetDeviceId;
+    const resolvedSpriteName = resolvedTargetDeviceId
+      ? undefined
+      : executionTarget.spriteName ?? undefined;
 
     // Resolve thread: threadId takes priority, then threadName lookup/create
     const threadSupported = args.subagentType === "general" || args.subagentType === "self_mod";
@@ -1516,7 +1575,7 @@ export const runSubagent = internalAction({
       await ctx.runMutation(internal.agent.tasks.createTaskRecord, {
         conversationId: args.conversationId,
         userMessageId: args.userMessageId,
-        targetDeviceId: args.targetDeviceId,
+        targetDeviceId: resolvedTargetDeviceId,
         description: args.description,
         prompt: args.prompt,
         agentType: args.subagentType,
@@ -1531,8 +1590,8 @@ export const runSubagent = internalAction({
     await appendTaskEvent(ctx, {
       conversationId: args.conversationId,
       type: "task_started",
-      deviceId: args.targetDeviceId,
-      targetDeviceId: args.targetDeviceId,
+      deviceId: resolvedTargetDeviceId,
+      targetDeviceId: resolvedTargetDeviceId,
       payload: {
         taskId,
         description: args.description,
@@ -1546,14 +1605,15 @@ export const runSubagent = internalAction({
 
     await ctx.scheduler.runAfter(TASK_CHECKIN_INTERVAL_MS, internal.agent.tasks.taskCheckin, {
       conversationId: args.conversationId,
-      targetDeviceId: args.targetDeviceId,
+      targetDeviceId: resolvedTargetDeviceId,
       taskId,
     });
 
     await ctx.scheduler.runAfter(0, internal.agent.tasks.executeSubagent, {
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
-      targetDeviceId: args.targetDeviceId,
+      targetDeviceId: resolvedTargetDeviceId,
+      spriteName: resolvedSpriteName,
       description: args.description,
       prompt: args.prompt,
       subagentType: args.subagentType,
@@ -1575,7 +1635,8 @@ export const executeSubagent = internalAction({
   args: {
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
-    targetDeviceId: v.string(),
+    targetDeviceId: v.optional(v.string()),
+    spriteName: v.optional(v.string()),
     description: v.string(),
     prompt: v.string(),
     subagentType: v.string(),
@@ -1605,6 +1666,7 @@ export const executeSubagent = internalAction({
       recallMemory: args.recallMemory,
       preExplore: args.preExplore,
       commandId: args.commandId,
+      spriteName: args.spriteName,
     });
 
     // Deliver result to the orchestrator for top-level tasks only.
@@ -1623,12 +1685,14 @@ export const executeSubagent = internalAction({
         conversationId: args.conversationId,
         userMessageId: args.userMessageId,
         targetDeviceId: args.targetDeviceId,
+        spriteName: args.spriteName,
         taskId: args.taskId,
         description: args.description,
         agentType: args.subagentType,
         result: cleanResult,
         status,
         ownerId: args.ownerId,
+        deliveryAttempt: 0,
       });
     }
 
@@ -1639,7 +1703,7 @@ export const executeSubagent = internalAction({
 export const taskCheckin = internalAction({
   args: {
     conversationId: v.id("conversations"),
-    targetDeviceId: v.string(),
+    targetDeviceId: v.optional(v.string()),
     taskId: v.id("tasks"),
   },
   returns: v.null(),
@@ -1683,13 +1747,15 @@ export const deliverTaskResult = internalAction({
   args: {
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
-    targetDeviceId: v.string(),
+    targetDeviceId: v.optional(v.string()),
+    spriteName: v.optional(v.string()),
     taskId: v.id("tasks"),
     description: v.string(),
     agentType: v.string(),
     result: v.string(),
     status: v.string(),
     ownerId: v.string(),
+    deliveryAttempt: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1716,13 +1782,15 @@ export const deliverTaskResult = internalAction({
       conversationId: args.conversationId,
     });
 
-    const toolContext: DeviceToolContext = {
-      conversationId: args.conversationId,
-      userMessageId: args.userMessageId,
-      targetDeviceId: args.targetDeviceId,
-      agentType: "orchestrator",
-      sourceDeviceId: args.targetDeviceId,
-    };
+    const toolContext: DeviceToolContext | undefined = args.targetDeviceId
+      ? {
+          conversationId: args.conversationId,
+          userMessageId: args.userMessageId,
+          targetDeviceId: args.targetDeviceId,
+          agentType: "orchestrator",
+          sourceDeviceId: args.targetDeviceId,
+        }
+      : undefined;
 
     const resolvedConfig = await resolveModelConfig(
       ctx,
@@ -1736,86 +1804,78 @@ export const deliverTaskResult = internalAction({
     ).catch(() => null);
 
     try {
-      let historyBudget = TASK_DELIVERY_HISTORY_MAX_TOKENS;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const historyEvents = await ctx.runQuery(
-          internal.events.listRecentContextEventsByTokens,
+      const deliverySharedArgs = {
+        system: promptBuild.systemPrompt,
+        tools: createTools(ctx, toolContext, {
+          agentType: "orchestrator",
+          toolsAllowlist: promptBuild.toolsAllowlist,
+          maxTaskDepth: promptBuild.maxTaskDepth,
+          ownerId: args.ownerId,
+          conversationId: args.conversationId,
+          userMessageId: args.userMessageId,
+          targetDeviceId: args.targetDeviceId,
+          spriteName: args.spriteName,
+        }),
+        messages: [
           {
-            conversationId: args.conversationId,
-            maxTokens: historyBudget,
+            role: "user" as const,
+            content: promptBuild.dynamicContext
+              ? `${deliveryMessage}\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`
+              : deliveryMessage,
           },
-        );
-        const historyMessages = eventsToHistoryMessages(historyEvents);
+        ],
+      };
 
+      const genResult = await withModelFailoverAsync(
+        () => generateText({ ...resolvedConfig, ...deliverySharedArgs }),
+        deliveryFallbackConfig
+          ? () => generateText({ ...deliveryFallbackConfig, ...deliverySharedArgs })
+          : undefined,
+      );
+
+      const noResponseCalled = genResult.steps?.some(
+        (step: { toolCalls?: Array<{ toolName: string }> }) =>
+          step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
+      );
+
+      const text = genResult.text?.trim() ?? "";
+      if (text.length > 0 && !noResponseCalled) {
+        await ctx.runMutation(internal.events.saveAssistantMessage, {
+          conversationId: args.conversationId,
+          text,
+          userMessageId: args.userMessageId,
+          usage: genResult.usage
+            ? {
+                inputTokens: genResult.usage.inputTokens,
+                outputTokens: genResult.usage.outputTokens,
+                totalTokens: genResult.usage.totalTokens,
+              }
+            : undefined,
+        });
+
+        // Best-effort command suggestions after delivery.
         try {
-          const deliverySharedArgs = {
-            system: promptBuild.systemPrompt,
-            tools: createTools(ctx, toolContext, {
-              agentType: "orchestrator",
-              toolsAllowlist: promptBuild.toolsAllowlist,
-              maxTaskDepth: promptBuild.maxTaskDepth,
-              ownerId: args.ownerId,
-              conversationId: args.conversationId,
-            }),
-            messages: [
-              ...historyMessages,
-              {
-                role: "user" as const,
-                content: promptBuild.dynamicContext
-                  ? `${deliveryMessage}\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`
-                  : deliveryMessage,
-              },
-            ],
-          };
-
-          const genResult = await withModelFailoverAsync(
-            () => generateText({ ...resolvedConfig, ...deliverySharedArgs }),
-            deliveryFallbackConfig
-              ? () => generateText({ ...deliveryFallbackConfig, ...deliverySharedArgs })
-              : undefined,
-          );
-
-          // Check if NoResponse was called in any step
-          const noResponseCalled = genResult.steps?.some(
-            (step: { toolCalls?: Array<{ toolName: string }> }) =>
-              step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
-          );
-
-          const text = genResult.text?.trim() ?? "";
-          if (text.length > 0 && !noResponseCalled) {
-            await ctx.runMutation(internal.events.saveAssistantMessage, {
-              conversationId: args.conversationId,
-              text,
-              userMessageId: args.userMessageId,
-              usage: genResult.usage
-                ? {
-                    inputTokens: genResult.usage.inputTokens,
-                    outputTokens: genResult.usage.outputTokens,
-                    totalTokens: genResult.usage.totalTokens,
-                  }
-                : undefined,
-            });
-
-            // Best-effort command suggestions after delivery.
-            try {
-              await ctx.scheduler.runAfter(0, internal.agent.suggestions.generateSuggestions, {
-                conversationId: args.conversationId,
-                ownerId: args.ownerId,
-              });
-            } catch { /* best-effort */ }
-          }
-          break;
-        } catch (error) {
-          const message = (error as Error).message ?? "Unknown error";
-          if (attempt === 0 && isContextOverflowError(message)) {
-            historyBudget = Math.max(4_000, Math.floor(historyBudget / 2));
-            continue;
-          }
-          throw error;
+          await ctx.scheduler.runAfter(0, internal.agent.suggestions.generateSuggestions, {
+            conversationId: args.conversationId,
+            ownerId: args.ownerId,
+          });
+        } catch {
+          // best-effort
         }
       }
     } catch (error) {
       console.error("deliverTaskResult failed:", (error as Error).message);
+      const attempt = args.deliveryAttempt ?? 0;
+      if (attempt < 2) {
+        await ctx.scheduler.runAfter(
+          (attempt + 1) * 5_000,
+          internal.agent.tasks.deliverTaskResult,
+          {
+            ...args,
+            deliveryAttempt: attempt + 1,
+          },
+        );
+      }
     }
 
     return null;

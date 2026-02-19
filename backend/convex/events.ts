@@ -236,6 +236,66 @@ const MODEL_CONTEXT_EVENT_TYPES = new Set([
   "task_failed",
 ]);
 
+const CHAT_CONTEXT_EVENT_TYPES = new Set([
+  "user_message",
+  "assistant_message",
+]);
+
+type ContextEvent = Infer<typeof eventValidator>;
+
+const asPayloadObject = (value: Value): Record<string, Value> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, Value>)
+    : {};
+
+const getEventPayloadAgentType = (event: ContextEvent): string | undefined => {
+  const raw = asPayloadObject(event.payload).agentType;
+  return typeof raw === "string" ? raw : undefined;
+};
+
+const filterOrchestratorContextEvents = (
+  eventsNewestFirst: ContextEvent[],
+): ContextEvent[] => {
+  const orchestratorRequestIds = new Set<string>();
+  for (const event of eventsNewestFirst) {
+    if (event.type !== "tool_request" || !event.requestId) {
+      continue;
+    }
+    if (getEventPayloadAgentType(event) === "orchestrator") {
+      orchestratorRequestIds.add(event.requestId);
+    }
+  }
+
+  return eventsNewestFirst.filter((event) => {
+    if (event.type === "user_message" || event.type === "assistant_message") {
+      return true;
+    }
+
+    if (
+      event.type === "task_started" ||
+      event.type === "task_completed" ||
+      event.type === "task_failed"
+    ) {
+      // Subagent task lifecycle should not pollute orchestrator context.
+      return false;
+    }
+
+    if (event.type === "tool_request") {
+      return getEventPayloadAgentType(event) === "orchestrator";
+    }
+
+    if (event.type === "tool_result") {
+      const agentType = getEventPayloadAgentType(event);
+      if (agentType === "orchestrator") {
+        return true;
+      }
+      return !!(event.requestId && orchestratorRequestIds.has(event.requestId));
+    }
+
+    return false;
+  });
+};
+
 export const listRecentContextEvents = internalQuery({
   args: {
     conversationId: v.id("conversations"),
@@ -285,6 +345,8 @@ export const listRecentContextEventsByTokens = internalQuery({
     maxTokens: v.optional(v.number()),
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
+    includeOperationalEvents: v.optional(v.boolean()),
+    contextAgentType: v.optional(v.string()),
   },
   returns: v.array(eventValidator),
   handler: async (ctx, args) => {
@@ -312,9 +374,19 @@ export const listRecentContextEventsByTokens = internalQuery({
       events = events.filter((event) => event._id !== args.excludeEventId);
     }
 
-    const modelEvents = events.filter((event) => MODEL_CONTEXT_EVENT_TYPES.has(event.type));
+    const contextEvents = (() => {
+      const modelEvents = events.filter((event) => MODEL_CONTEXT_EVENT_TYPES.has(event.type));
+      if (args.includeOperationalEvents === false) {
+        return modelEvents.filter((event) => CHAT_CONTEXT_EVENT_TYPES.has(event.type));
+      }
+      if (args.contextAgentType === "orchestrator") {
+        return filterOrchestratorContextEvents(modelEvents);
+      }
+      return modelEvents;
+    })();
+
     const selectedNewestFirst = selectRecentByTokenBudget({
-      itemsNewestFirst: modelEvents,
+      itemsNewestFirst: contextEvents,
       maxTokens,
       estimateTokens: (event) =>
         estimateContextEventTokens({

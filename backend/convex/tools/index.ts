@@ -28,7 +28,7 @@ const filterTools = (
 export const createTools = (
   ctx: ActionCtx,
   context: DeviceToolContext | undefined,
-  options: ToolOptions & { spriteName?: string },
+  options: ToolOptions,
 ): ToolSet => {
   // Tier 2: Local device tools (if Electron app running)
   const coreTools = context ? createCoreDeviceTools(ctx, context) : {};

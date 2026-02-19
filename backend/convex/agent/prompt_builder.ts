@@ -163,7 +163,7 @@ export const buildSystemPrompt = async (
   }
 
   const maxTaskDepthValue = Number(agent.maxTaskDepth ?? 2);
-  const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue > 0
+  const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
     ? Math.floor(maxTaskDepthValue)
     : 2;
 

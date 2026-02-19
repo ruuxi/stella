@@ -734,6 +734,12 @@ http.route({
         : {};
     const userText = userPayload.text ?? "";
     const userPlatform = userPayload.platform ?? "unknown";
+    const agentType =
+      body.agent === "self_mod"
+        ? "self_mod"
+        : body.agent === "general"
+          ? "general"
+          : "orchestrator";
 
     const historyEvents = await ctx.runQuery(
       internal.events.listRecentContextEventsByTokens,
@@ -742,6 +748,7 @@ http.route({
         maxTokens: ORCHESTRATOR_HISTORY_MAX_TOKENS,
         beforeTimestamp: userEvent.timestamp,
         excludeEventId: userMessageId,
+        contextAgentType: agentType,
       },
     );
 
@@ -777,13 +784,6 @@ http.route({
 
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
     await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
-
-    const agentType =
-      body.agent === "self_mod"
-        ? "self_mod"
-        : body.agent === "general"
-          ? "general"
-          : "orchestrator";
 
     const promptBuild = await buildSystemPrompt(ctx, agentType, { ownerId: conversation.ownerId, conversationId });
 
@@ -859,6 +859,8 @@ http.route({
           maxTaskDepth: promptBuild.maxTaskDepth,
           ownerId: conversation.ownerId,
           conversationId,
+          userMessageId,
+          targetDeviceId,
           spriteName,
         },
       ),
