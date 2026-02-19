@@ -310,6 +310,8 @@ export const invoke = internalAction({
             maxTaskDepth: Math.min(promptBuild.maxTaskDepth, 2),
             ownerId,
             conversationId: args.conversationId,
+            userMessageId: args.userMessageId,
+            targetDeviceId: deviceContext?.targetDeviceId,
           },
         )
       : undefined;

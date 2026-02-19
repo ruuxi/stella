@@ -312,11 +312,26 @@ export const extractConversationWindow = internalAction({
       events: events.map((event: { type: string; timestamp: number; payload: unknown }) => ({
         type: event.type,
         timestamp: event.timestamp,
-        text:
-          (event.payload && typeof event.payload === "object" &&
-            typeof (event.payload as { text?: unknown }).text === "string")
-            ? (event.payload as { text: string }).text
-            : "",
+        text: (() => {
+          const payload =
+            event.payload && typeof event.payload === "object"
+              ? (event.payload as { text?: unknown; result?: unknown })
+              : {};
+          if (typeof payload.text === "string" && payload.text.trim().length > 0) {
+            return payload.text;
+          }
+          if (event.type === "task_completed" && payload.result !== undefined) {
+            if (typeof payload.result === "string") {
+              return payload.result;
+            }
+            try {
+              return JSON.stringify(payload.result);
+            } catch {
+              return String(payload.result);
+            }
+          }
+          return "";
+        })(),
       })),
     });
 

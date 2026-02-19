@@ -270,7 +270,7 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
 
   const maxTaskDepthNumber = Number(record.maxTaskDepth);
   const maxTaskDepth =
-    Number.isFinite(maxTaskDepthNumber) && maxTaskDepthNumber > 0
+    Number.isFinite(maxTaskDepthNumber) && maxTaskDepthNumber >= 0
       ? Math.floor(maxTaskDepthNumber)
       : undefined;
 

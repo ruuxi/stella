@@ -7,6 +7,9 @@ export type ToolOptions = {
   currentTaskId?: Id<"tasks">;
   ownerId?: string;
   conversationId?: Id<"conversations">;
+  userMessageId?: Id<"events">;
+  targetDeviceId?: string;
+  spriteName?: string;
 };
 
 /**
