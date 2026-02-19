@@ -10,8 +10,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
-import { rawQuery } from "../db";
-import { getModelConfig } from "./model";
+import { rawQuery } from "../db.js";
+import { getModelConfig } from "./model.js";
 
 export type ResolvedModelConfig = {
   model: string | LanguageModel;

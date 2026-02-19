@@ -5,15 +5,15 @@
 
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import { insert, update, rawQuery, newId } from "../db";
-import { broadcastSSE } from "../server";
+import { insert, update, rawQuery, newId } from "../db.js";
+import { broadcastSSE } from "../server.js";
 import {
   createTask,
   updateTaskStatus,
   addTaskStatusUpdate,
   cancelTask,
   getTaskById,
-} from "./tasks_local";
+} from "./tasks_local.js";
 
 const log = (...args: unknown[]) => console.log("[local-tools]", ...args);
 

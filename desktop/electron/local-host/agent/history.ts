@@ -3,7 +3,7 @@
  * Ported from backend/convex/agent/history_messages.ts + context_window.ts
  */
 
-import { rawQuery } from "../db";
+import { rawQuery } from "../db.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

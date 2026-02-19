@@ -4,8 +4,8 @@
  * Ported from backend/convex/agent/tasks.ts (simplified for local mode).
  */
 
-import { newId, insert, update, findById, rawQuery } from "../db";
-import { broadcastSSE } from "../server";
+import { newId, insert, update, findById, rawQuery } from "../db.js";
+import { broadcastSSE } from "../server.js";
 
 const log = (...args: unknown[]) => console.log("[local-tasks]", ...args);
 
