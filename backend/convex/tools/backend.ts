@@ -50,7 +50,6 @@ const cronPayloadSchema = z.discriminatedUnion("kind", [
     message: z.string(),
     agentType: z.string().optional(),
     deliver: z.boolean().optional(),
-    includeHistory: z.boolean().optional(),
   }),
 ]);
 

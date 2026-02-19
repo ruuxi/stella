@@ -407,7 +407,6 @@ export const run = internalAction({
         ownerId: config.ownerId,
         targetDeviceId: targetDeviceId ?? undefined,
         spriteName: spriteName ?? undefined,
-        includeHistory: true,
       });
       text = result.text ?? "";
       silent = result.silent;

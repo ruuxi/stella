@@ -29,8 +29,6 @@ type RunAgentTurnArgs = {
   ownerId?: string;
   targetDeviceId?: string;
   spriteName?: string;
-  includeHistory?: boolean;
-  historyMaxTokens?: number;
 };
 
 export async function runAgentTurn({
@@ -41,8 +39,6 @@ export async function runAgentTurn({
   ownerId,
   targetDeviceId,
   spriteName,
-  includeHistory = true,
-  historyMaxTokens = AUTOMATION_HISTORY_MAX_TOKENS,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
   await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
   await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
@@ -79,13 +75,10 @@ export async function runAgentTurn({
     },
   );
 
-  const historyEvents =
-    includeHistory && historyMaxTokens > 0
-      ? await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
-          conversationId,
-          maxTokens: Math.min(Math.max(Math.floor(historyMaxTokens), 1), 120_000),
-        })
-      : [];
+  const historyEvents = await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
+    conversationId,
+    maxTokens: Math.min(Math.max(Math.floor(AUTOMATION_HISTORY_MAX_TOKENS), 1), 120_000),
+  });
 
   const historyMessages = eventsToHistoryMessages(historyEvents ?? []);
 

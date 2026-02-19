@@ -44,7 +44,6 @@ type CronPayload =
       message: string;
       agentType?: string;
       deliver?: boolean;
-      includeHistory?: boolean;
     };
 
 const syncTableValidator = v.union(
@@ -228,13 +227,11 @@ const parseCronPayload = (value: unknown): CronPayload => {
     }
     const agentType = asString(record.agentType);
     const deliver = asBoolean(record.deliver);
-    const includeHistory = asBoolean(record.includeHistory);
     return {
       kind,
       message,
       ...(agentType ? { agentType } : {}),
       ...(deliver !== undefined ? { deliver } : {}),
-      ...(includeHistory !== undefined ? { includeHistory } : {}),
     };
   }
 
