@@ -106,6 +106,10 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     systemPrompt: ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
     agentTypes: ["orchestrator"],
     toolsAllowlist: [
+      "Read",
+      "Write",
+      "Edit",
+      "Bash",
       "TaskCreate", "TaskOutput", "TaskCancel", "OpenCanvas", "CloseCanvas", "AskUserQuestion",
       "RecallMemories", "SaveMemory",
       "HeartbeatGet", "HeartbeatUpsert", "HeartbeatRun",
