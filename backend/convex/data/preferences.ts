@@ -4,6 +4,7 @@ import { requireUserId } from "../auth";
 
 const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"));
 const RUNTIME_MODE_KEY = "runtime_mode";
+const CLOUD_PRIMARY_KEY = "cloud_primary";
 const PREFERRED_BROWSER_KEY = "preferred_browser";
 const preferredBrowserValidator = v.union(
   v.literal("arc"),
@@ -166,6 +167,40 @@ export const setPreferredBrowser = mutation({
     return null;
   },
 });
+
+export const ensureCloudPrimary = mutation({
+  args: {},
+  returns: v.object({ enabled: v.boolean() }),
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const existing = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_owner_key", (q) =>
+        q.eq("ownerId", ownerId).eq("key", CLOUD_PRIMARY_KEY),
+      )
+      .first();
+    const updatedAt = Date.now();
+
+    if (existing) {
+      if (existing.value !== "true") {
+        await ctx.db.patch(existing._id, {
+          value: "true",
+          updatedAt,
+        });
+      }
+      return { enabled: true };
+    }
+
+    await ctx.db.insert("user_preferences", {
+      ownerId,
+      key: CLOUD_PRIMARY_KEY,
+      value: "true",
+      updatedAt,
+    });
+    return { enabled: true };
+  },
+});
+
 export const getRuntimeModeForOwner = internalQuery({
   args: {
     ownerId: v.string(),

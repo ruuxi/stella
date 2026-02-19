@@ -120,7 +120,7 @@ const isAllowedCorsOrigin = (origin: string | null) => {
 const getCorsHeaders = (origin: string | null) => {
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-ID",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -974,6 +974,15 @@ type SynthesizeResponse = {
   suggestions: WelcomeSuggestion[];
 };
 const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
+const MAX_ANON_SYNTHESIS_REQUESTS = 10;
+
+const getAnonDeviceId = (request: Request): string | null => {
+  const deviceId = request.headers.get("X-Device-ID");
+  if (!deviceId) return null;
+  const trimmed = deviceId.trim();
+  if (trimmed.length === 0 || trimmed.length >= 256) return null;
+  return trimmed;
+};
 
 http.route({
   path: "/api/synthesize",
@@ -995,8 +1004,29 @@ http.route({
     const origin = request.headers.get("origin");
 
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const anonDeviceId = getAnonDeviceId(request);
+    if (!identity && !anonDeviceId) {
       return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+    if (!identity && anonDeviceId) {
+      const usage = await ctx.runQuery(internal.ai_proxy_data.getDeviceUsage, {
+        deviceId: anonDeviceId,
+      });
+      if (usage && usage.requestCount >= MAX_ANON_SYNTHESIS_REQUESTS) {
+        return withCors(
+          new Response(
+            JSON.stringify({
+              error:
+                "Rate limit exceeded. Please create an account for continued access.",
+            }),
+            {
+              status: 429,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+          origin,
+        );
+      }
     }
 
     let body: SynthesizeRequest | null = null;
@@ -1025,7 +1055,8 @@ http.route({
     const gateway = createGateway({ apiKey });
 
     try {
-      const synthesisConfig = await resolveModelConfig(ctx, "synthesis", identity.subject);
+      const ownerId = identity?.subject;
+      const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId);
       const userMessage = buildCoreSynthesisUserMessage(body.formattedSignals);
 
       const synthesisModel = typeof synthesisConfig.model === "string"
@@ -1048,7 +1079,7 @@ http.route({
         );
       }
 
-      const welcomeConfig = await resolveModelConfig(ctx, "welcome", identity.subject);
+      const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId);
       const welcomePrompt = buildWelcomeMessagePrompt(coreMemory);
 
       const welcomeModel = typeof welcomeConfig.model === "string"
@@ -1099,6 +1130,12 @@ http.route({
         welcomeMessage: welcomeResult.text?.trim() || DEFAULT_WELCOME_MESSAGE,
         suggestions,
       };
+
+      if (!identity && anonDeviceId) {
+        await ctx.runMutation(internal.ai_proxy_data.incrementDeviceUsage, {
+          deviceId: anonDeviceId,
+        });
+      }
 
       return withCors(
         new Response(JSON.stringify(response), {
