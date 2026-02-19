@@ -62,6 +62,31 @@ const parseStringList = (value: string | null | undefined): string[] => {
 
 const uniqueSorted = (values: string[]) => [...new Set(values)].sort();
 
+const upsertUserPreference = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  key: string,
+  value: string,
+) => {
+  const updatedAt = Date.now();
+  const existing = await ctx.db
+    .query("user_preferences")
+    .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
+    .first();
+
+  if (existing) {
+    await ctx.db.patch(existing._id, { value, updatedAt });
+    return;
+  }
+
+  await ctx.db.insert("user_preferences", {
+    ownerId,
+    key,
+    value,
+    updatedAt,
+  });
+};
+
 const ensureCloudPrimaryPreference = async (
   ctx: MutationCtx,
   ownerId: string,
@@ -479,26 +504,7 @@ export const setDmPolicy = internalMutation({
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = getDmPolicyKey(args.provider);
-    const now = Date.now();
-
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
-      .first();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value: args.policy,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key,
-        value: args.policy,
-        updatedAt: now,
-      });
-    }
+    await upsertUserPreference(ctx, ownerId, key, args.policy);
 
     return null;
   },
@@ -514,23 +520,7 @@ export const setDmAllowlist = internalMutation({
     const ownerId = await requireUserId(ctx);
     const key = getDmAllowlistKey(args.provider);
     const value = JSON.stringify(uniqueSorted(args.externalUserIds));
-    const now = Date.now();
-
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
-      .first();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, { value, updatedAt: now });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key,
-        value,
-        updatedAt: now,
-      });
-    }
+    await upsertUserPreference(ctx, ownerId, key, value);
 
     return null;
   },
@@ -546,23 +536,7 @@ export const setDmDenylist = internalMutation({
     const ownerId = await requireUserId(ctx);
     const key = getDmDenylistKey(args.provider);
     const value = JSON.stringify(uniqueSorted(args.externalUserIds));
-    const now = Date.now();
-
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
-      .first();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, { value, updatedAt: now });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key,
-        value,
-        updatedAt: now,
-      });
-    }
+    await upsertUserPreference(ctx, ownerId, key, value);
 
     return null;
   },

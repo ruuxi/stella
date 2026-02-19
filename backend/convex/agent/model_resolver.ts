@@ -114,6 +114,55 @@ async function getUserKey(
   });
 }
 
+type ByokResolution = {
+  model: string | LanguageModel;
+  usedByok: boolean;
+};
+
+/** Resolve a model string through the BYOK chain, returning a model instance when a user key is available. */
+async function resolveModelViaByokChain(
+  ctx: { runQuery: ActionCtx["runQuery"] },
+  ownerId: string,
+  modelString: string,
+): Promise<ByokResolution> {
+  const provider = extractProvider(modelString);
+
+  // 1. Direct provider key
+  if (provider) {
+    const secretKey = providerToSecretKey(provider);
+    if (secretKey) {
+      const apiKey = await getUserKey(ctx, ownerId, secretKey);
+      if (apiKey) {
+        const directModel = createProviderModel(modelString, apiKey);
+        if (directModel) {
+          return { model: directModel, usedByok: true };
+        }
+      }
+    }
+  }
+
+  // 2. OpenRouter fallback
+  const openrouterKey = await getUserKey(ctx, ownerId, "llm:openrouter");
+  if (openrouterKey) {
+    return {
+      model: createOpenRouterModel(modelString, openrouterKey),
+      usedByok: true,
+    };
+  }
+
+  // 3. User's own Vercel AI Gateway key
+  const gatewayKey = await getUserKey(ctx, ownerId, "llm:gateway");
+  if (gatewayKey) {
+    return {
+      model: createGatewayModel(modelString, gatewayKey),
+      usedByok: true,
+    };
+  }
+
+  // 4. No BYOK — return model string (platform gateway will resolve it)
+  return { model: modelString, usedByok: false };
+}
+
 /**
  * Resolve the model config for an agent type, applying user overrides and BYOK.
  *
@@ -147,60 +196,14 @@ export async function resolveModelConfig(
     modelString = override;
   }
 
-  // BYOK fallback chain:
-  // 1. Direct provider key (anthropic, openai, google)
-  // 2. OpenRouter key (routes any model through OpenRouter)
-  // 3. Vercel AI Gateway key (user's own gateway key)
-  // 4. Platform gateway (default, no user key)
-  const provider = extractProvider(modelString);
-
-  // 1. Direct provider key
-  if (provider) {
-    const secretKey = providerToSecretKey(provider);
-    if (secretKey) {
-      const apiKey = await getUserKey(ctx, ownerId, secretKey);
-      if (apiKey) {
-        const directModel = createProviderModel(modelString, apiKey);
-        if (directModel) {
-          return {
-            model: directModel,
-            temperature: defaults.temperature,
-            maxOutputTokens: defaults.maxOutputTokens,
-            providerOptions: filterGatewayOptions(defaults.providerOptions as Record<string, unknown>),
-          };
-        }
-      }
-    }
-  }
-
-  // 2. OpenRouter fallback
-  const openrouterKey = await getUserKey(ctx, ownerId, "llm:openrouter");
-  if (openrouterKey) {
-    return {
-      model: createOpenRouterModel(modelString, openrouterKey),
-      temperature: defaults.temperature,
-      maxOutputTokens: defaults.maxOutputTokens,
-      providerOptions: filterGatewayOptions(defaults.providerOptions as Record<string, unknown>),
-    };
-  }
-
-  // 3. User's own Vercel AI Gateway key
-  const gatewayKey = await getUserKey(ctx, ownerId, "llm:gateway");
-  if (gatewayKey) {
-    return {
-      model: createGatewayModel(modelString, gatewayKey),
-      temperature: defaults.temperature,
-      maxOutputTokens: defaults.maxOutputTokens,
-      providerOptions: filterGatewayOptions(defaults.providerOptions as Record<string, unknown>),
-    };
-  }
-
-  // 4. No BYOK — return model string (platform gateway will resolve it)
+  const resolved = await resolveModelViaByokChain(ctx, ownerId, modelString);
   return {
-    model: modelString,
+    model: resolved.model,
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
-    providerOptions: defaults.providerOptions as ProviderOptions | undefined,
+    providerOptions: resolved.usedByok
+      ? filterGatewayOptions(defaults.providerOptions as Record<string, unknown>)
+      : (defaults.providerOptions as ProviderOptions | undefined),
   };
 }
 
@@ -230,50 +233,9 @@ export async function resolveFallbackConfig(
     };
   }
 
-  // BYOK chain for the fallback model (same logic as primary)
-  const provider = extractProvider(fallbackModel);
-
-  // 1. Direct provider key
-  if (provider) {
-    const secretKey = providerToSecretKey(provider);
-    if (secretKey) {
-      const apiKey = await getUserKey(ctx, ownerId, secretKey);
-      if (apiKey) {
-        const directModel = createProviderModel(fallbackModel, apiKey);
-        if (directModel) {
-          return {
-            model: directModel,
-            temperature: defaults.temperature,
-            maxOutputTokens: defaults.maxOutputTokens,
-          };
-        }
-      }
-    }
-  }
-
-  // 2. OpenRouter fallback
-  const openrouterKey = await getUserKey(ctx, ownerId, "llm:openrouter");
-  if (openrouterKey) {
-    return {
-      model: createOpenRouterModel(fallbackModel, openrouterKey),
-      temperature: defaults.temperature,
-      maxOutputTokens: defaults.maxOutputTokens,
-    };
-  }
-
-  // 3. User's own Vercel AI Gateway key
-  const gatewayKey = await getUserKey(ctx, ownerId, "llm:gateway");
-  if (gatewayKey) {
-    return {
-      model: createGatewayModel(fallbackModel, gatewayKey),
-      temperature: defaults.temperature,
-      maxOutputTokens: defaults.maxOutputTokens,
-    };
-  }
-
-  // 4. No BYOK — return fallback model string (platform gateway will resolve it)
+  const resolved = await resolveModelViaByokChain(ctx, ownerId, fallbackModel);
   return {
-    model: fallbackModel,
+    model: resolved.model,
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
   };
