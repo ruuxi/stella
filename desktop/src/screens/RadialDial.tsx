@@ -3,7 +3,6 @@ import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
-import { hexToRgb } from '../theme/color'
 import { StellaAnimation } from '../components/StellaAnimation'
 import {
   initBlob,
@@ -12,6 +11,7 @@ import {
   cancelAnimation,
   destroyBlob,
   cssToVec3,
+  cssToOpaque,
   type BlobColors,
 } from './radial-blob'
 
@@ -33,14 +33,6 @@ const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
 // How long into the open animation before SVG content starts fading in
 const CONTENT_FADE_DELAY = 180 // ms
-
-const toRgba = (color: string, alpha: number): string => {
-  if (color.startsWith('#')) {
-    const { r, g, b } = hexToRgb(color)
-    return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`
-  }
-  return color
-}
 
 const createWedgePath = (startAngle: number, endAngle: number): string => {
   const startRad = (startAngle - 90) * (Math.PI / 180)
@@ -302,12 +294,12 @@ export function RadialDial() {
             const Icon = wedge.icon
 
             const fillColor = isSelected
-              ? toRgba(colors.interactive, 0.9)
-              : colors.card
+              ? cssToOpaque(colors.interactive)
+              : cssToOpaque(colors.card)
 
             const strokeColor = isSelected
-              ? colors.interactive
-              : toRgba(colors.border, 0.2)
+              ? cssToOpaque(colors.interactive)
+              : cssToOpaque(colors.border)
 
             const iconColor = isSelected
               ? colors.primaryForeground
@@ -362,8 +354,8 @@ export function RadialDial() {
             cx={CENTER}
             cy={CENTER}
             r={CENTER_BG_RADIUS}
-            fill={toRgba(colors.background, 0.95)}
-            stroke={toRgba(colors.border, 0.5)}
+            fill={cssToOpaque(colors.background)}
+            stroke={cssToOpaque(colors.border)}
             strokeWidth={1}
             style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
           />

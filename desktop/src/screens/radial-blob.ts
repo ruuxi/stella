@@ -136,20 +136,34 @@ let animFrame: number | null = null
 
 let _colorCtx: CanvasRenderingContext2D | null = null
 
-export function cssToVec3(color: string): Vec3 {
+function getColorCtx(): CanvasRenderingContext2D {
   if (!_colorCtx) {
     const c = document.createElement('canvas')
     c.width = 1
     c.height = 1
     _colorCtx = c.getContext('2d')!
   }
-  const ctx = _colorCtx
+  return _colorCtx
+}
+
+function sampleColor(color: string): Uint8ClampedArray {
+  const ctx = getColorCtx()
   ctx.clearRect(0, 0, 1, 1)
   ctx.fillStyle = '#000'
   ctx.fillStyle = color
   ctx.fillRect(0, 0, 1, 1)
-  const d = ctx.getImageData(0, 0, 1, 1).data
+  return ctx.getImageData(0, 0, 1, 1).data
+}
+
+export function cssToVec3(color: string): Vec3 {
+  const d = sampleColor(color)
   return [d[0] / 255, d[1] / 255, d[2] / 255]
+}
+
+/** Convert any CSS color to an opaque rgb() string (strips alpha). */
+export function cssToOpaque(color: string): string {
+  const d = sampleColor(color)
+  return `rgb(${d[0]}, ${d[1]}, ${d[2]})`
 }
 
 // ---- WebGL setup ----
