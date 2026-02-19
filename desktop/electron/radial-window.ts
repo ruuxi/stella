@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, ipcMain, screen } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getDevServerUrl } from './dev-url.js'
@@ -21,6 +21,19 @@ let radialWindow: BrowserWindow | null = null
 // Using getBounds() during the first few ms after setBounds() can return stale values on some systems.
 let radialBounds: { x: number; y: number } | null = null
 let radialScaleFactor = 1
+let hideTimeout: ReturnType<typeof setTimeout> | null = null
+const CLOSE_ANIM_FALLBACK = 250 // Fallback timeout if renderer doesn't ack
+
+// Renderer signals close animation is done — actually hide the window now
+ipcMain.on('radial:animDone', () => {
+  if (hideTimeout) {
+    clearTimeout(hideTimeout)
+    hideTimeout = null
+  }
+  if (radialWindow) {
+    radialWindow.setOpacity(0)
+  }
+})
 
 const getDevUrl = () => `${getDevServerUrl()}/radial.html`
 
@@ -72,6 +85,12 @@ export const createRadialWindow = () => {
 }
 
 export const showRadialWindow = (x: number, y: number) => {
+  // Cancel any pending close-animation hide
+  if (hideTimeout) {
+    clearTimeout(hideTimeout)
+    hideTimeout = null
+  }
+
   if (!radialWindow) {
     createRadialWindow()
   }
@@ -116,11 +135,17 @@ export const showRadialWindow = (x: number, y: number) => {
 export const hideRadialWindow = () => {
   if (radialWindow) {
     radialWindow.webContents.send('radial:hide')
-    // Make invisible and click-through. The window stays on-screen so the
-    // renderer is never throttled by Chromium — rAF and IPC stay responsive.
-    radialWindow.setOpacity(0)
+    // Make non-interactive immediately, but keep visible for close animation
     radialWindow.setIgnoreMouseEvents(true, { forward: true })
     radialBounds = null
+    // Fallback: hide after timeout if renderer doesn't ack
+    if (hideTimeout) clearTimeout(hideTimeout)
+    hideTimeout = setTimeout(() => {
+      hideTimeout = null
+      if (radialWindow) {
+        radialWindow.setOpacity(0)
+      }
+    }, CLOSE_ANIM_FALLBACK)
   }
 }
 

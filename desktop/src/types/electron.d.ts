@@ -162,6 +162,7 @@ export type ElectronApi = {
   onRadialCursor: (
     callback: (event: unknown, data: { x: number; y: number; centerX: number; centerY: number }) => void
   ) => () => void
+  radialAnimDone: () => void
   submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) => void
   submitRegionClick: (point: { x: number; y: number }) => void
   getWindowCapture: (point: { x: number; y: number }) => Promise<{
