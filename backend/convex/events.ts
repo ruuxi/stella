@@ -2,7 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { v, ConvexError, Infer, type Value } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireConversationOwner, requireUserId } from "./auth";
 import { jsonValueValidator, optionalChannelEnvelopeValidator } from "./shared_validators";
 import {
@@ -242,6 +242,17 @@ const CHAT_CONTEXT_EVENT_TYPES = new Set([
 ]);
 
 type ContextEvent = Infer<typeof eventValidator>;
+type RecentConversationEventsArgs = {
+  conversationId: Id<"conversations">;
+  beforeTimestamp?: number;
+  excludeEventId?: Id<"events">;
+  take: number;
+};
+
+type ContextEventFilterOptions = {
+  includeOperationalEvents?: boolean;
+  contextAgentType?: string;
+};
 
 const asPayloadObject = (value: Value): Record<string, Value> =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -296,6 +307,49 @@ const filterOrchestratorContextEvents = (
   });
 };
 
+const fetchRecentConversationEvents = async (
+  ctx: QueryCtx,
+  args: RecentConversationEventsArgs,
+): Promise<ContextEvent[]> => {
+  const query = ctx.db.query("events").withIndex("by_conversation", (q) => {
+    const base = q.eq("conversationId", args.conversationId);
+    if (args.beforeTimestamp !== undefined) {
+      return base.lte("timestamp", args.beforeTimestamp);
+    }
+    return base;
+  });
+
+  let events = await query.order("desc").take(args.take);
+  if (args.excludeEventId) {
+    events = events.filter((event) => event._id !== args.excludeEventId);
+  }
+  return events;
+};
+
+const filterContextEvents = (
+  eventsNewestFirst: ContextEvent[],
+  options?: ContextEventFilterOptions,
+): ContextEvent[] => {
+  const modelEvents = eventsNewestFirst.filter((event) => MODEL_CONTEXT_EVENT_TYPES.has(event.type));
+  if (options?.includeOperationalEvents === false) {
+    return modelEvents.filter((event) => CHAT_CONTEXT_EVENT_TYPES.has(event.type));
+  }
+  if (options?.contextAgentType === "orchestrator") {
+    return filterOrchestratorContextEvents(modelEvents);
+  }
+  return modelEvents;
+};
+
+const orderEventsChronologically = <T extends { timestamp: number; _id: Id<"events"> }>(
+  events: T[],
+): T[] => {
+  events.sort(
+    (a, b) =>
+      a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
+  );
+  return events;
+};
+
 export const listRecentContextEvents = internalQuery({
   args: {
     conversationId: v.id("conversations"),
@@ -311,25 +365,13 @@ export const listRecentContextEvents = internalQuery({
     }
     const limit = Math.min(Math.floor(requestedLimit), 120);
     const take = Math.min(Math.max(limit * 8, 80), 800);
-
-    const query = ctx.db.query("events").withIndex("by_conversation", (q) => {
-      const base = q.eq("conversationId", args.conversationId);
-      if (args.beforeTimestamp !== undefined) {
-        return base.lte("timestamp", args.beforeTimestamp);
-      }
-      return base;
+    let events = await fetchRecentConversationEvents(ctx, {
+      conversationId: args.conversationId,
+      beforeTimestamp: args.beforeTimestamp,
+      excludeEventId: args.excludeEventId,
+      take,
     });
-    let events = await query.order("desc").take(take);
-
-    if (args.excludeEventId) {
-      events = events.filter((event) => event._id !== args.excludeEventId);
-    }
-
-    events = events.filter((event) => MODEL_CONTEXT_EVENT_TYPES.has(event.type));
-    events.sort(
-      (a, b) =>
-        a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
-    );
+    events = orderEventsChronologically(filterContextEvents(events));
 
     if (events.length > limit) {
       events = events.slice(-limit);
@@ -360,30 +402,16 @@ export const listRecentContextEventsByTokens = internalQuery({
       Math.max(Math.ceil(maxTokens / 6), 240),
       2400,
     );
-
-    const query = ctx.db.query("events").withIndex("by_conversation", (q) => {
-      const base = q.eq("conversationId", args.conversationId);
-      if (args.beforeTimestamp !== undefined) {
-        return base.lte("timestamp", args.beforeTimestamp);
-      }
-      return base;
+    const events = await fetchRecentConversationEvents(ctx, {
+      conversationId: args.conversationId,
+      beforeTimestamp: args.beforeTimestamp,
+      excludeEventId: args.excludeEventId,
+      take: scanLimit,
     });
-
-    let events = await query.order("desc").take(scanLimit);
-    if (args.excludeEventId) {
-      events = events.filter((event) => event._id !== args.excludeEventId);
-    }
-
-    const contextEvents = (() => {
-      const modelEvents = events.filter((event) => MODEL_CONTEXT_EVENT_TYPES.has(event.type));
-      if (args.includeOperationalEvents === false) {
-        return modelEvents.filter((event) => CHAT_CONTEXT_EVENT_TYPES.has(event.type));
-      }
-      if (args.contextAgentType === "orchestrator") {
-        return filterOrchestratorContextEvents(modelEvents);
-      }
-      return modelEvents;
-    })();
+    const contextEvents = filterContextEvents(events, {
+      includeOperationalEvents: args.includeOperationalEvents,
+      contextAgentType: args.contextAgentType,
+    });
 
     const selectedNewestFirst = selectRecentByTokenBudget({
       itemsNewestFirst: contextEvents,
@@ -396,10 +424,7 @@ export const listRecentContextEventsByTokens = internalQuery({
         }),
     });
 
-    selectedNewestFirst.sort(
-      (a, b) =>
-        a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
-    );
+    orderEventsChronologically(selectedNewestFirst);
 
     return selectedNewestFirst.map((event) => sanitizeEventForRead(event));
   },
