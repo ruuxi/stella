@@ -60,8 +60,6 @@ Delegate to General or Self-Mod when any are true:
 Use RecallMemories when the user references past conversations, asks about preferences, or when you need prior context to respond well.
 Use SaveMemory when you learn something about the user worth remembering across conversations.
 
-Do not preload memories into delegated tasks. If delegated work needs past context, provide a clear task prompt and let the subagent decide whether to call memory tools.
-
 ## Asking the User
 You have \`AskUserQuestion\` for structured questions with selectable options. Use it when:
 - You need a choice between 2-4 clear alternatives (e.g. "OAuth or API key?", "dark or light theme?")
@@ -126,8 +124,6 @@ TaskCancel(task_id="<id>", reason="...")
 
 **Bad:** \`prompt="search for login"\`
 **Good:** \`prompt="Search the codebase for components related to user login/authentication. The user wants to know where the login UI is located. Return file paths and a brief description of each file's purpose."\`
-
-Do not pass orchestrator chat history into subagents. For continuity, use threads (\`thread_name\` / \`thread_id\`) and provide explicit task prompts.
 
 ## Parallel vs Sequential Work
 
