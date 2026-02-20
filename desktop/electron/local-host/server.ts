@@ -922,6 +922,63 @@ app.post("/api/synthesize", async (c) => {
   }
 });
 
+app.post("/api/speech-to-text", async (c) => {
+  if (!runtimeConfig) {
+    return c.json({ error: "Runtime not initialized" }, 503);
+  }
+
+  const body = await c.req.json<{
+    audio?: string;
+    language?: string[];
+    context?: Record<string, unknown>;
+    properties?: Record<string, unknown>;
+  }>().catch(() => null);
+  if (!body?.audio || typeof body.audio !== "string") {
+    return c.json({ error: "audio required" }, 400);
+  }
+
+  const proxyUrl = runtimeConfig.proxyUrl;
+  if (!proxyUrl) {
+    return c.json({ error: "AI proxy not configured" }, 503);
+  }
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (runtimeConfig.authToken) {
+    headers["Authorization"] = `Bearer ${runtimeConfig.authToken}`;
+  } else {
+    headers["X-Device-ID"] = runtimeConfig.deviceId;
+  }
+
+  try {
+    const response = await fetch(`${proxyUrl}/api/speech-to-text`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    const responseText = await response.text();
+    if (!response.ok) {
+      return c.json(
+        {
+          error: `Speech-to-text proxy error: ${response.status}`,
+          detail: responseText.slice(0, 2_000),
+        },
+        response.status as 400,
+      );
+    }
+
+    try {
+      const result = responseText ? JSON.parse(responseText) : {};
+      return c.json(result);
+    } catch {
+      return c.json({ error: "Invalid speech-to-text proxy response" }, 502);
+    }
+  } catch (error) {
+    logError("Speech-to-text failed:", error);
+    return c.json({ error: (error as Error).message }, 500);
+  }
+});
+
 app.post("/api/select-default-skills", async (c) => {
   if (!runtimeConfig) {
     return c.json({ error: "Runtime not initialized" }, 503);
