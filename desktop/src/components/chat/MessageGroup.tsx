@@ -2,6 +2,7 @@ import type { EventRecord, MessagePayload, Attachment } from "../../hooks/use-co
 import { WorkingIndicator } from "./WorkingIndicator";
 import { Markdown } from "./Markdown";
 import { isOrchestratorChatMessagePayload } from "./emotes/message-source";
+import { sanitizeAttachmentImageUrl } from "@/lib/url-safety";
 
 type MessageGroupProps = {
   userMessage: EventRecord;
@@ -55,11 +56,12 @@ export function MessageGroup({
           {userAttachments.length > 0 && (
             <div className="event-attachments">
               {userAttachments.map((attachment, index) => {
-                if (attachment.url) {
+                const safeUrl = sanitizeAttachmentImageUrl(attachment.url);
+                if (safeUrl) {
                   return (
                     <img
                       key={attachment.id ?? `${index}`}
-                      src={attachment.url}
+                      src={safeUrl}
                       alt="Attachment"
                       className="event-attachment"
                       onClick={() => onOpenAttachment?.(attachment)}

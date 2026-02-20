@@ -122,4 +122,22 @@ describe("TurnItem", () => {
       expect.objectContaining({ id: "img-1" }),
     );
   });
+
+  it("renders fallback label for unsafe attachment URL schemes", () => {
+    render(
+      <TurnItem
+        turn={{
+          id: "turn-unsafe",
+          userText: "unsafe",
+          userAttachments: [{ id: "img-1", url: "javascript:alert(1)" }],
+          assistantText: "",
+          assistantMessageId: null,
+          assistantEmotesEnabled: false,
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("img", { name: "Attachment" })).toBeNull();
+    expect(screen.getByText("Attachment 1")).toBeInTheDocument();
+  });
 });

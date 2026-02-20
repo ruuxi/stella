@@ -35,6 +35,15 @@ describe("AppframeRenderer", () => {
     expect(screen.getByText("No URL provided")).toBeTruthy();
   });
 
+  it("blocks unsupported protocols", () => {
+    render(
+      <AppframeRenderer
+        canvas={{ name: "test-app", url: "javascript:alert(1)" }}
+      />,
+    );
+    expect(screen.getByText("Blocked unsupported URL")).toBeTruthy();
+  });
+
   it("renders iframe with correct src when url is provided", () => {
     render(
       <AppframeRenderer

@@ -107,6 +107,25 @@ describe("IntegrationCard", () => {
     expect(screen.getByRole("link", { name: /Find bot on Discord/i })).toBeInTheDocument();
   });
 
+  it("does not render unsafe bot links", async () => {
+    mockUseQuery.mockReturnValue(null);
+
+    render(
+      <IntegrationDetailArea
+        integration={makeIntegration({
+          provider: "discord",
+          displayName: "Discord",
+          botLink: "javascript:alert(1)",
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("ABC123")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Find bot on Discord/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("disconnects a connected bridge integration and shows success toast", async () => {
     const actionFn = vi.fn().mockResolvedValue(null);
     const mutationFn = vi.fn().mockResolvedValue(null);

@@ -109,6 +109,18 @@ describe("MessageGroup", () => {
     expect(screen.getByText("Attachment 1")).toBeTruthy();
   });
 
+  it("renders fallback for unsafe attachment URL schemes", () => {
+    const userMessage = makeEvent({
+      payload: {
+        text: "Unsafe attached",
+        attachments: [{ id: "att-1", url: "javascript:alert(1)" }],
+      },
+    });
+    render(<MessageGroup userMessage={userMessage} />);
+    expect(screen.queryByAltText("Attachment")).toBeNull();
+    expect(screen.getByText("Attachment 1")).toBeTruthy();
+  });
+
   it("calls onOpenAttachment when clicking attachment", () => {
     const onOpen = vi.fn();
     const attachment: Attachment = {
