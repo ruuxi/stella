@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, screen, session, shell, type Display, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, shell, type Display, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -48,7 +48,7 @@ import {
 import * as bridgeManager from './local-host/bridge_manager.js'
 import { startLocalServer, stopLocalServer, setRuntimeConfig } from './local-host/server.js'
 import { initRuntime } from './local-host/agent/runtime.js'
-import { closeDb, rawQuery, insert, update } from './local-host/db.js'
+import { closeDb } from './local-host/db.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -812,32 +812,6 @@ const showWindow = (target: WindowMode) => {
   }
 }
 
-// ── Voice toggle (radial dial + global keybind) ──────────────────────────────
-const DEFAULT_VOICE_KEYBIND = 'CommandOrControl+Shift+V'
-let registeredVoiceKeybind: string | null = null
-
-const triggerVoiceToggle = () => {
-  if (!appReady) return
-  updateUiState({ mode: 'voice' })
-  // Send the toggle command directly to the mini window running in the background.
-  // The mini window will decide when to show itself (when recording stops).
-  miniWindow?.webContents.send('voice:toggle')
-}
-
-const registerVoiceShortcut = (accelerator: string): boolean => {
-  if (registeredVoiceKeybind) {
-    try { globalShortcut.unregister(registeredVoiceKeybind) } catch { /* ignore */ }
-    registeredVoiceKeybind = null
-  }
-  try {
-    const ok = globalShortcut.register(accelerator, triggerVoiceToggle)
-    if (ok) registeredVoiceKeybind = accelerator
-    return ok
-  } catch {
-    return false
-  }
-}
-
 const cancelRadialContextCapture = () => {
   radialCaptureRequestId += 1
   pendingRadialCapturePromise = null
@@ -1177,7 +1151,8 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
     case 'voice':
       radialContextShouldCommit = true
       commitStagedRadialContext()
-      triggerVoiceToggle()
+      updateUiState({ mode: 'voice' })
+      if (!isMiniShowing()) showWindow('mini')
       break
     case 'full':
       cancelRadialContextCapture()
@@ -1562,17 +1537,6 @@ app.whenReady().then(async () => {
     })
 
     console.log(`[main] Local server started on port ${localServerPort}`)
-
-    // Register voice keybind from preferences (or default)
-    try {
-      const rows = rawQuery<{ value: string }>(
-        "SELECT value FROM user_preferences WHERE owner_id = 'local' AND key = 'voice_keybind'",
-        [],
-      )
-      registerVoiceShortcut(rows.length > 0 ? rows[0].value : DEFAULT_VOICE_KEYBIND)
-    } catch {
-      registerVoiceShortcut(DEFAULT_VOICE_KEYBIND)
-    }
   } catch (err) {
     console.error('[main] Failed to start local server:', err)
   }
@@ -1633,30 +1597,6 @@ app.whenReady().then(async () => {
     setHostAuthState(Boolean(payload?.authenticated))
     return { ok: true }
   })
-
-  // Voice keybind management
-  ipcMain.handle('voice:setKeybind', (_event, accelerator: string) => {
-    const ok = registerVoiceShortcut(accelerator)
-    if (ok) {
-      try {
-        const now = Date.now()
-        const existing = rawQuery<{ id: string }>(
-          "SELECT id FROM user_preferences WHERE owner_id = 'local' AND key = 'voice_keybind'",
-          [],
-        )
-        if (existing.length > 0) {
-          update('user_preferences', { value: accelerator, updated_at: now }, { id: existing[0].id })
-        } else {
-          insert('user_preferences', { owner_id: 'local', key: 'voice_keybind', value: accelerator, updated_at: now })
-        }
-      } catch { /* preference save failed, shortcut still works */ }
-    }
-    return { ok, accelerator: ok ? accelerator : (registeredVoiceKeybind ?? DEFAULT_VOICE_KEYBIND) }
-  })
-
-  ipcMain.handle('voice:getKeybind', () => ({
-    accelerator: registeredVoiceKeybind ?? DEFAULT_VOICE_KEYBIND,
-  }))
 
   // Window control handlers for custom title bar
   ipcMain.on('window:minimize', (event) => {
@@ -2151,11 +2091,6 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
-  // Unregister voice shortcut
-  if (registeredVoiceKeybind) {
-    globalShortcut.unregister(registeredVoiceKeybind)
-    registeredVoiceKeybind = null
-  }
   // Stop mouse hook before quitting
   if (mouseHook) {
     mouseHook.stop()
