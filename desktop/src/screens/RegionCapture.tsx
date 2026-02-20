@@ -99,7 +99,12 @@ export function RegionCapture() {
       resolvedSelection.height < MIN_SELECTION_SIZE
     ) {
       clearSelection();
-      const capture = await api?.getWindowCapture?.(endPoint);
+      const getWindowCapture = api?.getWindowCapture;
+      if (!getWindowCapture) {
+        api?.submitRegionClick?.(endPoint);
+        return;
+      }
+      const capture = await getWindowCapture(endPoint);
       if (capture) {
         setVacuum({ clickPoint: endPoint, ...capture });
       } else {

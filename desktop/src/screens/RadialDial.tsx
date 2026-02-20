@@ -3,6 +3,7 @@ import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
+import { hexToRgb } from '../theme/color'
 import { StellaAnimation } from '../components/StellaAnimation'
 import {
   initBlob,
@@ -11,7 +12,6 @@ import {
   cancelAnimation,
   destroyBlob,
   cssToVec3,
-  cssToOpaque,
   type BlobColors,
 } from './radial-blob'
 
@@ -33,6 +33,12 @@ const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
 // How long into the open animation before SVG content starts fading in
 const CONTENT_FADE_DELAY = 180 // ms
+
+const toRgba = (color: string, alpha: number): string => {
+  if (!color.startsWith('#')) return color
+  const { r, g, b } = hexToRgb(color)
+  return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`
+}
 
 const createWedgePath = (startAngle: number, endAngle: number): string => {
   const startRad = (startAngle - 90) * (Math.PI / 180)
@@ -200,7 +206,11 @@ export function RadialDial() {
         // Fallback: show immediately if WebGL unavailable
         setPhase('open')
         phaseRef.current = 'open'
-        setContentVisible(true)
+        requestAnimationFrame(() => {
+          if (visibleRef.current) {
+            setContentVisible(true)
+          }
+        })
       }
     }
 
@@ -273,7 +283,7 @@ export function RadialDial() {
       />
 
       <div
-        className="radial-dial-frame"
+        className={`radial-dial-frame${contentVisible ? ' radial-dial-frame--visible' : ''}`}
         style={{
           opacity: contentVisible ? 1 : 0,
           transition: phase === 'opening' ? 'opacity 0.15s ease-out' : 'none',
@@ -294,12 +304,12 @@ export function RadialDial() {
             const Icon = wedge.icon
 
             const fillColor = isSelected
-              ? cssToOpaque(colors.interactive)
-              : cssToOpaque(colors.card)
+              ? toRgba(colors.interactive, 0.9)
+              : colors.card
 
             const strokeColor = isSelected
-              ? cssToOpaque(colors.interactive)
-              : cssToOpaque(colors.border)
+              ? toRgba(colors.interactive, 0.9)
+              : toRgba(colors.border, 0.5)
 
             const iconColor = isSelected
               ? colors.primaryForeground
@@ -354,8 +364,8 @@ export function RadialDial() {
             cx={CENTER}
             cy={CENTER}
             r={CENTER_BG_RADIUS}
-            fill={cssToOpaque(colors.background)}
-            stroke={cssToOpaque(colors.border)}
+            fill={toRgba(colors.background, 0.95)}
+            stroke={toRgba(colors.border, 0.5)}
             strokeWidth={1}
             style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
           />
