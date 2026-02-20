@@ -13,6 +13,7 @@ import {
 } from "./db.js";
 import type { Server } from "http";
 import { handleChat, type ChatRequest, type RuntimeConfig } from "./agent/runtime.js";
+import { encryptLocalSecret, LOCAL_SECRET_KEY_VERSION } from "./secret_crypto.js";
 
 const log = (...args: unknown[]) => console.log("[local-server]", ...args);
 const logError = (...args: unknown[]) => console.error("[local-server]", ...args);
@@ -474,33 +475,41 @@ app.post("/api/secrets", async (c) => {
     provider: string;
     label: string;
     encryptedValue: string;
-    keyVersion?: number;
   }>();
   const ownerId = body.ownerId || "local";
   const now = Date.now();
+  const provider = body.provider?.trim();
+  const label = body.label?.trim();
+  const plaintext = body.encryptedValue;
+
+  if (!provider || !label || typeof plaintext !== "string" || plaintext.length === 0) {
+    return c.json({ error: "provider, label, and encryptedValue are required" }, 400);
+  }
+
+  const encryptedValue = encryptLocalSecret(plaintext);
 
   // Upsert by provider
   const existing = rawQuery(
     "SELECT id FROM secrets WHERE owner_id = ? AND provider = ?",
-    [ownerId, body.provider],
+    [ownerId, provider],
   );
   let secretId: string;
 
   if (existing.length > 0) {
     secretId = (existing[0] as { id: string }).id;
     update("secrets", {
-      label: body.label,
-      encrypted_value: body.encryptedValue,
-      key_version: body.keyVersion || 1,
+      label,
+      encrypted_value: encryptedValue,
+      key_version: LOCAL_SECRET_KEY_VERSION,
       updated_at: now,
     }, { id: secretId });
   } else {
     secretId = insert("secrets", {
       owner_id: ownerId,
-      provider: body.provider,
-      label: body.label,
-      encrypted_value: body.encryptedValue,
-      key_version: body.keyVersion || 1,
+      provider,
+      label,
+      encrypted_value: encryptedValue,
+      key_version: LOCAL_SECRET_KEY_VERSION,
       status: "active",
       created_at: now,
       updated_at: now,
