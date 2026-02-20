@@ -17,6 +17,7 @@ const defaultState: UiState = {
   window: 'full',
   view: 'chat',
   conversationId: null,
+  isVoiceActive: false,
 }
 
 const UiStateContext = createContext<UiStateContextValue | null>(null)

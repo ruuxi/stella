@@ -199,6 +199,11 @@ export type ElectronApi = {
   // Open URL in user's default browser
   openExternal: (url: string) => void
 
+  // Voice Transcript
+  submitVoiceTranscript: (transcript: string) => void
+  setVoiceShortcut: (shortcut: string) => void
+  onVoiceTranscript: (callback: (transcript: string) => void) => () => void
+
   // Store package management
   storeInstallSkill: (payload: {
     packageId: string

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUiState } from "../../app/state/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
@@ -38,6 +38,12 @@ export const MiniShell = () => {
   });
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
+
+  useEffect(() => {
+    return window.electronAPI?.onVoiceTranscript?.((transcript) => {
+      setMessage((prev) => (prev ? prev + ' ' + transcript : transcript));
+    });
+  }, [setMessage]);
 
   const windowTitle = chatContext?.window
     ? (chatContext.window.title || chatContext.window.app || null)
