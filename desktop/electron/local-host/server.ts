@@ -890,7 +890,9 @@ app.post("/api/stt/token", async (c) => {
     return c.json({ error: "STT proxy not configured" }, 503);
   }
 
-  const body = await c.req.json<{ durationSecs?: number }>().catch(() => ({}));
+  const body = await c.req
+    .json<{ durationSecs?: number }>()
+    .catch((): { durationSecs?: number } => ({}));
   const headers: Record<string, string> = {
     ...baseHeaders,
     "Content-Type": "application/json",
