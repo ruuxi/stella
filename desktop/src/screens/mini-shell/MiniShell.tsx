@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useUiState } from "../../app/state/ui-state";
@@ -70,24 +70,6 @@ export const MiniShell = () => {
       setPartialTranscript("");
     }, []),
   });
-
-  // Voice toggle from main process (radial dial or global keybind)
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api?.onVoiceToggle) return;
-
-    const cleanup = api.onVoiceToggle(() => {
-      if (!sttAvailable) return;
-      if (voice.state === "recording") {
-        voice.stopRecording();
-        api.showWindow?.("mini");
-      } else if (voice.state === "idle") {
-        voice.startRecording();
-      }
-    });
-
-    return cleanup;
-  }, [sttAvailable, voice]);
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
 

@@ -17,7 +17,6 @@ import {
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 import { InlineAuth } from "../InlineAuth";
-import { Keybind } from "../keybind";
 import { useTheme } from "../../theme/theme-context";
 import { useIsLocalMode } from "@/providers/DataProvider";
 import { localPut } from "@/services/local-client";
@@ -32,7 +31,6 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   creation: "I'm not just a desktop app.",
   theme: "How should I look?",
   personality: "How should I talk?",
-  shortcuts: "Set up your voice shortcut.",
 };
 
 
@@ -100,15 +98,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const [expressionStyle, setExpressionStyle] = useState<"emotes" | "emoji" | "none" | null>(null);
   const saveExpressionStyle = useMutation(api.data.preferences.setExpressionStyle);
   const savePreferredBrowser = useMutation(api.data.preferences.setPreferredBrowser);
-
-  // Shortcuts (voice keybind)
-  const [keybindValue, setKeybindValue] = useState("CommandOrControl+Shift+V");
-  const [isRecordingKeybind, setIsRecordingKeybind] = useState(false);
-  const [keybindSaved, setKeybindSaved] = useState(false);
-  const platform = window.electronAPI?.platform ?? "win32";
-  const keybindDisplayParts = keybindValue
-    .replace("CommandOrControl", platform === "darwin" ? "Cmd" : "Ctrl")
-    .split("+");
 
   // Phone — hover reveal
 
@@ -820,70 +809,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   className="onboarding-confirm"
                   data-visible={expressionStyle !== null}
                   onClick={nextSplitStep}
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-
-            {/* ── Shortcuts ── */}
-            {phase === "shortcuts" && (
-              <div className="onboarding-step-content">
-                <p className="onboarding-shortcuts-desc">
-                  Press this shortcut anywhere to start or stop voice input.
-                  Your words will be sent to Stella automatically.
-                </p>
-
-                <div className="onboarding-keybind-recorder">
-                  {isRecordingKeybind ? (
-                    <button
-                      className="onboarding-keybind-capture"
-                      onKeyDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const parts: string[] = [];
-                        if (e.ctrlKey || e.metaKey) parts.push("CommandOrControl");
-                        if (e.altKey) parts.push("Alt");
-                        if (e.shiftKey) parts.push("Shift");
-                        const key = e.key;
-                        if (!["Control", "Meta", "Alt", "Shift"].includes(key)) {
-                          parts.push(key.length === 1 ? key.toUpperCase() : key);
-                          const accelerator = parts.join("+");
-                          setKeybindValue(accelerator);
-                          setIsRecordingKeybind(false);
-                          window.electronAPI?.setVoiceKeybind?.(accelerator).then((result) => {
-                            if (!result.ok) {
-                              setKeybindValue(result.accelerator);
-                            }
-                            setKeybindSaved(true);
-                          });
-                        }
-                      }}
-                      onBlur={() => setIsRecordingKeybind(false)}
-                      autoFocus
-                    >
-                      Press your shortcut…
-                    </button>
-                  ) : (
-                    <button
-                      className="onboarding-keybind-display"
-                      onClick={() => setIsRecordingKeybind(true)}
-                    >
-                      <Keybind keys={keybindDisplayParts} />
-                      <span className="onboarding-keybind-change">Change</span>
-                    </button>
-                  )}
-                </div>
-
-                <button
-                  className="onboarding-confirm"
-                  data-visible={true}
-                  onClick={() => {
-                    if (!keybindSaved) {
-                      window.electronAPI?.setVoiceKeybind?.(keybindValue);
-                    }
-                    nextSplitStep();
-                  }}
                 >
                   Finish
                 </button>
