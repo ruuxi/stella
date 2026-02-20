@@ -9,8 +9,7 @@ import { requireUserId } from "../auth";
 export const checkSttAvailable = query({
   args: {},
   returns: v.object({ available: v.boolean() }),
-  handler: async (ctx) => {
-    await requireUserId(ctx);
+  handler: async () => {
     const key = process.env.WISPR_API_KEY ?? "";
     return { available: key.length > 0 };
   },

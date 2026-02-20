@@ -119,7 +119,7 @@ const isAllowedCorsOrigin = (origin: string | null) => {
 
 const getCorsHeaders = (origin: string | null) => {
   const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-ID",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
@@ -975,6 +975,39 @@ type SynthesizeResponse = {
 };
 const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 const MAX_ANON_SYNTHESIS_REQUESTS = 10;
+const STT_MIN_TOKEN_DURATION_SECS = 30;
+const parsePositiveIntEnv = (value: string | undefined, fallback: number) => {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const STT_AUTH_DEFAULT_TOKEN_DURATION_SECS = parsePositiveIntEnv(
+  process.env.STT_AUTH_DEFAULT_TOKEN_DURATION_SECS,
+  300,
+);
+const STT_AUTH_MAX_TOKEN_DURATION_SECS = parsePositiveIntEnv(
+  process.env.STT_AUTH_MAX_TOKEN_DURATION_SECS,
+  600,
+);
+const STT_ANON_DEFAULT_TOKEN_DURATION_SECS = parsePositiveIntEnv(
+  process.env.STT_ANON_DEFAULT_TOKEN_DURATION_SECS,
+  90,
+);
+const STT_ANON_MAX_TOKEN_DURATION_SECS = parsePositiveIntEnv(
+  process.env.STT_ANON_MAX_TOKEN_DURATION_SECS,
+  120,
+);
+const STT_ANON_DEVICE_TOKENS_PER_DAY = parsePositiveIntEnv(
+  process.env.STT_ANON_DEVICE_TOKENS_PER_DAY,
+  40,
+);
+const STT_ANON_IP_TOKENS_PER_DAY = parsePositiveIntEnv(
+  process.env.STT_ANON_IP_TOKENS_PER_DAY,
+  120,
+);
+const STT_ANON_GLOBAL_TOKENS_PER_DAY = parsePositiveIntEnv(
+  process.env.STT_ANON_GLOBAL_TOKENS_PER_DAY,
+  10_000,
+);
 
 const getAnonDeviceId = (request: Request): string | null => {
   const deviceId = request.headers.get("X-Device-ID");
@@ -983,6 +1016,254 @@ const getAnonDeviceId = (request: Request): string | null => {
   if (trimmed.length === 0 || trimmed.length >= 256) return null;
   return trimmed;
 };
+
+const getClientIp = (request: Request): string | null => {
+  const xForwardedFor = request.headers.get("x-forwarded-for");
+  if (xForwardedFor) {
+    const first = xForwardedFor.split(",")[0]?.trim();
+    if (first && first.length < 256) return first;
+  }
+
+  const cloudflare = request.headers.get("cf-connecting-ip")?.trim();
+  if (cloudflare && cloudflare.length < 256) return cloudflare;
+
+  const xRealIp = request.headers.get("x-real-ip")?.trim();
+  if (xRealIp && xRealIp.length < 256) return xRealIp;
+
+  return null;
+};
+
+const utcDayKey = () => new Date().toISOString().slice(0, 10);
+
+const parseDuration = (
+  value: unknown,
+  fallback: number,
+  max: number,
+) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  const rounded = Math.floor(value);
+  return Math.max(STT_MIN_TOKEN_DURATION_SECS, Math.min(max, rounded));
+};
+
+http.route({
+  path: "/api/stt/check-available",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+http.route({
+  path: "/api/stt/check-available",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+    const available = (process.env.WISPR_API_KEY ?? "").length > 0;
+    return withCors(
+      new Response(
+        JSON.stringify({ available }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      origin,
+    );
+  }),
+});
+
+http.route({
+  path: "/api/stt/token",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+http.route({
+  path: "/api/stt/token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+
+    const apiKey = process.env.WISPR_API_KEY ?? "";
+    if (!apiKey) {
+      return withCors(
+        new Response(
+          JSON.stringify({ error: "STT not configured" }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        ),
+        origin,
+      );
+    }
+
+    const identity = await ctx.auth.getUserIdentity();
+    const anonDeviceId = getAnonDeviceId(request);
+    const isAnonymous = !identity;
+
+    if (isAnonymous && !anonDeviceId) {
+      return withCors(
+        new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+        origin,
+      );
+    }
+
+    const body = await request.json().catch(() => ({} as { durationSecs?: unknown }));
+    const durationSecs = isAnonymous
+      ? parseDuration(
+          body.durationSecs,
+          STT_ANON_DEFAULT_TOKEN_DURATION_SECS,
+          STT_ANON_MAX_TOKEN_DURATION_SECS,
+        )
+      : parseDuration(
+          body.durationSecs,
+          STT_AUTH_DEFAULT_TOKEN_DURATION_SECS,
+          STT_AUTH_MAX_TOKEN_DURATION_SECS,
+        );
+
+    let deviceScope = "";
+    let ipScope = "";
+    let globalScope = "";
+
+    if (isAnonymous && anonDeviceId) {
+      const day = utcDayKey();
+      const ip = getClientIp(request) ?? "unknown";
+      deviceScope = `stt:device:${day}:${anonDeviceId}`;
+      ipScope = `stt:ip:${day}:${ip}`;
+      globalScope = `stt:global:${day}`;
+
+      const [deviceUsage, ipUsage, globalUsage] = await Promise.all([
+        ctx.runQuery(internal.ai_proxy_data.getDeviceUsage, { deviceId: deviceScope }),
+        ctx.runQuery(internal.ai_proxy_data.getDeviceUsage, { deviceId: ipScope }),
+        ctx.runQuery(internal.ai_proxy_data.getDeviceUsage, { deviceId: globalScope }),
+      ]);
+
+      if ((deviceUsage?.requestCount ?? 0) >= STT_ANON_DEVICE_TOKENS_PER_DAY) {
+        return withCors(
+          new Response(
+            JSON.stringify({
+              error: "Device rate limit exceeded. Please sign in for higher limits.",
+            }),
+            { status: 429, headers: { "Content-Type": "application/json" } },
+          ),
+          origin,
+        );
+      }
+      if ((ipUsage?.requestCount ?? 0) >= STT_ANON_IP_TOKENS_PER_DAY) {
+        return withCors(
+          new Response(
+            JSON.stringify({
+              error: "IP rate limit exceeded. Please try again later or sign in.",
+            }),
+            { status: 429, headers: { "Content-Type": "application/json" } },
+          ),
+          origin,
+        );
+      }
+      if ((globalUsage?.requestCount ?? 0) >= STT_ANON_GLOBAL_TOKENS_PER_DAY) {
+        return withCors(
+          new Response(
+            JSON.stringify({
+              error: "Anonymous STT quota reached for today. Please sign in.",
+            }),
+            { status: 429, headers: { "Content-Type": "application/json" } },
+          ),
+          origin,
+        );
+      }
+    }
+
+    const wisprClientId = identity?.subject ?? `anon:${anonDeviceId}`;
+
+    try {
+      const wisprResponse = await fetch(
+        "https://platform-api.wisprflow.ai/generate_access_token",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            client_id: wisprClientId,
+            duration_secs: durationSecs,
+            metadata: {
+              source: "stella",
+              auth: identity ? "user" : "anonymous_device",
+            },
+          }),
+        },
+      );
+
+      if (!wisprResponse.ok) {
+        const text = await wisprResponse.text().catch(() => "");
+        return withCors(
+          new Response(
+            JSON.stringify({
+              error: `Token generation failed: ${wisprResponse.status} ${text}`,
+            }),
+            { status: 502, headers: { "Content-Type": "application/json" } },
+          ),
+          origin,
+        );
+      }
+
+      const data = (await wisprResponse.json()) as {
+        access_token?: string;
+        token?: string;
+      };
+      const token = data.access_token ?? data.token;
+      if (!token) {
+        return withCors(
+          new Response(
+            JSON.stringify({ error: "Token generation failed: empty token response" }),
+            { status: 502, headers: { "Content-Type": "application/json" } },
+          ),
+          origin,
+        );
+      }
+
+      if (isAnonymous && anonDeviceId) {
+        await Promise.all([
+          ctx.runMutation(internal.ai_proxy_data.incrementDeviceUsage, { deviceId: deviceScope }),
+          ctx.runMutation(internal.ai_proxy_data.incrementDeviceUsage, { deviceId: ipScope }),
+          ctx.runMutation(internal.ai_proxy_data.incrementDeviceUsage, { deviceId: globalScope }),
+        ]);
+      }
+
+      return withCors(
+        new Response(
+          JSON.stringify({
+            token,
+            expiresAt: Date.now() + durationSecs * 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+        origin,
+      );
+    } catch (error) {
+      return withCors(
+        new Response(
+          JSON.stringify({ error: `Token request failed: ${(error as Error).message}` }),
+          { status: 500, headers: { "Content-Type": "application/json" } },
+        ),
+        origin,
+      );
+    }
+  }),
+});
 
 http.route({
   path: "/api/synthesize",
