@@ -241,6 +241,11 @@ export type ElectronApi = {
 
   shellKillByPort: (port: number) => Promise<void>
 
+  // Voice toggle from main process (radial dial or global keybind)
+  onVoiceToggle: (callback: () => void) => () => void
+  setVoiceKeybind: (accelerator: string) => Promise<{ ok: boolean; accelerator: string }>
+  getVoiceKeybind: () => Promise<{ accelerator: string }>
+
   // Local-first mode
   getLocalServerPort: () => Promise<number>
   getLocalMode: () => Promise<string>
