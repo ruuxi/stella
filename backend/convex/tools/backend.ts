@@ -4,6 +4,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { ToolOptions } from "./types";
+import { getUnsafeIntegrationHostError } from "./network_safety";
 
 const integrationAuthSchema = z
   .object({
@@ -121,6 +122,13 @@ const runIntegrationRequest = async (
     url = new URL(args.request.url);
   } catch {
     return "IntegrationRequest requires a valid URL.";
+  }
+  if (!["http:", "https:"].includes(url.protocol)) {
+    return "IntegrationRequest only supports http(s) URLs.";
+  }
+  const unsafeHostError = getUnsafeIntegrationHostError(url);
+  if (unsafeHostError) {
+    return unsafeHostError;
   }
 
   if (args.request.query) {
@@ -558,6 +566,10 @@ export const createBackendTools = (
         }
         if (!["http:", "https:"].includes(requestUrl.protocol)) {
           return "IntegrationRequest only supports http(s) URLs.";
+        }
+        const unsafeHostError = getUnsafeIntegrationHostError(requestUrl);
+        if (unsafeHostError) {
+          return unsafeHostError;
         }
         const providerKey = args.provider.trim().toLowerCase();
 

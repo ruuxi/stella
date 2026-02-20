@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { requireUserId } from "../auth";
 import { jsonValueValidator } from "../shared_validators";
+import { getUnsafeIntegrationHostError } from "./network_safety";
 
 export const execute = action({
   args: {
@@ -42,6 +43,10 @@ export const execute = action({
 
     if (!["http:", "https:"].includes(url.protocol)) {
       return { error: "Only http(s) URLs are allowed." };
+    }
+    const unsafeHostError = getUnsafeIntegrationHostError(url);
+    if (unsafeHostError) {
+      return { error: unsafeHostError };
     }
 
     if (request.query && typeof request.query === "object") {

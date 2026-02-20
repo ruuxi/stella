@@ -40,9 +40,32 @@ describe("security regressions", () => {
     expect(source).toContain("rejectDisallowedCorsOrigin");
   });
 
-  test("commands upsertMany short-circuits when already seeded", () => {
+  test("commands upsertMany requires auth and short-circuits when already seeded", () => {
     const commandSource = readBackendFile("convex/data/commands.ts");
-    expect(commandSource).toMatch(/if \(first\) return \{ upserted: 0 \}/);
+    expect(commandSource).toMatch(/await requireUserId\(ctx\)/);
+    expect(commandSource).toMatch(/if \(firstEnabled \|\| firstDisabled\) return \{ upserted: 0 \}/);
+  });
+
+  test("chat endpoint enforces sensitive session policy", () => {
+    const source = readBackendFile("convex/http.ts");
+    expect(source).toMatch(/assertSensitiveSessionPolicyAction/);
+    expect(source).toMatch(/await assertSensitiveSessionPolicyAction\(ctx, identity\)/);
+  });
+
+  test("ai proxy consumes anon allowance atomically", () => {
+    const source = readBackendFile("convex/ai_proxy.ts");
+    expect(source).toMatch(/consumeDeviceAllowance/);
+    expect(source).not.toMatch(/runQuery\(internal\.ai_proxy_data\.getDeviceUsage/);
+    expect(source).not.toMatch(/runMutation\(internal\.ai_proxy_data\.incrementDeviceUsage/);
+  });
+
+  test("integration requests enforce unsafe-host guard", () => {
+    const integrationProxySource = readBackendFile("convex/tools/integration_proxy.ts");
+    const backendToolsSource = readBackendFile("convex/tools/backend.ts");
+    const networkSafetySource = readBackendFile("convex/tools/network_safety.ts");
+
+    expect(integrationProxySource).toMatch(/getUnsafeIntegrationHostError/);
+    expect(backendToolsSource).toMatch(/getUnsafeIntegrationHostError/);
+    expect(networkSafetySource).toContain("STELLA_ALLOW_PRIVATE_INTEGRATION_HOSTS");
   });
 });
-
