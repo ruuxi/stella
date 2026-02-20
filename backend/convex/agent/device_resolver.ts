@@ -83,7 +83,7 @@ export const heartbeat = mutation({
 
     const existing = await ctx.db
       .query("devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .first();
 
     if (existing?.devicePublicKey && existing.devicePublicKey !== args.publicKey) {
@@ -128,7 +128,7 @@ export const goOffline = mutation({
     const ownerId = await requireSensitiveUserId(ctx);
     const device = await ctx.db
       .query("devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .first();
 
     if (device) {
@@ -155,7 +155,7 @@ export const markStaleOffline = internalMutation({
     const cutoff = Date.now() - STALE_THRESHOLD_MS;
     const staleDevices = await ctx.db
       .query("devices")
-      .withIndex("by_online_lastSeenAt", (q) =>
+      .withIndex("by_online_and_lastSeenAt", (q) =>
         q.eq("online", true).lt("lastSeenAt", cutoff),
       )
       .collect();
@@ -189,7 +189,7 @@ export const resolveExecutionTarget = internalQuery({
     // Step 1: Check local device
     const device = await ctx.db
       .query("devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .first();
 
     if (device?.online) {
@@ -225,12 +225,12 @@ export const getDeviceStatus = internalQuery({
   handler: async (ctx, args) => {
     const device = await ctx.db
       .query("devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .first();
 
     const cloudRecords = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .collect();
 
     // Find best cloud device status

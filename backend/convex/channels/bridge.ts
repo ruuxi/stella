@@ -9,7 +9,7 @@ import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import { requireSensitiveUserId } from "../auth";
+import { requireSensitiveUserIdAction } from "../auth";
 import { processIncomingMessage } from "./utils";
 import {
   getSpritesTokenForOwner,
@@ -305,7 +305,7 @@ export const getBridgeSession = internalQuery({
   handler: async (ctx, args) => {
     const session = await ctx.db
       .query("bridge_sessions")
-      .withIndex("by_owner_provider", (q) =>
+      .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", args.ownerId).eq("provider", args.provider),
       )
       .first();
@@ -328,7 +328,7 @@ export const hasActiveBridgeForOwner = internalQuery({
   handler: async (ctx, args) => {
     const sessions = await ctx.db
       .query("bridge_sessions")
-      .withIndex("by_owner_provider", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_provider", (q) => q.eq("ownerId", args.ownerId))
       .collect();
     return sessions.some(
       (session) =>
@@ -445,7 +445,7 @@ export const listDueWakes = internalQuery({
   handler: async (ctx, args) => {
     const sessions = await ctx.db
       .query("bridge_sessions")
-      .withIndex("by_next_wake", (q) => q.lte("nextWakeAtMs", args.nowMs))
+      .withIndex("by_nextWakeAtMs", (q) => q.lte("nextWakeAtMs", args.nowMs))
       .take(100);
     return await decodeBridgeSessions(
       sessions.filter((s) => s.status === "connected"),
@@ -512,7 +512,7 @@ export const getBridgeStatus = query({
     if (!identity) return null;
     const session = await ctx.db
       .query("bridge_sessions")
-      .withIndex("by_owner_provider", (q) =>
+      .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", identity.subject).eq("provider", args.provider),
       )
       .first();
@@ -741,7 +741,7 @@ export const setupBridge = action({
   args: { provider: v.string() },
   returns: setupBridgeResultValidator,
   handler: async (ctx, args): Promise<SetupBridgeResult> => {
-    const ownerId = await requireSensitiveUserId(ctx);
+    const ownerId = await requireSensitiveUserIdAction(ctx);
     const runtimeMode = await ctx.runQuery(internal.data.preferences.getRuntimeModeForOwner, {
       ownerId,
     });
@@ -818,7 +818,7 @@ export const stopBridge = action({
   args: { provider: v.string() },
   returns: stopBridgeResultValidator,
   handler: async (ctx, args): Promise<StopBridgeResult> => {
-    const ownerId = await requireSensitiveUserId(ctx);
+    const ownerId = await requireSensitiveUserIdAction(ctx);
     const session = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId,
       provider: args.provider,
@@ -869,7 +869,7 @@ export const getBridgeBundle = action({
     ctx,
     args,
   ): Promise<{ code: string; env: Record<string, string>; dependencies: string }> => {
-    const ownerId = await requireSensitiveUserId(ctx);
+    const ownerId = await requireSensitiveUserIdAction(ctx);
     const session: { webhookSecret: string } | null = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId,
       provider: args.provider,

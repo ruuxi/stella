@@ -319,7 +319,7 @@ export const getOwnerUsage = internalQuery({
 
     const logs = await ctx.db
       .query("usage_logs")
-      .withIndex("by_owner", (q) =>
+      .withIndex("by_ownerId", (q) =>
         q.eq("ownerId", args.ownerId).gt("createdAt", since),
       )
       .collect();

@@ -462,7 +462,7 @@ export const listStaleMemories = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("memories")
-      .withIndex("by_accessed", (q) =>
+      .withIndex("by_accessedAt", (q) =>
         q.lt("accessedAt", args.beforeTimestamp),
       )
       .order("asc")
@@ -582,7 +582,7 @@ export const listMemoriesWithoutEmbedding = internalQuery({
   handler: async (ctx, args) => {
     const all = await ctx.db
       .query("memories")
-      .withIndex("by_accessed")
+      .withIndex("by_accessedAt")
       .take(args.limit * 10);
     return all
       .filter((m) => !m.embedding || m.embedding.length === 0)

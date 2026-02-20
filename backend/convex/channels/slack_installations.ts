@@ -26,7 +26,7 @@ export const getByTeamId = internalQuery({
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("slack_installations")
-      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .withIndex("by_teamId", (q) => q.eq("teamId", args.teamId))
       .first();
     if (!record) {
       return null;
@@ -66,7 +66,7 @@ export const upsert = internalMutation({
     const serialized = JSON.stringify(encrypted);
     const existing = await ctx.db
       .query("slack_installations")
-      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .withIndex("by_teamId", (q) => q.eq("teamId", args.teamId))
       .first();
 
     if (existing) {

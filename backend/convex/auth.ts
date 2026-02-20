@@ -94,7 +94,7 @@ const getSessionPolicyFromDb = async (
 ) => {
   const policy = await ctx.db
     .query("auth_session_policies")
-    .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+    .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
     .first();
   if (!policy) {
     return null;
@@ -106,29 +106,21 @@ const getSessionPolicyFromDb = async (
   };
 };
 
-const getSessionPolicyForOwner = async (
-  ctx: QueryCtx | MutationCtx | ActionCtx,
+const getSessionPolicyForOwnerAction = async (
+  ctx: ActionCtx,
   ownerId: string,
 ) => {
-  if ("db" in ctx) {
-    return await getSessionPolicyFromDb(ctx, ownerId);
-  }
   return await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
     ownerId,
   });
 };
 
 const getSessionVersionForOwner = async (
-  ctx: GenericCtx<DataModel>,
+  ctx: QueryCtx | MutationCtx,
   ownerId: string,
 ): Promise<number> => {
   try {
-    const policy =
-      "db" in ctx
-        ? await getSessionPolicyFromDb(ctx, ownerId)
-        : await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
-            ownerId,
-          });
+    const policy = await getSessionPolicyFromDb(ctx, ownerId);
     return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
   } catch (error) {
     console.warn(
@@ -139,12 +131,59 @@ const getSessionVersionForOwner = async (
   }
 };
 
-const assertSensitiveSessionPolicy = async (
-  ctx: QueryCtx | MutationCtx | ActionCtx,
+const getSessionVersionForOwnerAction = async (
+  ctx: ActionCtx,
+  ownerId: string,
+): Promise<number> => {
+  try {
+    const policy = await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
+      ownerId,
+    });
+    return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
+  } catch (error) {
+    console.warn(
+      `[auth] Failed to resolve session version for owner ${ownerId}:`,
+      error,
+    );
+    return DEFAULT_SESSION_VERSION;
+  }
+};
+
+export const assertSensitiveSessionPolicy = async (
+  ctx: QueryCtx | MutationCtx,
   identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
 ) => {
   if (!identity) return;
-  const policy = await getSessionPolicyForOwner(ctx, identity.subject);
+  const policy = await getSessionPolicyFromDb(ctx, identity.subject);
+  if (!policy) return;
+
+  const tokenVersion =
+    parseNumericClaim(identity, "stellaSessionVersion") ??
+    DEFAULT_SESSION_VERSION;
+  if (tokenVersion < policy.sessionVersion) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Session version is outdated. Please sign in again.",
+    });
+  }
+
+  if (policy.minIssuedAtSec !== undefined) {
+    const issuedAtSec = parseNumericClaim(identity, "iat");
+    if (issuedAtSec === null || issuedAtSec < policy.minIssuedAtSec) {
+      throw new ConvexError({
+        code: "UNAUTHENTICATED",
+        message: "Session has been revoked. Please sign in again.",
+      });
+    }
+  }
+};
+
+export const assertSensitiveSessionPolicyAction = async (
+  ctx: ActionCtx,
+  identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
+) => {
+  if (!identity) return;
+  const policy = await getSessionPolicyForOwnerAction(ctx, identity.subject);
   if (!policy) return;
 
   const tokenVersion =
@@ -261,10 +300,16 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         jwt: {
           expirationTime: JWT_EXPIRATION_TIME,
           definePayload: async (session) => {
-            const sessionVersion = await getSessionVersionForOwner(
-              ctx,
-              session.user.id,
-            );
+            const sessionVersion =
+              "db" in ctx
+                ? await getSessionVersionForOwner(
+                    ctx as QueryCtx | MutationCtx,
+                    session.user.id,
+                  )
+                : await getSessionVersionForOwnerAction(
+                    ctx as unknown as ActionCtx,
+                    session.user.id,
+                  );
             return {
               ...session.user,
               stellaSessionVersion: sessionVersion,
@@ -327,7 +372,7 @@ export const getSessionPolicyByOwnerInternal = internalQuery({
   handler: async (ctx, args) => {
     const policy = await ctx.db
       .query("auth_session_policies")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .first();
     if (!policy) {
       return null;
@@ -363,7 +408,7 @@ const upsertSessionPolicy = async (
   const now = Date.now();
   const existing = await ctx.db
     .query("auth_session_policies")
-    .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+    .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
     .first();
   if (existing) {
     const next = {
@@ -437,38 +482,72 @@ export const requireUserId = async (
 };
 
 export const requireSensitiveUserIdentity = async (
-  ctx: QueryCtx | MutationCtx | ActionCtx,
+  ctx: QueryCtx | MutationCtx,
 ) => {
   const identity = await requireUserIdentity(ctx);
   await assertSensitiveSessionPolicy(ctx, identity);
   return identity;
 };
 
+export const requireSensitiveUserIdentityAction = async (
+  ctx: ActionCtx,
+) => {
+  const identity = await requireUserIdentity(ctx);
+  await assertSensitiveSessionPolicyAction(ctx, identity);
+  return identity;
+};
+
 export const requireSensitiveUserId = async (
-  ctx: QueryCtx | MutationCtx | ActionCtx,
+  ctx: QueryCtx | MutationCtx,
 ) => {
   const identity = await requireSensitiveUserIdentity(ctx);
   return identity.subject;
 };
 
+export const requireSensitiveUserIdAction = async (
+  ctx: ActionCtx,
+) => {
+  const identity = await requireSensitiveUserIdentityAction(ctx);
+  return identity.subject;
+};
+
 const loadConversation = async (
-  ctx: QueryCtx | MutationCtx | ActionCtx,
+  ctx: QueryCtx | MutationCtx,
   conversationId: Id<"conversations">,
 ) => {
-  if ("db" in ctx) {
-    return await ctx.db.get(conversationId);
-  }
+  return await ctx.db.get(conversationId);
+};
+
+const loadConversationAction = async (
+  ctx: ActionCtx,
+  conversationId: Id<"conversations">,
+) => {
   return await ctx.runQuery(internal.conversations.getById, {
     id: conversationId,
   });
 };
 
 export const requireConversationOwner = async (
-  ctx: QueryCtx | MutationCtx | ActionCtx,
+  ctx: QueryCtx | MutationCtx,
   conversationId: Id<"conversations">,
 ) => {
   const ownerId = await requireUserId(ctx);
   const conversation = await loadConversation(ctx, conversationId);
+  if (!conversation || conversation.ownerId !== ownerId) {
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Conversation not found",
+    });
+  }
+  return conversation;
+};
+
+export const requireConversationOwnerAction = async (
+  ctx: ActionCtx,
+  conversationId: Id<"conversations">,
+) => {
+  const ownerId = await requireUserId(ctx);
+  const conversation = await loadConversationAction(ctx, conversationId);
   if (!conversation || conversation.ownerId !== ownerId) {
     throw new ConvexError({
       code: "NOT_FOUND",

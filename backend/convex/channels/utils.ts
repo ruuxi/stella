@@ -71,7 +71,7 @@ const upsertUserPreference = async (
   const updatedAt = Date.now();
   const existing = await ctx.db
     .query("user_preferences")
-    .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
+    .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
     .first();
 
   if (existing) {
@@ -93,7 +93,7 @@ const ensureCloudPrimaryPreference = async (
 ) => {
   const existing = await ctx.db
     .query("user_preferences")
-    .withIndex("by_owner_key", (q) =>
+    .withIndex("by_ownerId_and_key", (q) =>
       q.eq("ownerId", ownerId).eq("key", CLOUD_PRIMARY_KEY),
     )
     .first();
@@ -136,7 +136,7 @@ export const getConnectionByProviderAndExternalId = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("channel_connections")
-      .withIndex("by_provider_external", (q) =>
+      .withIndex("by_provider_and_externalUserId", (q) =>
         q.eq("provider", args.provider).eq("externalUserId", args.externalUserId),
       )
       .first();
@@ -153,7 +153,7 @@ export const getConnectionByOwnerProviderAndExternalId = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("channel_connections")
-      .withIndex("by_owner_provider_external", (q) =>
+      .withIndex("by_ownerId_and_provider_and_externalUserId", (q) =>
         q
           .eq("ownerId", args.ownerId)
           .eq("provider", args.provider)
@@ -186,19 +186,19 @@ export const getDmPolicyConfig = internalQuery({
     const [policyPref, allowlistPref, denylistPref] = await Promise.all([
       ctx.db
         .query("user_preferences")
-        .withIndex("by_owner_key", (q) =>
+        .withIndex("by_ownerId_and_key", (q) =>
           q.eq("ownerId", args.ownerId).eq("key", policyKey),
         )
         .first(),
       ctx.db
         .query("user_preferences")
-        .withIndex("by_owner_key", (q) =>
+        .withIndex("by_ownerId_and_key", (q) =>
           q.eq("ownerId", args.ownerId).eq("key", allowlistKey),
         )
         .first(),
       ctx.db
         .query("user_preferences")
-        .withIndex("by_owner_key", (q) =>
+        .withIndex("by_ownerId_and_key", (q) =>
           q.eq("ownerId", args.ownerId).eq("key", denylistKey),
         )
         .first(),
@@ -256,7 +256,7 @@ export const createConnection = internalMutation({
     const now = Date.now();
     const existing = await ctx.db
       .query("channel_connections")
-      .withIndex("by_owner_provider_external", (q) =>
+      .withIndex("by_ownerId_and_provider_and_externalUserId", (q) =>
         q
           .eq("ownerId", args.ownerId)
           .eq("provider", args.provider)
@@ -297,7 +297,7 @@ export const getOrCreateConversationForOwner = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("conversations")
-      .withIndex("by_owner_default", (q) =>
+      .withIndex("by_ownerId_and_isDefault", (q) =>
         q.eq("ownerId", args.ownerId).eq("isDefault", true),
       )
       .first();
@@ -362,7 +362,7 @@ export const storeLinkCode = internalMutation({
 
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", args.ownerId).eq("key", key))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", key))
       .first();
 
     if (existing) {
@@ -464,7 +464,7 @@ export const getConnection = query({
 
     return await ctx.db
       .query("channel_connections")
-      .withIndex("by_owner_provider", (q) =>
+      .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .first();
@@ -478,7 +478,7 @@ export const deleteConnection = mutation({
     const ownerId = await requireUserId(ctx);
     const conn = await ctx.db
       .query("channel_connections")
-      .withIndex("by_owner_provider", (q) =>
+      .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .first();

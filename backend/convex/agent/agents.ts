@@ -320,7 +320,7 @@ const upsertAgent = async (
 ) => {
   const existing = await ctx.db
     .query("agents")
-    .withIndex("by_owner_and_agent_key", (q) =>
+    .withIndex("by_ownerId_and_id", (q) =>
       q.eq("ownerId", ownerId).eq("id", agent.id),
     )
     .first();
@@ -380,7 +380,7 @@ const getAgentConfigHandler = async (
   if (args.ownerId) {
     const ownerRecord = await ctx.db
       .query("agents")
-      .withIndex("by_owner_and_agent_key", (q) =>
+      .withIndex("by_ownerId_and_id", (q) =>
         q.eq("ownerId", args.ownerId!).eq("id", args.agentType),
       )
       .first();
@@ -391,7 +391,7 @@ const getAgentConfigHandler = async (
 
   const builtinRecord = await ctx.db
     .query("agents")
-    .withIndex("by_owner_and_agent_key", (q) =>
+    .withIndex("by_ownerId_and_id", (q) =>
       q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", args.agentType),
     )
     .first();
@@ -452,12 +452,12 @@ export const listAgents = internalQuery({
     const [builtinRecords, ownerRecords] = await Promise.all([
       ctx.db
         .query("agents")
-        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
         .order("desc")
         .take(200),
       ctx.db
         .query("agents")
-        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
+        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
         .order("desc")
         .take(200),
     ]);

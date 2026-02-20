@@ -21,7 +21,7 @@ export const listCronJobs = query({
     const ownerId = await requireUserId(ctx);
     const jobs = await ctx.db
       .query("cron_jobs")
-      .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(50);
     return jobs.map((job) => ({
@@ -56,7 +56,7 @@ export const listHeartbeats = query({
     const ownerId = await requireUserId(ctx);
     const configs = await ctx.db
       .query("heartbeat_configs")
-      .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(50);
     return configs.map((config) => ({

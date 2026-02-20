@@ -246,7 +246,7 @@ const getMapping = async (
 ): Promise<string | null> => {
   const pref = await ctx.db
     .query("user_preferences")
-    .withIndex("by_owner_key", (q) =>
+    .withIndex("by_ownerId_and_key", (q) =>
       q.eq("ownerId", ownerId).eq("key", mappingPreferenceKey(table, localId)),
     )
     .first();
@@ -263,7 +263,7 @@ const setMapping = async (
   const key = mappingPreferenceKey(table, localId);
   const existing = await ctx.db
     .query("user_preferences")
-    .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
+    .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
     .first();
   const updatedAt = Date.now();
 
@@ -288,7 +288,7 @@ const clearMapping = async (
 ) => {
   const existing = await ctx.db
     .query("user_preferences")
-    .withIndex("by_owner_key", (q) =>
+    .withIndex("by_ownerId_and_key", (q) =>
       q.eq("ownerId", ownerId).eq("key", mappingPreferenceKey(table, localId)),
     )
     .first();
@@ -835,7 +835,7 @@ const upsertStoreInstalls = async (
 
   const existingByPackage = await ctx.db
     .query("store_installs")
-    .withIndex("by_owner_package", (q) =>
+    .withIndex("by_ownerId_and_packageId", (q) =>
       q.eq("ownerId", ownerId).eq("packageId", packageId),
     )
     .first();
@@ -878,7 +878,7 @@ const upsertCanvasStates = async (
 
   const existingByConversation = await ctx.db
     .query("canvas_states")
-    .withIndex("by_owner_conversation", (q) =>
+    .withIndex("by_ownerId_and_conversationId", (q) =>
       q.eq("ownerId", ownerId).eq("conversationId", conversationId),
     )
     .first();
@@ -922,7 +922,7 @@ const upsertUserPreferences = async (
 
   const existingByKey = await ctx.db
     .query("user_preferences")
-    .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
+    .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
     .first();
   if (existingByKey) {
     await ctx.db.patch(existingByKey._id, data);
@@ -1074,13 +1074,13 @@ export const getSyncGateStatus = query({
     const [runtimeMode, cloudPrimaryPreference] = await Promise.all([
       ctx.db
         .query("user_preferences")
-        .withIndex("by_owner_key", (q) =>
+        .withIndex("by_ownerId_and_key", (q) =>
           q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY),
         )
         .first(),
       ctx.db
         .query("user_preferences")
-        .withIndex("by_owner_key", (q) =>
+        .withIndex("by_ownerId_and_key", (q) =>
           q.eq("ownerId", ownerId).eq("key", CLOUD_PRIMARY_KEY),
         )
         .first(),
@@ -1090,7 +1090,7 @@ export const getSyncGateStatus = query({
 
     const channelConnections = await ctx.db
       .query("channel_connections")
-      .withIndex("by_owner_provider", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_provider", (q) => q.eq("ownerId", ownerId))
       .collect();
     const connectedProviders = new Set(
       channelConnections.map((connection) => connection.provider),
@@ -1098,7 +1098,7 @@ export const getSyncGateStatus = query({
 
     const bridgeSessions = await ctx.db
       .query("bridge_sessions")
-      .withIndex("by_owner_provider", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_provider", (q) => q.eq("ownerId", ownerId))
       .collect();
     for (const session of bridgeSessions) {
       if (ACTIVE_BRIDGE_STATUSES.has(session.status)) {

@@ -69,7 +69,7 @@ export const countByConversation = internalQuery({
   handler: async (ctx, args) => {
     const events = await ctx.db
       .query("events")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_conversationId_and_timestamp", (q) => q.eq("conversationId", args.conversationId))
       .take(10000);
     return events.length;
   },
@@ -89,7 +89,7 @@ export const listOlderMessages = internalQuery({
     const [userMessages, assistantMessages] = await Promise.all([
       ctx.db
         .query("events")
-        .withIndex("by_conversation_type", (q) =>
+        .withIndex("by_conversationId_and_type_and_timestamp", (q) =>
           q
             .eq("conversationId", args.conversationId)
             .eq("type", "user_message")
@@ -100,7 +100,7 @@ export const listOlderMessages = internalQuery({
         .take(args.limit),
       ctx.db
         .query("events")
-        .withIndex("by_conversation_type", (q) =>
+        .withIndex("by_conversationId_and_type_and_timestamp", (q) =>
           q
             .eq("conversationId", args.conversationId)
             .eq("type", "assistant_message")
@@ -142,7 +142,7 @@ export const listMessagesInWindow = internalQuery({
       types.map((type) =>
         ctx.db
           .query("events")
-          .withIndex("by_conversation_type", (q) =>
+          .withIndex("by_conversationId_and_type_and_timestamp", (q) =>
             q
               .eq("conversationId", args.conversationId)
               .eq("type", type)
@@ -190,14 +190,14 @@ export const listRecentMessages = internalQuery({
     const [userEvents, assistantEvents] = await Promise.all([
       ctx.db
         .query("events")
-        .withIndex("by_conversation_type", (q) =>
+        .withIndex("by_conversationId_and_type_and_timestamp", (q) =>
           q.eq("conversationId", args.conversationId).eq("type", "user_message"),
         )
         .order("desc")
         .take(take),
       ctx.db
         .query("events")
-        .withIndex("by_conversation_type", (q) =>
+        .withIndex("by_conversationId_and_type_and_timestamp", (q) =>
           q.eq("conversationId", args.conversationId).eq("type", "assistant_message"),
         )
         .order("desc")
@@ -316,7 +316,7 @@ const fetchRecentConversationEvents = async (
   ctx: QueryCtx,
   args: RecentConversationEventsArgs,
 ): Promise<ContextEvent[]> => {
-  const query = ctx.db.query("events").withIndex("by_conversation", (q) => {
+  const query = ctx.db.query("events").withIndex("by_conversationId_and_timestamp", (q) => {
     const base = q.eq("conversationId", args.conversationId);
     if (args.beforeTimestamp !== undefined) {
       return base.lte("timestamp", args.beforeTimestamp);
@@ -443,7 +443,7 @@ export const getLatestDeviceIdForConversation = internalQuery({
   handler: async (ctx, args) => {
     const event = await ctx.db
       .query("events")
-      .withIndex("by_conversation_type", (q) =>
+      .withIndex("by_conversationId_and_type_and_timestamp", (q) =>
         q.eq("conversationId", args.conversationId).eq("type", "user_message"),
       )
       .order("desc")
@@ -523,7 +523,7 @@ export const getToolResultByRequestId = internalQuery({
   handler: async (ctx, args) => {
     const results = await ctx.db
       .query("events")
-      .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
+      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
       .order("desc")
       .take(20);
     const match =
@@ -550,7 +550,7 @@ export const getToolResult = query({
     const ownerId = await requireUserId(ctx);
     const results = await ctx.db
       .query("events")
-      .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
+      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
       .order("desc")
       .take(20);
     const match =
@@ -702,7 +702,7 @@ export const listEvents = query({
     await requireConversationOwner(ctx, args.conversationId);
     const page = await ctx.db
       .query("events")
-      .withIndex("by_conversation", (q) =>
+      .withIndex("by_conversationId_and_timestamp", (q) =>
         q.eq("conversationId", args.conversationId),
       )
       .order("desc")
@@ -728,7 +728,7 @@ export const listEventsSince = internalQuery({
 
     const events = await ctx.db
       .query("events")
-      .withIndex("by_conversation", (q) =>
+      .withIndex("by_conversationId_and_timestamp", (q) =>
         q.eq("conversationId", args.conversationId).gt("timestamp", afterTimestamp),
       )
       .order("asc")
@@ -749,7 +749,7 @@ export const getConversationEventHead = internalQuery({
   handler: async (ctx, args) => {
     const latest = await ctx.db
       .query("events")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_conversationId_and_timestamp", (q) => q.eq("conversationId", args.conversationId))
       .order("desc")
       .first();
 
@@ -779,7 +779,7 @@ export const listToolRequestsForDevice = query({
     const ownerId = await requireUserId(ctx);
     const page = await ctx.db
       .query("events")
-      .withIndex("by_target_device", (q) => q.eq("targetDeviceId", args.deviceId))
+      .withIndex("by_targetDeviceId_and_timestamp", (q) => q.eq("targetDeviceId", args.deviceId))
       .order("desc")
       .paginate(args.paginationOpts);
 

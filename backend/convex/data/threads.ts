@@ -205,7 +205,7 @@ export const createThread = internalMutation({
     // Check active thread count and evict if at limit
     const activeThreads = await ctx.db
       .query("threads")
-      .withIndex("by_conversation_status", (q) =>
+      .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
         q.eq("conversationId", args.conversationId).eq("status", "active"),
       )
       .collect();
@@ -260,7 +260,7 @@ export const getThreadByName = internalQuery({
   handler: async (ctx, args) => {
     const matches = await ctx.db
       .query("threads")
-      .withIndex("by_conversation_name", (q) =>
+      .withIndex("by_conversationId_and_name", (q) =>
         q.eq("conversationId", args.conversationId).eq("name", args.name),
       )
       .collect();
@@ -306,7 +306,7 @@ export const listActiveThreads = internalQuery({
   handler: async (ctx, args) => {
     const threads = await ctx.db
       .query("threads")
-      .withIndex("by_conversation_status", (q) =>
+      .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
         q.eq("conversationId", args.conversationId).eq("status", "active"),
       )
       .collect();
@@ -400,7 +400,7 @@ export const loadThreadMessages = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("thread_messages")
-      .withIndex("by_thread_ordinal", (q) =>
+      .withIndex("by_threadId_and_ordinal", (q) =>
         q.eq("threadId", args.threadId),
       )
       .collect();
@@ -433,7 +433,7 @@ export const saveThreadMessages = internalMutation({
     // Get the current max ordinal
     const lastMessage = await ctx.db
       .query("thread_messages")
-      .withIndex("by_thread_ordinal", (q) =>
+      .withIndex("by_threadId_and_ordinal", (q) =>
         q.eq("threadId", args.threadId),
       )
       .order("desc")
@@ -489,7 +489,7 @@ export const deleteMessagesBefore = internalMutation({
   handler: async (ctx, args) => {
     const messages = await ctx.db
       .query("thread_messages")
-      .withIndex("by_thread_ordinal", (q) =>
+      .withIndex("by_threadId_and_ordinal", (q) =>
         q.eq("threadId", args.threadId),
       )
       .collect();
@@ -518,7 +518,7 @@ export const evictOldestThread = internalMutation({
   handler: async (ctx, args) => {
     const oldest = await ctx.db
       .query("threads")
-      .withIndex("by_conversation_status", (q) =>
+      .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
         q.eq("conversationId", args.conversationId).eq("status", "active"),
       )
       .first();
@@ -697,7 +697,7 @@ export const sweepThreadLifecycle = internalMutation({
 
     const activeCandidates = await ctx.db
       .query("threads")
-      .withIndex("by_status_last_used", (q) =>
+      .withIndex("by_status_and_lastUsedAt", (q) =>
         q.eq("status", "active").lt("lastUsedAt", idleCutoff),
       )
       .take(THREAD_SWEEP_BATCH_SIZE);
@@ -722,7 +722,7 @@ export const sweepThreadLifecycle = internalMutation({
 
     const idleCandidates = await ctx.db
       .query("threads")
-      .withIndex("by_status_last_used", (q) =>
+      .withIndex("by_status_and_lastUsedAt", (q) =>
         q.eq("status", "idle").lt("lastUsedAt", archiveCutoff),
       )
       .take(THREAD_SWEEP_BATCH_SIZE);

@@ -1,5 +1,5 @@
 import { mutation, internalMutation, query, internalQuery } from "../_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { jsonValueValidator } from "../shared_validators";
 import { requireUserId } from "../auth";
 
@@ -61,7 +61,7 @@ export const list = query({
     if (args.type) {
       const results = await ctx.db
         .query("store_packages")
-        .withIndex("by_type", (q) => q.eq("type", args.type!))
+        .withIndex("by_type_and_updatedAt", (q) => q.eq("type", args.type!))
         .order("desc")
         .take(50);
       // Sort by downloads descending
@@ -115,7 +115,7 @@ export const getByPackageId = query({
   handler: async (ctx, args) => {
     const result = await ctx.db
       .query("store_packages")
-      .withIndex("by_package_id", (q) => q.eq("packageId", args.packageId))
+      .withIndex("by_packageId", (q) => q.eq("packageId", args.packageId))
       .first();
     return result;
   },
@@ -152,7 +152,7 @@ export const getByPackageIdInternal = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("store_packages")
-      .withIndex("by_package_id", (q) => q.eq("packageId", args.packageId))
+      .withIndex("by_packageId", (q) => q.eq("packageId", args.packageId))
       .first();
   },
 });
@@ -173,33 +173,35 @@ export const install = mutation({
     // Find the package
     const pkg = await ctx.db
       .query("store_packages")
-      .withIndex("by_package_id", (q) => q.eq("packageId", args.packageId))
+      .withIndex("by_packageId", (q) => q.eq("packageId", args.packageId))
       .first();
 
     if (!pkg) {
-      throw new Error(`Package not found: ${args.packageId}`);
+      throw new ConvexError({ code: "NOT_FOUND", message: `Package not found: ${args.packageId}` });
     }
 
-    // Increment downloads
-    await ctx.db.patch(pkg._id, {
-      downloads: pkg.downloads + 1,
-      updatedAt: Date.now(),
-    });
-
-    // Upsert install record
+    // Check existing install record
     const existing = await ctx.db
       .query("store_installs")
-      .withIndex("by_owner_package", (q) =>
+      .withIndex("by_ownerId_and_packageId", (q) =>
         q.eq("ownerId", ownerId).eq("packageId", args.packageId),
       )
       .first();
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        installedVersion: args.version,
-        installedAt: Date.now(),
-      });
+      if (existing.installedVersion !== args.version) {
+        await ctx.db.patch(existing._id, {
+          installedVersion: args.version,
+          installedAt: Date.now(),
+        });
+      }
     } else {
+      // Increment downloads only on new install
+      await ctx.db.patch(pkg._id, {
+        downloads: pkg.downloads + 1,
+        updatedAt: Date.now(),
+      });
+
       await ctx.db.insert("store_installs", {
         ownerId,
         packageId: args.packageId,
@@ -224,7 +226,7 @@ export const uninstall = mutation({
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("store_installs")
-      .withIndex("by_owner_package", (q) =>
+      .withIndex("by_ownerId_and_packageId", (q) =>
         q.eq("ownerId", ownerId).eq("packageId", args.packageId),
       )
       .first();
@@ -247,7 +249,7 @@ export const getInstalled = query({
     const ownerId = await requireUserId(ctx);
     const results = await ctx.db
       .query("store_installs")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(200);
     return results;
@@ -278,7 +280,7 @@ export const seed = internalMutation({
     for (const pkg of seedPackages) {
       const existing = await ctx.db
         .query("store_packages")
-        .withIndex("by_package_id", (q) => q.eq("packageId", pkg.packageId))
+        .withIndex("by_packageId", (q) => q.eq("packageId", pkg.packageId))
         .first();
 
       if (!existing) {
@@ -316,7 +318,7 @@ export const publishMod = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("store_packages")
-      .withIndex("by_package_id", (q) => q.eq("packageId", args.packageId))
+      .withIndex("by_packageId", (q) => q.eq("packageId", args.packageId))
       .first();
 
     const now = Date.now();

@@ -22,7 +22,7 @@ export const getQrCode = query({
 
     const session = await ctx.db
       .query("bridge_sessions")
-      .withIndex("by_owner_provider", (q) =>
+      .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", identity.subject).eq("provider", "whatsapp"),
       )
       .first();

@@ -148,7 +148,7 @@ async function resolveConversationId(
   }
   const conversation = await ctx.db
     .query("conversations")
-    .withIndex("by_owner_default", (q) => q.eq("ownerId", ownerId).eq("isDefault", true))
+    .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId).eq("isDefault", true))
     .first();
   return conversation?._id ?? null;
 }
@@ -166,7 +166,7 @@ export const getConfig = internalQuery({
     }
     return await ctx.db
       .query("heartbeat_configs")
-      .withIndex("by_owner_conversation", (q) =>
+      .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", ownerId).eq("conversationId", conversationId),
       )
       .first();
@@ -204,7 +204,7 @@ export const upsertConfig = internalMutation({
 
     const existing = await ctx.db
       .query("heartbeat_configs")
-      .withIndex("by_owner_conversation", (q) =>
+      .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", ownerId).eq("conversationId", conversationId),
       )
       .first();
@@ -264,7 +264,7 @@ export const listDue = internalQuery({
     const limit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
     const due = await ctx.db
       .query("heartbeat_configs")
-      .withIndex("by_next_run", (q) => q.lte("nextRunAtMs", args.nowMs))
+      .withIndex("by_nextRunAtMs_and_ownerId", (q) => q.lte("nextRunAtMs", args.nowMs))
       .take(limit);
     return due;
   },
@@ -490,7 +490,7 @@ export const runNow = internalMutation({
     }
     const config = await ctx.db
       .query("heartbeat_configs")
-      .withIndex("by_owner_conversation", (q) =>
+      .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", ownerId).eq("conversationId", conversationId),
       )
       .first();
