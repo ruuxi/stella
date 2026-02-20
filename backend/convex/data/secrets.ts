@@ -34,7 +34,7 @@ const assertSecretReadToolContext = async (
   const now = Date.now();
   const events = await ctx.db
     .query("events")
-    .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
+    .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
     .order("desc")
     .take(20);
 
@@ -136,7 +136,7 @@ export const upsertManagedSecretForOwner = internalMutation({
 
     const existing = await ctx.db
       .query("secrets")
-      .withIndex("by_owner_and_provider_and_updated", (q) =>
+      .withIndex("by_ownerId_and_provider_and_updatedAt", (q) =>
         q.eq("ownerId", args.ownerId).eq("provider", args.provider),
       )
       .order("desc")
@@ -197,14 +197,14 @@ export const listSecrets = query({
     const records = args.provider
       ? await ctx.db
           .query("secrets")
-          .withIndex("by_owner_and_provider_and_updated", (q) =>
+          .withIndex("by_ownerId_and_provider_and_updatedAt", (q) =>
             q.eq("ownerId", ownerId).eq("provider", args.provider as string),
           )
           .order("desc")
           .take(200)
       : await ctx.db
           .query("secrets")
-          .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
+          .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
           .order("desc")
           .take(200);
 
@@ -294,7 +294,7 @@ export const getSecretHandle = internalQuery({
     const ownerId = await requireSensitiveUserId(ctx);
     const records = await ctx.db
       .query("secrets")
-      .withIndex("by_owner_and_provider_and_updated", (q) =>
+      .withIndex("by_ownerId_and_provider_and_updatedAt", (q) =>
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .order("desc")
@@ -333,7 +333,7 @@ export const getSecretValueForProvider = query({
     });
     const record = await ctx.db
       .query("secrets")
-      .withIndex("by_owner_and_provider_and_updated", (q) =>
+      .withIndex("by_ownerId_and_provider_and_updatedAt", (q) =>
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .order("desc")
@@ -401,7 +401,7 @@ export const listSecretsInternal = internalQuery({
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("secrets")
-      .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
       .order("desc")
       .take(200);
 
@@ -473,7 +473,7 @@ export const getDecryptedLlmKey = internalQuery({
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("secrets")
-      .withIndex("by_owner_and_provider_and_updated", (q) =>
+      .withIndex("by_ownerId_and_provider_and_updatedAt", (q) =>
         q.eq("ownerId", args.ownerId).eq("provider", args.provider),
       )
       .order("desc")

@@ -13,7 +13,7 @@ import { createTools } from "./tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./agent/model_resolver";
 import { withModelFailover } from "./agent/model_failover";
 import { beforeChat, afterChat } from "./agent/hooks";
-import { authComponent, createAuth, requireConversationOwner } from "./auth";
+import { authComponent, createAuth, requireConversationOwnerAction } from "./auth";
 import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
   buildCoreSynthesisUserMessage,
@@ -697,7 +697,7 @@ http.route({
 
     let conversation: Doc<"conversations"> | null = null;
     try {
-      conversation = await requireConversationOwner(ctx, conversationId);
+      conversation = await requireConversationOwnerAction(ctx, conversationId);
     } catch {
       return withCors(new Response("Conversation not found", { status: 404 }), origin);
     }

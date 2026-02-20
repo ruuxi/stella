@@ -206,7 +206,7 @@ async function resolveConversationId(
   }
   const conversation = await ctx.db
     .query("conversations")
-    .withIndex("by_owner_default", (q) => q.eq("ownerId", ownerId).eq("isDefault", true))
+    .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId).eq("isDefault", true))
     .first();
   return conversation?._id ?? null;
 }
@@ -218,7 +218,7 @@ export const list = internalQuery({
     const ownerId = await requireUserId(ctx);
     const jobs = await ctx.db
       .query("cron_jobs")
-      .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(200);
     return jobs.map((job) => sanitizeCronJobForReturn(job));
@@ -416,7 +416,7 @@ export const listDue = internalQuery({
     const limit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
     const due = await ctx.db
       .query("cron_jobs")
-      .withIndex("by_next_run", (q) => q.lte("nextRunAtMs", args.nowMs))
+      .withIndex("by_nextRunAtMs_and_ownerId", (q) => q.lte("nextRunAtMs", args.nowMs))
       .take(limit);
     return due.map((job) => sanitizeCronJobForReturn(job));
   },

@@ -38,7 +38,7 @@ export const update = internalMutation({
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("self_mod_features")
-      .withIndex("by_feature_id", (q) => q.eq("featureId", args.featureId))
+      .withIndex("by_featureId", (q) => q.eq("featureId", args.featureId))
       .first();
 
     if (!record) return null;
@@ -76,7 +76,7 @@ export const listForConversation = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("self_mod_features")
-      .withIndex("by_conversation", (q) =>
+      .withIndex("by_conversationId_and_timestamp", (q) =>
         q.eq("conversationId", args.conversationId),
       )
       .order("desc")
@@ -107,7 +107,7 @@ export const listForOwner = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("self_mod_features")
-      .withIndex("by_owner_updated", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
       .order("desc")
       .take(100);
   },
@@ -137,7 +137,7 @@ export const getByFeatureId = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("self_mod_features")
-      .withIndex("by_feature_id", (q) => q.eq("featureId", args.featureId))
+      .withIndex("by_featureId", (q) => q.eq("featureId", args.featureId))
       .first();
   },
 });

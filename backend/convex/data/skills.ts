@@ -201,7 +201,7 @@ const upsertSkill = async (
 ) => {
   const existing = await ctx.db
     .query("skills")
-    .withIndex("by_owner_and_skill_key", (q) =>
+    .withIndex("by_ownerId_and_id", (q) =>
       q.eq("ownerId", ownerId).eq("id", skill.id),
     )
     .first();
@@ -269,14 +269,14 @@ const listEnabledSkillsHandler = async (
   const [builtinEnabled, ownerScoped] = await Promise.all([
     ctx.db
       .query("skills")
-      .withIndex("by_owner_and_enabled", (q) =>
+      .withIndex("by_ownerId_and_enabled", (q) =>
         q.eq("ownerId", BUILTIN_OWNER_ID).eq("enabled", true),
       )
       .take(400),
     args.ownerId
       ? ctx.db
           .query("skills")
-          .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId!))
+          .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId!))
           .order("desc")
           .take(400)
       : Promise.resolve([]),
@@ -332,7 +332,7 @@ const getSkillByIdHandler = async (
   if (args.ownerId) {
     const ownerSkill = await ctx.db
       .query("skills")
-      .withIndex("by_owner_and_skill_key", (q) =>
+      .withIndex("by_ownerId_and_id", (q) =>
         q.eq("ownerId", args.ownerId!).eq("id", args.skillId),
       )
       .first();
@@ -343,7 +343,7 @@ const getSkillByIdHandler = async (
 
   const builtinSkill = await ctx.db
     .query("skills")
-    .withIndex("by_owner_and_skill_key", (q) =>
+    .withIndex("by_ownerId_and_id", (q) =>
       q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", args.skillId),
     )
     .first();
@@ -384,12 +384,12 @@ export const listSkills = internalQuery({
     const [builtinSkills, ownerSkills] = await Promise.all([
       ctx.db
         .query("skills")
-        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
         .order("desc")
         .take(400),
       ctx.db
         .query("skills")
-        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
+        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
         .order("desc")
         .take(400),
     ]);
@@ -422,12 +422,12 @@ export const listAllSkillsForSelection = internalQuery({
     const [builtinSkills, ownerSkills] = await Promise.all([
       ctx.db
         .query("skills")
-        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
         .order("desc")
         .take(400),
       ctx.db
         .query("skills")
-        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
         .order("desc")
         .take(400),
     ]);
@@ -469,12 +469,12 @@ export const enableSelectedSkills = internalMutation({
     const [ownerSkills, builtinSkills] = await Promise.all([
       ctx.db
         .query("skills")
-        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", args.ownerId))
+        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
         .order("desc")
         .take(400),
       ctx.db
         .query("skills")
-        .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
         .order("desc")
         .take(400),
     ]);

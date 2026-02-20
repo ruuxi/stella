@@ -521,7 +521,7 @@ export const resolveForOwner = internalQuery({
   handler: async (ctx, args) => {
     const runtimePreference = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", args.ownerId).eq("key", RUNTIME_MODE_KEY))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", RUNTIME_MODE_KEY))
       .first();
     const runtimeMode = normalizeRuntimeMode(runtimePreference?.value ?? null);
     if (runtimeMode !== "cloud_247") {
@@ -530,7 +530,7 @@ export const resolveForOwner = internalQuery({
 
     const records = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .collect();
     const record = pickPrimaryCloudDevice(records);
 
@@ -550,7 +550,7 @@ export const resolveForOwnerUngated = internalQuery({
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .collect();
     const record = pickPrimaryCloudDevice(records);
     if (!record || record.status === "error") return null;
@@ -564,7 +564,7 @@ export const listForOwner = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .collect();
   },
 });
@@ -578,7 +578,7 @@ export const listInactiveBefore = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("cloud_devices")
-      .withIndex("by_last_active", (q) => q.lt("lastActiveAt", args.cutoffMs))
+      .withIndex("by_lastActiveAt", (q) => q.lt("lastActiveAt", args.cutoffMs))
       .order("asc")
       .take(args.limit);
   },
@@ -590,7 +590,7 @@ export const getForOwner = internalQuery({
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .collect();
     return pickPrimaryCloudDevice(records);
   },
@@ -606,7 +606,7 @@ export const touchActivity = internalMutation({
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .collect();
     const record = pickPrimaryCloudDevice(records);
 
@@ -664,7 +664,7 @@ export const ensureSingleRecordForOwner = internalMutation({
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .collect();
     const existing = pickPrimaryCloudDevice(records);
 
@@ -793,12 +793,12 @@ export const get247Status = query({
     const ownerId = identity.subject;
     const runtimePreference = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
       .first();
     const mode = normalizeRuntimeMode(runtimePreference?.value ?? null);
     const records = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .collect();
     const cloudDevice = pickPrimaryCloudDevice(records);
 
@@ -820,7 +820,7 @@ export const getActive = internalQuery({
 
     const records = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .collect();
     return pickPrimaryCloudDevice(records);
   },

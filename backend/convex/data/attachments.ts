@@ -2,7 +2,7 @@ import { action, internalMutation, internalQuery } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { requireConversationOwner } from "../auth";
+import { requireConversationOwnerAction } from "../auth";
 
 const attachmentValidator = v.object({
   _id: v.id("attachments"),
@@ -51,7 +51,7 @@ export const createFromDataUrl = action({
     mimeType: string;
     size: number;
   }> => {
-    await requireConversationOwner(ctx, args.conversationId);
+    await requireConversationOwnerAction(ctx, args.conversationId);
     const { mimeType, bytes } = parseDataUrl(args.dataUrl);
     const blob = new Blob([bytes], { type: mimeType });
     const storageId = await ctx.storage.store(blob);

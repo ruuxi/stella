@@ -80,7 +80,7 @@ export const getLatestExtractionBatch = internalQuery({
     if (args.conversationId) {
       return await ctx.db
         .query("memory_extraction_batches")
-        .withIndex("by_owner_conversation_created", (q) =>
+        .withIndex("by_ownerId_and_conversationId_and_createdAt", (q) =>
           q.eq("ownerId", args.ownerId).eq("conversationId", args.conversationId),
         )
         .order("desc")
@@ -89,7 +89,7 @@ export const getLatestExtractionBatch = internalQuery({
 
     return await ctx.db
       .query("memory_extraction_batches")
-      .withIndex("by_owner_created", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_createdAt", (q) => q.eq("ownerId", args.ownerId))
       .order("desc")
       .first();
   },
@@ -128,7 +128,7 @@ export const listOwnerMemories = internalQuery({
     const limit = Math.min(Math.max(Math.floor(args.limit ?? 3000), 1), 10_000);
     return await ctx.db
       .query("memories")
-      .withIndex("by_owner_accessed", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_accessedAt", (q) => q.eq("ownerId", args.ownerId))
       .take(limit);
   },
 });
@@ -143,7 +143,7 @@ export const listOldestOwnerMemories = internalQuery({
     const limit = Math.min(Math.max(Math.floor(args.limit), 1), 1000);
     return await ctx.db
       .query("memories")
-      .withIndex("by_owner_accessed", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_accessedAt", (q) => q.eq("ownerId", args.ownerId))
       .order("asc")
       .take(limit);
   },
@@ -417,7 +417,7 @@ export const listDistinctMemoryOwners = internalQuery({
     const limit = Math.min(args.limit ?? 500, 2000);
     const memories = await ctx.db
       .query("memories")
-      .withIndex("by_accessed")
+      .withIndex("by_accessedAt")
       .take(limit);
     return Array.from(new Set(memories.map((m) => m.ownerId)));
   },

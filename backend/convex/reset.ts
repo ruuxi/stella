@@ -58,7 +58,7 @@ export const _getConversationIds = internalQuery({
   handler: async (ctx, { ownerId }) => {
     const conversations = await ctx.db
       .query("conversations")
-      .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .collect();
     return conversations.map((c) => c._id);
   },
@@ -73,7 +73,7 @@ export const _deleteConversationBatch = internalMutation({
     // Events
     const events = await ctx.db
       .query("events")
-      .withIndex("by_conversation", (q) =>
+      .withIndex("by_conversationId_and_timestamp", (q) =>
         q.eq("conversationId", conversationId),
       )
       .take(BATCH);
@@ -85,14 +85,14 @@ export const _deleteConversationBatch = internalMutation({
     // Threads + their messages
     const threads = await ctx.db
       .query("threads")
-      .withIndex("by_conversation_last_used", (q) =>
+      .withIndex("by_conversationId_and_lastUsedAt", (q) =>
         q.eq("conversationId", conversationId),
       )
       .take(BATCH);
     for (const t of threads) {
       const msgs = await ctx.db
         .query("thread_messages")
-        .withIndex("by_thread_ordinal", (q) => q.eq("threadId", t._id))
+        .withIndex("by_threadId_and_ordinal", (q) => q.eq("threadId", t._id))
         .take(BATCH);
       for (const m of msgs) {
         await ctx.db.delete(m._id);
@@ -108,7 +108,7 @@ export const _deleteConversationBatch = internalMutation({
     // Tasks
     const tasks = await ctx.db
       .query("tasks")
-      .withIndex("by_conversation", (q) =>
+      .withIndex("by_conversationId_and_timestamp", (q) =>
         q.eq("conversationId", conversationId),
       )
       .take(BATCH);
@@ -137,7 +137,7 @@ export const _deleteOwnerBatch = internalMutation({
     // Memories
     const memories = await ctx.db
       .query("memories")
-      .withIndex("by_owner_accessed", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_accessedAt", (q) => q.eq("ownerId", ownerId))
       .take(BATCH);
     for (const m of memories) {
       await ctx.db.delete(m._id);
@@ -147,7 +147,7 @@ export const _deleteOwnerBatch = internalMutation({
     // User preferences
     const prefs = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId))
       .take(BATCH);
     for (const p of prefs) {
       await ctx.db.delete(p._id);
@@ -157,7 +157,7 @@ export const _deleteOwnerBatch = internalMutation({
     // Devices
     const devices = await ctx.db
       .query("devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .take(BATCH);
     for (const d of devices) {
       await ctx.db.delete(d._id);
@@ -167,7 +167,7 @@ export const _deleteOwnerBatch = internalMutation({
     // Cloud devices
     const cloudDevices = await ctx.db
       .query("cloud_devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .take(BATCH);
     for (const cd of cloudDevices) {
       await ctx.db.delete(cd._id);
@@ -177,12 +177,12 @@ export const _deleteOwnerBatch = internalMutation({
     // Bridge outbound (must delete before sessions)
     const bridgeSessions = await ctx.db
       .query("bridge_sessions")
-      .withIndex("by_owner_provider", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_provider", (q) => q.eq("ownerId", ownerId))
       .take(BATCH);
     for (const bs of bridgeSessions) {
       const outbound = await ctx.db
         .query("bridge_outbound")
-        .withIndex("by_session", (q) => q.eq("sessionId", bs._id))
+        .withIndex("by_sessionId_and_createdAt", (q) => q.eq("sessionId", bs._id))
         .take(BATCH);
       for (const o of outbound) {
         await ctx.db.delete(o._id);

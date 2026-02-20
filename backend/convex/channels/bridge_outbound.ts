@@ -38,7 +38,7 @@ export const claim = internalMutation({
   handler: async (ctx, args) => {
     const pending = await ctx.db
       .query("bridge_outbound")
-      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .withIndex("by_sessionId_and_createdAt", (q) => q.eq("sessionId", args.sessionId))
       .take(50);
 
     const messages = pending.map((row) => ({

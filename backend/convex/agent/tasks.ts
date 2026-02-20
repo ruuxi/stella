@@ -19,7 +19,7 @@ import type { DeviceToolContext } from "./device_tools";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import { withModelFailoverAsync } from "./model_failover";
-import { requireConversationOwner } from "../auth";
+import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
 
 const taskValidator = v.object({
   _id: v.id("tasks"),
@@ -1320,7 +1320,7 @@ export const listByConversation = internalQuery({
     await requireConversationOwner(ctx, args.conversationId);
     const records = await ctx.db
       .query("tasks")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_conversationId_and_timestamp", (q) => q.eq("conversationId", args.conversationId))
       .order("desc")
       .take(200);
     return records.map((record) => toTaskClient(record));
@@ -1342,7 +1342,7 @@ export const listByConversationSince = internalQuery({
     const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 1000);
     const records = await ctx.db
       .query("tasks")
-      .withIndex("by_conversation_updated", (q) =>
+      .withIndex("by_conversationId_and_updatedAt", (q) =>
         q.eq("conversationId", args.conversationId).gt("updatedAt", afterUpdatedAt),
       )
       .order("asc")
@@ -1364,7 +1364,7 @@ export const getConversationTaskHead = internalQuery({
     await requireConversationOwner(ctx, args.conversationId);
     const latest = await ctx.db
       .query("tasks")
-      .withIndex("by_conversation_updated", (q) =>
+      .withIndex("by_conversationId_and_updatedAt", (q) =>
         q.eq("conversationId", args.conversationId),
       )
       .order("desc")
@@ -1392,7 +1392,7 @@ export const runSubagent = internalAction({
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
-    const conversation: Doc<"conversations"> = await requireConversationOwner(ctx, args.conversationId);
+    const conversation: Doc<"conversations"> = await requireConversationOwnerAction(ctx, args.conversationId);
     if (!ALLOWED_SUBAGENT_TYPES.has(args.subagentType)) {
       return `Task denied.\nReason: Unsupported subagent type: ${args.subagentType}`;
     }

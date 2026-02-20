@@ -34,7 +34,7 @@ export const getDeviceUsage = internalQuery({
     const deviceHash = await hashDeviceId(args.deviceId);
     const row = await ctx.db
       .query("anon_device_usage")
-      .withIndex("by_device", (q) => q.eq("deviceId", deviceHash))
+      .withIndex("by_deviceId", (q) => q.eq("deviceId", deviceHash))
       .first();
     if (!row) return null;
     if (Date.now() - row.lastRequestAt > DEVICE_USAGE_RETENTION_MS) {
@@ -55,7 +55,7 @@ export const incrementDeviceUsage = internalMutation({
     const deviceHash = await hashDeviceId(args.deviceId);
     const existing = await ctx.db
       .query("anon_device_usage")
-      .withIndex("by_device", (q) => q.eq("deviceId", deviceHash))
+      .withIndex("by_deviceId", (q) => q.eq("deviceId", deviceHash))
       .first();
 
     const now = Date.now();

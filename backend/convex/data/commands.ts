@@ -17,7 +17,7 @@ export const listCatalog = internalQuery({
   handler: async (ctx) => {
     const rows = await ctx.db
       .query("commands")
-      .withIndex("by_enabled", (q) => q.eq("enabled", true))
+      .withIndex("by_enabled_and_updatedAt", (q) => q.eq("enabled", true))
       .collect();
     return rows.map((r) => ({
       commandId: r.commandId,
@@ -46,7 +46,7 @@ export const getByCommandId = internalQuery({
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("commands")
-      .withIndex("by_command_id", (q) => q.eq("commandId", args.commandId))
+      .withIndex("by_commandId", (q) => q.eq("commandId", args.commandId))
       .first();
     if (!row) return null;
     return {
@@ -80,7 +80,7 @@ export const upsertMany = mutation({
     // Skip if already seeded
     const first = await ctx.db
       .query("commands")
-      .withIndex("by_enabled", (q) => q.eq("enabled", true))
+      .withIndex("by_enabled_and_updatedAt", (q) => q.eq("enabled", true))
       .first();
     if (first) return { upserted: 0 };
 

@@ -7,7 +7,7 @@ import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import { withModelFailover } from "./model_failover";
 import type { Id } from "../_generated/dataModel";
-import { requireConversationOwner } from "../auth";
+import { requireConversationOwnerAction } from "../auth";
 import { jsonSchemaValidator, jsonValueValidator } from "../shared_validators";
 
 const MAX_RAW_TEXT = 60_000;
@@ -270,7 +270,7 @@ export const invoke = internalAction({
 
     let ownerId: string | undefined = undefined;
     if (args.conversationId) {
-      const convo = await requireConversationOwner(ctx, args.conversationId);
+      const convo = await requireConversationOwnerAction(ctx, args.conversationId);
       ownerId = convo.ownerId;
     }
 

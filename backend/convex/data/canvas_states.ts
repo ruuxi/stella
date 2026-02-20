@@ -27,7 +27,7 @@ export const getForConversation = query({
     const ownerId = await requireUserId(ctx);
     const result = await ctx.db
       .query("canvas_states")
-      .withIndex("by_owner_conversation", (q) =>
+      .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", ownerId).eq("conversationId", args.conversationId),
       )
       .first();
@@ -52,7 +52,7 @@ export const save = internalMutation({
     // Upsert: find existing state for this conversation
     const existing = await ctx.db
       .query("canvas_states")
-      .withIndex("by_owner_conversation", (q) =>
+      .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", args.ownerId).eq("conversationId", args.conversationId),
       )
       .first();
@@ -96,7 +96,7 @@ export const getForConversationInternal = internalQuery({
 
     return await ctx.db
       .query("canvas_states")
-      .withIndex("by_owner_conversation", (q) =>
+      .withIndex("by_ownerId_and_conversationId", (q) =>
         q
           .eq("ownerId", conversation.ownerId)
           .eq("conversationId", args.conversationId),
@@ -121,7 +121,7 @@ export const remove = internalMutation({
 
     const states = await ctx.db
       .query("canvas_states")
-      .withIndex("by_owner_conversation", (q) =>
+      .withIndex("by_ownerId_and_conversationId", (q) =>
         q
           .eq("ownerId", conversation.ownerId)
           .eq("conversationId", args.conversationId),

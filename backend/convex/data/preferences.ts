@@ -31,7 +31,7 @@ export const setPreference = internalMutation({
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", args.key))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", args.key))
       .first();
 
     if (existing) {
@@ -61,7 +61,7 @@ export const setPreferenceForOwner = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", args.ownerId).eq("key", args.key))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", args.key))
       .first();
 
     if (existing) {
@@ -90,7 +90,7 @@ export const getPreference = internalQuery({
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", args.key))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", args.key))
       .first();
     return record?.value ?? null;
   },
@@ -103,7 +103,7 @@ export const getRuntimeMode = query({
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
       .first();
     return normalizeRuntimeMode(record?.value ?? null);
   },
@@ -118,7 +118,7 @@ export const setRuntimeMode = internalMutation({
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
       .first();
 
     if (existing) {
@@ -147,7 +147,7 @@ export const setPreferredBrowser = mutation({
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", PREFERRED_BROWSER_KEY))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", PREFERRED_BROWSER_KEY))
       .first();
 
     if (existing) {
@@ -175,7 +175,7 @@ export const ensureCloudPrimary = mutation({
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) =>
+      .withIndex("by_ownerId_and_key", (q) =>
         q.eq("ownerId", ownerId).eq("key", CLOUD_PRIMARY_KEY),
       )
       .first();
@@ -209,7 +209,7 @@ export const getRuntimeModeForOwner = internalQuery({
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", args.ownerId).eq("key", RUNTIME_MODE_KEY))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", RUNTIME_MODE_KEY))
       .first();
     return normalizeRuntimeMode(record?.value ?? null);
   },
@@ -228,7 +228,7 @@ export const getModelOverrides = query({
     const ownerId = await requireUserId(ctx);
     const records = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId))
       .collect();
 
     const overrides: Record<string, string> = {};
@@ -253,7 +253,7 @@ export const setModelOverride = mutation({
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
       .first();
 
     if (existing) {
@@ -283,7 +283,7 @@ export const clearModelOverride = mutation({
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
       .first();
 
     if (existing) {
@@ -304,7 +304,7 @@ export const setExpressionStyle = mutation({
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", ownerId).eq("key", EXPRESSION_STYLE_KEY))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", EXPRESSION_STYLE_KEY))
       .first();
 
     if (existing) {
@@ -333,7 +333,7 @@ export const getPreferenceForOwner = internalQuery({
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) => q.eq("ownerId", args.ownerId).eq("key", args.key))
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", args.key))
       .first();
     return record?.value ?? null;
   },

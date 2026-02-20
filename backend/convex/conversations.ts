@@ -33,7 +33,7 @@ export const getOrCreateDefaultConversation = mutation({
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("conversations")
-      .withIndex("by_owner_default", (q) =>
+      .withIndex("by_ownerId_and_isDefault", (q) =>
         q.eq("ownerId", ownerId).eq("isDefault", true),
       )
       .first();

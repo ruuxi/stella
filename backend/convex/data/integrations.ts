@@ -116,7 +116,7 @@ export const createSlackInstallUrl = mutation({
 
     const existing = await ctx.db
       .query("user_preferences")
-      .withIndex("by_owner_key", (q) =>
+      .withIndex("by_ownerId_and_key", (q) =>
         q.eq("ownerId", ownerId).eq("key", SLACK_OAUTH_STATE_KEY),
       )
       .first();
@@ -249,7 +249,7 @@ export const listUserIntegrations = internalQuery({
     const ownerId = await requireUserId(ctx);
     return await ctx.db
       .query("user_integrations")
-      .withIndex("by_owner_and_updated", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(200);
   },
@@ -267,7 +267,7 @@ export const upsertUserIntegration = internalMutation({
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
       .query("user_integrations")
-      .withIndex("by_owner_and_provider", (q) =>
+      .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
       .first();

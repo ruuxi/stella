@@ -65,8 +65,8 @@ export default defineSchema({
     lastExtractionAt: v.optional(v.number()),
     lastExtractionTokenCount: v.optional(v.number()),
   })
-    .index("by_owner_default", ["ownerId", "isDefault"])
-    .index("by_owner_updated", ["ownerId", "updatedAt"]),
+    .index("by_ownerId_and_isDefault", ["ownerId", "isDefault"])
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
   events: defineTable({
     conversationId: v.id("conversations"),
     timestamp: v.number(),
@@ -77,10 +77,10 @@ export default defineSchema({
     payload: jsonValueValidator,
     channelEnvelope: optionalChannelEnvelopeValidator,
   })
-    .index("by_conversation", ["conversationId", "timestamp"])
-    .index("by_conversation_type", ["conversationId", "type", "timestamp"])
-    .index("by_target_device", ["targetDeviceId", "timestamp"])
-    .index("by_request", ["requestId"]),
+    .index("by_conversationId_and_timestamp", ["conversationId", "timestamp"])
+    .index("by_conversationId_and_type_and_timestamp", ["conversationId", "type", "timestamp"])
+    .index("by_targetDeviceId_and_timestamp", ["targetDeviceId", "timestamp"])
+    .index("by_requestId", ["requestId"]),
   attachments: defineTable({
     conversationId: v.id("conversations"),
     deviceId: v.string(),
@@ -90,8 +90,8 @@ export default defineSchema({
     size: v.number(),
     createdAt: v.number(),
   })
-    .index("by_conversation", ["conversationId"])
-    .index("by_device", ["deviceId"]),
+    .index("by_conversationId_and_timestamp", ["conversationId"])
+    .index("by_deviceId", ["deviceId"]),
   agents: defineTable({
     ownerId: v.optional(v.string()),
     id: v.string(),
@@ -107,8 +107,8 @@ export default defineSchema({
     source: v.string(),
     updatedAt: v.number(),
   })
-    .index("by_owner_and_agent_key", ["ownerId", "id"])
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"]),
+    .index("by_ownerId_and_id", ["ownerId", "id"])
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
   commands: defineTable({
     commandId: v.string(),
     name: v.string(),
@@ -118,8 +118,8 @@ export default defineSchema({
     enabled: v.boolean(),
     updatedAt: v.number(),
   })
-    .index("by_command_id", ["commandId"])
-    .index("by_enabled", ["enabled", "updatedAt"]),
+    .index("by_commandId", ["commandId"])
+    .index("by_enabled_and_updatedAt", ["enabled", "updatedAt"]),
   skills: defineTable({
     ownerId: v.optional(v.string()),
     id: v.string(),
@@ -138,9 +138,9 @@ export default defineSchema({
     enabled: v.boolean(),
     updatedAt: v.number(),
   })
-    .index("by_owner_and_skill_key", ["ownerId", "id"])
-    .index("by_owner_and_enabled", ["ownerId", "enabled"])
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"]),
+    .index("by_ownerId_and_id", ["ownerId", "id"])
+    .index("by_ownerId_and_enabled", ["ownerId", "enabled"])
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
   secrets: defineTable({
     ownerId: v.string(),
     provider: v.string(),
@@ -153,8 +153,8 @@ export default defineSchema({
     updatedAt: v.number(),
     lastUsedAt: v.optional(v.number()),
   })
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
-    .index("by_owner_and_provider_and_updated", ["ownerId", "provider", "updatedAt"]),
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
+    .index("by_ownerId_and_provider_and_updatedAt", ["ownerId", "provider", "updatedAt"]),
   secret_access_audit: defineTable({
     ownerId: v.string(),
     secretId: v.id("secrets"),
@@ -164,8 +164,8 @@ export default defineSchema({
     reason: v.optional(v.string()),
     createdAt: v.number(),
   })
-    .index("by_owner_and_created", ["ownerId", "createdAt"])
-    .index("by_secret_and_created", ["secretId", "createdAt"]),
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
+    .index("by_secretId_and_createdAt", ["secretId", "createdAt"]),
   integrations_public: defineTable({
     id: v.string(),
     provider: v.string(),
@@ -182,8 +182,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
-    .index("by_owner_and_provider", ["ownerId", "provider"]),
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
+    .index("by_ownerId_and_provider", ["ownerId", "provider"]),
   remote_computers: defineTable({
     ownerId: v.string(),
     railwayServiceId: v.string(),
@@ -192,8 +192,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
-    .index("by_railway_service", ["railwayServiceId"]),
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
+    .index("by_railwayServiceId", ["railwayServiceId"]),
   devices: defineTable({
     ownerId: v.string(),
     deviceId: v.string(),
@@ -203,15 +203,15 @@ export default defineSchema({
     lastSeenAt: v.number(),
     platform: v.optional(v.string()),
   })
-    .index("by_owner", ["ownerId"])
-    .index("by_device", ["deviceId"])
-    .index("by_online_lastSeenAt", ["online", "lastSeenAt"]),
+    .index("by_ownerId", ["ownerId"])
+    .index("by_deviceId", ["deviceId"])
+    .index("by_online_and_lastSeenAt", ["online", "lastSeenAt"]),
   auth_session_policies: defineTable({
     ownerId: v.string(),
     sessionVersion: v.number(),
     minIssuedAtSec: v.optional(v.number()),
     updatedAt: v.number(),
-  }).index("by_owner", ["ownerId"]),
+  }).index("by_ownerId", ["ownerId"]),
   cloud_devices: defineTable({
     ownerId: v.string(),
     provider: v.string(),
@@ -222,16 +222,16 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_owner", ["ownerId"])
-    .index("by_last_active", ["lastActiveAt"])
-    .index("by_sprite_name", ["spriteName"]),
+    .index("by_ownerId", ["ownerId"])
+    .index("by_lastActiveAt", ["lastActiveAt"])
+    .index("by_spriteName", ["spriteName"]),
   user_preferences: defineTable({
     ownerId: v.string(),
     key: v.string(),
     value: v.string(),
     updatedAt: v.number(),
   })
-    .index("by_owner_key", ["ownerId", "key"])
+    .index("by_ownerId_and_key", ["ownerId", "key"])
     .index("by_key", ["key"]),
   tasks: defineTable({
     conversationId: v.id("conversations"),
@@ -253,10 +253,10 @@ export default defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
-    .index("by_conversation", ["conversationId", "createdAt"])
-    .index("by_conversation_updated", ["conversationId", "updatedAt"])
-    .index("by_status", ["status", "updatedAt"])
-    .index("by_parent", ["parentTaskId", "createdAt"]),
+    .index("by_conversationId_and_timestamp", ["conversationId", "createdAt"])
+    .index("by_conversationId_and_updatedAt", ["conversationId", "updatedAt"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"])
+    .index("by_parentTaskId_and_createdAt", ["parentTaskId", "createdAt"]),
   threads: defineTable({
     conversationId: v.id("conversations"),
     name: v.string(),
@@ -269,10 +269,10 @@ export default defineSchema({
     resurfacedAt: v.optional(v.number()),
     closedAt: v.optional(v.number()),
   })
-    .index("by_conversation_status", ["conversationId", "status", "lastUsedAt"])
-    .index("by_conversation_name", ["conversationId", "name"])
-    .index("by_conversation_last_used", ["conversationId", "lastUsedAt"])
-    .index("by_status_last_used", ["status", "lastUsedAt"]),
+    .index("by_conversationId_and_status_and_lastUsedAt", ["conversationId", "status", "lastUsedAt"])
+    .index("by_conversationId_and_name", ["conversationId", "name"])
+    .index("by_conversationId_and_lastUsedAt", ["conversationId", "lastUsedAt"])
+    .index("by_status_and_lastUsedAt", ["status", "lastUsedAt"]),
   thread_messages: defineTable({
     threadId: v.id("threads"),
     ordinal: v.number(),
@@ -282,7 +282,7 @@ export default defineSchema({
     tokenEstimate: v.optional(v.number()),
     createdAt: v.number(),
   })
-    .index("by_thread_ordinal", ["threadId", "ordinal"]),
+    .index("by_threadId_and_ordinal", ["threadId", "ordinal"]),
   memories: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
@@ -292,8 +292,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
-    .index("by_owner_accessed", ["ownerId", "accessedAt"])
-    .index("by_accessed", ["accessedAt"])
+    .index("by_ownerId_and_accessedAt", ["ownerId", "accessedAt"])
+    .index("by_accessedAt", ["accessedAt"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 1536,
@@ -311,8 +311,8 @@ export default defineSchema({
     })),
     createdAt: v.number(),
   })
-    .index("by_owner_created", ["ownerId", "createdAt"])
-    .index("by_owner_conversation_created", ["ownerId", "conversationId", "createdAt"]),
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
+    .index("by_ownerId_and_conversationId_and_createdAt", ["ownerId", "conversationId", "createdAt"]),
   heartbeat_configs: defineTable({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
@@ -340,9 +340,9 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_owner_conversation", ["ownerId", "conversationId"])
-    .index("by_next_run", ["nextRunAtMs", "ownerId"])
-    .index("by_owner_updated", ["ownerId", "updatedAt"]),
+    .index("by_ownerId_and_conversationId", ["ownerId", "conversationId"])
+    .index("by_nextRunAtMs_and_ownerId", ["nextRunAtMs", "ownerId"])
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
   channel_connections: defineTable({
     ownerId: v.string(),
     provider: v.string(),
@@ -352,9 +352,9 @@ export default defineSchema({
     linkedAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_provider_external", ["provider", "externalUserId"])
-    .index("by_owner_provider", ["ownerId", "provider"])
-    .index("by_owner_provider_external", ["ownerId", "provider", "externalUserId"]),
+    .index("by_provider_and_externalUserId", ["provider", "externalUserId"])
+    .index("by_ownerId_and_provider", ["ownerId", "provider"])
+    .index("by_ownerId_and_provider_and_externalUserId", ["ownerId", "provider", "externalUserId"]),
   slack_installations: defineTable({
     teamId: v.string(),
     teamName: v.optional(v.string()),
@@ -365,7 +365,7 @@ export default defineSchema({
     installedBy: v.optional(v.string()),
     installedAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_team", ["teamId"]),
+  }).index("by_teamId", ["teamId"]),
   bridge_sessions: defineTable({
     ownerId: v.string(),
     provider: v.string(),
@@ -385,9 +385,9 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_owner_provider", ["ownerId", "provider"])
-    .index("by_sprite", ["spriteName", "provider"])
-    .index("by_next_wake", ["nextWakeAtMs"]),
+    .index("by_ownerId_and_provider", ["ownerId", "provider"])
+    .index("by_spriteName_and_provider", ["spriteName", "provider"])
+    .index("by_nextWakeAtMs", ["nextWakeAtMs"]),
   bridge_outbound: defineTable({
     sessionId: v.id("bridge_sessions"),
     ownerId: v.string(),
@@ -396,7 +396,7 @@ export default defineSchema({
     text: v.string(),
     createdAt: v.number(),
   })
-    .index("by_session", ["sessionId", "createdAt"])
+    .index("by_sessionId_and_createdAt", ["sessionId", "createdAt"])
     .index("by_createdAt", ["createdAt"]),
   store_packages: defineTable({
     packageId: v.string(),
@@ -422,8 +422,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_package_id", ["packageId"])
-    .index("by_type", ["type", "updatedAt"])
+    .index("by_packageId", ["packageId"])
+    .index("by_type_and_updatedAt", ["type", "updatedAt"])
     .index("by_downloads", ["downloads"])
     .searchIndex("search_packages", {
       searchField: "searchText",
@@ -435,8 +435,8 @@ export default defineSchema({
     installedVersion: v.string(),
     installedAt: v.number(),
   })
-    .index("by_owner", ["ownerId", "installedAt"])
-    .index("by_owner_package", ["ownerId", "packageId"]),
+    .index("by_ownerId", ["ownerId", "installedAt"])
+    .index("by_ownerId_and_packageId", ["ownerId", "packageId"]),
   canvas_states: defineTable({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
@@ -446,8 +446,8 @@ export default defineSchema({
     width: v.optional(v.number()),
     updatedAt: v.number(),
   })
-    .index("by_owner_conversation", ["ownerId", "conversationId"])
-    .index("by_owner_updated", ["ownerId", "updatedAt"]),
+    .index("by_ownerId_and_conversationId", ["ownerId", "conversationId"])
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
   self_mod_features: defineTable({
     featureId: v.string(),
     ownerId: v.string(),
@@ -460,15 +460,15 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_owner_updated", ["ownerId", "updatedAt"])
-    .index("by_conversation", ["conversationId", "updatedAt"])
-    .index("by_feature_id", ["featureId"]),
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
+    .index("by_conversationId_and_timestamp", ["conversationId", "updatedAt"])
+    .index("by_featureId", ["featureId"]),
   linq_chats: defineTable({
     phoneNumber: v.string(),
     linqChatId: v.string(),
     createdAt: v.number(),
   })
-    .index("by_phone", ["phoneNumber"]),
+    .index("by_phoneNumber", ["phoneNumber"]),
   usage_logs: defineTable({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
@@ -483,15 +483,15 @@ export default defineSchema({
     toolCalls: v.optional(v.number()),
     createdAt: v.number(),
   })
-    .index("by_owner", ["ownerId", "createdAt"])
-    .index("by_conversation", ["conversationId", "createdAt"]),
+    .index("by_ownerId", ["ownerId", "createdAt"])
+    .index("by_conversationId_and_timestamp", ["conversationId", "createdAt"]),
   anon_device_usage: defineTable({
     deviceId: v.string(),
     requestCount: v.number(),
     firstRequestAt: v.number(),
     lastRequestAt: v.number(),
   })
-    .index("by_device", ["deviceId"]),
+    .index("by_deviceId", ["deviceId"]),
   cron_jobs: defineTable({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
@@ -512,6 +512,6 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_owner_updated", ["ownerId", "updatedAt"])
-    .index("by_next_run", ["nextRunAtMs", "ownerId"]),
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
+    .index("by_nextRunAtMs_and_ownerId", ["nextRunAtMs", "ownerId"]),
 });
