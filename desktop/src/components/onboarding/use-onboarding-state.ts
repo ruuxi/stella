@@ -9,6 +9,7 @@ export type Phase =
   | "browser"
   | "memory"
   | "creation"
+  | "voice"
   | "theme"
   | "personality"
   | "complete"
@@ -19,12 +20,12 @@ export const CENTER_PHASES = new Set<Phase>(["start", "auth", "intro"]);
 
 /** Phases that use split layout */
 export const SPLIT_PHASES = new Set<Phase>([
-  "browser", "memory", "creation", "theme", "personality",
+  "browser", "memory", "creation", "voice", "theme", "personality",
 ]);
 
 /** Ordered split steps for navigation */
 export const SPLIT_STEP_ORDER: Phase[] = [
-  "browser", "memory", "creation", "theme", "personality",
+  "browser", "memory", "creation", "voice", "theme", "personality",
 ];
 
 export type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";

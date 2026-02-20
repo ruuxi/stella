@@ -175,6 +175,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open URL in user's default browser
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
 
+  // Voice Transcript
+  submitVoiceTranscript: (transcript: string) => ipcRenderer.send('voice:transcript', transcript),
+  setVoiceShortcut: (shortcut: string) => ipcRenderer.send('voice:setShortcut', shortcut),
+  onVoiceTranscript: (callback: (transcript: string) => void) => {
+    const handler = (_event: IpcRendererEvent, transcript: string) => {
+      callback(transcript)
+    }
+    ipcRenderer.on('voice:transcript', handler)
+    return () => {
+      ipcRenderer.removeListener('voice:transcript', handler)
+    }
+  },
+
   // Store package management
   storeInstallSkill: (payload: {
     packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]

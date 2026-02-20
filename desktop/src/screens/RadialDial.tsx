@@ -3,6 +3,7 @@ import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
+import { useUiState } from '../app/state/ui-state'
 import { hexToRgb } from '../theme/color'
 import { StellaAnimation } from '../components/StellaAnimation'
 import {
@@ -92,6 +93,7 @@ export function RadialDial() {
   })
   const api = getElectronApi()
   const { colors } = useTheme()
+  const { state } = useUiState()
 
   // Keep phaseRef in sync
   useEffect(() => {
@@ -300,18 +302,22 @@ export function RadialDial() {
             const startAngle = index * WEDGE_ANGLE
             const endAngle = (index + 1) * WEDGE_ANGLE
             const isSelected = selectedWedge === wedge.id
+            const isVoiceToggleActive = wedge.id === 'voice' && state.isVoiceActive
+            const isActiveOrSelected = isSelected || isVoiceToggleActive
             const contentPos = getContentPosition(index)
             const Icon = wedge.icon
 
             const fillColor = isSelected
               ? toRgba(colors.interactive, 0.9)
+              : isVoiceToggleActive
+              ? toRgba(colors.interactive, 0.5)
               : colors.card
 
-            const strokeColor = isSelected
+            const strokeColor = isActiveOrSelected
               ? toRgba(colors.interactive, 0.9)
               : toRgba(colors.border, 0.5)
 
-            const iconColor = isSelected
+            const iconColor = isActiveOrSelected
               ? colors.primaryForeground
               : colors.mutedForeground
 

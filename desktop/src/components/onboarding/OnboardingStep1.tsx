@@ -29,6 +29,7 @@ const FADE_GAP_MS = 200;
 const STEP_TITLES: Partial<Record<Phase, string>> = {
   browser: "Let me get to know you.",
   creation: "I'm not just a desktop app.",
+  voice: "Speak your mind.",
   theme: "How should I look?",
   personality: "How should I talk?",
 };
@@ -78,6 +79,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const [showNoneWarning, setShowNoneWarning] = useState(false);
   const [activeMockId, setActiveMockId] = useState<string | null>(null);
   const [homeHovered, setHomeHovered] = useState(false);
+  const [voicePermissionGranted, setVoicePermissionGranted] = useState<boolean | null>(null);
 
   // Discovery category toggles
   const [categoryStates, setCategoryStates] = useState<Record<DiscoveryCategory, boolean>>(() => {
@@ -701,6 +703,66 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* ── Voice (Permission + Demo) ── */}
+            {phase === "voice" && (
+              <div className="onboarding-step-content">
+                <div className="onboarding-step-label">Voice Interaction</div>
+                <p className="onboarding-step-desc">
+                  I can listen to your voice and instantly transcribe it for you.
+                  When you're done speaking, your text will appear right where you need it.
+                </p>
+
+                <div className="onboarding-voice-demo">
+                  <button 
+                    className="onboarding-pill"
+                    onClick={async () => {
+                      try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+                        stream.getTracks().forEach(t => t.stop())
+                        setVoicePermissionGranted(true)
+                      } catch (err) {
+                        setVoicePermissionGranted(false)
+                      }
+                    }}
+                  >
+                    {voicePermissionGranted === true 
+                      ? "Microphone access granted \u2713" 
+                      : voicePermissionGranted === false 
+                        ? "Microphone access denied" 
+                        : "Allow microphone access"}
+                  </button>
+                </div>
+
+                <div className="onboarding-step-label" style={{ marginTop: 24 }}>Voice Shortcut</div>
+                <p className="onboarding-step-desc">
+                  Press this shortcut anywhere to start or stop voice dictation. 
+                  (You can also use the Voice button in the Radial Dial).
+                </p>
+                <div className="onboarding-shortcut-config">
+                  <div className="onboarding-pill" style={{ cursor: "default", opacity: 0.8 }}>
+                    {platform === "darwin" ? "Cmd+Shift+V" : "Ctrl+Shift+V"}
+                  </div>
+                </div>
+
+                <button 
+                  className="onboarding-confirm" 
+                  data-visible={true} 
+                  onClick={() => {
+                    const finalShortcut = platform === "darwin" ? "CommandOrControl+Shift+V" : "CommandOrControl+Shift+V"
+                    if (isLocalMode) {
+                      localPut("/api/preferences/voice_shortcut", { value: finalShortcut }).catch(() => {})
+                    } else {
+                      localStorage.setItem("stella-voice-shortcut", finalShortcut)
+                    }
+                    window.electronAPI?.setVoiceShortcut?.(finalShortcut)
+                    nextSplitStep()
+                  }}
+                >
+                  Continue
+                </button>
               </div>
             )}
 

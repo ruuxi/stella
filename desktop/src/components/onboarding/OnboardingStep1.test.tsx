@@ -66,6 +66,10 @@ vi.mock("@/convex/api", () => ({
   },
 }));
 
+vi.mock("../../app/state/ui-state", () => ({
+  useUiState: () => ({ state: { isVoiceActive: false }, updateState: vi.fn() }),
+}));
+
 /* ── Helpers ── */
 
 function makeProps(overrides: Partial<Parameters<typeof OnboardingStep1>[0]> = {}) {
@@ -511,6 +515,13 @@ describe("OnboardingStep1", () => {
         vi.advanceTimersByTime(600);
       });
 
+      // voice -> theme
+      const voiceContinue = screen.getAllByText("Continue").pop()!;
+      fireEvent.click(voiceContinue);
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
       return { ...result, props };
     }
 
@@ -588,9 +599,16 @@ describe("OnboardingStep1", () => {
         });
       }
 
-      // creation -> theme
+      // creation -> voice
       const creationContinue = screen.getAllByText("Continue").pop()!;
       fireEvent.click(creationContinue);
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      // voice -> theme
+      const voiceContinue = screen.getAllByText("Continue").pop()!;
+      fireEvent.click(voiceContinue);
       act(() => {
         vi.advanceTimersByTime(600);
       });

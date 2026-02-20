@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, shell, type Display, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, shell, globalShortcut, type Display, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -23,6 +23,12 @@ import {
   hideModifierOverlay,
   destroyModifierOverlay,
 } from './modifier-overlay.js'
+import {
+  createVoiceWindow,
+  showVoiceWindow,
+  hideVoiceWindow,
+  getVoiceWindow,
+} from './voice-window.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
 import { getDevServerUrl } from './dev-url.js'
@@ -54,13 +60,14 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 type UiMode = 'chat' | 'voice'
-type WindowMode = 'full' | 'mini'
+type WindowMode = 'full' | 'mini' | 'voice'
 
 type UiState = {
   mode: UiMode
   window: WindowMode
   view: 'chat' | 'store'
   conversationId: string | null
+  isVoiceActive: boolean
 }
 
 type ScreenshotCapture = {
@@ -111,6 +118,7 @@ const uiState: UiState = {
   window: 'full',
   view: 'chat',
   conversationId: null,
+  isVoiceActive: false,
 }
 
 let fullWindow: BrowserWindow | null = null
@@ -1151,8 +1159,17 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
     case 'voice':
       radialContextShouldCommit = true
       commitStagedRadialContext()
-      updateUiState({ mode: 'voice' })
-      if (!isMiniShowing()) showWindow('mini')
+      updateUiState({
+        mode: 'voice',
+        isVoiceActive: !uiState.isVoiceActive,
+      })
+      if (!uiState.isVoiceActive) {
+        // Just stopped voice, ensure mini window is visible for transcript
+        if (!isMiniShowing()) showWindow('mini')
+      } else {
+        // Started voice, show the voice pill overlay
+        showVoiceWindow()
+      }
       break
     case 'full':
       cancelRadialContextCapture()
@@ -1550,6 +1567,46 @@ app.whenReady().then(async () => {
   createRadialWindow() // Pre-create radial window for faster display
   createRegionCaptureWindow() // Pre-create region capture window for faster display
   createModifierOverlay() // Overlay to capture right-clicks when Ctrl is held
+  createVoiceWindow() // Pre-create voice overlay window
+
+  let currentVoiceShortcut = 'CommandOrControl+Shift+V'
+
+  ipcMain.on('voice:setShortcut', (_event, shortcut: string) => {
+    globalShortcut.unregister(currentVoiceShortcut)
+    currentVoiceShortcut = shortcut
+    if (shortcut) {
+      globalShortcut.register(shortcut, () => {
+        if (!appReady) return
+        uiState.isVoiceActive = !uiState.isVoiceActive
+        if (uiState.isVoiceActive) {
+          uiState.mode = 'voice'
+          showVoiceWindow()
+        } else {
+          hideVoiceWindow()
+          if (!isMiniShowing()) showWindow('mini')
+        }
+        broadcastUiState()
+      })
+    }
+  })
+
+  // Register Voice shortcut initially
+  globalShortcut.register(currentVoiceShortcut, () => {
+    if (!appReady) return
+    
+    // Toggle voice state
+    uiState.isVoiceActive = !uiState.isVoiceActive
+    if (uiState.isVoiceActive) {
+      uiState.mode = 'voice'
+      showVoiceWindow()
+    } else {
+      hideVoiceWindow()
+      // Once voice stops, ensure the mini window shows up to receive transcript
+      if (!isMiniShowing()) showWindow('mini')
+    }
+    broadcastUiState()
+  })
+
   showWindow('full')
 
   // Wait for the full window to finish loading before broadcasting auth callback
@@ -1631,12 +1688,23 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('ui:getState', () => uiState)
   ipcMain.handle('ui:setState', (_event, partial: Partial<UiState>) => {
-    const { window: nextWindow, ...rest } = partial
+    const { window: nextWindow, isVoiceActive, ...rest } = partial
     if (nextWindow) {
       showWindow(nextWindow)
     }
+    if (isVoiceActive !== undefined) {
+      uiState.isVoiceActive = isVoiceActive
+      if (isVoiceActive) {
+        showVoiceWindow()
+      } else {
+        hideVoiceWindow()
+      }
+    }
     if (Object.keys(rest).length > 0) {
       updateUiState(rest)
+    }
+    if (isVoiceActive !== undefined) {
+      broadcastUiState()
     }
     return uiState
   })
@@ -1663,6 +1731,15 @@ app.whenReady().then(async () => {
 
   ipcMain.on('region:cancel', () => {
     cancelRegionCapture()
+  })
+
+  ipcMain.on('voice:transcript', (_event, transcript: string) => {
+    // Forward transcript to the active windows (mini or full)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win === miniWindow || win === fullWindow) {
+        win.webContents.send('voice:transcript', transcript)
+      }
+    }
   })
 
   ipcMain.handle('region:getWindowCapture', async (_event, point: { x: number; y: number }) => {
@@ -2091,6 +2168,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
   // Stop mouse hook before quitting
   if (mouseHook) {
     mouseHook.stop()
