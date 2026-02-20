@@ -249,7 +249,7 @@ export const getInstalled = query({
     const ownerId = await requireUserId(ctx);
     const results = await ctx.db
       .query("store_installs")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_ownerId_and_installedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .take(200);
     return results;

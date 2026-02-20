@@ -108,7 +108,7 @@ export const _deleteConversationBatch = internalMutation({
     // Tasks
     const tasks = await ctx.db
       .query("tasks")
-      .withIndex("by_conversationId_and_timestamp", (q) =>
+      .withIndex("by_conversationId_and_createdAt", (q) =>
         q.eq("conversationId", conversationId),
       )
       .take(BATCH);

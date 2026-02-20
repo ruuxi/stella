@@ -10,6 +10,7 @@
  * to AI providers and logs token usage for billing.
  */
 
+import type { ActionCtx } from "./_generated/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { streamText, generateText, createGateway, embed } from "ai";
@@ -23,7 +24,7 @@ type ProxyAuth =
   | { type: "device"; deviceId: string }
   | { type: "none" };
 
-async function resolveAuth(ctx: Parameters<Parameters<typeof httpAction>[0]>[0], request: Request): Promise<ProxyAuth> {
+async function resolveAuth(ctx: ActionCtx, request: Request): Promise<ProxyAuth> {
   // Try JWT first
   const identity = await ctx.auth.getUserIdentity();
   if (identity) {
@@ -40,7 +41,7 @@ async function resolveAuth(ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
 }
 
 async function checkDeviceRateLimit(
-  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  ctx: ActionCtx,
   deviceId: string,
 ): Promise<boolean> {
   const usage = await ctx.runQuery(internal.ai_proxy_data.getDeviceUsage, { deviceId });
@@ -49,7 +50,7 @@ async function checkDeviceRateLimit(
 }
 
 async function incrementDeviceUsage(
-  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  ctx: ActionCtx,
   deviceId: string,
 ): Promise<void> {
   await ctx.runMutation(internal.ai_proxy_data.incrementDeviceUsage, { deviceId });
