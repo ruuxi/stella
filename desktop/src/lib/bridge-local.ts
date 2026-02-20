@@ -10,13 +10,6 @@ export type GetBridgeBundle = (args: {
   provider: BridgeProvider;
 }) => Promise<BridgeBundle>;
 
-type CompatibleBridgeBundle = {
-  code: string;
-  dependencies: string;
-  env?: Record<string, string>;
-  config?: string;
-};
-
 export async function deployAndStartLocalBridge(
   provider: BridgeProvider,
   getBridgeBundle: GetBridgeBundle,
@@ -26,17 +19,8 @@ export async function deployAndStartLocalBridge(
     return false;
   }
 
-  const rawBundle = (await getBridgeBundle({ provider })) as CompatibleBridgeBundle;
-  const bundleEnv =
-    rawBundle.env ??
-    (() => {
-      if (!rawBundle.config) return {};
-      try {
-        return JSON.parse(rawBundle.config) as Record<string, string>;
-      } catch {
-        return {};
-      }
-    })();
+  const rawBundle = await getBridgeBundle({ provider });
+  const bundleEnv = rawBundle.env;
 
   const deployResult = await electronApi.bridgeDeploy({
     provider,

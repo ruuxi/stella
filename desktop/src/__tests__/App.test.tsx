@@ -43,7 +43,7 @@ vi.mock("../app/CredentialRequestLayer", () => ({
   CredentialRequestLayer: () => <div data-testid="credential-request-layer" />,
 }));
 
-vi.mock("../screens/FullShell", () => ({
+vi.mock("../screens/full-shell/FullShell", () => ({
   FullShell: () => <div data-testid="full-shell" />,
 }));
 

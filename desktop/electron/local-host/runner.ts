@@ -21,6 +21,7 @@ import {
   applyLocalSyncBatchResult,
   type LocalSyncBatchResult,
 } from "./local_cloud_sync.js";
+import { decryptLocalSecret } from "./secret_crypto.js";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -110,11 +111,15 @@ export const createLocalHostRunner = ({
         ["local", secretId],
       );
       if (byId.length > 0 && byId[0].encrypted_value) {
+        const plaintext = decryptLocalSecret(byId[0].encrypted_value);
+        if (!plaintext) {
+          return null;
+        }
         return {
           secretId: byId[0].id,
           provider: byId[0].provider,
           label: byId[0].label,
-          plaintext: byId[0].encrypted_value,
+          plaintext,
         };
       }
       return null;
@@ -132,11 +137,15 @@ export const createLocalHostRunner = ({
     if (byProvider.length === 0 || !byProvider[0].encrypted_value) {
       return null;
     }
+    const plaintext = decryptLocalSecret(byProvider[0].encrypted_value);
+    if (!plaintext) {
+      return null;
+    }
     return {
       secretId: byProvider[0].id,
       provider: byProvider[0].provider,
       label: byProvider[0].label,
-      plaintext: byProvider[0].encrypted_value,
+      plaintext,
     };
   };
 
