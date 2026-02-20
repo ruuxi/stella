@@ -5,6 +5,7 @@ import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import { Markdown } from "../../components/chat/Markdown";
 import { ReasoningSection } from "../../components/chat/ReasoningSection";
 import type { EventRecord, MessagePayload } from "../../hooks/use-conversation-events";
+import { sanitizeAttachmentImageUrl } from "@/lib/url-safety";
 
 export type TurnViewModel = {
   id: string;
@@ -213,11 +214,12 @@ export const TurnItem = memo(function TurnItem({
           {userAttachments.length > 0 && (
             <div className="event-attachments">
               {userAttachments.map((attachment, index) => {
-                if (attachment.url) {
+                const safeUrl = sanitizeAttachmentImageUrl(attachment.url);
+                if (safeUrl) {
                   return (
                     <img
                       key={attachment.id ?? `${index}`}
-                      src={attachment.url}
+                      src={safeUrl}
                       alt="Attachment"
                       className="event-attachment"
                       onClick={() => onOpenAttachment?.(attachment)}

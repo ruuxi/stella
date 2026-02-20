@@ -1,27 +1,35 @@
 import { useRef, useCallback, useState } from 'react'
 import type { CanvasPayload } from '@/app/state/canvas-state'
+import { sanitizeCanvasAppUrl } from '@/lib/url-safety'
 
 const AppframeRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const safeCanvasUrl = sanitizeCanvasAppUrl(canvas.url)
 
   const handleReload = useCallback(() => {
+    if (!safeCanvasUrl) {
+      return
+    }
     setError(false)
     setLoading(true)
     if (iframeRef.current) {
-      iframeRef.current.src = canvas.url ?? ''
+      iframeRef.current.src = safeCanvasUrl
     }
-  }, [canvas.url])
+  }, [safeCanvasUrl])
 
   if (!canvas.url) {
     return <div className="canvas-renderer-empty">No URL provided</div>
+  }
+  if (!safeCanvasUrl) {
+    return <div className="canvas-renderer-empty">Blocked unsupported URL</div>
   }
 
   return (
     <div className="canvas-appframe-wrap">
       <div className="canvas-appframe-toolbar">
-        <span className="canvas-appframe-url">{canvas.url}</span>
+        <span className="canvas-appframe-url">{safeCanvasUrl}</span>
         <button className="canvas-appframe-reload" onClick={handleReload}>
           Reload
         </button>
@@ -40,10 +48,11 @@ const AppframeRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
       <iframe
         ref={iframeRef}
         className="canvas-appframe-frame"
-        src={canvas.url}
+        src={safeCanvasUrl}
         style={{ display: loading || error ? 'none' : 'flex', flex: 1, border: 'none' }}
         onLoad={() => { setLoading(false); setError(false) }}
         onError={() => { setLoading(false); setError(true) }}
+        referrerPolicy="no-referrer"
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
       />
     </div>

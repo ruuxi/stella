@@ -8,6 +8,7 @@ import {
   deployAndStartLocalBridge,
   type BridgeProvider,
 } from "@/lib/bridge-local";
+import { sanitizeExternalLinkUrl } from "@/lib/url-safety";
 
 function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
   const setupBridge = useAction(api.channels.bridge.setupBridge);
@@ -107,7 +108,9 @@ function BotSetupView({
   const generateCode = useMutation(api.channels.utils.generateLinkCode);
   const createSlackInstallUrl = useMutation((api as any).data.integrations.createSlackInstallUrl);
   const [code, setCode] = useState<string | null>(null);
-  const [botLink, setBotLink] = useState<string | null>(integration.botLink ?? null);
+  const [botLink, setBotLink] = useState<string | null>(
+    sanitizeExternalLinkUrl(integration.botLink),
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -135,7 +138,7 @@ function BotSetupView({
   useEffect(() => {
     if (!isExpanded) return;
     if (integration.provider !== "slack") {
-      setBotLink(integration.botLink ?? null);
+      setBotLink(sanitizeExternalLinkUrl(integration.botLink));
       return;
     }
 
@@ -143,7 +146,13 @@ function BotSetupView({
     createSlackInstallUrl({})
       .then((result) => {
         if (cancelled) return;
-        setBotLink(result.url);
+        const safeUrl = sanitizeExternalLinkUrl(result.url);
+        if (!safeUrl) {
+          setBotLink(null);
+          setError("Received an invalid install link");
+          return;
+        }
+        setBotLink(safeUrl);
       })
       .catch((err) => {
         if (cancelled) return;
