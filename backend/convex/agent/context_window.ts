@@ -31,6 +31,16 @@ const clampEventTokens = (tokens: number): number =>
 export const estimateContextEventTokens = (event: ContextEventLike): number => {
   const payload = asObject(event.payload);
 
+  if (event.type === "microcompact_boundary") {
+    const compactedCount = Array.isArray(payload.compactedToolIds)
+      ? payload.compactedToolIds.length
+      : 0;
+    const clearedCount = Array.isArray(payload.clearedAttachmentUUIDs)
+      ? payload.clearedAttachmentUUIDs.length
+      : 0;
+    return clampEventTokens(20 + compactedCount * 2 + clearedCount * 2);
+  }
+
   if (event.type === "user_message" || event.type === "assistant_message") {
     const textTokens = estimateTextTokens(payload.text);
     const usageTokens = payload.usage ? estimateJsonTokens(payload.usage) : 0;

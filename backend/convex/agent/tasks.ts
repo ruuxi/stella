@@ -10,7 +10,9 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
 import {
+  computeAutoCompactionThresholdTokens,
   computeCompactionTriggerTokens,
+  isAutoCompactionEnabled,
   SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
 } from "./context_budget";
 import type { DeviceToolContext } from "./device_tools";
@@ -686,40 +688,47 @@ const executeSubagentRun = async (
   }> = [];
   let summaryPair: Array<{ role: "user" | "assistant"; content: string }> = [];
 
+  const loadThreadContext = async () => {
+    if (!args.threadId || !threadSupported) {
+      summaryPair = [];
+      threadMessages = [];
+      return;
+    }
+
+    const thread = await ctx.runQuery(internal.data.threads.getThreadById, {
+      threadId: args.threadId,
+    });
+
+    summaryPair = thread?.summary
+      ? [
+          { role: "user" as const, content: `[Thread context - prior work summary]\n${thread.summary}` },
+          { role: "assistant" as const, content: "Understood. I have the context from previous work." },
+        ]
+      : [];
+
+    const rawMessages = await ctx.runQuery(internal.data.threads.loadThreadMessages, {
+      threadId: args.threadId,
+    });
+
+    threadMessages = selectRecentThreadMessagesByTokens(
+      rawMessages.map((m) => ({
+        role: m.role as "user" | "assistant" | "tool",
+        content: m.content,
+        ...(m.toolCallId ? { toolCallId: m.toolCallId } : {}),
+        ...(typeof m.tokenEstimate === "number" ? { tokenEstimate: m.tokenEstimate } : {}),
+      })),
+      SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
+    );
+  };
+
   if (args.threadId && threadSupported) {
     try {
       await ctx.runMutation(internal.data.threads.touchThread, {
         threadId: args.threadId,
       });
-
-      const thread = await ctx.runQuery(internal.data.threads.getThreadById, {
-        threadId: args.threadId,
-      });
-
-      // Inject summary as synthetic user/assistant pair
-      if (thread?.summary) {
-        summaryPair = [
-          { role: "user" as const, content: `[Thread context — prior work summary]\n${thread.summary}` },
-          { role: "assistant" as const, content: "Understood. I have the context from previous work." },
-        ];
-      }
-
-      // Load thread messages and deserialize
-      const rawMessages = await ctx.runQuery(internal.data.threads.loadThreadMessages, {
-        threadId: args.threadId,
-      });
-
-      threadMessages = selectRecentThreadMessagesByTokens(
-        rawMessages.map((m) => ({
-          role: m.role as "user" | "assistant" | "tool",
-          content: m.content,
-          ...(m.toolCallId ? { toolCallId: m.toolCallId } : {}),
-          ...(typeof m.tokenEstimate === "number" ? { tokenEstimate: m.tokenEstimate } : {}),
-        })),
-        SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
-      );
+      await loadThreadContext();
     } catch {
-      // Thread loading failed — proceed without thread context
+      // Thread loading failed - proceed without thread context
     }
   }
 
@@ -761,6 +770,26 @@ const executeSubagentRun = async (
   try {
     const resolvedConfig = await resolveModelConfig(ctx, args.subagentType, args.ownerId);
     const fallbackConfig = await resolveFallbackConfig(ctx, args.subagentType, args.ownerId).catch(() => null);
+
+    if (args.threadId && threadSupported && isAutoCompactionEnabled()) {
+      try {
+        const currentThread = await ctx.runQuery(internal.data.threads.getThreadById, {
+          threadId: args.threadId,
+        });
+        const autoCompactThresholdTokens = computeAutoCompactionThresholdTokens(
+          typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
+        );
+        if ((currentThread?.totalTokenEstimate ?? 0) >= autoCompactThresholdTokens) {
+          await ctx.runAction(internal.data.threads.compactThread, {
+            threadId: args.threadId,
+          });
+          await loadThreadContext();
+        }
+      } catch {
+        // Best effort: proceed even if pre-request compaction fails.
+      }
+    }
+
     const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
 
     for (const sp of summaryPair) {

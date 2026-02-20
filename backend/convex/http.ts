@@ -7,6 +7,7 @@ import { buildSystemPrompt } from "./agent/prompt_builder";
 import { eventsToHistoryMessages } from "./agent/history_messages";
 import {
   ORCHESTRATOR_HISTORY_MAX_TOKENS,
+  computeAutoCompactionThresholdTokens,
 } from "./agent/context_budget";
 import { createTools } from "./tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./agent/model_resolver";
@@ -752,8 +753,6 @@ http.route({
       },
     );
 
-    const historyMessages = eventsToHistoryMessages(historyEvents);
-
     const attachments = body.attachments ?? [];
     const resolvedImages: Array<{ url: string; mimeType?: string }> = [];
     for (const attachment of attachments) {
@@ -786,6 +785,32 @@ http.route({
     await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
 
     const promptBuild = await buildSystemPrompt(ctx, agentType, { ownerId: conversation.ownerId, conversationId });
+    const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
+    const fallbackConfig = await resolveFallbackConfig(ctx, agentType, conversation.ownerId).catch(() => null);
+
+    const historyBuild = eventsToHistoryMessages(historyEvents, {
+      microcompact: {
+        trigger: "auto",
+        warningThresholdTokens: computeAutoCompactionThresholdTokens(
+          typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
+        ),
+      },
+    });
+    const historyMessages = historyBuild.messages;
+    if (historyBuild.microcompactBoundary) {
+      try {
+        await ctx.runMutation(internal.events.appendInternalEvent, {
+          conversationId,
+          type: "microcompact_boundary",
+          payload: {
+            ...historyBuild.microcompactBoundary,
+            agentType,
+          },
+        });
+      } catch {
+        // Best effort: microcompact bookkeeping should never block chat.
+      }
+    }
 
     // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);
@@ -823,9 +848,6 @@ http.route({
         text: `\n\n<system-context>\n${contextParts.join("\n\n")}\n</system-context>`,
       });
     }
-
-    const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
-    const fallbackConfig = await resolveFallbackConfig(ctx, agentType, conversation.ownerId).catch(() => null);
 
     // --- beforeChat hook: rate limiting ---
     const beforeResult = await beforeChat(ctx, {
@@ -998,15 +1020,15 @@ const STT_ANON_MAX_TOKEN_DURATION_SECS = parsePositiveIntEnv(
 );
 const STT_ANON_DEVICE_TOKENS_PER_DAY = parsePositiveIntEnv(
   process.env.STT_ANON_DEVICE_TOKENS_PER_DAY,
-  40,
+  4_000,
 );
 const STT_ANON_IP_TOKENS_PER_DAY = parsePositiveIntEnv(
   process.env.STT_ANON_IP_TOKENS_PER_DAY,
-  120,
+  12_000,
 );
 const STT_ANON_GLOBAL_TOKENS_PER_DAY = parsePositiveIntEnv(
   process.env.STT_ANON_GLOBAL_TOKENS_PER_DAY,
-  10_000,
+  1_000_000,
 );
 
 const getAnonDeviceId = (request: Request): string | null => {
