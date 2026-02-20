@@ -90,7 +90,7 @@ export default defineSchema({
     size: v.number(),
     createdAt: v.number(),
   })
-    .index("by_conversationId_and_timestamp", ["conversationId"])
+    .index("by_conversationId", ["conversationId"])
     .index("by_deviceId", ["deviceId"]),
   agents: defineTable({
     ownerId: v.optional(v.string()),
@@ -253,7 +253,7 @@ export default defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
-    .index("by_conversationId_and_timestamp", ["conversationId", "createdAt"])
+    .index("by_conversationId_and_createdAt", ["conversationId", "createdAt"])
     .index("by_conversationId_and_updatedAt", ["conversationId", "updatedAt"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"])
     .index("by_parentTaskId_and_createdAt", ["parentTaskId", "createdAt"]),
@@ -435,7 +435,7 @@ export default defineSchema({
     installedVersion: v.string(),
     installedAt: v.number(),
   })
-    .index("by_ownerId", ["ownerId", "installedAt"])
+    .index("by_ownerId_and_installedAt", ["ownerId", "installedAt"])
     .index("by_ownerId_and_packageId", ["ownerId", "packageId"]),
   canvas_states: defineTable({
     ownerId: v.string(),
@@ -461,7 +461,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
-    .index("by_conversationId_and_timestamp", ["conversationId", "updatedAt"])
+    .index("by_conversationId_and_updatedAt", ["conversationId", "updatedAt"])
     .index("by_featureId", ["featureId"]),
   linq_chats: defineTable({
     phoneNumber: v.string(),
@@ -483,8 +483,8 @@ export default defineSchema({
     toolCalls: v.optional(v.number()),
     createdAt: v.number(),
   })
-    .index("by_ownerId", ["ownerId", "createdAt"])
-    .index("by_conversationId_and_timestamp", ["conversationId", "createdAt"]),
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
+    .index("by_conversationId_and_createdAt", ["conversationId", "createdAt"]),
   anon_device_usage: defineTable({
     deviceId: v.string(),
     requestCount: v.number(),

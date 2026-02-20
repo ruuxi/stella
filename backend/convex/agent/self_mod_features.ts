@@ -76,7 +76,7 @@ export const listForConversation = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("self_mod_features")
-      .withIndex("by_conversationId_and_timestamp", (q) =>
+      .withIndex("by_conversationId_and_updatedAt", (q) =>
         q.eq("conversationId", args.conversationId),
       )
       .order("desc")

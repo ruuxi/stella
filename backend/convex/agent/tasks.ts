@@ -1320,7 +1320,7 @@ export const listByConversation = internalQuery({
     await requireConversationOwner(ctx, args.conversationId);
     const records = await ctx.db
       .query("tasks")
-      .withIndex("by_conversationId_and_timestamp", (q) => q.eq("conversationId", args.conversationId))
+      .withIndex("by_conversationId_and_createdAt", (q) => q.eq("conversationId", args.conversationId))
       .order("desc")
       .take(200);
     return records.map((record) => toTaskClient(record));
