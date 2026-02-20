@@ -15,9 +15,10 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { streamText, generateText, createGateway, embed } from "ai";
 import { getModelConfig } from "./agent/model";
-import type { Id } from "./_generated/dataModel";
 
 const MAX_ANON_REQUESTS = 10;
+const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
+const CLIENT_ADDRESS_KEY_PATTERN = /^[0-9a-fA-F:.]+$/;
 
 type ProxyAuth =
   | { type: "jwt"; userId: string }
@@ -32,7 +33,7 @@ async function resolveAuth(ctx: ActionCtx, request: Request): Promise<ProxyAuth>
   }
 
   // Try device ID
-  const deviceId = request.headers.get("X-Device-ID");
+  const deviceId = request.headers.get("X-Device-ID")?.trim();
   if (deviceId && deviceId.length > 0 && deviceId.length < 256) {
     return { type: "device", deviceId };
   }
@@ -40,20 +41,43 @@ async function resolveAuth(ctx: ActionCtx, request: Request): Promise<ProxyAuth>
   return { type: "none" };
 }
 
-async function checkDeviceRateLimit(
-  ctx: ActionCtx,
-  deviceId: string,
-): Promise<boolean> {
-  const usage = await ctx.runQuery(internal.ai_proxy_data.getDeviceUsage, { deviceId });
-  if (!usage) return true;
-  return usage.requestCount < MAX_ANON_REQUESTS;
-}
+const normalizeClientAddressKey = (value: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim().toLowerCase();
+  if (
+    trimmed.length === 0 ||
+    trimmed.length > MAX_CLIENT_ADDRESS_KEY_LENGTH ||
+    !CLIENT_ADDRESS_KEY_PATTERN.test(trimmed)
+  ) {
+    return null;
+  }
+  return trimmed;
+};
 
-async function incrementDeviceUsage(
+const getClientAddressKey = (request: Request): string | null => {
+  const cloudflareIp = normalizeClientAddressKey(request.headers.get("cf-connecting-ip"));
+  if (cloudflareIp) return cloudflareIp;
+
+  const realIp = normalizeClientAddressKey(request.headers.get("x-real-ip"));
+  if (realIp) return realIp;
+
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (!forwardedFor) return null;
+  const firstHop = forwardedFor.split(",")[0] ?? "";
+  return normalizeClientAddressKey(firstHop);
+};
+
+async function consumeDeviceRateLimit(
   ctx: ActionCtx,
   deviceId: string,
-): Promise<void> {
-  await ctx.runMutation(internal.ai_proxy_data.incrementDeviceUsage, { deviceId });
+  clientAddressKey: string | null,
+): Promise<boolean> {
+  const usage = await ctx.runMutation(internal.ai_proxy_data.consumeDeviceAllowance, {
+    deviceId,
+    maxRequests: MAX_ANON_REQUESTS,
+    clientAddressKey: clientAddressKey ?? undefined,
+  });
+  return usage.allowed;
 }
 
 function getGateway() {
@@ -68,16 +92,6 @@ export const proxyChat = httpAction(async (ctx, request) => {
   const auth = await resolveAuth(ctx, request);
   if (auth.type === "none") {
     return new Response("Unauthorized", { status: 401 });
-  }
-
-  if (auth.type === "device") {
-    const allowed = await checkDeviceRateLimit(ctx, auth.deviceId);
-    if (!allowed) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
-      );
-    }
   }
 
   let body: {
@@ -100,6 +114,20 @@ export const proxyChat = httpAction(async (ctx, request) => {
     return new Response("messages array is required", { status: 400 });
   }
 
+  if (auth.type === "device") {
+    const allowed = await consumeDeviceRateLimit(
+      ctx,
+      auth.deviceId,
+      getClientAddressKey(request),
+    );
+    if (!allowed) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
   const gateway = getGateway();
   const agentType = body.agentType || "general";
   const defaults = getModelConfig(agentType);
@@ -117,11 +145,6 @@ export const proxyChat = httpAction(async (ctx, request) => {
         temperature: body.temperature ?? defaults.temperature,
       });
 
-      // Increment usage for device auth
-      if (auth.type === "device") {
-        await incrementDeviceUsage(ctx, auth.deviceId);
-      }
-
       return result.toUIMessageStreamResponse();
     } else {
       // Non-streaming response
@@ -132,10 +155,6 @@ export const proxyChat = httpAction(async (ctx, request) => {
         maxOutputTokens: body.maxOutputTokens || defaults.maxOutputTokens,
         temperature: body.temperature ?? defaults.temperature,
       });
-
-      if (auth.type === "device") {
-        await incrementDeviceUsage(ctx, auth.deviceId);
-      }
 
       return new Response(
         JSON.stringify({
@@ -162,16 +181,6 @@ export const proxyEmbed = httpAction(async (ctx, request) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  if (auth.type === "device") {
-    const allowed = await checkDeviceRateLimit(ctx, auth.deviceId);
-    if (!allowed) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded" }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
-      );
-    }
-  }
-
   let body: { text: string; model?: string };
   try {
     body = await request.json();
@@ -183,6 +192,20 @@ export const proxyEmbed = httpAction(async (ctx, request) => {
     return new Response("text is required", { status: 400 });
   }
 
+  if (auth.type === "device") {
+    const allowed = await consumeDeviceRateLimit(
+      ctx,
+      auth.deviceId,
+      getClientAddressKey(request),
+    );
+    if (!allowed) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded" }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
   const gateway = getGateway();
   const embeddingConfig = getModelConfig("embedding");
 
@@ -191,10 +214,6 @@ export const proxyEmbed = httpAction(async (ctx, request) => {
       model: gateway.textEmbeddingModel(body.model || embeddingConfig.model),
       value: body.text,
     });
-
-    if (auth.type === "device") {
-      await incrementDeviceUsage(ctx, auth.deviceId);
-    }
 
     return new Response(
       JSON.stringify({ embedding: result.embedding }),
@@ -216,15 +235,6 @@ export const proxySearch = httpAction(async (ctx, request) => {
   if (auth.type === "none") {
     return new Response("Unauthorized", { status: 401 });
   }
-  if (auth.type === "device") {
-    const allowed = await checkDeviceRateLimit(ctx, auth.deviceId);
-    if (!allowed) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
-      );
-    }
-  }
 
   let body: { query: string; maxResults?: number };
   try {
@@ -235,6 +245,20 @@ export const proxySearch = httpAction(async (ctx, request) => {
 
   if (!body.query) {
     return new Response("query is required", { status: 400 });
+  }
+
+  if (auth.type === "device") {
+    const allowed = await consumeDeviceRateLimit(
+      ctx,
+      auth.deviceId,
+      getClientAddressKey(request),
+    );
+    if (!allowed) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      );
+    }
   }
 
   // Web search requires server-side API key (Brave, Tavily, etc.)
@@ -249,10 +273,6 @@ export const proxySearch = httpAction(async (ctx, request) => {
   }
 
   try {
-    if (auth.type === "device") {
-      await incrementDeviceUsage(ctx, auth.deviceId);
-    }
-
     // Use Tavily as default search provider
     const response = await fetch("https://api.tavily.com/search", {
       method: "POST",

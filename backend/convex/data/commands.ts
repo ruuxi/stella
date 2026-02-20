@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, internalQuery } from "../_generated/server";
+import { requireUserId } from "../auth";
 
 /**
  * List enabled commands (catalog view: id, name, description, plugin).
@@ -77,12 +78,20 @@ export const upsertMany = mutation({
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
+    await requireUserId(ctx);
+
     // Skip if already seeded
-    const first = await ctx.db
-      .query("commands")
-      .withIndex("by_enabled_and_updatedAt", (q) => q.eq("enabled", true))
-      .first();
-    if (first) return { upserted: 0 };
+    const [firstEnabled, firstDisabled] = await Promise.all([
+      ctx.db
+        .query("commands")
+        .withIndex("by_enabled_and_updatedAt", (q) => q.eq("enabled", true))
+        .first(),
+      ctx.db
+        .query("commands")
+        .withIndex("by_enabled_and_updatedAt", (q) => q.eq("enabled", false))
+        .first(),
+    ]);
+    if (firstEnabled || firstDisabled) return { upserted: 0 };
 
     let upserted = 0;
     const now = Date.now();

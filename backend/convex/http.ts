@@ -13,7 +13,12 @@ import { createTools } from "./tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./agent/model_resolver";
 import { withModelFailover } from "./agent/model_failover";
 import { beforeChat, afterChat } from "./agent/hooks";
-import { authComponent, createAuth, requireConversationOwnerAction } from "./auth";
+import {
+  assertSensitiveSessionPolicyAction,
+  authComponent,
+  createAuth,
+  requireConversationOwnerAction,
+} from "./auth";
 import {
   CORE_MEMORY_SYNTHESIS_PROMPT,
   buildCoreSynthesisUserMessage,
@@ -676,6 +681,11 @@ http.route({
     if (!identity) {
       return withCors(new Response("Unauthorized", { status: 401 }), origin);
     }
+    try {
+      await assertSensitiveSessionPolicyAction(ctx, identity);
+    } catch {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
     let body: ChatRequest | null = null;
     try {
       body = (await request.json()) as ChatRequest;
@@ -997,6 +1007,8 @@ type SynthesizeResponse = {
 };
 const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 const MAX_ANON_SYNTHESIS_REQUESTS = 10;
+const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
+const CLIENT_ADDRESS_KEY_PATTERN = /^[0-9a-fA-F:.]+$/;
 const MAX_TRANSCRIBE_AUDIO_BYTES = 25 * 1024 * 1024;
 const TRANSCRIBE_OWNER_RATE_LIMIT = 30;
 const TRANSCRIBE_ANON_RATE_LIMIT = 10;
@@ -1027,6 +1039,32 @@ const getAnonDeviceId = (request: Request): string | null => {
   const trimmed = deviceId.trim();
   if (trimmed.length === 0 || trimmed.length >= 256) return null;
   return trimmed;
+};
+
+const normalizeClientAddressKey = (value: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim().toLowerCase();
+  if (
+    trimmed.length === 0 ||
+    trimmed.length > MAX_CLIENT_ADDRESS_KEY_LENGTH ||
+    !CLIENT_ADDRESS_KEY_PATTERN.test(trimmed)
+  ) {
+    return null;
+  }
+  return trimmed;
+};
+
+const getClientAddressKey = (request: Request): string | null => {
+  const cloudflareIp = normalizeClientAddressKey(request.headers.get("cf-connecting-ip"));
+  if (cloudflareIp) return cloudflareIp;
+
+  const realIp = normalizeClientAddressKey(request.headers.get("x-real-ip"));
+  if (realIp) return realIp;
+
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (!forwardedFor) return null;
+  const firstHop = forwardedFor.split(",")[0] ?? "";
+  return normalizeClientAddressKey(firstHop);
 };
 
 const normalizeBase64Audio = (rawAudio: string): string | null => {
@@ -1072,26 +1110,6 @@ http.route({
     if (!identity && !anonDeviceId) {
       return withCors(new Response("Unauthorized", { status: 401 }), origin);
     }
-    if (!identity && anonDeviceId) {
-      const usage = await ctx.runQuery(internal.ai_proxy_data.getDeviceUsage, {
-        deviceId: anonDeviceId,
-      });
-      if (usage && usage.requestCount >= MAX_ANON_SYNTHESIS_REQUESTS) {
-        return withCors(
-          new Response(
-            JSON.stringify({
-              error:
-                "Rate limit exceeded. Please create an account for continued access.",
-            }),
-            {
-              status: 429,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-          origin,
-        );
-      }
-    }
 
     let body: SynthesizeRequest | null = null;
     try {
@@ -1119,6 +1137,29 @@ http.route({
     const gateway = createGateway({ apiKey });
 
     try {
+      if (!identity && anonDeviceId) {
+        const usage = await ctx.runMutation(internal.ai_proxy_data.consumeDeviceAllowance, {
+          deviceId: anonDeviceId,
+          maxRequests: MAX_ANON_SYNTHESIS_REQUESTS,
+          clientAddressKey: getClientAddressKey(request) ?? undefined,
+        });
+        if (!usage.allowed) {
+          return withCors(
+            new Response(
+              JSON.stringify({
+                error:
+                  "Rate limit exceeded. Please create an account for continued access.",
+              }),
+              {
+                status: 429,
+                headers: { "Content-Type": "application/json" },
+              },
+            ),
+            origin,
+          );
+        }
+      }
+
       const ownerId = identity?.subject;
       const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId);
       const userMessage = buildCoreSynthesisUserMessage(body.formattedSignals);
@@ -1194,12 +1235,6 @@ http.route({
         welcomeMessage: welcomeResult.text?.trim() || DEFAULT_WELCOME_MESSAGE,
         suggestions,
       };
-
-      if (!identity && anonDeviceId) {
-        await ctx.runMutation(internal.ai_proxy_data.incrementDeviceUsage, {
-          deviceId: anonDeviceId,
-        });
-      }
 
       return withCors(
         new Response(JSON.stringify(response), {
@@ -2149,13 +2184,23 @@ http.route({
 // Slack OAuth Callback
 // ---------------------------------------------------------------------------
 
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
 const buildSlackResultPage = (success: boolean, message: string): string => {
   const title = success ? "Stella Installed" : "Installation Failed";
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
   const color = success ? "#22c55e" : "#ef4444";
   const icon = success ? "&#10003;" : "&#10007;";
   return `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>${title}</title>
+<head><meta charset="utf-8"><title>${safeTitle}</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #0a0a0a; color: #e5e5e5; }
   .card { text-align: center; padding: 3rem; max-width: 400px; }
@@ -2164,7 +2209,7 @@ const buildSlackResultPage = (success: boolean, message: string): string => {
   p { color: #a3a3a3; line-height: 1.6; }
 </style>
 </head>
-<body><div class="card"><div class="icon">${icon}</div><h1>${title}</h1><p>${message}</p></div></body>
+<body><div class="card"><div class="icon">${icon}</div><h1>${safeTitle}</h1><p>${safeMessage}</p></div></body>
 </html>`;
 };
 
@@ -2246,9 +2291,10 @@ http.route({
       };
 
       if (!tokenData.ok) {
-        console.error("[slack-oauth] Token exchange failed:", tokenData.error);
+        const slackError = tokenData.error?.trim() || "unknown_error";
+        console.error("[slack-oauth] Token exchange failed:", slackError);
         return new Response(
-          buildSlackResultPage(false, `Slack error: ${tokenData.error}`),
+          buildSlackResultPage(false, `Slack error: ${slackError}`),
           { status: 400, headers: { "Content-Type": "text/html" } },
         );
       }
