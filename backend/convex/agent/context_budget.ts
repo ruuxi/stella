@@ -10,6 +10,13 @@ const parsePositiveInt = (raw: string | undefined, fallback: number): number => 
   return floored > 0 ? floored : fallback;
 };
 
+const parsePercent = (raw: string | undefined, fallback: number): number => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed <= 0 || parsed >= 1) return fallback;
+  return parsed;
+};
+
 const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = parsePositiveInt(
   process.env.TC_DEFAULT_CTX_WINDOW_TOKENS,
   128_000,
@@ -23,6 +30,14 @@ export const THREAD_COMPACTION_RESERVE_TOKENS = parsePositiveInt(
 export const THREAD_COMPACTION_KEEP_RECENT_TOKENS = parsePositiveInt(
   process.env.TC_KEEP_RECENT_TOKENS,
   20_000,
+);
+
+const AUTO_COMPACT_ENABLED =
+  String(process.env.TC_AUTO_COMPACT_ENABLED ?? "true").toLowerCase() !== "false";
+
+const AUTO_COMPACT_THRESHOLD_PCT = parsePercent(
+  process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE ?? process.env.TC_AUTO_COMPACT_PCT,
+  0.85,
 );
 
 const MODEL_CONTEXT_WINDOW_HINTS: Record<string, number> = {
@@ -39,6 +54,17 @@ export const resolveContextWindowTokens = (model: unknown): number => {
   }
   return MODEL_CONTEXT_WINDOW_HINTS[model] ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS;
 };
+
+export const isAutoCompactionEnabled = (): boolean => AUTO_COMPACT_ENABLED;
+
+export const getAutoCompactionThresholdPct = (): number =>
+  AUTO_COMPACT_THRESHOLD_PCT;
+
+export const computeAutoCompactionThresholdTokens = (model: unknown): number =>
+  Math.max(
+    8_000,
+    Math.floor(resolveContextWindowTokens(model) * AUTO_COMPACT_THRESHOLD_PCT),
+  );
 
 export const computeCompactionTriggerTokens = (model: unknown): number =>
   Math.max(8_000, resolveContextWindowTokens(model) - THREAD_COMPACTION_RESERVE_TOKENS);

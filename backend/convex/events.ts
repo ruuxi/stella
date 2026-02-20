@@ -231,6 +231,7 @@ const MODEL_CONTEXT_EVENT_TYPES = new Set([
   "assistant_message",
   "tool_request",
   "tool_result",
+  "microcompact_boundary",
   "task_started",
   "task_completed",
   "task_failed",
@@ -278,6 +279,10 @@ const filterOrchestratorContextEvents = (
   }
 
   return eventsNewestFirst.filter((event) => {
+    if (event.type === "microcompact_boundary") {
+      return true;
+    }
+
     if (event.type === "user_message" || event.type === "assistant_message") {
       return true;
     }

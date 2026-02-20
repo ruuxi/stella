@@ -6,6 +6,7 @@ import { buildSystemPrompt } from "../agent/prompt_builder";
 import { eventsToHistoryMessages } from "../agent/history_messages";
 import {
   AUTOMATION_HISTORY_MAX_TOKENS,
+  computeAutoCompactionThresholdTokens,
 } from "../agent/context_budget";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
@@ -54,6 +55,8 @@ export async function runAgentTurn({
   const promptBuild = await buildSystemPrompt(ctx, agentType, {
     ownerId: resolvedOwnerId,
   });
+  const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
+  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId).catch(() => null);
 
   const tools = createTools(
     ctx,
@@ -80,7 +83,29 @@ export async function runAgentTurn({
     maxTokens: Math.min(Math.max(Math.floor(AUTOMATION_HISTORY_MAX_TOKENS), 1), 120_000),
   });
 
-  const historyMessages = eventsToHistoryMessages(historyEvents ?? []);
+  const historyBuild = eventsToHistoryMessages(historyEvents ?? [], {
+    microcompact: {
+      trigger: "auto",
+      warningThresholdTokens: computeAutoCompactionThresholdTokens(
+        typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
+      ),
+    },
+  });
+  const historyMessages = historyBuild.messages;
+  if (historyBuild.microcompactBoundary) {
+    try {
+      await ctx.runMutation(internal.events.appendInternalEvent, {
+        conversationId,
+        type: "microcompact_boundary",
+        payload: {
+          ...historyBuild.microcompactBoundary,
+          agentType,
+        },
+      });
+    } catch {
+      // Best effort: microcompact tracking should not block automation turns.
+    }
+  }
 
   let usageSummary:
     | {
@@ -90,9 +115,6 @@ export async function runAgentTurn({
       }
     | undefined;
   let noResponseCalled = false;
-
-  const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
-  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId).catch(() => null);
 
   const runnerSharedArgs = {
     system: promptBuild.systemPrompt,

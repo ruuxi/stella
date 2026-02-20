@@ -18,6 +18,7 @@ const MAX_THREADS_PER_CONVERSATION = 16;
 const MAX_CONTENT_LENGTH = 500_000;
 const MIN_MESSAGES_FOR_COMPACTION = 6;
 const THREAD_SWEEP_BATCH_SIZE = 200;
+const THREAD_COMPACTION_MAX_RETRIES = 2;
 
 export const THREAD_IDLE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 export const THREAD_ARCHIVE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
@@ -63,6 +64,11 @@ export const deriveThreadLifecycleStatus = (args: {
 
 const THREAD_COMPACTION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
+When summarizing coding sessions:
+- Focus on test output and code changes.
+- Preserve exact file paths, function names, and error messages.
+- Include critical file-read snippets verbatim when needed for continuity.
+
 Use this EXACT format:
 
 ## Goal
@@ -90,7 +96,7 @@ Use this EXACT format:
 ## Critical Context
 - [Important paths, function names, errors, details needed to continue]
 
-Keep sections concise. Preserve exact file paths, function names, and error messages.`;
+Keep sections concise. Preserve exact technical details needed to resume work.`;
 
 const THREAD_COMPACTION_UPDATE_PROMPT = `The messages above are NEW conversation messages to incorporate into the existing summary in <previous-summary>.
 
@@ -100,6 +106,7 @@ Update the existing structured summary with new information:
 - Add new decisions, errors, and outcomes
 - Update Next Steps based on the latest state
 - Preserve exact file paths, function names, and error messages
+- Carry forward critical file-read snippets verbatim when still relevant
 
 Use the same exact output format as the base summary prompt.`;
 
@@ -117,6 +124,34 @@ Summarize only what is needed for continuity:
 - [Information needed to understand the retained suffix]
 
 Be concise and preserve exact technical details.`;
+
+const generateCompactionTextWithRetry = async (
+  config: ReturnType<typeof getModelConfig>,
+  promptBody: string,
+): Promise<string> => {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= THREAD_COMPACTION_MAX_RETRIES; attempt += 1) {
+    try {
+      const { text } = await generateText({
+        ...config,
+        system: "Output ONLY the summary content.",
+        messages: [
+          {
+            role: "user",
+            content: promptBody,
+          },
+        ],
+      });
+      return text.trim();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= THREAD_COMPACTION_MAX_RETRIES) {
+        throw error;
+      }
+    }
+  }
+  throw lastError ?? new Error("Compaction summary generation failed");
+};
 
 const threadValidator = v.object({
   _id: v.id("threads"),
@@ -558,17 +593,7 @@ export const compactThread = internalAction({
         .filter((part) => part.length > 0)
         .join("\n\n");
 
-      const { text: nextSummaryText } = await generateText({
-        ...config,
-        system: "Output ONLY the summary content.",
-        messages: [
-          {
-            role: "user",
-            content: promptBody,
-          },
-        ],
-      });
-      baseSummary = nextSummaryText.trim();
+      baseSummary = await generateCompactionTextWithRetry(config, promptBody);
     }
 
     let turnPrefixSummary = "";
@@ -580,17 +605,10 @@ export const compactThread = internalAction({
         })),
       );
       if (turnPrefixText.trim().length > 0) {
-        const { text: turnPrefixSummaryText } = await generateText({
-          ...config,
-          system: "Output ONLY the summary content.",
-          messages: [
-            {
-              role: "user",
-              content: `<conversation>\n${turnPrefixText}\n</conversation>\n\n${TURN_PREFIX_SUMMARY_PROMPT}`,
-            },
-          ],
-        });
-        turnPrefixSummary = turnPrefixSummaryText.trim();
+        turnPrefixSummary = await generateCompactionTextWithRetry(
+          config,
+          `<conversation>\n${turnPrefixText}\n</conversation>\n\n${TURN_PREFIX_SUMMARY_PROMPT}`,
+        );
       }
     }
 

@@ -26,7 +26,7 @@ describe("history message formatting", () => {
       },
     ] as any[];
 
-    const messages = eventsToHistoryMessages(events);
+    const messages = eventsToHistoryMessages(events).messages;
     expect(messages).toEqual([
       { role: "user", content: "Open Microsoft Word" },
       { role: "assistant", content: "Trying that now." },
@@ -58,7 +58,7 @@ describe("history message formatting", () => {
       },
     ] as any[];
 
-    const messages = eventsToHistoryMessages(events);
+    const messages = eventsToHistoryMessages(events).messages;
     expect(messages).toHaveLength(2);
     expect(messages[0]).toMatchObject({
       role: "assistant",
@@ -96,7 +96,7 @@ describe("history message formatting", () => {
       },
     ] as any[];
 
-    const messages = eventsToHistoryMessages(events);
+    const messages = eventsToHistoryMessages(events).messages;
     expect(messages).toHaveLength(3);
     expect(messages[1]?.content).toContain("[Tool result] Bash");
     expect(messages[1]?.content).toContain("request_id: req_missing");
@@ -136,7 +136,7 @@ describe("history message formatting", () => {
       },
     ] as any[];
 
-    const messages = eventsToHistoryMessages(events);
+    const messages = eventsToHistoryMessages(events).messages;
     expect(messages).toHaveLength(3);
     expect(messages[0]?.content).toContain("[Task started] Open Microsoft Word");
     expect(messages[1]?.content).toContain("[Task completed]");
@@ -159,7 +159,7 @@ describe("history message formatting", () => {
       },
     ] as any[];
 
-    const messages = eventsToHistoryMessages(events);
+    const messages = eventsToHistoryMessages(events).messages;
     expect(messages).toEqual([{ role: "user", content: "Hello" }]);
   });
 });
