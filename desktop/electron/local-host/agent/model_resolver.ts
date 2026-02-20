@@ -12,6 +12,7 @@ import type { LanguageModel } from "ai";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import { rawQuery } from "../db.js";
 import { getModelConfig } from "./model.js";
+import { decryptLocalSecret } from "../secret_crypto.js";
 
 export type ResolvedModelConfig = {
   model: string | LanguageModel;
@@ -86,8 +87,7 @@ function getLocalSecret(ownerId: string, provider: string): string | null {
     [ownerId, provider],
   );
   if (rows.length === 0) return null;
-  // In local mode, "encrypted_value" is stored in plaintext since it's on the user's device
-  return rows[0].encrypted_value;
+  return decryptLocalSecret(rows[0].encrypted_value);
 }
 
 /** Get a preference value from local SQLite */

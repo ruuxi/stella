@@ -14,7 +14,7 @@ const CredentialRequestLayer = lazy(() =>
   })),
 )
 const FullShell = lazy(() =>
-  import('./screens/FullShell').then((module) => ({ default: module.FullShell })),
+  import('./screens/full-shell/FullShell').then((module) => ({ default: module.FullShell })),
 )
 const MiniShell = lazy(() =>
   import('./screens/MiniShell').then((module) => ({ default: module.MiniShell })),
