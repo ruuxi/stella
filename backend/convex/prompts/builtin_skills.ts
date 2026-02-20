@@ -267,12 +267,12 @@ When the Browser agent returns an API map from investigation, convert it into a 
 - \`canvasHint\`: Suggested visualization type — "table", "chart", "feed", "player", "dashboard"
 - \`tags\`: Optional tags for discovery
 
-## Session Token Forwarding
-When the Browser agent extracts auth tokens from an active session:
-- Pass them to \`IntegrationRequest\` via the \`request.headers\` field for immediate use only
+## Session Auth Handling
+When the Browser agent detects auth material in an active session:
 - Never include raw token/cookie values in task outputs, generated skills, or other persisted artifacts
-- Tokens are ephemeral — not stored in the backend secrets table
-- For persistent access, use \`RequestCredential\` to ask the user to store tokens properly
+- Return only auth metadata (scheme, header/cookie names, token source notes)
+- The General agent should use \`RequestCredential\` to collect user-provided credentials and pass only \`secretId\` to \`IntegrationRequest\`
+
 
 ## Canvas Display
 Include \`canvasHint\` to suggest how to display results. The generated skill will include instructions for writing a panel TSX file and calling \`OpenCanvas(name="...")\`.`,
@@ -569,8 +569,8 @@ When asked to investigate or reverse-engineer a web service's API.
 1. Check for active session: \`const cookies = await page.context().cookies()\`
 2. Find relevant auth cookies/tokens for the target domain
 3. Include token source and format in the API map's \`auth\` field (never raw values)
-4. The General agent may pass tokens to \`IntegrationRequest\` via \`request.headers\` for immediate use, but values must not appear in persisted logs/results
-5. Tokens expire when the browser session ends — for long-lived access, General uses RequestCredential
+4. Never output raw token values; only describe auth scheme and credential names
+5. General uses \`RequestCredential\` for long-lived access and passes only \`secretId\` to \`IntegrationRequest\`
 
 ## Skill Generation Workflow
 Return the structured API map JSON as your result. The General agent handles skill creation:

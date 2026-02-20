@@ -357,24 +357,3 @@ export const publishMod = internalMutation({
   },
 });
 
-/**
- * Backfill searchText for existing packages that don't have it yet.
- * Run once after deploying the schema change.
- */
-export const backfillSearchText = internalMutation({
-  args: {},
-  returns: v.number(),
-  handler: async (ctx) => {
-    const all = await ctx.db.query("store_packages").collect();
-    let updated = 0;
-    for (const pkg of all) {
-      if (!pkg.searchText) {
-        await ctx.db.patch(pkg._id, {
-          searchText: buildSearchText(pkg.name, pkg.description, pkg.tags),
-        });
-        updated++;
-      }
-    }
-    return updated;
-  },
-});

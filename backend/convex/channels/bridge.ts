@@ -19,7 +19,6 @@ import {
 import {
   decryptSecretIfNeeded,
   encryptSecret,
-  isEncryptedSecretSerialized,
 } from "../data/secrets_crypto";
 import {
   channelAttachmentValidator,
@@ -365,28 +364,6 @@ export const createBridgeSession = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
-  },
-});
-
-export const backfillPlaintextWebhookSecrets = internalMutation({
-  args: {},
-  returns: v.object({ migrated: v.number() }),
-  handler: async (ctx) => {
-    const sessions = await ctx.db.query("bridge_sessions").collect();
-    let migrated = 0;
-    for (const session of sessions) {
-      if (isEncryptedSecretSerialized(session.webhookSecret)) {
-        continue;
-      }
-      const encrypted = await encryptSecret(session.webhookSecret);
-      await ctx.db.patch(session._id, {
-        webhookSecret: JSON.stringify(encrypted),
-        webhookSecretKeyVersion: encrypted.keyVersion,
-        updatedAt: Date.now(),
-      });
-      migrated += 1;
-    }
-    return { migrated };
   },
 });
 

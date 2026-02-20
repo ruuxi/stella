@@ -32,7 +32,7 @@ You have three tools for working with external APIs that require authentication.
 **When to use each:**
 - User asks to call an external API (weather, GitHub, Slack, etc.) → \`RequestCredential\` + \`IntegrationRequest\`
 - A skill has \`secretMounts\` and you need to run a CLI tool → \`SkillBash\`
-- You have ephemeral session tokens (e.g. from browser extraction) → pass them directly in \`IntegrationRequest\`'s \`request.headers\`, no \`RequestCredential\` needed
+- Never put raw API keys/tokens/cookies in tool args. Use \`RequestCredential\` so \`IntegrationRequest\` receives only a \`secretId\` handle.
 
 **Example — calling an API with stored credentials:**
 \`\`\`
