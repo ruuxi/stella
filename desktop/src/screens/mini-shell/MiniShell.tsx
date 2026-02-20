@@ -1,20 +1,13 @@
-import { useState, useCallback } from "react";
-import { useConvexAuth, useQuery } from "convex/react";
-import { api } from "@/convex/api";
+import { useState } from "react";
 import { useUiState } from "../../app/state/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
-import { useVoiceInput } from "../../hooks/use-voice-input";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
 import { StellaAnimation } from "../../components/StellaAnimation";
-import { useIsLocalMode } from "@/providers/DataProvider";
-import { useLocalQuery } from "@/hooks/use-local-query";
 
 export const MiniShell = () => {
   const { setWindow } = useUiState();
-  const isLocalMode = useIsLocalMode();
-  const { isAuthenticated } = useConvexAuth();
   const [isStreaming, setIsStreaming] = useState(false);
 
   const {
@@ -42,33 +35,6 @@ export const MiniShell = () => {
     setSelectedText,
     isStreaming,
     setIsStreaming,
-  });
-
-  // STT voice input
-  const sttCloud = useQuery(
-    api.data.stt.checkSttAvailable,
-    isLocalMode ? "skip" : {},
-  ) as
-    | { available: boolean }
-    | undefined;
-  const sttLocal = useLocalQuery<{ available: boolean }>(
-    isLocalMode ? "/api/stt/check-available" : null,
-  );
-  const sttAvailable = isLocalMode
-    ? (sttLocal.data?.available ?? false)
-    : (isAuthenticated && (sttCloud?.available ?? false));
-  const [partialTranscript, setPartialTranscript] = useState("");
-
-  const voice = useVoiceInput({
-    onPartialTranscript: setPartialTranscript,
-    onFinalTranscript: useCallback((text: string) => {
-      setMessage((prev: string) => (prev ? prev + " " + text : text));
-      setPartialTranscript("");
-    }, [setMessage]),
-    onError: useCallback((err: string) => {
-      console.warn("STT error:", err);
-      setPartialTranscript("");
-    }, []),
   });
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
@@ -145,11 +111,6 @@ export const MiniShell = () => {
           setPreviewIndex={setPreviewIndex}
           isStreaming={isStreaming}
           onSend={() => void sendMessage()}
-          sttAvailable={sttAvailable}
-          voiceState={voice.state}
-          onStartVoice={voice.startRecording}
-          onStopVoice={voice.stopRecording}
-          partialTranscript={partialTranscript}
         />
       </div>
 

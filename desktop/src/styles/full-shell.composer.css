@@ -1,4 +1,4 @@
-/* Composer - single-row prompt bar at bottom */
+﻿/* Composer - single-row prompt bar at bottom */
 .composer {
   position: absolute;
   bottom: 16px;
@@ -54,7 +54,7 @@
   color: var(--text-weaker);
 }
 
-/* Toolbar hidden in pill mode — buttons sit inline */
+/* Toolbar hidden in pill mode â€” buttons sit inline */
 .composer-toolbar {
   display: contents;
 }
@@ -245,7 +245,7 @@
   border-color: var(--text-base);
 }
 
-/* Toolbar add button — hidden in pill mode, shown in expanded */
+/* Toolbar add button â€” hidden in pill mode, shown in expanded */
 .composer-add-button--toolbar {
   display: none;
 }
@@ -279,56 +279,6 @@
 .composer-selector[data-active="true"] {
   background: color-mix(in oklch, var(--primary) 15%, transparent);
   color: var(--text-strong);
-}
-
-/* Mic button — voice input */
-.composer-mic {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: transparent;
-  border: 1.5px solid var(--text-weaker);
-  color: var(--text-weak);
-  cursor: default;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.composer-mic:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--text-strong);
-  border-color: var(--text-base);
-}
-
-.composer-mic:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.composer-mic--recording {
-  background: oklch(0.65 0.2 25);
-  border-color: oklch(0.65 0.2 25);
-  color: white;
-  animation: mic-pulse 1.2s ease-in-out infinite;
-}
-
-.composer-mic--recording:hover {
-  background: oklch(0.58 0.2 25);
-  border-color: oklch(0.58 0.2 25);
-  color: white;
-}
-
-.composer-mic--processing {
-  opacity: 0.6;
-  animation: mic-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes mic-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.08); opacity: 0.85; }
 }
 
 /* Submit button - circular */
@@ -401,7 +351,7 @@
   background: var(--surface-raised-hover);
 }
 
-/* Ambient Stella animation — left of composer */
+/* Ambient Stella animation â€” left of composer */
 .composer-stella-ambient {
   position: absolute;
   bottom: 20px;
