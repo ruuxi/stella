@@ -1,4 +1,4 @@
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { streamText, stepCountIs } from "ai";
 import { internal } from "../_generated/api";
@@ -222,7 +222,7 @@ const validateAgainstSchema = (
 };
 
 const coerceDeviceContext = async (
-  ctx: Parameters<typeof createTools>[0],
+  ctx: ActionCtx,
   args: {
     conversationId?: Id<"conversations">;
     userMessageId?: Id<"events">;

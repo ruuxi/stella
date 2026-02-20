@@ -1315,7 +1315,7 @@ async function startWhatsApp() {
           id: externalMessageId,
           mimeType: message.imageMessage.mimetype,
           size: toSize(message.imageMessage.fileLength),
-          kind: "image",
+          kind: "image" as const,
         });
       }
       if (message.videoMessage) {
@@ -1323,7 +1323,7 @@ async function startWhatsApp() {
           id: externalMessageId,
           mimeType: message.videoMessage.mimetype,
           size: toSize(message.videoMessage.fileLength),
-          kind: "video",
+          kind: "video" as const,
         });
       }
       if (message.documentMessage) {
@@ -1332,7 +1332,7 @@ async function startWhatsApp() {
           name: message.documentMessage.fileName,
           mimeType: message.documentMessage.mimetype,
           size: toSize(message.documentMessage.fileLength),
-          kind: "document",
+          kind: "document" as const,
         });
       }
       if (message.audioMessage) {
@@ -1347,7 +1347,7 @@ async function startWhatsApp() {
         attachments.push({
           id: externalMessageId,
           mimeType: message.stickerMessage.mimetype,
-          kind: "sticker",
+          kind: "sticker" as const,
         });
       }
 
@@ -1362,7 +1362,7 @@ async function startWhatsApp() {
           displayName: pushName,
           groupId,
           chatType: isGroup ? "group" : "dm",
-          kind: "reaction",
+          kind: "reaction" as const,
           externalMessageId,
           reactions: [{ emoji: reactionEmoji, action: "add", targetMessageId }],
           sourceTimestamp,
@@ -1380,7 +1380,7 @@ async function startWhatsApp() {
           displayName: pushName,
           groupId,
           chatType: isGroup ? "group" : "dm",
-          kind: "delete",
+          kind: "delete" as const,
           externalMessageId: targetMessageId,
           sourceTimestamp,
           respond: false,
@@ -1421,7 +1421,7 @@ async function startWhatsApp() {
         displayName: pushName,
         groupId,
         chatType: isGroup ? "group" : "dm",
-        kind: "message",
+        kind: "message" as const,
         externalMessageId,
         ...(attachments.length > 0 ? { attachments } : {}),
         sourceTimestamp,
@@ -1723,7 +1723,7 @@ function startDaemon() {
             displayName,
             groupId,
             chatType,
-            kind: "reaction",
+            kind: "reaction" as const,
             externalMessageId,
             reactions: [
               {
@@ -1747,7 +1747,7 @@ function startDaemon() {
             displayName,
             groupId,
             chatType,
-            kind: "delete",
+            kind: "delete" as const,
             externalMessageId: targetMessageId,
             sourceTimestamp,
             respond: false,
@@ -1779,7 +1779,7 @@ function startDaemon() {
           displayName,
           groupId,
           chatType,
-          kind: "message",
+          kind: "message" as const,
           externalMessageId,
           ...(attachments.length > 0 ? { attachments } : {}),
           sourceTimestamp,
