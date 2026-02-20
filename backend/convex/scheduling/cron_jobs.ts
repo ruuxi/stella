@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { requireConversationOwner, requireUserId } from "../auth";
+import { normalizeOptionalInt } from "../lib/number_utils";
 import { runAgentTurn } from "../automation/runner";
 
 const STUCK_RUN_MS = 2 * 60 * 60 * 1000;
@@ -413,7 +414,12 @@ export const listDue = internalQuery({
   },
   returns: v.array(cronJobValidator),
   handler: async (ctx, args) => {
-    const limit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
+    const limit = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 50,
+      min: 1,
+      max: 200,
+    });
     const due = await ctx.db
       .query("cron_jobs")
       .withIndex("by_nextRunAtMs_and_ownerId", (q) => q.lte("nextRunAtMs", args.nowMs))

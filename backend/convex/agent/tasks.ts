@@ -3,6 +3,8 @@ import {
   internalMutation,
   internalQuery,
   ActionCtx,
+  type MutationCtx,
+  type QueryCtx,
 } from "../_generated/server";
 import { v, ConvexError, Infer, type Value } from "convex/values";
 import { generateText } from "ai";
@@ -20,6 +22,7 @@ import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import { withModelFailoverAsync } from "./model_failover";
 import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
+import { normalizeOptionalInt } from "../lib/number_utils";
 
 const taskValidator = v.object({
   _id: v.id("tasks"),
@@ -90,6 +93,63 @@ const toTaskClientOrNull = (task: Record<string, unknown> | null): TaskClient | 
   if (!task) return null;
   const { model: _model, ...rest } = task;
   return rest as TaskClient;
+};
+
+const applyTaskCancellation = async (
+  ctx: MutationCtx,
+  args: {
+    taskId: Id<"tasks">;
+    record: Doc<"tasks">;
+    reason?: string;
+  },
+): Promise<TaskClient | null> => {
+  if (args.record.status !== "running") {
+    return toTaskClient(args.record);
+  }
+
+  const now = Date.now();
+  const reason = args.reason?.trim() || "Canceled";
+  await ctx.db.patch(args.taskId, {
+    status: "canceled" satisfies TaskStatus,
+    error: reason,
+    updatedAt: now,
+    completedAt: now,
+  });
+
+  const targetDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
+    conversationId: args.record.conversationId,
+  });
+  if (targetDeviceId) {
+    await appendTaskEvent(ctx, {
+      conversationId: args.record.conversationId,
+      type: "task_failed",
+      deviceId: targetDeviceId,
+      targetDeviceId,
+      payload: {
+        taskId: args.taskId,
+        error: reason,
+      },
+    });
+  }
+
+  const updated = await ctx.db.get(args.taskId);
+  return toTaskClientOrNull(updated);
+};
+
+const loadTaskByExternalTaskId = async (
+  ctx: QueryCtx,
+  taskId: string,
+  source: "getOutputByExternalId" | "getOutputByExternalIdInternal",
+): Promise<Doc<"tasks"> | null> => {
+  try {
+    return await ctx.db.get(taskId as Id<"tasks">);
+  } catch (error) {
+    console.warn(`[agent.tasks] ${source}: invalid external task id`, {
+      taskId,
+      error: (error as Error).message,
+    });
+    return null;
+  }
 };
 
 const appendTaskEvent = async (
@@ -1172,39 +1232,11 @@ export const cancelTask = internalMutation({
     const record = await ctx.db.get(args.taskId);
     if (!record) return null;
     await requireConversationOwner(ctx, record.conversationId);
-
-    if (record.status !== "running") {
-      return toTaskClient(record);
-    }
-
-    const now = Date.now();
-    const reason = args.reason?.trim() || "Canceled";
-    await ctx.db.patch(args.taskId, {
-      status: "canceled" satisfies TaskStatus,
-      error: reason,
-      updatedAt: now,
-      completedAt: now,
+    return await applyTaskCancellation(ctx, {
+      taskId: args.taskId,
+      record,
+      reason: args.reason,
     });
-
-    const targetDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
-      conversationId: record.conversationId,
-    });
-
-    if (targetDeviceId) {
-      await appendTaskEvent(ctx, {
-        conversationId: record.conversationId,
-        type: "task_failed",
-        deviceId: targetDeviceId,
-        targetDeviceId: targetDeviceId,
-        payload: {
-          taskId: args.taskId,
-          error: reason,
-        },
-      });
-    }
-
-    const updated = await ctx.db.get(args.taskId);
-    return toTaskClientOrNull(updated);
   },
 });
 
@@ -1217,39 +1249,11 @@ export const cancelTaskInternal = internalMutation({
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     if (!record) return null;
-
-    if (record.status !== "running") {
-      return toTaskClient(record);
-    }
-
-    const now = Date.now();
-    const reason = args.reason?.trim() || "Canceled";
-    await ctx.db.patch(args.taskId, {
-      status: "canceled" satisfies TaskStatus,
-      error: reason,
-      updatedAt: now,
-      completedAt: now,
+    return await applyTaskCancellation(ctx, {
+      taskId: args.taskId,
+      record,
+      reason: args.reason,
     });
-
-    const targetDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
-      conversationId: record.conversationId,
-    });
-
-    if (targetDeviceId) {
-      await appendTaskEvent(ctx, {
-        conversationId: record.conversationId,
-        type: "task_failed",
-        deviceId: targetDeviceId,
-        targetDeviceId: targetDeviceId,
-        payload: {
-          taskId: args.taskId,
-          error: reason,
-        },
-      });
-    }
-
-    const updated = await ctx.db.get(args.taskId);
-    return toTaskClientOrNull(updated);
   },
 });
 
@@ -1284,15 +1288,15 @@ export const getOutputByExternalId = internalQuery({
   },
   returns: v.union(taskClientValidator, v.null()),
   handler: async (ctx, args) => {
-    try {
-      const record = await ctx.db.get(args.taskId as Id<"tasks">);
-      if (record) {
-        await requireConversationOwner(ctx, record.conversationId);
-      }
-      return toTaskClientOrNull(record);
-    } catch {
-      return null;
+    const record = await loadTaskByExternalTaskId(
+      ctx,
+      args.taskId,
+      "getOutputByExternalId",
+    );
+    if (record) {
+      await requireConversationOwner(ctx, record.conversationId);
     }
+    return toTaskClientOrNull(record);
   },
 });
 
@@ -1302,12 +1306,12 @@ export const getOutputByExternalIdInternal = internalQuery({
   },
   returns: v.union(taskClientValidator, v.null()),
   handler: async (ctx, args) => {
-    try {
-      const record = await ctx.db.get(args.taskId as Id<"tasks">);
-      return toTaskClientOrNull(record);
-    } catch {
-      return null;
-    }
+    const record = await loadTaskByExternalTaskId(
+      ctx,
+      args.taskId,
+      "getOutputByExternalIdInternal",
+    );
+    return toTaskClientOrNull(record);
   },
 });
 
@@ -1338,8 +1342,12 @@ export const listByConversationSince = internalQuery({
     await requireConversationOwner(ctx, args.conversationId);
 
     const afterUpdatedAt = args.afterUpdatedAt ?? 0;
-    const requestedLimit = args.limit ?? 200;
-    const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 1000);
+    const limit = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 200,
+      min: 1,
+      max: 1000,
+    });
     const records = await ctx.db
       .query("tasks")
       .withIndex("by_conversationId_and_updatedAt", (q) =>

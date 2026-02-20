@@ -1,3 +1,5 @@
+import { asObjectRecord } from "../lib/object_utils";
+
 type ContextEventLike = {
   type: string;
   payload?: unknown;
@@ -6,9 +8,6 @@ type ContextEventLike = {
 
 const MIN_EVENT_TOKENS = 8;
 const MAX_EVENT_TOKENS = 8_000;
-
-const asObject = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
 const estimateTextTokens = (value: unknown): number => {
   if (typeof value !== "string") return 0;
@@ -29,7 +28,7 @@ const clampEventTokens = (tokens: number): number =>
   Math.max(MIN_EVENT_TOKENS, Math.min(MAX_EVENT_TOKENS, Math.max(0, Math.floor(tokens))));
 
 export const estimateContextEventTokens = (event: ContextEventLike): number => {
-  const payload = asObject(event.payload);
+  const payload = asObjectRecord(event.payload);
 
   if (event.type === "microcompact_boundary") {
     const compactedCount = Array.isArray(payload.compactedToolIds)

@@ -9,6 +9,7 @@ import { withModelFailover } from "./model_failover";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction } from "../auth";
 import { jsonSchemaValidator, jsonValueValidator } from "../shared_validators";
+import { normalizeOptionalInt } from "../lib/number_utils";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
@@ -339,7 +340,12 @@ export const invoke = internalAction({
       "Return a single JSON object that matches the schema.",
     ].filter((block): block is string => Boolean(block));
 
-    const maxSteps = Math.min(Math.max(Math.floor(args.maxSteps ?? 20), 1), 20);
+    const maxSteps = normalizeOptionalInt({
+      value: args.maxSteps,
+      defaultValue: 20,
+      min: 1,
+      max: 20,
+    });
 
     let rawText = "";
     try {

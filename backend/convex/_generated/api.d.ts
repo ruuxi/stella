@@ -60,9 +60,12 @@ import type * as data_thread_compaction_format from "../data/thread_compaction_f
 import type * as data_threads from "../data/threads.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as lib_number_utils from "../lib/number_utils.js";
+import type * as lib_object_utils from "../lib/object_utils.js";
 import type * as lib_owner_ids from "../lib/owner_ids.js";
 import type * as lib_redaction from "../lib/redaction.js";
 import type * as lib_retry_fetch from "../lib/retry_fetch.js";
+import type * as lib_text_utils from "../lib/text_utils.js";
 import type * as prompts_browser from "../prompts/browser.js";
 import type * as prompts_builtin_skills from "../prompts/builtin_skills.js";
 import type * as prompts_discovery_facts from "../prompts/discovery_facts.js";
@@ -146,9 +149,12 @@ declare const fullApi: ApiFromModules<{
   "data/threads": typeof data_threads;
   events: typeof events;
   http: typeof http;
+  "lib/number_utils": typeof lib_number_utils;
+  "lib/object_utils": typeof lib_object_utils;
   "lib/owner_ids": typeof lib_owner_ids;
   "lib/redaction": typeof lib_redaction;
   "lib/retry_fetch": typeof lib_retry_fetch;
+  "lib/text_utils": typeof lib_text_utils;
   "prompts/browser": typeof prompts_browser;
   "prompts/builtin_skills": typeof prompts_builtin_skills;
   "prompts/discovery_facts": typeof prompts_discovery_facts;

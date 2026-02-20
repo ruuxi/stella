@@ -1,3 +1,5 @@
+import { stringifyBounded, truncateWithSuffix } from "../lib/text_utils";
+
 type ThreadSummaryInputMessage = {
   role: string;
   content: string;
@@ -7,8 +9,7 @@ type ThreadSummaryInputMessage = {
 const MAX_BLOCK_CHARS = 100_000;
 const MAX_JSON_CHARS = 20_000;
 
-const ellipsize = (value: string, maxChars: number) =>
-  value.length <= maxChars ? value : `${value.slice(0, maxChars)}...(truncated)`;
+const ellipsize = truncateWithSuffix;
 
 const safeJsonParse = (value: string): unknown => {
   try {
@@ -18,16 +19,8 @@ const safeJsonParse = (value: string): unknown => {
   }
 };
 
-const stringifyCompact = (value: unknown): string => {
-  if (typeof value === "string") {
-    return ellipsize(value.trim(), MAX_JSON_CHARS);
-  }
-  try {
-    return ellipsize(JSON.stringify(value), MAX_JSON_CHARS);
-  } catch {
-    return ellipsize(String(value), MAX_JSON_CHARS);
-  }
-};
+const stringifyCompact = (value: unknown): string =>
+  stringifyBounded(value, MAX_JSON_CHARS);
 
 const parseTextBlocks = (blocks: unknown[]): string[] => {
   const lines: string[] = [];
