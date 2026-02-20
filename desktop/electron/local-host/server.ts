@@ -1,5 +1,5 @@
-/**
- * Local HTTP server (Hono) — serves all local-first API endpoints.
+﻿/**
+ * Local HTTP server (Hono) â€” serves all local-first API endpoints.
  * Runs on localhost:9714 in the Electron main process.
  * Replaces Convex live queries and mutations for local data.
  */
@@ -45,7 +45,7 @@ export function setRuntimeConfig(config: RuntimeConfig): void {
   runtimeConfig = config;
 }
 
-// ─── SSE Connection Manager ─────────────────────────────────────────────────
+// â”€â”€â”€ SSE Connection Manager â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type SSEController = {
   send: (event: string, data: unknown) => void;
@@ -76,7 +76,7 @@ function broadcastGlobal(event: string, data: unknown) {
   }
 }
 
-// ─── Hono App ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Hono App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const app = new Hono();
 
@@ -107,11 +107,11 @@ app.use("*", async (c, next) => {
   }
 });
 
-// ─── Health ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Health â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/health", (c) => c.json({ ok: true, ts: Date.now() }));
 
-// ─── Chat (Agent Loop) ──────────────────────────────────────────────────────
+// â”€â”€â”€ Chat (Agent Loop) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.post("/api/chat", async (c) => {
   if (!runtimeConfig) {
@@ -127,7 +127,7 @@ app.post("/api/chat", async (c) => {
   return response;
 });
 
-// ─── SSE Stream ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ SSE Stream â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/sse", (c) => {
   const conversationId = c.req.query("conversationId");
@@ -181,7 +181,7 @@ app.get("/api/sse", (c) => {
   });
 });
 
-// ─── Conversations ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Conversations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/conversations", (c) => {
   const ownerId = c.req.query("ownerId") || "local";
@@ -253,7 +253,7 @@ app.delete("/api/conversations/:id", (c) => {
   return c.json({ ok: true });
 });
 
-// ─── Events ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/events", (c) => {
   const conversationId = c.req.query("conversationId");
@@ -352,7 +352,7 @@ app.post("/api/attachments/create", async (c) => {
   );
 });
 
-// ─── Tasks ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/tasks", (c) => {
   const conversationId = c.req.query("conversationId");
@@ -393,7 +393,7 @@ app.post("/api/tasks/:id/cancel", (c) => {
   return c.json(row);
 });
 
-// ─── Preferences ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Preferences â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/preferences", (c) => {
   const ownerId = c.req.query("ownerId") || "local";
@@ -456,7 +456,7 @@ app.delete("/api/preferences/:key", (c) => {
   return c.json({ ok: true });
 });
 
-// ─── Secrets ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Secrets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/secrets", (c) => {
   const ownerId = c.req.query("ownerId") || "local";
@@ -516,7 +516,7 @@ app.delete("/api/secrets/:id", (c) => {
   return c.json({ ok: true });
 });
 
-// ─── Canvas State ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Canvas State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/canvas/state", (c) => {
   const conversationId = c.req.query("conversationId");
@@ -602,7 +602,7 @@ app.delete("/api/canvas/state", (c) => {
   return c.json({ ok: true });
 });
 
-// ─── Skills ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Skills â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/skills", (c) => {
   const ownerId = c.req.query("ownerId") || "local";
@@ -621,7 +621,7 @@ app.get("/api/skills", (c) => {
   ));
 });
 
-// ─── Agents ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Agents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/agents/:type", (c) => {
   const agentType = c.req.param("type");
@@ -636,7 +636,7 @@ app.get("/api/agents/:type", (c) => {
   return c.json(rows[0]);
 });
 
-// ─── Memories ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Memories â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.post("/api/memories/recall", async (c) => {
   const body = await c.req.json<{ ownerId?: string; query: string; embedding?: number[] }>();
@@ -714,7 +714,7 @@ app.post("/api/memories/save", async (c) => {
       if (!Array.isArray(memVec)) continue;
       const sim = cosineSimilarity(body.embedding, memVec);
       if (sim > 0.9) {
-        // Too similar — skip
+        // Too similar â€” skip
         return c.json({ id: mem.id, deduplicated: true });
       }
     }
@@ -752,7 +752,7 @@ app.post("/api/memories/save", async (c) => {
   return c.json({ id, deduplicated: false }, 201);
 });
 
-// ─── Store ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Store â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/store/packages", (c) => {
   const type = c.req.query("type");
@@ -843,82 +843,7 @@ app.post("/api/store/uninstall", async (c) => {
   return c.json({ ok: true });
 });
 
-// ─── STT ─────────────────────────────────────────────────────────────────────
-
-const buildSttProxyHeaders = (): Record<string, string> | null => {
-  if (!runtimeConfig) return null;
-  const headers: Record<string, string> = {
-    "X-Device-ID": runtimeConfig.deviceId,
-  };
-  if (runtimeConfig.authToken) {
-    headers.Authorization = `Bearer ${runtimeConfig.authToken}`;
-  }
-  return headers;
-};
-
-const resolveSttProxyUrl = (): string | null => {
-  if (!runtimeConfig?.proxyUrl) return null;
-  return `${runtimeConfig.proxyUrl.replace(/\/+$/, "")}/api/stt`;
-};
-
-const fetchSttAvailability = async (): Promise<{ available: boolean }> => {
-  const sttProxyUrl = resolveSttProxyUrl();
-  const headers = buildSttProxyHeaders();
-  if (!sttProxyUrl || !headers) {
-    return { available: false };
-  }
-
-  try {
-    const response = await fetch(`${sttProxyUrl}/check-available`, { headers });
-    if (!response.ok) {
-      return { available: false };
-    }
-    const payload = await response.json().catch(() => ({})) as { available?: unknown };
-    return { available: Boolean(payload.available) };
-  } catch {
-    return { available: false };
-  }
-};
-
-app.get("/api/stt/available", async (c) => c.json(await fetchSttAvailability()));
-app.get("/api/stt/check-available", async (c) => c.json(await fetchSttAvailability()));
-
-app.post("/api/stt/token", async (c) => {
-  const sttProxyUrl = resolveSttProxyUrl();
-  const baseHeaders = buildSttProxyHeaders();
-  if (!sttProxyUrl || !baseHeaders) {
-    return c.json({ error: "STT proxy not configured" }, 503);
-  }
-
-  const body = await c.req
-    .json<{ durationSecs?: number }>()
-    .catch((): { durationSecs?: number } => ({}));
-  const headers: Record<string, string> = {
-    ...baseHeaders,
-    "Content-Type": "application/json",
-  };
-
-  try {
-    const response = await fetch(`${sttProxyUrl}/token`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ durationSecs: body.durationSecs }),
-    });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = typeof (payload as { error?: unknown }).error === "string"
-        ? (payload as { error: string }).error
-        : `STT token request failed (${response.status})`;
-      return c.json({ error }, response.status as 400);
-    }
-    return c.json(payload);
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 500);
-  }
-});
-
-// ─── Usage Logs ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Usage Logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/usage", (c) => {
   const ownerId = c.req.query("ownerId") || "local";
@@ -930,7 +855,7 @@ app.get("/api/usage", (c) => {
   return c.json(rows);
 });
 
-// ─── Commands ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/commands", (c) => {
   const enabledOnly = c.req.query("enabledOnly") !== "false";
@@ -940,7 +865,7 @@ app.get("/api/commands", (c) => {
   return c.json(query("commands", { orderBy: "updated_at", order: "DESC" }));
 });
 
-// ─── Threads ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Threads â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.get("/api/threads", (c) => {
   const conversationId = c.req.query("conversationId");
@@ -953,7 +878,7 @@ app.get("/api/threads", (c) => {
   return c.json(rows);
 });
 
-// ─── Synthesis (Pre-Login Onboarding) ────────────────────────────────────────
+// â”€â”€â”€ Synthesis (Pre-Login Onboarding) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.post("/api/synthesize", async (c) => {
   if (!runtimeConfig) {
@@ -1051,7 +976,7 @@ app.post("/api/select-default-skills", async (c) => {
   }
 });
 
-// ─── Reset ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.post("/api/reset", (c) => {
   const db = getDb();
@@ -1084,7 +1009,7 @@ app.post("/api/reset", (c) => {
   return c.json({ ok: true });
 });
 
-// ─── Math helpers ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Math helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
@@ -1111,7 +1036,7 @@ function parseDataUrl(dataUrl: string): { mimeType: string; size: number } | nul
   return { mimeType, size };
 }
 
-// ─── Server lifecycle ────────────────────────────────────────────────────────
+// â”€â”€â”€ Server lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let server: ReturnType<typeof serve> | null = null;
 
