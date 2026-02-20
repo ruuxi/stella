@@ -997,6 +997,29 @@ type SynthesizeResponse = {
 };
 const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 const MAX_ANON_SYNTHESIS_REQUESTS = 10;
+const MAX_TRANSCRIBE_AUDIO_BYTES = 25 * 1024 * 1024;
+const TRANSCRIBE_OWNER_RATE_LIMIT = 30;
+const TRANSCRIBE_ANON_RATE_LIMIT = 10;
+const TRANSCRIBE_RATE_WINDOW_MS = 60_000;
+const WISPRFLOW_TRANSCRIBE_URL =
+  process.env.WISPRFLOW_TRANSCRIBE_URL?.trim() ||
+  process.env.WISPR_FLOW_TRANSCRIBE_URL?.trim() ||
+  "https://platform-api.wisprflow.ai/api/v1/dash/api";
+
+type SpeechToTextRequest = {
+  audio: string;
+  language?: string[];
+  context?: Record<string, unknown>;
+  properties?: Record<string, unknown>;
+};
+
+type SpeechToTextResponse = {
+  id: string | null;
+  text: string;
+  detectedLanguage: string | null;
+  totalTime: number | null;
+  generatedTokens: number | null;
+};
 
 const getAnonDeviceId = (request: Request): string | null => {
   const deviceId = request.headers.get("X-Device-ID");
@@ -1004,6 +1027,25 @@ const getAnonDeviceId = (request: Request): string | null => {
   const trimmed = deviceId.trim();
   if (trimmed.length === 0 || trimmed.length >= 256) return null;
   return trimmed;
+};
+
+const normalizeBase64Audio = (rawAudio: string): string | null => {
+  const trimmed = rawAudio.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const dataUrlMatch = trimmed.match(/^data:audio\/[^;]+;base64,(.+)$/i);
+  const base64 = (dataUrlMatch ? dataUrlMatch[1] : trimmed).replace(/\s+/g, "");
+  if (!base64 || base64.length % 4 !== 0 || !/^[A-Za-z0-9+/=]+$/.test(base64)) {
+    return null;
+  }
+  return base64;
+};
+
+const estimateBase64SizeBytes = (base64: string): number => {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
 };
 
 http.route({
@@ -1170,6 +1212,217 @@ http.route({
       console.error("[synthesize] Error:", error);
       return withCors(
         new Response(`Synthesis failed: ${(error as Error).message}`, { status: 500 }),
+        origin,
+      );
+    }
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Speech-To-Text Endpoint
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/speech-to-text",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+http.route({
+  path: "/api/speech-to-text",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+
+    const identity = await ctx.auth.getUserIdentity();
+    const anonDeviceId = getAnonDeviceId(request);
+    if (!identity && !anonDeviceId) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: identity ? "speech_to_text_owner" : "speech_to_text_anon",
+      key: identity?.subject ?? anonDeviceId!,
+      limit: identity ? TRANSCRIBE_OWNER_RATE_LIMIT : TRANSCRIBE_ANON_RATE_LIMIT,
+      windowMs: TRANSCRIBE_RATE_WINDOW_MS,
+      blockMs: TRANSCRIBE_RATE_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+    }
+
+    let body: SpeechToTextRequest | null = null;
+    try {
+      body = (await request.json()) as SpeechToTextRequest;
+    } catch {
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
+    }
+
+    if (!body || typeof body !== "object" || typeof body.audio !== "string") {
+      return withCors(new Response("audio is required", { status: 400 }), origin);
+    }
+
+    const normalizedAudio = normalizeBase64Audio(body.audio);
+    if (!normalizedAudio) {
+      return withCors(new Response("audio must be valid base64", { status: 400 }), origin);
+    }
+
+    const estimatedAudioBytes = estimateBase64SizeBytes(normalizedAudio);
+    if (estimatedAudioBytes <= 0 || estimatedAudioBytes > MAX_TRANSCRIBE_AUDIO_BYTES) {
+      return withCors(
+        new Response(
+          `audio exceeds ${MAX_TRANSCRIBE_AUDIO_BYTES} byte limit`,
+          { status: 413 },
+        ),
+        origin,
+      );
+    }
+
+    if (
+      body.language !== undefined &&
+      (!Array.isArray(body.language) ||
+        body.language.some(
+          (code) =>
+            typeof code !== "string" ||
+            code.trim().length < 2 ||
+            code.trim().length > 8,
+        ))
+    ) {
+      return withCors(new Response("language must be an array of ISO codes", { status: 400 }), origin);
+    }
+
+    if (
+      body.context !== undefined &&
+      (typeof body.context !== "object" || body.context === null || Array.isArray(body.context))
+    ) {
+      return withCors(new Response("context must be an object", { status: 400 }), origin);
+    }
+
+    if (
+      body.properties !== undefined &&
+      (typeof body.properties !== "object" ||
+        body.properties === null ||
+        Array.isArray(body.properties))
+    ) {
+      return withCors(new Response("properties must be an object", { status: 400 }), origin);
+    }
+
+    const apiKey = process.env.WISPRFLOW_API_KEY ?? process.env.WISPR_FLOW_API_KEY;
+    if (!apiKey) {
+      console.error("[speech-to-text] Missing WISPRFLOW_API_KEY environment variable");
+      return withCors(
+        new Response("Server configuration error", { status: 500 }),
+        origin,
+      );
+    }
+
+    const payload: SpeechToTextRequest = {
+      audio: normalizedAudio,
+    };
+    if (body.language && body.language.length > 0) {
+      payload.language = body.language.map((code) => code.trim()).filter((code) => code.length > 0);
+    }
+    if (body.context) {
+      payload.context = body.context;
+    }
+    if (body.properties) {
+      payload.properties = body.properties;
+    }
+
+    try {
+      const upstreamResponse = await fetch(WISPRFLOW_TRANSCRIBE_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const upstreamText = await upstreamResponse.text();
+      if (!upstreamResponse.ok) {
+        return withCors(
+          new Response(
+            JSON.stringify({
+              error: `Speech transcription failed: ${upstreamResponse.status}`,
+              detail: upstreamText.slice(0, 2_000),
+            }),
+            {
+              status: upstreamResponse.status,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+          origin,
+        );
+      }
+
+      let upstreamJson: unknown;
+      try {
+        upstreamJson = upstreamText ? JSON.parse(upstreamText) : {};
+      } catch {
+        return withCors(
+          new Response(
+            JSON.stringify({ error: "Invalid upstream response" }),
+            {
+              status: 502,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+          origin,
+        );
+      }
+
+      const result = upstreamJson as {
+        id?: unknown;
+        text?: unknown;
+        detected_language?: unknown;
+        total_time?: unknown;
+        generated_tokens?: unknown;
+      };
+
+      if (typeof result.text !== "string") {
+        return withCors(
+          new Response(
+            JSON.stringify({ error: "Upstream response missing transcription text" }),
+            {
+              status: 502,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+          origin,
+        );
+      }
+
+      const response: SpeechToTextResponse = {
+        id: typeof result.id === "string" ? result.id : null,
+        text: result.text,
+        detectedLanguage:
+          typeof result.detected_language === "string"
+            ? result.detected_language
+            : null,
+        totalTime: typeof result.total_time === "number" ? result.total_time : null,
+        generatedTokens:
+          typeof result.generated_tokens === "number" ? result.generated_tokens : null,
+      };
+
+      return withCors(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    } catch (error) {
+      console.error("[speech-to-text] Error:", error);
+      return withCors(
+        new Response(`Speech transcription failed: ${(error as Error).message}`, { status: 500 }),
         origin,
       );
     }
