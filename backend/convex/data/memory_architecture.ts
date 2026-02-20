@@ -8,6 +8,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { embed } from "ai";
 import { getModelConfig } from "../agent/model";
+import { clampIntToRange, normalizeOptionalInt } from "../lib/number_utils";
 
 const TOKEN_FALLBACK_THRESHOLD = 20_000;
 const MAX_MEMORIES_PER_OWNER = 500;
@@ -125,7 +126,12 @@ export const listOwnerMemories = internalQuery({
   },
   returns: v.array(memoryValidator),
   handler: async (ctx, args) => {
-    const limit = Math.min(Math.max(Math.floor(args.limit ?? 3000), 1), 10_000);
+    const limit = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 3000,
+      min: 1,
+      max: 10_000,
+    });
     return await ctx.db
       .query("memories")
       .withIndex("by_ownerId_and_accessedAt", (q) => q.eq("ownerId", args.ownerId))
@@ -140,7 +146,7 @@ export const listOldestOwnerMemories = internalQuery({
   },
   returns: v.array(memoryValidator),
   handler: async (ctx, args) => {
-    const limit = Math.min(Math.max(Math.floor(args.limit), 1), 1000);
+    const limit = clampIntToRange(args.limit, 1, 1000);
     return await ctx.db
       .query("memories")
       .withIndex("by_ownerId_and_accessedAt", (q) => q.eq("ownerId", args.ownerId))
@@ -414,7 +420,12 @@ export const listDistinctMemoryOwners = internalQuery({
   args: { limit: v.optional(v.number()) },
   returns: v.array(v.string()),
   handler: async (ctx, args) => {
-    const limit = Math.min(args.limit ?? 500, 2000);
+    const limit = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 500,
+      min: 1,
+      max: 2000,
+    });
     const memories = await ctx.db
       .query("memories")
       .withIndex("by_accessedAt")

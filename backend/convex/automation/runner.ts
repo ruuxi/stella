@@ -8,6 +8,7 @@ import {
   AUTOMATION_HISTORY_MAX_TOKENS,
   computeAutoCompactionThresholdTokens,
 } from "../agent/context_budget";
+import { normalizeOptionalInt } from "../lib/number_utils";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
 import { withModelFailover } from "../agent/model_failover";
@@ -80,7 +81,12 @@ export async function runAgentTurn({
 
   const historyEvents = await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
     conversationId,
-    maxTokens: Math.min(Math.max(Math.floor(AUTOMATION_HISTORY_MAX_TOKENS), 1), 120_000),
+    maxTokens: normalizeOptionalInt({
+      value: AUTOMATION_HISTORY_MAX_TOKENS,
+      defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
+      min: 1,
+      max: 120_000,
+    }),
   });
 
   const historyBuild = eventsToHistoryMessages(historyEvents ?? [], {

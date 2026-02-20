@@ -9,6 +9,7 @@ import { components, internal } from "../_generated/api";
 import { v, Infer } from "convex/values";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import type { ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { runAgentTurn } from "../automation/runner";
 import { requireUserId } from "../auth";
 import { optionalChannelEnvelopeValidator } from "../shared_validators";
@@ -29,6 +30,28 @@ const channelConnectionValidator = v.object({
   linkedAt: v.number(),
   updatedAt: v.number(),
 });
+type ChannelConnection = Infer<typeof channelConnectionValidator>;
+
+type ChannelInboundAttachment = {
+  id?: string;
+  name?: string;
+  mimeType?: string;
+  url?: string;
+  size?: number;
+  kind?: string;
+};
+
+type ProcessIncomingMessageArgs = {
+  ctx: ActionCtx;
+  ownerId?: string;
+  provider: string;
+  externalUserId: string;
+  text: string;
+  groupId?: string;
+  attachments?: ChannelInboundAttachment[];
+  channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
+  respond?: boolean;
+};
 
 const getDmPolicyKey = (provider: string) => `${provider}_dm_policy`;
 const getDmAllowlistKey = (provider: string) => `${provider}_dm_allowlist`;
@@ -547,126 +570,165 @@ export const setDmDenylist = internalMutation({
 // ---------------------------------------------------------------------------
 
 /**
- * Common message handling: lookup connection → resolve conversation →
- * append event → resolve execution target → run agent turn → return response.
- *
- * Conversation routing:
- *  - DMs (groupId absent): route to the owner's default conversation
- *  - Groups (groupId present): route to a per-group conversation
+ * Internal helpers for inbound channel message processing.
  */
-export async function processIncomingMessage(args: {
+const findConnection = async (args: {
   ctx: ActionCtx;
   ownerId?: string;
   provider: string;
   externalUserId: string;
-  text: string;
-  groupId?: string;
-  attachments?: Array<{
-    id?: string;
-    name?: string;
-    mimeType?: string;
-    url?: string;
-    size?: number;
-    kind?: string;
-  }>;
-  channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
-  respond?: boolean;
-}): Promise<{ text: string } | null> {
-  let connection = args.ownerId
-    ? await args.ctx.runQuery(
-        internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-        {
-          ownerId: args.ownerId,
-          provider: args.provider,
-          externalUserId: args.externalUserId,
-        },
-      )
-    : await args.ctx.runQuery(
-        internal.channels.utils.getConnectionByProviderAndExternalId,
-        { provider: args.provider, externalUserId: args.externalUserId },
-      );
-
-  const policyOwnerId = args.ownerId ?? connection?.ownerId;
-  if (!policyOwnerId) return null;
-
-  const policy = await args.ctx.runQuery(internal.channels.utils.getDmPolicyConfig, {
-    ownerId: policyOwnerId,
-    provider: args.provider,
-  });
-
-  if (policy.denylist.includes(args.externalUserId)) return null;
-  if (policy.policy === "disabled") return null;
-  if (policy.policy === "allowlist" && !policy.allowlist.includes(args.externalUserId)) {
-    return null;
-  }
-  if (policy.policy === "pairing" && !connection) return null;
-
-  if (!connection) {
-    await args.ctx.runMutation(internal.channels.utils.createConnection, {
-      ownerId: policyOwnerId,
-      provider: args.provider,
-      externalUserId: args.externalUserId,
-    });
-
-    connection = await args.ctx.runQuery(
+}): Promise<ChannelConnection | null> => {
+  if (args.ownerId) {
+    return await args.ctx.runQuery(
       internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
       {
-        ownerId: policyOwnerId,
+        ownerId: args.ownerId,
         provider: args.provider,
         externalUserId: args.externalUserId,
       },
     );
   }
 
-  if (!connection) return null;
+  return await args.ctx.runQuery(
+    internal.channels.utils.getConnectionByProviderAndExternalId,
+    { provider: args.provider, externalUserId: args.externalUserId },
+  );
+};
 
-  // Conversation routing: DMs → default conversation, groups → per-group
-  let conversationId: typeof connection.conversationId;
+const shouldBlockInboundByDmPolicy = (args: {
+  policy: { policy: DmPolicy; allowlist: string[]; denylist: string[] };
+  externalUserId: string;
+  hasExistingConnection: boolean;
+}): boolean => {
+  if (args.policy.denylist.includes(args.externalUserId)) return true;
+  if (args.policy.policy === "disabled") return true;
+  if (
+    args.policy.policy === "allowlist" &&
+    !args.policy.allowlist.includes(args.externalUserId)
+  ) {
+    return true;
+  }
+  if (args.policy.policy === "pairing" && !args.hasExistingConnection) {
+    return true;
+  }
+  return false;
+};
 
-  if (args.groupId) {
-    // Groups use a separate connection keyed by group ID to track per-group conversations
-    const groupKey = `group:${args.groupId}`;
-    let groupConnection = await args.ctx.runQuery(
-      internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-      { ownerId: connection.ownerId, provider: args.provider, externalUserId: groupKey },
-    );
+const resolveConnectionForIncomingMessage = async (args: {
+  ctx: ActionCtx;
+  ownerId?: string;
+  provider: string;
+  externalUserId: string;
+}): Promise<ChannelConnection | null> => {
+  let connection = await findConnection(args);
+  const policyOwnerId = args.ownerId ?? connection?.ownerId;
+  if (!policyOwnerId) {
+    return null;
+  }
 
-    if (!groupConnection) {
-      await args.ctx.runMutation(internal.channels.utils.createConnection, {
-        ownerId: connection.ownerId,
-        provider: args.provider,
-        externalUserId: groupKey,
-      });
-      groupConnection = await args.ctx.runQuery(
-        internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-        { ownerId: connection.ownerId, provider: args.provider, externalUserId: groupKey },
-      );
-    }
+  const policy = await args.ctx.runQuery(internal.channels.utils.getDmPolicyConfig, {
+    ownerId: policyOwnerId,
+    provider: args.provider,
+  });
+  if (
+    shouldBlockInboundByDmPolicy({
+      policy,
+      externalUserId: args.externalUserId,
+      hasExistingConnection: Boolean(connection),
+    })
+  ) {
+    return null;
+  }
 
-    if (groupConnection?.conversationId) {
-      conversationId = groupConnection.conversationId;
-    } else {
-      conversationId = await args.ctx.runMutation(
-        internal.channels.utils.createGroupConversation,
-        { ownerId: connection.ownerId, title: `${args.provider} group` },
-      );
-      if (groupConnection) {
-        await args.ctx.runMutation(internal.channels.utils.setConnectionConversation, {
-          connectionId: groupConnection._id,
-          conversationId,
-        });
-      }
-    }
-  } else {
-    // DMs always go to the owner's default conversation
-    conversationId = await args.ctx.runMutation(
+  if (connection) {
+    return connection;
+  }
+
+  await args.ctx.runMutation(internal.channels.utils.createConnection, {
+    ownerId: policyOwnerId,
+    provider: args.provider,
+    externalUserId: args.externalUserId,
+  });
+
+  connection = await args.ctx.runQuery(
+    internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
+    {
+      ownerId: policyOwnerId,
+      provider: args.provider,
+      externalUserId: args.externalUserId,
+    },
+  );
+  return connection;
+};
+
+const resolveConversationIdForIncomingMessage = async (args: {
+  ctx: ActionCtx;
+  provider: string;
+  ownerId: string;
+  groupId?: string;
+}): Promise<Id<"conversations">> => {
+  if (!args.groupId) {
+    return await args.ctx.runMutation(
       internal.channels.utils.getOrCreateConversationForOwner,
-      { ownerId: connection.ownerId },
+      { ownerId: args.ownerId },
     );
   }
 
+  const groupKey = `group:${args.groupId}`;
+  let groupConnection = await args.ctx.runQuery(
+    internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
+    {
+      ownerId: args.ownerId,
+      provider: args.provider,
+      externalUserId: groupKey,
+    },
+  );
+
+  if (!groupConnection) {
+    await args.ctx.runMutation(internal.channels.utils.createConnection, {
+      ownerId: args.ownerId,
+      provider: args.provider,
+      externalUserId: groupKey,
+    });
+    groupConnection = await args.ctx.runQuery(
+      internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
+      {
+        ownerId: args.ownerId,
+        provider: args.provider,
+        externalUserId: groupKey,
+      },
+    );
+  }
+
+  if (groupConnection?.conversationId) {
+    return groupConnection.conversationId;
+  }
+
+  const conversationId = await args.ctx.runMutation(
+    internal.channels.utils.createGroupConversation,
+    { ownerId: args.ownerId, title: `${args.provider} group` },
+  );
+
+  if (groupConnection) {
+    await args.ctx.runMutation(internal.channels.utils.setConnectionConversation, {
+      connectionId: groupConnection._id,
+      conversationId,
+    });
+  }
+
+  return conversationId;
+};
+
+const appendInboundUserMessage = async (args: {
+  ctx: ActionCtx;
+  conversationId: Id<"conversations">;
+  provider: string;
+  text: string;
+  attachments?: ChannelInboundAttachment[];
+  channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
+}): Promise<void> => {
   await args.ctx.runMutation(internal.events.appendInternalEvent, {
-    conversationId,
+    conversationId: args.conversationId,
     type: "user_message",
     deviceId: `channel:${args.provider}`,
     payload: {
@@ -678,22 +740,89 @@ export async function processIncomingMessage(args: {
     },
     channelEnvelope: args.channelEnvelope,
   });
+};
+
+const resolveExecutionTarget = async (args: {
+  ctx: ActionCtx;
+  ownerId: string;
+}): Promise<{ targetDeviceId: string | null; spriteName: string | null }> => {
+  const target = await args.ctx.runQuery(
+    internal.agent.device_resolver.resolveExecutionTarget,
+    { ownerId: args.ownerId },
+  );
+
+  if (target.spriteName) {
+    await args.ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
+      ownerId: args.ownerId,
+    });
+  }
+
+  return target;
+};
+
+const persistInboundAssistantMessage = async (args: {
+  ctx: ActionCtx;
+  conversationId: Id<"conversations">;
+  provider: string;
+  responseText: string;
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+}): Promise<void> => {
+  await args.ctx.runMutation(internal.events.appendInternalEvent, {
+    conversationId: args.conversationId,
+    type: "assistant_message",
+    payload: {
+      text: args.responseText,
+      source: `channel:${args.provider}`,
+      ...(args.usage ? { usage: args.usage } : {}),
+    },
+  });
+};
+
+/**
+ * Common message handling: lookup connection -> resolve conversation ->
+ * append event -> resolve execution target -> run agent turn -> return response.
+ *
+ * Conversation routing:
+ * - DMs (groupId absent): route to the owner's default conversation
+ * - Groups (groupId present): route to a per-group conversation
+ */
+export async function processIncomingMessage(
+  args: ProcessIncomingMessageArgs,
+): Promise<{ text: string } | null> {
+  const connection = await resolveConnectionForIncomingMessage({
+    ctx: args.ctx,
+    ownerId: args.ownerId,
+    provider: args.provider,
+    externalUserId: args.externalUserId,
+  });
+  if (!connection) {
+    return null;
+  }
+
+  const conversationId = await resolveConversationIdForIncomingMessage({
+    ctx: args.ctx,
+    provider: args.provider,
+    ownerId: connection.ownerId,
+    groupId: args.groupId,
+  });
+
+  await appendInboundUserMessage({
+    ctx: args.ctx,
+    conversationId,
+    provider: args.provider,
+    text: args.text,
+    attachments: args.attachments,
+    channelEnvelope: args.channelEnvelope,
+  });
 
   if (args.respond === false) {
     return { text: "" };
   }
 
-  // Resolve execution target: local device if online, else cloud, else backend-only
-  const { targetDeviceId, spriteName } = await args.ctx.runQuery(
-    internal.agent.device_resolver.resolveExecutionTarget,
-    { ownerId: connection.ownerId },
-  );
-
-  if (spriteName) {
-    await args.ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
-      ownerId: connection.ownerId,
-    });
-  }
+  const executionTarget = await resolveExecutionTarget({
+    ctx: args.ctx,
+    ownerId: connection.ownerId,
+  });
 
   const result = await runAgentTurn({
     ctx: args.ctx,
@@ -701,31 +830,26 @@ export async function processIncomingMessage(args: {
     prompt: args.text,
     agentType: "orchestrator",
     ownerId: connection.ownerId,
-    targetDeviceId: targetDeviceId ?? undefined,
-    spriteName: spriteName ?? undefined,
+    targetDeviceId: executionTarget.targetDeviceId ?? undefined,
+    spriteName: executionTarget.spriteName ?? undefined,
   });
 
   const responseText = result.text.trim() || "(Stella had nothing to say.)";
-
-  // Persist the assistant response so it appears in the desktop conversation
   if (!result.silent) {
-    await args.ctx.runMutation(internal.events.appendInternalEvent, {
+    await persistInboundAssistantMessage({
+      ctx: args.ctx,
       conversationId,
-      type: "assistant_message",
-      payload: {
-        text: responseText,
-        source: `channel:${args.provider}`,
-        ...(result.usage ? { usage: result.usage } : {}),
-      },
+      provider: args.provider,
+      responseText,
+      usage: result.usage,
     });
   }
 
   return { text: responseText };
 }
-
 /**
- * Common link code validation: consume code → check existing →
- * create connection → return status.
+ * Common link code validation: consume code -> check existing ->
+ * create connection -> return status.
  */
 export async function processLinkCode(args: {
   ctx: ActionCtx;

@@ -1,4 +1,6 @@
 import type { Doc } from "../_generated/dataModel";
+import { asObjectRecord } from "../lib/object_utils";
+import { stringifyBounded, truncateWithSuffix } from "../lib/text_utils";
 import { estimateContextEventTokens } from "./context_window";
 
 export type HistoryMessage = {
@@ -66,11 +68,8 @@ const MICROCOMPACT_ELIGIBLE_TOOLS = new Set([
   "ShellStatus",
 ]);
 
-const ellipsize = (value: string, maxChars: number) =>
-  value.length <= maxChars ? value : `${value.slice(0, maxChars)}...(truncated)`;
-
-const asObject = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+const ellipsize = truncateWithSuffix;
+const asObject = asObjectRecord;
 
 const normalizeRequestId = (event: Doc<"events">): string | undefined => {
   if (event.requestId && event.requestId.trim().length > 0) {
@@ -104,16 +103,8 @@ const isMicrocompactDisabled = (enabledOverride?: boolean): boolean => {
 const isEligibleToolName = (toolName: string): boolean =>
   MICROCOMPACT_ELIGIBLE_TOOLS.has(toolName);
 
-const stringifyValue = (value: unknown, maxChars = MAX_JSON_CHARS): string => {
-  if (typeof value === "string") {
-    return ellipsize(value.trim(), maxChars);
-  }
-  try {
-    return ellipsize(JSON.stringify(value), maxChars);
-  } catch {
-    return ellipsize(String(value), maxChars);
-  }
-};
+const stringifyValue = (value: unknown, maxChars = MAX_JSON_CHARS): string =>
+  stringifyBounded(value, maxChars);
 
 const formatTaskEvent = (
   eventType: string,

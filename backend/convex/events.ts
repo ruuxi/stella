@@ -5,6 +5,8 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireConversationOwner, requireUserId } from "./auth";
 import { jsonValueValidator, optionalChannelEnvelopeValidator } from "./shared_validators";
+import { normalizeOptionalInt } from "./lib/number_utils";
+import { asPlainObjectRecord } from "./lib/object_utils";
 import {
   sanitizeForToolResultPersistence,
   sanitizeForToolRequestPersistence,
@@ -134,8 +136,12 @@ export const listMessagesInWindow = internalQuery({
       return [];
     }
 
-    const requestedLimit = args.limit ?? 400;
-    const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 2000);
+    const limit = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 400,
+      min: 1,
+      max: 2000,
+    });
 
     const types = ["user_message", "assistant_message", "task_completed"] as const;
     const perType = await Promise.all(
@@ -256,9 +262,7 @@ type ContextEventFilterOptions = {
 };
 
 const asPayloadObject = (value: Value): Record<string, Value> =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, Value>)
-    : {};
+  asPlainObjectRecord<Value>(value);
 
 const getEventPayloadAgentType = (event: ContextEvent): string | undefined => {
   const raw = asPayloadObject(event.payload).agentType;
@@ -723,8 +727,12 @@ export const listEventsSince = internalQuery({
   returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const afterTimestamp = args.afterTimestamp ?? 0;
-    const requestedLimit = args.limit ?? 400;
-    const limit = Math.min(Math.max(Math.floor(requestedLimit), 1), 1000);
+    const limit = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 400,
+      min: 1,
+      max: 1000,
+    });
 
     const events = await ctx.db
       .query("events")
