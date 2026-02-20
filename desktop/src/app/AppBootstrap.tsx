@@ -3,7 +3,7 @@ import { useConvexAuth, useMutation } from "convex/react";
 import { useUiState } from "./state/ui-state";
 import { api } from "../convex/api";
 import { configureLocalHost, getOrCreateDeviceId } from "../services/device";
-import { localPost } from "../services/local-client";
+import { localPost, localGet } from "../services/local-client";
 import { useIsLocalMode } from "@/providers/DataProvider";
 
 export const AppBootstrap = () => {
@@ -31,6 +31,10 @@ export const AppBootstrap = () => {
           if (!cancelled && conversation?.id) {
             setConversationId(conversation.id);
           }
+          const shortcutPref = await localGet<{ value?: string }>("/api/preferences/voice_shortcut").catch(() => null);
+          if (shortcutPref?.value) {
+            window.electronAPI?.setVoiceShortcut?.(shortcutPref.value);
+          }
         } catch (err) {
           console.error("[AppBootstrap] Local conversation setup failed:", err);
           if (!cancelled) {
@@ -43,6 +47,10 @@ export const AppBootstrap = () => {
           const conversation = await getOrCreateDefaultConversation({});
           if (!cancelled && conversation?._id) {
             setConversationId(conversation._id);
+          }
+          const savedShortcut = localStorage.getItem("stella-voice-shortcut");
+          if (savedShortcut) {
+            window.electronAPI?.setVoiceShortcut?.(savedShortcut);
           }
         } catch (err) {
           console.error("[AppBootstrap] Cloud conversation setup failed:", err);

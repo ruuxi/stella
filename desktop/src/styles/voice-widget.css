@@ -1,0 +1,78 @@
+.voice-widget-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  pointer-events: none;
+}
+
+.voice-pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-up-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.voice-pill--error {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.voice-pill-icon-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.voice-pill-icon {
+  position: relative;
+  z-index: 2;
+  color: var(--primary);
+}
+
+.voice-pill--error .voice-pill-icon {
+  color: #ef4444;
+}
+
+.voice-pill-error-icon {
+  position: relative;
+  z-index: 2;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.voice-pill-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  opacity: 0.2;
+  z-index: 1;
+  transition: transform 0.1s linear, opacity 0.1s linear;
+}
+
+@keyframes slide-up-fade {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

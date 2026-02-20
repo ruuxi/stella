@@ -19,6 +19,7 @@ describe("UiStateProvider + useUiState", () => {
       window: "full",
       view: "chat",
       conversationId: null,
+      isVoiceActive: false,
     });
   });
 

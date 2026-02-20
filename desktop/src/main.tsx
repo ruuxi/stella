@@ -54,6 +54,7 @@ import './styles/settings.css'
 import './styles/selfmod-demo.css'
 import './styles/command-chips.css'
 import './styles/welcome-suggestions.css'
+import './styles/voice-widget.css'
 
 import App from './App.tsx'
 import { UiStateProvider } from './app/state/ui-state'

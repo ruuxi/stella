@@ -7,7 +7,7 @@ import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
 import { useDataMode } from './providers/DataProvider'
 
-type WindowType = 'full' | 'mini' | 'radial' | 'region'
+type WindowType = 'full' | 'mini' | 'radial' | 'region' | 'voice'
 const CredentialRequestLayer = lazy(() =>
   import('./app/CredentialRequestLayer').then((module) => ({
     default: module.CredentialRequestLayer,
@@ -25,6 +25,9 @@ const RadialShell = lazy(() =>
 const RegionCapture = lazy(() =>
   import('./screens/RegionCapture').then((module) => ({ default: module.RegionCapture })),
 )
+const VoiceWidget = lazy(() =>
+  import('./screens/VoiceWidget').then((module) => ({ default: module.VoiceWidget })),
+)
 
 function getWindowType(isElectron: boolean, windowParam: string | null, fallback: string): WindowType {
   if (!isElectron) {
@@ -34,6 +37,7 @@ function getWindowType(isElectron: boolean, windowParam: string | null, fallback
     case 'radial':
     case 'region':
     case 'mini':
+    case 'voice':
       return windowParam
     default:
       return 'full'
@@ -60,6 +64,8 @@ function App() {
       <div className="app window-radial" />
     ) : windowType === 'region' ? (
       <div className="app window-region" />
+    ) : windowType === 'voice' ? (
+      <div className="app window-voice" />
     ) : (
       <div className={`app window-${windowType}`} />
     )
@@ -72,6 +78,10 @@ function App() {
     ) : windowType === 'region' ? (
       <div className="app window-region">
         <RegionCapture />
+      </div>
+    ) : windowType === 'voice' ? (
+      <div className="app window-voice">
+        <VoiceWidget />
       </div>
     ) : (
       <div className={`app window-${windowType}`}>

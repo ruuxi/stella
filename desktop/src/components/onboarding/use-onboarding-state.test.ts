@@ -63,12 +63,13 @@ describe("phase constants", () => {
 
   it("SPLIT_STEP_ORDER has correct order", () => {
     expect(SPLIT_STEP_ORDER).toEqual([
-      "browser",
-      "memory",
-      "creation",
-      "theme",
-      "personality",
-    ]);
+    "browser",
+    "memory",
+    "creation",
+    "voice",
+    "theme",
+    "personality",
+  ]);
   });
 });
 

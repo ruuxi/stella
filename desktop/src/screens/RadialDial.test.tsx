@@ -8,6 +8,10 @@ vi.mock("../services/electron", () => ({
   getElectronApi: () => undefined,
 }));
 
+vi.mock("../app/state/ui-state", () => ({
+  useUiState: () => ({ state: { isVoiceActive: false } }),
+}));
+
 // Mock useTheme to return fake colors
 vi.mock("../theme/theme-context", () => ({
   useTheme: () => ({
@@ -25,6 +29,10 @@ vi.mock("../theme/theme-context", () => ({
 // Mock StellaAnimation as a simple div
 vi.mock("../components/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
+}));
+
+vi.mock("../app/state/ui-state", () => ({
+  useUiState: () => ({ state: { isVoiceActive: false } }),
 }));
 
 // We need to test helper functions directly, so we import the module

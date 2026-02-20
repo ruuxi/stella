@@ -8,6 +8,10 @@ vi.mock("../services/electron", () => ({
   getElectronApi: () => ({ platform: "win32" }),
 }));
 
+vi.mock("../app/state/ui-state", () => ({
+  useUiState: () => ({ state: { isVoiceActive: false } }),
+}));
+
 vi.mock("../theme/theme-context", () => ({
   useTheme: () => ({
     colors: {
