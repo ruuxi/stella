@@ -1,5 +1,3 @@
-const PRIVATE_INTEGRATION_OVERRIDE_ENV = "STELLA_ALLOW_PRIVATE_INTEGRATION_HOSTS";
-
 const BLOCKED_HOSTS = new Set([
   "localhost",
   "localhost.localdomain",
@@ -54,8 +52,9 @@ const isPrivateOrReservedIpv4 = ([a, b, c]: [number, number, number, number]) =>
 const isIpv6Literal = (hostname: string) =>
   hostname.includes(":") && IPV6_LITERAL_PATTERN.test(hostname);
 
-const privateHostOverrideEnabled = () =>
-  process.env[PRIVATE_INTEGRATION_OVERRIDE_ENV]?.trim().toLowerCase() === "true";
+type IntegrationHostSafetyOptions = {
+  allowPrivateNetworkHosts?: boolean;
+};
 
 const isUnsafeIntegrationHostname = (hostname: string) => {
   if (!hostname) return true;
@@ -94,14 +93,16 @@ const isUnsafeIntegrationHostname = (hostname: string) => {
   return false;
 };
 
-export const getUnsafeIntegrationHostError = (url: URL): string | null => {
-  if (privateHostOverrideEnabled()) return null;
-
+export const getUnsafeIntegrationHostError = (
+  url: URL,
+  options?: IntegrationHostSafetyOptions,
+): string | null => {
   const hostname = normalizeHostname(url.hostname);
   if (!hostname) {
     return "IntegrationRequest requires a hostname.";
   }
+  if (options?.allowPrivateNetworkHosts) return null;
   if (!isUnsafeIntegrationHostname(hostname)) return null;
 
-  return `Host "${url.hostname}" is blocked for security. Set ${PRIVATE_INTEGRATION_OVERRIDE_ENV}=true to allow private network targets.`;
+  return `Host "${url.hostname}" is blocked for security in this request context.`;
 };

@@ -75,6 +75,98 @@ const formatResult = (value: unknown) =>
 const wrapExternalContent = (content: string, source: string): string =>
   `[External Content - Untrusted Source: ${source}]\n${content}\n[End External Content]`;
 
+const BLOCKED_REQUEST_HEADER_NAME_RE =
+  /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|x-auth-token|x-access-token)$/i;
+const BLOCKED_REQUEST_QUERY_NAME_RE =
+  /^(api[_-]?key|access[_-]?token|refresh[_-]?token|token|client[_-]?secret|secret|password)$/i;
+const SENSITIVE_RESPONSE_FIELD_NAME_RE =
+  /(authorization|proxy-authorization|cookie|set-cookie|token|secret|password|api[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|session)/i;
+const BEARER_VALUE_RE = /\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/gi;
+const BASIC_VALUE_RE = /\bBasic\s+[A-Za-z0-9+/]+=*\b/gi;
+const JWT_VALUE_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
+const QUERY_SECRET_VALUE_RE =
+  /([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|client[_-]?secret|secret|password)=)([^&#\s]+)/gi;
+const REDACTED_VALUE = "[REDACTED]";
+
+const findBlockedCredentialHeaderName = (
+  headers: z.infer<typeof integrationRequestSchema>["request"]["headers"],
+): string | null => {
+  if (!headers) return null;
+  for (const name of Object.keys(headers)) {
+    if (BLOCKED_REQUEST_HEADER_NAME_RE.test(name.trim())) {
+      return name;
+    }
+  }
+  return null;
+};
+
+const findBlockedCredentialQueryName = (
+  query: z.infer<typeof integrationRequestSchema>["request"]["query"],
+): string | null => {
+  if (!query) return null;
+  for (const name of Object.keys(query)) {
+    if (BLOCKED_REQUEST_QUERY_NAME_RE.test(name.trim())) {
+      return name;
+    }
+  }
+  return null;
+};
+
+const redactResponseString = (value: string, secrets: string[]): string => {
+  let output = value;
+  for (const secret of secrets) {
+    if (!secret) continue;
+    output = output.split(secret).join(REDACTED_VALUE);
+  }
+  output = output.replace(BEARER_VALUE_RE, "Bearer [REDACTED]");
+  output = output.replace(BASIC_VALUE_RE, "Basic [REDACTED]");
+  output = output.replace(JWT_VALUE_RE, REDACTED_VALUE);
+  output = output.replace(QUERY_SECRET_VALUE_RE, `$1${REDACTED_VALUE}`);
+  return output;
+};
+
+const redactIntegrationResponseData = (value: unknown, secrets: string[]): unknown => {
+  if (typeof value === "string") {
+    return redactResponseString(value, secrets);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactIntegrationResponseData(entry, secrets));
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_RESPONSE_FIELD_NAME_RE.test(key)) {
+        result[key] = typeof entry === "string" ? REDACTED_VALUE : redactIntegrationResponseData(entry, secrets);
+      } else {
+        result[key] = redactIntegrationResponseData(entry, secrets);
+      }
+    }
+    return result;
+  }
+  return value;
+};
+
+const deriveIntegrationRedactionSecrets = (
+  key: string | undefined,
+  auth: z.infer<typeof integrationAuthSchema> | undefined,
+): string[] => {
+  if (!key) {
+    return [];
+  }
+  const authType = auth?.type ?? "bearer";
+  const formatValue = (template?: string) => {
+    if (!template) return key;
+    return template.includes("{key}") ? template.replace("{key}", key) : `${template}${key}`;
+  };
+  const secrets = new Set<string>([key, `Bearer ${key}`, formatValue(auth?.format)]);
+  if (authType === "basic") {
+    const token = btoa(`${auth?.username ?? ""}:${key}`);
+    secrets.add(token);
+    secrets.add(`Basic ${token}`);
+  }
+  return [...secrets].filter((entry) => entry.length > 0);
+};
+
 const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
 
 const supportsSkillAgentType = (
@@ -116,6 +208,7 @@ const applyAuth = (
 const runIntegrationRequest = async (
   args: z.infer<typeof integrationRequestSchema>,
   key?: string,
+  options?: { allowPrivateNetworkHosts?: boolean },
 ) => {
   let url: URL;
   try {
@@ -126,9 +219,21 @@ const runIntegrationRequest = async (
   if (!["http:", "https:"].includes(url.protocol)) {
     return "IntegrationRequest only supports http(s) URLs.";
   }
-  const unsafeHostError = getUnsafeIntegrationHostError(url);
+  const unsafeHostError = getUnsafeIntegrationHostError(url, {
+    allowPrivateNetworkHosts: options?.allowPrivateNetworkHosts,
+  });
   if (unsafeHostError) {
     return unsafeHostError;
+  }
+
+  const blockedHeaderName = findBlockedCredentialHeaderName(args.request.headers);
+  if (blockedHeaderName) {
+    return `IntegrationRequest does not accept credential headers in request.headers (${blockedHeaderName}). Use secretId + auth instead.`;
+  }
+
+  const blockedQueryName = findBlockedCredentialQueryName(args.request.query);
+  if (blockedQueryName) {
+    return `IntegrationRequest does not accept credential query params in request.query (${blockedQueryName}). Use secretId + auth with type \"query\" instead.`;
   }
 
   if (args.request.query) {
@@ -180,12 +285,14 @@ const runIntegrationRequest = async (
       : wantsJson
         ? await response.json().catch(async () => await response.text())
         : await response.text();
+    const redactionSecrets = deriveIntegrationRedactionSecrets(key, args.auth);
+    const redactedData = redactIntegrationResponseData(data, redactionSecrets);
 
     return JSON.stringify(
       {
         status: response.status,
         ok: response.ok,
-        data,
+        data: redactedData,
       },
       null,
       2,
@@ -552,7 +659,7 @@ export const createBackendTools = (
         "Usage:\n" +
         "- Two modes: \"public\" (uses a provider-scoped Stella-managed env var + allowed hosts policy) or \"private\" (uses a user's secretId from RequestCredential).\n" +
         "- Auth types: \"bearer\" (default, adds Authorization: Bearer header), \"header\" (custom header), \"query\" (adds to URL params), \"basic\" (HTTP Basic Auth).\n" +
-        "- For ephemeral session tokens (e.g. from browser extraction), pass them directly in request.headers instead of using secretId.\n" +
+        "- Never put raw API keys/tokens/cookies in request.headers or request.query. Always pass secretId + auth so secret material stays server-side.\n" +
         "- Response is returned as JSON with status, ok, and data fields.",
       inputSchema: integrationRequestSchema,
       execute: async (args) => {
@@ -567,7 +674,9 @@ export const createBackendTools = (
         if (!["http:", "https:"].includes(requestUrl.protocol)) {
           return "IntegrationRequest only supports http(s) URLs.";
         }
-        const unsafeHostError = getUnsafeIntegrationHostError(requestUrl);
+        const unsafeHostError = getUnsafeIntegrationHostError(requestUrl, {
+          allowPrivateNetworkHosts: mode === "private",
+        });
         if (unsafeHostError) {
           return unsafeHostError;
         }
@@ -608,7 +717,9 @@ export const createBackendTools = (
             return `Public integration is missing env var: ${policy.envVar}.`;
           }
 
-          const publicResult = await runIntegrationRequest(args, key);
+          const publicResult = await runIntegrationRequest(args, key, {
+            allowPrivateNetworkHosts: false,
+          });
           if (publicResult.startsWith("IntegrationRequest")) {
             return publicResult; // Error message — don't wrap
           }
@@ -655,7 +766,9 @@ export const createBackendTools = (
             return `Private integration host "${requestUrl.hostname}" is not allowed for provider "${args.provider}". Allowed hosts: ${allowedHosts.join(", ")}.`;
           }
 
-          return runIntegrationRequest(args, secret.plaintext);
+          return runIntegrationRequest(args, secret.plaintext, {
+            allowPrivateNetworkHosts: true,
+          });
         });
         // Wrap successful content, but not error messages from withSecret or runIntegrationRequest
         if (

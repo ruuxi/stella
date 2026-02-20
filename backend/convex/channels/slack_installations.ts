@@ -3,7 +3,6 @@ import { v } from "convex/values";
 import {
   decryptSecretIfNeeded,
   encryptSecret,
-  isEncryptedSecretSerialized,
 } from "../data/secrets_crypto";
 
 const slackInstallationWithTokenValidator = v.object({
@@ -93,27 +92,5 @@ export const upsert = internalMutation({
       installedAt: now,
       updatedAt: now,
     });
-  },
-});
-
-export const backfillPlaintextTokens = internalMutation({
-  args: {},
-  returns: v.object({ migrated: v.number() }),
-  handler: async (ctx) => {
-    const records = await ctx.db.query("slack_installations").collect();
-    let migrated = 0;
-    for (const record of records) {
-      if (isEncryptedSecretSerialized(record.botToken)) {
-        continue;
-      }
-      const encrypted = await encryptSecret(record.botToken);
-      await ctx.db.patch(record._id, {
-        botToken: JSON.stringify(encrypted),
-        botTokenKeyVersion: encrypted.keyVersion,
-        updatedAt: Date.now(),
-      });
-      migrated += 1;
-    }
-    return { migrated };
   },
 });

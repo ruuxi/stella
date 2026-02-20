@@ -66,6 +66,28 @@ describe("security regressions", () => {
 
     expect(integrationProxySource).toMatch(/getUnsafeIntegrationHostError/);
     expect(backendToolsSource).toMatch(/getUnsafeIntegrationHostError/);
-    expect(networkSafetySource).toContain("STELLA_ALLOW_PRIVATE_INTEGRATION_HOSTS");
+    expect(backendToolsSource).toMatch(/allowPrivateNetworkHosts:\s*mode === "private"/);
+    expect(networkSafetySource).toContain("Host");
+    expect(networkSafetySource).not.toContain("STELLA_ALLOW_PRIVATE_INTEGRATION_HOSTS");
+  });
+
+  test("integration request guidance disallows raw credential forwarding", () => {
+    const generalPrompt = readBackendFile("convex/prompts/general.ts");
+    const builtinSkillsPrompt = readBackendFile("convex/prompts/builtin_skills.ts");
+    const backendToolsSource = readBackendFile("convex/tools/backend.ts");
+
+    expect(generalPrompt).not.toContain("ephemeral session tokens");
+    expect(backendToolsSource).not.toContain("pass them directly in request.headers");
+    expect(builtinSkillsPrompt).not.toContain("request.headers");
+    expect(backendToolsSource).toMatch(/does not accept credential headers in request\.headers/);
+    expect(backendToolsSource).toMatch(/does not accept credential query params in request\.query/);
+  });
+
+  test("integration response handling includes credential redaction", () => {
+    const backendToolsSource = readBackendFile("convex/tools/backend.ts");
+
+    expect(backendToolsSource).toContain("redactIntegrationResponseData");
+    expect(backendToolsSource).toContain("SENSITIVE_RESPONSE_FIELD_NAME_RE");
+    expect(backendToolsSource).toContain("deriveIntegrationRedactionSecrets");
   });
 });
