@@ -202,6 +202,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   shellKillByPort: (port: number) => ipcRenderer.invoke('shell:killByPort', { port }),
 
+  // Voice toggle from main process (radial dial or global keybind)
+  onVoiceToggle: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('voice:toggle', handler)
+    return () => {
+      ipcRenderer.removeListener('voice:toggle', handler)
+    }
+  },
+  setVoiceKeybind: (accelerator: string) => ipcRenderer.invoke('voice:setKeybind', accelerator),
+  getVoiceKeybind: () => ipcRenderer.invoke('voice:getKeybind'),
+
   // Local-first mode
   getLocalServerPort: () => ipcRenderer.invoke('local:getServerPort'),
   getLocalMode: () => ipcRenderer.invoke('local:getMode'),

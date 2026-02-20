@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useUiState } from "../../app/state/ui-state";
@@ -59,17 +59,47 @@ export const MiniShell = () => {
     : (isAuthenticated && (sttCloud?.available ?? false));
   const [partialTranscript, setPartialTranscript] = useState("");
 
+  const voiceAutoSendRef = useRef(false);
+
   const voice = useVoiceInput({
     onPartialTranscript: setPartialTranscript,
     onFinalTranscript: useCallback((text: string) => {
       setMessage((prev: string) => (prev ? prev + " " + text : text));
       setPartialTranscript("");
+      voiceAutoSendRef.current = true;
     }, [setMessage]),
     onError: useCallback((err: string) => {
       console.warn("STT error:", err);
       setPartialTranscript("");
     }, []),
   });
+
+  // Auto-send after voice transcript completes
+  useEffect(() => {
+    if (voiceAutoSendRef.current && message.trim()) {
+      voiceAutoSendRef.current = false;
+      requestAnimationFrame(() => {
+        void sendMessage();
+      });
+    }
+  }, [message, sendMessage]);
+
+  // Voice toggle from main process (radial dial or global keybind)
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onVoiceToggle) return;
+
+    const cleanup = api.onVoiceToggle(() => {
+      if (!sttAvailable) return;
+      if (voice.state === "recording") {
+        voice.stopRecording();
+      } else if (voice.state === "idle") {
+        voice.startRecording();
+      }
+    });
+
+    return cleanup;
+  }, [sttAvailable, voice]);
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
 
