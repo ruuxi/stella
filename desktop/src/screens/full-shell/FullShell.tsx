@@ -67,9 +67,14 @@ export const FullShell = () => {
   // STT voice input
   const sttCloudResult = useQuery(
     api.data.stt.checkSttAvailable,
-    onboarding.isAuthenticated ? {} : "skip",
+    isLocalMode ? "skip" : {},
   ) as { available: boolean } | undefined;
-  const sttAvailable = sttCloudResult?.available ?? false;
+  const sttLocalResult = useLocalQuery<{ available: boolean }>(
+    isLocalMode ? "/api/stt/check-available" : null,
+  );
+  const sttAvailable = isLocalMode
+    ? (sttLocalResult.data?.available ?? false)
+    : (sttCloudResult?.available ?? false);
 
   const voice = useVoiceInput({
     onPartialTranscript: setPartialTranscript,
