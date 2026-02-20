@@ -10,7 +10,6 @@ import { useCommandSuggestions, type CommandSuggestion } from "../../hooks/use-c
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
-import type { VoiceInputState } from "../../hooks/use-voice-input";
 
 type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
 
@@ -57,11 +56,6 @@ type ChatColumnProps = {
   onSelectionChange?: (hasSelections: boolean) => void;
   onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
-  sttAvailable?: boolean;
-  voiceState?: VoiceInputState;
-  onStartVoice?: () => void;
-  onStopVoice?: () => void;
-  partialTranscript?: string;
 };
 
 export function ChatColumn({
@@ -102,11 +96,6 @@ export function ChatColumn({
   onSelectionChange,
   onDemoChange,
   onCommandSelect,
-  sttAvailable,
-  voiceState,
-  onStartVoice,
-  onStopVoice,
-  partialTranscript,
 }: ChatColumnProps) {
   const suggestions = useCommandSuggestions(events, isStreaming);
   const showConversation = isAuthenticated && onboardingDone;
@@ -191,11 +180,6 @@ export function ChatColumn({
             canSubmit={canSubmit}
             conversationId={conversationId}
             onSend={onSend}
-            sttAvailable={sttAvailable}
-            voiceState={voiceState}
-            onStartVoice={onStartVoice}
-            onStopVoice={onStopVoice}
-            partialTranscript={partialTranscript}
           />
         </div>
       )}

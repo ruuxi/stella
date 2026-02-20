@@ -1,4 +1,3 @@
-import type { VoiceInputState } from "../../../hooks/use-voice-input";
 import type { ChatContext } from "../../../types/electron";
 
 export type ComposerContextState = {
@@ -9,8 +8,6 @@ export type ComposerContextState = {
 };
 
 type ComposerPlaceholderOptions = {
-  voiceState?: VoiceInputState;
-  partialTranscript?: string;
   chatContext: ChatContext | null;
   contextState: ComposerContextState;
 };
@@ -37,20 +34,9 @@ export const resolveComposerContextState = (
 };
 
 export const resolveComposerPlaceholder = ({
-  voiceState,
-  partialTranscript,
   chatContext,
   contextState,
 }: ComposerPlaceholderOptions): string => {
-  if (voiceState === "recording" && partialTranscript) {
-    return partialTranscript;
-  }
-  if (voiceState === "recording") {
-    return "Listening...";
-  }
-  if (voiceState === "processing") {
-    return "Processing speech...";
-  }
   if (chatContext?.capturePending) {
     return "Capturing screen...";
   }
