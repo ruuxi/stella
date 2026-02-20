@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/api";
+import { useIsLocalMode } from "@/providers/DataProvider";
+import { localPost } from "@/services/local-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,6 +146,7 @@ export function useVoiceInput({
   onError,
 }: UseVoiceInputOptions): UseVoiceInputReturn {
   const [state, setState] = useState<VoiceInputState>("idle");
+  const isLocalMode = useIsLocalMode();
   const generateToken = useAction(api.data.stt.generateSttToken);
 
   // Refs for cleanup
@@ -211,18 +214,30 @@ export function useVoiceInput({
       return cached.token;
     }
 
-    const result = await generateToken({ durationSecs: 300 });
-    if (result.error || !result.token) {
-      onError(result.error ?? "Failed to get STT token");
+    try {
+      const result = isLocalMode
+        ? await localPost<{
+            token?: string;
+            error?: string;
+            expiresAt?: number;
+          }>("/api/stt/token", { durationSecs: 90 })
+        : await generateToken({ durationSecs: 300 });
+
+      if (result.error || !result.token) {
+        onError(result.error ?? "Failed to get STT token");
+        return null;
+      }
+
+      tokenCacheRef.current = {
+        token: result.token,
+        expiresAt: result.expiresAt ?? Date.now() + (isLocalMode ? 80_000 : 280_000),
+      };
+      return result.token;
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to get STT token");
       return null;
     }
-
-    tokenCacheRef.current = {
-      token: result.token,
-      expiresAt: result.expiresAt ?? Date.now() + 280_000,
-    };
-    return result.token;
-  }, [generateToken, onError]);
+  }, [generateToken, isLocalMode, onError]);
 
   const startRecording = useCallback(async () => {
     if (stateRef.current !== "idle") return;

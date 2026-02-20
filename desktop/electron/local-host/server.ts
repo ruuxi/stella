@@ -845,12 +845,76 @@ app.post("/api/store/uninstall", async (c) => {
 
 // ─── STT ─────────────────────────────────────────────────────────────────────
 
-app.get("/api/stt/available", (c) => {
-  // STT availability check — always return false for now
-  // (can be extended when local Whisper or system STT is integrated)
-  return c.json({ available: false });
+const buildSttProxyHeaders = (): Record<string, string> | null => {
+  if (!runtimeConfig) return null;
+  const headers: Record<string, string> = {
+    "X-Device-ID": runtimeConfig.deviceId,
+  };
+  if (runtimeConfig.authToken) {
+    headers.Authorization = `Bearer ${runtimeConfig.authToken}`;
+  }
+  return headers;
+};
+
+const resolveSttProxyUrl = (): string | null => {
+  if (!runtimeConfig?.proxyUrl) return null;
+  return `${runtimeConfig.proxyUrl.replace(/\/+$/, "")}/api/stt`;
+};
+
+const fetchSttAvailability = async (): Promise<{ available: boolean }> => {
+  const sttProxyUrl = resolveSttProxyUrl();
+  const headers = buildSttProxyHeaders();
+  if (!sttProxyUrl || !headers) {
+    return { available: false };
+  }
+
+  try {
+    const response = await fetch(`${sttProxyUrl}/check-available`, { headers });
+    if (!response.ok) {
+      return { available: false };
+    }
+    const payload = await response.json().catch(() => ({})) as { available?: unknown };
+    return { available: Boolean(payload.available) };
+  } catch {
+    return { available: false };
+  }
+};
+
+app.get("/api/stt/available", async (c) => c.json(await fetchSttAvailability()));
+app.get("/api/stt/check-available", async (c) => c.json(await fetchSttAvailability()));
+
+app.post("/api/stt/token", async (c) => {
+  const sttProxyUrl = resolveSttProxyUrl();
+  const baseHeaders = buildSttProxyHeaders();
+  if (!sttProxyUrl || !baseHeaders) {
+    return c.json({ error: "STT proxy not configured" }, 503);
+  }
+
+  const body = await c.req.json<{ durationSecs?: number }>().catch(() => ({}));
+  const headers: Record<string, string> = {
+    ...baseHeaders,
+    "Content-Type": "application/json",
+  };
+
+  try {
+    const response = await fetch(`${sttProxyUrl}/token`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ durationSecs: body.durationSecs }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = typeof (payload as { error?: unknown }).error === "string"
+        ? (payload as { error: string }).error
+        : `STT token request failed (${response.status})`;
+      return c.json({ error }, response.status as 400);
+    }
+    return c.json(payload);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
 });
-app.get("/api/stt/check-available", (c) => c.json({ available: false }));
 
 // ─── Usage Logs ──────────────────────────────────────────────────────────────
 
