@@ -819,15 +819,9 @@ let registeredVoiceKeybind: string | null = null
 const triggerVoiceToggle = () => {
   if (!appReady) return
   updateUiState({ mode: 'voice' })
-  if (!isMiniShowing()) {
-    showWindow('mini')
-    // Delay to let the mini shell renderer mount before toggling voice
-    setTimeout(() => {
-      miniWindow?.webContents.send('voice:toggle')
-    }, 300)
-  } else {
-    miniWindow?.webContents.send('voice:toggle')
-  }
+  // Send the toggle command directly to the mini window running in the background.
+  // The mini window will decide when to show itself (when recording stops).
+  miniWindow?.webContents.send('voice:toggle')
 }
 
 const registerVoiceShortcut = (accelerator: string): boolean => {

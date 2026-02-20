@@ -59,30 +59,17 @@ export const MiniShell = () => {
     : (isAuthenticated && (sttCloud?.available ?? false));
   const [partialTranscript, setPartialTranscript] = useState("");
 
-  const voiceAutoSendRef = useRef(false);
-
   const voice = useVoiceInput({
     onPartialTranscript: setPartialTranscript,
     onFinalTranscript: useCallback((text: string) => {
       setMessage((prev: string) => (prev ? prev + " " + text : text));
       setPartialTranscript("");
-      voiceAutoSendRef.current = true;
     }, [setMessage]),
     onError: useCallback((err: string) => {
       console.warn("STT error:", err);
       setPartialTranscript("");
     }, []),
   });
-
-  // Auto-send after voice transcript completes
-  useEffect(() => {
-    if (voiceAutoSendRef.current && message.trim()) {
-      voiceAutoSendRef.current = false;
-      requestAnimationFrame(() => {
-        void sendMessage();
-      });
-    }
-  }, [message, sendMessage]);
 
   // Voice toggle from main process (radial dial or global keybind)
   useEffect(() => {
@@ -93,6 +80,7 @@ export const MiniShell = () => {
       if (!sttAvailable) return;
       if (voice.state === "recording") {
         voice.stopRecording();
+        api.showWindow?.("mini");
       } else if (voice.state === "idle") {
         voice.startRecording();
       }
