@@ -252,7 +252,7 @@ const extractTelegramAttachments = (message: {
   if (largestPhoto?.file_id) {
     attachments.push({
       id: largestPhoto.file_id,
-      kind: "image",
+      kind: "image" as const,
       size: largestPhoto.file_size,
     });
   }
@@ -262,7 +262,7 @@ const extractTelegramAttachments = (message: {
       name: message.video.file_name,
       mimeType: message.video.mime_type,
       size: message.video.file_size,
-      kind: "video",
+      kind: "video" as const,
     });
   }
   if (message.document?.file_id) {
@@ -271,7 +271,7 @@ const extractTelegramAttachments = (message: {
       name: message.document.file_name,
       mimeType: message.document.mime_type,
       size: message.document.file_size,
-      kind: "document",
+      kind: "document" as const,
     });
   }
   if (message.audio?.file_id) {
@@ -280,7 +280,7 @@ const extractTelegramAttachments = (message: {
       name: message.audio.file_name,
       mimeType: message.audio.mime_type,
       size: message.audio.file_size,
-      kind: "audio",
+      kind: "audio" as const,
     });
   }
   if (message.voice?.file_id) {
@@ -288,14 +288,14 @@ const extractTelegramAttachments = (message: {
       id: message.voice.file_id,
       mimeType: message.voice.mime_type,
       size: message.voice.file_size,
-      kind: "voice",
+      kind: "voice" as const,
     });
   }
   if (message.sticker?.file_id) {
     attachments.push({
       id: message.sticker.file_id,
       name: message.sticker.emoji,
-      kind: "sticker",
+      kind: "sticker" as const,
     });
   }
 
@@ -1891,7 +1891,7 @@ http.route({
         groupId,
         channelEnvelope: {
           provider: "telegram",
-          kind: "reaction",
+          kind: "reaction" as const,
           chatType: reaction.chat.type,
           externalUserId: telegramUserId,
           externalChatId: chatId,
@@ -2490,7 +2490,7 @@ http.route({
           groupId,
           channelEnvelope: {
             provider: "slack",
-            kind: "reaction",
+            kind: "reaction" as const,
             chatType,
             externalUserId: slackUserId,
             externalChatId: channelId,
@@ -2670,7 +2670,7 @@ http.route({
         groupId,
         channelEnvelope: {
           provider: "google_chat",
-          kind: "reaction",
+          kind: "reaction" as const,
           chatType: spaceType || undefined,
           externalUserId: googleUserId,
           externalChatId: spaceName,
