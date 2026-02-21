@@ -92,15 +92,6 @@ const isEncryptedSecretPayload = (value: unknown): value is EncryptedSecretPaylo
   );
 };
 
-export const isEncryptedSecretSerialized = (value: string) => {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return isEncryptedSecretPayload(parsed);
-  } catch {
-    return false;
-  }
-};
-
 export const encryptSecret = async (plaintext: string): Promise<EncryptedSecretPayload> => {
   const masterKeyBytes = getMasterKeyBytes();
   const masterKey = await importAesKey(masterKeyBytes);
@@ -141,11 +132,4 @@ export const decryptSecret = async (serialized: string): Promise<string> => {
   });
 
   return decoder.decode(plaintextBytes);
-};
-
-export const decryptSecretIfNeeded = async (serializedOrPlaintext: string): Promise<string> => {
-  if (!isEncryptedSecretSerialized(serializedOrPlaintext)) {
-    return serializedOrPlaintext;
-  }
-  return await decryptSecret(serializedOrPlaintext);
 };

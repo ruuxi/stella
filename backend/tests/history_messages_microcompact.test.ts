@@ -51,12 +51,10 @@ const makeToolPair = (requestId: string, resultChars = 64_000): EventLike[] => [
 ];
 
 const originalDisable = process.env.DISABLE_MICROCOMPACT;
-const originalFeatureFlag = process.env.TENGU_CACHE_PLUM_VIOLET;
 
 beforeEach(() => {
   seq = 0;
   delete process.env.DISABLE_MICROCOMPACT;
-  delete process.env.TENGU_CACHE_PLUM_VIOLET;
 });
 
 afterAll(() => {
@@ -64,11 +62,6 @@ afterAll(() => {
     delete process.env.DISABLE_MICROCOMPACT;
   } else {
     process.env.DISABLE_MICROCOMPACT = originalDisable;
-  }
-  if (originalFeatureFlag === undefined) {
-    delete process.env.TENGU_CACHE_PLUM_VIOLET;
-  } else {
-    process.env.TENGU_CACHE_PLUM_VIOLET = originalFeatureFlag;
   }
 });
 

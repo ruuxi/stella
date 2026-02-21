@@ -93,11 +93,7 @@ const normalizeToolName = (
 const isMicrocompactDisabled = (enabledOverride?: boolean): boolean => {
   if (enabledOverride === false) return true;
   const envDisabled = String(process.env.DISABLE_MICROCOMPACT ?? "").toLowerCase();
-  if (envDisabled === "1" || envDisabled === "true") return true;
-
-  // Flag-compatible override for parity with upstream behavior.
-  const featureDisabled = String(process.env.TENGU_CACHE_PLUM_VIOLET ?? "").toLowerCase();
-  return featureDisabled === "1" || featureDisabled === "true";
+  return envDisabled === "1" || envDisabled === "true";
 };
 
 const isEligibleToolName = (toolName: string): boolean =>
