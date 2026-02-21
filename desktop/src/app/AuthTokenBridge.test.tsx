@@ -3,11 +3,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { AuthTokenBridge } from "./AuthTokenBridge";
 
 const mockUseConvexAuth = vi.fn();
-const mockUseMutation = vi.fn();
-const mockEnsureCloudPrimary = vi.fn(() => Promise.resolve({ enabled: true }));
 vi.mock("convex/react", () => ({
   useConvexAuth: () => mockUseConvexAuth(),
-  useMutation: () => mockUseMutation(),
 }));
 
 describe("AuthTokenBridge", () => {
@@ -15,7 +12,6 @@ describe("AuthTokenBridge", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseMutation.mockReturnValue(mockEnsureCloudPrimary);
     mockSetAuthState = vi.fn();
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       setAuthState: mockSetAuthState,
@@ -36,14 +32,12 @@ describe("AuthTokenBridge", () => {
     mockUseConvexAuth.mockReturnValue({ isAuthenticated: true });
     render(<AuthTokenBridge />);
     expect(mockSetAuthState).toHaveBeenCalledWith({ authenticated: true });
-    expect(mockEnsureCloudPrimary).toHaveBeenCalledWith({});
   });
 
   it("calls setAuthState with authenticated=false when not authenticated", () => {
     mockUseConvexAuth.mockReturnValue({ isAuthenticated: false });
     render(<AuthTokenBridge />);
     expect(mockSetAuthState).toHaveBeenCalledWith({ authenticated: false });
-    expect(mockEnsureCloudPrimary).not.toHaveBeenCalled();
   });
 
   it("updates setAuthState when auth state changes", () => {
@@ -54,7 +48,6 @@ describe("AuthTokenBridge", () => {
     mockUseConvexAuth.mockReturnValue({ isAuthenticated: true });
     rerender(<AuthTokenBridge />);
     expect(mockSetAuthState).toHaveBeenCalledWith({ authenticated: true });
-    expect(mockEnsureCloudPrimary).toHaveBeenCalledTimes(1);
   });
 
   it("clears auth state on unmount", () => {

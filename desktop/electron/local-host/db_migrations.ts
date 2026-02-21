@@ -1,5 +1,5 @@
 /**
- * Versioned SQLite migrations for local-first storage.
+ * Versioned SQLite migrations for local runtime storage.
  * Each migration is run once and tracked in the _migrations table.
  */
 import type Database from "better-sqlite3";

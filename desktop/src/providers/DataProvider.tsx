@@ -6,14 +6,16 @@
  */
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { useConvexAuth, useQuery } from "convex/react";
-import { isLocalMode, setLocalPort, LocalSSEClient } from "@/services/local-client";
-import { api } from "@/convex/api";
+import { useConvexAuth } from "convex/react";
+import {
+  isElectronRuntime,
+  setLocalPort,
+  LocalSSEClient,
+  readCachedDataMode,
+  writeCachedDataMode,
+} from "@/services/local-client";
 
 type DataMode = "local" | "cloud";
-type SyncGateStatus = { enabled: boolean };
-
-const MODE_CACHE_KEY = "Stella.dataMode";
 
 type DataContextValue = {
   mode: DataMode;
@@ -42,31 +44,14 @@ type DataProviderProps = {
   children: React.ReactNode;
 };
 
-const readCachedMode = (): DataMode | null => {
-  if (typeof window === "undefined") return null;
-  const value = window.localStorage.getItem(MODE_CACHE_KEY);
-  return value === "cloud" || value === "local" ? value : null;
-};
-
-const writeCachedMode = (mode: DataMode) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(MODE_CACHE_KEY, mode);
-};
-
 export function DataProvider({ mode: modeProp, children }: DataProviderProps) {
   const { isAuthenticated, isLoading } = useConvexAuth();
-  const electronLocalHost = isLocalMode();
-
-  const syncGateStatus = useQuery(
-    api.sync.local_cloud.getSyncGateStatus,
-    modeProp || !electronLocalHost || !isAuthenticated ? "skip" : {},
-  ) as SyncGateStatus | undefined;
-  const syncGateEnabled = syncGateStatus?.enabled;
+  const electronLocalHost = isElectronRuntime();
 
   const [mode, setMode] = useState<DataMode>(() => {
     if (modeProp) return modeProp;
     if (!electronLocalHost) return "cloud";
-    return readCachedMode() ?? "local";
+    return readCachedDataMode() ?? "local";
   });
 
   const [localPort, setPort] = useState(9714);
@@ -81,19 +66,15 @@ export function DataProvider({ mode: modeProp, children }: DataProviderProps) {
       nextMode = "cloud";
     } else if (isLoading) {
       return;
-    } else if (!isAuthenticated) {
-      nextMode = "local";
-    } else if (syncGateEnabled === undefined) {
-      return;
     } else {
-      nextMode = syncGateEnabled ? "cloud" : "local";
-      writeCachedMode(nextMode);
+      nextMode = isAuthenticated ? "cloud" : "local";
+      writeCachedDataMode(nextMode);
     }
 
     if (nextMode !== mode) {
       setMode(nextMode);
     }
-  }, [mode, modeProp, electronLocalHost, isAuthenticated, isLoading, syncGateEnabled]);
+  }, [mode, modeProp, electronLocalHost, isAuthenticated, isLoading]);
 
   // Initialize local mode
   useEffect(() => {
