@@ -1,7 +1,7 @@
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import {
-  decryptSecretIfNeeded,
+  decryptSecret,
   encryptSecret,
 } from "../data/secrets_crypto";
 
@@ -31,7 +31,7 @@ export const getByTeamId = internalQuery({
       return null;
     }
 
-    const botToken = await decryptSecretIfNeeded(record.botToken);
+    const botToken = await decryptSecret(record.botToken);
 
     return {
       _id: record._id,

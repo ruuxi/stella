@@ -17,7 +17,7 @@ import {
   spritesExecChecked,
 } from "../agent/cloud_devices";
 import {
-  decryptSecretIfNeeded,
+  decryptSecret,
   encryptSecret,
 } from "../data/secrets_crypto";
 import {
@@ -86,7 +86,7 @@ const decodeBridgeSession = async (
   if (!session) {
     return null;
   }
-  const webhookSecret = await decryptSecretIfNeeded(session.webhookSecret);
+  const webhookSecret = await decryptSecret(session.webhookSecret);
   return {
     ...session,
     webhookSecret,
@@ -98,7 +98,7 @@ const decodeBridgeSessions = async (
 ) => {
   return await Promise.all(
     sessions.map(async (session) => {
-      const webhookSecret = await decryptSecretIfNeeded(session.webhookSecret);
+      const webhookSecret = await decryptSecret(session.webhookSecret);
       return {
         ...session,
         webhookSecret,
