@@ -12,8 +12,11 @@ import type {
   IdentityMap,
   IdentityMappingSource,
 } from "./discovery_types.js";
+import { protectValue, unprotectValue } from "./protected_storage.js";
 
 const log = (...args: unknown[]) => console.log("[identity-map]", ...args);
+const IDENTITY_NAME_SCOPE = "identity-map-real-name";
+const IDENTITY_IDENTIFIER_SCOPE = "identity-map-real-identifier";
 
 // Name pools for alias generation
 const FIRST_NAMES = [
@@ -287,7 +290,32 @@ export async function loadIdentityMap(
       return { version: 1, mappings: [] };
     }
 
-    return map;
+    const mappings: IdentityMap["mappings"] = [];
+    for (const mapping of map.mappings ?? []) {
+      const realName = unprotectValue(
+        IDENTITY_NAME_SCOPE,
+        mapping.real?.name ?? "",
+      );
+      const realIdentifier = unprotectValue(
+        IDENTITY_IDENTIFIER_SCOPE,
+        mapping.real?.identifier ?? "",
+      );
+
+      if (realName === null || realIdentifier === null) {
+        continue;
+      }
+
+      mappings.push({
+        real: {
+          name: realName,
+          identifier: realIdentifier,
+        },
+        alias: mapping.alias,
+        source: mapping.source,
+      });
+    }
+
+    return { version: 1, mappings };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       // File doesn't exist yet
@@ -306,12 +334,26 @@ export async function saveIdentityMap(
 ): Promise<void> {
   const stateDir = path.join(stellaHome, "state");
   const mapPath = path.join(stateDir, "identity_map.json");
+  const protectedMap: IdentityMap = {
+    version: 1,
+    mappings: map.mappings.map((mapping) => ({
+      real: {
+        name: protectValue(IDENTITY_NAME_SCOPE, mapping.real.name),
+        identifier: protectValue(
+          IDENTITY_IDENTIFIER_SCOPE,
+          mapping.real.identifier,
+        ),
+      },
+      alias: mapping.alias,
+      source: mapping.source,
+    })),
+  };
 
   // Ensure state directory exists
   await fs.mkdir(stateDir, { recursive: true });
 
   // Write map with pretty formatting
-  await fs.writeFile(mapPath, JSON.stringify(map, null, 2), "utf-8");
+  await fs.writeFile(mapPath, JSON.stringify(protectedMap, null, 2), "utf-8");
 }
 
 /**
