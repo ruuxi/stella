@@ -1,5 +1,5 @@
 ﻿/**
- * Local HTTP server (Hono) â€” serves all local-first API endpoints.
+ * Local HTTP server (Hono) â€” serves local runtime API endpoints.
  * Runs on localhost:9714 in the Electron main process.
  * Replaces Convex live queries and mutations for local data.
  */

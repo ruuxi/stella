@@ -15,12 +15,6 @@ import { loadIdentityMap, depseudonymize } from "./identity_map.js";
 import { purgeExpiredDeferredDeletes } from "./deferred_delete.js";
 import type { IdentityMap } from "./discovery_types.js";
 import { sanitizeForLogs } from "./tools-utils.js";
-import {
-  seedLocalSyncState,
-  buildLocalSyncBatch,
-  applyLocalSyncBatchResult,
-  type LocalSyncBatchResult,
-} from "./local_cloud_sync.js";
 import { decryptLocalSecret } from "./secret_crypto.js";
 import path from "path";
 import fs from "fs";
@@ -66,20 +60,11 @@ type PaginatedResult<T> = {
   continueCursor: string | null;
 };
 
-type SyncGateStatus = {
-  enabled: boolean;
-  hasCloudPrimary: boolean;
-  has247: boolean;
-  hasConnector: boolean;
-  connectedProviders: string[];
-};
-
 const SYNC_DEBOUNCE_MS = 500;
 const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
 const MESSAGES_NOTES_CATEGORY = "messages_notes";
 const DISCOVERY_CATEGORY_CACHE_TTL_MS = 5000;
 const DEFERRED_DELETE_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
-const LOCAL_CLOUD_SYNC_BATCH_SIZE = 100;
 
 export const createLocalHostRunner = ({
   deviceId,
@@ -195,24 +180,14 @@ export const createLocalHostRunner = ({
   let convexUrl: string | null = null;
   let authToken: string | null = null;
   let unsubscribe: (() => void) | null = null;
-  let syncGateUnsubscribe: (() => void) | null = null;
   let isRunning = false;
   const processed = new Set<string>();
   const inFlight = new Set<string>();
   let queue = Promise.resolve();
   let syncPromise: Promise<void> | null = null;
-  let localCloudSyncPromise: Promise<void> | null = null;
   let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const watchers: fs.FSWatcher[] = [];
   let deferredDeleteSweepInterval: ReturnType<typeof setInterval> | null = null;
-  let syncGateStatus: SyncGateStatus = {
-    enabled: false,
-    hasCloudPrimary: false,
-    has247: false,
-    hasConnector: false,
-    connectedProviders: [],
-  };
-  let hasSeededLocalSyncState = false;
 
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -332,129 +307,6 @@ export const createLocalHostRunner = ({
     });
   };
 
-  const isCloudSyncEnabled = () => Boolean(client && authToken && syncGateStatus.enabled);
-
-  const resetSyncGateStatus = () => {
-    syncGateStatus = {
-      enabled: false,
-      hasCloudPrimary: false,
-      has247: false,
-      hasConnector: false,
-      connectedProviders: [],
-    };
-  };
-
-  const applySyncGateStatus = (result: unknown) => {
-    if (!result || typeof result !== "object") {
-      return;
-    }
-
-    const next = result as SyncGateStatus;
-    const prev = syncGateStatus;
-    syncGateStatus = {
-      enabled: Boolean(next.enabled),
-      hasCloudPrimary: Boolean(next.hasCloudPrimary),
-      has247: Boolean(next.has247),
-      hasConnector: Boolean(next.hasConnector),
-      connectedProviders: Array.isArray(next.connectedProviders)
-        ? next.connectedProviders.filter(
-            (entry): entry is string => typeof entry === "string",
-          )
-        : [],
-    };
-
-    const wasEnabled = prev.enabled;
-    const isEnabled = syncGateStatus.enabled;
-    const changed =
-      wasEnabled !== isEnabled ||
-      prev.hasCloudPrimary !== syncGateStatus.hasCloudPrimary ||
-      prev.has247 !== syncGateStatus.has247 ||
-      prev.hasConnector !== syncGateStatus.hasConnector ||
-      prev.connectedProviders.join(",") !== syncGateStatus.connectedProviders.join(",");
-
-    if (changed) {
-      log("Cloud sync gate updated", syncGateStatus);
-    }
-
-    if (!wasEnabled && isEnabled) {
-      void syncManifests();
-      void syncLocalCloudData();
-    }
-  };
-
-  const refreshSyncGateStatus = async () => {
-    if (!client || !authToken) {
-      resetSyncGateStatus();
-      return;
-    }
-
-    try {
-      const result = await callQuery("sync/local_cloud.getSyncGateStatus", {});
-      applySyncGateStatus(result);
-    } catch (error) {
-      logError("Failed to refresh cloud sync gate:", error);
-    }
-  };
-
-  const syncLocalCloudData = async () => {
-    if (!isCloudSyncEnabled()) {
-      return;
-    }
-    if (localCloudSyncPromise) {
-      return localCloudSyncPromise;
-    }
-
-    localCloudSyncPromise = (async () => {
-      try {
-        if (!hasSeededLocalSyncState) {
-          seedLocalSyncState();
-          hasSeededLocalSyncState = true;
-        }
-
-        let iterations = 0;
-        while (isCloudSyncEnabled() && iterations < 200) {
-          iterations += 1;
-          const batch = buildLocalSyncBatch(LOCAL_CLOUD_SYNC_BATCH_SIZE);
-          if (batch.upserts.length === 0 && batch.deletes.length === 0) {
-            break;
-          }
-
-          const response = await callMutation("sync/local_cloud.applyLocalSyncBatch", {
-            upserts: batch.upserts.map(({ table, localId, row }) => ({
-              table,
-              localId,
-              row,
-            })),
-            deletes: batch.deletes.map(({ table, localId }) => ({
-              table,
-              localId,
-            })),
-          });
-
-          if (!response || typeof response !== "object") {
-            break;
-          }
-
-          const result = response as LocalSyncBatchResult;
-          applyLocalSyncBatchResult(batch, result);
-
-          if (result.errors.length > 0) {
-            logError("Local cloud sync batch had errors", {
-              errors: result.errors.slice(0, 3),
-              totalErrors: result.errors.length,
-            });
-          }
-        }
-      } catch (error) {
-        logError("Local cloud sync failed:", error);
-      } finally {
-        localCloudSyncPromise = null;
-      }
-    })();
-
-    return localCloudSyncPromise;
-  };
-
   const generateMetadataViaBackend = async (
     markdown: string,
     dirName: string,
@@ -480,7 +332,7 @@ export const createLocalHostRunner = ({
   };
 
   const syncManifests = async () => {
-    const canSyncCloud = isCloudSyncEnabled();
+    const canSyncCloud = Boolean(client && authToken);
     if (syncPromise) return syncPromise;
 
     syncPromise = (async () => {
@@ -644,14 +496,6 @@ export const createLocalHostRunner = ({
     }
   };
 
-  const stopSyncGateSubscription = () => {
-    if (syncGateUnsubscribe) {
-      syncGateUnsubscribe();
-      syncGateUnsubscribe = null;
-      log("Cloud sync gate subscription stopped");
-    }
-  };
-
   const startSubscription = () => {
     // Only start subscription if we have client, auth, and not already subscribed
     if (!client || !authToken || unsubscribe) return;
@@ -680,29 +524,12 @@ export const createLocalHostRunner = ({
     log("Tool request subscription active - receiving only new requests");
   };
 
-  const startSyncGateSubscription = () => {
-    if (!client || !authToken || syncGateUnsubscribe) return;
-
-    syncGateUnsubscribe = subscribeQuery(
-      "sync/local_cloud.getSyncGateStatus",
-      {},
-      (value) => {
-        applySyncGateStatus(value);
-      },
-    );
-
-    if (syncGateUnsubscribe) {
-      log("Cloud sync gate subscription active");
-    }
-  };
-
   const setConvexUrl = (url: string) => {
     if (convexUrl === url && client) {
       return;
     }
     // Stop existing subscription before changing client
     stopSubscription();
-    stopSyncGateSubscription();
     convexUrl = url;
     // Close existing client if any
     if (client) {
@@ -715,11 +542,8 @@ export const createLocalHostRunner = ({
     // Defer sync work until runner start to avoid duplicate startup refreshes.
     // If already running, refresh immediately for live updates.
     if (isRunning) {
-      void refreshSyncGateStatus();
       void syncManifests();
-      void syncLocalCloudData();
       startSubscription();
-      startSyncGateSubscription();
     }
   };
 
@@ -734,21 +558,16 @@ export const createLocalHostRunner = ({
       // Note: avoid restarting an active subscription on token refresh; Convex
       // will re-authenticate as needed via the updated auth callback.
       if (isRunning) {
-        void refreshSyncGateStatus();
         startSubscription();
-        startSyncGateSubscription();
         // Send immediate heartbeat when auth becomes available
         void sendHeartbeat();
         void syncManifests();
-        void syncLocalCloudData();
       }
     } else {
       // Stop subscription when auth is cleared (logout/unauthenticated).
       stopSubscription();
-      stopSyncGateSubscription();
       // Clear auth by setting it to return null
       client.setAuth(() => Promise.resolve(null));
-      resetSyncGateStatus();
     }
   };
 
@@ -940,13 +759,9 @@ export const createLocalHostRunner = ({
 
     // Start real-time subscription for tool requests (only if auth is ready)
     startSubscription();
-    startSyncGateSubscription();
 
     // Start device heartbeat (only sends if auth is available)
     startHeartbeat();
-
-    void refreshSyncGateStatus();
-    void syncLocalCloudData();
   };
 
   const stop = () => {
@@ -962,13 +777,10 @@ export const createLocalHostRunner = ({
     stopHeartbeat();
     stopWatchers();
     stopSubscription();
-    stopSyncGateSubscription();
     if (client) {
       client.close();
       client = null;
     }
-    resetSyncGateStatus();
-    hasSeededLocalSyncState = false;
   };
 
   // Expose tool execution for external callers
