@@ -1,10 +1,8 @@
 import { useEffect } from "react";
-import { useConvexAuth, useMutation } from "convex/react";
-import { api } from "@/convex/api";
+import { useConvexAuth } from "convex/react";
 
 export const AuthTokenBridge = () => {
   const { isAuthenticated } = useConvexAuth();
-  const ensureCloudPrimary = useMutation(api.data.preferences.ensureCloudPrimary);
 
   useEffect(() => {
     const electronApi = window.electronAPI;
@@ -14,13 +12,6 @@ export const AuthTokenBridge = () => {
     void electronApi.setAuthState({ authenticated: isAuthenticated });
     return undefined;
   }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    void ensureCloudPrimary({}).catch((error) => {
-      console.error("[AuthTokenBridge] Failed to enable cloud primary:", error);
-    });
-  }, [isAuthenticated, ensureCloudPrimary]);
 
   useEffect(() => {
     const electronApi = window.electronAPI;

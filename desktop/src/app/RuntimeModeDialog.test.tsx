@@ -79,7 +79,7 @@ describe("RuntimeModeDialog", () => {
     render(<RuntimeModeDialog open={true} onOpenChange={onOpenChange} />);
     expect(screen.getByText("Runtime Mode")).toBeTruthy();
     expect(
-      screen.getByText(/Stella runs local-first by default/),
+      screen.getByText(/Stella runs on your computer by default/),
     ).toBeTruthy();
   });
 

@@ -1,5 +1,5 @@
 /**
- * SQLite database connection and helpers for local-first storage.
+ * SQLite database connection and helpers for local runtime storage.
  * All user data lives in ~/.stella/data/stella.db.
  */
 import Database from "better-sqlite3";

@@ -70,7 +70,7 @@ export const RuntimeModeDialog = ({ open, onOpenChange }: RuntimeModeDialogProps
           <DialogCloseButton />
         </DialogHeader>
         <DialogDescription>
-          Stella runs local-first by default. Enable 24/7 only when you want cloud execution while
+          Stella runs on your computer by default. Enable 24/7 when you want cloud execution while
           your computer is unavailable.
         </DialogDescription>
         <DialogBody>

@@ -4,6 +4,7 @@
  */
 
 const DEFAULT_PORT = 9714;
+const MODE_CACHE_KEY = "Stella.dataMode";
 
 let localPort: number = DEFAULT_PORT;
 
@@ -181,15 +182,33 @@ export async function localChat(params: {
 
 // ─── Mode Detection ──────────────────────────────────────────────────────────
 
-let _isLocalMode: boolean | null = null;
+export type DataMode = "local" | "cloud";
+
+let _isElectronRuntime: boolean | null = null;
+
+export function isElectronRuntime(): boolean {
+  if (_isElectronRuntime !== null) return _isElectronRuntime;
+  _isElectronRuntime = typeof window !== "undefined" && "electronAPI" in window;
+  return _isElectronRuntime;
+}
+
+export function readCachedDataMode(): DataMode | null {
+  if (typeof window === "undefined") return null;
+  const value = window.localStorage.getItem(MODE_CACHE_KEY);
+  return value === "local" || value === "cloud" ? value : null;
+}
+
+export function writeCachedDataMode(mode: DataMode): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(MODE_CACHE_KEY, mode);
+}
 
 export function isLocalMode(): boolean {
-  if (_isLocalMode !== null) return _isLocalMode;
-  // Detect if we're in Electron
-  _isLocalMode = typeof window !== "undefined" && "electronAPI" in window;
-  return _isLocalMode;
+  if (!isElectronRuntime()) return false;
+  const mode = readCachedDataMode();
+  return mode ? mode === "local" : true;
 }
 
 export function setLocalMode(mode: boolean): void {
-  _isLocalMode = mode;
+  writeCachedDataMode(mode ? "local" : "cloud");
 }
