@@ -82,7 +82,6 @@ import type * as scheduling_cron_jobs from "../scheduling/cron_jobs.js";
 import type * as scheduling_dashboard_queries from "../scheduling/dashboard_queries.js";
 import type * as scheduling_heartbeat from "../scheduling/heartbeat.js";
 import type * as shared_validators from "../shared_validators.js";
-import type * as sync_local_cloud from "../sync/local_cloud.js";
 import type * as tools_backend from "../tools/backend.js";
 import type * as tools_cloud from "../tools/cloud.js";
 import type * as tools_index from "../tools/index.js";
@@ -172,7 +171,6 @@ declare const fullApi: ApiFromModules<{
   "scheduling/dashboard_queries": typeof scheduling_dashboard_queries;
   "scheduling/heartbeat": typeof scheduling_heartbeat;
   shared_validators: typeof shared_validators;
-  "sync/local_cloud": typeof sync_local_cloud;
   "tools/backend": typeof tools_backend;
   "tools/cloud": typeof tools_cloud;
   "tools/index": typeof tools_index;

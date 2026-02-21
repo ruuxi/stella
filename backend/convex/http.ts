@@ -3315,7 +3315,7 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
-// Stella AI Proxy — thin LLM/embed/search proxy for local-first mode
+// Stella AI Proxy — thin LLM/embed/search proxy for desktop local runtime
 // ---------------------------------------------------------------------------
 
 import { proxyChat, proxyEmbed, proxySearch } from "./ai_proxy";
