@@ -955,7 +955,7 @@ const queryClusterDomains = (db: SqliteDatabase): string[] => {
 };
 
 // Fallback query: Get top domains from urls table directly (no time filter)
-// Used when the visits-based query returns empty
+// Used only when the visits-based recent query fails (schema/runtime issue).
 const FALLBACK_DOMAINS_QUERY = `
 SELECT 
   SUBSTR(
@@ -984,30 +984,26 @@ LIMIT 30
 type DomainRow = { domain: string; visits: number };
 
 /**
- * Query most visited domains in the last 7 days
- * Falls back to all-time data if recent data is empty
+ * Query most visited domains in the last 7 days.
  */
 const queryRecentDomains = (db: SqliteDatabase): DomainVisit[] => {
   const sevenDaysAgo = toChromeTime(
     new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   );
 
-  // Try time-filtered query first
   try {
     const rows = db.prepare(RECENT_DOMAINS_QUERY).all(sevenDaysAgo) as DomainRow[];
-    const result = filterAndAggregateDomains(rows);
-    if (result.length > 0) return result;
-    log("No recent domains found, trying fallback query...");
+    return filterAndAggregateDomains(rows);
   } catch (error) {
-    log("Error querying recent domains, trying fallback:", error);
+    log("Recent domains query failed, trying fallback:", error);
   }
 
-  // Fallback: Query all-time data from urls table
+  // Fallback: Query all-time data from urls table only when recent query fails.
   try {
     const rows = db.prepare(FALLBACK_DOMAINS_QUERY).all() as DomainRow[];
     return filterAndAggregateDomains(rows);
-  } catch (error) {
-    log("Fallback query also failed:", error);
+  } catch (fallbackError) {
+    log("Fallback domains query failed:", fallbackError);
     return [];
   }
 };
