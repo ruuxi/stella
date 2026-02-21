@@ -17,7 +17,6 @@ import { optionalChannelEnvelopeValidator } from "../shared_validators";
 type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
 const DM_POLICY_DEFAULT: DmPolicy = "pairing";
-const CLOUD_PRIMARY_KEY = "cloud_primary";
 const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const channelConnectionValidator = v.object({
   _id: v.id("channel_connections"),
@@ -106,31 +105,6 @@ const upsertUserPreference = async (
     ownerId,
     key,
     value,
-    updatedAt,
-  });
-};
-
-const ensureCloudPrimaryPreference = async (
-  ctx: MutationCtx,
-  ownerId: string,
-) => {
-  const existing = await ctx.db
-    .query("user_preferences")
-    .withIndex("by_ownerId_and_key", (q) =>
-      q.eq("ownerId", ownerId).eq("key", CLOUD_PRIMARY_KEY),
-    )
-    .first();
-  const updatedAt = Date.now();
-  if (existing) {
-    if (existing.value !== "true") {
-      await ctx.db.patch(existing._id, { value: "true", updatedAt });
-    }
-    return;
-  }
-  await ctx.db.insert("user_preferences", {
-    ownerId,
-    key: CLOUD_PRIMARY_KEY,
-    value: "true",
     updatedAt,
   });
 };
@@ -337,7 +311,6 @@ export const createConnection = internalMutation({
           updatedAt: now,
         });
       }
-      await ensureCloudPrimaryPreference(ctx, args.ownerId);
       return existing._id;
     }
 
@@ -349,7 +322,6 @@ export const createConnection = internalMutation({
       linkedAt: now,
       updatedAt: now,
     });
-    await ensureCloudPrimaryPreference(ctx, args.ownerId);
     return connectionId;
   },
 });
@@ -566,7 +538,6 @@ export const deleteConnection = mutation({
       )
       .first();
     if (conn) {
-      await ensureCloudPrimaryPreference(ctx, ownerId);
       await ctx.db.delete(conn._id);
     }
     return null;

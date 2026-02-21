@@ -1,6 +1,6 @@
 /**
  * Stella AI Proxy — thin proxy for LLM and embedding requests.
- * Used by the local-first frontend when BYOK keys are not available.
+ * Used by the desktop local runtime when BYOK keys are not available.
  *
  * Auth:
  * - Bearer JWT: logged-in user, full access
