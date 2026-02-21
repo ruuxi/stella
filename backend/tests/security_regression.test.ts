@@ -90,4 +90,20 @@ describe("security regressions", () => {
     expect(backendToolsSource).toContain("SENSITIVE_RESPONSE_FIELD_NAME_RE");
     expect(backendToolsSource).toContain("deriveIntegrationRedactionSecrets");
   });
+
+  test("channel link codes are stored as hashes, not plaintext", () => {
+    const source = readBackendFile("convex/channels/utils.ts");
+
+    expect(source).toContain("codeHash");
+    expect(source).toContain("codeSalt");
+    expect(source).not.toContain('JSON.stringify({ code: args.code');
+  });
+
+  test("slack oauth state is stored as hash material, not plaintext", () => {
+    const source = readBackendFile("convex/data/integrations.ts");
+
+    expect(source).toContain("stateHash");
+    expect(source).toContain("stateSalt");
+    expect(source).not.toContain("state: parsed.state");
+  });
 });

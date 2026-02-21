@@ -68,10 +68,21 @@ const generateSecureState = (bytesLength = 24) => {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 };
 
+const hashSha256Hex = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const hashSlackOAuthState = async (state: string, salt: string) =>
+  hashSha256Hex(`${salt}:${state}`);
+
 const parseSlackState = (
   value: string,
 ): {
-  state?: string;
+  stateHash?: string;
+  stateSalt?: string;
   expiresAt?: number;
   usedAt?: number;
   createdAt?: number;
@@ -80,7 +91,8 @@ const parseSlackState = (
     const parsed = JSON.parse(value) as unknown;
     if (!parsed || typeof parsed !== "object") return null;
     return parsed as {
-      state?: string;
+      stateHash?: string;
+      stateSalt?: string;
       expiresAt?: number;
       usedAt?: number;
       createdAt?: number;
@@ -108,8 +120,11 @@ export const createSlackInstallUrl = mutation({
     const now = Date.now();
     const expiresAt = now + SLACK_OAUTH_STATE_TTL_MS;
     const state = generateSecureState();
+    const stateSalt = generateSecureState(16);
+    const stateHash = await hashSlackOAuthState(state, stateSalt);
     const value = JSON.stringify({
-      state,
+      stateHash,
+      stateSalt,
       expiresAt,
       createdAt: now,
     });
@@ -160,7 +175,16 @@ export const consumeSlackOAuthState = internalMutation({
     const now = Date.now();
     for (const pref of prefs) {
       const parsed = parseSlackState(pref.value);
-      if (!parsed || parsed.state !== args.state) {
+      if (
+        !parsed ||
+        !parsed.stateHash ||
+        !parsed.stateSalt
+      ) {
+        continue;
+      }
+
+      const candidateHash = await hashSlackOAuthState(args.state, parsed.stateSalt);
+      if (candidateHash !== parsed.stateHash) {
         continue;
       }
 
@@ -174,7 +198,8 @@ export const consumeSlackOAuthState = internalMutation({
 
       await ctx.db.patch(pref._id, {
         value: JSON.stringify({
-          state: parsed.state,
+          stateHash: parsed.stateHash,
+          stateSalt: parsed.stateSalt,
           expiresAt: parsed.expiresAt,
           createdAt: parsed.createdAt ?? now,
           usedAt: now,

@@ -146,6 +146,38 @@ const generateSecureLinkCode = (length = 6): string => {
   throw new Error("Secure random generator unavailable for link code generation");
 };
 
+const hashSha256Hex = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const linkCodeSalt = () => generateSecureLinkCode(16);
+
+const hashLinkCode = async (code: string, salt: string) =>
+  hashSha256Hex(`${salt}:${code}`);
+
+const parseLinkCodeValue = (
+  value: string,
+): {
+  codeHash?: string;
+  codeSalt?: string;
+  expiresAt?: number;
+} | null => {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as {
+      codeHash?: string;
+      codeSalt?: string;
+      expiresAt?: number;
+    };
+  } catch {
+    return null;
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Internal Queries
 // ---------------------------------------------------------------------------
@@ -247,15 +279,26 @@ export const peekLinkCodeOwner = internalQuery({
       .query("user_preferences")
       .withIndex("by_key", (q) => q.eq("key", key))
       .collect();
+    const now = Date.now();
 
     for (const pref of prefs) {
-      try {
-        const parsed = JSON.parse(pref.value) as { code: string; expiresAt: number };
-        if (parsed.code === args.code && parsed.expiresAt > Date.now()) {
-          return pref.ownerId;
-        }
-      } catch {
-        // Ignore malformed entries.
+      const parsed = parseLinkCodeValue(pref.value);
+      if (!parsed) {
+        continue;
+      }
+
+      if (
+        !parsed.codeHash ||
+        !parsed.codeSalt ||
+        typeof parsed.expiresAt !== "number" ||
+        parsed.expiresAt <= now
+      ) {
+        continue;
+      }
+
+      const candidateHash = await hashLinkCode(args.code, parsed.codeSalt);
+      if (candidateHash === parsed.codeHash) {
+        return pref.ownerId;
       }
     }
 
@@ -381,7 +424,13 @@ export const storeLinkCode = internalMutation({
   handler: async (ctx, args) => {
     const key = `${args.provider}_link_code`;
     const now = Date.now();
-    const value = JSON.stringify({ code: args.code, expiresAt: now + 5 * 60 * 1000 });
+    const salt = linkCodeSalt();
+    const codeHash = await hashLinkCode(args.code, salt);
+    const value = JSON.stringify({
+      codeHash,
+      codeSalt: salt,
+      expiresAt: now + 5 * 60 * 1000,
+    });
 
     const existing = await ctx.db
       .query("user_preferences")
@@ -414,16 +463,27 @@ export const consumeLinkCode = internalMutation({
       .query("user_preferences")
       .withIndex("by_key", (q) => q.eq("key", key))
       .collect();
+    const now = Date.now();
 
     for (const pref of prefs) {
-      try {
-        const parsed = JSON.parse(pref.value) as { code: string; expiresAt: number };
-        if (parsed.code === args.code && parsed.expiresAt > Date.now()) {
-          await ctx.db.delete(pref._id);
-          return pref.ownerId;
-        }
-      } catch {
-        // Skip malformed entries
+      const parsed = parseLinkCodeValue(pref.value);
+      if (!parsed) {
+        continue;
+      }
+
+      if (
+        !parsed.codeHash ||
+        !parsed.codeSalt ||
+        typeof parsed.expiresAt !== "number" ||
+        parsed.expiresAt <= now
+      ) {
+        continue;
+      }
+
+      const candidateHash = await hashLinkCode(args.code, parsed.codeSalt);
+      if (candidateHash === parsed.codeHash) {
+        await ctx.db.delete(pref._id);
+        return pref.ownerId;
       }
     }
     return null;
