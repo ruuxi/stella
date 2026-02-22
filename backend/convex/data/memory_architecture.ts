@@ -53,7 +53,7 @@ const extractionBatchValidator = v.object({
 // ---------------------------------------------------------------------------
 
 async function embedText(text: string): Promise<number[]> {
-  const config = getModelConfig("embedding");
+  const config = getModelConfig("memory_architecture_embedding");
   const { embedding: vector } = await embed({
     ...config,
     value: text,

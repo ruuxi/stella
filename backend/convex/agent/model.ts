@@ -94,7 +94,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  memory_ops: {
+  memory_fact_extraction: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
@@ -106,7 +106,100 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  embedding: {
+  memory_discovery_fact_extraction: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 12096,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  memory_recall_rerank: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.7,
+    maxOutputTokens: 4096,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  session_compaction_summary: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 12096,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  thread_compaction_summary: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 12096,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  memory_recall_query_embedding: {
+    model: "alibaba/qwen3-embedding-8b",
+    providerOptions: {
+      deepinfra: {
+        dimensions: 1536,
+      },
+    },
+  },
+
+  memory_save_embedding: {
+    model: "alibaba/qwen3-embedding-8b",
+    providerOptions: {
+      deepinfra: {
+        dimensions: 1536,
+      },
+    },
+  },
+
+  memory_ingest_embedding: {
+    model: "alibaba/qwen3-embedding-8b",
+    providerOptions: {
+      deepinfra: {
+        dimensions: 1536,
+      },
+    },
+  },
+
+  memory_architecture_embedding: {
+    model: "alibaba/qwen3-embedding-8b",
+    providerOptions: {
+      deepinfra: {
+        dimensions: 1536,
+      },
+    },
+  },
+
+  event_semantic_embedding: {
+    model: "alibaba/qwen3-embedding-8b",
+    providerOptions: {
+      deepinfra: {
+        dimensions: 1536,
+      },
+    },
+  },
+
+  ai_proxy_embedding: {
     model: "alibaba/qwen3-embedding-8b",
     providerOptions: {
       deepinfra: {

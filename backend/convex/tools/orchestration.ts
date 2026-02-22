@@ -224,9 +224,13 @@ const createRecallMemoriesTool = (ctx: ActionCtx, options: ToolOptions) =>
       "- You want to check if something was discussed or decided before.\n\n" +
       "Tips:\n" +
       "- Use specific queries for better results (\"user's preferred programming language\" not just \"preferences\").\n" +
-      "- If no results match, try rephrasing or using broader queries.",
+      "- If no results match, try rephrasing or using broader queries.\n" +
+      "- source defaults to \"memory\"; only use \"history\" when explicitly instructed by system context.",
     inputSchema: z.object({
       query: z.string().min(1).describe("Natural language query describing what you need"),
+      source: z.enum(["memory", "history"]).optional().describe(
+        "Recall source. Defaults to memory. Use history only when system context directs it.",
+      ),
     }),
     execute: async (args) => {
       if (!options.ownerId) {
@@ -236,6 +240,8 @@ const createRecallMemoriesTool = (ctx: ActionCtx, options: ToolOptions) =>
         return await ctx.runAction(internal.data.memory.recallMemories, {
           ownerId: options.ownerId,
           query: args.query,
+          source: args.source,
+          conversationId: options.conversationId,
         });
       } catch (error) {
         return `RecallMemories failed: ${(error as Error).message}`;

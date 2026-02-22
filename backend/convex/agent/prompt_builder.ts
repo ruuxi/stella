@@ -13,6 +13,7 @@ export type PromptBuildResult = {
 
 const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
 const MAX_ACTIVE_THREADS_IN_PROMPT = 12;
+const MAX_COMPACTION_SUMMARY_CHARS = 3000;
 
 const buildSkillsSection = (
   skills: Array<{
@@ -142,6 +143,55 @@ export const buildSystemPrompt = async (
       }
     } catch {
       // Thread query failed — skip
+    }
+  }
+
+  // Inject prior-session compaction context for orchestrator
+  if (agentType === "orchestrator" && options?.conversationId) {
+    try {
+      const notice = await ctx.runQuery(
+        internal.conversations.getSessionCompactionNotice,
+        { conversationId: options.conversationId },
+      );
+      if (notice?.previousSessionId) {
+        const previousSessionLine =
+          `Previous session compacted (session #${notice.previousSessionNumber}, id: ${notice.previousSessionId}).`;
+        if (notice.compactionStatus === "ready" && notice.compactionSummary?.trim()) {
+          const rawSummary = notice.compactionSummary.trim();
+          const summary =
+            rawSummary.length > MAX_COMPACTION_SUMMARY_CHARS
+              ? `${rawSummary.slice(0, MAX_COMPACTION_SUMMARY_CHARS - 3)}...`
+              : rawSummary;
+          dynamicParts.push(
+            [
+              "# Prior Session",
+              previousSessionLine,
+              `Summary:\n${summary}`,
+              "Older events have fallen out of the active window. Use RecallMemories(query, source: \"history\") to search them.",
+            ].join("\n\n"),
+          );
+        } else if (notice.compactionStatus === "error") {
+          dynamicParts.push(
+            [
+              "# Prior Session",
+              previousSessionLine,
+              `Compaction summary generation failed: ${notice.compactionError ?? "unknown error"}.`,
+              "Older events have fallen out of the active window. Use RecallMemories(query, source: \"history\") to search them.",
+            ].join("\n\n"),
+          );
+        } else {
+          dynamicParts.push(
+            [
+              "# Prior Session",
+              previousSessionLine,
+              "Compaction summary is still being generated.",
+              "Older events have fallen out of the active window. Use RecallMemories(query, source: \"history\") to search them.",
+            ].join("\n\n"),
+          );
+        }
+      }
+    } catch {
+      // Compaction notice query failed - skip
     }
   }
 

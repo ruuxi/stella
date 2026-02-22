@@ -14,6 +14,7 @@ import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { RateLimiter } from "@convex-dev/rate-limiter";
+import { applyTokenDeltaWithSessionCompaction } from "../lib/orchestrator_sessions";
 
 // ---------------------------------------------------------------------------
 // Rate Limiter
@@ -153,6 +154,7 @@ export async function afterChat(
     await ctx.runMutation(internal.conversations.patchTokenCount, {
       conversationId: params.conversationId,
       tokenDelta: totalTokens,
+      countTowardSession: params.agentType === "orchestrator",
     });
   }
 }
@@ -251,16 +253,14 @@ export const logUsageAsync = internalMutation({
       createdAt: Date.now(),
     });
 
-    // Also patch conversation token count
+    // Also patch conversation token count (+ session rollover at 80k tokens)
     const totalTokens = args.totalTokens ?? 0;
     if (totalTokens > 0) {
-      const conversation = await ctx.db.get(args.conversationId);
-      if (conversation) {
-        const current = conversation.tokenCount ?? 0;
-        await ctx.db.patch(args.conversationId, {
-          tokenCount: current + totalTokens,
-        });
-      }
+      await applyTokenDeltaWithSessionCompaction(ctx, {
+        conversationId: args.conversationId,
+        tokenDelta: totalTokens,
+        countTowardSession: args.agentType === "orchestrator",
+      });
     }
 
     return null;

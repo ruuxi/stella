@@ -58,6 +58,8 @@ export default defineSchema({
     ownerId: v.string(),
     title: v.optional(v.string()),
     isDefault: v.boolean(),
+    activeSessionId: v.optional(v.id("conversation_sessions")),
+    activeSessionTokenCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     tokenCount: v.optional(v.number()),
@@ -67,8 +69,28 @@ export default defineSchema({
   })
     .index("by_ownerId_and_isDefault", ["ownerId", "isDefault"])
     .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
+  conversation_sessions: defineTable({
+    conversationId: v.id("conversations"),
+    previousSessionId: v.optional(v.id("conversation_sessions")),
+    sessionNumber: v.number(),
+    startedAt: v.number(),
+    closedAt: v.optional(v.number()),
+    tokenCount: v.number(),
+    compactionStatus: v.optional(v.string()),
+    compactionSummary: v.optional(v.string()),
+    compactionError: v.optional(v.string()),
+    summarySourceConversationId: v.optional(v.id("conversations")),
+    summarySourceSessionId: v.optional(v.id("conversation_sessions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_conversationId_and_sessionNumber", ["conversationId", "sessionNumber"])
+    .index("by_conversationId_and_previousSessionId", ["conversationId", "previousSessionId"])
+    .index("by_conversationId_and_startedAt", ["conversationId", "startedAt"])
+    .index("by_conversationId_and_closedAt", ["conversationId", "closedAt"]),
   events: defineTable({
     conversationId: v.id("conversations"),
+    sessionId: v.id("conversation_sessions"),
     timestamp: v.number(),
     type: v.string(),
     deviceId: v.optional(v.string()),
@@ -78,6 +100,8 @@ export default defineSchema({
     channelEnvelope: optionalChannelEnvelopeValidator,
   })
     .index("by_conversationId_and_timestamp", ["conversationId", "timestamp"])
+    .index("by_conversationId_and_sessionId_and_timestamp", ["conversationId", "sessionId", "timestamp"])
+    .index("by_sessionId_and_timestamp", ["sessionId", "timestamp"])
     .index("by_conversationId_and_type_and_timestamp", ["conversationId", "type", "timestamp"])
     .index("by_targetDeviceId_and_timestamp", ["targetDeviceId", "timestamp"])
     .index("by_requestId", ["requestId"]),
@@ -298,6 +322,26 @@ export default defineSchema({
       vectorField: "embedding",
       dimensions: 1536,
       filterFields: ["ownerId"],
+    }),
+  event_embeddings: defineTable({
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    sessionId: v.id("conversation_sessions"),
+    eventId: v.id("events"),
+    type: v.union(v.literal("user_message"), v.literal("assistant_message")),
+    content: v.string(),
+    timestamp: v.number(),
+    embedding: v.array(v.float64()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_ownerId_and_timestamp", ["ownerId", "timestamp"])
+    .index("by_conversationId_and_sessionId_and_timestamp", ["conversationId", "sessionId", "timestamp"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["ownerId", "conversationId", "sessionId", "type"],
     }),
   memory_extraction_batches: defineTable({
     ownerId: v.string(),
