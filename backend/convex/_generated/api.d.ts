@@ -51,7 +51,6 @@ import type * as data_commands from "../data/commands.js";
 import type * as data_event_embeddings from "../data/event_embeddings.js";
 import type * as data_integrations from "../data/integrations.js";
 import type * as data_memory from "../data/memory.js";
-import type * as data_memory_architecture from "../data/memory_architecture.js";
 import type * as data_preferences from "../data/preferences.js";
 import type * as data_secrets from "../data/secrets.js";
 import type * as data_secrets_crypto from "../data/secrets_crypto.js";
@@ -143,7 +142,6 @@ declare const fullApi: ApiFromModules<{
   "data/event_embeddings": typeof data_event_embeddings;
   "data/integrations": typeof data_integrations;
   "data/memory": typeof data_memory;
-  "data/memory_architecture": typeof data_memory_architecture;
   "data/preferences": typeof data_preferences;
   "data/secrets": typeof data_secrets;
   "data/secrets_crypto": typeof data_secrets_crypto;

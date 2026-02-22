@@ -234,14 +234,6 @@ export const createThread = internalMutation({
     });
 
     const conversation = await ctx.db.get(args.conversationId);
-    if (conversation) {
-      await ctx.scheduler.runAfter(0, internal.data.memory_architecture.extractConversationWindow, {
-        conversationId: args.conversationId,
-        ownerId: conversation.ownerId,
-        trigger: "new_thread",
-        windowEnd: now,
-      });
-    }
 
     return threadId;
   },
@@ -641,19 +633,6 @@ export const compactThread = internalAction({
     const conversation = await ctx.runQuery(internal.conversations.getById, {
       id: thread.conversationId,
     });
-    if (conversation) {
-      const windowEnd = oldMessages[oldMessages.length - 1]?.createdAt ?? Date.now();
-      await ctx.scheduler.runAfter(0, internal.data.memory_architecture.extractThreadCompactionWindow, {
-        conversationId: thread.conversationId,
-        ownerId: conversation.ownerId,
-        windowEnd,
-        events: oldMessages.map((message) => ({
-          type: `thread_${message.role}`,
-          text: message.content,
-          timestamp: message.createdAt,
-        })),
-      });
-    }
 
     return null;
   },

@@ -309,6 +309,55 @@ Rules:
 - Deduplicate within your output
 - Output ONLY the JSON array, nothing else`;
 
+const ADJUDICATION_PROMPT = `You adjudicate a new memory fact against existing similar facts.
+
+Your goal is to decide if the new fact:
+1. Is a "duplicate" (already fully captured by an existing fact).
+2. "updates" an existing fact (the new fact contradicts, refines, or updates an existing fact, so the existing fact should be overwritten with a new combined/updated truth).
+3. Is a completely "new_fact" (unrelated to the existing facts).
+
+Return ONLY valid JSON in this shape:
+{"action":"duplicate","memoryId":"..."}
+OR
+{"action":"update_existing","memoryId":"...","updatedContent":"..."}
+OR
+{"action":"new_fact"}
+
+Rules:
+- If duplicate, provide the exact id of the matching existing fact.
+- If update_existing, provide the exact id of the fact to update, and the new updatedContent.
+- If new_fact, do not provide an id or content.
+- Be conservative with "duplicate": only say duplicate if the meaning is fully captured.
+- Use "update_existing" for changing preferences (e.g., "likes blue" -> "likes red").`;
+
+export type AdjudicationResult =
+  | { action: "duplicate"; memoryId: string }
+  | { action: "update_existing"; memoryId: string; updatedContent: string }
+  | { action: "new_fact" };
+
+export const parseAdjudicationResponse = (response: string): AdjudicationResult => {
+  try {
+    const parsed = JSON.parse(extractJsonObject(response) || response.trim());
+    if (parsed.action === "duplicate" && typeof parsed.memoryId === "string") {
+      return { action: "duplicate", memoryId: parsed.memoryId };
+    }
+    if (
+      parsed.action === "update_existing" &&
+      typeof parsed.memoryId === "string" &&
+      typeof parsed.updatedContent === "string"
+    ) {
+      return {
+        action: "update_existing",
+        memoryId: parsed.memoryId,
+        updatedContent: parsed.updatedContent,
+      };
+    }
+  } catch {
+    // Fallback to new_fact on parse error
+  }
+  return { action: "new_fact" };
+};
+
 // ---------------------------------------------------------------------------
 // extractFacts (internal action)
 // ---------------------------------------------------------------------------
@@ -474,26 +523,11 @@ export const ingestSummary = internalAction({
 
     for (const fact of facts) {
       try {
-        const vector = await embedText(MEMORY_INGEST_EMBEDDING_MODEL_KEY, fact.content);
-        const similar = await ctx.vectorSearch("memories", "by_embedding", {
-          vector,
-          limit: 3,
-          filter: (q) => q.eq("ownerId", args.ownerId),
-        });
-
-        const isDuplicate = similar.length > 0 && similar[0]._score > DEDUP_THRESHOLD;
-        if (isDuplicate) {
-          await ctx.runMutation(internal.data.memory.touchMemoriesById, {
-            memoryIds: [similar[0]._id],
-          });
-          continue;
-        }
-
-        await ctx.runMutation(internal.data.memory.insertMemory, {
+        await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
           ownerId: args.ownerId,
           conversationId: args.conversationId,
           content: fact.content,
-          embedding: vector,
+          embeddingModelKey: MEMORY_INGEST_EMBEDDING_MODEL_KEY,
         });
       } catch (err) {
         console.error("[memory] ingestSummary: error processing fact", err);
@@ -688,6 +722,91 @@ export const recallMemories = internalAction({
 });
 
 // ---------------------------------------------------------------------------
+// adjudicateAndStoreFact (internal action) — fact dedup/update/insert logic
+// ---------------------------------------------------------------------------
+
+export const adjudicateAndStoreFact = internalAction({
+  args: {
+    ownerId: v.string(),
+    content: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    embeddingModelKey: v.string(),
+  },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    try {
+      const vector = await embedText(args.embeddingModelKey, args.content);
+      const similar = await ctx.vectorSearch("memories", "by_embedding", {
+        vector,
+        limit: 5,
+        filter: (q) => q.eq("ownerId", args.ownerId),
+      });
+
+      if (similar.length === 0) {
+        await ctx.runMutation(internal.data.memory.insertMemory, {
+          ownerId: args.ownerId,
+          conversationId: args.conversationId,
+          content: args.content,
+          embedding: vector,
+        });
+        return "Memory saved.";
+      }
+
+      // We have similar items, adjudicate.
+      const candidateIds = similar.map((c) => c._id);
+      const docs = await ctx.runQuery(internal.data.memory.getMemoriesByIds, { ids: candidateIds });
+      
+      const candidateText = docs.map((doc, idx) => `[${idx + 1}] id=${doc._id} | content=${doc.content}`).join("\\n");
+      
+      const promptBody = [
+        "Existing Facts:",
+        candidateText,
+        "",
+        "New Fact:",
+        args.content
+      ].join("\\n");
+
+      const response = await cheapLLM(
+        MEMORY_RECALL_RERANK_MODEL_KEY, // Reusing rerank model key for its good reasoning capabilities
+        ADJUDICATION_PROMPT,
+        promptBody
+      );
+
+      const decision = parseAdjudicationResponse(response);
+
+      if (decision.action === "duplicate") {
+        await ctx.runMutation(internal.data.memory.touchMemoriesById, {
+          memoryIds: [decision.memoryId as Id<"memories">],
+        });
+        return "Already captured.";
+      }
+
+      if (decision.action === "update_existing") {
+        const updatedVector = await embedText(args.embeddingModelKey, decision.updatedContent);
+        await ctx.runMutation(internal.data.memory.mergeMemory, {
+          memoryId: decision.memoryId as Id<"memories">,
+          content: decision.updatedContent,
+          embedding: updatedVector,
+        });
+        return "Memory updated.";
+      }
+
+      // new_fact
+      await ctx.runMutation(internal.data.memory.insertMemory, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        content: args.content,
+        embedding: vector,
+      });
+      return "Memory saved.";
+    } catch (err) {
+      console.error("[memory] adjudicateAndStoreFact failed:", err);
+      return `SaveMemory failed: ${(err as Error).message}`;
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
 // saveMemory (internal action) — explicit write with embedding dedup
 // ---------------------------------------------------------------------------
 
@@ -699,74 +818,12 @@ export const saveMemory = internalAction({
   },
   returns: v.string(),
   handler: async (ctx, args) => {
-    try {
-      const vector = await embedText(MEMORY_SAVE_EMBEDDING_MODEL_KEY, args.content);
-      const similar = await ctx.vectorSearch("memories", "by_embedding", {
-        vector,
-        limit: 3,
-        filter: (q) => q.eq("ownerId", args.ownerId),
-      });
-
-      if (similar.length > 0 && similar[0]._score > DEDUP_THRESHOLD) {
-        await ctx.runMutation(internal.data.memory.touchMemoriesById, {
-          memoryIds: [similar[0]._id],
-        });
-        return "Already captured.";
-      }
-
-      await ctx.runMutation(internal.data.memory.insertMemory, {
-        ownerId: args.ownerId,
-        conversationId: args.conversationId,
-        content: args.content,
-        embedding: vector,
-      });
-      return "Memory saved.";
-    } catch (err) {
-      console.error("[memory] saveMemory failed:", err);
-      return `SaveMemory failed: ${(err as Error).message}`;
-    }
-  },
-});
-
-// ---------------------------------------------------------------------------
-// decayMemories (internal action) — daily cron: delete stale memories
-// ---------------------------------------------------------------------------
-
-export const decayMemories = internalAction({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const stale = await ctx.runQuery(internal.data.memory.listStaleMemories, {
-      beforeTimestamp: thirtyDaysAgo,
-      limit: 200,
+    return await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
+      ownerId: args.ownerId,
+      content: args.content,
+      conversationId: args.conversationId,
+      embeddingModelKey: MEMORY_SAVE_EMBEDDING_MODEL_KEY,
     });
-
-    for (const memory of stale) {
-      await ctx.runMutation(internal.data.memory.deleteMemory, { memoryId: memory._id });
-    }
-    return null;
-  },
-});
-
-// ---------------------------------------------------------------------------
-// listStaleMemories (internal query)
-// ---------------------------------------------------------------------------
-
-export const listStaleMemories = internalQuery({
-  args: {
-    beforeTimestamp: v.number(),
-    limit: v.number(),
-  },
-  returns: v.array(memoryValidator),
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("memories")
-      .withIndex("by_accessedAt", (q) =>
-        q.lt("accessedAt", args.beforeTimestamp),
-      )
-      .order("asc")
-      .take(args.limit);
   },
 });
 
@@ -797,33 +854,16 @@ export const seedFromDiscovery = internalAction({
 
     for (const fact of facts) {
       try {
-        const vector = await embedText(MEMORY_INGEST_EMBEDDING_MODEL_KEY, fact.content);
-        const similar = await ctx.vectorSearch("memories", "by_embedding", {
-          vector,
-          limit: 3,
-          filter: (q) => q.eq("ownerId", args.ownerId),
-        });
-
-        if (similar.length > 0 && similar[0]._score > DEDUP_THRESHOLD) {
-          await ctx.runMutation(internal.data.memory.touchMemoriesById, {
-            memoryIds: [similar[0]._id],
-          });
-          continue;
-        }
-
-        await ctx.runMutation(internal.data.memory.insertMemory, {
+        await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
           ownerId: args.ownerId,
           content: fact.content,
-          embedding: vector,
+          embeddingModelKey: MEMORY_INGEST_EMBEDDING_MODEL_KEY,
         });
       } catch (err) {
         console.error("[memory] seedFromDiscovery: error processing fact", err);
       }
     }
 
-    await ctx.runAction(internal.data.memory_architecture.enforceGrowthLimitsForOwner, {
-      ownerId: args.ownerId,
-    });
     console.log("[memory] seedFromDiscovery: complete");
     return null;
   },

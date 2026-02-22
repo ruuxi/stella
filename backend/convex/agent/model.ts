@@ -181,15 +181,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  memory_architecture_embedding: {
-    model: "alibaba/qwen3-embedding-8b",
-    providerOptions: {
-      deepinfra: {
-        dimensions: 1536,
-      },
-    },
-  },
-
   event_semantic_embedding: {
     model: "alibaba/qwen3-embedding-8b",
     providerOptions: {
