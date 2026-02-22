@@ -85,21 +85,23 @@ export async function runAgentTurn({
     },
   );
 
-  const historyEvents = agentType === "orchestrator" && activeSessionId
-    ? await ctx.runQuery(internal.events.listSessionContextEvents, {
-        conversationId,
-        sessionId: activeSessionId,
-        contextAgentType: agentType,
-      })
-    : await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
-        conversationId,
-        maxTokens: normalizeOptionalInt({
-          value: AUTOMATION_HISTORY_MAX_TOKENS,
-          defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
-          min: 1,
-          max: 120_000,
-        }),
-      });
+  const historyEvents = agentType === "orchestrator"
+    ? (activeSessionId
+      ? await ctx.runQuery(internal.events.listSessionContextEvents, {
+          conversationId,
+          sessionId: activeSessionId,
+          contextAgentType: agentType,
+        })
+      : await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
+          conversationId,
+          maxTokens: normalizeOptionalInt({
+            value: AUTOMATION_HISTORY_MAX_TOKENS,
+            defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
+            min: 1,
+            max: 120_000,
+          }),
+        }))
+    : [];
 
   const historyBuild = eventsToHistoryMessages(historyEvents ?? [], {
     microcompact: {
