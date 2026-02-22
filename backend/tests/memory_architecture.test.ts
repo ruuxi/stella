@@ -11,7 +11,7 @@ import {
 describe("memory architecture helpers", () => {
   test("uses expected architecture limits", () => {
     expect(MEMORY_ARCHITECTURE_CONSTANTS.TOKEN_FALLBACK_THRESHOLD).toBe(20_000);
-    expect(MEMORY_ARCHITECTURE_CONSTANTS.MAX_MEMORIES_PER_OWNER).toBe(500);
+    expect(MEMORY_ARCHITECTURE_CONSTANTS.MAX_MEMORIES_PER_OWNER).toBe(5000);
   });
 });
 
