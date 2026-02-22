@@ -25,7 +25,7 @@ const estimateJsonTokens = (value: unknown): number => {
 };
 
 const clampEventTokens = (tokens: number): number =>
-  Math.max(MIN_EVENT_TOKENS, Math.min(MAX_EVENT_TOKENS, Math.max(0, Math.floor(tokens))));
+  Math.max(MIN_EVENT_TOKENS, Math.max(0, Math.floor(tokens)));
 
 export const estimateContextEventTokens = (event: ContextEventLike): number => {
   const payload = asObjectRecord(event.payload);

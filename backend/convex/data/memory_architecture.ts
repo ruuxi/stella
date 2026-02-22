@@ -11,7 +11,7 @@ import { getModelConfig } from "../agent/model";
 import { clampIntToRange, normalizeOptionalInt } from "../lib/number_utils";
 
 const TOKEN_FALLBACK_THRESHOLD = 20_000;
-const MAX_MEMORIES_PER_OWNER = 500;
+const MAX_MEMORIES_PER_OWNER = 5000;
 const DEDUP_THRESHOLD = 0.9;
 
 export const MEMORY_ARCHITECTURE_CONSTANTS = {
@@ -396,7 +396,7 @@ export const enforceGrowthLimitsForOwner = internalAction({
   handler: async (ctx, args) => {
     const memories = await ctx.runQuery(internal.data.memory_architecture.listOwnerMemories, {
       ownerId: args.ownerId,
-      limit: 3000,
+      limit: 6000,
     });
 
     if (memories.length > MAX_MEMORIES_PER_OWNER) {

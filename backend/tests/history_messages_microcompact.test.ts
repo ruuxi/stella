@@ -84,6 +84,7 @@ describe("history microcompact", () => {
       "req_1",
       "req_2",
       "req_3",
+      "req_4",
     ]);
     expect(result.microcompactBoundary?.clearedAttachmentUUIDs).toEqual([]);
     expect(result.microcompactBoundary?.tokensSaved ?? 0).toBeGreaterThan(20_000);
@@ -91,7 +92,7 @@ describe("history microcompact", () => {
     const trimmedMessages = result.messages.filter((message) =>
       message.content.includes("<microcompact_trimmed>"),
     );
-    expect(trimmedMessages).toHaveLength(3);
+    expect(trimmedMessages).toHaveLength(4);
   });
 
   test("replays prior microcompact boundaries so already-compacted ids stay trimmed", () => {
