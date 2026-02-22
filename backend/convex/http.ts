@@ -968,18 +968,6 @@ http.route({
         let nextTokenCount = (conversation.tokenCount ?? 0) + finishTotalTokens;
         const extractionBase = conversation.lastExtractionTokenCount ?? 0;
         const tokensSinceExtraction = Math.max(0, nextTokenCount - extractionBase);
-        if (tokensSinceExtraction >= 20_000) {
-          try {
-            await ctx.scheduler.runAfter(0, internal.data.memory_architecture.extractConversationWindow, {
-              conversationId,
-              ownerId: conversation.ownerId,
-              trigger: "token_fallback",
-              windowEnd: Date.now(),
-            });
-          } catch {
-            // Extraction failure should not affect the chat response.
-          }
-        }
 
         // Best-effort command suggestions after each response.
         try {

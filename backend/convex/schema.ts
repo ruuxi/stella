@@ -343,20 +343,6 @@ export default defineSchema({
       dimensions: 1536,
       filterFields: ["ownerId", "conversationId", "sessionId", "type"],
     }),
-  memory_extraction_batches: defineTable({
-    ownerId: v.string(),
-    conversationId: v.optional(v.id("conversations")),
-    trigger: v.string(),
-    windowStart: v.number(),
-    windowEnd: v.number(),
-    snapshot: v.array(v.object({
-      content: v.string(),
-      memoryId: v.optional(v.id("memories")),
-    })),
-    createdAt: v.number(),
-  })
-    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
-    .index("by_ownerId_and_conversationId_and_createdAt", ["ownerId", "conversationId", "createdAt"]),
   heartbeat_configs: defineTable({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
