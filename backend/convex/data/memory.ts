@@ -15,7 +15,20 @@ import { DISCOVERY_FACT_EXTRACTION_PROMPT } from "../prompts/discovery_facts";
 // ---------------------------------------------------------------------------
 
 const DEDUP_THRESHOLD = 0.9;
-const RECALL_MIN_SCORE = 0.7;
+const RECALL_CANDIDATE_LIMIT = 30;
+const RECALL_MAX_SELECTED = 8;
+const HISTORY_CANDIDATE_LIMIT = 30;
+const HISTORY_MAX_SELECTED = 10;
+const RERANK_CANDIDATE_TEXT_MAX_CHARS = 500;
+const RECENT_CONTEXT_MESSAGE_LIMIT = 5;
+const RECENT_CONTEXT_MESSAGE_MAX_CHARS = 400;
+const RECENT_CONTEXT_TOTAL_MAX_CHARS = 2_000;
+const MEMORY_FACT_EXTRACTION_MODEL_KEY = "memory_fact_extraction";
+const MEMORY_DISCOVERY_FACT_EXTRACTION_MODEL_KEY = "memory_discovery_fact_extraction";
+const MEMORY_RECALL_RERANK_MODEL_KEY = "memory_recall_rerank";
+const MEMORY_RECALL_QUERY_EMBEDDING_MODEL_KEY = "memory_recall_query_embedding";
+const MEMORY_SAVE_EMBEDDING_MODEL_KEY = "memory_save_embedding";
+const MEMORY_INGEST_EMBEDDING_MODEL_KEY = "memory_ingest_embedding";
 
 // ---------------------------------------------------------------------------
 // Validators
@@ -43,11 +56,15 @@ const factExtractionResultValidator = v.object({
 });
 
 // ---------------------------------------------------------------------------
-// Cheap LLM helper (for fact extraction)
+// Cheap LLM helper
 // ---------------------------------------------------------------------------
 
-async function cheapLLM(systemPrompt: string, userPrompt: string): Promise<string> {
-  const config = getModelConfig("memory_ops");
+async function cheapLLM(
+  modelKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<string> {
+  const config = getModelConfig(modelKey);
   const { text } = await generateText({
     ...config,
     system: systemPrompt,
@@ -60,8 +77,8 @@ async function cheapLLM(systemPrompt: string, userPrompt: string): Promise<strin
 // Embedding helper
 // ---------------------------------------------------------------------------
 
-async function embedText(text: string): Promise<number[]> {
-  const config = getModelConfig("embedding");
+async function embedText(modelKey: string, text: string): Promise<number[]> {
+  const config = getModelConfig(modelKey);
   const { embedding: vector } = await embed({
     ...config,
     value: text,
@@ -75,6 +92,12 @@ async function embedText(text: string): Promise<number[]> {
 
 type MemoryFact = { content: string };
 type FactExtractionResult = { facts: MemoryFact[]; parseOk: boolean };
+type RecallCandidate = {
+  id: string;
+  content: string;
+  timestamp?: number;
+  type?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Parsing helpers
@@ -138,6 +161,139 @@ const parseFactResponse = (response: string): FactExtractionResult => {
   return { facts: [], parseOk: false };
 };
 
+const extractJsonObject = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  return trimmed.slice(start, end + 1).trim();
+};
+
+const truncate = (value: string, maxChars: number): string => {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars - 3)}...`;
+};
+
+const parseRerankSelection = (
+  response: string,
+  candidates: RecallCandidate[],
+): string[] => {
+  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate.id]));
+  const byOrdinal = new Map(candidates.map((candidate, index) => [index + 1, candidate.id]));
+
+  const toId = (value: unknown): string | null => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return byOrdinal.get(Math.floor(value)) ?? null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (byId.has(trimmed)) return trimmed;
+      const asNumber = Number(trimmed);
+      if (Number.isFinite(asNumber)) {
+        return byOrdinal.get(Math.floor(asNumber)) ?? null;
+      }
+    }
+    return null;
+  };
+
+  const parsePayload = (payload: unknown): string[] => {
+    if (!payload || typeof payload !== "object") return [];
+    const selected = (payload as { selected?: unknown }).selected;
+    if (!Array.isArray(selected)) return [];
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const item of selected) {
+      const id = toId(item);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      deduped.push(id);
+    }
+    return deduped;
+  };
+
+  const trimmed = response.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    const direct = parsePayload(parsed);
+    if (direct.length > 0) return direct;
+  } catch {
+    // Continue to object extraction path
+  }
+
+  const objectBlock = extractJsonObject(trimmed);
+  if (!objectBlock) return [];
+  try {
+    const parsed = JSON.parse(objectBlock);
+    return parsePayload(parsed);
+  } catch {
+    return [];
+  }
+};
+
+const RERANK_SELECTION_PROMPT = `You select the most relevant recall candidates for a query.
+
+Return ONLY valid JSON in this shape:
+{"selected":[1,2,3]}
+
+Rules:
+- Use candidate ordinals from the list.
+- Use recent conversation context to infer intent behind the query.
+- Select only truly relevant entries.
+- Prefer precision over recall.
+- If none are relevant, return {"selected":[]}.`;
+
+const selectRelevantCandidateIds = async (args: {
+  query: string;
+  source: "memory" | "history";
+  conversationContext?: string;
+  candidates: RecallCandidate[];
+  maxSelected: number;
+}): Promise<string[]> => {
+  if (args.candidates.length === 0) return [];
+  const candidateText = args.candidates
+    .map((candidate, index) => {
+      const parts = [
+        `[${index + 1}]`,
+        `id=${candidate.id}`,
+      ];
+      if (candidate.type) {
+        parts.push(`type=${candidate.type}`);
+      }
+      if (typeof candidate.timestamp === "number") {
+        parts.push(`timestamp=${new Date(candidate.timestamp).toISOString()}`);
+      }
+      parts.push(`content=${truncate(candidate.content, RERANK_CANDIDATE_TEXT_MAX_CHARS)}`);
+      return parts.join(" | ");
+    })
+    .join("\n");
+
+  const response = await cheapLLM(
+    MEMORY_RECALL_RERANK_MODEL_KEY,
+    RERANK_SELECTION_PROMPT,
+    [
+      `Source: ${args.source}`,
+      "Recent Conversation Context:",
+      args.conversationContext?.trim() || "Unavailable.",
+      "",
+      `Search Query: ${args.query}`,
+      "",
+      "Candidates:",
+      candidateText,
+      "",
+      `Maximum selections: ${args.maxSelected}`,
+    ].join("\n"),
+  );
+
+  const selectedIds = parseRerankSelection(response, args.candidates);
+  if (selectedIds.length <= args.maxSelected) {
+    return selectedIds;
+  }
+  return selectedIds.slice(0, args.maxSelected);
+};
+
 // ---------------------------------------------------------------------------
 // Prompts
 // ---------------------------------------------------------------------------
@@ -161,7 +317,11 @@ export const extractFacts = internalAction({
   args: { summary: v.string(), promptOverride: v.optional(v.string()) },
   returns: factExtractionResultValidator,
   handler: async (_ctx, args): Promise<FactExtractionResult> => {
-    const response = await cheapLLM(args.promptOverride ?? FACT_EXTRACTION_PROMPT, args.summary);
+    const response = await cheapLLM(
+      MEMORY_FACT_EXTRACTION_MODEL_KEY,
+      args.promptOverride ?? FACT_EXTRACTION_PROMPT,
+      args.summary,
+    );
     return parseFactResponse(response);
   },
 });
@@ -314,7 +474,7 @@ export const ingestSummary = internalAction({
 
     for (const fact of facts) {
       try {
-        const vector = await embedText(fact.content);
+        const vector = await embedText(MEMORY_INGEST_EMBEDDING_MODEL_KEY, fact.content);
         const similar = await ctx.vectorSearch("memories", "by_embedding", {
           vector,
           limit: 3,
@@ -353,33 +513,173 @@ export const recallMemories = internalAction({
   args: {
     ownerId: v.string(),
     query: v.string(),
+    source: v.optional(v.union(v.literal("memory"), v.literal("history"))),
+    conversationId: v.optional(v.id("conversations")),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
-    if (!args.query.trim()) return "";
+    const query = args.query.trim();
+    if (!query) return "";
+
+    const source = args.source ?? "memory";
 
     try {
-      const vector = await embedText(args.query);
-      const results = await ctx.vectorSearch("memories", "by_embedding", {
-        vector,
-        limit: 10,
-        filter: (q) => q.eq("ownerId", args.ownerId),
-      });
-
-      const relevant = results.filter((r) => r._score > RECALL_MIN_SCORE);
-      if (relevant.length === 0) return "";
-
-      const ids = relevant.map((r) => r._id);
-      const docs: Array<{ _id: Id<"memories">; content: string }> =
-        await ctx.runQuery(internal.data.memory.getMemoriesByIds, { ids });
-
-      if (docs.length > 0) {
-        await ctx.runMutation(internal.data.memory.touchMemoriesById, {
-          memoryIds: docs.map((d: { _id: Id<"memories"> }) => d._id),
+      let recentConversationContext = "";
+      if (args.conversationId) {
+        const conversation = await ctx.runQuery(internal.conversations.getById, {
+          id: args.conversationId,
         });
+        if (conversation?.ownerId === args.ownerId) {
+          const recentMessages = await ctx.runQuery(internal.events.listRecentMessages, {
+            conversationId: args.conversationId,
+            limit: RECENT_CONTEXT_MESSAGE_LIMIT,
+          });
+          const contextLines = recentMessages
+            .map((event) => {
+              if (event.type !== "user_message" && event.type !== "assistant_message") {
+                return null;
+              }
+              const payload =
+                event.payload && typeof event.payload === "object"
+                  ? (event.payload as { text?: unknown })
+                  : {};
+              const text = typeof payload.text === "string" ? payload.text.trim() : "";
+              if (!text) {
+                return null;
+              }
+              const speaker = event.type === "user_message" ? "User" : "Assistant";
+              return `${speaker}: ${truncate(text, RECENT_CONTEXT_MESSAGE_MAX_CHARS)}`;
+            })
+            .filter((line): line is string => !!line);
+          if (contextLines.length > 0) {
+            recentConversationContext = truncate(
+              contextLines.join("\n"),
+              RECENT_CONTEXT_TOTAL_MAX_CHARS,
+            );
+          }
+        }
       }
 
-      return docs.map((d: { content: string }) => `- ${d.content}`).join("\n");
+      const vector = await embedText(MEMORY_RECALL_QUERY_EMBEDDING_MODEL_KEY, query);
+
+      if (source === "history") {
+        if (!args.conversationId) {
+          return "";
+        }
+        const conversationId = args.conversationId;
+
+        const activeSession = await ctx.runQuery(internal.conversations.getActiveSession, {
+          conversationId,
+        });
+        const historySessionId = activeSession?.previousSessionId;
+        if (!historySessionId) {
+          return "";
+        }
+
+        const candidates = await ctx.vectorSearch("event_embeddings", "by_embedding", {
+          vector,
+          limit: HISTORY_CANDIDATE_LIMIT,
+          filter: (q) => q.eq("sessionId", historySessionId),
+        });
+        if (candidates.length === 0) {
+          return "";
+        }
+
+        const candidateIds = candidates.map((candidate) => candidate._id);
+        const docs = await ctx.runQuery(internal.data.event_embeddings.getEmbeddingsByIds, {
+          ids: candidateIds,
+        });
+        const docsById = new Map(
+          docs
+            .filter((doc) =>
+              doc.ownerId === args.ownerId &&
+              doc.conversationId === conversationId &&
+              doc.sessionId === historySessionId,
+            )
+            .map((doc) => [String(doc._id), doc]),
+        );
+        const orderedDocs = candidateIds
+          .map((id) => docsById.get(String(id)))
+          .filter((doc): doc is NonNullable<typeof doc> => !!doc);
+
+        const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc) => ({
+          id: String(doc._id),
+          content: doc.content,
+          timestamp: doc.timestamp,
+          type: doc.type,
+        }));
+        const selectedIds = await selectRelevantCandidateIds({
+          query,
+          source: "history",
+          conversationContext: [
+            recentConversationContext,
+            `Compacted history session id: ${historySessionId}`,
+          ].filter((line) => line.trim().length > 0).join("\n"),
+          candidates: rerankCandidates,
+          maxSelected: HISTORY_MAX_SELECTED,
+        });
+
+        const selectedDocs = (selectedIds.length > 0 ? selectedIds : rerankCandidates.slice(0, 5).map((c) => c.id))
+          .map((id) => docsById.get(id))
+          .filter((doc): doc is NonNullable<typeof doc> => !!doc);
+
+        if (selectedDocs.length === 0) {
+          return "";
+        }
+
+        return selectedDocs
+          .map((doc) => {
+            const iso = new Date(doc.timestamp).toISOString();
+            const speaker = doc.type === "user_message" ? "user" : "assistant";
+            return `- [${iso}] (${speaker}) ${doc.content}`;
+          })
+          .join("\n");
+      }
+
+      const candidates = await ctx.vectorSearch("memories", "by_embedding", {
+        vector,
+        limit: RECALL_CANDIDATE_LIMIT,
+        filter: (q) => q.eq("ownerId", args.ownerId),
+      });
+      if (candidates.length === 0) {
+        return "";
+      }
+
+      const candidateIds = candidates.map((candidate) => candidate._id);
+      const docs = await ctx.runQuery(internal.data.memory.getMemoriesByIds, {
+        ids: candidateIds,
+      });
+      const docsById = new Map(
+        docs.map((doc) => [String(doc._id), doc]),
+      );
+      const orderedDocs = candidateIds
+        .map((id) => docsById.get(String(id)))
+        .filter((doc): doc is NonNullable<typeof doc> => !!doc);
+
+      const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc) => ({
+        id: String(doc._id),
+        content: doc.content,
+      }));
+      const selectedIds = await selectRelevantCandidateIds({
+        query,
+        source: "memory",
+        conversationContext: recentConversationContext,
+        candidates: rerankCandidates,
+        maxSelected: RECALL_MAX_SELECTED,
+      });
+
+      const selectedDocs = (selectedIds.length > 0 ? selectedIds : rerankCandidates.slice(0, 5).map((c) => c.id))
+        .map((id) => docsById.get(id))
+        .filter((doc): doc is NonNullable<typeof doc> => !!doc);
+      if (selectedDocs.length === 0) {
+        return "";
+      }
+
+      await ctx.runMutation(internal.data.memory.touchMemoriesById, {
+        memoryIds: selectedDocs.map((doc) => doc._id as Id<"memories">),
+      });
+
+      return selectedDocs.map((doc) => `- ${doc.content}`).join("\n");
     } catch (err) {
       console.error("[memory] recallMemories failed:", err);
       return "";
@@ -400,7 +700,7 @@ export const saveMemory = internalAction({
   returns: v.string(),
   handler: async (ctx, args) => {
     try {
-      const vector = await embedText(args.content);
+      const vector = await embedText(MEMORY_SAVE_EMBEDDING_MODEL_KEY, args.content);
       const similar = await ctx.vectorSearch("memories", "by_embedding", {
         vector,
         limit: 3,
@@ -481,7 +781,11 @@ export const seedFromDiscovery = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const response = await cheapLLM(DISCOVERY_FACT_EXTRACTION_PROMPT, args.formattedSignals);
+    const response = await cheapLLM(
+      MEMORY_DISCOVERY_FACT_EXTRACTION_MODEL_KEY,
+      DISCOVERY_FACT_EXTRACTION_PROMPT,
+      args.formattedSignals,
+    );
     const { facts, parseOk } = parseFactResponse(response);
 
     if (!parseOk || facts.length === 0) {
@@ -493,7 +797,7 @@ export const seedFromDiscovery = internalAction({
 
     for (const fact of facts) {
       try {
-        const vector = await embedText(fact.content);
+        const vector = await embedText(MEMORY_INGEST_EMBEDDING_MODEL_KEY, fact.content);
         const similar = await ctx.vectorSearch("memories", "by_embedding", {
           vector,
           limit: 3,

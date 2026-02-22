@@ -1,12 +1,14 @@
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { v, ConvexError, Infer, type Value } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireConversationOwner, requireUserId } from "./auth";
 import { jsonValueValidator, optionalChannelEnvelopeValidator } from "./shared_validators";
 import { normalizeOptionalInt } from "./lib/number_utils";
 import { asPlainObjectRecord } from "./lib/object_utils";
+import { resolveActiveConversationSession } from "./lib/orchestrator_sessions";
 import {
   sanitizeForToolResultPersistence,
   sanitizeForToolRequestPersistence,
@@ -21,6 +23,7 @@ const eventValidator = v.object({
   _id: v.id("events"),
   _creationTime: v.number(),
   conversationId: v.id("conversations"),
+  sessionId: v.id("conversation_sessions"),
   timestamp: v.number(),
   type: v.string(),
   deviceId: v.optional(v.string()),
@@ -251,6 +254,7 @@ const CHAT_CONTEXT_EVENT_TYPES = new Set([
 type ContextEvent = Infer<typeof eventValidator>;
 type RecentConversationEventsArgs = {
   conversationId: Id<"conversations">;
+  sessionId?: Id<"conversation_sessions">;
   beforeTimestamp?: number;
   excludeEventId?: Id<"events">;
   take: number;
@@ -320,13 +324,23 @@ const fetchRecentConversationEvents = async (
   ctx: QueryCtx,
   args: RecentConversationEventsArgs,
 ): Promise<ContextEvent[]> => {
-  const query = ctx.db.query("events").withIndex("by_conversationId_and_timestamp", (q) => {
-    const base = q.eq("conversationId", args.conversationId);
-    if (args.beforeTimestamp !== undefined) {
-      return base.lte("timestamp", args.beforeTimestamp);
-    }
-    return base;
-  });
+  const query = args.sessionId
+    ? ctx.db.query("events").withIndex("by_conversationId_and_sessionId_and_timestamp", (q) => {
+        const base = q
+          .eq("conversationId", args.conversationId)
+          .eq("sessionId", args.sessionId!);
+        if (args.beforeTimestamp !== undefined) {
+          return base.lte("timestamp", args.beforeTimestamp);
+        }
+        return base;
+      })
+    : ctx.db.query("events").withIndex("by_conversationId_and_timestamp", (q) => {
+        const base = q.eq("conversationId", args.conversationId);
+        if (args.beforeTimestamp !== undefined) {
+          return base.lte("timestamp", args.beforeTimestamp);
+        }
+        return base;
+      });
 
   let events = await query.order("desc").take(args.take);
   if (args.excludeEventId) {
@@ -362,6 +376,7 @@ const orderEventsChronologically = <T extends { timestamp: number; _id: Id<"even
 export const listRecentContextEvents = internalQuery({
   args: {
     conversationId: v.id("conversations"),
+    sessionId: v.optional(v.id("conversation_sessions")),
     limit: v.optional(v.number()),
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
@@ -376,6 +391,7 @@ export const listRecentContextEvents = internalQuery({
     const take = Math.min(Math.max(limit * 8, 80), 800);
     let events = await fetchRecentConversationEvents(ctx, {
       conversationId: args.conversationId,
+      sessionId: args.sessionId,
       beforeTimestamp: args.beforeTimestamp,
       excludeEventId: args.excludeEventId,
       take,
@@ -390,9 +406,43 @@ export const listRecentContextEvents = internalQuery({
   },
 });
 
+export const listSessionContextEvents = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    sessionId: v.id("conversation_sessions"),
+    beforeTimestamp: v.optional(v.number()),
+    excludeEventId: v.optional(v.id("events")),
+    includeOperationalEvents: v.optional(v.boolean()),
+    contextAgentType: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    const limit = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 50_000,
+      min: 1,
+      max: 50_000,
+    });
+    let events = await fetchRecentConversationEvents(ctx, {
+      conversationId: args.conversationId,
+      sessionId: args.sessionId,
+      beforeTimestamp: args.beforeTimestamp,
+      excludeEventId: args.excludeEventId,
+      take: limit,
+    });
+    events = orderEventsChronologically(filterContextEvents(events, {
+      includeOperationalEvents: args.includeOperationalEvents,
+      contextAgentType: args.contextAgentType,
+    }));
+    return events.map((event) => sanitizeEventForRead(event));
+  },
+});
+
 export const listRecentContextEventsByTokens = internalQuery({
   args: {
     conversationId: v.id("conversations"),
+    sessionId: v.optional(v.id("conversation_sessions")),
     maxTokens: v.optional(v.number()),
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
@@ -413,6 +463,7 @@ export const listRecentContextEventsByTokens = internalQuery({
     );
     const events = await fetchRecentConversationEvents(ctx, {
       conversationId: args.conversationId,
+      sessionId: args.sessionId,
       beforeTimestamp: args.beforeTimestamp,
       excludeEventId: args.excludeEventId,
       take: scanLimit,
@@ -462,13 +513,18 @@ export const saveAssistantMessage = internalMutation({
     conversationId: v.id("conversations"),
     text: v.string(),
     userMessageId: v.optional(v.id("events")),
+    sessionId: v.optional(v.id("conversation_sessions")),
     usage: v.optional(usageSummaryValidator),
   },
   returns: v.id("events"),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
+    const resolvedSessionId =
+      args.sessionId ??
+      (await resolveActiveConversationSession(ctx, args.conversationId)).session._id;
     const eventId = await ctx.db.insert("events", {
       conversationId: args.conversationId,
+      sessionId: resolvedSessionId,
       timestamp,
       type: "assistant_message",
       payload: {
@@ -478,6 +534,9 @@ export const saveAssistantMessage = internalMutation({
       },
     });
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
+    await ctx.scheduler.runAfter(0, internal.data.event_embeddings.indexEventForSemanticSearch, {
+      eventId,
+    });
     return eventId;
   },
 });
@@ -485,6 +544,7 @@ export const saveAssistantMessage = internalMutation({
 export const enqueueToolRequest = internalMutation({
   args: {
     conversationId: v.id("conversations"),
+    sessionId: v.optional(v.id("conversation_sessions")),
     requestId: v.string(),
     targetDeviceId: v.string(),
     toolName: v.string(),
@@ -496,6 +556,9 @@ export const enqueueToolRequest = internalMutation({
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
+    const resolvedSessionId =
+      args.sessionId ??
+      (await resolveActiveConversationSession(ctx, args.conversationId)).session._id;
     const payload = sanitizeEventPayloadForStorage("tool_request", {
       toolName: args.toolName,
       args: args.toolArgs ?? {},
@@ -506,6 +569,7 @@ export const enqueueToolRequest = internalMutation({
     });
     const eventId = await ctx.db.insert("events", {
       conversationId: args.conversationId,
+      sessionId: resolvedSessionId,
       timestamp,
       type: "tool_request",
       requestId: args.requestId,
@@ -586,9 +650,14 @@ const deviceRequiredTypes = new Set([
   "tool_result",
   "screen_event",
 ]);
+const SEMANTIC_INDEXED_EVENT_TYPES = new Set([
+  "user_message",
+  "assistant_message",
+]);
 
 type AppendEventArgs = {
   conversationId: Id<"conversations">;
+  sessionId?: Id<"conversation_sessions">;
   type: string;
   timestamp?: number;
   deviceId?: string;
@@ -640,8 +709,12 @@ const resolveAppendEventPayload = (args: AppendEventArgs) => {
 
 const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
   const { sanitizedPayload, resolvedTargetDeviceId, timestamp } = resolveAppendEventPayload(args);
+  const resolvedSessionId =
+    args.sessionId ??
+    (await resolveActiveConversationSession(ctx, args.conversationId)).session._id;
   const eventId = await ctx.db.insert("events", {
     conversationId: args.conversationId,
+    sessionId: resolvedSessionId,
     timestamp,
     type: args.type,
     deviceId: args.deviceId,
@@ -652,12 +725,18 @@ const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
   });
 
   await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
+  if (SEMANTIC_INDEXED_EVENT_TYPES.has(args.type)) {
+    await ctx.scheduler.runAfter(0, internal.data.event_embeddings.indexEventForSemanticSearch, {
+      eventId,
+    });
+  }
   return sanitizeEventForRead(await ctx.db.get(eventId));
 };
 
 export const appendEvent = mutation({
   args: {
     conversationId: v.id("conversations"),
+    sessionId: v.optional(v.id("conversation_sessions")),
     type: v.string(),
     timestamp: v.optional(v.number()),
     deviceId: v.optional(v.string()),
@@ -676,6 +755,7 @@ export const appendEvent = mutation({
 export const appendInternalEvent = internalMutation({
   args: {
     conversationId: v.id("conversations"),
+    sessionId: v.optional(v.id("conversation_sessions")),
     type: v.string(),
     timestamp: v.optional(v.number()),
     deviceId: v.optional(v.string()),
@@ -721,6 +801,7 @@ export const listEvents = query({
 export const listEventsSince = internalQuery({
   args: {
     conversationId: v.id("conversations"),
+    sessionId: v.optional(v.id("conversation_sessions")),
     afterTimestamp: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
@@ -734,10 +815,50 @@ export const listEventsSince = internalQuery({
       max: 1000,
     });
 
+    const events = args.sessionId
+      ? await ctx.db
+          .query("events")
+          .withIndex("by_conversationId_and_sessionId_and_timestamp", (q) =>
+            q
+              .eq("conversationId", args.conversationId)
+              .eq("sessionId", args.sessionId!)
+              .gt("timestamp", afterTimestamp),
+          )
+          .order("asc")
+          .take(limit)
+      : await ctx.db
+          .query("events")
+          .withIndex("by_conversationId_and_timestamp", (q) =>
+            q.eq("conversationId", args.conversationId).gt("timestamp", afterTimestamp),
+          )
+          .order("asc")
+          .take(limit);
+
+    return events.map((event) => sanitizeEventForRead(event));
+  },
+});
+
+export const listEventsForSession = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    sessionId: v.id("conversation_sessions"),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    const limit = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 10_000,
+      min: 1,
+      max: 50_000,
+    });
+
     const events = await ctx.db
       .query("events")
-      .withIndex("by_conversationId_and_timestamp", (q) =>
-        q.eq("conversationId", args.conversationId).gt("timestamp", afterTimestamp),
+      .withIndex("by_conversationId_and_sessionId_and_timestamp", (q) =>
+        q
+          .eq("conversationId", args.conversationId)
+          .eq("sessionId", args.sessionId),
       )
       .order("asc")
       .take(limit);

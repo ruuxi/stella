@@ -6,7 +6,6 @@ import { streamText, generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./agent/prompt_builder";
 import { eventsToHistoryMessages } from "./agent/history_messages";
 import {
-  ORCHESTRATOR_HISTORY_MAX_TOKENS,
   computeAutoCompactionThresholdTokens,
 } from "./agent/context_budget";
 import { createTools } from "./tools/index";
@@ -752,16 +751,26 @@ http.route({
           ? "general"
           : "orchestrator";
 
-    const historyEvents = await ctx.runQuery(
-      internal.events.listRecentContextEventsByTokens,
-      {
-        conversationId,
-        maxTokens: ORCHESTRATOR_HISTORY_MAX_TOKENS,
-        beforeTimestamp: userEvent.timestamp,
-        excludeEventId: userMessageId,
-        contextAgentType: agentType,
-      },
-    );
+    const historyEvents = agentType === "orchestrator"
+      ? await ctx.runQuery(
+          internal.events.listSessionContextEvents,
+          {
+            conversationId,
+            sessionId: userEvent.sessionId,
+            beforeTimestamp: userEvent.timestamp,
+            excludeEventId: userMessageId,
+            contextAgentType: agentType,
+          },
+        )
+      : await ctx.runQuery(
+          internal.events.listRecentContextEventsByTokens,
+          {
+            conversationId,
+            beforeTimestamp: userEvent.timestamp,
+            excludeEventId: userMessageId,
+            contextAgentType: agentType,
+          },
+        );
 
     const attachments = body.attachments ?? [];
     const resolvedImages: Array<{ url: string; mimeType?: string }> = [];
@@ -811,6 +820,7 @@ http.route({
       try {
         await ctx.runMutation(internal.events.appendInternalEvent, {
           conversationId,
+          sessionId: userEvent.sessionId,
           type: "microcompact_boundary",
           payload: {
             ...historyBuild.microcompactBoundary,
@@ -923,6 +933,7 @@ http.route({
             conversationId,
             text,
             userMessageId,
+            sessionId: userEvent.sessionId,
             usage: usageSummary,
           });
         }

@@ -1,6 +1,5 @@
-export const ORCHESTRATOR_HISTORY_MAX_TOKENS = 24_000;
-export const SUBAGENT_THREAD_HISTORY_MAX_TOKENS = 24_000;
-export const TASK_DELIVERY_HISTORY_MAX_TOKENS = 10_000;
+export const SUBAGENT_THREAD_HISTORY_MAX_TOKENS = 140_000;
+export const TASK_DELIVERY_HISTORY_MAX_TOKENS = 16_000;
 export const AUTOMATION_HISTORY_MAX_TOKENS = 18_000;
 
 const parsePositiveInt = (raw: string | undefined, fallback: number): number => {

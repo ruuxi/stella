@@ -581,7 +581,7 @@ export const compactThread = internalAction({
 
     // 6. Call LLM to summarize or incrementally update.
     const hasPreviousSummary = Boolean(thread.summary && thread.summary.trim().length > 0);
-    const config = getModelConfig("memory_ops");
+    const config = getModelConfig("thread_compaction_summary");
 
     let baseSummary = hasPreviousSummary ? thread.summary!.trim() : "";
     if (oldText.trim().length > 0) {

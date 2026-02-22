@@ -207,7 +207,7 @@ export const proxyEmbed = httpAction(async (ctx, request) => {
   }
 
   const gateway = getGateway();
-  const embeddingConfig = getModelConfig("embedding");
+  const embeddingConfig = getModelConfig("ai_proxy_embedding");
 
   try {
     const result = await embed({

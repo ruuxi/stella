@@ -23,6 +23,7 @@ import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import { withModelFailoverAsync } from "./model_failover";
 import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
+import { resolveActiveConversationSession } from "../lib/orchestrator_sessions";
 
 const taskValidator = v.object({
   _id: v.id("tasks"),
@@ -1208,8 +1209,10 @@ export const pushStatusUpdate = internalMutation({
     });
 
     // Emit a lightweight event so the frontend can pick up progress
+    const { session } = await resolveActiveConversationSession(ctx, task.conversationId);
     await ctx.db.insert("events", {
       conversationId: task.conversationId,
+      sessionId: session._id,
       type: "task_progress",
       payload: {
         taskId: args.taskId as string,
