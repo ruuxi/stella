@@ -1,11 +1,10 @@
-import { Suspense, lazy, useEffect, useMemo } from 'react'
+import { Suspense, lazy, useMemo } from 'react'
 import { useUiState } from './app/state/ui-state'
 import { getElectronApi } from './services/electron'
 import { Authenticated } from 'convex/react'
 import { AuthTokenBridge } from './app/AuthTokenBridge'
 import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
-import { useDataMode } from './providers/DataProvider'
 
 type WindowType = 'full' | 'mini' | 'radial' | 'region' | 'voice'
 const CredentialRequestLayer = lazy(() =>
@@ -46,18 +45,10 @@ function getWindowType(isElectron: boolean, windowParam: string | null, fallback
 
 function App() {
   const { state } = useUiState()
-  const { mode, switchConversation } = useDataMode()
   const api = getElectronApi()
   const windowParam = useMemo(() => new URLSearchParams(window.location.search).get('window'), [])
   const isElectron = Boolean(api)
   const windowType = getWindowType(isElectron, windowParam, state.window)
-
-  useEffect(() => {
-    if (mode !== 'local') return
-    if (windowType !== 'full' && windowType !== 'mini') return
-    if (!state.conversationId) return
-    switchConversation(state.conversationId)
-  }, [mode, state.conversationId, switchConversation, windowType])
 
   const shellFallback =
     windowType === 'radial' ? (

@@ -8,9 +8,6 @@ import { api } from "../../convex/api";
 import { getOrCreateDeviceId } from "../../services/device";
 import { synthesizeCoreMemory } from "../../services/synthesis";
 import { selectDefaultSkills } from "../../services/skill-selection";
-import { useIsLocalMode } from "@/providers/DataProvider";
-import { localPost } from "@/services/local-client";
-import { toCloudConversationId } from "@/lib/conversation-id";
 
 type DiscoveryCategory =
   | "browsing_bookmarks"
@@ -39,10 +36,7 @@ export function useDiscoveryFlow({
   isAuthenticated,
   conversationId,
 }: UseDiscoveryFlowOptions) {
-  const isLocalMode = useIsLocalMode();
-  const activeConversationId = isLocalMode
-    ? conversationId
-    : toCloudConversationId(conversationId);
+  const activeConversationId = conversationId;
   const appendEvent = useMutation(api.events.appendEvent);
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
@@ -93,11 +87,7 @@ export function useDiscoveryFlow({
             deviceId,
             payload: { text: synthesisResult.welcomeMessage },
           };
-          if (isLocalMode) {
-            await localPost("/api/events", eventPayload);
-          } else {
-            await appendEvent(eventPayload);
-          }
+          await appendEvent(eventPayload);
 
           if (synthesisResult.suggestions?.length) {
             const suggestionPayload = {
@@ -106,11 +96,7 @@ export function useDiscoveryFlow({
               deviceId,
               payload: { suggestions: synthesisResult.suggestions },
             };
-            if (isLocalMode) {
-              await localPost("/api/events", suggestionPayload);
-            } else {
-              await appendEvent(suggestionPayload);
-            }
+            await appendEvent(suggestionPayload);
           }
         }
       } catch {
@@ -119,7 +105,7 @@ export function useDiscoveryFlow({
     };
 
     void run();
-  }, [discoveryCategories, isAuthenticated, activeConversationId, appendEvent, isLocalMode]);
+  }, [discoveryCategories, isAuthenticated, activeConversationId, appendEvent]);
 
   return {
     handleDiscoveryConfirm,
