@@ -6,7 +6,6 @@
  */
 
 import { getAuthHeaders } from "./auth-token";
-import { getLocalPort, isLocalMode } from "./local-client";
 
 export type SkillSelectionResult = {
   selectedSkillIds: string[];
@@ -15,21 +14,17 @@ export type SkillSelectionResult = {
 export async function selectDefaultSkills(
   coreMemory: string,
 ): Promise<SkillSelectionResult> {
-  const endpoint = isLocalMode()
-    ? `http://localhost:${getLocalPort()}/api/select-default-skills`
-    : (() => {
-        const baseUrl = import.meta.env.VITE_CONVEX_URL;
-        if (!baseUrl) {
-          throw new Error("VITE_CONVEX_URL is not set.");
-        }
-        const httpBaseUrl =
-          import.meta.env.VITE_CONVEX_HTTP_URL ??
-          baseUrl.replace(".convex.cloud", ".convex.site");
-        return new URL("/api/select-default-skills", httpBaseUrl).toString();
-      })();
-  const headers = isLocalMode()
-    ? { "Content-Type": "application/json" }
-    : await getAuthHeaders({ "Content-Type": "application/json" });
+  const endpoint = (() => {
+    const baseUrl = import.meta.env.VITE_CONVEX_URL;
+    if (!baseUrl) {
+      throw new Error("VITE_CONVEX_URL is not set.");
+    }
+    const httpBaseUrl =
+      import.meta.env.VITE_CONVEX_HTTP_URL ??
+      baseUrl.replace(".convex.cloud", ".convex.site");
+    return new URL("/api/select-default-skills", httpBaseUrl).toString();
+  })();
+  const headers = await getAuthHeaders({ "Content-Type": "application/json" });
   const response = await fetch(endpoint, {
     method: "POST",
     headers,

@@ -56,11 +56,6 @@ vi.mock("@/convex/api", () => ({
   api: { reset: { resetAllUserData: "resetAllUserData" } },
 }));
 
-const mockUseIsLocalMode = vi.fn(() => false);
-vi.mock("@/providers/DataProvider", () => ({
-  useIsLocalMode: () => mockUseIsLocalMode(),
-}));
-
 // Re-import mock references for per-test overrides
 import { useConvexAuth } from "convex/react";
 import { useOnboardingState } from "../../components/Onboarding";
@@ -275,7 +270,6 @@ describe("OnboardingView", () => {
 describe("useOnboardingOverlay", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mockUseIsLocalMode.mockReturnValue(false);
     mockedUseConvexAuth.mockReturnValue({
       isAuthenticated: true,
       isLoading: false,
@@ -334,19 +328,6 @@ describe("useOnboardingOverlay", () => {
 
     expect(result.current.isAuthLoading).toBe(true);
     expect(result.current.isAuthenticated).toBe(false);
-  });
-
-  it("treats local mode as authenticated even when cloud auth is false", () => {
-    mockUseIsLocalMode.mockReturnValue(true);
-    mockedUseConvexAuth.mockReturnValue({
-      isAuthenticated: false,
-      isLoading: true,
-    });
-
-    const { result } = renderHook(() => useOnboardingOverlay());
-
-    expect(result.current.isAuthenticated).toBe(true);
-    expect(result.current.isAuthLoading).toBe(false);
   });
 
   it("startBirthAnimation sets hasExpanded to true", () => {

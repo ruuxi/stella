@@ -19,9 +19,6 @@ import {
   uploadScreenshotAttachments,
   type AttachmentUploadResponse,
 } from "./streaming/attachment-upload";
-import { useIsLocalMode } from "@/providers/DataProvider";
-import { localPost } from "@/services/local-client";
-import { toCloudConversationId } from "@/lib/conversation-id";
 
 export type AttachmentRef = {
   id?: string;
@@ -43,11 +40,7 @@ type AppendEventArgs = {
 };
 
 export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
-  const isLocalMode = useIsLocalMode();
-  const cloudConversationId = toCloudConversationId(conversationId);
-  const activeConversationId = isLocalMode
-    ? conversationId
-    : cloudConversationId;
+  const activeConversationId = conversationId;
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
@@ -85,10 +78,6 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
 
   const appendConversationEvent = useCallback(
     async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
-      if (isLocalMode) {
-        const event = await localPost<AppendedEventResponse>("/api/events", args);
-        return event ?? null;
-      }
       const event = await appendEvent({
         conversationId: args.conversationId as never,
         type: args.type,
@@ -99,7 +88,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       });
       return event as AppendedEventResponse | null;
     },
-    [isLocalMode, appendEvent],
+    [appendEvent],
   );
 
   const createAttachment = useCallback(
@@ -108,13 +97,6 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       deviceId: string;
       dataUrl: string;
     }): Promise<AttachmentUploadResponse | null> => {
-      if (isLocalMode) {
-        const attachment = await localPost<AttachmentUploadResponse>(
-          "/api/attachments/create",
-          args,
-        );
-        return attachment ?? null;
-      }
       const attachment = await createAttachmentAction({
         conversationId: args.conversationId as never,
         deviceId: args.deviceId,
@@ -122,7 +104,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       });
       return attachment as AttachmentUploadResponse | null;
     },
-    [isLocalMode, createAttachmentAction],
+    [createAttachmentAction],
   );
 
   const resetStreamingState = useCallback(
