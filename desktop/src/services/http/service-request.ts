@@ -1,5 +1,4 @@
 import { getAuthHeaders } from "../auth-token";
-import { getLocalPort, isLocalMode } from "../local-client";
 
 type ServiceRequest = {
   endpoint: string;
@@ -18,9 +17,6 @@ const resolveCloudBaseUrl = (): string => {
 };
 
 export const resolveServiceBaseUrl = (): string => {
-  if (isLocalMode()) {
-    return `http://localhost:${getLocalPort()}`;
-  }
   return resolveCloudBaseUrl();
 };
 
@@ -35,16 +31,8 @@ export const createServiceRequest = async (
   headers: Record<string, string> = {},
 ): Promise<ServiceRequest> => {
   const endpoint = resolveServiceEndpoint(path);
-  if (isLocalMode()) {
-    return {
-      endpoint,
-      headers: { ...headers },
-    };
-  }
-
   return {
     endpoint,
     headers: await getAuthHeaders(headers),
   };
 };
-

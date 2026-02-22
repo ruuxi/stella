@@ -30,20 +30,13 @@ import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
-import { useIsLocalMode } from "@/providers/DataProvider";
-import { useLocalQuery } from "@/hooks/use-local-query";
-import { toCloudConversationId } from "@/lib/conversation-id";
 
 const StoreView = lazy(() => import("./StoreView"));
 const SettingsDialog = lazy(() => import("./SettingsView"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
-  const isLocalMode = useIsLocalMode();
-  const cloudConversationId = toCloudConversationId(state.conversationId);
-  const activeConversationId = isLocalMode
-    ? state.conversationId
-    : cloudConversationId;
+  const activeConversationId = state.conversationId;
   const { state: canvasState, openCanvas, closeCanvas, setWidth } = useCanvas();
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
@@ -160,8 +153,8 @@ export const FullShell = () => {
 
   const savedCanvasCloudState = useQuery(
     api.data.canvas_states.getForConversation,
-    !isLocalMode && cloudConversationId && onboarding.isAuthenticated
-      ? { conversationId: cloudConversationId }
+    activeConversationId && onboarding.isAuthenticated
+      ? { conversationId: activeConversationId }
       : "skip",
   ) as
     | {
@@ -172,34 +165,7 @@ export const FullShell = () => {
       }
     | null
     | undefined;
-  const savedCanvasLocalState = useLocalQuery<
-    | {
-        name?: string;
-        title?: string | null;
-        url?: string | null;
-        width?: number | null;
-      }
-    | null
-  >(
-    isLocalMode && state.conversationId
-      ? `/api/canvas-states/${encodeURIComponent(state.conversationId)}`
-      : null,
-  );
-  const savedCanvasState = isLocalMode
-    ? savedCanvasLocalState.data === undefined
-      ? undefined
-      : savedCanvasLocalState.data
-        ? {
-            name: savedCanvasLocalState.data.name ?? "",
-            title: savedCanvasLocalState.data.title ?? undefined,
-            url: savedCanvasLocalState.data.url ?? undefined,
-            width:
-              typeof savedCanvasLocalState.data.width === "number"
-                ? savedCanvasLocalState.data.width
-                : undefined,
-          }
-        : null
-    : savedCanvasCloudState;
+  const savedCanvasState = savedCanvasCloudState;
 
   useEffect(() => {
     if (!state.conversationId) {

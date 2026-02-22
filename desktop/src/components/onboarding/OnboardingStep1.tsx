@@ -18,8 +18,6 @@ import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 import { InlineAuth } from "../InlineAuth";
 import { useTheme } from "../../theme/theme-context";
-import { useIsLocalMode } from "@/providers/DataProvider";
-import { localPut } from "@/services/local-client";
 import "../Onboarding.css";
 
 const FADE_OUT_MS = 400;
@@ -64,7 +62,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onDemoChange,
   isAuthenticated,
 }) => {
-  const isLocalMode = useIsLocalMode();
   const [phase, setPhase] = useState<Phase>(() => isAuthenticated ? "start" : "auth");
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(false);
@@ -391,19 +388,11 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
 
     const preferredBrowser = (browserEnabled && selectedBrowser) ? selectedBrowser : "none";
-    if (isLocalMode) {
-      void localPut("/api/preferences/preferred_browser", {
-        value: preferredBrowser,
-      }).catch(() => {
-        // Browser preference sync is best-effort only.
-      });
-    } else {
-      void savePreferredBrowser({
-        browser: preferredBrowser,
-      }).catch(() => {
-        // Browser preference sync is best-effort only.
-      });
-    }
+    void savePreferredBrowser({
+      browser: preferredBrowser,
+    }).catch(() => {
+      // Browser preference sync is best-effort only.
+    });
 
     onDiscoveryConfirm?.(selected);
     nextSplitStep();
@@ -752,11 +741,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   data-visible={true} 
                   onClick={() => {
                     const finalShortcut = platform === "darwin" ? "CommandOrControl+Shift+V" : "CommandOrControl+Shift+V"
-                    if (isLocalMode) {
-                      localPut("/api/preferences/voice_shortcut", { value: finalShortcut }).catch(() => {})
-                    } else {
-                      localStorage.setItem("stella-voice-shortcut", finalShortcut)
-                    }
+                    localStorage.setItem("stella-voice-shortcut", finalShortcut)
                     window.electronAPI?.setVoiceShortcut?.(finalShortcut)
                     nextSplitStep()
                   }}
@@ -847,13 +832,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       onClick={() => {
                         setExpressionStyle(style);
                         const backendStyle = style === "none" ? "none" as const : "emoji" as const;
-                        if (isLocalMode) {
-                          localPut("/api/preferences/expression_style", {
-                            value: backendStyle,
-                          }).catch(() => {});
-                        } else {
-                          saveExpressionStyle({ style: backendStyle }).catch(() => {});
-                        }
+                        saveExpressionStyle({ style: backendStyle }).catch(() => {});
                       }}
                     >
                       {style.charAt(0).toUpperCase() + style.slice(1)}
