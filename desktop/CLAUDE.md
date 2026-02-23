@@ -42,13 +42,13 @@ The app has four window types, determined by `?window=` query parameter:
 - **Radial** (`RadialShell.tsx`): Transparent overlay for the radial menu
 - **Region** (`RegionCapture.tsx`): Region capture overlay window
 
-UI state (`UiState`) with `mode` (chat/voice), `view` (chat/store), and `window` (full/mini) is synchronized across windows via IPC broadcast.
+UI state (`UiState`) with `mode` (chat/voice), `view` (chat/store), and `window` (full/mini/voice) is synchronized across windows via IPC broadcast.
 
 ### Backend Integration
 
 - **Convex**: Real-time backend via `convex` package. Client configured in `src/services/convex-client.ts`. Requires `VITE_CONVEX_URL` environment variable.
 - **Model Gateway**: SSE streaming chat endpoint at `/api/chat` on the Convex HTTP site (`src/services/model-gateway.ts`).
-- **AI SDK**: Uses `ai` package for utility scripts.
+- **AI SDK**: `ai` package in dependencies (used only by build-time utility scripts, not runtime).
 
 ### Local Host System
 
@@ -79,16 +79,19 @@ Conventions:
 - Always use Radix primitives for dialogs, dropdowns, popovers, tooltips, selects
 - Tailwind utilities combined with component CSS using `cn()`
 
-### Canvas System
+### Workspace-Primary Layout
 
-Side panel for rendering interactive content alongside chat:
-- **State**: `src/app/state/canvas-state.tsx` — `CanvasProvider`, `useCanvas` hook, `CanvasPayload = { name, title?, url? }`
-- **Panel**: `src/components/canvas/CanvasPanel.tsx` — panel with resize handle, header, close button. Routes by URL: url present → AppframeRenderer (iframe), absent → PanelRenderer (Vite dynamic import)
-- **2 renderers**: `renderers/panel.tsx` (Vite-compiled single-file TSX from `workspace/panels/`), `renderers/appframe.tsx` (sandboxed iframe for workspace apps)
+The app uses a workspace-primary layout: `[Sidebar 220px] [WorkspaceArea flex:1] [ChatPanel animated-width]`
+
+- **State**: `src/app/state/workspace-state.tsx` — `WorkspaceProvider`, `useWorkspace` hook. `canvas === null` means dashboard.
+- **WorkspaceArea**: `src/components/workspace/WorkspaceArea.tsx` — always visible center area, routes: store | canvas | dashboard | onboarding
+- **ChatPanel**: `src/components/chat/ChatPanel.tsx` — collapsible right panel with resize handle
+- **Canvas renderers**: `src/components/canvas/renderers/panel.tsx` (Vite-compiled TSX from `workspace/panels/`), `renderers/appframe.tsx` (sandboxed iframe for workspace apps)
+- **Error boundary**: `src/components/canvas/CanvasErrorBoundary.tsx`
 - **Workspace apps**: Full Vite+React projects in `~/.stella/apps/`, scaffolded via `workspace/create-app.js`
 - **Backend tools**: `OpenCanvas(name, title?, url?)` and `CloseCanvas()` — emit canvas_command events
-- **Event bridge**: `src/hooks/use-canvas-commands.ts` — processes open/close canvas events from Convex
-- **CSS**: `src/styles/canvas-panel.css` + `src/styles/canvas-renderers.css`
+- **Event bridge**: `src/hooks/use-canvas-commands.ts` — uses `useWorkspace`
+- **CSS**: `src/styles/workspace.css` + `src/styles/chat-panel.css` + `src/styles/canvas-renderers.css`
 
 ### Store
 
