@@ -42,7 +42,7 @@
         "@tailwindcss/vite": "^4.1.18",
         "@tanstack/react-virtual": "^3.13.18",
         "ai": "^6.0.97",
-        "ai-sdk-provider-claude-code": "^3.4.0",
+        "ai-sdk-provider-claude-code": "^3.4.2",
         "ai-sdk-provider-codex-app-server": "^1.1.7",
         "better-auth": "1.4.9",
         "better-sqlite3": "^12.6.2",
@@ -812,7 +812,7 @@
 
     "ai": ["ai@6.0.97", "", { "dependencies": { "@ai-sdk/gateway": "3.0.53", "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.15", "@opentelemetry/api": "1.9.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-eZIAcBymwGhBwncRH/v9pillZNMeRCDkc4BwcvwXerXd7sxjVxRis3ZNCNCpP02pVH4NLs81ljm4cElC4vbNcQ=="],
 
-    "ai-sdk-provider-claude-code": ["ai-sdk-provider-claude-code@3.4.0", "", { "dependencies": { "@ai-sdk/provider": "^3.0.0", "@ai-sdk/provider-utils": "^4.0.1", "@anthropic-ai/claude-agent-sdk": "^0.2.33" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-xsXJd6aY1zN6j41ZWX1rabSIwW/dIOILHwxWTNH4q6cjGgUC8Mnfn9Sg9y3DDU11bQGjxlNEeOam1gndtn5Qsw=="],
+    "ai-sdk-provider-claude-code": ["ai-sdk-provider-claude-code@3.4.2", "", { "dependencies": { "@ai-sdk/provider": "^3.0.0", "@ai-sdk/provider-utils": "^4.0.1", "@anthropic-ai/claude-agent-sdk": "^0.2.33" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-Gej+/7PnteCSEmxG1WnIRGBS9wLCI8pu7GmsEHh4z9oFHP+sBwep4koRaGbbLfIXk8SXqvC6vWiWJkFDSwaMvA=="],
 
     "ai-sdk-provider-codex-app-server": ["ai-sdk-provider-codex-app-server@1.1.7", "", { "dependencies": { "@ai-sdk/provider": "^3.0.2", "@ai-sdk/provider-utils": "^4.0.5", "zod": "^3.0.0 || ^4.0.0" } }, "sha512-5fDJ6dte0vaN/capeHPaP4JgjovUcBN7MLA7Kdz3L09Jo0uczp/nBmfvsicCzcGOdmahZEAPWmHBaV7ujFa3iw=="],
 
@@ -2199,10 +2199,6 @@
     "@typescript-eslint/eslint-plugin/ignore": ["ignore@7.0.5", "", {}, "sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg=="],
 
     "@typescript-eslint/typescript-estree/minimatch": ["minimatch@9.0.5", "", { "dependencies": { "brace-expansion": "^2.0.1" } }, "sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow=="],
-
-    "ai-sdk-provider-claude-code/@ai-sdk/provider": ["@ai-sdk/provider@3.0.7", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-VkPLrutM6VdA924/mG8OS+5frbVTcu6e046D2bgDo00tehBANR1QBJ/mPcZ9tXMFOsVcm6SQArOregxePzTFPw=="],
-
-    "ai-sdk-provider-claude-code/@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.13", "", { "dependencies": { "@ai-sdk/provider": "3.0.7", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.6" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-HHG72BN4d+OWTcq2NwTxOm/2qvk1duYsnhCDtsbYwn/h/4zeqURu1S0+Cn0nY2Ysq9a9HGKvrYuMn9bgFhR2Og=="],
 
     "ai-sdk-provider-codex-app-server/@ai-sdk/provider": ["@ai-sdk/provider@3.0.7", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-VkPLrutM6VdA924/mG8OS+5frbVTcu6e046D2bgDo00tehBANR1QBJ/mPcZ9tXMFOsVcm6SQArOregxePzTFPw=="],
 
