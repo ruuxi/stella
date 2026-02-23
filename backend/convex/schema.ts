@@ -288,6 +288,7 @@ export default defineSchema({
     conversationId: v.optional(v.id("conversations")),
     content: v.string(),
     embedding: v.optional(v.array(v.float64())),
+    accessCount: v.number(),
     accessedAt: v.number(),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
