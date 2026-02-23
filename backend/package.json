@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "convex dev",
-    "deploy": "convex deploy"
+    "deploy": "convex deploy",
+    "test": "bun test"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.39",

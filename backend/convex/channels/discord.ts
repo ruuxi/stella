@@ -15,6 +15,8 @@ const hexToUint8Array = (hex: string): Uint8Array => {
   return bytes;
 };
 
+const DISCORD_SIGNATURE_MAX_SKEW_SECONDS = 5 * 60;
+
 export async function verifyDiscordSignature(
   rawBody: string,
   signature: string,
@@ -22,6 +24,15 @@ export async function verifyDiscordSignature(
   publicKey: string,
 ): Promise<boolean> {
   try {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const timestampSeconds = Number(timestamp);
+    if (
+      !Number.isFinite(timestampSeconds) ||
+      Math.abs(nowSeconds - timestampSeconds) > DISCORD_SIGNATURE_MAX_SKEW_SECONDS
+    ) {
+      return false;
+    }
+
     const encoder = new TextEncoder();
     const message = encoder.encode(timestamp + rawBody);
     const sigBytes = hexToUint8Array(signature);

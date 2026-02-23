@@ -117,9 +117,10 @@ export const buildSystemPrompt = async (
   }
 
   // Inject active threads for orchestrator
-  if (agentType === "orchestrator" && options?.conversationId) {
+  if (agentType === "orchestrator" && options?.conversationId && options.ownerId) {
     try {
       const activeThreads = await ctx.runQuery(internal.data.threads.listActiveThreads, {
+        ownerId: options.ownerId,
         conversationId: options.conversationId,
       });
       const subagentThreads = activeThreads.filter(t => t.name !== "Main");

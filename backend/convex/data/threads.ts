@@ -1,8 +1,10 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import {
   internalAction,
   internalMutation,
   internalQuery,
+  type MutationCtx,
+  type QueryCtx,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -26,6 +28,34 @@ const THREAD_COMPACTION_MAX_RETRIES = 2;
 
 export const THREAD_IDLE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 export const THREAD_ARCHIVE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+const loadConversationForOwner = async (
+  ctx: QueryCtx | MutationCtx,
+  conversationId: Id<"conversations">,
+  ownerId: string,
+) => {
+  const conversation = await ctx.db.get(conversationId);
+  if (!conversation || conversation.ownerId !== ownerId) {
+    return null;
+  }
+  return conversation;
+};
+
+const loadThreadForOwner = async (
+  ctx: QueryCtx | MutationCtx,
+  threadId: Id<"threads">,
+  ownerId: string,
+) => {
+  const thread = await ctx.db.get(threadId);
+  if (!thread) {
+    return null;
+  }
+  const conversation = await loadConversationForOwner(ctx, thread.conversationId, ownerId);
+  if (!conversation) {
+    return null;
+  }
+  return thread;
+};
 
 type ThreadLifecycleStatus = "active" | "idle" | "archived";
 
@@ -201,11 +231,24 @@ const truncateContent = (raw: string): string => {
 
 export const createThread = internalMutation({
   args: {
+    ownerId: v.string(),
     conversationId: v.id("conversations"),
     name: v.string(),
   },
   returns: v.id("threads"),
   handler: async (ctx, args) => {
+    const conversation = await loadConversationForOwner(
+      ctx,
+      args.conversationId,
+      args.ownerId,
+    );
+    if (!conversation) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Conversation not found",
+      });
+    }
+
     // Check active thread count and evict if at limit
     const activeThreads = await ctx.db
       .query("threads")
@@ -237,8 +280,6 @@ export const createThread = internalMutation({
       lastUsedAt: now,
     });
 
-    const conversation = await ctx.db.get(args.conversationId);
-
     return threadId;
   },
 });
@@ -249,11 +290,21 @@ export const createThread = internalMutation({
 
 export const getThreadByName = internalQuery({
   args: {
+    ownerId: v.string(),
     conversationId: v.id("conversations"),
     name: v.string(),
   },
   returns: v.union(threadValidator, v.null()),
   handler: async (ctx, args) => {
+    const conversation = await loadConversationForOwner(
+      ctx,
+      args.conversationId,
+      args.ownerId,
+    );
+    if (!conversation) {
+      return null;
+    }
+
     const matches = await ctx.db
       .query("threads")
       .withIndex("by_conversationId_and_name", (q) =>
@@ -296,10 +347,20 @@ export const getThreadById = internalQuery({
 
 export const listActiveThreads = internalQuery({
   args: {
+    ownerId: v.string(),
     conversationId: v.id("conversations"),
   },
   returns: v.array(threadValidator),
   handler: async (ctx, args) => {
+    const conversation = await loadConversationForOwner(
+      ctx,
+      args.conversationId,
+      args.ownerId,
+    );
+    if (!conversation) {
+      return [];
+    }
+
     const threads = await ctx.db
       .query("threads")
       .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
@@ -318,12 +379,13 @@ export const listActiveThreads = internalQuery({
 
 export const touchThread = internalMutation({
   args: {
+    ownerId: v.string(),
     threadId: v.id("threads"),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
-    const thread = await ctx.db.get(args.threadId);
+    const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) return null;
 
     await ctx.db.patch(args.threadId, {
@@ -341,11 +403,12 @@ export const touchThread = internalMutation({
 
 export const activateThread = internalMutation({
   args: {
+    ownerId: v.string(),
     threadId: v.id("threads"),
   },
   returns: v.union(threadValidator, v.null()),
   handler: async (ctx, args) => {
-    const thread = await ctx.db.get(args.threadId);
+    const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) {
       return null;
     }
@@ -371,10 +434,13 @@ export const activateThread = internalMutation({
 
 export const closeThread = internalMutation({
   args: {
+    ownerId: v.string(),
     threadId: v.id("threads"),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
+    if (!thread) return null;
     const now = Date.now();
     await ctx.db.patch(args.threadId, {
       status: "archived",
@@ -409,6 +475,7 @@ export const loadThreadMessages = internalQuery({
 
 export const saveThreadMessages = internalMutation({
   args: {
+    ownerId: v.string(),
     threadId: v.id("threads"),
     messages: v.array(
       v.object({
@@ -423,7 +490,7 @@ export const saveThreadMessages = internalMutation({
   handler: async (ctx, args) => {
     if (args.messages.length === 0) return null;
 
-    const thread = await ctx.db.get(args.threadId);
+    const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) return null;
 
     // Get the current max ordinal
@@ -478,11 +545,15 @@ export const saveThreadMessages = internalMutation({
 
 export const deleteMessagesBefore = internalMutation({
   args: {
+    ownerId: v.string(),
     threadId: v.id("threads"),
     beforeOrdinal: v.number(),
   },
   returns: v.number(),
   handler: async (ctx, args) => {
+    const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
+    if (!thread) return 0;
+
     const messages = await ctx.db
       .query("thread_messages")
       .withIndex("by_threadId_and_ordinal", (q) =>
@@ -508,10 +579,20 @@ export const deleteMessagesBefore = internalMutation({
 
 export const evictOldestThread = internalMutation({
   args: {
+    ownerId: v.string(),
     conversationId: v.id("conversations"),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const conversation = await loadConversationForOwner(
+      ctx,
+      args.conversationId,
+      args.ownerId,
+    );
+    if (!conversation) {
+      return null;
+    }
+
     const oldest = await ctx.db
       .query("threads")
       .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>

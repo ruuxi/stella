@@ -229,7 +229,7 @@ export async function resolveFallbackConfig(
       model: fallbackModel,
       temperature: defaults.temperature,
       maxOutputTokens: defaults.maxOutputTokens,
-      // No gateway-specific options for fallback — use platform gateway defaults
+      providerOptions: defaults.providerOptions as ProviderOptions | undefined,
     };
   }
 
@@ -238,5 +238,8 @@ export async function resolveFallbackConfig(
     model: resolved.model,
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
+    providerOptions: resolved.usedByok
+      ? filterGatewayOptions(defaults.providerOptions as Record<string, unknown>)
+      : (defaults.providerOptions as ProviderOptions | undefined),
   };
 }

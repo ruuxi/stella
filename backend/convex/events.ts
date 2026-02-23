@@ -70,11 +70,24 @@ export const countByConversation = internalQuery({
   args: { conversationId: v.id("conversations") },
   returns: v.number(),
   handler: async (ctx, args) => {
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_conversationId_and_timestamp", (q) => q.eq("conversationId", args.conversationId))
-      .take(10000);
-    return events.length;
+    let total = 0;
+    let cursor: string | null = null;
+
+    while (true) {
+      const page = await ctx.db
+        .query("events")
+        .withIndex("by_conversationId_and_timestamp", (q) =>
+          q.eq("conversationId", args.conversationId),
+        )
+        .paginate({ cursor, numItems: 1000 });
+      total += page.page.length;
+      if (page.isDone) {
+        break;
+      }
+      cursor = page.continueCursor;
+    }
+
+    return total;
   },
 });
 
@@ -831,34 +844,67 @@ export const listToolRequestsForDevice = query({
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const page = await ctx.db
-      .query("events")
-      .withIndex("by_targetDeviceId_and_timestamp", (q) => q.eq("targetDeviceId", args.deviceId))
-      .order("desc")
-      .paginate(args.paginationOpts);
+    const filtered: Infer<typeof eventValidator>[] = [];
+    const ownershipCache = new Map<string, boolean>();
+    const requestedItems = normalizeOptionalInt({
+      value: args.paginationOpts.numItems,
+      defaultValue: 20,
+      min: 1,
+      max: 200,
+    });
+    let cursor: string | null = args.paginationOpts.cursor;
+    let isDone = false;
+    let splitCursor: string | null | undefined = undefined;
+    let pageStatus: "SplitRecommended" | "SplitRequired" | null | undefined = undefined;
 
-    const filtered: typeof page.page = [];
-    for (const event of page.page) {
-      if (event.type !== "tool_request") {
-        continue;
+    while (filtered.length < requestedItems && !isDone) {
+      const page = await ctx.db
+        .query("events")
+        .withIndex("by_targetDeviceId_and_timestamp", (q) => q.eq("targetDeviceId", args.deviceId))
+        .order("desc")
+        .paginate({
+          cursor,
+          numItems: requestedItems,
+        });
+      cursor = page.continueCursor;
+      isDone = page.isDone;
+      splitCursor = page.splitCursor;
+      pageStatus = page.pageStatus;
+
+      for (const event of page.page) {
+        if (event.type !== "tool_request") {
+          continue;
+        }
+        // Skip events older than 'since' timestamp (ignore historical requests)
+        if (args.since !== undefined && event.timestamp < args.since) {
+          continue;
+        }
+        if (args.conversationId && event.conversationId !== args.conversationId) {
+          continue;
+        }
+        const conversationKey = String(event.conversationId);
+        let owned = ownershipCache.get(conversationKey);
+        if (owned === undefined) {
+          const conversation = await ctx.db.get(event.conversationId);
+          owned = Boolean(conversation && conversation.ownerId === ownerId);
+          ownershipCache.set(conversationKey, owned);
+        }
+        if (!owned) {
+          continue;
+        }
+        filtered.push(event);
+        if (filtered.length >= requestedItems) {
+          break;
+        }
       }
-      // Skip events older than 'since' timestamp (ignore historical requests)
-      if (args.since !== undefined && event.timestamp < args.since) {
-        continue;
-      }
-      if (args.conversationId && event.conversationId !== args.conversationId) {
-        continue;
-      }
-      const conversation = await ctx.db.get(event.conversationId);
-      if (!conversation || conversation.ownerId !== ownerId) {
-        continue;
-      }
-      filtered.push(event);
     }
 
     return {
-      ...page,
       page: filtered,
+      isDone,
+      continueCursor: cursor ?? args.paginationOpts.cursor ?? "",
+      ...(splitCursor !== undefined ? { splitCursor } : {}),
+      ...(pageStatus !== undefined ? { pageStatus } : {}),
     };
   },
 });

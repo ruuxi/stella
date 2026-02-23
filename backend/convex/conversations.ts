@@ -47,6 +47,7 @@ export const getOrCreateDefaultConversation = mutation({
     if (existing) {
       if (!existing.activeThreadId) {
         const threadId = await ctx.runMutation(internal.data.threads.createThread, {
+          ownerId,
           conversationId: existing._id,
           name: "Main",
         });
@@ -66,6 +67,7 @@ export const getOrCreateDefaultConversation = mutation({
     });
 
     const threadId = await ctx.runMutation(internal.data.threads.createThread, {
+      ownerId,
       conversationId: id,
       name: "Main",
     });
@@ -94,6 +96,7 @@ export const createConversation = mutation({
     });
 
     const threadId = await ctx.runMutation(internal.data.threads.createThread, {
+      ownerId,
       conversationId: id,
       name: "Main",
     });

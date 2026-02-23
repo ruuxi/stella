@@ -106,4 +106,65 @@ describe("security regressions", () => {
     expect(source).toContain("stateSalt");
     expect(source).not.toContain("state: parsed.state");
   });
+
+  test("webhook handlers apply message-level dedup", () => {
+    const source = readBackendFile("convex/http.ts");
+
+    expect(source).toContain("consumeWebhookDedup");
+    expect(source).toContain('consumeWebhookDedup(ctx, "telegram"');
+    expect(source).toContain('consumeWebhookDedup(\n          ctx,\n          "discord"');
+    expect(source).toContain('consumeWebhookDedup(\n        ctx,\n        "slack"');
+    expect(source).toContain('consumeWebhookDedup(\n        ctx,\n        "google_chat"');
+    expect(source).toContain('consumeWebhookDedup(ctx, "teams"');
+    expect(source).toContain('consumeWebhookDedup(ctx, "linq"');
+  });
+
+  test("cron tick requires successful claim before scheduling execution", () => {
+    const source = readBackendFile("convex/scheduling/cron_jobs.ts");
+
+    expect(source).toContain("expectedRunningAtMs");
+    expect(source).toContain("const claimed = await ctx.runMutation");
+    expect(source).toContain("if (!claimed) {");
+  });
+
+  test("fallback resolver preserves provider options", () => {
+    const source = readBackendFile("convex/agent/model_resolver.ts");
+    expect(source).toMatch(/resolveFallbackConfig[\s\S]*providerOptions/);
+    expect(source).toContain("filterGatewayOptions(defaults.providerOptions");
+  });
+
+  test("anonymous device hashing requires configured salt", () => {
+    const source = readBackendFile("convex/ai_proxy_data.ts");
+    expect(source).toContain("Missing ANON_DEVICE_ID_HASH_SALT");
+    expect(source).not.toContain("ANON_DEVICE_ID_HASH_SALT ?? \"\"");
+  });
+
+  test("thread mutators require owner-scoped arguments", () => {
+    const source = readBackendFile("convex/data/threads.ts");
+
+    expect(source).toMatch(/export const createThread = internalMutation\([\s\S]*ownerId:\s*v\.string\(\)/);
+    expect(source).toMatch(/export const saveThreadMessages = internalMutation\([\s\S]*ownerId:\s*v\.string\(\)/);
+    expect(source).toMatch(/export const deleteMessagesBefore = internalMutation\([\s\S]*ownerId:\s*v\.string\(\)/);
+    expect(source).toMatch(/export const evictOldestThread = internalMutation\([\s\S]*ownerId:\s*v\.string\(\)/);
+  });
+
+  test("event queries paginate accurately for counting and filtered device feeds", () => {
+    const source = readBackendFile("convex/events.ts");
+    expect(source).toContain("countByConversation");
+    expect(source).toContain("let total = 0;");
+    expect(source).toContain("ownershipCache");
+    expect(source).toContain("while (filtered.length < requestedItems && !isDone)");
+  });
+
+  test("discord signature verifier checks timestamp freshness", () => {
+    const source = readBackendFile("convex/channels/discord.ts");
+    expect(source).toContain("DISCORD_SIGNATURE_MAX_SKEW_SECONDS");
+    expect(source).toContain("Math.abs(nowSeconds - timestampSeconds)");
+  });
+
+  test("automation runner caches builtin ensure operations between runs", () => {
+    const source = readBackendFile("convex/automation/runner.ts");
+    expect(source).toContain("BUILTIN_ENSURE_CACHE_TTL_MS");
+    expect(source).toContain("await ensureBuiltins(ctx)");
+  });
 });

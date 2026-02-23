@@ -1,49 +1,9 @@
 
 import { describe, expect, test } from "bun:test";
 import { eventsToHistoryMessages } from "../convex/agent/history_messages";
+import { createEventFactory, type EventLike } from "./helpers/history_event_fixtures";
 
-type EventLike = {
-  _id: string;
-  _creationTime: number;
-  conversationId: string;
-  timestamp: number;
-  type: string;
-  payload: Record<string, unknown>;
-  requestId?: string;
-  targetDeviceId?: string;
-  deviceId?: string;
-};
-
-const makeEvent = (args: Partial<EventLike>): EventLike => ({
-  _id: "evt_1",
-  _creationTime: Date.now(),
-  conversationId: "conv_1",
-  timestamp: 1,
-  type: "assistant_message",
-  payload: {},
-  ...args,
-});
-
-const makeToolPair = (requestId: string, resultChars = 400_000): EventLike[] => [
-  makeEvent({
-    type: "tool_request",
-    requestId,
-    payload: {
-      toolName: "Read",
-      args: { file_path: `/tmp/${requestId}.ts` },
-      agentType: "orchestrator",
-    },
-  }),
-  makeEvent({
-    type: "tool_result",
-    requestId,
-    payload: {
-      toolName: "Read",
-      result: "x".repeat(resultChars),
-      agentType: "orchestrator",
-    },
-  }),
-];
+const { makeToolPair } = createEventFactory();
 
 describe("history microcompact bug", () => {
   test("fails to compact a single massive tool result due to 8k clamping", () => {
