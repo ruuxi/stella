@@ -41,6 +41,17 @@ const deferredDeleteHelperPath = (() => {
   return "";
 })();
 
+/** stella-browser directory and JS CLI wrapper (resolved at module load). */
+const stellaBrowserDir = (() => {
+  const devPath = fileURLToPath(new URL("../../stella-browser", import.meta.url));
+  if (existsSync(devPath)) return devPath;
+  return "";
+})();
+
+const stellaBrowserBin = stellaBrowserDir
+  ? path.join(stellaBrowserDir, "bin", "stella-browser.js")
+  : "";
+
 const rewriteDeleteBypassPatterns = (command: string) =>
   command
     .replace(/\bcommand\s+(rm|rmdir|unlink)\b/g, "$1")
@@ -79,8 +90,9 @@ erase() { rm "$@"; }
 rd() { rmdir "$@"; }
 powershell() { __stella_dd powershell "$PWD" "$(type -P powershell || true)" "$@"; }
 pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
+${stellaBrowserBin ? `stella-browser() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd rm rmdir unlink del erase rd powershell pwsh${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -90,6 +102,8 @@ const buildShellEnv = (envOverrides?: Record<string, string>) => ({
   ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
   STELLA_NODE_BIN: process.execPath,
   STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
+  ...(stellaBrowserDir ? { STELLA_BROWSER_HOME: stellaBrowserDir } : {}),
+  ...(stellaBrowserBin ? { STELLA_BROWSER_BIN: stellaBrowserBin } : {}),
 });
 
 export const startShell = (
