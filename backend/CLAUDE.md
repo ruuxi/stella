@@ -16,7 +16,7 @@ convex/
 ├── agent/          # Agent system (invoke, model config, prompt building, device tools, tasks)
 ├── tools/          # Tool definitions (backend, cloud, orchestration, types)
 ├── data/           # Data access (skills, store_packages, memory, threads, commands, secrets, etc.)
-├── channels/       # Messaging integrations (telegram, discord, slack, google_chat, teams)
+├── channels/       # Messaging integrations (telegram, discord, slack, whatsapp, signal, linq, google_chat, teams, bridge)
 ├── scheduling/     # Heartbeats and user cron jobs
 ├── prompts/        # System prompt templates per agent
 ├── automation/     # Automated workflows
@@ -36,13 +36,13 @@ convex/
 
 5 builtin agents in `agent/agents.ts`. Orchestrator delegates to subagents via `TaskCreate`. See `docs/agent-flow.md` for the full task lifecycle, threading, and message construction details.
 
-| Agent | Purpose |
-|-------|---------|
-| `orchestrator` | Default entry point, delegates to subagents, scheduling, memory |
-| `general` | Full tool access for coding/files/web tasks |
-| `self_mod` | Platform self-modification |
-| `explore` | Read-only file search and web research |
-| `browser` | Playwright-controlled Chrome automation |
+| Agent | Purpose | Key Tools | maxTaskDepth |
+|-------|---------|-----------|-------------|
+| `orchestrator` | Default entry point, delegates to subagents, scheduling, memory | Read/Write/Edit/Bash, TaskCreate/Output/Cancel, RecallMemories/SaveMemory, Heartbeat/Cron, OpenCanvas/CloseCanvas | 2 |
+| `general` | Coding, files, web, APIs, store, explore sub-agents | Read/Write/Edit/Glob/Grep, Bash/KillShell, WebFetch/WebSearch, StoreSearch/ManagePackage, TaskCreate/TaskOutput | 2 |
+| `self_mod` | Platform self-modification (staging workflow) | Read/Write/Edit/Glob/Grep, Bash, SelfMod*, OpenCanvas/CloseCanvas, AskUserQuestion | 0 |
+| `explore` | Read-only file search and web research | Read, Glob, Grep, WebFetch, WebSearch | 0 |
+| `browser` | Playwright-controlled Chrome automation | Bash, KillShell, Read, OpenCanvas/CloseCanvas | 0 |
 
 ## Convex Conventions
 
