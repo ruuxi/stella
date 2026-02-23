@@ -276,35 +276,81 @@ export const FullShell = () => {
     activeConversationId && (message.trim() || hasComposerContext),
   );
 
+  const appReady = onboarding.isAuthenticated && onboarding.onboardingDone;
+
   return (
     <div className="window-shell full">
       <TitleBar />
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
 
       <div className="full-body">
-        <Sidebar
-          onSignIn={() => setAuthDialogOpen(true)}
-          onConnect={() => setConnectDialogOpen(true)}
-          onSettings={() => setSettingsDialogOpen(true)}
-          onStore={() => setView(state.view === 'store' ? 'chat' : 'store')}
-          onHome={() => setView('chat')}
-          storeActive={state.view === 'store'}
-        />
+        {appReady ? (
+          <>
+            <Sidebar
+              onSignIn={() => setAuthDialogOpen(true)}
+              onConnect={() => setConnectDialogOpen(true)}
+              onSettings={() => setSettingsDialogOpen(true)}
+              onStore={() => setView(state.view === 'store' ? 'chat' : 'store')}
+              onHome={() => setView('chat')}
+              storeActive={state.view === 'store'}
+            />
 
-        <WorkspaceArea
-          view={state.view}
-          isAuthenticated={onboarding.isAuthenticated}
-          onboardingDone={onboarding.onboardingDone}
-          activeDemo={activeDemo}
-          demoClosing={demoClosing}
-          onStoreBack={() => setView('chat')}
-          onComposePrompt={(text) => {
-            setView("chat");
-            setMessage(text);
-          }}
-        />
+            <WorkspaceArea
+              view={state.view}
+              isAuthenticated={onboarding.isAuthenticated}
+              onboardingDone={onboarding.onboardingDone}
+              activeDemo={activeDemo}
+              demoClosing={demoClosing}
+              onStoreBack={() => setView('chat')}
+              onComposePrompt={(text) => {
+                setView("chat");
+                setMessage(text);
+              }}
+            />
 
-        <ChatPanel>
+            <ChatPanel>
+              <ChatColumn
+                events={events}
+                streamingText={streamingText}
+                reasoningText={reasoningText}
+                isStreaming={isStreaming}
+                pendingUserMessageId={pendingUserMessageId}
+                message={message}
+                setMessage={setMessage}
+                chatContext={chatContext}
+                setChatContext={setChatContext}
+                selectedText={selectedText}
+                setSelectedText={setSelectedText}
+                queueNext={queueNext}
+                setQueueNext={setQueueNext}
+                scrollContainerRef={scrollContainerRef}
+                handleScroll={handleScroll}
+                showScrollButton={showScrollButton}
+                scrollToBottom={scrollToBottom}
+                conversationId={activeConversationId}
+                onboardingDone={onboarding.onboardingDone}
+                onboardingExiting={onboarding.onboardingExiting}
+                isAuthenticated={onboarding.isAuthenticated}
+                isAuthLoading={onboarding.isAuthLoading}
+                canSubmit={canSubmit}
+                onSend={handleSend}
+                hasExpanded={onboarding.hasExpanded}
+                splitMode={onboarding.splitMode}
+                hasDiscoverySelections={onboarding.hasDiscoverySelections}
+                onboardingKey={onboarding.onboardingKey}
+                stellaAnimationRef={onboarding.stellaAnimationRef}
+                triggerFlash={onboarding.triggerFlash}
+                startBirthAnimation={onboarding.startBirthAnimation}
+                completeOnboarding={onboarding.completeOnboarding}
+                handleEnterSplit={onboarding.handleEnterSplit}
+                onDiscoveryConfirm={handleDiscoveryConfirm}
+                onSelectionChange={onboarding.setHasDiscoverySelections}
+                onDemoChange={handleDemoChange}
+                onCommandSelect={handleCommandSelect}
+              />
+            </ChatPanel>
+          </>
+        ) : (
           <ChatColumn
             events={events}
             streamingText={streamingText}
@@ -344,7 +390,7 @@ export const FullShell = () => {
             onDemoChange={handleDemoChange}
             onCommandSelect={handleCommandSelect}
           />
-        </ChatPanel>
+        )}
       </div>
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
