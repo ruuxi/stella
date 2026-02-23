@@ -8,7 +8,11 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
-import { THREAD_COMPACTION_KEEP_RECENT_TOKENS } from "../agent/context_budget";
+import {
+  ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
+  SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
+  THREAD_COMPACTION_KEEP_RECENT_TOKENS,
+} from "../agent/context_budget";
 import {
   findThreadCompactionCutByTokens,
   formatThreadMessagesForCompaction,
@@ -533,6 +537,7 @@ export const evictOldestThread = internalMutation({
 export const compactThread = internalAction({
   args: {
     threadId: v.id("threads"),
+    force: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -541,6 +546,12 @@ export const compactThread = internalAction({
       threadId: args.threadId,
     });
     if (!thread || thread.status !== "active") return null;
+    const triggerTokens = thread.name === "Main"
+      ? ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS
+      : SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS;
+    if (!args.force && thread.totalTokenEstimate < triggerTokens) {
+      return null;
+    }
 
     // 2. Load all messages
     const messages = await ctx.runQuery(internal.data.threads.loadThreadMessages, {
@@ -610,28 +621,111 @@ export const compactThread = internalAction({
       .trim();
     if (summary.length === 0) return null;
 
-    // 7. Delete old messages
+    // 7. Apply the compaction result in one mutation transaction.
     const firstRecentOrdinal = recentMessages[0].ordinal;
-    await ctx.runMutation(internal.data.threads.deleteMessagesBefore, {
+    await ctx.runMutation(internal.data.threads.finalizeThreadCompaction, {
       threadId: args.threadId,
-      beforeOrdinal: firstRecentOrdinal,
+      keepFromOrdinal: firstRecentOrdinal,
+      summary,
     });
 
-    // 8. Recompute counters and update thread
-    const remainingTokens = recentMessages.reduce(
-      (sum, m) => sum + (m.tokenEstimate ?? 0),
+    return null;
+  },
+});
+
+export const finalizeThreadCompaction = internalMutation({
+  args: {
+    threadId: v.id("threads"),
+    keepFromOrdinal: v.number(),
+    summary: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread || thread.status !== "active") {
+      return null;
+    }
+
+    const allMessages = await ctx.db
+      .query("thread_messages")
+      .withIndex("by_threadId_and_ordinal", (q) => q.eq("threadId", args.threadId))
+      .collect();
+    const dropped = allMessages.filter((msg) => msg.ordinal < args.keepFromOrdinal);
+    const retained = allMessages
+      .filter((msg) => msg.ordinal >= args.keepFromOrdinal)
+      .sort((a, b) => a.ordinal - b.ordinal);
+    for (const msg of dropped) {
+      await ctx.db.delete(msg._id);
+    }
+
+    const remainingTokens = retained.reduce(
+      (sum, msg) => sum + (msg.tokenEstimate ?? 0),
       0,
     );
+    const remainingCount = retained.length;
 
-    await ctx.runMutation(internal.data.threads.patchThreadAfterCompaction, {
-      threadId: args.threadId,
-      summary,
-      messageCount: recentMessages.length,
+    if (thread.name !== "Main") {
+      await ctx.db.patch(args.threadId, {
+        summary: args.summary,
+        messageCount: remainingCount,
+        totalTokenEstimate: remainingTokens,
+        lastUsedAt: now,
+      });
+      return null;
+    }
+
+    const conversation = await ctx.db.get(thread.conversationId);
+    if (!conversation || conversation.activeThreadId !== args.threadId) {
+      await ctx.db.patch(args.threadId, {
+        summary: args.summary,
+        messageCount: remainingCount,
+        totalTokenEstimate: remainingTokens,
+        lastUsedAt: now,
+      });
+      return null;
+    }
+
+    const rolloverThreadId = await ctx.db.insert("threads", {
+      conversationId: thread.conversationId,
+      name: "Main",
+      status: "active",
+      summary: args.summary,
+      messageCount: remainingCount,
       totalTokenEstimate: remainingTokens,
+      createdAt: now,
+      lastUsedAt: now,
     });
 
-    const conversation = await ctx.runQuery(internal.conversations.getById, {
-      id: thread.conversationId,
+    let nextOrdinal = 0;
+    for (const msg of retained) {
+      await ctx.db.insert("thread_messages", {
+        threadId: rolloverThreadId,
+        ordinal: nextOrdinal,
+        role: msg.role,
+        content: msg.content,
+        ...(msg.toolCallId ? { toolCallId: msg.toolCallId } : {}),
+        ...(typeof msg.tokenEstimate === "number"
+          ? { tokenEstimate: msg.tokenEstimate }
+          : {}),
+        createdAt: msg.createdAt ?? now,
+      });
+      nextOrdinal += 1;
+      await ctx.db.delete(msg._id);
+    }
+
+    await ctx.db.patch(args.threadId, {
+      summary: args.summary,
+      messageCount: 0,
+      totalTokenEstimate: 0,
+      status: "archived",
+      closedAt: now,
+      lastUsedAt: now,
+    });
+
+    await ctx.db.patch(thread.conversationId, {
+      activeThreadId: rolloverThreadId,
+      updatedAt: now,
     });
 
     return null;

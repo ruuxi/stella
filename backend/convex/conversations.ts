@@ -16,6 +16,8 @@ const conversationValidator = v.object({
   title: v.optional(v.string()),
   isDefault: v.boolean(),
   activeThreadId: v.optional(v.id("threads")),
+  orchestratorReminderHash: v.optional(v.string()),
+  orchestratorReminderThreadId: v.optional(v.id("threads")),
   createdAt: v.number(),
   updatedAt: v.number(),
 });
@@ -111,6 +113,38 @@ export const getActiveThreadId = internalQuery({
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     return conversation?.activeThreadId ?? null;
+  },
+});
+
+export const setActiveThreadId = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    threadId: v.id("threads"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conversationId, {
+      activeThreadId: args.threadId,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const markOrchestratorReminderSeen = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    threadId: v.id("threads"),
+    reminderHash: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conversationId, {
+      orchestratorReminderHash: args.reminderHash,
+      orchestratorReminderThreadId: args.threadId,
+      updatedAt: Date.now(),
+    });
+    return null;
   },
 });
 

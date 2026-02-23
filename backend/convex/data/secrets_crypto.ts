@@ -133,3 +133,21 @@ export const decryptSecret = async (serialized: string): Promise<string> => {
 
   return decoder.decode(plaintextBytes);
 };
+
+export const isEncryptedSecretSerialized = (serialized: string): boolean => {
+  if (typeof serialized !== "string" || serialized.trim().length === 0) {
+    return false;
+  }
+  try {
+    return isEncryptedSecretPayload(JSON.parse(serialized));
+  } catch {
+    return false;
+  }
+};
+
+export const decryptSecretIfNeeded = async (value: string): Promise<string> => {
+  if (!isEncryptedSecretSerialized(value)) {
+    return value;
+  }
+  return await decryptSecret(value);
+};

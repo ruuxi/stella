@@ -31,6 +31,16 @@ export const THREAD_COMPACTION_KEEP_RECENT_TOKENS = parsePositiveInt(
   20_000,
 );
 
+export const ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS = parsePositiveInt(
+  process.env.TC_ORCHESTRATOR_TRIGGER_TOKENS,
+  80_000,
+);
+
+export const SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS = parsePositiveInt(
+  process.env.TC_SUBAGENT_TRIGGER_TOKENS,
+  140_000,
+);
+
 const AUTO_COMPACT_ENABLED =
   String(process.env.TC_AUTO_COMPACT_ENABLED ?? "true").toLowerCase() !== "false";
 
