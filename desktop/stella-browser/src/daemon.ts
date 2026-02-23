@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { BrowserManager } from './browser.js';
-import { IOSManager } from './ios-manager.js';
+import type { IOSManager } from './ios-manager.js';
 import { parseCommand, serializeResponse, errorResponse } from './protocol.js';
 import { executeCommand } from './actions.js';
 import { executeIOSCommand } from './ios-actions.js';
@@ -221,7 +221,12 @@ export async function startDaemon(options?: {
       }
     }
   } else {
-    manager = isIOS ? new IOSManager() : new BrowserManager();
+    if (isIOS) {
+      const { IOSManager } = await import('./ios-manager.js');
+      manager = new IOSManager();
+    } else {
+      manager = new BrowserManager();
+    }
   }
 
   let shuttingDown = false;
@@ -311,6 +316,7 @@ export async function startDaemon(options?: {
 
           // Handle device_list specially - it works without a session and always uses IOSManager
           if (parseResult.command.action === 'device_list') {
+            const { IOSManager } = await import('./ios-manager.js');
             const iosManager = new IOSManager();
             try {
               const devices = await iosManager.listAllDevices();
@@ -336,12 +342,13 @@ export async function startDaemon(options?: {
             parseResult.command.action !== 'launch' &&
             parseResult.command.action !== 'close'
           ) {
-            if (isIOS && manager instanceof IOSManager) {
+            if (isIOS) {
+              const iosManager = manager as IOSManager;
               // Auto-launch iOS Safari
               // Check for device in command first (for reused daemons), then fall back to env vars
               const cmd = parseResult.command as { iosDevice?: string };
               const iosDevice = cmd.iosDevice || process.env.STELLA_BROWSER_IOS_DEVICE;
-              await manager.launch({
+              await iosManager.launch({
                 device: iosDevice,
                 udid: process.env.STELLA_BROWSER_IOS_UDID,
               });
@@ -394,8 +401,8 @@ export async function startDaemon(options?: {
           // Handle close command specially - shuts down daemon
           if (parseResult.command.action === 'close') {
             const response =
-              isIOS && manager instanceof IOSManager
-                ? await executeIOSCommand(parseResult.command, manager)
+              isIOS
+                ? await executeIOSCommand(parseResult.command, manager as IOSManager)
                 : await executeCommand(parseResult.command, manager as BrowserManager);
             socket.write(serializeResponse(response) + '\n');
 
@@ -412,8 +419,8 @@ export async function startDaemon(options?: {
 
           // Execute command with appropriate handler
           const response =
-            isIOS && manager instanceof IOSManager
-              ? await executeIOSCommand(parseResult.command, manager)
+            isIOS
+              ? await executeIOSCommand(parseResult.command, manager as IOSManager)
               : await executeCommand(parseResult.command, manager as BrowserManager);
           socket.write(serializeResponse(response) + '\n');
         } catch (err) {

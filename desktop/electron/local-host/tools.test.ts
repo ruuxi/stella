@@ -36,7 +36,7 @@ describe("Tools Module - Unit Tests", () => {
     vi.clearAllMocks();
   });
 
-  describe("SqliteQuery Tool", () => {
+  describe("Tool Registry", () => {
     const testContext: ToolContext = {
       conversationId: "test-conv",
       deviceId: "test-device",
@@ -44,61 +44,7 @@ describe("Tools Module - Unit Tests", () => {
       agentType: "general",
     };
 
-    it("should allow SqliteQuery for any agent", async () => {
-      const mockFs = fs as unknown as { access: ReturnType<typeof vi.fn>; readFile: ReturnType<typeof vi.fn> };
-      
-      mockFs.access.mockResolvedValue(undefined);
-      
-      // Mock Bun Database
-      const mockDb = {
-        prepare: vi.fn(() => ({
-          all: vi.fn(() => [{ id: 1, value: "test" }]),
-        })),
-        close: vi.fn(),
-      };
-
-      // Mock the database import
-      vi.doMock("bun:sqlite", () => ({
-        Database: vi.fn(() => mockDb),
-      }));
-
-      // Since SqliteQuery uses dynamic imports, we'll test the error path
-      // which will occur if database doesn't exist or can't be opened
-      mockFs.access.mockRejectedValue(new Error("File not found"));
-
-      await toolHost.executeTool(
-        "SqliteQuery",
-        {
-          database_path: "/tmp/test.db",
-          query: "SELECT * FROM test",
-        },
-        testContext
-      );
-
-      // Should attempt to access (not blocked)
-      expect(mockFs.access).toHaveBeenCalled();
-    });
-
-    it("should block non-SELECT queries", async () => {
-      const mockFs = fs as unknown as { access: ReturnType<typeof vi.fn> };
-      mockFs.access.mockResolvedValue(undefined);
-
-      const result = await toolHost.executeTool(
-        "SqliteQuery",
-        {
-          database_path: "/tmp/test.db",
-          query: "DELETE FROM test",
-        },
-        testContext
-      );
-      expect(result.error).toContain("Only SELECT and PRAGMA queries are allowed");
-    });
-
-    it("should allow SELECT queries", async () => {
-      const mockFs = fs as unknown as { access: ReturnType<typeof vi.fn> };
-      mockFs.access.mockResolvedValue(undefined);
-
-      // Mock database - this is complex due to dynamic imports, so we test the validation
+    it("returns unknown tool for removed SqliteQuery handler", async () => {
       const result = await toolHost.executeTool(
         "SqliteQuery",
         {
@@ -107,8 +53,19 @@ describe("Tools Module - Unit Tests", () => {
         },
         testContext
       );
-      // Should not error on SELECT validation (may error on file access, but that's OK)
-      expect(result.error).not.toContain("Only SELECT");
+
+      expect(result.error).toContain("Unknown tool: SqliteQuery");
+    });
+
+    it("returns unknown tool for unregistered tool names", async () => {
+      const result = await toolHost.executeTool(
+        "NotARealTool",
+        {
+          value: "irrelevant",
+        },
+        testContext
+      );
+      expect(result.error).toContain("Unknown tool: NotARealTool");
     });
   });
 
