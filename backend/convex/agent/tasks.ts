@@ -12,12 +12,12 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
 import {
-  finalizeOrchestratorTurn,
   prepareOrchestratorTurn,
   toUsageSummary,
 } from "./orchestrator_turn";
 import {
   isAutoCompactionEnabled,
+  ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
   TASK_DELIVERY_HISTORY_MAX_TOKENS,
   SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
   SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
@@ -42,6 +42,7 @@ const taskValidator = v.object({
   model: v.optional(v.string()),
   result: v.optional(v.string()),
   error: v.optional(v.string()),
+  deliveryCompletedAt: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.number(),
   completedAt: v.optional(v.number()),
@@ -60,6 +61,7 @@ const taskClientValidator = v.object({
   taskDepth: v.number(),
   result: v.optional(v.string()),
   error: v.optional(v.string()),
+  deliveryCompletedAt: v.optional(v.number()),
   statusUpdates: v.optional(v.array(v.object({
     text: v.string(),
     timestamp: v.number(),
@@ -75,10 +77,17 @@ type TaskClient = Infer<typeof taskClientValidator>;
 const DEFAULT_MAX_TASK_DEPTH = 2;
 const TASK_CANCEL_POLL_INTERVAL_MS = 2000;
 const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
+const MAX_THREAD_MESSAGE_CONTENT_LENGTH = 500_000;
 const PREFERRED_BROWSER_KEY = "preferred_browser";
 const BROWSER_AGENT_SAFARI_DENIED_REASON =
   "Browser Agent is unavailable when the selected browser is Safari. Use a Chromium-based browser for browser automation.";
 const ALLOWED_SUBAGENT_TYPES = new Set(["general", "self_mod", "explore", "browser"]);
+
+const usageSummaryValidator = v.object({
+  inputTokens: v.optional(v.number()),
+  outputTokens: v.optional(v.number()),
+  totalTokens: v.optional(v.number()),
+});
 
 const isSafariBrowserPreference = (value: string | null): boolean =>
   value?.trim().toLowerCase() === "safari";
@@ -233,6 +242,11 @@ const asThreadMessageText = (value: unknown): string => {
     return String(value);
   }
 };
+
+const truncateThreadMessageContent = (value: string): string =>
+  value.length <= MAX_THREAD_MESSAGE_CONTENT_LENGTH
+    ? value
+    : value.slice(0, MAX_THREAD_MESSAGE_CONTENT_LENGTH);
 
 const toStoredThreadEnvelope = (message: { role: string; content: unknown; toolCallId?: string }) =>
   JSON.stringify({
@@ -1139,6 +1153,7 @@ export const createTaskRecord = internalMutation({
       commandId: args.commandId,
       status: "running" satisfies TaskStatus,
       taskDepth,
+      deliveryCompletedAt: undefined,
       createdAt: now,
       updatedAt: now,
       completedAt: undefined,
@@ -1167,6 +1182,147 @@ export const completeTaskRecord = internalMutation({
     });
     const record = await ctx.db.get(args.taskId);
     return toTaskClientOrNull(record);
+  },
+});
+
+export const finalizeDeliveredTaskTurn = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    conversationId: v.id("conversations"),
+    userMessageId: v.optional(v.id("events")),
+    activeThreadId: v.optional(v.id("threads")),
+    threadUserMessage: v.string(),
+    responseMessages: v.array(
+      v.object({
+        role: v.string(),
+        content: v.string(),
+        toolCallId: v.optional(v.string()),
+      }),
+    ),
+    assistantText: v.string(),
+    usage: v.optional(usageSummaryValidator),
+    saveAssistantMessage: v.boolean(),
+    shouldMarkReminderSeen: v.boolean(),
+    reminderHash: v.optional(v.string()),
+  },
+  returns: v.object({
+    applied: v.boolean(),
+    assistantSaved: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      return { applied: false, assistantSaved: false };
+    }
+    if (typeof task.deliveryCompletedAt === "number") {
+      return { applied: false, assistantSaved: false };
+    }
+
+    const now = Date.now();
+
+    if (args.activeThreadId) {
+      const thread = await ctx.db.get(args.activeThreadId);
+      if (thread) {
+        const messagesToSave: Array<{
+          role: string;
+          content: string;
+          toolCallId?: string;
+        }> = [
+          {
+            role: "user",
+            content: args.threadUserMessage,
+          },
+          ...args.responseMessages,
+        ];
+
+        if (messagesToSave.length > 1) {
+          const lastMessage = await ctx.db
+            .query("thread_messages")
+            .withIndex("by_threadId_and_ordinal", (q) =>
+              q.eq("threadId", args.activeThreadId!),
+            )
+            .order("desc")
+            .first();
+
+          let nextOrdinal = (lastMessage?.ordinal ?? -1) + 1;
+          let addedTokens = 0;
+
+          for (const message of messagesToSave) {
+            const safeContent = truncateThreadMessageContent(message.content);
+            const estimate = Math.ceil(safeContent.length / 4);
+            addedTokens += estimate;
+            await ctx.db.insert("thread_messages", {
+              threadId: args.activeThreadId,
+              ordinal: nextOrdinal++,
+              role: message.role,
+              content: safeContent,
+              toolCallId: message.toolCallId,
+              tokenEstimate: estimate,
+              createdAt: now,
+            });
+          }
+
+          const updatedTotalTokens = thread.totalTokenEstimate + addedTokens;
+          await ctx.db.patch(args.activeThreadId, {
+            messageCount: thread.messageCount + messagesToSave.length,
+            totalTokenEstimate: updatedTotalTokens,
+            lastUsedAt: now,
+            ...(thread.status !== "active"
+              ? {
+                  status: "active",
+                  resurfacedAt: now,
+                }
+              : {}),
+          });
+
+          if (updatedTotalTokens >= ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS) {
+            await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+              threadId: args.activeThreadId,
+            });
+          }
+        }
+      }
+    }
+
+    const trimmedAssistantText = args.assistantText.trim();
+    let assistantSaved = false;
+    if (args.saveAssistantMessage && trimmedAssistantText.length > 0) {
+      const eventId = await ctx.db.insert("events", {
+        conversationId: args.conversationId,
+        timestamp: now,
+        type: "assistant_message",
+        payload: {
+          text: trimmedAssistantText,
+          taskId: args.taskId,
+          ...(args.userMessageId ? { userMessageId: args.userMessageId } : {}),
+          ...(args.usage ? { usage: args.usage } : {}),
+        },
+      });
+      await ctx.db.patch(args.conversationId, { updatedAt: now });
+      await ctx.scheduler.runAfter(0, internal.data.event_embeddings.indexEventForSemanticSearch, {
+        eventId,
+      });
+      assistantSaved = true;
+    }
+
+    if (
+      args.shouldMarkReminderSeen &&
+      args.reminderHash &&
+      args.activeThreadId
+    ) {
+      await ctx.db.patch(args.conversationId, {
+        orchestratorReminderHash: args.reminderHash,
+        orchestratorReminderThreadId: args.activeThreadId,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch(args.taskId, {
+      deliveryCompletedAt: now,
+      updatedAt: now,
+    });
+
+    return { applied: true, assistantSaved };
   },
 });
 
@@ -1258,6 +1414,17 @@ export const getTaskStatus = internalQuery({
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     return record?.status ?? null;
+  },
+});
+
+export const isTaskDeliveryCompleted = internalQuery({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.taskId);
+    return typeof record?.deliveryCompletedAt === "number";
   },
 });
 
@@ -1646,6 +1813,13 @@ export const deliverTaskResult = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const alreadyDelivered = await ctx.runQuery(internal.agent.tasks.isTaskDeliveryCompleted, {
+      taskId: args.taskId,
+    });
+    if (alreadyDelivered) {
+      return null;
+    }
+
     // Build the internal message that the orchestrator will see
     const statusLabel = args.status === "completed" ? "completed" : "failed";
     const deliveryMessage = [
@@ -1730,19 +1904,46 @@ export const deliverTaskResult = internalAction({
           step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
       );
 
-      await finalizeOrchestratorTurn(ctx, {
+      const responseMessages = (genResult.response?.messages ?? []).map((message) => {
+        const rawToolCallId = (message as { toolCallId?: unknown }).toolCallId;
+        const toolCallId = typeof rawToolCallId === "string"
+          ? normalizeToolCallId(rawToolCallId)
+          : undefined;
+        return {
+          role: message.role,
+          content: toStoredThreadEnvelope({
+            role: message.role,
+            content: message.content,
+            ...(toolCallId ? { toolCallId } : {}),
+          }),
+          ...(toolCallId ? { toolCallId } : {}),
+        };
+      });
+
+      const persistence = await ctx.runMutation(internal.agent.tasks.finalizeDeliveredTaskTurn, {
+        taskId: args.taskId,
         conversationId: args.conversationId,
-        ownerId: args.ownerId,
         userMessageId: args.userMessageId,
-        activeThreadId: orchestratorTurn.activeThreadId,
+        activeThreadId: orchestratorTurn.activeThreadId ?? undefined,
         threadUserMessage: orchestratorTurn.threadUserMessage,
-        responseMessages: genResult.response?.messages,
-        assistantText: genResult.text,
+        responseMessages,
+        assistantText: genResult.text ?? "",
         usage: toUsageSummary(genResult.usage),
         saveAssistantMessage: !noResponseCalled,
-        persistThreadFirst: true,
-        reminderState: orchestratorTurn.reminderState,
+        shouldMarkReminderSeen: orchestratorTurn.reminderState.shouldInjectDynamicReminder,
+        reminderHash: orchestratorTurn.reminderState.reminderHash || undefined,
       });
+
+      if (persistence.assistantSaved) {
+        try {
+          await ctx.scheduler.runAfter(0, internal.agent.suggestions.generateSuggestions, {
+            conversationId: args.conversationId,
+            ownerId: args.ownerId,
+          });
+        } catch {
+          // best-effort
+        }
+      }
     } catch (error) {
       console.error("deliverTaskResult failed:", (error as Error).message);
       const attempt = args.deliveryAttempt ?? 0;

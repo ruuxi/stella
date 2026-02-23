@@ -25,13 +25,13 @@ describe("memory + compaction regressions", () => {
     expect(source).not.toContain("ctx.runMutation(internal.conversations.setActiveThreadId");
   });
 
-  test("orchestrator turn core is shared by both chat paths", () => {
+  test("orchestrator turn preparation is shared by chat and task-delivery paths", () => {
     const httpSource = readBackendFile("convex/http.ts");
     const taskSource = readBackendFile("convex/agent/tasks.ts");
     expect(httpSource).toContain("prepareOrchestratorTurn");
-    expect(httpSource).toContain("finalizeOrchestratorTurn");
     expect(taskSource).toContain("prepareOrchestratorTurn");
-    expect(taskSource).toContain("finalizeOrchestratorTurn");
+    expect(httpSource).toContain("finalizeOrchestratorTurn");
+    expect(taskSource).toContain("finalizeDeliveredTaskTurn");
   });
 
   test("shared orchestrator core marks reminders independently from assistant text persistence", () => {
@@ -39,5 +39,27 @@ describe("memory + compaction regressions", () => {
     expect(source).toMatch(
       /const persistAssistantMessage[\s\S]*?if \(args\.persistThreadFirst\)[\s\S]*?if \(\n\s*args\.reminderState\.shouldInjectDynamicReminder[\s\S]*?markOrchestratorReminderSeen/,
     );
+  });
+
+  test("automation orchestrator turns route through shared prepare/finalize helpers", () => {
+    const source = readBackendFile("convex/automation/runner.ts");
+    expect(source).toContain("prepareOrchestratorTurn");
+    expect(source).toContain("finalizeOrchestratorTurn");
+  });
+
+  test("channel inbound user events are not duplicated into prompt history", () => {
+    const source = readBackendFile("convex/channels/utils.ts");
+    expect(source).toContain("const userMessageId = await appendInboundUserMessage");
+    expect(source).toContain("userMessageId: userMessageId ?? undefined");
+  });
+
+  test("task delivery persistence is idempotent via task-level completion marker", () => {
+    const taskSource = readBackendFile("convex/agent/tasks.ts");
+    const schemaSource = readBackendFile("convex/schema.ts");
+    expect(taskSource).toContain("export const finalizeDeliveredTaskTurn = internalMutation");
+    expect(taskSource).toContain("typeof task.deliveryCompletedAt === \"number\"");
+    expect(taskSource).toContain("deliveryCompletedAt: now");
+    expect(taskSource).toContain("isTaskDeliveryCompleted");
+    expect(schemaSource).toContain("deliveryCompletedAt: v.optional(v.number())");
   });
 });

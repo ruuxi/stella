@@ -248,6 +248,7 @@ export default defineSchema({
       text: v.string(),
       timestamp: v.number(),
     }))),
+    deliveryCompletedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),

@@ -278,7 +278,7 @@ type ResponseMessageForPersistence = {
 type FinalizeOrchestratorTurnArgs = {
   conversationId: Id<"conversations">;
   ownerId: string;
-  userMessageId: Id<"events">;
+  userMessageId?: Id<"events">;
   activeThreadId: Id<"threads"> | null;
   threadUserMessage: string;
   responseMessages?: ResponseMessageForPersistence[];
