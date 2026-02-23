@@ -1,5 +1,5 @@
 import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { requireUserId } from "../auth";
 
 const canvasStateValidator = v.object({
@@ -49,6 +49,20 @@ export const save = internalMutation({
   },
   returns: v.id("canvas_states"),
   handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Conversation not found",
+      });
+    }
+    if (conversation.ownerId !== args.ownerId) {
+      throw new ConvexError({
+        code: "FORBIDDEN",
+        message: "Conversation owner mismatch",
+      });
+    }
+
     // Upsert: find existing state for this conversation
     const existing = await ctx.db
       .query("canvas_states")

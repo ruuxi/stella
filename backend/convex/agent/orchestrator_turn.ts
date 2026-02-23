@@ -334,6 +334,7 @@ export const finalizeOrchestratorTurn = async (
 
     if (messagesToSave.length > 1) {
       await ctx.runMutation(internal.data.threads.saveThreadMessages, {
+        ownerId: args.ownerId,
         threadId: args.activeThreadId,
         messages: messagesToSave,
       });

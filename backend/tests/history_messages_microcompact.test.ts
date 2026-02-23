@@ -1,59 +1,13 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { eventsToHistoryMessages } from "../convex/agent/history_messages";
+import { createEventFactory, type EventLike } from "./helpers/history_event_fixtures";
 
-type EventLike = {
-  _id: string;
-  _creationTime: number;
-  conversationId: string;
-  timestamp: number;
-  type: string;
-  payload: Record<string, unknown>;
-  requestId?: string;
-  targetDeviceId?: string;
-  deviceId?: string;
-};
-
-let seq = 0;
-const nextId = () => {
-  seq += 1;
-  return `evt_${seq}`;
-};
-
-const makeEvent = (args: Partial<EventLike>): EventLike => ({
-  _id: nextId(),
-  _creationTime: Date.now(),
-  conversationId: "conv_1",
-  timestamp: seq + 1,
-  type: "assistant_message",
-  payload: {},
-  ...args,
-});
-
-const makeToolPair = (requestId: string, resultChars = 64_000): EventLike[] => [
-  makeEvent({
-    type: "tool_request",
-    requestId,
-    payload: {
-      toolName: "Read",
-      args: { file_path: `/tmp/${requestId}.ts` },
-      agentType: "orchestrator",
-    },
-  }),
-  makeEvent({
-    type: "tool_result",
-    requestId,
-    payload: {
-      toolName: "Read",
-      result: "x".repeat(resultChars),
-      agentType: "orchestrator",
-    },
-  }),
-];
+const { makeEvent, makeToolPair, reset } = createEventFactory();
 
 const originalDisable = process.env.DISABLE_MICROCOMPACT;
 
 beforeEach(() => {
-  seq = 0;
+  reset();
   delete process.env.DISABLE_MICROCOMPACT;
 });
 

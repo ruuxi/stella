@@ -804,9 +804,10 @@ const executeSubagentRun = async (
     );
   };
 
-  if (args.threadId && threadSupported) {
+  if (args.threadId && threadSupported && args.ownerId) {
     try {
       await ctx.runMutation(internal.data.threads.touchThread, {
+        ownerId: args.ownerId,
         threadId: args.threadId,
       });
       await loadThreadContext();
@@ -980,7 +981,7 @@ const executeSubagentRun = async (
     }
 
     // --- Thread saving (only on success) ---
-    if (args.threadId && threadSupported) {
+    if (args.threadId && threadSupported && args.ownerId) {
       try {
         // Save the task prompt as a user message
         const messagesToSave: Array<{
@@ -1017,6 +1018,7 @@ const executeSubagentRun = async (
         }
 
         await ctx.runMutation(internal.data.threads.saveThreadMessages, {
+          ownerId: args.ownerId,
           threadId: args.threadId,
           messages: messagesToSave,
         });
@@ -1612,6 +1614,7 @@ export const runSubagent = internalAction({
         }
         
         const activated = await ctx.runMutation(internal.data.threads.activateThread, {
+          ownerId: conversation.ownerId,
           threadId: args.threadId as Id<"threads">,
         });
         if (activated) {
@@ -1625,16 +1628,19 @@ export const runSubagent = internalAction({
         
         // Look up existing thread by name and reactivate it, or create new one.
         const existing = await ctx.runQuery(internal.data.threads.getThreadByName, {
+          ownerId: conversation.ownerId,
           conversationId: args.conversationId,
           name: args.threadName,
         });
         if (existing) {
           const activated = await ctx.runMutation(internal.data.threads.activateThread, {
+            ownerId: conversation.ownerId,
             threadId: existing._id,
           });
           resolvedThreadId = activated?._id;
         } else {
           resolvedThreadId = await ctx.runMutation(internal.data.threads.createThread, {
+            ownerId: conversation.ownerId,
             conversationId: args.conversationId,
             name: args.threadName,
           });

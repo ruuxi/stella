@@ -442,15 +442,31 @@ export const markRunning = internalMutation({
   args: {
     id: v.id("cron_jobs"),
     runningAtMs: v.number(),
+    expectedRunningAtMs: v.optional(v.number()),
   },
-  returns: v.null(),
+  returns: v.boolean(),
   handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.id);
+    if (!job || !job.enabled) {
+      return false;
+    }
+    const currentRunningAtMs =
+      typeof job.runningAtMs === "number" ? job.runningAtMs : undefined;
+    if (currentRunningAtMs !== args.expectedRunningAtMs) {
+      return false;
+    }
+    if (
+      typeof currentRunningAtMs === "number" &&
+      args.runningAtMs - currentRunningAtMs < STUCK_RUN_MS
+    ) {
+      return false;
+    }
     await ctx.db.patch(args.id, {
       runningAtMs: args.runningAtMs,
       lastError: undefined,
       updatedAt: Date.now(),
     });
-    return null;
+    return true;
   },
 });
 
@@ -497,10 +513,15 @@ export const tick = internalAction({
       if (typeof job.runningAtMs === "number" && now - job.runningAtMs < STUCK_RUN_MS) {
         continue;
       }
-      await ctx.runMutation(internal.scheduling.cron_jobs.markRunning, {
+      const claimed = await ctx.runMutation(internal.scheduling.cron_jobs.markRunning, {
         id: job._id,
         runningAtMs: now,
+        expectedRunningAtMs:
+          typeof job.runningAtMs === "number" ? job.runningAtMs : undefined,
       });
+      if (!claimed) {
+        continue;
+      }
       await ctx.scheduler.runAfter(0, internal.scheduling.cron_jobs.execute, {
         jobId: job._id,
       });

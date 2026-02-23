@@ -1,4 +1,4 @@
-import { internalMutation, internalQuery, mutation, query } from "../_generated/server";
+import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { requireUserId } from "../auth";
 
@@ -20,6 +20,33 @@ const preferredBrowserValidator = v.union(
 const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
   value === "cloud_247" ? "cloud_247" : "local";
 
+const upsertPreferenceRecord = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  key: string,
+  value: string,
+) => {
+  const existing = await ctx.db
+    .query("user_preferences")
+    .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
+    .unique();
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      value,
+      updatedAt: Date.now(),
+    });
+    return;
+  }
+
+  await ctx.db.insert("user_preferences", {
+    ownerId,
+    key,
+    value,
+    updatedAt: Date.now(),
+  });
+};
+
 export const setPreference = internalMutation({
   args: {
     key: v.string(),
@@ -28,24 +55,7 @@ export const setPreference = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", args.key))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value: args.value,
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key: args.key,
-        value: args.value,
-        updatedAt: Date.now(),
-      });
-    }
+    await upsertPreferenceRecord(ctx, ownerId, args.key, args.value);
     return null;
   },
 });
@@ -58,24 +68,7 @@ export const setPreferenceForOwner = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", args.key))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value: args.value,
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId: args.ownerId,
-        key: args.key,
-        value: args.value,
-        updatedAt: Date.now(),
-      });
-    }
+    await upsertPreferenceRecord(ctx, args.ownerId, args.key, args.value);
     return null;
   },
 });
@@ -115,24 +108,7 @@ export const setRuntimeMode = internalMutation({
   returns: runtimeModeValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value: args.mode,
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key: RUNTIME_MODE_KEY,
-        value: args.mode,
-        updatedAt: Date.now(),
-      });
-    }
+    await upsertPreferenceRecord(ctx, ownerId, RUNTIME_MODE_KEY, args.mode);
     return args.mode;
   },
 });
@@ -144,24 +120,7 @@ export const setPreferredBrowser = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", PREFERRED_BROWSER_KEY))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value: args.browser,
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key: PREFERRED_BROWSER_KEY,
-        value: args.browser,
-        updatedAt: Date.now(),
-      });
-    }
+    await upsertPreferenceRecord(ctx, ownerId, PREFERRED_BROWSER_KEY, args.browser);
 
     return null;
   },
@@ -217,24 +176,7 @@ export const setModelOverride = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value: args.model,
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key,
-        value: args.model,
-        updatedAt: Date.now(),
-      });
-    }
+    await upsertPreferenceRecord(ctx, ownerId, key, args.model);
     return null;
   },
 });
@@ -268,24 +210,7 @@ export const setCoreMemory = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", CORE_MEMORY_KEY))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value: args.content,
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key: CORE_MEMORY_KEY,
-        value: args.content,
-        updatedAt: Date.now(),
-      });
-    }
+    await upsertPreferenceRecord(ctx, ownerId, CORE_MEMORY_KEY, args.content);
     return null;
   },
 });
@@ -299,24 +224,7 @@ export const setExpressionStyle = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const existing = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", EXPRESSION_STYLE_KEY))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        value: args.style,
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("user_preferences", {
-        ownerId,
-        key: EXPRESSION_STYLE_KEY,
-        value: args.style,
-        updatedAt: Date.now(),
-      });
-    }
+    await upsertPreferenceRecord(ctx, ownerId, EXPRESSION_STYLE_KEY, args.style);
     return null;
   },
 });
@@ -335,4 +243,3 @@ export const getPreferenceForOwner = internalQuery({
     return record?.value ?? null;
   },
 });
-

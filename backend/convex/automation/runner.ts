@@ -37,6 +37,27 @@ type RunAgentTurnArgs = {
   spriteName?: string;
 };
 
+const BUILTIN_ENSURE_CACHE_TTL_MS = 5 * 60 * 1000;
+let builtinEnsurePromise: Promise<void> | null = null;
+let builtinEnsureSucceededAt = 0;
+
+const ensureBuiltins = async (ctx: ActionCtx) => {
+  const now = Date.now();
+  if (now - builtinEnsureSucceededAt < BUILTIN_ENSURE_CACHE_TTL_MS) {
+    return;
+  }
+  if (!builtinEnsurePromise) {
+    builtinEnsurePromise = (async () => {
+      await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
+      await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
+      builtinEnsureSucceededAt = Date.now();
+    })().finally(() => {
+      builtinEnsurePromise = null;
+    });
+  }
+  await builtinEnsurePromise;
+};
+
 export async function runAgentTurn({
   ctx,
   conversationId,
@@ -47,8 +68,7 @@ export async function runAgentTurn({
   targetDeviceId,
   spriteName,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
-  await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
-  await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
+  await ensureBuiltins(ctx);
 
   const conversation = await ctx.runQuery(internal.conversations.getById, {
     id: conversationId,

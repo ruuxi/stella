@@ -34,12 +34,15 @@ async function hashDeviceId(
   deviceId: string,
   clientAddressKey?: string,
 ): Promise<string> {
-  const salt = process.env.ANON_DEVICE_ID_HASH_SALT ?? "";
+  const salt = process.env.ANON_DEVICE_ID_HASH_SALT?.trim();
+  if (!salt) {
+    throw new Error("Missing ANON_DEVICE_ID_HASH_SALT");
+  }
   const normalizedAddressKey = normalizeClientAddressKey(clientAddressKey);
   const materialBase = normalizedAddressKey
     ? `${deviceId}|addr:${normalizedAddressKey}`
     : deviceId;
-  const material = salt ? `${salt}:${materialBase}` : materialBase;
+  const material = `${salt}:${materialBase}`;
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(material),

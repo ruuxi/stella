@@ -19,8 +19,13 @@ const BLOCKED_SUFFIXES = [
 
 const IPV6_LITERAL_PATTERN = /^[0-9a-f:]+$/i;
 
-const normalizeHostname = (hostname: string) =>
-  hostname.trim().toLowerCase().replace(/\.+$/, "");
+const normalizeHostname = (hostname: string) => {
+  const normalized = hostname.trim().toLowerCase().replace(/\.+$/, "");
+  if (normalized.startsWith("[") && normalized.endsWith("]")) {
+    return normalized.slice(1, -1);
+  }
+  return normalized;
+};
 
 const parseIpv4 = (hostname: string): [number, number, number, number] | null => {
   const parts = hostname.split(".");
@@ -87,7 +92,7 @@ const isUnsafeIntegrationHostname = (hostname: string) => {
       return true;
     }
     if (normalized.startsWith("::ffff:")) return true;
-    return true;
+    return false;
   }
 
   return false;

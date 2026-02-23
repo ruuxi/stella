@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { httpAction } from "./_generated/server";
+import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
@@ -165,6 +165,7 @@ const rejectDisallowedCorsOrigin = (request: Request): Response | null => {
 };
 
 const WEBHOOK_RATE_WINDOW_MS = 60_000;
+const WEBHOOK_EVENT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const BRIDGE_REPLAY_WINDOW_MS = 5 * 60_000;
 const BRIDGE_MAX_CLOCK_SKEW_SECONDS = 300;
 const BRIDGE_NONCE_MAX_LENGTH = 128;
@@ -237,6 +238,24 @@ const rateLimitResponse = (retryAfterMs: number) =>
       "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
     },
   });
+
+const consumeWebhookDedup = async (
+  ctx: Pick<ActionCtx, "runMutation">,
+  scope: string,
+  key: string | null | undefined,
+): Promise<boolean> => {
+  if (!key || key.trim().length === 0) {
+    return true;
+  }
+  const status = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+    scope: `${scope}_dedup`,
+    key,
+    limit: 1,
+    windowMs: WEBHOOK_EVENT_DEDUP_WINDOW_MS,
+    blockMs: WEBHOOK_EVENT_DEDUP_WINDOW_MS,
+  });
+  return status.allowed;
+};
 
 type ConnectorAttachment = {
   id?: string;
@@ -1007,6 +1026,7 @@ http.route({
 
           if (messagesToSave.length > 1) {
             await ctx.runMutation(internal.data.threads.saveThreadMessages, {
+              ownerId: conversation.ownerId,
               threadId: targetThreadId,
               messages: messagesToSave,
             });
@@ -1861,6 +1881,7 @@ http.route({
     }
 
     let update: {
+      update_id?: number;
       message?: {
         chat?: { id?: number; type?: string };
         from?: { id?: number; first_name?: string; username?: string };
@@ -1899,6 +1920,15 @@ http.route({
       update = await request.json();
     } catch {
       return new Response("Invalid JSON", { status: 400 });
+    }
+
+    const telegramDedupKey =
+      typeof update.update_id === "number"
+        ? `update:${update.update_id}`
+        : undefined;
+    const telegramDedupAllowed = await consumeWebhookDedup(ctx, "telegram", telegramDedupKey);
+    if (!telegramDedupAllowed) {
+      return new Response("OK", { status: 200 });
     }
 
     const message = update.message ?? update.edited_message;
@@ -2112,6 +2142,20 @@ http.route({
       const displayName = user?.global_name ?? user?.username ?? undefined;
       const applicationId = interaction.application_id;
       const interactionToken = interaction.token;
+
+      if (commandName !== "status") {
+        const dedupAllowed = await consumeWebhookDedup(
+          ctx,
+          "discord",
+          `interaction:${interaction.id}`,
+        );
+        if (!dedupAllowed) {
+          return new Response(
+            JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+      }
 
       if (commandName === "status") {
         // Status is fast enough to respond immediately
@@ -2418,6 +2462,7 @@ http.route({
       type?: string;
       challenge?: string;
       team_id?: string;
+      event_id?: string;
       event?: {
         type?: string;
         subtype?: string;
@@ -2473,6 +2518,15 @@ http.route({
     if (payload.type === "event_callback") {
       const event = payload.event;
       if (!event) {
+        return new Response("OK", { status: 200 });
+      }
+
+      const slackDedupAllowed = await consumeWebhookDedup(
+        ctx,
+        "slack",
+        payload.event_id ? `event:${payload.event_id}` : undefined,
+      );
+      if (!slackDedupAllowed) {
         return new Response("OK", { status: 200 });
       }
 
@@ -2699,6 +2753,22 @@ http.route({
           headers: { "Content-Type": "application/json" },
         });
       }
+      const messageDedupKey = event.message?.name
+        ? `message:${spaceName}:${googleUserId}:${event.message.name}`
+        : event.eventTime
+          ? `message:${spaceName}:${googleUserId}:${event.eventTime}`
+          : undefined;
+      const googleMessageDedupAllowed = await consumeWebhookDedup(
+        ctx,
+        "google_chat",
+        messageDedupKey,
+      );
+      if (!googleMessageDedupAllowed) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (!text && attachments.length === 0) {
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -2757,6 +2827,22 @@ http.route({
       );
       const emoji = (event.reaction?.emoji?.unicode ?? "").trim();
       if (!spaceName || !googleUserId || !emoji) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const reactionDedupKey = event.message?.name
+        ? `reaction:${eventType}:${spaceName}:${googleUserId}:${event.message.name}`
+        : event.eventTime
+          ? `reaction:${eventType}:${spaceName}:${googleUserId}:${event.eventTime}`
+          : undefined;
+      const googleReactionDedupAllowed = await consumeWebhookDedup(
+        ctx,
+        "google_chat",
+        reactionDedupKey,
+      );
+      if (!googleReactionDedupAllowed) {
         return new Response(JSON.stringify({}), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -2879,6 +2965,19 @@ http.route({
       activityType === "messagedelete" ||
       activityType === "messagereaction"
     ) {
+      const teamsDedupKey = externalMessageId
+        ? `${activityType}:${conversationId}:${externalMessageId}`
+        : activity.timestamp
+          ? `${activityType}:${conversationId}:${teamsUserId}:${activity.timestamp}`
+          : undefined;
+      const teamsDedupAllowed = await consumeWebhookDedup(ctx, "teams", teamsDedupKey);
+      if (!teamsDedupAllowed) {
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       let kind: "message" | "edit" | "delete" | "reaction";
       let respond: boolean;
       let text = "";
@@ -3057,6 +3156,14 @@ http.route({
     }
 
     const incomingChatId = envelope.data?.chat?.id ?? "";
+    const linqMessageId = envelope.data?.message?.id;
+    const linqDedupKey = linqMessageId
+      ? `${senderPhone}:${incomingChatId}:${linqMessageId}`
+      : undefined;
+    const linqDedupAllowed = await consumeWebhookDedup(ctx, "linq", linqDedupKey);
+    if (!linqDedupAllowed) {
+      return new Response("OK", { status: 200 });
+    }
 
     // Rate limit
     const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
@@ -3317,6 +3424,16 @@ http.route({
       const effectiveText = text || fallbackText;
 
       if (!payload.externalUserId || !effectiveText) {
+        return new Response("OK", { status: 200 });
+      }
+      const bridgeDedupAllowed = await consumeWebhookDedup(
+        ctx,
+        "bridge",
+        payload.externalMessageId
+          ? `${payload.ownerId}:${payload.provider}:${payload.externalUserId}:${kind}:${payload.externalMessageId}`
+          : undefined,
+      );
+      if (!bridgeDedupAllowed) {
         return new Response("OK", { status: 200 });
       }
 
