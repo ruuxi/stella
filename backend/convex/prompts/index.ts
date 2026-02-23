@@ -19,3 +19,8 @@ export {
   SKILL_SELECTION_PROMPT,
   buildSkillSelectionUserMessage,
 } from "./skill_selection";
+export {
+  PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
+  buildPersonalizedDashboardPageUserMessage,
+} from "./personalized_dashboard";
+export type { PersonalizedDashboardPageAssignment } from "./personalized_dashboard";

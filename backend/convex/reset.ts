@@ -164,6 +164,16 @@ export const _deleteOwnerBatch = internalMutation({
       totalDeleted++;
     }
 
+    // Dashboard pages
+    const dashboardPages = await ctx.db
+      .query("dashboard_pages")
+      .withIndex("by_ownerId_and_order", (q) => q.eq("ownerId", ownerId))
+      .take(BATCH);
+    for (const page of dashboardPages) {
+      await ctx.db.delete(page._id);
+      totalDeleted++;
+    }
+
     // Devices
     const devices = await ctx.db
       .query("devices")
