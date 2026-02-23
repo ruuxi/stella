@@ -94,18 +94,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  memory_fact_extraction: {
-    model: "zai/glm-4.7",
-    fallback: "moonshotai/kimi-k2.5",
-    temperature: 1.0,
-    maxOutputTokens: 12096,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
   memory_discovery_fact_extraction: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",

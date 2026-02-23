@@ -14,7 +14,6 @@ import { DISCOVERY_FACT_EXTRACTION_PROMPT } from "../prompts/discovery_facts";
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEDUP_THRESHOLD = 0.9;
 const RECALL_CANDIDATE_LIMIT = 30;
 const RECALL_MAX_SELECTED = 8;
 const HISTORY_CANDIDATE_LIMIT = 30;
@@ -23,7 +22,6 @@ const RERANK_CANDIDATE_TEXT_MAX_CHARS = 500;
 const RECENT_CONTEXT_MESSAGE_LIMIT = 5;
 const RECENT_CONTEXT_MESSAGE_MAX_CHARS = 400;
 const RECENT_CONTEXT_TOTAL_MAX_CHARS = 2_000;
-const MEMORY_FACT_EXTRACTION_MODEL_KEY = "memory_fact_extraction";
 const MEMORY_DISCOVERY_FACT_EXTRACTION_MODEL_KEY = "memory_discovery_fact_extraction";
 const MEMORY_RECALL_RERANK_MODEL_KEY = "memory_recall_rerank";
 const MEMORY_RECALL_QUERY_EMBEDDING_MODEL_KEY = "memory_recall_query_embedding";
@@ -44,15 +42,6 @@ const memoryValidator = v.object({
   accessedAt: v.number(),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
-});
-
-const memoryFactValidator = v.object({
-  content: v.string(),
-});
-
-const factExtractionResultValidator = v.object({
-  facts: v.array(memoryFactValidator),
-  parseOk: v.boolean(),
 });
 
 // ---------------------------------------------------------------------------
@@ -298,17 +287,6 @@ const selectRelevantCandidateIds = async (args: {
 // Prompts
 // ---------------------------------------------------------------------------
 
-const FACT_EXTRACTION_PROMPT = `You extract discrete facts from conversation summaries.
-
-Output valid JSON array:
-[{"content":"..."}]
-
-Rules:
-- Each fact should be a single, self-contained piece of information
-- Be specific and preserve important details (names, versions, paths)
-- Deduplicate within your output
-- Output ONLY the JSON array, nothing else`;
-
 const ADJUDICATION_PROMPT = `You adjudicate a new memory fact against existing similar facts.
 
 Your goal is to decide if the new fact:
@@ -357,23 +335,6 @@ export const parseAdjudicationResponse = (response: string): AdjudicationResult 
   }
   return { action: "new_fact" };
 };
-
-// ---------------------------------------------------------------------------
-// extractFacts (internal action)
-// ---------------------------------------------------------------------------
-
-export const extractFacts = internalAction({
-  args: { summary: v.string(), promptOverride: v.optional(v.string()) },
-  returns: factExtractionResultValidator,
-  handler: async (_ctx, args): Promise<FactExtractionResult> => {
-    const response = await cheapLLM(
-      MEMORY_FACT_EXTRACTION_MODEL_KEY,
-      args.promptOverride ?? FACT_EXTRACTION_PROMPT,
-      args.summary,
-    );
-    return parseFactResponse(response);
-  },
-});
 
 // ---------------------------------------------------------------------------
 // insertMemory (internal mutation)
@@ -477,64 +438,6 @@ export const deleteMemory = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.memoryId);
-    return null;
-  },
-});
-
-// ---------------------------------------------------------------------------
-// ingestSummary (internal action) — extract facts → embed → dedup → insert
-// ---------------------------------------------------------------------------
-
-export const ingestSummary = internalAction({
-  args: {
-    conversationId: v.optional(v.id("conversations")),
-    ownerId: v.string(),
-    events: v.array(v.object({ type: v.string(), text: v.string() })),
-    ingestedThroughTimestamp: v.optional(v.number()),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const markIngested = async () => {
-      if (args.conversationId && typeof args.ingestedThroughTimestamp === "number") {
-        await ctx.runMutation(internal.conversations.patchLastIngestedAt, {
-          conversationId: args.conversationId,
-          lastIngestedAt: args.ingestedThroughTimestamp,
-        });
-      }
-    };
-
-    const summary = args.events
-      .filter((e) => e.text.trim().length > 0)
-      .map((e) => `[${e.type}] ${e.text}`)
-      .join("\n\n");
-
-    if (summary.trim().length === 0) {
-      await markIngested();
-      return null;
-    }
-
-    const { facts, parseOk } = await ctx.runAction(internal.data.memory.extractFacts, {
-      summary,
-    });
-    if (!parseOk || facts.length === 0) {
-      await markIngested();
-      return null;
-    }
-
-    for (const fact of facts) {
-      try {
-        await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
-          ownerId: args.ownerId,
-          conversationId: args.conversationId,
-          content: fact.content,
-          embeddingModelKey: MEMORY_INGEST_EMBEDDING_MODEL_KEY,
-        });
-      } catch (err) {
-        console.error("[memory] ingestSummary: error processing fact", err);
-      }
-    }
-
-    await markIngested();
     return null;
   },
 });
@@ -733,7 +636,7 @@ export const adjudicateAndStoreFact = internalAction({
     embeddingModelKey: v.string(),
   },
   returns: v.string(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<string> => {
     try {
       const vector = await embedText(args.embeddingModelKey, args.content);
       const similar = await ctx.vectorSearch("memories", "by_embedding", {
@@ -817,7 +720,7 @@ export const saveMemory = internalAction({
     conversationId: v.optional(v.id("conversations")),
   },
   returns: v.string(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<string> => {
     return await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
       ownerId: args.ownerId,
       content: args.content,
