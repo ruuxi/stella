@@ -164,6 +164,21 @@ export const buildSystemPrompt = async (
     }
   }
 
+  // Inject core memory (user profile) into system prompt for orchestrator
+  if (agentType === "orchestrator" && options?.ownerId) {
+    try {
+      const coreMemory = await ctx.runQuery(
+        internal.data.preferences.getPreferenceForOwner,
+        { ownerId: options.ownerId, key: "core_memory" },
+      );
+      if (coreMemory) {
+        systemParts.push(`\n\n# User Profile\n${coreMemory}`);
+      }
+    } catch {
+      // Core memory query failed — skip
+    }
+  }
+
   const maxTaskDepthValue = Number(agent.maxTaskDepth ?? 2);
   const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
     ? Math.floor(maxTaskDepthValue)
