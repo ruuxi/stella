@@ -757,8 +757,8 @@ const appendInboundUserMessage = async (args: {
   text: string;
   attachments?: ChannelInboundAttachment[];
   channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
-}): Promise<void> => {
-  await args.ctx.runMutation(internal.events.appendInternalEvent, {
+}): Promise<Id<"events"> | null> => {
+  const event = await args.ctx.runMutation(internal.events.appendInternalEvent, {
     conversationId: args.conversationId,
     type: "user_message",
     deviceId: `channel:${args.provider}`,
@@ -771,6 +771,7 @@ const appendInboundUserMessage = async (args: {
     },
     channelEnvelope: args.channelEnvelope,
   });
+  return event?._id ?? null;
 };
 
 const resolveExecutionTarget = async (args: {
@@ -837,7 +838,7 @@ export async function processIncomingMessage(
     groupId: args.groupId,
   });
 
-  await appendInboundUserMessage({
+  const userMessageId = await appendInboundUserMessage({
     ctx: args.ctx,
     conversationId,
     provider: args.provider,
@@ -861,6 +862,7 @@ export async function processIncomingMessage(
     prompt: args.text,
     agentType: "orchestrator",
     ownerId: connection.ownerId,
+    userMessageId: userMessageId ?? undefined,
     targetDeviceId: executionTarget.targetDeviceId ?? undefined,
     spriteName: executionTarget.spriteName ?? undefined,
   });

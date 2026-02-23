@@ -3,15 +3,18 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "../agent/prompt_builder";
-import { eventsToHistoryMessages } from "../agent/history_messages";
 import {
   AUTOMATION_HISTORY_MAX_TOKENS,
-  computeAutoCompactionThresholdTokens,
 } from "../agent/context_budget";
 import { normalizeOptionalInt } from "../lib/number_utils";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
 import { withModelFailover } from "../agent/model_failover";
+import {
+  finalizeOrchestratorTurn,
+  prepareOrchestratorTurn,
+  toUsageSummary,
+} from "../agent/orchestrator_turn";
 
 export type RunAgentTurnResult = {
   text: string;
@@ -29,6 +32,7 @@ type RunAgentTurnArgs = {
   prompt: string;
   agentType: string;
   ownerId?: string;
+  userMessageId?: Id<"events">;
   targetDeviceId?: string;
   spriteName?: string;
 };
@@ -39,6 +43,7 @@ export async function runAgentTurn({
   prompt,
   agentType,
   ownerId,
+  userMessageId,
   targetDeviceId,
   spriteName,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
@@ -53,12 +58,66 @@ export async function runAgentTurn({
   }
 
   const resolvedOwnerId = ownerId ?? conversation.ownerId;
-  const promptBuild = await buildSystemPrompt(ctx, agentType, {
-    ownerId: resolvedOwnerId,
-    conversationId,
-  });
   const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
   const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId).catch(() => null);
+  let promptBuild: Awaited<ReturnType<typeof buildSystemPrompt>>;
+  let requestMessages: any[];
+  let orchestratorTurn: Awaited<ReturnType<typeof prepareOrchestratorTurn>> | null = null;
+
+  if (agentType === "orchestrator") {
+    let historyBeforeTimestamp: number | undefined;
+    let historyExcludeEventId: Id<"events"> | undefined;
+    if (userMessageId) {
+      const userEvent = await ctx.runQuery(internal.events.getById, { id: userMessageId });
+      if (
+        userEvent &&
+        userEvent.type === "user_message" &&
+        userEvent.conversationId === conversationId
+      ) {
+        historyBeforeTimestamp = userEvent.timestamp;
+        historyExcludeEventId = userMessageId;
+      }
+    }
+
+    orchestratorTurn = await prepareOrchestratorTurn(ctx, {
+      conversation,
+      conversationId,
+      ownerId: resolvedOwnerId,
+      userPayload: {
+        kind: "task_delivery",
+        text: prompt,
+      },
+      history: {
+        enabled: true,
+        maxTokens: normalizeOptionalInt({
+          value: AUTOMATION_HISTORY_MAX_TOKENS,
+          defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
+          min: 1,
+          max: 120_000,
+        }),
+        beforeTimestamp: historyBeforeTimestamp,
+        excludeEventId: historyExcludeEventId,
+        microcompact: {
+          trigger: "auto",
+          modelForWarningThreshold:
+            typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
+        },
+      },
+    });
+    promptBuild = orchestratorTurn.promptBuild;
+    requestMessages = orchestratorTurn.messages as any[];
+  } else {
+    promptBuild = await buildSystemPrompt(ctx, agentType, {
+      ownerId: resolvedOwnerId,
+      conversationId,
+    });
+    requestMessages = [
+      {
+        role: "user" as const,
+        content: [{ type: "text" as const, text: prompt.trim() || " " }],
+      },
+    ];
+  }
 
   const tools = createTools(
     ctx,
@@ -80,42 +139,6 @@ export async function runAgentTurn({
     },
   );
 
-  const historyEvents = agentType === "orchestrator"
-    ? await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
-        conversationId,
-        maxTokens: normalizeOptionalInt({
-          value: AUTOMATION_HISTORY_MAX_TOKENS,
-          defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
-          min: 1,
-          max: 120_000,
-        }),
-      })
-    : [];
-
-  const historyBuild = eventsToHistoryMessages(historyEvents ?? [], {
-    microcompact: {
-      trigger: "auto",
-      warningThresholdTokens: computeAutoCompactionThresholdTokens(
-        typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
-      ),
-    },
-  });
-  const historyMessages = historyBuild.messages;
-  if (historyBuild.microcompactBoundary) {
-    try {
-      await ctx.runMutation(internal.events.appendInternalEvent, {
-        conversationId,
-        type: "microcompact_boundary",
-        payload: {
-          ...historyBuild.microcompactBoundary,
-          agentType,
-        },
-      });
-    } catch {
-      // Best effort: microcompact tracking should not block automation turns.
-    }
-  }
-
   let usageSummary:
     | {
         inputTokens?: number;
@@ -128,32 +151,14 @@ export async function runAgentTurn({
   const runnerSharedArgs = {
     system: promptBuild.systemPrompt,
     tools,
-    messages: [
-      ...historyMessages,
-      {
-        role: "user" as const,
-        content: [{ type: "text" as const, text: prompt.trim() || " " }],
-      },
-    ],
+    messages: requestMessages,
     onStepFinish: ({ toolCalls }: { toolCalls?: Array<{ toolName: string }> }) => {
       if (toolCalls?.some((tc: { toolName: string }) => tc.toolName === "NoResponse")) {
         noResponseCalled = true;
       }
     },
     onFinish: ({ usage, totalUsage }: { usage: any; totalUsage: any }) => {
-      const usageTotals = totalUsage ?? usage;
-      const hasUsage =
-        usageTotals &&
-        (typeof usageTotals.inputTokens === "number" ||
-          typeof usageTotals.outputTokens === "number" ||
-          typeof usageTotals.totalTokens === "number");
-      usageSummary = hasUsage
-        ? {
-            inputTokens: usageTotals.inputTokens,
-            outputTokens: usageTotals.outputTokens,
-            totalTokens: usageTotals.totalTokens,
-          }
-        : undefined;
+      usageSummary = toUsageSummary(totalUsage ?? usage);
     },
   };
 
@@ -166,6 +171,22 @@ export async function runAgentTurn({
   );
 
   const text = await result.text;
+  if (agentType === "orchestrator" && orchestratorTurn) {
+    const response = await result.response;
+    await finalizeOrchestratorTurn(ctx, {
+      conversationId,
+      ownerId: resolvedOwnerId,
+      userMessageId,
+      activeThreadId: orchestratorTurn.activeThreadId,
+      threadUserMessage: orchestratorTurn.threadUserMessage,
+      responseMessages: response?.messages,
+      assistantText: text,
+      usage: usageSummary,
+      saveAssistantMessage: false,
+      scheduleSuggestions: false,
+      reminderState: orchestratorTurn.reminderState,
+    });
+  }
 
   // Fire afterChat hook asynchronously for usage logging + token tracking
   await ctx.scheduler.runAfter(0, internal.agent.hooks.logUsageAsync, {
