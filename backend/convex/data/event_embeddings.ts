@@ -14,7 +14,6 @@ const eventEmbeddingValidator = v.object({
   _creationTime: v.number(),
   ownerId: v.string(),
   conversationId: v.id("conversations"),
-  sessionId: v.id("conversation_sessions"),
   eventId: v.id("events"),
   type: v.union(v.literal("user_message"), v.literal("assistant_message")),
   content: v.string(),
@@ -61,7 +60,6 @@ export const upsertEventEmbedding = internalMutation({
   args: {
     ownerId: v.string(),
     conversationId: v.id("conversations"),
-    sessionId: v.id("conversation_sessions"),
     eventId: v.id("events"),
     type: v.union(v.literal("user_message"), v.literal("assistant_message")),
     content: v.string(),
@@ -79,7 +77,6 @@ export const upsertEventEmbedding = internalMutation({
       await ctx.db.patch(existing._id, {
         ownerId: args.ownerId,
         conversationId: args.conversationId,
-        sessionId: args.sessionId,
         type: args.type,
         content: args.content,
         timestamp: args.timestamp,
@@ -91,7 +88,6 @@ export const upsertEventEmbedding = internalMutation({
     return await ctx.db.insert("event_embeddings", {
       ownerId: args.ownerId,
       conversationId: args.conversationId,
-      sessionId: args.sessionId,
       eventId: args.eventId,
       type: args.type,
       content: args.content,
@@ -139,7 +135,6 @@ export const indexEventForSemanticSearch = internalAction({
     await ctx.runMutation(internal.data.event_embeddings.upsertEventEmbedding, {
       ownerId: conversation.ownerId,
       conversationId: event.conversationId,
-      sessionId: event.sessionId as Id<"conversation_sessions">,
       eventId: event._id as Id<"events">,
       type: event.type,
       content: text,

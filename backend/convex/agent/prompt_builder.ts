@@ -122,8 +122,9 @@ export const buildSystemPrompt = async (
       const activeThreads = await ctx.runQuery(internal.data.threads.listActiveThreads, {
         conversationId: options.conversationId,
       });
-      if (activeThreads.length > 0) {
-        const visibleThreads = activeThreads.slice(0, MAX_ACTIVE_THREADS_IN_PROMPT);
+      const subagentThreads = activeThreads.filter(t => t.name !== "Main");
+      if (subagentThreads.length > 0) {
+        const visibleThreads = subagentThreads.slice(0, MAX_ACTIVE_THREADS_IN_PROMPT);
         const lines = visibleThreads.map((t) => {
           const ageMs = Date.now() - t.lastUsedAt;
           const age = ageMs < 60_000 ? "just now"
@@ -132,9 +133,9 @@ export const buildSystemPrompt = async (
             : `${Math.floor(ageMs / 86_400_000)}d ago`;
           return `- **${t.name}** (id: ${t._id}) — ${t.messageCount} msgs, last used ${age}`;
         });
-        if (activeThreads.length > visibleThreads.length) {
+        if (subagentThreads.length > visibleThreads.length) {
           lines.push(
-            `- ...and ${activeThreads.length - visibleThreads.length} more active thread(s). Use thread_name to reuse by name.`,
+            `- ...and ${subagentThreads.length - visibleThreads.length} more active thread(s). Use thread_name to reuse by name.`,
           );
         }
         dynamicParts.push(
@@ -143,55 +144,6 @@ export const buildSystemPrompt = async (
       }
     } catch {
       // Thread query failed — skip
-    }
-  }
-
-  // Inject prior-session compaction context for orchestrator
-  if (agentType === "orchestrator" && options?.conversationId) {
-    try {
-      const notice = await ctx.runQuery(
-        internal.conversations.getSessionCompactionNotice,
-        { conversationId: options.conversationId },
-      );
-      if (notice?.previousSessionId) {
-        const previousSessionLine =
-          `Previous session compacted (session #${notice.previousSessionNumber}, id: ${notice.previousSessionId}).`;
-        if (notice.compactionStatus === "ready" && notice.compactionSummary?.trim()) {
-          const rawSummary = notice.compactionSummary.trim();
-          const summary =
-            rawSummary.length > MAX_COMPACTION_SUMMARY_CHARS
-              ? `${rawSummary.slice(0, MAX_COMPACTION_SUMMARY_CHARS - 3)}...`
-              : rawSummary;
-          dynamicParts.push(
-            [
-              "# Prior Session",
-              previousSessionLine,
-              `Summary:\n${summary}`,
-              "Older events have fallen out of the active window. Use RecallMemories(query, source: \"history\") to search them.",
-            ].join("\n\n"),
-          );
-        } else if (notice.compactionStatus === "error") {
-          dynamicParts.push(
-            [
-              "# Prior Session",
-              previousSessionLine,
-              `Compaction summary generation failed: ${notice.compactionError ?? "unknown error"}.`,
-              "Older events have fallen out of the active window. Use RecallMemories(query, source: \"history\") to search them.",
-            ].join("\n\n"),
-          );
-        } else {
-          dynamicParts.push(
-            [
-              "# Prior Session",
-              previousSessionLine,
-              "Compaction summary is still being generated.",
-              "Older events have fallen out of the active window. Use RecallMemories(query, source: \"history\") to search them.",
-            ].join("\n\n"),
-          );
-        }
-      }
-    } catch {
-      // Compaction notice query failed - skip
     }
   }
 

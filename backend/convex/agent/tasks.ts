@@ -23,7 +23,6 @@ import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import { withModelFailoverAsync } from "./model_failover";
 import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
-import { resolveActiveConversationSession } from "../lib/orchestrator_sessions";
 
 const taskValidator = v.object({
   _id: v.id("tasks"),
@@ -1209,10 +1208,8 @@ export const pushStatusUpdate = internalMutation({
     });
 
     // Emit a lightweight event so the frontend can pick up progress
-    const { session } = await resolveActiveConversationSession(ctx, task.conversationId);
     await ctx.db.insert("events", {
       conversationId: task.conversationId,
-      sessionId: session._id,
       type: "task_progress",
       payload: {
         taskId: args.taskId as string,
@@ -1441,6 +1438,13 @@ export const runSubagent = internalAction({
     if (threadSupported) {
       if (args.threadId) {
         // Verify thread exists and reactivate if it was idle/archived.
+        const threadRecord = await ctx.runQuery(internal.data.threads.getThreadById, {
+          threadId: args.threadId as Id<"threads">,
+        });
+        if (threadRecord?.name === "Main") {
+          return `Task denied.\nReason: The 'Main' thread is reserved for the orchestrator and cannot be used by subagents.`;
+        }
+        
         const activated = await ctx.runMutation(internal.data.threads.activateThread, {
           threadId: args.threadId as Id<"threads">,
         });
@@ -1449,6 +1453,10 @@ export const runSubagent = internalAction({
         }
         // If thread not found, proceed without thread context.
       } else if (args.threadName) {
+        if (args.threadName.toLowerCase() === "main") {
+          return `Task denied.\nReason: The 'Main' thread is reserved for the orchestrator and cannot be used by subagents. Please choose a different thread name.`;
+        }
+        
         // Look up existing thread by name and reactivate it, or create new one.
         const existing = await ctx.runQuery(internal.data.threads.getThreadByName, {
           conversationId: args.conversationId,
