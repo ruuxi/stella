@@ -4,7 +4,7 @@
  */
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
 import { useWorkspace } from "../../app/state/workspace-state";
 import { useTheme } from "../../theme/theme-context";
@@ -31,6 +31,7 @@ import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
+import type { PersonalizedDashboardPage, PersonalizedDashboardPageList } from "../../types/personalized-dashboard";
 
 const SettingsDialog = lazy(() => import("./SettingsView"));
 
@@ -148,6 +149,13 @@ export const FullShell = () => {
 
   const events = useConversationEvents(activeConversationId ?? undefined);
   useCanvasCommands(events);
+  const retryPersonalPage = useAction(api.personalized_dashboard.retryPage);
+
+  const personalizedPageState = useQuery(
+    api.personalized_dashboard.listPages,
+    onboarding.isAuthenticated ? {} : "skip",
+  ) as PersonalizedDashboardPageList | undefined;
+  const personalPages = personalizedPageState?.pages ?? [];
 
   // Restore saved canvas state when switching conversations
   const savedCanvasCloudState = useQuery(
@@ -246,6 +254,30 @@ export const FullShell = () => {
     [sendMessage],
   );
 
+  const handlePersonalPageSelect = useCallback(
+    (page: PersonalizedDashboardPage) => {
+      setView("chat");
+      openCanvas({
+        name: page.panelName,
+        title: page.title,
+      });
+    },
+    [openCanvas, setView],
+  );
+
+  const handleRetryPersonalPage = useCallback(
+    (pageId: string) => {
+      if (!activeConversationId) return;
+      void retryPersonalPage({
+        conversationId: activeConversationId,
+        pageId,
+      }).catch(() => {
+        // Silent fail - workspace surface already shows failure state
+      });
+    },
+    [activeConversationId, retryPersonalPage],
+  );
+
   // Listen for custom events from the dashboard panel (suggestion clicks)
   useEffect(() => {
     const handler = (e: Event) => {
@@ -293,6 +325,10 @@ export const FullShell = () => {
               onStore={() => setView(state.view === 'store' ? 'chat' : 'store')}
               onHome={() => setView('chat')}
               storeActive={state.view === 'store'}
+              personalPages={personalPages}
+              personalPagesLoading={Boolean(personalizedPageState?.hasRunning)}
+              activePersonalPanelName={workspaceState.canvas?.name ?? null}
+              onPersonalPageSelect={handlePersonalPageSelect}
             />
 
             <WorkspaceArea
@@ -306,6 +342,8 @@ export const FullShell = () => {
                 setView("chat");
                 setMessage(text);
               }}
+              personalPages={personalPages}
+              onRetryPersonalPage={handleRetryPersonalPage}
             />
 
             <ChatPanel>
