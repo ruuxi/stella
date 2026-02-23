@@ -11,10 +11,11 @@ import { generateText } from "ai";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
+import { buildOrchestratorPromptContext } from "./orchestrator_prompt_context";
 import {
-  computeAutoCompactionThresholdTokens,
-  computeCompactionTriggerTokens,
   isAutoCompactionEnabled,
+  ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
+  SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
   SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
 } from "./context_budget";
 import type { DeviceToolContext } from "./device_tools";
@@ -836,10 +837,10 @@ const executeSubagentRun = async (
         const currentThread = await ctx.runQuery(internal.data.threads.getThreadById, {
           threadId: args.threadId,
         });
-        const autoCompactThresholdTokens = computeAutoCompactionThresholdTokens(
-          typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
-        );
-        if ((currentThread?.totalTokenEstimate ?? 0) >= autoCompactThresholdTokens) {
+        if (
+          (currentThread?.totalTokenEstimate ?? 0) >=
+            SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS
+        ) {
           await ctx.runAction(internal.data.threads.compactThread, {
             threadId: args.threadId,
           });
@@ -879,12 +880,6 @@ const executeSubagentRun = async (
       } catch {
         // Command lookup failed — proceed without instructions
       }
-    }
-    if (promptBuild.dynamicContext) {
-      promptContent.push({
-        type: "text" as const,
-        text: `\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`,
-      });
     }
     messages.push({ role: "user" as const, content: promptContent });
 
@@ -1004,19 +999,12 @@ const executeSubagentRun = async (
           messages: messagesToSave,
         });
 
-        // Check if compaction is needed using token-pressure thresholds.
-        const inputTokens = result.usage?.inputTokens ?? 0;
+        // Check if compaction is needed based on subagent thread budget.
         const updatedThread = await ctx.runQuery(internal.data.threads.getThreadById, {
           threadId: args.threadId,
         });
         const threadTokens = updatedThread?.totalTokenEstimate ?? 0;
-        const compactionTriggerTokens = computeCompactionTriggerTokens(
-          typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
-        );
-        if (
-          inputTokens > compactionTriggerTokens ||
-          threadTokens > compactionTriggerTokens
-        ) {
+        if (threadTokens >= SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS) {
           await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
             threadId: args.threadId,
           });
@@ -1072,6 +1060,7 @@ const executeSubagentRun = async (
         try {
           await ctx.runAction(internal.data.threads.compactThread, {
             threadId: args.threadId,
+            force: true,
           });
         } catch {
           // Best effort; continue retry even if compaction fails.
@@ -1696,6 +1685,19 @@ export const deliverTaskResult = internalAction({
       "orchestrator",
       args.ownerId,
     ).catch(() => null);
+    const activeThreadId = await ctx.runQuery(internal.conversations.getActiveThreadId, {
+      conversationId: args.conversationId,
+    });
+
+    const orchestratorContext = await buildOrchestratorPromptContext(ctx, {
+      conversation,
+      activeThreadId,
+      dynamicContext: promptBuild.dynamicContext,
+    });
+    const deliveryUserContent = orchestratorContext.shouldInjectDynamicReminder &&
+      orchestratorContext.reminderText
+      ? `${deliveryMessage}\n\n<system-context>\n${orchestratorContext.reminderText}\n</system-context>`
+      : deliveryMessage;
 
     try {
       const deliverySharedArgs = {
@@ -1711,11 +1713,10 @@ export const deliverTaskResult = internalAction({
           spriteName: args.spriteName,
         }),
         messages: [
+          ...orchestratorContext.summaryPair,
           {
             role: "user" as const,
-            content: promptBuild.dynamicContext
-              ? `${deliveryMessage}\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`
-              : deliveryMessage,
+            content: deliveryUserContent,
           },
         ],
       };
@@ -1731,10 +1732,6 @@ export const deliverTaskResult = internalAction({
         (step: { toolCalls?: Array<{ toolName: string }> }) =>
           step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
       );
-
-      const activeThreadId = await ctx.runQuery(internal.conversations.getActiveThreadId, { 
-        conversationId: args.conversationId 
-      });
 
       if (activeThreadId) {
         const messagesToSave: Array<{
@@ -1770,9 +1767,18 @@ export const deliverTaskResult = internalAction({
             threadId: activeThreadId,
             messages: messagesToSave,
           });
-          await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+
+          const updatedThread = await ctx.runQuery(internal.data.threads.getThreadById, {
             threadId: activeThreadId,
           });
+          if (
+            (updatedThread?.totalTokenEstimate ?? 0) >=
+            ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS
+          ) {
+            await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+              threadId: activeThreadId,
+            });
+          }
         }
       }
 
@@ -1800,6 +1806,17 @@ export const deliverTaskResult = internalAction({
         } catch {
           // best-effort
         }
+      }
+      if (
+        orchestratorContext.shouldInjectDynamicReminder &&
+        orchestratorContext.reminderHash &&
+        activeThreadId
+      ) {
+        await ctx.runMutation(internal.conversations.markOrchestratorReminderSeen, {
+          conversationId: args.conversationId,
+          threadId: activeThreadId,
+          reminderHash: orchestratorContext.reminderHash,
+        });
       }
     } catch (error) {
       console.error("deliverTaskResult failed:", (error as Error).message);

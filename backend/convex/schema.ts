@@ -59,6 +59,8 @@ export default defineSchema({
     title: v.optional(v.string()),
     isDefault: v.boolean(),
     activeThreadId: v.optional(v.id("threads")),
+    orchestratorReminderHash: v.optional(v.string()),
+    orchestratorReminderThreadId: v.optional(v.id("threads")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

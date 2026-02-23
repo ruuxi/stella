@@ -4,9 +4,12 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./agent/prompt_builder";
+import { buildOrchestratorPromptContext } from "./agent/orchestrator_prompt_context";
 import { eventsToHistoryMessages } from "./agent/history_messages";
 import {
   computeAutoCompactionThresholdTokens,
+  ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
+  SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
 } from "./agent/context_budget";
 import { createTools } from "./tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./agent/model_resolver";
@@ -802,15 +805,6 @@ http.route({
     const targetThreadId = activeThreadId;
 
     let summaryPair: Array<{ role: "user" | "assistant"; content: string }> = [];
-    if (agentType === "orchestrator" && activeThreadId) {
-      const thread = await ctx.runQuery(internal.data.threads.getThreadById, { threadId: activeThreadId });
-      if (thread?.summary) {
-        summaryPair = [
-          { role: "user" as const, content: `[Thread context - prior work summary]\n${thread.summary}` },
-          { role: "assistant" as const, content: "Understood. I have the context from previous work." },
-        ];
-      }
-    }
 
     const historyBuild = eventsToHistoryMessages(historyEvents, {
       microcompact: {
@@ -838,6 +832,17 @@ http.route({
 
     // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);
+    const orchestratorContext = agentType === "orchestrator"
+      ? await buildOrchestratorPromptContext(ctx, {
+          conversation,
+          activeThreadId,
+          dynamicContext: promptBuild.dynamicContext,
+          extraReminderText: platformGuidance,
+        })
+      : null;
+    if (orchestratorContext) {
+      summaryPair = orchestratorContext.summaryPair;
+    }
 
     const contentParts: Array<
       { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }
@@ -861,11 +866,20 @@ http.route({
       contentParts.push({ type: "text", text: " " });
     }
 
-    // Inject dynamic context + platform guidance into last user message (not system prompt)
-    // This keeps the system prompt stable across turns for prompt caching.
+    // Inject dynamic context + platform guidance into last user message (not system prompt).
+    // For orchestrator, only inject reminders when changed or after thread rollover.
     const contextParts: string[] = [];
-    if (promptBuild.dynamicContext) contextParts.push(promptBuild.dynamicContext);
-    if (platformGuidance) contextParts.push(platformGuidance);
+    if (agentType === "orchestrator") {
+      if (
+        orchestratorContext?.shouldInjectDynamicReminder &&
+        orchestratorContext.reminderText
+      ) {
+        contextParts.push(orchestratorContext.reminderText);
+      }
+    } else {
+      if (promptBuild.dynamicContext) contextParts.push(promptBuild.dynamicContext);
+      if (platformGuidance) contextParts.push(platformGuidance);
+    }
     if (contextParts.length > 0) {
       contentParts.push({
         type: "text",
@@ -942,6 +956,18 @@ http.route({
             usage: usageSummary,
           });
         }
+        if (
+          agentType === "orchestrator" &&
+          orchestratorContext?.shouldInjectDynamicReminder &&
+          orchestratorContext.reminderHash &&
+          activeThreadId
+        ) {
+          await ctx.runMutation(internal.conversations.markOrchestratorReminderSeen, {
+            conversationId,
+            threadId: activeThreadId,
+            reminderHash: orchestratorContext.reminderHash,
+          });
+        }
 
         const finishTotalTokens = (totalUsage ?? usage)?.totalTokens ?? 0;
         
@@ -979,9 +1005,21 @@ http.route({
               threadId: activeThreadId,
               messages: messagesToSave,
             });
-            await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+
+            const updatedThread = await ctx.runQuery(internal.data.threads.getThreadById, {
               threadId: activeThreadId,
             });
+            const compactionThresholdTokens = agentType === "orchestrator"
+              ? ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS
+              : SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS;
+            if (
+              (updatedThread?.totalTokenEstimate ?? 0) >=
+              compactionThresholdTokens
+            ) {
+              await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+                threadId: activeThreadId,
+              });
+            }
           }
         }
 
