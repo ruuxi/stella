@@ -919,7 +919,7 @@ http.route({
         },
       ],
       abortSignal: request.signal,
-      onFinish: async ({ text, usage, totalUsage }: { text: string; usage: any; totalUsage: any }) => {
+      onFinish: async ({ text, usage, totalUsage, response }: { text: string; usage: any; totalUsage: any; response: any }) => {
         if (text.trim().length > 0) {
           const usageTotals = totalUsage ?? usage;
           const hasUsage =
@@ -934,21 +934,50 @@ http.route({
                 totalTokens: usageTotals.totalTokens,
               }
             : undefined;
-          const finishTotalTokens = (totalUsage ?? usage)?.totalTokens ?? 0;
+          
           await ctx.runMutation(internal.events.saveAssistantMessage, {
             conversationId,
             text,
             userMessageId,
             usage: usageSummary,
           });
+        }
 
-          if (activeThreadId) {
+        const finishTotalTokens = (totalUsage ?? usage)?.totalTokens ?? 0;
+        
+        if (activeThreadId) {
+          const messagesToSave: Array<{
+            role: string;
+            content: string;
+            toolCallId?: string;
+            tokenEstimate?: number;
+          }> = [
+            { role: "user", content: userText },
+          ];
+
+          if (response?.messages) {
+            for (const msg of response.messages) {
+              const rawToolCallId = (msg as { toolCallId?: unknown }).toolCallId;
+              const toolCallId = typeof rawToolCallId === "string" 
+                ? rawToolCallId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) 
+                : undefined;
+              
+              messagesToSave.push({
+                role: msg.role,
+                content: JSON.stringify({
+                  role: msg.role,
+                  content: msg.content,
+                  ...(toolCallId ? { toolCallId } : {}),
+                }),
+                ...(toolCallId ? { toolCallId } : {}),
+              });
+            }
+          }
+
+          if (messagesToSave.length > 1) {
             await ctx.runMutation(internal.data.threads.saveThreadMessages, {
               threadId: activeThreadId,
-              messages: [
-                { role: "user", content: userText },
-                { role: "assistant", content: text, tokenEstimate: finishTotalTokens },
-              ],
+              messages: messagesToSave,
             });
             await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
               threadId: activeThreadId,

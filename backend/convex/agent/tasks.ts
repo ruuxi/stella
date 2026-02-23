@@ -1732,6 +1732,50 @@ export const deliverTaskResult = internalAction({
           step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
       );
 
+      const activeThreadId = await ctx.runQuery(internal.conversations.getActiveThreadId, { 
+        conversationId: args.conversationId 
+      });
+
+      if (activeThreadId) {
+        const messagesToSave: Array<{
+          role: string;
+          content: string;
+          toolCallId?: string;
+          tokenEstimate?: number;
+        }> = [
+          { role: "user", content: deliveryMessage },
+        ];
+
+        if (genResult.response?.messages) {
+          for (const msg of genResult.response.messages) {
+            const rawToolCallId = (msg as { toolCallId?: unknown }).toolCallId;
+            const toolCallId = typeof rawToolCallId === "string" 
+              ? rawToolCallId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) 
+              : undefined;
+            
+            messagesToSave.push({
+              role: msg.role,
+              content: JSON.stringify({
+                role: msg.role,
+                content: msg.content,
+                ...(toolCallId ? { toolCallId } : {}),
+              }),
+              ...(toolCallId ? { toolCallId } : {}),
+            });
+          }
+        }
+
+        if (messagesToSave.length > 1) {
+          await ctx.runMutation(internal.data.threads.saveThreadMessages, {
+            threadId: activeThreadId,
+            messages: messagesToSave,
+          });
+          await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+            threadId: activeThreadId,
+          });
+        }
+      }
+
       const text = genResult.text?.trim() ?? "";
       if (text.length > 0 && !noResponseCalled) {
         await ctx.runMutation(internal.events.saveAssistantMessage, {
