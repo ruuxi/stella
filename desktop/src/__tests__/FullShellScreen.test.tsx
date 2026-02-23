@@ -89,6 +89,11 @@ vi.mock("@/convex/api", () => ({
         getForConversation: "canvas_states:getForConversation",
       },
     },
+    personalized_dashboard: {
+      listPages: "personalized_dashboard:listPages",
+      retryPage: "personalized_dashboard:retryPage",
+      startGeneration: "personalized_dashboard:startGeneration",
+    },
   },
 }));
 

@@ -8,6 +8,7 @@ import { useWorkspace, type CanvasPayload } from '@/app/state/workspace-state'
 import { Spinner } from '@/components/spinner'
 import type { OnboardingDemo } from '@/components/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/types/ui'
+import type { PersonalizedDashboardPage } from '@/types/personalized-dashboard'
 
 const PanelRenderer = lazy(() => import('@/components/canvas/renderers/panel'))
 const AppframeRenderer = lazy(() => import('@/components/canvas/renderers/appframe'))
@@ -37,6 +38,8 @@ type WorkspaceAreaProps = {
   demoClosing: boolean
   onStoreBack: () => void
   onComposePrompt: (text: string) => void
+  personalPages?: PersonalizedDashboardPage[]
+  onRetryPersonalPage?: (pageId: string) => void
 }
 
 export function WorkspaceArea({
@@ -47,9 +50,14 @@ export function WorkspaceArea({
   demoClosing,
   onStoreBack,
   onComposePrompt,
+  personalPages = [],
+  onRetryPersonalPage,
 }: WorkspaceAreaProps) {
   const { state, openCanvas, closeCanvas } = useWorkspace()
   const { canvas } = state
+  const activePersonalPage = canvas
+    ? personalPages.find((page) => page.panelName === canvas.name)
+    : undefined
 
   // --- Dashboard auto-open logic (moved from FullShell) ---
   const isDashboardCanvas = canvas?.name === 'dashboard'
@@ -114,16 +122,28 @@ export function WorkspaceArea({
 
   // Canvas content (non-dashboard shows header with close button)
   if (canvas && !isDashboardCanvas) {
+    const showPersonalPagePlaceholder =
+      Boolean(activePersonalPage) &&
+      activePersonalPage?.status !== 'ready' &&
+      !canvas.url
+
     return (
       <div className="workspace-area">
         <CanvasHeader canvas={canvas} onClose={handleCloseCanvas} />
         <div className="workspace-content">
-          <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
-            {canvas.url
-              ? <AppframeRenderer canvas={canvas} />
-              : <PanelRenderer canvas={canvas} />
-            }
-          </Suspense>
+          {showPersonalPagePlaceholder ? (
+            <PersonalPagePlaceholder
+              page={activePersonalPage!}
+              onRetry={onRetryPersonalPage}
+            />
+          ) : (
+            <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
+              {canvas.url
+                ? <AppframeRenderer canvas={canvas} />
+                : <PanelRenderer canvas={canvas} />
+              }
+            </Suspense>
+          )}
         </div>
       </div>
     )
@@ -173,6 +193,41 @@ function CanvasHeader({ canvas, onClose }: { canvas: CanvasPayload; onClose: () 
           <path d="M18 6L6 18M6 6l12 12" />
         </svg>
       </button>
+    </div>
+  )
+}
+
+function PersonalPagePlaceholder({
+  page,
+  onRetry,
+}: {
+  page: PersonalizedDashboardPage
+  onRetry?: (pageId: string) => void
+}) {
+  const isLoading = page.status === 'queued' || page.status === 'running'
+  const description = isLoading
+    ? page.statusText ?? 'Building this page in the background.'
+    : page.lastError ?? 'Stella could not finish generating this page.'
+
+  return (
+    <div className="workspace-placeholder">
+      {isLoading ? <Spinner size="md" /> : null}
+      <div className="workspace-placeholder-title">
+        {isLoading ? `${page.title} is being generated` : `${page.title} failed to generate`}
+      </div>
+      <div className="workspace-placeholder-description">
+        {description}
+      </div>
+      {!isLoading && onRetry && (
+        <button
+          type="button"
+          className="workspace-placeholder-retry"
+          onClick={() => onRetry(page.pageId)}
+          aria-label={`Retry ${page.title}`}
+        >
+          Retry generation
+        </button>
+      )}
     </div>
   )
 }
