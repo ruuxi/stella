@@ -196,6 +196,7 @@ type SubagentExecutionArgs = {
   ownerId?: string;
   threadId?: Id<"threads">;
   commandId?: string;
+  systemPromptOverride?: string;
   overflowRecoveryAttempt?: number;
 };
 
@@ -756,6 +757,9 @@ const executeSubagentRun = async (
     ? [...promptBuild.toolsAllowlist]
     : undefined;
   let effectiveSystemPrompt = promptBuild.systemPrompt;
+  if (args.systemPromptOverride?.trim()) {
+    effectiveSystemPrompt = args.systemPromptOverride.trim();
+  }
 
   // --- Thread loading ---
   const threadSupported = args.subagentType === "general" || args.subagentType === "self_mod";
@@ -1557,6 +1561,8 @@ export const runSubagent = internalAction({
     threadId: v.optional(v.string()),
     threadName: v.optional(v.string()),
     commandId: v.optional(v.string()),
+    systemPromptOverride: v.optional(v.string()),
+    suppressDelivery: v.optional(v.boolean()),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -1687,6 +1693,8 @@ export const runSubagent = internalAction({
       parentTaskId: args.parentTaskId,
       threadId: resolvedThreadId,
       commandId: args.commandId,
+      systemPromptOverride: args.systemPromptOverride,
+      suppressDelivery: args.suppressDelivery,
     });
 
     return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
@@ -1707,6 +1715,8 @@ export const executeSubagent = internalAction({
     parentTaskId: v.optional(v.id("tasks")),
     threadId: v.optional(v.id("threads")),
     commandId: v.optional(v.string()),
+    systemPromptOverride: v.optional(v.string()),
+    suppressDelivery: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1721,11 +1731,12 @@ export const executeSubagent = internalAction({
       threadId: args.threadId,
       commandId: args.commandId,
       spriteName: args.spriteName,
+      systemPromptOverride: args.systemPromptOverride,
     });
 
     // Deliver result to the orchestrator for top-level tasks only.
     // Nested subagent results flow back through their parent's tool output.
-    if (!args.parentTaskId) {
+    if (!args.parentTaskId && !args.suppressDelivery) {
       const task = await ctx.runQuery(internal.agent.tasks.getTaskStatus, {
         taskId: args.taskId,
       });
