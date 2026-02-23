@@ -32,7 +32,7 @@ export const upsertPublicIntegration = internalMutation({
     const existing = await ctx.db
       .query("integrations_public")
       .withIndex("by_integration_id", (q) => q.eq("id", args.id))
-      .first();
+      .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, {
@@ -134,7 +134,7 @@ export const createSlackInstallUrl = mutation({
       .withIndex("by_ownerId_and_key", (q) =>
         q.eq("ownerId", ownerId).eq("key", SLACK_OAUTH_STATE_KEY),
       )
-      .first();
+      .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, {
@@ -217,7 +217,7 @@ const getPublicIntegrationByIdHandler = async (ctx: { db: any }, args: { id: str
   const record = await ctx.db
     .query("integrations_public")
     .withIndex("by_integration_id", (q: any) => q.eq("id", args.id))
-    .first();
+    .unique();
   if (!record || !record.enabled) {
     return null;
   }

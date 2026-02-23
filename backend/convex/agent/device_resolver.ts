@@ -84,7 +84,7 @@ export const heartbeat = mutation({
     const existing = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .first();
+      .unique();
 
     if (existing?.devicePublicKey && existing.devicePublicKey !== args.publicKey) {
       throw new ConvexError({
@@ -129,7 +129,7 @@ export const goOffline = mutation({
     const device = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .first();
+      .unique();
 
     if (device) {
       await ctx.db.patch(device._id, { online: false });
@@ -190,7 +190,7 @@ export const resolveExecutionTarget = internalQuery({
     const device = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
-      .first();
+      .unique();
 
     if (device?.online) {
       return { targetDeviceId: device.deviceId, spriteName: null };
@@ -226,7 +226,7 @@ export const getDeviceStatus = internalQuery({
     const device = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
-      .first();
+      .unique();
 
     const cloudRecords = await ctx.db
       .query("cloud_devices")

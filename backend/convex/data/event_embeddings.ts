@@ -41,7 +41,7 @@ export const getByEventId = internalQuery({
     return await ctx.db
       .query("event_embeddings")
       .withIndex("by_eventId", (q) => q.eq("eventId", args.eventId))
-      .first();
+      .unique();
   },
 });
 
@@ -71,7 +71,7 @@ export const upsertEventEmbedding = internalMutation({
     const existing = await ctx.db
       .query("event_embeddings")
       .withIndex("by_eventId", (q) => q.eq("eventId", args.eventId))
-      .first();
+      .unique();
     const now = Date.now();
     if (existing) {
       await ctx.db.patch(existing._id, {

@@ -153,7 +153,7 @@ export const getByPackageIdInternal = internalQuery({
     return await ctx.db
       .query("store_packages")
       .withIndex("by_packageId", (q) => q.eq("packageId", args.packageId))
-      .first();
+      .unique();
   },
 });
 
@@ -174,7 +174,7 @@ export const install = mutation({
     const pkg = await ctx.db
       .query("store_packages")
       .withIndex("by_packageId", (q) => q.eq("packageId", args.packageId))
-      .first();
+      .unique();
 
     if (!pkg) {
       throw new ConvexError({ code: "NOT_FOUND", message: `Package not found: ${args.packageId}` });
@@ -186,7 +186,7 @@ export const install = mutation({
       .withIndex("by_ownerId_and_packageId", (q) =>
         q.eq("ownerId", ownerId).eq("packageId", args.packageId),
       )
-      .first();
+      .unique();
 
     if (existing) {
       if (existing.installedVersion !== args.version) {
@@ -229,7 +229,7 @@ export const uninstall = mutation({
       .withIndex("by_ownerId_and_packageId", (q) =>
         q.eq("ownerId", ownerId).eq("packageId", args.packageId),
       )
-      .first();
+      .unique();
 
     if (existing) {
       await ctx.db.delete(existing._id);
@@ -319,7 +319,7 @@ export const publishMod = internalMutation({
     const existing = await ctx.db
       .query("store_packages")
       .withIndex("by_packageId", (q) => q.eq("packageId", args.packageId))
-      .first();
+      .unique();
 
     const now = Date.now();
 

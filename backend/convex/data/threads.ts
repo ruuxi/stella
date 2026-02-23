@@ -517,7 +517,7 @@ export const evictOldestThread = internalMutation({
       .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
         q.eq("conversationId", args.conversationId).eq("status", "active"),
       )
-      .first();
+      .unique();
 
     if (oldest) {
       await ctx.db.patch(oldest._id, {

@@ -30,7 +30,7 @@ export const getForConversation = query({
       .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", ownerId).eq("conversationId", args.conversationId),
       )
-      .first();
+      .unique();
     return result ?? null;
   },
 });
@@ -55,7 +55,7 @@ export const save = internalMutation({
       .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", args.ownerId).eq("conversationId", args.conversationId),
       )
-      .first();
+      .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, {
@@ -101,7 +101,7 @@ export const getForConversationInternal = internalQuery({
           .eq("ownerId", conversation.ownerId)
           .eq("conversationId", args.conversationId),
       )
-      .first();
+      .unique();
   },
 });
 

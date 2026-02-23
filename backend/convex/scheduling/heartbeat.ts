@@ -150,7 +150,7 @@ async function resolveConversationId(
   const conversation = await ctx.db
     .query("conversations")
     .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId).eq("isDefault", true))
-    .first();
+    .unique();
   return conversation?._id ?? null;
 }
 
@@ -170,7 +170,7 @@ export const getConfig = internalQuery({
       .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", ownerId).eq("conversationId", conversationId),
       )
-      .first();
+      .unique();
   },
 });
 
@@ -208,7 +208,7 @@ export const upsertConfig = internalMutation({
       .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", ownerId).eq("conversationId", conversationId),
       )
-      .first();
+      .unique();
 
     const nextRunAtMs = now + intervalMs;
 
@@ -499,7 +499,7 @@ export const runNow = internalMutation({
       .withIndex("by_ownerId_and_conversationId", (q) =>
         q.eq("ownerId", ownerId).eq("conversationId", conversationId),
       )
-      .first();
+      .unique();
     if (!config) {
       return null;
     }

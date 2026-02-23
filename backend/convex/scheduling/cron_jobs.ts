@@ -108,7 +108,7 @@ function assertValidSchedule(schedule: unknown): CronSchedule {
     if (!Number.isFinite(atMs) || atMs <= 0) {
       throw new Error('schedule.kind="at" requires atMs (epoch ms)');
     }
-    return { kind: "at", atMs };
+    return { kind: "at" as const, atMs };
   }
   if (kind === "every") {
     const everyMs = Number(record.everyMs);
@@ -118,7 +118,7 @@ function assertValidSchedule(schedule: unknown): CronSchedule {
     const anchorRaw = record.anchorMs;
     const anchorMs =
       typeof anchorRaw === "number" && Number.isFinite(anchorRaw) ? anchorRaw : undefined;
-    return { kind: "every", everyMs, anchorMs };
+    return { kind: "every" as const, everyMs, anchorMs };
   }
   if (kind === "cron") {
     const expr = typeof record.expr === "string" ? record.expr.trim() : "";
@@ -126,7 +126,7 @@ function assertValidSchedule(schedule: unknown): CronSchedule {
       throw new Error('schedule.kind="cron" requires expr');
     }
     const tz = typeof record.tz === "string" ? record.tz.trim() : undefined;
-    return { kind: "cron", expr, tz };
+    return { kind: "cron" as const, expr, tz };
   }
   throw new Error('schedule.kind must be "at", "every", or "cron"');
 }
@@ -144,7 +144,7 @@ function assertValidPayload(payload: unknown): CronPayload {
     }
     const agentType = typeof record.agentType === "string" ? record.agentType.trim() : undefined;
     const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
-    return { kind: "systemEvent", text, agentType, deliver };
+    return { kind: "systemEvent" as const, text, agentType, deliver };
   }
   if (kind === "agentTurn") {
     const message = typeof record.message === "string" ? record.message.trim() : "";
@@ -153,7 +153,7 @@ function assertValidPayload(payload: unknown): CronPayload {
     }
     const agentType = typeof record.agentType === "string" ? record.agentType.trim() : undefined;
     const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
-    return { kind: "agentTurn", message, agentType, deliver };
+    return { kind: "agentTurn" as const, message, agentType, deliver };
   }
   throw new Error('payload.kind must be "systemEvent" or "agentTurn"');
 }
@@ -208,7 +208,7 @@ async function resolveConversationId(
   const conversation = await ctx.db
     .query("conversations")
     .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId).eq("isDefault", true))
-    .first();
+    .unique();
   return conversation?._id ?? null;
 }
 

@@ -39,7 +39,7 @@ export const update = internalMutation({
     const record = await ctx.db
       .query("self_mod_features")
       .withIndex("by_featureId", (q) => q.eq("featureId", args.featureId))
-      .first();
+      .unique();
 
     if (!record) return null;
 

@@ -323,7 +323,7 @@ const upsertAgent = async (
     .withIndex("by_ownerId_and_id", (q) =>
       q.eq("ownerId", ownerId).eq("id", agent.id),
     )
-    .first();
+    .unique();
 
   const { model: _model, ...safeAgent } = agent as AgentRecord & { model?: string };
   const payload = {
@@ -383,7 +383,7 @@ const getAgentConfigHandler = async (
       .withIndex("by_ownerId_and_id", (q) =>
         q.eq("ownerId", args.ownerId!).eq("id", args.agentType),
       )
-      .first();
+      .unique();
     if (ownerRecord) {
       return toAgentConfig(ownerRecord);
     }
@@ -394,7 +394,7 @@ const getAgentConfigHandler = async (
     .withIndex("by_ownerId_and_id", (q) =>
       q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", args.agentType),
     )
-    .first();
+    .unique();
   if (builtinRecord) {
     return toAgentConfig(builtinRecord);
   }

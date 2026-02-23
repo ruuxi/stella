@@ -26,7 +26,7 @@ export const getByTeamId = internalQuery({
     const record = await ctx.db
       .query("slack_installations")
       .withIndex("by_teamId", (q) => q.eq("teamId", args.teamId))
-      .first();
+      .unique();
     if (!record) {
       return null;
     }
@@ -66,7 +66,7 @@ export const upsert = internalMutation({
     const existing = await ctx.db
       .query("slack_installations")
       .withIndex("by_teamId", (q) => q.eq("teamId", args.teamId))
-      .first();
+      .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, {
