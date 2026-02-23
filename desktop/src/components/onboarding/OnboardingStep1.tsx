@@ -22,6 +22,7 @@ import "../Onboarding.css";
 
 const FADE_OUT_MS = 400;
 const FADE_GAP_MS = 200;
+const DISCOVERY_CATEGORIES_CHANGED_EVENT = "stella:discovery-categories-changed";
 
 /* ── Step title text (shown on left in split mode) ── */
 const STEP_TITLES: Partial<Record<Phase, string>> = {
@@ -374,6 +375,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
 
     localStorage.setItem(DISCOVERY_CATEGORIES_KEY, JSON.stringify(selected));
+    window.dispatchEvent(new Event(DISCOVERY_CATEGORIES_CHANGED_EVENT));
 
     if (browserEnabled && selectedBrowser) {
       localStorage.setItem(BROWSER_SELECTION_KEY, selectedBrowser);
@@ -426,6 +428,28 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   const sortedThemes = [...themes].sort((a, b) => a.name.localeCompare(b.name));
   const platform = window.electronAPI?.platform ?? "unknown";
+  const renderThemeOptionRow = <T extends string>(
+    label: string,
+    options: readonly T[],
+    selectedValue: T,
+    onSelect: (value: T) => void,
+  ) => (
+    <>
+      <div className="onboarding-step-label">{label}</div>
+      <div className="onboarding-theme-row">
+        {options.map((option) => (
+          <button
+            key={option}
+            className="onboarding-pill"
+            data-active={selectedValue === option}
+            onClick={() => onSelect(option)}
+          >
+            {option.charAt(0).toUpperCase() + option.slice(1)}
+          </button>
+        ))}
+      </div>
+    </>
+  );
 
   return (
     <div
@@ -499,6 +523,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                     setShowNoneWarning(false);
                     if (wasEnabled) {
                       setSelectedBrowser(null);
+                      setDetectedBrowser(null);
                       setAvailableProfiles([]);
                       setSelectedProfile(null);
                       // Toggled off — show first remaining enabled category, or null
@@ -754,47 +779,26 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
             {/* ── Theme ── */}
             {phase === "theme" && (
               <div className="onboarding-step-content">
-                <div className="onboarding-step-label">Appearance</div>
-                <div className="onboarding-theme-row">
-                  {(["light", "dark", "system"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      className="onboarding-pill"
-                      data-active={colorMode === mode}
-                      onClick={() => setColorMode(mode)}
-                    >
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </button>
-                  ))}
-                </div>
+                {renderThemeOptionRow(
+                  "Appearance",
+                  ["light", "dark", "system"] as const,
+                  colorMode,
+                  setColorMode,
+                )}
 
-                <div className="onboarding-step-label">Background</div>
-                <div className="onboarding-theme-row">
-                  {(["soft", "crisp"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      className="onboarding-pill"
-                      data-active={gradientMode === mode}
-                      onClick={() => setGradientMode(mode)}
-                    >
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </button>
-                  ))}
-                </div>
+                {renderThemeOptionRow(
+                  "Background",
+                  ["soft", "crisp"] as const,
+                  gradientMode,
+                  setGradientMode,
+                )}
 
-                <div className="onboarding-step-label">Color intensity</div>
-                <div className="onboarding-theme-row">
-                  {(["relative", "strong"] as const).map((color) => (
-                    <button
-                      key={color}
-                      className="onboarding-pill"
-                      data-active={gradientColor === color}
-                      onClick={() => setGradientColor(color)}
-                    >
-                      {color.charAt(0).toUpperCase() + color.slice(1)}
-                    </button>
-                  ))}
-                </div>
+                {renderThemeOptionRow(
+                  "Color intensity",
+                  ["relative", "strong"] as const,
+                  gradientColor,
+                  setGradientColor,
+                )}
 
                 <div className="onboarding-step-label">Theme</div>
                 <div

@@ -122,7 +122,8 @@
   flex-shrink: 0;
 }
 
-.composer-context-chip--screenshot {
+.composer-context-chip--screenshot,
+.composer-context-chip--pending {
   padding: 2px;
   border-radius: 8px;
   border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
@@ -130,10 +131,6 @@
 }
 
 .composer-context-chip--pending {
-  padding: 2px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
   pointer-events: none;
 }
 

@@ -239,7 +239,6 @@ export const FullShell = () => {
         setChatContext(null);
       },
     });
-    setMessage("");
   }, [message, selectedText, chatContext, sendMessage]);
 
   const handleCommandSelect = useCallback(

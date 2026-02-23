@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 
 /**
  * A state hook that batches rapid updates using requestAnimationFrame.
@@ -31,6 +31,16 @@ export function useRafState<T>(initialValue: T): [T, (updater: T | ((prev: T) =>
         }
       });
     }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      pendingRef.current = null;
+    };
   }, []);
 
   return [state, setRafState, stateRef];
