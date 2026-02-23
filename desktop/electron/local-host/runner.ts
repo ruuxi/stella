@@ -14,6 +14,7 @@ import { loadIdentityMap, depseudonymize } from "./identity_map.js";
 import { purgeExpiredDeferredDeletes } from "./deferred_delete.js";
 import type { IdentityMap } from "./discovery_types.js";
 import { sanitizeForLogs } from "./tools-utils.js";
+import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -120,6 +121,71 @@ export const createLocalHostRunner = ({
   let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const watchers: fs.FSWatcher[] = [];
   let deferredDeleteSweepInterval: ReturnType<typeof setInterval> | null = null;
+
+  let coreMemoryHash: string | null = null;
+  let coreMemoryWatcher: fs.FSWatcher | null = null;
+  let coreMemoryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const CORE_MEMORY_DEBOUNCE_MS = 1000;
+  const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
+
+  const syncCoreMemory = async () => {
+    if (!client || !authToken) return;
+    try {
+      const content = await fs.promises.readFile(coreMemoryPath, "utf-8");
+      if (!content.trim()) return;
+      const hash = crypto.createHash("sha256").update(content).digest("hex");
+      if (hash === coreMemoryHash) return;
+      await callMutation("data/preferences.setCoreMemory", { content });
+      coreMemoryHash = hash;
+      log("Core memory synced to Convex");
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      logError("Core memory sync failed:", err);
+    }
+  };
+
+  const scheduleSyncCoreMemory = () => {
+    if (coreMemoryDebounceTimer) clearTimeout(coreMemoryDebounceTimer);
+    coreMemoryDebounceTimer = setTimeout(() => {
+      coreMemoryDebounceTimer = null;
+      void syncCoreMemory();
+    }, CORE_MEMORY_DEBOUNCE_MS);
+  };
+
+  const startCoreMemoryWatcher = () => {
+    if (coreMemoryWatcher) return;
+    const dir = path.dirname(coreMemoryPath);
+    if (!fs.existsSync(dir)) {
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+      } catch {
+        return;
+      }
+    }
+    try {
+      coreMemoryWatcher = fs.watch(dir, (_eventType, filename) => {
+        if (filename === "CORE_MEMORY.MD") {
+          scheduleSyncCoreMemory();
+        }
+      });
+      coreMemoryWatcher.on("error", (error) => {
+        logError("Core memory watcher error:", error);
+      });
+    } catch {
+      // Watcher setup failed — sync will still happen on startup
+    }
+  };
+
+  const stopCoreMemoryWatcher = () => {
+    if (coreMemoryDebounceTimer) {
+      clearTimeout(coreMemoryDebounceTimer);
+      coreMemoryDebounceTimer = null;
+    }
+    if (coreMemoryWatcher) {
+      coreMemoryWatcher.close();
+      coreMemoryWatcher = null;
+    }
+  };
 
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -356,6 +422,9 @@ export const createLocalHostRunner = ({
         await saveSyncManifest(statePath, updatedManifest);
 
         log("Manifest sync complete");
+
+        // Sync core memory (independent of skill/agent manifests)
+        await syncCoreMemory();
       } catch (error) {
         logError("Manifest sync failed:", error);
         // Best-effort sync; ignore failures and retry later.
@@ -687,7 +756,10 @@ export const createLocalHostRunner = ({
 
     // Initial sync on startup, then start file watchers after sync completes
     // (avoids watcher triggering on files the sync itself creates)
-    void syncManifests().then(() => startWatchers());
+    void syncManifests().then(() => {
+      startWatchers();
+      startCoreMemoryWatcher();
+    });
 
     // Start real-time subscription for tool requests (only if auth is ready)
     startSubscription();
@@ -708,6 +780,7 @@ export const createLocalHostRunner = ({
     }
     stopHeartbeat();
     stopWatchers();
+    stopCoreMemoryWatcher();
     stopSubscription();
     if (client) {
       client.close();
