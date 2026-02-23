@@ -138,7 +138,7 @@
   min-height: 0;
 }
 
-/* Main chat column — takes remaining space when canvas is open */
+/* Chat column — fills the chat panel */
 .full-body-main {
   display: flex;
   flex-direction: column;
@@ -166,7 +166,7 @@
 .session-messages {
   flex: 1;
   width: 100%;
-  max-width: 50rem;
+  max-width: min(50rem, 100%);
   margin: 0 auto;
   padding: 112px 24px 140px; /* Extra top padding for title bar, bottom padding for composer clearance + breathing room */
   display: flex;

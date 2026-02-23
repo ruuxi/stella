@@ -47,7 +47,8 @@ import './styles/overlays.css'
 import './styles/app-components.css'
 import './styles/indicators.css'
 import './styles/credential-modal.css'
-import './styles/canvas-panel.css'
+import './styles/workspace.css'
+import './styles/chat-panel.css'
 import './styles/canvas-renderers.css'
 import './styles/store.css'
 import './styles/settings.css'
@@ -58,7 +59,7 @@ import './styles/voice-widget.css'
 
 import App from './App.tsx'
 import { UiStateProvider } from './app/state/ui-state'
-import { CanvasProvider } from './app/state/canvas-state'
+import { WorkspaceProvider } from './app/state/workspace-state'
 import { ThemeProvider } from './theme/theme-context'
 import { convexClient } from './services/convex-client'
 import { authClient } from './lib/auth-client'
@@ -69,9 +70,9 @@ createRoot(document.getElementById('root')!).render(
     <ConvexBetterAuthProvider client={convexClient} authClient={authClientForProvider}>
       <ThemeProvider>
         <UiStateProvider>
-          <CanvasProvider>
+          <WorkspaceProvider>
             <App />
-          </CanvasProvider>
+          </WorkspaceProvider>
         </UiStateProvider>
       </ThemeProvider>
     </ConvexBetterAuthProvider>

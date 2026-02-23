@@ -1,12 +1,12 @@
 /**
  * FullShell: Layout shell that imports sub-components, holds top-level state,
- * renders .full-body grid.
+ * renders .full-body grid: Sidebar | WorkspaceArea | ChatPanel.
  */
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
-import { useCanvas } from "../../app/state/canvas-state";
+import { useWorkspace } from "../../app/state/workspace-state";
 import { useTheme } from "../../theme/theme-context";
 import { useConversationEvents } from "../../hooks/use-conversation-events";
 import { useCanvasCommands } from "../../hooks/use-canvas-commands";
@@ -16,7 +16,8 @@ import { api } from "@/convex/api";
 import { ShiftingGradient } from "../../components/background/ShiftingGradient";
 import { TitleBar } from "../../components/TitleBar";
 import { Sidebar } from "../../components/Sidebar";
-import { CanvasPanel } from "../../components/canvas/CanvasPanel";
+import { WorkspaceArea } from "../../components/workspace/WorkspaceArea";
+import { ChatPanel } from "../../components/chat/ChatPanel";
 import { AuthDialog } from "../../app/AuthDialog";
 import { ConnectDialog } from "../../app/ConnectDialog";
 import { RuntimeModeDialog } from "../../app/RuntimeModeDialog";
@@ -24,20 +25,19 @@ import type { ChatContext, ChatContextUpdate } from "../../types/electron";
 
 import { ChatColumn } from "./ChatColumn";
 import { useOnboardingOverlay } from "./OnboardingOverlay";
-import { OnboardingCanvas, type OnboardingDemo } from "../../components/onboarding/OnboardingCanvas";
+import type { OnboardingDemo } from "../../components/onboarding/OnboardingCanvas";
 import { useDiscoveryFlow } from "./DiscoveryFlow";
 import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
 
-const StoreView = lazy(() => import("./StoreView"));
 const SettingsDialog = lazy(() => import("./SettingsView"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
-  const { state: canvasState, openCanvas, closeCanvas, setWidth } = useCanvas();
+  const { state: workspaceState, openCanvas, closeCanvas } = useWorkspace();
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
   const restoredCanvasConversationRef = useRef<string | null>(null);
@@ -68,8 +68,6 @@ export const FullShell = () => {
       setDemoClosing(false);
       setActiveDemo(demo);
     } else {
-      // Both state changes in same handler → batched into one render
-      // so the component never unmounts between frames
       setActiveDemo(null);
       setDemoClosing(true);
       demoCloseTimerRef.current = setTimeout(() => {
@@ -151,6 +149,7 @@ export const FullShell = () => {
   const events = useConversationEvents(activeConversationId ?? undefined);
   useCanvasCommands(events);
 
+  // Restore saved canvas state when switching conversations
   const savedCanvasCloudState = useQuery(
     api.data.canvas_states.getForConversation,
     activeConversationId && onboarding.isAuthenticated
@@ -193,12 +192,8 @@ export const FullShell = () => {
       url: savedCanvasState.url,
     });
 
-    if (typeof savedCanvasState.width === "number") {
-      setWidth(savedCanvasState.width);
-    }
-
     restoredCanvasConversationRef.current = state.conversationId;
-  }, [state.conversationId, savedCanvasState, openCanvas, closeCanvas, setWidth]);
+  }, [state.conversationId, savedCanvasState, openCanvas, closeCanvas]);
 
   useEffect(() => {
     syncWithEvents(events);
@@ -251,69 +246,6 @@ export const FullShell = () => {
     [sendMessage],
   );
 
-  // Auto-open the dashboard panel when ready and no other canvas is active.
-  // Re-opens dashboard after an agent canvas closes, but NOT if the user
-  // manually closed the dashboard itself.
-  const canvasOpen = canvasState.isOpen && canvasState.canvas !== null;
-  const isDashboardCanvas = canvasState.canvas?.name === "dashboard";
-  const [dashboardDismissed, setDashboardDismissed] = useState(false);
-  const prevCanvasRef = useRef<{ isOpen: boolean; name?: string }>({ isOpen: false });
-
-  // Track closing animation so CanvasPanel stays mounted during exit
-  const CANVAS_ANIM_MS = 350; // matches CSS canvas-slide-out duration
-  const [canvasClosing, setCanvasClosing] = useState(false);
-  const canvasWasOpenRef = useRef(false);
-
-  useEffect(() => {
-    const wasOpen = canvasWasOpenRef.current;
-    canvasWasOpenRef.current = canvasOpen;
-
-    if (wasOpen && !canvasOpen) {
-      setCanvasClosing(true);
-      const timer = setTimeout(() => setCanvasClosing(false), CANVAS_ANIM_MS);
-      return () => clearTimeout(timer);
-    }
-    if (canvasOpen) {
-      setCanvasClosing(false);
-    }
-  }, [canvasOpen]);
-
-  // Keep panel mounted on the exact close-transition frame as well.
-  // Without this guard there is a one-render gap before canvasClosing turns true,
-  // which skips the exit animation.
-  const canvasJustClosed = canvasWasOpenRef.current && !canvasOpen;
-  const showCanvasPanel = canvasOpen || canvasClosing || canvasJustClosed;
-
-  useEffect(() => {
-    const wasOpen = prevCanvasRef.current.isOpen;
-    const wasName = prevCanvasRef.current.name;
-    prevCanvasRef.current = { isOpen: canvasOpen, name: canvasState.canvas?.name };
-
-    // Detect user closing the dashboard — mark as dismissed
-    if (wasOpen && !canvasOpen && wasName === "dashboard") {
-      setDashboardDismissed(true);
-      return;
-    }
-
-    // When a non-dashboard canvas opens, clear the dismissed flag
-    // so dashboard returns when that canvas closes
-    if (canvasOpen && !isDashboardCanvas) {
-      setDashboardDismissed(false);
-      return;
-    }
-
-    const ready = onboarding.isAuthenticated && onboarding.onboardingDone;
-    if (!ready || activeDemo || demoClosing) return;
-    if (canvasOpen || canvasClosing) return;
-    if (dashboardDismissed) return;
-    openCanvas({ name: "dashboard" });
-  }, [onboarding.isAuthenticated, onboarding.onboardingDone, canvasOpen, canvasClosing, isDashboardCanvas, canvasState.canvas?.name, activeDemo, demoClosing, dashboardDismissed, openCanvas]);
-
-  const handleOpenDashboard = useCallback(() => {
-    setDashboardDismissed(false);
-    openCanvas({ name: "dashboard" });
-  }, [openCanvas]);
-
   // Listen for custom events from the dashboard panel (suggestion clicks)
   useEffect(() => {
     const handler = (e: Event) => {
@@ -343,19 +275,9 @@ export const FullShell = () => {
   const canSubmit = Boolean(
     activeConversationId && (message.trim() || hasComposerContext),
   );
-  const shellClassName = `window-shell full${showCanvasPanel || activeDemo || demoClosing ? " has-canvas" : ""}`;
-  const canvasWidthVar = showCanvasPanel
-    ? ({
-        "--canvas-panel-width": `${canvasState.width}px`,
-      } as React.CSSProperties)
-    : (activeDemo || demoClosing)
-    ? ({
-        "--canvas-panel-width": "420px",
-      } as React.CSSProperties)
-    : undefined;
 
   return (
-    <div className={shellClassName} style={canvasWidthVar}>
+    <div className="window-shell full">
       <TitleBar />
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
 
@@ -368,72 +290,61 @@ export const FullShell = () => {
           onHome={() => setView('chat')}
           storeActive={state.view === 'store'}
         />
-        {state.view === 'store' ? (
-          <Suspense fallback={<div className="store-loading">Loading Store...</div>}>
-            <StoreView
-              onBack={() => setView('chat')}
-              onComposePrompt={(text) => {
-                setView("chat");
-                setMessage(text);
-              }}
-            />
-          </Suspense>
-        ) : (
-          <>
-            <ChatColumn
-              events={events}
-              streamingText={streamingText}
-              reasoningText={reasoningText}
-              isStreaming={isStreaming}
-              pendingUserMessageId={pendingUserMessageId}
-              message={message}
-              setMessage={setMessage}
-              chatContext={chatContext}
-              setChatContext={setChatContext}
-              selectedText={selectedText}
-              setSelectedText={setSelectedText}
-              queueNext={queueNext}
-              setQueueNext={setQueueNext}
-              scrollContainerRef={scrollContainerRef}
-              handleScroll={handleScroll}
-              showScrollButton={showScrollButton}
-              scrollToBottom={scrollToBottom}
-              conversationId={activeConversationId}
-              onboardingDone={onboarding.onboardingDone}
-              onboardingExiting={onboarding.onboardingExiting}
-              isAuthenticated={onboarding.isAuthenticated}
-              isAuthLoading={onboarding.isAuthLoading}
-              canSubmit={canSubmit}
-              onSend={handleSend}
-              hasExpanded={onboarding.hasExpanded}
-              splitMode={onboarding.splitMode}
-              hasDiscoverySelections={onboarding.hasDiscoverySelections}
-              onboardingKey={onboarding.onboardingKey}
-              stellaAnimationRef={onboarding.stellaAnimationRef}
-              triggerFlash={onboarding.triggerFlash}
-              startBirthAnimation={onboarding.startBirthAnimation}
-              completeOnboarding={onboarding.completeOnboarding}
-              handleEnterSplit={onboarding.handleEnterSplit}
-              onDiscoveryConfirm={handleDiscoveryConfirm}
-              onSelectionChange={onboarding.setHasDiscoverySelections}
-              onDemoChange={handleDemoChange}
-              onCommandSelect={handleCommandSelect}
-            />
-            {showCanvasPanel && <CanvasPanel />}
-            {!showCanvasPanel && (activeDemo || demoClosing) && <OnboardingCanvas activeDemo={activeDemo} />}
-            {!showCanvasPanel && !activeDemo && !demoClosing && dashboardDismissed && onboarding.isAuthenticated && onboarding.onboardingDone && (
-              <button
-                className="canvas-panel-toggle"
-                onClick={handleOpenDashboard}
-                aria-label="Open dashboard"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
-              </button>
-            )}
-          </>
-        )}
+
+        <WorkspaceArea
+          view={state.view}
+          isAuthenticated={onboarding.isAuthenticated}
+          onboardingDone={onboarding.onboardingDone}
+          activeDemo={activeDemo}
+          demoClosing={demoClosing}
+          onStoreBack={() => setView('chat')}
+          onComposePrompt={(text) => {
+            setView("chat");
+            setMessage(text);
+          }}
+        />
+
+        <ChatPanel>
+          <ChatColumn
+            events={events}
+            streamingText={streamingText}
+            reasoningText={reasoningText}
+            isStreaming={isStreaming}
+            pendingUserMessageId={pendingUserMessageId}
+            message={message}
+            setMessage={setMessage}
+            chatContext={chatContext}
+            setChatContext={setChatContext}
+            selectedText={selectedText}
+            setSelectedText={setSelectedText}
+            queueNext={queueNext}
+            setQueueNext={setQueueNext}
+            scrollContainerRef={scrollContainerRef}
+            handleScroll={handleScroll}
+            showScrollButton={showScrollButton}
+            scrollToBottom={scrollToBottom}
+            conversationId={activeConversationId}
+            onboardingDone={onboarding.onboardingDone}
+            onboardingExiting={onboarding.onboardingExiting}
+            isAuthenticated={onboarding.isAuthenticated}
+            isAuthLoading={onboarding.isAuthLoading}
+            canSubmit={canSubmit}
+            onSend={handleSend}
+            hasExpanded={onboarding.hasExpanded}
+            splitMode={onboarding.splitMode}
+            hasDiscoverySelections={onboarding.hasDiscoverySelections}
+            onboardingKey={onboarding.onboardingKey}
+            stellaAnimationRef={onboarding.stellaAnimationRef}
+            triggerFlash={onboarding.triggerFlash}
+            startBirthAnimation={onboarding.startBirthAnimation}
+            completeOnboarding={onboarding.completeOnboarding}
+            handleEnterSplit={onboarding.handleEnterSplit}
+            onDiscoveryConfirm={handleDiscoveryConfirm}
+            onSelectionChange={onboarding.setHasDiscoverySelections}
+            onDemoChange={handleDemoChange}
+            onCommandSelect={handleCommandSelect}
+          />
+        </ChatPanel>
       </div>
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />

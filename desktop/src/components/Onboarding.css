@@ -1526,13 +1526,11 @@
 .onboarding-canvas {
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
-  width: 0;
+  flex: 1;
   min-height: 0;
-  background: color-mix(in srgb, var(--surface-inset) 60%, transparent);
-  backdrop-filter: blur(16px);
   overflow: hidden;
   opacity: 0;
+  padding-top: 32px; /* Clear the fixed title bar */
 }
 
 .onboarding-canvas-open {
@@ -1544,13 +1542,13 @@
 }
 
 @keyframes onboardingCanvasIn {
-  from { width: 0; opacity: 0; }
-  to { width: var(--canvas-panel-width, 420px); opacity: 1; }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes onboardingCanvasOut {
-  from { width: var(--canvas-panel-width, 420px); opacity: 1; }
-  to { width: 0; opacity: 0; }
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(12px); }
 }
 
 .onboarding-canvas-loading {

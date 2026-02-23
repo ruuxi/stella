@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { CanvasErrorBoundary } from '../CanvasErrorBoundary'
 import { Spinner } from '@/components/spinner'
-import type { CanvasPayload } from '@/app/state/canvas-state'
+import type { CanvasPayload } from '@/app/state/workspace-state'
 
 const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
