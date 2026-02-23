@@ -25,22 +25,19 @@ describe("memory + compaction regressions", () => {
     expect(source).not.toContain("ctx.runMutation(internal.conversations.setActiveThreadId");
   });
 
-  test("orchestrator prompt context is built by shared helper in both chat paths", () => {
+  test("orchestrator turn core is shared by both chat paths", () => {
     const httpSource = readBackendFile("convex/http.ts");
     const taskSource = readBackendFile("convex/agent/tasks.ts");
-    expect(httpSource).toContain("buildOrchestratorPromptContext");
-    expect(taskSource).toContain("buildOrchestratorPromptContext");
+    expect(httpSource).toContain("prepareOrchestratorTurn");
+    expect(httpSource).toContain("finalizeOrchestratorTurn");
+    expect(taskSource).toContain("prepareOrchestratorTurn");
+    expect(taskSource).toContain("finalizeOrchestratorTurn");
   });
 
-  test("reminder state is marked even when assistant text is empty", () => {
-    const httpSource = readBackendFile("convex/http.ts");
-    const taskSource = readBackendFile("convex/agent/tasks.ts");
-
-    expect(httpSource).toMatch(
-      /if \(text\.trim\(\)\.length > 0\)[\s\S]*?saveAssistantMessage[\s\S]*?\n\s*}\n\s*if \(\n\s*agentType === "orchestrator"[\s\S]*?markOrchestratorReminderSeen/,
-    );
-    expect(taskSource).toMatch(
-      /if \(text\.length > 0 && !noResponseCalled\)[\s\S]*?saveAssistantMessage[\s\S]*?\n\s*}\n\s*if \(\n\s*orchestratorContext\.shouldInjectDynamicReminder[\s\S]*?markOrchestratorReminderSeen/,
+  test("shared orchestrator core marks reminders independently from assistant text persistence", () => {
+    const source = readBackendFile("convex/agent/orchestrator_turn.ts");
+    expect(source).toMatch(
+      /const persistAssistantMessage[\s\S]*?if \(args\.persistThreadFirst\)[\s\S]*?if \(\n\s*args\.reminderState\.shouldInjectDynamicReminder[\s\S]*?markOrchestratorReminderSeen/,
     );
   });
 });

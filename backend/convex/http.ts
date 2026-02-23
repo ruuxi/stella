@@ -4,13 +4,17 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { streamText, generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./agent/prompt_builder";
-import { buildOrchestratorPromptContext } from "./agent/orchestrator_prompt_context";
 import { eventsToHistoryMessages } from "./agent/history_messages";
 import {
   computeAutoCompactionThresholdTokens,
   ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
   SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
 } from "./agent/context_budget";
+import {
+  finalizeOrchestratorTurn,
+  prepareOrchestratorTurn,
+  toUsageSummary,
+} from "./agent/orchestrator_turn";
 import { createTools } from "./tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./agent/model_resolver";
 import { withModelFailover } from "./agent/model_failover";
@@ -754,16 +758,6 @@ http.route({
           ? "general"
           : "orchestrator";
 
-    const historyEvents = await ctx.runQuery(
-      internal.events.listRecentContextEventsByTokens,
-      {
-        conversationId,
-        beforeTimestamp: userEvent.timestamp,
-        excludeEventId: userMessageId,
-        contextAgentType: agentType,
-      },
-    );
-
     const attachments = body.attachments ?? [];
     const resolvedImages: Array<{ url: string; mimeType?: string }> = [];
     for (const attachment of attachments) {
@@ -794,97 +788,121 @@ http.route({
 
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
     await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
-
-    const promptBuild = await buildSystemPrompt(ctx, agentType, { ownerId: conversation.ownerId, conversationId });
     const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
     const fallbackConfig = await resolveFallbackConfig(ctx, agentType, conversation.ownerId).catch(() => null);
 
     const activeThreadId = await ctx.runQuery(internal.conversations.getActiveThreadId, { conversationId });
-    
+
     // Fallback to active thread if orchestrator or if no message ID provided
     const targetThreadId = activeThreadId;
-
-    let summaryPair: Array<{ role: "user" | "assistant"; content: string }> = [];
-
-    const historyBuild = eventsToHistoryMessages(historyEvents, {
-      microcompact: {
-        trigger: "auto",
-        warningThresholdTokens: computeAutoCompactionThresholdTokens(
-          typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
-        ),
-      },
-    });
-    const historyMessages = historyBuild.messages;
-    if (historyBuild.microcompactBoundary) {
-      try {
-        await ctx.runMutation(internal.events.appendInternalEvent, {
-          conversationId,
-          type: "microcompact_boundary",
-          payload: {
-            ...historyBuild.microcompactBoundary,
-            agentType,
-          },
-        });
-      } catch {
-        // Best effort: microcompact bookkeeping should never block chat.
-      }
-    }
-
-    // Add platform-specific guidance
     const platformGuidance = getPlatformGuidance(userPlatform);
-    const orchestratorContext = agentType === "orchestrator"
-      ? await buildOrchestratorPromptContext(ctx, {
-          conversation,
-          activeThreadId,
-          dynamicContext: promptBuild.dynamicContext,
-          extraReminderText: platformGuidance,
-        })
-      : null;
-    if (orchestratorContext) {
-      summaryPair = orchestratorContext.summaryPair;
-    }
+    let promptBuild: Awaited<ReturnType<typeof buildSystemPrompt>>;
+    let requestMessages: any[];
+    let orchestratorTurn:
+      | Awaited<ReturnType<typeof prepareOrchestratorTurn>>
+      | null = null;
 
-    const contentParts: Array<
-      { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }
-    > = [];
-    const trimmedText = userText.trim();
-    if (trimmedText.length > 0) {
-      contentParts.push({ type: "text", text: trimmedText });
-    }
-    for (const image of resolvedImages) {
-      try {
-        contentParts.push({
-          type: "image",
-          image: new URL(image.url),
-          mediaType: image.mimeType,
-        });
-      } catch {
-        // Ignore invalid URLs.
-      }
-    }
-    if (contentParts.length === 0) {
-      contentParts.push({ type: "text", text: " " });
-    }
-
-    // Inject dynamic context + platform guidance into last user message (not system prompt).
-    // For orchestrator, only inject reminders when changed or after thread rollover.
-    const contextParts: string[] = [];
     if (agentType === "orchestrator") {
-      if (
-        orchestratorContext?.shouldInjectDynamicReminder &&
-        orchestratorContext.reminderText
-      ) {
-        contextParts.push(orchestratorContext.reminderText);
-      }
+      orchestratorTurn = await prepareOrchestratorTurn(ctx, {
+        conversation,
+        conversationId,
+        ownerId: conversation.ownerId,
+        activeThreadId,
+        userPayload: {
+          kind: "chat",
+          text: userText,
+          images: resolvedImages,
+          platformGuidance,
+        },
+        history: {
+          enabled: true,
+          beforeTimestamp: userEvent.timestamp,
+          excludeEventId: userMessageId,
+          microcompact: {
+            trigger: "auto",
+            modelForWarningThreshold:
+              typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
+          },
+        },
+      });
+      promptBuild = orchestratorTurn.promptBuild;
+      requestMessages = orchestratorTurn.messages;
     } else {
+      promptBuild = await buildSystemPrompt(ctx, agentType, {
+        ownerId: conversation.ownerId,
+        conversationId,
+      });
+      const historyEvents = await ctx.runQuery(
+        internal.events.listRecentContextEventsByTokens,
+        {
+          conversationId,
+          beforeTimestamp: userEvent.timestamp,
+          excludeEventId: userMessageId,
+          contextAgentType: agentType,
+        },
+      );
+      const historyBuild = eventsToHistoryMessages(historyEvents, {
+        microcompact: {
+          trigger: "auto",
+          warningThresholdTokens: computeAutoCompactionThresholdTokens(
+            typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
+          ),
+        },
+      });
+      if (historyBuild.microcompactBoundary) {
+        try {
+          await ctx.runMutation(internal.events.appendInternalEvent, {
+            conversationId,
+            type: "microcompact_boundary",
+            payload: {
+              ...historyBuild.microcompactBoundary,
+              agentType,
+            },
+          });
+        } catch {
+          // Best effort: microcompact bookkeeping should never block chat.
+        }
+      }
+
+      const contentParts: Array<
+        { type: "text"; text: string } | { type: "image"; image: URL; mediaType?: string }
+      > = [];
+      const trimmedText = userText.trim();
+      if (trimmedText.length > 0) {
+        contentParts.push({ type: "text", text: trimmedText });
+      }
+      for (const image of resolvedImages) {
+        try {
+          contentParts.push({
+            type: "image",
+            image: new URL(image.url),
+            mediaType: image.mimeType,
+          });
+        } catch {
+          // Ignore invalid URLs.
+        }
+      }
+      if (contentParts.length === 0) {
+        contentParts.push({ type: "text", text: " " });
+      }
+
+      const contextParts: string[] = [];
       if (promptBuild.dynamicContext) contextParts.push(promptBuild.dynamicContext);
       if (platformGuidance) contextParts.push(platformGuidance);
-    }
-    if (contextParts.length > 0) {
-      contentParts.push({
-        type: "text",
-        text: `\n\n<system-context>\n${contextParts.join("\n\n")}\n</system-context>`,
-      });
+      if (contextParts.length > 0) {
+        contentParts.push({
+          type: "text",
+          text: `\n\n<system-context>\n${contextParts.join("\n\n")}\n</system-context>`,
+        });
+      }
+
+      requestMessages = [
+        ...historyBuild.messages,
+        {
+          role: "user",
+          content: contentParts,
+        },
+      ];
     }
 
     // --- beforeChat hook: rate limiting ---
@@ -924,31 +942,32 @@ http.route({
           spriteName,
         },
       ),
-      messages: [
-        ...summaryPair,
-        ...historyMessages,
-        {
-          role: "user" as const,
-          content: contentParts,
-        },
-      ],
+      messages: requestMessages,
       abortSignal: request.signal,
       onFinish: async ({ text, usage, totalUsage, response }: { text: string; usage: any; totalUsage: any; response: any }) => {
+        const usageSummary = toUsageSummary(totalUsage ?? usage);
+
+        if (agentType === "orchestrator" && orchestratorTurn) {
+          await finalizeOrchestratorTurn(ctx, {
+            conversationId,
+            ownerId: conversation.ownerId,
+            userMessageId,
+            activeThreadId: orchestratorTurn.activeThreadId,
+            threadUserMessage: orchestratorTurn.threadUserMessage,
+            responseMessages: response?.messages,
+            assistantText: text,
+            usage: usageSummary,
+            reminderState: orchestratorTurn.reminderState,
+            afterChat: {
+              modelString: resolvedConfig.model as string,
+              durationMs: Date.now() - chatStartTime,
+              success: true,
+            },
+          });
+          return;
+        }
+
         if (text.trim().length > 0) {
-          const usageTotals = totalUsage ?? usage;
-          const hasUsage =
-            usageTotals &&
-            (typeof usageTotals.inputTokens === "number" ||
-              typeof usageTotals.outputTokens === "number" ||
-              typeof usageTotals.totalTokens === "number");
-          const usageSummary = hasUsage
-            ? {
-                inputTokens: usageTotals.inputTokens,
-                outputTokens: usageTotals.outputTokens,
-                totalTokens: usageTotals.totalTokens,
-              }
-            : undefined;
-          
           await ctx.runMutation(internal.events.saveAssistantMessage, {
             conversationId,
             text,
@@ -956,22 +975,8 @@ http.route({
             usage: usageSummary,
           });
         }
-        if (
-          agentType === "orchestrator" &&
-          orchestratorContext?.shouldInjectDynamicReminder &&
-          orchestratorContext.reminderHash &&
-          activeThreadId
-        ) {
-          await ctx.runMutation(internal.conversations.markOrchestratorReminderSeen, {
-            conversationId,
-            threadId: activeThreadId,
-            reminderHash: orchestratorContext.reminderHash,
-          });
-        }
 
-        const finishTotalTokens = (totalUsage ?? usage)?.totalTokens ?? 0;
-        
-        if (activeThreadId) {
+        if (targetThreadId) {
           const messagesToSave: Array<{
             role: string;
             content: string;
@@ -1002,12 +1007,12 @@ http.route({
 
           if (messagesToSave.length > 1) {
             await ctx.runMutation(internal.data.threads.saveThreadMessages, {
-              threadId: activeThreadId,
+              threadId: targetThreadId,
               messages: messagesToSave,
             });
 
             const updatedThread = await ctx.runQuery(internal.data.threads.getThreadById, {
-              threadId: activeThreadId,
+              threadId: targetThreadId,
             });
             const compactionThresholdTokens = agentType === "orchestrator"
               ? ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS
@@ -1017,33 +1022,18 @@ http.route({
               compactionThresholdTokens
             ) {
               await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
-                threadId: activeThreadId,
+                threadId: targetThreadId,
               });
             }
           }
         }
-
-        // --- afterChat hook: usage logging + token count patching ---
-        const finishUsageTotals = totalUsage ?? usage;
-        const finishHasUsage =
-          finishUsageTotals &&
-          (typeof finishUsageTotals.inputTokens === "number" ||
-            typeof finishUsageTotals.outputTokens === "number" ||
-            typeof finishUsageTotals.totalTokens === "number");
-        const finishUsageSummary = finishHasUsage
-          ? {
-              inputTokens: finishUsageTotals.inputTokens,
-              outputTokens: finishUsageTotals.outputTokens,
-              totalTokens: finishUsageTotals.totalTokens,
-            }
-          : undefined;
 
         await afterChat(ctx, {
           ownerId: conversation.ownerId,
           conversationId,
           agentType,
           modelString: resolvedConfig.model as string,
-          usage: finishUsageSummary,
+          usage: usageSummary,
           durationMs: Date.now() - chatStartTime,
           success: true,
         });

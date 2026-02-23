@@ -11,10 +11,14 @@ import { generateText } from "ai";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
-import { buildOrchestratorPromptContext } from "./orchestrator_prompt_context";
+import {
+  finalizeOrchestratorTurn,
+  prepareOrchestratorTurn,
+  toUsageSummary,
+} from "./orchestrator_turn";
 import {
   isAutoCompactionEnabled,
-  ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
+  TASK_DELIVERY_HISTORY_MAX_TOKENS,
   SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
   SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
 } from "./context_budget";
@@ -1660,11 +1664,6 @@ export const deliverTaskResult = internalAction({
     });
     if (!conversation) return null;
 
-    const promptBuild = await buildSystemPrompt(ctx, "orchestrator", {
-      ownerId: args.ownerId,
-      conversationId: args.conversationId,
-    });
-
     const toolContext: DeviceToolContext | undefined = args.targetDeviceId
       ? {
           conversationId: args.conversationId,
@@ -1685,19 +1684,23 @@ export const deliverTaskResult = internalAction({
       "orchestrator",
       args.ownerId,
     ).catch(() => null);
-    const activeThreadId = await ctx.runQuery(internal.conversations.getActiveThreadId, {
-      conversationId: args.conversationId,
-    });
-
-    const orchestratorContext = await buildOrchestratorPromptContext(ctx, {
+    const orchestratorTurn = await prepareOrchestratorTurn(ctx, {
       conversation,
-      activeThreadId,
-      dynamicContext: promptBuild.dynamicContext,
+      conversationId: args.conversationId,
+      ownerId: args.ownerId,
+      userPayload: {
+        kind: "task_delivery",
+        text: deliveryMessage,
+      },
+      history: {
+        enabled: true,
+        maxTokens: TASK_DELIVERY_HISTORY_MAX_TOKENS,
+        microcompact: {
+          enabled: false,
+        },
+      },
     });
-    const deliveryUserContent = orchestratorContext.shouldInjectDynamicReminder &&
-      orchestratorContext.reminderText
-      ? `${deliveryMessage}\n\n<system-context>\n${orchestratorContext.reminderText}\n</system-context>`
-      : deliveryMessage;
+    const promptBuild = orchestratorTurn.promptBuild;
 
     try {
       const deliverySharedArgs = {
@@ -1712,13 +1715,7 @@ export const deliverTaskResult = internalAction({
           targetDeviceId: args.targetDeviceId,
           spriteName: args.spriteName,
         }),
-        messages: [
-          ...orchestratorContext.summaryPair,
-          {
-            role: "user" as const,
-            content: deliveryUserContent,
-          },
-        ],
+        messages: orchestratorTurn.messages as any[],
       };
 
       const genResult = await withModelFailoverAsync(
@@ -1733,91 +1730,19 @@ export const deliverTaskResult = internalAction({
           step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
       );
 
-      if (activeThreadId) {
-        const messagesToSave: Array<{
-          role: string;
-          content: string;
-          toolCallId?: string;
-          tokenEstimate?: number;
-        }> = [
-          { role: "user", content: deliveryMessage },
-        ];
-
-        if (genResult.response?.messages) {
-          for (const msg of genResult.response.messages) {
-            const rawToolCallId = (msg as { toolCallId?: unknown }).toolCallId;
-            const toolCallId = typeof rawToolCallId === "string" 
-              ? rawToolCallId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) 
-              : undefined;
-            
-            messagesToSave.push({
-              role: msg.role,
-              content: JSON.stringify({
-                role: msg.role,
-                content: msg.content,
-                ...(toolCallId ? { toolCallId } : {}),
-              }),
-              ...(toolCallId ? { toolCallId } : {}),
-            });
-          }
-        }
-
-        if (messagesToSave.length > 1) {
-          await ctx.runMutation(internal.data.threads.saveThreadMessages, {
-            threadId: activeThreadId,
-            messages: messagesToSave,
-          });
-
-          const updatedThread = await ctx.runQuery(internal.data.threads.getThreadById, {
-            threadId: activeThreadId,
-          });
-          if (
-            (updatedThread?.totalTokenEstimate ?? 0) >=
-            ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS
-          ) {
-            await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
-              threadId: activeThreadId,
-            });
-          }
-        }
-      }
-
-      const text = genResult.text?.trim() ?? "";
-      if (text.length > 0 && !noResponseCalled) {
-        await ctx.runMutation(internal.events.saveAssistantMessage, {
-          conversationId: args.conversationId,
-          text,
-          userMessageId: args.userMessageId,
-          usage: genResult.usage
-            ? {
-                inputTokens: genResult.usage.inputTokens,
-                outputTokens: genResult.usage.outputTokens,
-                totalTokens: genResult.usage.totalTokens,
-              }
-            : undefined,
-        });
-
-        // Best-effort command suggestions after delivery.
-        try {
-          await ctx.scheduler.runAfter(0, internal.agent.suggestions.generateSuggestions, {
-            conversationId: args.conversationId,
-            ownerId: args.ownerId,
-          });
-        } catch {
-          // best-effort
-        }
-      }
-      if (
-        orchestratorContext.shouldInjectDynamicReminder &&
-        orchestratorContext.reminderHash &&
-        activeThreadId
-      ) {
-        await ctx.runMutation(internal.conversations.markOrchestratorReminderSeen, {
-          conversationId: args.conversationId,
-          threadId: activeThreadId,
-          reminderHash: orchestratorContext.reminderHash,
-        });
-      }
+      await finalizeOrchestratorTurn(ctx, {
+        conversationId: args.conversationId,
+        ownerId: args.ownerId,
+        userMessageId: args.userMessageId,
+        activeThreadId: orchestratorTurn.activeThreadId,
+        threadUserMessage: orchestratorTurn.threadUserMessage,
+        responseMessages: genResult.response?.messages,
+        assistantText: genResult.text,
+        usage: toUsageSummary(genResult.usage),
+        saveAssistantMessage: !noResponseCalled,
+        persistThreadFirst: true,
+        reminderState: orchestratorTurn.reminderState,
+      });
     } catch (error) {
       console.error("deliverTaskResult failed:", (error as Error).message);
       const attempt = args.deliveryAttempt ?? 0;
