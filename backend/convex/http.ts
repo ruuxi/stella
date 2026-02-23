@@ -751,26 +751,15 @@ http.route({
           ? "general"
           : "orchestrator";
 
-    const historyEvents = agentType === "orchestrator"
-      ? await ctx.runQuery(
-          internal.events.listSessionContextEvents,
-          {
-            conversationId,
-            sessionId: userEvent.sessionId,
-            beforeTimestamp: userEvent.timestamp,
-            excludeEventId: userMessageId,
-            contextAgentType: agentType,
-          },
-        )
-      : await ctx.runQuery(
-          internal.events.listRecentContextEventsByTokens,
-          {
-            conversationId,
-            beforeTimestamp: userEvent.timestamp,
-            excludeEventId: userMessageId,
-            contextAgentType: agentType,
-          },
-        );
+    const historyEvents = await ctx.runQuery(
+      internal.events.listRecentContextEventsByTokens,
+      {
+        conversationId,
+        beforeTimestamp: userEvent.timestamp,
+        excludeEventId: userMessageId,
+        contextAgentType: agentType,
+      },
+    );
 
     const attachments = body.attachments ?? [];
     const resolvedImages: Array<{ url: string; mimeType?: string }> = [];
@@ -807,6 +796,22 @@ http.route({
     const resolvedConfig = await resolveModelConfig(ctx, agentType, conversation.ownerId);
     const fallbackConfig = await resolveFallbackConfig(ctx, agentType, conversation.ownerId).catch(() => null);
 
+    const activeThreadId = await ctx.runQuery(internal.conversations.getActiveThreadId, { conversationId });
+    
+    // Fallback to active thread if orchestrator or if no message ID provided
+    const targetThreadId = activeThreadId;
+
+    let summaryPair: Array<{ role: "user" | "assistant"; content: string }> = [];
+    if (agentType === "orchestrator" && activeThreadId) {
+      const thread = await ctx.runQuery(internal.data.threads.getThreadById, { threadId: activeThreadId });
+      if (thread?.summary) {
+        summaryPair = [
+          { role: "user" as const, content: `[Thread context - prior work summary]\n${thread.summary}` },
+          { role: "assistant" as const, content: "Understood. I have the context from previous work." },
+        ];
+      }
+    }
+
     const historyBuild = eventsToHistoryMessages(historyEvents, {
       microcompact: {
         trigger: "auto",
@@ -820,7 +825,6 @@ http.route({
       try {
         await ctx.runMutation(internal.events.appendInternalEvent, {
           conversationId,
-          sessionId: userEvent.sessionId,
           type: "microcompact_boundary",
           payload: {
             ...historyBuild.microcompactBoundary,
@@ -907,6 +911,7 @@ http.route({
         },
       ),
       messages: [
+        ...summaryPair,
         ...historyMessages,
         {
           role: "user" as const,
@@ -929,13 +934,26 @@ http.route({
                 totalTokens: usageTotals.totalTokens,
               }
             : undefined;
+          const finishTotalTokens = (totalUsage ?? usage)?.totalTokens ?? 0;
           await ctx.runMutation(internal.events.saveAssistantMessage, {
             conversationId,
             text,
             userMessageId,
-            sessionId: userEvent.sessionId,
             usage: usageSummary,
           });
+
+          if (activeThreadId) {
+            await ctx.runMutation(internal.data.threads.saveThreadMessages, {
+              threadId: activeThreadId,
+              messages: [
+                { role: "user", content: userText },
+                { role: "assistant", content: text, tokenEstimate: finishTotalTokens },
+              ],
+            });
+            await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+              threadId: activeThreadId,
+            });
+          }
         }
 
         // --- afterChat hook: usage logging + token count patching ---
@@ -962,12 +980,6 @@ http.route({
           durationMs: Date.now() - chatStartTime,
           success: true,
         });
-
-        // 20K fallback trigger: extract from unprocessed conversation window.
-        const finishTotalTokens = finishUsageTotals?.totalTokens ?? 0;
-        let nextTokenCount = (conversation.tokenCount ?? 0) + finishTotalTokens;
-        const extractionBase = conversation.lastExtractionTokenCount ?? 0;
-        const tokensSinceExtraction = Math.max(0, nextTokenCount - extractionBase);
 
         // Best-effort command suggestions after each response.
         try {

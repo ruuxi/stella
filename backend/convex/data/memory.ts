@@ -500,23 +500,10 @@ export const recallMemories = internalAction({
       const vector = await embedText(MEMORY_RECALL_QUERY_EMBEDDING_MODEL_KEY, query);
 
       if (source === "history") {
-        if (!args.conversationId) {
-          return "";
-        }
-        const conversationId = args.conversationId;
-
-        const activeSession = await ctx.runQuery(internal.conversations.getActiveSession, {
-          conversationId,
-        });
-        const historySessionId = activeSession?.previousSessionId;
-        if (!historySessionId) {
-          return "";
-        }
-
         const candidates = await ctx.vectorSearch("event_embeddings", "by_embedding", {
           vector,
           limit: HISTORY_CANDIDATE_LIMIT,
-          filter: (q) => q.eq("sessionId", historySessionId),
+          filter: (q) => q.eq("ownerId", args.ownerId),
         });
         if (candidates.length === 0) {
           return "";
@@ -528,18 +515,17 @@ export const recallMemories = internalAction({
         });
         const docsById = new Map(
           docs
-            .filter((doc) =>
+            .filter((doc: any) =>
               doc.ownerId === args.ownerId &&
-              doc.conversationId === conversationId &&
-              doc.sessionId === historySessionId,
+              (!args.conversationId || doc.conversationId === args.conversationId)
             )
-            .map((doc) => [String(doc._id), doc]),
+            .map((doc: any) => [String(doc._id), doc]),
         );
         const orderedDocs = candidateIds
           .map((id) => docsById.get(String(id)))
           .filter((doc): doc is NonNullable<typeof doc> => !!doc);
 
-        const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc) => ({
+        const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc: any) => ({
           id: String(doc._id),
           content: doc.content,
           timestamp: doc.timestamp,
@@ -548,10 +534,7 @@ export const recallMemories = internalAction({
         const selectedIds = await selectRelevantCandidateIds({
           query,
           source: "history",
-          conversationContext: [
-            recentConversationContext,
-            `Compacted history session id: ${historySessionId}`,
-          ].filter((line) => line.trim().length > 0).join("\n"),
+          conversationContext: recentConversationContext,
           candidates: rerankCandidates,
           maxSelected: HISTORY_MAX_SELECTED,
         });
@@ -565,7 +548,7 @@ export const recallMemories = internalAction({
         }
 
         return selectedDocs
-          .map((doc) => {
+          .map((doc: any) => {
             const iso = new Date(doc.timestamp).toISOString();
             const speaker = doc.type === "user_message" ? "user" : "assistant";
             return `- [${iso}] (${speaker}) ${doc.content}`;

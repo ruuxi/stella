@@ -51,11 +51,6 @@ export async function runAgentTurn({
   if (!conversation) {
     return { text: "", silent: false };
   }
-  const ensuredSessionId = await ctx.runMutation(
-    internal.conversations.ensureActiveSession,
-    { conversationId },
-  );
-  const activeSessionId = ensuredSessionId ?? conversation.activeSessionId;
 
   const resolvedOwnerId = ownerId ?? conversation.ownerId;
   const promptBuild = await buildSystemPrompt(ctx, agentType, {
@@ -86,21 +81,15 @@ export async function runAgentTurn({
   );
 
   const historyEvents = agentType === "orchestrator"
-    ? (activeSessionId
-      ? await ctx.runQuery(internal.events.listSessionContextEvents, {
-          conversationId,
-          sessionId: activeSessionId,
-          contextAgentType: agentType,
-        })
-      : await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
-          conversationId,
-          maxTokens: normalizeOptionalInt({
-            value: AUTOMATION_HISTORY_MAX_TOKENS,
-            defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
-            min: 1,
-            max: 120_000,
-          }),
-        }))
+    ? await ctx.runQuery(internal.events.listRecentContextEventsByTokens, {
+        conversationId,
+        maxTokens: normalizeOptionalInt({
+          value: AUTOMATION_HISTORY_MAX_TOKENS,
+          defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
+          min: 1,
+          max: 120_000,
+        }),
+      })
     : [];
 
   const historyBuild = eventsToHistoryMessages(historyEvents ?? [], {
@@ -116,7 +105,6 @@ export async function runAgentTurn({
     try {
       await ctx.runMutation(internal.events.appendInternalEvent, {
         conversationId,
-        sessionId: activeSessionId ?? undefined,
         type: "microcompact_boundary",
         payload: {
           ...historyBuild.microcompactBoundary,
