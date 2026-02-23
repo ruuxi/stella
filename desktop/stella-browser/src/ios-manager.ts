@@ -9,7 +9,7 @@ declare const document: any;
 declare const window: any;
 
 import { Simctl } from 'node-simctl';
-import { remote, type Browser as WDIOBrowser } from 'webdriverio';
+import type { Browser as WDIOBrowser } from 'webdriverio';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -437,6 +437,7 @@ export class IOSManager {
 
     // Connect to Safari via Appium
     try {
+      const { remote } = await import('webdriverio');
       this.browser = await remote({
         hostname: IOSManager.APPIUM_HOST,
         port: IOSManager.APPIUM_PORT,
