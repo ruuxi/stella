@@ -355,6 +355,7 @@ export const insertMemory = internalMutation({
       conversationId: args.conversationId,
       content: args.content,
       embedding: args.embedding,
+      accessCount: 0,
       accessedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -398,7 +399,14 @@ export const touchMemoriesById = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     await Promise.all(
-      args.memoryIds.map((id) => ctx.db.patch(id, { accessedAt: now })),
+      args.memoryIds.map(async (id) => {
+        const mem = await ctx.db.get(id);
+        if (!mem) return;
+        await ctx.db.patch(id, {
+          accessedAt: now,
+          accessCount: (mem.accessCount ?? 0) + 1,
+        });
+      }),
     );
     return null;
   },
