@@ -667,7 +667,7 @@ await editor.edit({ url: matches[0].url, oldString: 'DEBUG = false', newString: 
 \`\`\`
 
 ## Reading Response Bodies
-By default, hera-browser disables CDP response body buffering for SSE. Re-enable if needed:
+By default, stella-browser disables CDP response body buffering for SSE. Re-enable if needed:
 \`\`\`js
 const cdp = await getCDPSession({ page });
 await cdp.send('Network.disable');
@@ -683,11 +683,11 @@ const [response] = await Promise.all([
 const body = await response.text();
 \`\`\`
 
-## Debugging hera-browser Issues
+## Debugging stella-browser Issues
 Read relay server logs:
 \`\`\`bash
-hera-browser logfile
-# typically: /tmp/hera-browser/relay-server.log or %TEMP%\\hera-browser\\relay-server.log
+stella-browser logfile
+# typically: /tmp/stella-browser/relay-server.log or %TEMP%\\stella-browser\\relay-server.log
 \`\`\``,
 };
 
