@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useCanvas } from '@/app/state/canvas-state';
+import { useWorkspace } from '@/app/state/workspace-state';
 
 export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
-  const { state: canvasState } = useCanvas();
+  const { state: workspaceState } = useWorkspace();
   const platform = window.electronAPI?.platform ?? 'unknown';
   const isMac = platform === 'darwin';
-  const canvasTitle = canvasState.isOpen && canvasState.canvas
-    ? (canvasState.canvas.title ?? canvasState.canvas.name)
+  const canvas = workspaceState.canvas;
+  const canvasTitle = canvas && canvas.name !== 'dashboard'
+    ? (canvas.title ?? canvas.name)
     : null;
 
   useEffect(() => {

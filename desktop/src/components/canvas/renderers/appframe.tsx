@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState } from 'react'
-import type { CanvasPayload } from '@/app/state/canvas-state'
+import type { CanvasPayload } from '@/app/state/workspace-state'
 import { sanitizeCanvasAppUrl } from '@/lib/url-safety'
 
 const AppframeRenderer = ({ canvas }: { canvas: CanvasPayload }) => {

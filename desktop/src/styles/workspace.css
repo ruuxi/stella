@@ -1,0 +1,103 @@
+/* ============================================
+   WORKSPACE AREA
+   Main content area — always visible.
+   Shows dashboard, canvas content, or store.
+   ============================================ */
+
+.workspace-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* --- Header bar (shown when non-dashboard canvas is active) --- */
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 40px;
+  flex-shrink: 0;
+  margin-top: 32px; /* Clear the fixed title bar */
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.workspace-header-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-base);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-header-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.workspace-header-close:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+/* --- Content area --- */
+
+.workspace-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+/* Content that fills the title bar area (dashboard, panels without header) */
+.workspace-content.workspace-content--full {
+  padding-top: 32px; /* Clear the fixed title bar */
+}
+
+/* --- Placeholder (when no renderer registered) --- */
+
+.workspace-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.workspace-placeholder-icon {
+  color: var(--text-weaker);
+  opacity: 0.5;
+}
+
+.workspace-placeholder-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  font-family: var(--font-family-mono);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
+}
+
+.workspace-placeholder-description {
+  font-size: 12px;
+  color: var(--text-weak);
+  line-height: 1.5;
+}
