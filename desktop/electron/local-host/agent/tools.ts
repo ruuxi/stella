@@ -215,43 +215,6 @@ export function createLocalTools(options: ToolAssemblyOptions): Record<string, T
     });
   }
 
-  if (!toolsAllowlist || toolsAllowlist.includes("SaveMemory")) {
-    tools["SaveMemory"] = tool({
-      description: "Save a fact or memory for future recall",
-      inputSchema: z.object({
-        content: z.string().describe("The content to remember"),
-      }),
-      execute: async ({ content }) => {
-        // Memory saving is handled by the memory module
-        // For now, just insert directly
-        insert("memories", {
-          owner_id: ownerId,
-          content,
-          accessed_at: Date.now(),
-          created_at: Date.now(),
-        });
-        return `Memory saved: "${content.slice(0, 100)}..."`;
-      },
-    });
-  }
-
-  if (!toolsAllowlist || toolsAllowlist.includes("RecallMemories")) {
-    tools["RecallMemories"] = tool({
-      description: "Search memories for relevant information",
-      inputSchema: z.object({
-        query: z.string().describe("Search query"),
-      }),
-      execute: async ({ query }) => {
-        // Text-based fallback (no embedding in sync context)
-        const memories = rawQuery<{ content: string; accessed_at: number }>(
-          "SELECT content, accessed_at FROM memories WHERE owner_id = ? ORDER BY accessed_at DESC LIMIT 10",
-          [ownerId],
-        );
-        if (memories.length === 0) return "No memories found.";
-        return memories.map((m) => m.content).join("\n---\n");
-      },
-    });
-  }
 
   if (!toolsAllowlist || toolsAllowlist.includes("NoResponse")) {
     tools["NoResponse"] = tool({
