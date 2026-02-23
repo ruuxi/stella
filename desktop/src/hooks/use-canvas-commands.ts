@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useCanvas } from '@/app/state/canvas-state'
+import { useWorkspace } from '@/app/state/workspace-state'
 import type { EventRecord } from './use-conversation-events'
 
 type CanvasCommandPayload = {
@@ -48,7 +48,7 @@ const getLocalhostPort = (url?: string): number | null => {
  * to the canvas state (open/close).
  */
 export const useCanvasCommands = (events: EventRecord[]) => {
-  const { state, openCanvas, closeCanvas } = useCanvas()
+  const { state, openCanvas, closeCanvas } = useWorkspace()
   const processedRef = useRef<Set<string>>(new Set())
   const previousLengthRef = useRef(events.length)
 

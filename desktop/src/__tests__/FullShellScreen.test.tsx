@@ -3,7 +3,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { createRef } from "react";
 
 // --- Mocks ---
-// vi.mock paths are resolved relative to THIS test file (src/__tests__)
 
 vi.mock("convex/react", () => ({
   useConvexAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
@@ -27,13 +26,15 @@ vi.mock("../app/state/ui-state", () => ({
 
 const mockOpenCanvas = vi.fn();
 const mockCloseCanvas = vi.fn();
-const mockSetWidth = vi.fn();
-vi.mock("../app/state/canvas-state", () => ({
-  useCanvas: vi.fn(() => ({
-    state: { isOpen: false, canvas: null, width: 560 },
+const mockSetChatWidth = vi.fn();
+const mockSetChatOpen = vi.fn();
+vi.mock("../app/state/workspace-state", () => ({
+  useWorkspace: vi.fn(() => ({
+    state: { canvas: null, chatWidth: 480, isChatOpen: true },
     openCanvas: mockOpenCanvas,
     closeCanvas: mockCloseCanvas,
-    setWidth: mockSetWidth,
+    setChatWidth: mockSetChatWidth,
+    setChatOpen: mockSetChatOpen,
   })),
 }));
 
@@ -119,8 +120,16 @@ vi.mock("../components/Sidebar", () => ({
   ),
 }));
 
-vi.mock("../components/canvas/CanvasPanel", () => ({
-  CanvasPanel: () => <div data-testid="canvas-panel" />,
+vi.mock("../components/workspace/WorkspaceArea", () => ({
+  WorkspaceArea: (props: any) => (
+    <div data-testid="workspace-area" data-view={props.view} />
+  ),
+}));
+
+vi.mock("../components/chat/ChatPanel", () => ({
+  ChatPanel: ({ children }: any) => (
+    <div data-testid="chat-panel">{children}</div>
+  ),
 }));
 
 vi.mock("../app/AuthDialog", () => ({
@@ -136,15 +145,6 @@ vi.mock("../app/ConnectDialog", () => ({
 vi.mock("../app/RuntimeModeDialog", () => ({
   RuntimeModeDialog: ({ open }: any) =>
     open ? <div data-testid="runtime-mode-dialog" /> : null,
-}));
-
-// Lazy-loaded components from within screens/full-shell/
-vi.mock("../screens/full-shell/StoreView", () => ({
-  default: ({ onBack }: any) => (
-    <div data-testid="store-view">
-      <button data-testid="store-back" onClick={onBack}>Back</button>
-    </div>
-  ),
 }));
 
 vi.mock("../screens/full-shell/SettingsView", () => ({
@@ -181,10 +181,6 @@ vi.mock("../screens/full-shell/OnboardingOverlay", () => ({
   })),
 }));
 
-vi.mock("../components/onboarding/OnboardingCanvas", () => ({
-  OnboardingCanvas: () => <div data-testid="onboarding-canvas" />,
-}));
-
 vi.mock("../screens/full-shell/DiscoveryFlow", () => ({
   useDiscoveryFlow: vi.fn(() => ({
     handleDiscoveryConfirm: vi.fn(),
@@ -217,14 +213,12 @@ vi.mock("../screens/full-shell/use-full-shell", () => ({
 
 import { FullShell } from "../screens/full-shell/FullShell";
 import { useUiState } from "../app/state/ui-state";
-import { useCanvas } from "../app/state/canvas-state";
 
 // --- Tests ---
 
 describe("FullShell (full-shell/FullShell.tsx)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset defaults
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "chat", conversationId: "conv-123" },
       setMode: vi.fn(),
@@ -233,13 +227,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
       setWindow: vi.fn(),
       updateState: vi.fn(),
     } as any);
-
-    vi.mocked(useCanvas).mockReturnValue({
-      state: { isOpen: false, canvas: null, width: 560 },
-      openCanvas: mockOpenCanvas,
-      closeCanvas: mockCloseCanvas,
-      setWidth: mockSetWidth,
-    });
   });
 
   it("renders TitleBar", () => {
@@ -257,13 +244,14 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   });
 
-  it("renders ChatColumn in chat view", () => {
+  it("renders WorkspaceArea and ChatPanel in chat view", () => {
     render(<FullShell />);
+    expect(screen.getByTestId("workspace-area")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
     expect(screen.getByTestId("chat-column")).toBeInTheDocument();
-    expect(screen.queryByTestId("store-view")).not.toBeInTheDocument();
   });
 
-  it("renders StoreView when view is store", async () => {
+  it("passes store view to WorkspaceArea", async () => {
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "store", conversationId: "conv-123" },
       setMode: vi.fn(),
@@ -274,15 +262,15 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     } as any);
 
     render(<FullShell />);
-    // StoreView is lazy-loaded, so wait for it
-    expect(await screen.findByTestId("store-view")).toBeInTheDocument();
-    expect(screen.queryByTestId("chat-column")).not.toBeInTheDocument();
+    const workspace = screen.getByTestId("workspace-area");
+    expect(workspace).toHaveAttribute("data-view", "store");
+    // Chat panel is still visible alongside store
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
   });
 
   it("toggles store view via sidebar onStore", () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-store"));
-    // Should call setView with 'store' (since current view is 'chat')
     expect(mockSetView).toHaveBeenCalledWith("store");
   });
 
@@ -301,42 +289,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(mockSetView).toHaveBeenCalledWith("chat");
   });
 
-  it("does not render CanvasPanel when canvas is closed", () => {
-    render(<FullShell />);
-    expect(screen.queryByTestId("canvas-panel")).not.toBeInTheDocument();
-  });
-
-  it("renders CanvasPanel when canvas is open", () => {
-    vi.mocked(useCanvas).mockReturnValue({
-      state: { isOpen: true, canvas: { name: "test-panel" }, width: 560 },
-      openCanvas: mockOpenCanvas,
-      closeCanvas: mockCloseCanvas,
-      setWidth: mockSetWidth,
-    });
-
-    render(<FullShell />);
-    expect(screen.getByTestId("canvas-panel")).toBeInTheDocument();
-  });
-
-  it("applies has-canvas class when canvas is open", () => {
-    vi.mocked(useCanvas).mockReturnValue({
-      state: { isOpen: true, canvas: { name: "test-panel" }, width: 560 },
-      openCanvas: mockOpenCanvas,
-      closeCanvas: mockCloseCanvas,
-      setWidth: mockSetWidth,
-    });
-
-    const { container } = render(<FullShell />);
-    const shell = container.querySelector(".window-shell");
-    expect(shell?.className).toContain("has-canvas");
-  });
-
-  it("does not apply has-canvas class when canvas is closed", () => {
-    const { container } = render(<FullShell />);
-    const shell = container.querySelector(".window-shell");
-    expect(shell?.className).not.toContain("has-canvas");
-  });
-
   it("opens auth dialog when sidebar sign-in is clicked", () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-signin"));
@@ -352,7 +304,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
   it("opens settings dialog when sidebar settings is clicked", async () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-settings"));
-    // SettingsDialog is lazy-loaded
     expect(await screen.findByTestId("settings-dialog")).toBeInTheDocument();
   });
 
@@ -376,31 +327,9 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(screen.getByTestId("store-active")).toBeInTheDocument();
   });
 
-  it("sets canvas width CSS variable when canvas is open", () => {
-    vi.mocked(useCanvas).mockReturnValue({
-      state: { isOpen: true, canvas: { name: "test" }, width: 700 },
-      openCanvas: mockOpenCanvas,
-      closeCanvas: mockCloseCanvas,
-      setWidth: mockSetWidth,
-    });
-
-    const { container } = render(<FullShell />);
-    const shell = container.querySelector(".window-shell") as HTMLElement;
-    expect(shell.style.getPropertyValue("--canvas-panel-width")).toBe("700px");
-  });
-
   it("renders the shell with correct base class", () => {
     const { container } = render(<FullShell />);
     const shell = container.querySelector(".window-shell.full");
     expect(shell).toBeInTheDocument();
-  });
-
-  it("auto-opens dashboard when authenticated and onboarding done", () => {
-    // The FullShell effect auto-opens dashboard when conditions are met
-    // and no canvas is open and dashboard is not dismissed
-    render(<FullShell />);
-    // openCanvas should be called with dashboard since onboarding is done,
-    // user is authenticated, and no canvas is open
-    expect(mockOpenCanvas).toHaveBeenCalledWith({ name: "dashboard" });
   });
 });

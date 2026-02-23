@@ -5,8 +5,8 @@ import { useCanvasCommands } from "./use-canvas-commands";
 
 const mockUseCanvas = vi.fn();
 
-vi.mock("@/app/state/canvas-state", () => ({
-  useCanvas: () => mockUseCanvas(),
+vi.mock("@/app/state/workspace-state", () => ({
+  useWorkspace: () => mockUseCanvas(),
 }));
 
 const createEvent = (

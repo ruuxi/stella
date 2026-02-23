@@ -1,17 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { CanvasProvider, useCanvas } from "@/app/state/canvas-state";
+import { WorkspaceProvider, useWorkspace } from "@/app/state/workspace-state";
 import { TitleBar } from "./TitleBar";
 import { useEffect } from "react";
 
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <CanvasProvider>{children}</CanvasProvider>
+  <WorkspaceProvider>{children}</WorkspaceProvider>
 );
 
 // Helper that opens a canvas before rendering TitleBar
 function CanvasOpener({ name, title }: { name: string; title?: string }) {
-  const { openCanvas } = useCanvas();
+  const { openCanvas } = useWorkspace();
   useEffect(() => {
     openCanvas({ name, title });
   }, [name, title, openCanvas]);
@@ -20,10 +20,10 @@ function CanvasOpener({ name, title }: { name: string; title?: string }) {
 
 function TitleBarWithCanvas({ name, title }: { name: string; title?: string }) {
   return (
-    <CanvasProvider>
+    <WorkspaceProvider>
       <CanvasOpener name={name} title={title} />
       <TitleBar />
-    </CanvasProvider>
+    </WorkspaceProvider>
   );
 }
 
