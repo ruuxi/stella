@@ -62,22 +62,18 @@ import { CanvasProvider } from './app/state/canvas-state'
 import { ThemeProvider } from './theme/theme-context'
 import { convexClient } from './services/convex-client'
 import { authClient } from './lib/auth-client'
-import { DataProvider } from './providers/DataProvider'
-
 const authClientForProvider = authClient as unknown as AuthClient
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ConvexBetterAuthProvider client={convexClient} authClient={authClientForProvider}>
-      <DataProvider>
-        <ThemeProvider>
-          <UiStateProvider>
-            <CanvasProvider>
-              <App />
-            </CanvasProvider>
-          </UiStateProvider>
-        </ThemeProvider>
-      </DataProvider>
+      <ThemeProvider>
+        <UiStateProvider>
+          <CanvasProvider>
+            <App />
+          </CanvasProvider>
+        </UiStateProvider>
+      </ThemeProvider>
     </ConvexBetterAuthProvider>
   </StrictMode>,
 )

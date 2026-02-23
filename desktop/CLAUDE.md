@@ -48,7 +48,7 @@ UI state (`UiState`) with `mode` (chat/voice), `view` (chat/store), and `window`
 
 - **Convex**: Real-time backend via `convex` package. Client configured in `src/services/convex-client.ts`. Requires `VITE_CONVEX_URL` environment variable.
 - **Model Gateway**: SSE streaming chat endpoint at `/api/chat` on the Convex HTTP site (`src/services/model-gateway.ts`).
-- **AI SDK**: Uses `@ai-sdk/react` and `ai` packages for chat interactions.
+- **AI SDK**: Uses `ai` package for utility scripts.
 
 ### Local Host System
 

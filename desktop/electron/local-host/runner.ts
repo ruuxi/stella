@@ -2,7 +2,6 @@ import { ConvexClient } from "convex/browser";
 import { createToolHost } from "./tools.js";
 import { loadSkillsFromHome } from "./skills.js";
 import { loadAgentsFromHome } from "./agents.js";
-import { rawQuery } from "./db.js";
 import { syncExternalSkills, syncBundledSkills } from "./skill_import.js";
 import {
   loadSyncManifest,
@@ -15,7 +14,6 @@ import { loadIdentityMap, depseudonymize } from "./identity_map.js";
 import { purgeExpiredDeferredDeletes } from "./deferred_delete.js";
 import type { IdentityMap } from "./discovery_types.js";
 import { sanitizeForLogs } from "./tools-utils.js";
-import { decryptLocalSecret } from "./secret_crypto.js";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -73,77 +71,11 @@ export const createLocalHostRunner = ({
   requestCredential,
   signHeartbeatPayload,
 }: HostRunnerOptions) => {
-  const resolveLocalSecret = ({
-    provider,
-    secretId,
-  }: {
-    provider: string;
-    secretId?: string;
-  }): {
-    secretId: string;
-    provider: string;
-    label: string;
-    plaintext: string;
-  } | null => {
-    if (secretId) {
-      const byId = rawQuery<{
-        id: string;
-        provider: string;
-        label: string;
-        encrypted_value: string;
-      }>(
-        "SELECT id, provider, label, encrypted_value FROM secrets WHERE owner_id = ? AND id = ? AND status = 'active' LIMIT 1",
-        ["local", secretId],
-      );
-      if (byId.length > 0 && byId[0].encrypted_value) {
-        const plaintext = decryptLocalSecret(byId[0].encrypted_value);
-        if (!plaintext) {
-          return null;
-        }
-        return {
-          secretId: byId[0].id,
-          provider: byId[0].provider,
-          label: byId[0].label,
-          plaintext,
-        };
-      }
-      return null;
-    }
-
-    const byProvider = rawQuery<{
-      id: string;
-      provider: string;
-      label: string;
-      encrypted_value: string;
-    }>(
-      "SELECT id, provider, label, encrypted_value FROM secrets WHERE owner_id = ? AND provider = ? AND status = 'active' ORDER BY updated_at DESC LIMIT 1",
-      ["local", provider],
-    );
-    if (byProvider.length === 0 || !byProvider[0].encrypted_value) {
-      return null;
-    }
-    const plaintext = decryptLocalSecret(byProvider[0].encrypted_value);
-    if (!plaintext) {
-      return null;
-    }
-    return {
-      secretId: byProvider[0].id,
-      provider: byProvider[0].provider,
-      label: byProvider[0].label,
-      plaintext,
-    };
-  };
-
   const toolHost = createToolHost({
     StellaHome,
     frontendRoot,
     requestCredential,
     resolveSecret: async ({ provider, secretId, requestId, toolName, deviceId: contextDeviceId }) => {
-      const localSecret = resolveLocalSecret({ provider, secretId });
-      if (localSecret) {
-        return localSecret;
-      }
-
       if (!client) return null;
       if (!requestId || !toolName) return null;
       if (secretId) {
@@ -783,25 +715,14 @@ export const createLocalHostRunner = ({
     }
   };
 
-  // Expose tool execution for external callers
-  const executeTool = async (
-    toolName: string,
-    toolArgs: Record<string, unknown>,
-    context: { conversationId: string; deviceId: string; requestId: string; agentType?: string }
-  ) => {
-    return toolHost.executeTool(toolName, toolArgs, context);
-  };
-
   return {
     deviceId,
     setConvexUrl,
     setAuthToken,
     start,
     stop,
-    executeTool,
     subscribeQuery,
     getConvexUrl: () => convexUrl,
-    getAuthToken: () => authToken,
     killAllShells: () => toolHost.killAllShells(),
     killShellsByPort: (port: number) => toolHost.killShellsByPort(port),
   };

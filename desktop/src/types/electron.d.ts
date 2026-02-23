@@ -245,10 +245,6 @@ export type ElectronApi = {
   bridgeStatus: (payload: { provider: string }) => Promise<{ running: boolean }>
 
   shellKillByPort: (port: number) => Promise<void>
-
-  // Local-first mode
-  getLocalServerPort: () => Promise<number>
-  getLocalMode: () => Promise<string>
 }
 
 declare global {
