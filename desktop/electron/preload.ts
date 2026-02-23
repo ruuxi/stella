@@ -214,8 +214,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
   bridgeStatus: (payload: { provider: string }) => ipcRenderer.invoke('bridge:status', payload),
 
   shellKillByPort: (port: number) => ipcRenderer.invoke('shell:killByPort', { port }),
-
-  // Local-first mode
-  getLocalServerPort: () => ipcRenderer.invoke('local:getServerPort'),
-  getLocalMode: () => ipcRenderer.invoke('local:getMode'),
 })
