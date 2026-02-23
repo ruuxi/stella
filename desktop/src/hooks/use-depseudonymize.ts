@@ -4,6 +4,7 @@ type Replacement = { pattern: RegExp; replacement: string };
 type DiscoveryCategory = "browsing_bookmarks" | "dev_environment" | "apps_system" | "messages_notes";
 
 const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
+const DISCOVERY_CATEGORIES_CHANGED_EVENT = "stella:discovery-categories-changed";
 
 function isMessagesNotesEnabled(): boolean {
   try {
@@ -30,12 +31,6 @@ async function loadReplacements(): Promise<Replacement[]> {
 
   loadPromise = (async () => {
     try {
-      // Depseudonymize only when Messages & Notes discovery category is enabled.
-      if (!isMessagesNotesEnabled()) {
-        cachedReplacements = [];
-        return [];
-      }
-
       const map = await window.electronAPI?.getIdentityMap?.();
       if (!map?.mappings?.length) {
         cachedReplacements = [];
@@ -88,21 +83,42 @@ function applyReplacements(
  * Returns a no-op passthrough if no identity map exists.
  */
 export function useDepseudonymize(): (text: string) => string {
-  const isEnabled = useMemo(() => isMessagesNotesEnabled(), []);
+  const [isEnabled, setIsEnabled] = useState(() => isMessagesNotesEnabled());
   const [replacements, setReplacements] = useState<Replacement[] | null>(() => {
-    if (!isEnabled) {
-      cachedReplacements = [];
-      loadPromise = null;
-      return [];
-    }
-    return cachedReplacements;
+    return isEnabled ? cachedReplacements : [];
   });
 
   useEffect(() => {
+    const refreshEnabled = () => {
+      setIsEnabled(isMessagesNotesEnabled());
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== DISCOVERY_CATEGORIES_KEY) {
+        return;
+      }
+      refreshEnabled();
+    };
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(DISCOVERY_CATEGORIES_CHANGED_EVENT, refreshEnabled);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(DISCOVERY_CATEGORIES_CHANGED_EVENT, refreshEnabled);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isEnabled) {
+      cachedReplacements = null;
+      loadPromise = null;
+      setReplacements([]);
       return;
     }
+
     if (cachedReplacements !== null) {
+      setReplacements(cachedReplacements);
       return;
     }
 

@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
@@ -158,6 +158,39 @@ describe("useDepseudonymize", () => {
 
     const second = renderHook(() => useDepseudonymize());
     expect(second.result.current("AliasPersonOne")).toBe("PersonOne");
+    expect(getIdentityMap).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads replacements when messages_notes is enabled mid-session", async () => {
+    setDiscoveryCategories(["dev_environment"]);
+    const getIdentityMap = vi.fn().mockResolvedValue({
+      version: 1,
+      mappings: [
+        {
+          real: { name: "PersonOne", identifier: "PersonOne@example.com" },
+          alias: { name: "AliasPersonOne", identifier: "ALIAS_ID" },
+          source: "messages_notes",
+        },
+      ],
+    } satisfies IdentityMapPayload);
+    window.electronAPI = {
+      getIdentityMap,
+    } as unknown as typeof window.electronAPI;
+
+    const { useDepseudonymize } = await import("./use-depseudonymize");
+    const { result } = renderHook(() => useDepseudonymize());
+
+    expect(result.current("AliasPersonOne")).toBe("AliasPersonOne");
+    expect(getIdentityMap).not.toHaveBeenCalled();
+
+    act(() => {
+      setDiscoveryCategories(["messages_notes"]);
+      window.dispatchEvent(new Event("stella:discovery-categories-changed"));
+    });
+
+    await waitFor(() => {
+      expect(result.current("AliasPersonOne")).toBe("PersonOne");
+    });
     expect(getIdentityMap).toHaveBeenCalledTimes(1);
   });
 });

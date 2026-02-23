@@ -59,6 +59,10 @@ vi.mock("../screens/RegionCapture", () => ({
   RegionCapture: () => <div data-testid="region-capture" />,
 }));
 
+vi.mock("../screens/VoiceWidget", () => ({
+  VoiceWidget: () => <div data-testid="voice-widget" />,
+}));
+
 import App from "../App";
 import { useUiState } from "../app/state/ui-state";
 
@@ -68,6 +72,14 @@ describe("App", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetElectronApi.mockReturnValue(undefined);
+    vi.mocked(useUiState).mockReturnValue({
+      state: { mode: "chat", window: "full", view: "chat", conversationId: null },
+      setMode: vi.fn(),
+      setView: vi.fn(),
+      setConversationId: vi.fn(),
+      setWindow: vi.fn(),
+      updateState: vi.fn(),
+    } as any);
     Object.defineProperty(window, "location", {
       value: { search: "", href: "http://localhost/" },
       writable: true,
@@ -102,6 +114,21 @@ describe("App", () => {
 
     render(<App />);
     expect(await screen.findByTestId("mini-shell")).toBeInTheDocument();
+    expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
+  });
+
+  it("renders VoiceWidget when ui state window is voice and not Electron", async () => {
+    vi.mocked(useUiState).mockReturnValue({
+      state: { mode: "chat", window: "voice", view: "chat", conversationId: null },
+      setMode: vi.fn(),
+      setView: vi.fn(),
+      setConversationId: vi.fn(),
+      setWindow: vi.fn(),
+      updateState: vi.fn(),
+    } as any);
+
+    render(<App />);
+    expect(await screen.findByTestId("voice-widget")).toBeInTheDocument();
     expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
   });
 
@@ -160,6 +187,18 @@ describe("App", () => {
 
     render(<App />);
     expect(await screen.findByTestId("mini-shell")).toBeInTheDocument();
+    expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
+  });
+
+  it("renders VoiceWidget when Electron and window param is voice", async () => {
+    mockGetElectronApi.mockReturnValue({} as any);
+    Object.defineProperty(window, "location", {
+      value: { search: "?window=voice", href: "http://localhost/?window=voice" },
+      writable: true,
+    });
+
+    render(<App />);
+    expect(await screen.findByTestId("voice-widget")).toBeInTheDocument();
     expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
   });
 

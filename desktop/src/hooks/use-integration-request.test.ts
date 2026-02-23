@@ -76,4 +76,53 @@ describe("useIntegrationRequest", () => {
     expect(result.current.error).toBe("Network down");
     expect(result.current.loading).toBe(false);
   });
+
+  it("keeps loading true until all overlapping requests complete", async () => {
+    let resolveFirst: ((value: { data: { first: boolean } }) => void) | undefined;
+    let resolveSecond: ((value: { data: { second: boolean } }) => void) | undefined;
+    const firstPromise = new Promise<{ data: { first: boolean } }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondPromise = new Promise<{ data: { second: boolean } }>((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    const proxyAction = vi
+      .fn()
+      .mockImplementationOnce(() => firstPromise)
+      .mockImplementationOnce(() => secondPromise);
+    mockUseAction.mockReturnValue(proxyAction);
+
+    const { result } = renderHook(() => useIntegrationRequest());
+
+    let firstRequest: Promise<unknown> = Promise.resolve();
+    let secondRequest: Promise<unknown> = Promise.resolve();
+    await act(async () => {
+      firstRequest = result.current.execute({
+        provider: "first",
+        request: { url: "https://api.example.com/first" },
+      });
+      secondRequest = result.current.execute({
+        provider: "second",
+        request: { url: "https://api.example.com/second" },
+      });
+    });
+
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      resolveFirst?.({ data: { first: true } });
+      await firstRequest;
+    });
+
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      resolveSecond?.({ data: { second: true } });
+      await secondRequest;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
 });

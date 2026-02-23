@@ -295,6 +295,32 @@ describe("OnboardingStep1", () => {
       expect(screen.getByText("Recommended")).toBeTruthy();
     });
 
+    it("re-runs browser detection when browser access is disabled and re-enabled", async () => {
+      const detectPreferredBrowser = vi
+        .fn()
+        .mockResolvedValueOnce({ browser: "chrome" })
+        .mockResolvedValueOnce({ browser: "edge" });
+      (window as any).electronAPI.detectPreferredBrowser = detectPreferredBrowser;
+
+      goToBrowser();
+      const browserButton = screen.getByRole("button", { name: /Your browser/i });
+
+      fireEvent.click(browserButton); // enable -> detect
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(detectPreferredBrowser).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(browserButton); // disable
+      fireEvent.click(browserButton); // re-enable -> detect again
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(detectPreferredBrowser).toHaveBeenCalledTimes(2);
+    });
+
     it("renders Continue button for discovery confirmation", () => {
       goToBrowser();
       // There should be a Continue button

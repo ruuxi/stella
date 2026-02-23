@@ -44,6 +44,7 @@ const navItems = [
   },
   {
     label: "Social",
+    disabled: true,
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -161,8 +162,9 @@ export const Sidebar = ({
         {navItems.map((item) => (
           <button
             key={item.label}
-            className={`sidebar-nav-item${item.label === "App Store" && storeActive ? " sidebar-nav-item--active" : ""}`}
+            className={`sidebar-nav-item${item.label === "App Store" && storeActive ? " sidebar-nav-item--active" : ""}${item.disabled ? " sidebar-nav-item--disabled" : ""}`}
             type="button"
+            disabled={Boolean(item.disabled)}
             onClick={getClickHandler(item.label)}
           >
             <span className="sidebar-nav-icon">{item.icon}</span>

@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 // --- Mocks ---
 
 const mockCancelRegionCapture = vi.fn();
 const mockSubmitRegionClick = vi.fn();
 const mockSubmitRegionSelection = vi.fn();
+const mockRunVacuumEffect = vi.fn().mockResolvedValue(undefined);
 
-const mockElectronApi = {
+const mockElectronApi: Record<string, unknown> = {
   cancelRegionCapture: mockCancelRegionCapture,
   submitRegionClick: mockSubmitRegionClick,
   submitRegionSelection: mockSubmitRegionSelection,
@@ -17,6 +18,10 @@ vi.mock("../services/electron", () => ({
   getElectronApi: () => mockElectronApi,
 }));
 
+vi.mock("../screens/region-capture-vacuum", () => ({
+  runVacuumEffect: (...args: unknown[]) => mockRunVacuumEffect(...args),
+}));
+
 import { RegionCapture } from "../screens/RegionCapture";
 
 // --- Tests ---
@@ -24,6 +29,7 @@ import { RegionCapture } from "../screens/RegionCapture";
 describe("RegionCapture", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockElectronApi.getWindowCapture = undefined;
   });
 
   it("renders the capture overlay", () => {
@@ -108,6 +114,32 @@ describe("RegionCapture", () => {
 
     expect(mockSubmitRegionClick).toHaveBeenCalledWith({ x: 102, y: 102 });
     expect(mockSubmitRegionSelection).not.toHaveBeenCalled();
+  });
+
+  it("runs vacuum animation before submitting click when window capture is available", async () => {
+    const getWindowCapture = vi.fn().mockResolvedValue({
+      bounds: { x: 80, y: 80, width: 120, height: 90 },
+      thumbnail: "data:image/png;base64,ZmFrZQ==",
+    });
+    mockElectronApi.getWindowCapture = getWindowCapture;
+
+    const { container } = render(<RegionCapture />);
+    const root = container.querySelector(".region-capture-root")!;
+
+    fireEvent.mouseDown(root, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.mouseMove(root, { clientX: 102, clientY: 102 });
+    fireEvent.mouseUp(root, { clientX: 102, clientY: 102 });
+
+    await waitFor(() => {
+      expect(getWindowCapture).toHaveBeenCalledWith({ x: 102, y: 102 });
+    });
+    await waitFor(() => {
+      expect(mockRunVacuumEffect).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(mockSubmitRegionClick).toHaveBeenCalledWith({ x: 102, y: 102 });
+    });
+    expect(container.querySelector(".region-capture-vacuum")).not.toBeInTheDocument();
   });
 
   it("clears selection after mouseUp", () => {

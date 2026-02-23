@@ -12,12 +12,39 @@ const log = (...args: unknown[]) => console.log("[signal-processing]", ...args);
 // Low-Signal Domain Filtering
 // ---------------------------------------------------------------------------
 
+const normalizeDomain = (domain: string) => domain.trim().toLowerCase().replace(/^www\./, "");
+
+const parseConfiguredAiChatSites = () => {
+  const configured = process.env.STELLA_AI_CHAT_SITES;
+  if (!configured) {
+    return [] as string[];
+  }
+
+  return configured
+    .split(",")
+    .map(normalizeDomain)
+    .filter((domain) => domain.length > 0);
+};
+
 /** AI chat sites whose page titles reveal user intent — always kept regardless of count */
-const AI_CHAT_SITES = new Set([
-  "chatgpt.com", "chat.openai.com", "claude.ai", "clawdbot.ai",
-  "gemini.google.com", "chat.deepseek.com", "poe.com",
-  "perplexity.ai", "copilot.microsoft.com", "grok.x.ai",
-]);
+const DEFAULT_AI_CHAT_SITES = [
+  "chatgpt.com",
+  "chat.openai.com",
+  "claude.ai",
+  "clawdbot.ai",
+  "gemini.google.com",
+  "chat.deepseek.com",
+  "poe.com",
+  "perplexity.ai",
+  "copilot.microsoft.com",
+  "grok.x.ai",
+];
+
+const AI_CHAT_SITES = new Set(
+  [...DEFAULT_AI_CHAT_SITES, ...parseConfiguredAiChatSites()].map(normalizeDomain),
+);
+
+const isAiChatDomain = (domain: string) => AI_CHAT_SITES.has(normalizeDomain(domain));
 
 /** Minimum page-title count for non-chat sites in Content Details */
 const TITLE_MIN_COUNT = 3;
@@ -66,7 +93,7 @@ export function filterLowSignalDomains(formatted: string): string {
   const keepDomains = new Set<string>();
   const removedDomains: string[] = [];
   for (const [domain, count] of domainCounts) {
-    if (count >= threshold || AI_CHAT_SITES.has(domain)) {
+    if (count >= threshold || isAiChatDomain(domain)) {
       keepDomains.add(domain);
     } else {
       removedDomains.push(`${domain} (${count})`);
@@ -107,7 +134,7 @@ export function filterLowSignalDomains(formatted: string): string {
       .map((block) => {
         const dm = block.match(/^\*\*(\S+?)\*\*/);
         if (!dm) return block;
-        if (AI_CHAT_SITES.has(dm[1])) return block;
+        if (isAiChatDomain(dm[1])) return block;
 
         const lines = block.split("\n");
         return lines

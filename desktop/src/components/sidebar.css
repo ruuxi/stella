@@ -112,6 +112,21 @@
   color: var(--interactive);
 }
 
+.sidebar-nav-item--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sidebar-nav-item--disabled:hover,
+.sidebar-nav-item--disabled:active {
+  background: transparent;
+  color: var(--text-base);
+}
+
+.sidebar-nav-item--disabled .sidebar-nav-icon {
+  color: var(--text-weak);
+}
+
 .sidebar-nav-icon {
   display: flex;
   align-items: center;

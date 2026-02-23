@@ -31,7 +31,8 @@ export class ExtensionBridge {
 
   constructor(port: number = 9224, token?: string, commandTimeout: number = 60000) {
     this.port = port;
-    this.token = token ?? crypto.randomUUID();
+    const normalizedToken = typeof token === 'string' ? token.trim() : '';
+    this.token = normalizedToken || crypto.randomUUID();
     this.commandTimeout = commandTimeout;
   }
 
@@ -44,7 +45,7 @@ export class ExtensionBridge {
 
     // Write token file for the extension to authenticate
     const tokenFile = path.join(socketDir, `${session}.ext-token`);
-    fs.writeFileSync(tokenFile, this.token);
+    fs.writeFileSync(tokenFile, this.token, { mode: 0o600 });
 
     // Write port file for discovery
     const portFile = path.join(socketDir, `${session}.ext-port`);

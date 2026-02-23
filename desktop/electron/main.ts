@@ -579,6 +579,26 @@ const ensurePrivilegedActionApproval = async (
 
 const asTrimmedString = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 
+const sanitizeOptionalHttpUrl = (value: unknown, fieldName: string) => {
+  const normalized = asTrimmedString(value)
+  if (!normalized) {
+    return undefined
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(normalized)
+  } catch {
+    throw new Error(`Invalid ${fieldName}.`)
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`Invalid ${fieldName}.`)
+  }
+
+  return parsed.toString()
+}
+
 const sanitizeStoreId = (value: unknown, fieldName: string) => {
   const normalized = asTrimmedString(value)
   if (!STORE_ID_PATTERN.test(normalized)) {
@@ -1856,9 +1876,14 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('device:getId', () => deviceId)
-  ipcMain.handle('host:configure', (_event, config: { convexUrl?: string; convexSiteUrl?: string }) => {
-    if (config?.convexUrl) {
-      configureLocalHost({ convexUrl: config.convexUrl, convexSiteUrl: config.convexSiteUrl })
+  ipcMain.handle('host:configure', (event, config: { convexUrl?: string; convexSiteUrl?: string }) => {
+    if (!assertPrivilegedSender(event, 'host:configure')) {
+      throw new Error('Blocked untrusted host configuration request.')
+    }
+    const convexUrl = sanitizeOptionalHttpUrl(config?.convexUrl, 'convexUrl')
+    const convexSiteUrl = sanitizeOptionalHttpUrl(config?.convexSiteUrl, 'convexSiteUrl')
+    if (convexUrl) {
+      configureLocalHost({ convexUrl, convexSiteUrl })
     }
     return { deviceId }
   })
@@ -2317,9 +2342,16 @@ app.whenReady().then(async () => {
     return { running: bridgeManager.isRunning(payload.provider) }
   })
 
-  ipcMain.handle('shell:killByPort', async (_event, payload: { port: number }) => {
+  ipcMain.handle('shell:killByPort', async (event, payload: { port: number }) => {
+    if (!assertPrivilegedSender(event, 'shell:killByPort')) {
+      throw new Error('Blocked untrusted shell kill request.')
+    }
+    const port = Number(payload?.port)
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error('Invalid port.')
+    }
     if (localHostRunner) {
-      localHostRunner.killShellsByPort(payload.port)
+      localHostRunner.killShellsByPort(port)
     }
   })
 
@@ -2417,4 +2449,3 @@ app.on('will-quit', () => {
     localHostRunner = null
   }
 })
-
