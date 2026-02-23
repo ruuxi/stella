@@ -38,6 +38,7 @@ export function useDiscoveryFlow({
 }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
   const appendEvent = useMutation(api.events.appendEvent);
+  const setCoreMemory = useMutation(api.data.preferences.setCoreMemory);
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
@@ -74,6 +75,9 @@ export function useDiscoveryFlow({
 
         await window.electronAPI?.writeCoreMemory?.(synthesisResult.coreMemory);
 
+        // Sync core memory to Convex immediately (don't wait for runner file watcher)
+        await setCoreMemory({ content: synthesisResult.coreMemory });
+
         // Select default skills based on user profile (fire-and-forget)
         void selectDefaultSkills(synthesisResult.coreMemory).catch(() => {
           // Silent fail - skill selection is non-critical
@@ -105,7 +109,7 @@ export function useDiscoveryFlow({
     };
 
     void run();
-  }, [discoveryCategories, isAuthenticated, activeConversationId, appendEvent]);
+  }, [discoveryCategories, isAuthenticated, activeConversationId, appendEvent, setCoreMemory]);
 
   return {
     handleDiscoveryConfirm,

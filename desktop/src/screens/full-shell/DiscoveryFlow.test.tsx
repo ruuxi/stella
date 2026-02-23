@@ -7,14 +7,19 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 // ---------------------------------------------------------------------------
 
 const mockAppendEvent = vi.fn();
+const mockSetCoreMemory = vi.fn(() => Promise.resolve(null));
 
 vi.mock("convex/react", () => ({
-  useMutation: vi.fn(() => mockAppendEvent),
+  useMutation: vi.fn((ref: string) => {
+    if (ref === "setCoreMemory") return mockSetCoreMemory;
+    return mockAppendEvent;
+  }),
 }));
 
 vi.mock("../../convex/api", () => ({
   api: {
     events: { appendEvent: "appendEvent" },
+    data: { preferences: { setCoreMemory: "setCoreMemory" } },
   },
 }));
 
