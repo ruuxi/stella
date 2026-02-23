@@ -101,3 +101,22 @@
   color: var(--text-weak);
   line-height: 1.5;
 }
+
+.workspace-placeholder-retry {
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  color: var(--text-base);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.workspace-placeholder-retry:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  color: var(--text-strong);
+}

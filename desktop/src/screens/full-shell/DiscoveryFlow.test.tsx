@@ -8,18 +8,23 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 
 const mockAppendEvent = vi.fn();
 const mockSetCoreMemory = vi.fn(() => Promise.resolve(null));
+const mockStartDashboardGeneration = vi.fn(() =>
+  Promise.resolve({ started: true, pageIds: [] }),
+);
 
 vi.mock("convex/react", () => ({
   useMutation: vi.fn((ref: string) => {
     if (ref === "setCoreMemory") return mockSetCoreMemory;
     return mockAppendEvent;
   }),
+  useAction: vi.fn(() => mockStartDashboardGeneration),
 }));
 
 vi.mock("../../convex/api", () => ({
   api: {
     events: { appendEvent: "appendEvent" },
     data: { preferences: { setCoreMemory: "setCoreMemory" } },
+    personalized_dashboard: { startGeneration: "startGeneration" },
   },
 }));
 
@@ -315,6 +320,10 @@ describe("useDiscoveryFlow", () => {
       expect(writeCoreMemory).toHaveBeenCalledWith(
         "User is a developer",
       );
+      expect(mockStartDashboardGeneration).toHaveBeenCalledWith({
+        conversationId: "conv-1",
+        coreMemory: "User is a developer",
+      });
       expect(getOrCreateDeviceId).toHaveBeenCalled();
       // appendEvent should be called twice: assistant_message + welcome_suggestions
       expect(mockAppendEvent).toHaveBeenCalledTimes(2);
