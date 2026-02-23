@@ -43,6 +43,16 @@ const extractEventLine = (event: {
     if (!text) return null;
     return `[${timestamp}] ${event.type}: ${truncate(text, MAX_LINE_CHARS)}`;
   }
+  if (event.type === "tool_request") {
+    const toolName = typeof payload.toolName === "string" ? payload.toolName : "unknown";
+    const args = payload.args ? JSON.stringify(payload.args) : "{}";
+    return `[${timestamp}] tool_request: ${toolName}(${truncate(args, MAX_LINE_CHARS)})`;
+  }
+  if (event.type === "tool_result") {
+    const toolName = typeof payload.toolName === "string" ? payload.toolName : "unknown";
+    const result = typeof payload.result === "string" ? payload.result.trim() : JSON.stringify(payload.result);
+    return `[${timestamp}] tool_result: ${toolName} => ${truncate(result, MAX_LINE_CHARS)}`;
+  }
   if (event.type === "task_completed") {
     const result = payload.result;
     const text = typeof result === "string" ? result.trim() : "";
@@ -79,6 +89,8 @@ export const setSessionCompactionResult = internalMutation({
     return null;
   },
 });
+
+const CHUNK_MAX_CHARS = 40_000;
 
 export const generateSessionCompactionSummary = internalAction({
   args: {
@@ -123,23 +135,69 @@ export const generateSessionCompactionSummary = internalAction({
           }))
         .filter((line): line is string => !!line);
 
-      const summarySource = lines.length > 0
-        ? lines.join("\n")
-        : "No user/assistant/task content recorded in this session.";
+      if (lines.length === 0) {
+        await ctx.runMutation(internal.data.session_compaction.setSessionCompactionResult, {
+          sessionId: args.sessionId,
+          status: "ready",
+          summary: "No user/assistant/task content recorded in this session.",
+          error: undefined,
+        });
+        return null;
+      }
+
+      // Group lines into chunks by CHUNK_MAX_CHARS
+      const chunks: string[] = [];
+      let currentChunk: string[] = [];
+      let currentLength = 0;
+
+      for (const line of lines) {
+        if (currentLength + line.length > CHUNK_MAX_CHARS && currentChunk.length > 0) {
+          chunks.push(currentChunk.join("\n"));
+          currentChunk = [];
+          currentLength = 0;
+        }
+        currentChunk.push(line);
+        currentLength += line.length + 1; // +1 for newline
+      }
+      if (currentChunk.length > 0) {
+        chunks.push(currentChunk.join("\n"));
+      }
 
       const config = getModelConfig("session_compaction_summary");
-      const { text } = await generateText({
-        ...config,
-        system: SESSION_COMPACTION_SUMMARY_PROMPT,
-        messages: [{ role: "user", content: summarySource }],
-      });
+      
+      let finalSummary = "";
 
-      const summary = text.trim();
-      if (!summary) {
+      // Process chunks sequentially or in parallel depending on desired behavior
+      // Here we process sequentially, building up a final summary
+      if (chunks.length === 1) {
+        const { text } = await generateText({
+          ...config,
+          system: SESSION_COMPACTION_SUMMARY_PROMPT,
+          messages: [{ role: "user", content: chunks[0] }],
+        });
+        finalSummary = text.trim();
+      } else {
+         let cumulativeSummary = "";
+         for (let i = 0; i < chunks.length; i++) {
+            const promptBody = cumulativeSummary
+              ? `Previous summary part:\n${cumulativeSummary}\n\nNew events to incorporate:\n${chunks[i]}`
+              : chunks[i];
+
+            const { text } = await generateText({
+              ...config,
+              system: SESSION_COMPACTION_SUMMARY_PROMPT,
+              messages: [{ role: "user", content: promptBody }],
+            });
+            cumulativeSummary = text.trim();
+         }
+         finalSummary = cumulativeSummary;
+      }
+
+      if (!finalSummary) {
         throw new Error("LLM returned empty compaction summary.");
       }
       const summaryWithSource = [
-        summary,
+        finalSummary,
         "",
         `sourceConversationId=${session.conversationId}`,
         `sourceSessionId=${args.sessionId}`,
