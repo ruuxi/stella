@@ -111,13 +111,6 @@ await page.goto('https://example.com', { waitUntil: 'domcontentloaded' });
 await waitForPageLoad({ page, timeout: 5000 });
 \`\`\`
 
-## Pinned Elements
-Users pin elements via right-click → "Copy Stella Browser Element Reference":
-\`\`\`js
-const el = await page.evaluateHandle(() => globalThis.heraBrowserPinnedElem1);
-await el.click();
-\`\`\`
-
 ## page.evaluate
 Runs in the browser — plain JavaScript only, no TypeScript:
 \`\`\`js
