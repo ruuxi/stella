@@ -4,11 +4,14 @@ import { createRef } from "react";
 
 // --- Mocks ---
 
+const mockRetryPersonalPage = vi.fn(() => Promise.resolve(undefined));
+const mockSendMessage = vi.fn();
+
 vi.mock("convex/react", () => ({
   useConvexAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
   useQuery: vi.fn(() => undefined),
   useMutation: vi.fn(() => vi.fn()),
-  useAction: vi.fn(() => vi.fn()),
+  useAction: vi.fn(() => mockRetryPersonalPage),
   Authenticated: ({ children }: any) => <>{children}</>,
 }));
 
@@ -120,6 +123,22 @@ vi.mock("../components/Sidebar", () => ({
       <button data-testid="sidebar-signin" onClick={props.onSignIn}>Sign In</button>
       <button data-testid="sidebar-connect" onClick={props.onConnect}>Connect</button>
       <button data-testid="sidebar-settings" onClick={props.onSettings}>Settings</button>
+      {props.onPersonalPageSelect && (
+        <button
+          data-testid="sidebar-personal-page"
+          onClick={() =>
+            props.onPersonalPageSelect({
+              pageId: "page-1",
+              panelName: "pd_tech_feed",
+              title: "Tech Feed",
+              status: "ready",
+              order: 0,
+            })
+          }
+        >
+          Personal Page
+        </button>
+      )}
       {props.storeActive && <span data-testid="store-active" />}
     </div>
   ),
@@ -127,7 +146,14 @@ vi.mock("../components/Sidebar", () => ({
 
 vi.mock("../components/workspace/WorkspaceArea", () => ({
   WorkspaceArea: (props: any) => (
-    <div data-testid="workspace-area" data-view={props.view} />
+    <div data-testid="workspace-area" data-view={props.view}>
+      <button
+        data-testid="workspace-retry-page"
+        onClick={() => props.onRetryPersonalPage?.("page-1")}
+      >
+        Retry Page
+      </button>
+    </div>
   ),
 }));
 
@@ -200,7 +226,7 @@ vi.mock("../screens/full-shell/use-streaming-chat", () => ({
     pendingUserMessageId: null,
     queueNext: null,
     setQueueNext: vi.fn(),
-    sendMessage: vi.fn(),
+    sendMessage: mockSendMessage,
     syncWithEvents: vi.fn(),
     processFollowUpQueue: vi.fn(),
   })),
@@ -330,6 +356,38 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
 
     render(<FullShell />);
     expect(screen.getByTestId("store-active")).toBeInTheDocument();
+  });
+
+  it("opens selected personal page in canvas and returns to chat view", () => {
+    render(<FullShell />);
+    fireEvent.click(screen.getByTestId("sidebar-personal-page"));
+    expect(mockSetView).toHaveBeenCalledWith("chat");
+    expect(mockOpenCanvas).toHaveBeenCalledWith({
+      name: "pd_tech_feed",
+      title: "Tech Feed",
+    });
+  });
+
+  it("retries a personal page via WorkspaceArea callback", () => {
+    render(<FullShell />);
+    fireEvent.click(screen.getByTestId("workspace-retry-page"));
+    expect(mockRetryPersonalPage).toHaveBeenCalledWith({
+      conversationId: "conv-123",
+      pageId: "page-1",
+    });
+  });
+
+  it("routes stella:send-message events to sendMessage", () => {
+    render(<FullShell />);
+    window.dispatchEvent(
+      new CustomEvent("stella:send-message", { detail: { text: "Ping from dashboard" } }),
+    );
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      text: "Ping from dashboard",
+      selectedText: null,
+      chatContext: null,
+      onClear: expect.any(Function),
+    });
   });
 
   it("renders the shell with correct base class", () => {

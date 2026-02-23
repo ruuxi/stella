@@ -16,9 +16,9 @@ export function WelcomeSuggestions({ suggestions, onSelect }: WelcomeSuggestions
 
   return (
     <div className="welcome-suggestions">
-      {suggestions.map((s, i) => (
+      {suggestions.map((s) => (
         <button
-          key={i}
+          key={`${s.category}:${s.title}:${s.prompt}`}
           className="welcome-suggestion-card"
           data-category={s.category}
           onClick={() => onSelect(s)}
@@ -27,7 +27,7 @@ export function WelcomeSuggestions({ suggestions, onSelect }: WelcomeSuggestions
             <div className="welcome-suggestion-header">
               <span className="welcome-suggestion-title">{s.title}</span>
               <span className="welcome-suggestion-badge" data-category={s.category}>
-                {CATEGORY_LABELS[s.category]}
+                {CATEGORY_LABELS[s.category] ?? "Suggestion"}
               </span>
             </div>
             <span className="welcome-suggestion-desc">{s.description}</span>

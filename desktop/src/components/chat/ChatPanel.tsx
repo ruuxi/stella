@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useWorkspace, MIN_CHAT_WIDTH } from '@/app/state/workspace-state'
+import { useWorkspace } from '@/app/state/workspace-state'
 
 const ANIM_DURATION = 350 // ms, matches CSS chat-slide-out duration
 

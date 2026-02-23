@@ -14,6 +14,7 @@ describe("useRafState", () => {
       rafId += 1;
       return rafId;
     });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -73,5 +74,18 @@ describe("useRafState", () => {
       if (cb) cb(performance.now());
     });
     expect(result.current[0]).toBe("");
+  });
+
+  it("cancels a pending animation frame on unmount", () => {
+    const { result, unmount } = renderHook(() => useRafState(0));
+
+    act(() => {
+      const [, setRafState] = result.current;
+      setRafState(1);
+    });
+
+    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1);
   });
 });

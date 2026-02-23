@@ -66,26 +66,31 @@
   pointer-events: auto;
 }
 
-.chat-panel-collapse {
+.chat-panel-collapse,
+.chat-panel-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 20px;
   height: 44px;
-  position: absolute;
-  right: calc(100% - 6px);
-  top: 50%;
-  transform: translateY(-50%);
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   color: var(--text-weak);
   cursor: pointer;
-  z-index: 1;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.chat-panel-collapse:hover {
+.chat-panel-collapse {
+  position: absolute;
+  right: calc(100% - 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.chat-panel-collapse:hover,
+.chat-panel-toggle:hover {
   background: color-mix(in oklch, var(--foreground) 14%, transparent);
   color: var(--text-strong);
 }
@@ -178,22 +183,6 @@
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 44px;
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   border-right: none;
-  color: var(--text-weak);
-  cursor: pointer;
   z-index: 10;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.chat-panel-toggle:hover {
-  background: color-mix(in oklch, var(--foreground) 14%, transparent);
-  color: var(--text-strong);
 }

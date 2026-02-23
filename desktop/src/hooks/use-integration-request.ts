@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useAction } from 'convex/react'
 import { api } from '../convex/api'
 
@@ -26,11 +26,15 @@ type IntegrationResult = {
  */
 export const useIntegrationRequest = () => {
   const proxyAction = useAction(api.tools.integration_proxy.execute)
-  const [loading, setLoading] = useState(false)
+  const [inFlightCount, setInFlightCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const latestRequestIdRef = useRef(0)
+  const loading = inFlightCount > 0
 
   const execute = useCallback(async (args: IntegrationRequestArgs): Promise<IntegrationResult> => {
-    setLoading(true)
+    const requestId = latestRequestIdRef.current + 1
+    latestRequestIdRef.current = requestId
+    setInFlightCount((prev) => prev + 1)
     setError(null)
 
     try {
@@ -40,17 +44,18 @@ export const useIntegrationRequest = () => {
         responseType: args.responseType,
       }) as IntegrationResult
 
-      if (result.error) {
+      if (result.error && latestRequestIdRef.current === requestId) {
         setError(result.error)
       }
-
-      setLoading(false)
       return result
     } catch (err) {
       const message = (err as Error).message
-      setError(message)
-      setLoading(false)
+      if (latestRequestIdRef.current === requestId) {
+        setError(message)
+      }
       return { error: message }
+    } finally {
+      setInFlightCount((prev) => Math.max(0, prev - 1))
     }
   }, [proxyAction])
 
