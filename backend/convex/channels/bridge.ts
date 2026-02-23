@@ -307,7 +307,7 @@ export const getBridgeSession = internalQuery({
       .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", args.ownerId).eq("provider", args.provider),
       )
-      .first();
+      .unique();
     return await decodeBridgeSession(session);
   },
 });
@@ -492,7 +492,7 @@ export const getBridgeStatus = query({
       .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", identity.subject).eq("provider", args.provider),
       )
-      .first();
+      .unique();
     if (!session) {
       return null;
     }

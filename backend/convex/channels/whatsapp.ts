@@ -25,7 +25,7 @@ export const getQrCode = query({
       .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", identity.subject).eq("provider", "whatsapp"),
       )
-      .first();
+      .unique();
 
     if (!session || session.status !== "awaiting_auth") return null;
     const qrCode = (session.authState as Record<string, unknown>)?.qrCode;

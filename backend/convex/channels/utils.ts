@@ -94,7 +94,7 @@ const upsertUserPreference = async (
   const existing = await ctx.db
     .query("user_preferences")
     .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", key))
-    .first();
+    .unique();
 
   if (existing) {
     await ctx.db.patch(existing._id, { value, updatedAt });
@@ -168,7 +168,7 @@ export const getConnectionByProviderAndExternalId = internalQuery({
       .withIndex("by_provider_and_externalUserId", (q) =>
         q.eq("provider", args.provider).eq("externalUserId", args.externalUserId),
       )
-      .first();
+      .unique();
   },
 });
 
@@ -188,7 +188,7 @@ export const getConnectionByOwnerProviderAndExternalId = internalQuery({
           .eq("provider", args.provider)
           .eq("externalUserId", args.externalUserId),
       )
-      .first();
+      .unique();
   },
 });
 
@@ -218,19 +218,19 @@ export const getDmPolicyConfig = internalQuery({
         .withIndex("by_ownerId_and_key", (q) =>
           q.eq("ownerId", args.ownerId).eq("key", policyKey),
         )
-        .first(),
+        .unique(),
       ctx.db
         .query("user_preferences")
         .withIndex("by_ownerId_and_key", (q) =>
           q.eq("ownerId", args.ownerId).eq("key", allowlistKey),
         )
-        .first(),
+        .unique(),
       ctx.db
         .query("user_preferences")
         .withIndex("by_ownerId_and_key", (q) =>
           q.eq("ownerId", args.ownerId).eq("key", denylistKey),
         )
-        .first(),
+        .unique(),
     ]);
 
     return {
@@ -302,7 +302,7 @@ export const createConnection = internalMutation({
           .eq("provider", args.provider)
           .eq("externalUserId", args.externalUserId),
       )
-      .first();
+      .unique();
 
     if (existing) {
       if (args.displayName && args.displayName !== existing.displayName) {
@@ -338,7 +338,7 @@ export const getOrCreateConversationForOwner = internalMutation({
       .withIndex("by_ownerId_and_isDefault", (q) =>
         q.eq("ownerId", args.ownerId).eq("isDefault", true),
       )
-      .first();
+      .unique();
 
     if (existing) return existing._id;
 
@@ -407,7 +407,7 @@ export const storeLinkCode = internalMutation({
     const existing = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", key))
-      .first();
+      .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, { value, updatedAt: now });
@@ -522,7 +522,7 @@ export const getConnection = query({
       .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
-      .first();
+      .unique();
   },
 });
 
@@ -536,7 +536,7 @@ export const deleteConnection = mutation({
       .withIndex("by_ownerId_and_provider", (q) =>
         q.eq("ownerId", ownerId).eq("provider", args.provider),
       )
-      .first();
+      .unique();
     if (conn) {
       await ctx.db.delete(conn._id);
     }

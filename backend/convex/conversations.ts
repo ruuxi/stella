@@ -42,7 +42,7 @@ export const getOrCreateDefaultConversation = mutation({
       .withIndex("by_ownerId_and_isDefault", (q) =>
         q.eq("ownerId", ownerId).eq("isDefault", true),
       )
-      .first();
+      .unique();
 
     if (existing) {
       if (!existing.activeThreadId) {

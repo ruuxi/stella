@@ -522,7 +522,7 @@ export const resolveForOwner = internalQuery({
     const runtimePreference = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", RUNTIME_MODE_KEY))
-      .first();
+      .unique();
     const runtimeMode = normalizeRuntimeMode(runtimePreference?.value ?? null);
     if (runtimeMode !== "cloud_247") {
       return null;

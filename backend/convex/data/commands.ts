@@ -48,7 +48,7 @@ export const getByCommandId = internalQuery({
     const row = await ctx.db
       .query("commands")
       .withIndex("by_commandId", (q) => q.eq("commandId", args.commandId))
-      .first();
+      .unique();
     if (!row) return null;
     return {
       commandId: row.commandId,
@@ -85,11 +85,11 @@ export const upsertMany = mutation({
       ctx.db
         .query("commands")
         .withIndex("by_enabled_and_updatedAt", (q) => q.eq("enabled", true))
-        .first(),
+        .unique(),
       ctx.db
         .query("commands")
         .withIndex("by_enabled_and_updatedAt", (q) => q.eq("enabled", false))
-        .first(),
+        .unique(),
     ]);
     if (firstEnabled || firstDisabled) return { upserted: 0 };
 

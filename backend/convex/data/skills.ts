@@ -204,7 +204,7 @@ const upsertSkill = async (
     .withIndex("by_ownerId_and_id", (q) =>
       q.eq("ownerId", ownerId).eq("id", skill.id),
     )
-    .first();
+    .unique();
 
   const payload = {
     ...skill,
@@ -346,7 +346,7 @@ const getSkillByIdHandler = async (
     .withIndex("by_ownerId_and_id", (q) =>
       q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", args.skillId),
     )
-    .first();
+    .unique();
   if (builtinSkill) {
     return builtinSkill;
   }

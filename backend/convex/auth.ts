@@ -95,7 +95,7 @@ const getSessionPolicyFromDb = async (
   const policy = await ctx.db
     .query("auth_session_policies")
     .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-    .first();
+    .unique();
   if (!policy) {
     return null;
   }
@@ -373,7 +373,7 @@ export const getSessionPolicyByOwnerInternal = internalQuery({
     const policy = await ctx.db
       .query("auth_session_policies")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
-      .first();
+      .unique();
     if (!policy) {
       return null;
     }
@@ -409,7 +409,7 @@ const upsertSessionPolicy = async (
   const existing = await ctx.db
     .query("auth_session_policies")
     .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-    .first();
+    .unique();
   if (existing) {
     const next = {
       sessionVersion: patch.sessionVersion ?? existing.sessionVersion,

@@ -137,7 +137,7 @@ export const getCachedChatId = internalQuery({
     const row = await ctx.db
       .query("linq_chats")
       .withIndex("by_phoneNumber", (q) => q.eq("phoneNumber", args.phoneNumber))
-      .first();
+      .unique();
     return row?.linqChatId ?? null;
   },
 });
@@ -152,7 +152,7 @@ export const cacheChatId = internalMutation({
     const existing = await ctx.db
       .query("linq_chats")
       .withIndex("by_phoneNumber", (q) => q.eq("phoneNumber", args.phoneNumber))
-      .first();
+      .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, { linqChatId: args.linqChatId });
