@@ -75,7 +75,7 @@ describe('getSocketDir', () => {
   describe('XDG_RUNTIME_DIR', () => {
     it('should use when STELLA_BROWSER_SOCKET_DIR is not set', () => {
       process.env.XDG_RUNTIME_DIR = '/run/user/1000';
-      expect(getSocketDir()).toBe('/run/user/1000/stella-browser');
+      expect(getSocketDir()).toBe(path.join('/run/user/1000', 'stella-browser'));
     });
 
     it('should ignore empty string', () => {

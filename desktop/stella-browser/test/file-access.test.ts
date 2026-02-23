@@ -1,13 +1,15 @@
 import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest';
 import { BrowserManager } from '../src/browser.js';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 describe('File Access (Issue #345)', () => {
   let browser: BrowserManager;
-  const testFilePath = path.join(os.tmpdir(), 'stella-browser-test-file.html');
-  const testFileUrl = `file://${testFilePath}`;
+  const testFileDir = mkdtempSync(path.join(os.tmpdir(), 'stella-browser-file-access-'));
+  const testFilePath = path.join(testFileDir, 'stella-browser-test-file.html');
+  const testFileUrl = pathToFileURL(testFilePath).href;
 
   // Create test HTML file before tests
   beforeAll(() => {
@@ -20,9 +22,9 @@ describe('File Access (Issue #345)', () => {
   // Clean up test file after tests
   afterAll(() => {
     try {
-      unlinkSync(testFilePath);
+      rmSync(testFileDir, { recursive: true, force: true });
     } catch {
-      // Ignore if file doesn't exist
+      // Ignore if temp directory cleanup fails
     }
   });
 
