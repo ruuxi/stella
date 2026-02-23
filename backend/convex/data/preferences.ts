@@ -259,6 +259,37 @@ export const clearModelOverride = mutation({
   },
 });
 
+const CORE_MEMORY_KEY = "core_memory";
+
+export const setCoreMemory = mutation({
+  args: {
+    content: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const existing = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", CORE_MEMORY_KEY))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        value: args.content,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("user_preferences", {
+        ownerId,
+        key: CORE_MEMORY_KEY,
+        value: args.content,
+        updatedAt: Date.now(),
+      });
+    }
+    return null;
+  },
+});
+
 const EXPRESSION_STYLE_KEY = "expression_style";
 
 export const setExpressionStyle = mutation({
