@@ -1,17 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 
 // --- Mocks ---
 
 const mockRetryPersonalPage = vi.fn(() => Promise.resolve(undefined));
+const mockStartDashboardGeneration = vi.fn(() =>
+  Promise.resolve({ started: false, pageIds: [], skippedReason: "already_generated" }),
+);
 const mockSendMessage = vi.fn();
 
 vi.mock("convex/react", () => ({
   useConvexAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
   useQuery: vi.fn(() => undefined),
   useMutation: vi.fn(() => vi.fn()),
-  useAction: vi.fn(() => mockRetryPersonalPage),
+  useAction: vi.fn((ref: string) =>
+    ref === "personalized_dashboard:startGeneration"
+      ? mockStartDashboardGeneration
+      : mockRetryPersonalPage,
+  ),
   Authenticated: ({ children }: any) => <>{children}</>,
 }));
 
@@ -83,6 +90,10 @@ vi.mock("../services/electron", () => ({
 
 vi.mock("../services/auth", () => ({
   secureSignOut: vi.fn(),
+}));
+
+vi.mock("../services/device", () => ({
+  getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
 vi.mock("@/convex/api", () => ({
@@ -368,12 +379,15 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     });
   });
 
-  it("retries a personal page via WorkspaceArea callback", () => {
+  it("retries a personal page via WorkspaceArea callback", async () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("workspace-retry-page"));
-    expect(mockRetryPersonalPage).toHaveBeenCalledWith({
-      conversationId: "conv-123",
-      pageId: "page-1",
+    await waitFor(() => {
+      expect(mockRetryPersonalPage).toHaveBeenCalledWith({
+        conversationId: "conv-123",
+        pageId: "page-1",
+        targetDeviceId: "device-1",
+      });
     });
   });
 

@@ -12,6 +12,7 @@ import { useConversationEvents } from "../../hooks/use-conversation-events";
 import { useCanvasCommands } from "../../hooks/use-canvas-commands";
 import { getElectronApi } from "../../services/electron";
 import { secureSignOut } from "../../services/auth";
+import { getOrCreateDeviceId } from "../../services/device";
 import { api } from "@/convex/api";
 import { ShiftingGradient } from "../../components/background/ShiftingGradient";
 import { TitleBar } from "../../components/TitleBar";
@@ -43,6 +44,8 @@ export const FullShell = () => {
   const isDev = import.meta.env.DEV;
   const restoredCanvasConversationRef = useRef<string | null>(null);
   const isNearBottomRef = useRef(true);
+  const dashboardBootstrapAttemptedRef = useRef<Set<string>>(new Set());
+  const panelLoadRecoveryRef = useRef<Set<string>>(new Set());
 
   const [message, setMessage] = useState("");
   const [chatContext, setChatContext] = useState<ChatContext | null>(null);
@@ -150,6 +153,9 @@ export const FullShell = () => {
   const events = useConversationEvents(activeConversationId ?? undefined);
   useCanvasCommands(events);
   const retryPersonalPage = useAction(api.personalized_dashboard.retryPage);
+  const startDashboardGeneration = useAction(
+    api.personalized_dashboard.startGeneration,
+  );
 
   const personalizedPageState = useQuery(
     api.personalized_dashboard.listPages,
@@ -267,10 +273,14 @@ export const FullShell = () => {
   const handleRetryPersonalPage = useCallback(
     (pageId: string) => {
       if (!activeConversationId) return;
-      void retryPersonalPage({
-        conversationId: activeConversationId,
-        pageId,
-      }).catch(() => {
+      void (async () => {
+        const targetDeviceId = await getOrCreateDeviceId();
+        await retryPersonalPage({
+          conversationId: activeConversationId,
+          pageId,
+          targetDeviceId,
+        });
+      })().catch(() => {
         // Silent fail - workspace surface already shows failure state
       });
     },
@@ -294,6 +304,33 @@ export const FullShell = () => {
     return () => window.removeEventListener("stella:send-message", handler);
   }, [sendMessage]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ panelName?: string; error?: string }>).detail;
+      const panelName = detail?.panelName?.trim();
+      if (!panelName || !activeConversationId) return;
+
+      const page = personalPages.find((entry) => entry.panelName === panelName);
+      if (!page) return;
+      if (panelLoadRecoveryRef.current.has(page.pageId)) return;
+      panelLoadRecoveryRef.current.add(page.pageId);
+
+      void (async () => {
+        const targetDeviceId = await getOrCreateDeviceId();
+        await retryPersonalPage({
+          conversationId: activeConversationId,
+          pageId: page.pageId,
+          targetDeviceId,
+        });
+      })().catch(() => {
+        panelLoadRecoveryRef.current.delete(page.pageId);
+      });
+    };
+
+    window.addEventListener("stella:panel-load-failed", handler);
+    return () => window.removeEventListener("stella:panel-load-failed", handler);
+  }, [activeConversationId, personalPages, retryPersonalPage]);
+
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasWindowContext = Boolean(chatContext?.window);
   const hasSelectedTextContext = Boolean(selectedText);
@@ -308,6 +345,28 @@ export const FullShell = () => {
   );
 
   const appReady = onboarding.isAuthenticated && onboarding.onboardingDone;
+
+  useEffect(() => {
+    if (!appReady || !activeConversationId) return;
+    if (personalizedPageState === undefined) return;
+    if (dashboardBootstrapAttemptedRef.current.has(activeConversationId)) return;
+
+    if (personalizedPageState.pages.length > 0 || personalizedPageState.hasRunning) {
+      dashboardBootstrapAttemptedRef.current.add(activeConversationId);
+      return;
+    }
+
+    dashboardBootstrapAttemptedRef.current.add(activeConversationId);
+    void (async () => {
+      const targetDeviceId = await getOrCreateDeviceId();
+      await startDashboardGeneration({
+        conversationId: activeConversationId,
+        targetDeviceId,
+      });
+    })().catch(() => {
+      dashboardBootstrapAttemptedRef.current.delete(activeConversationId);
+    });
+  }, [activeConversationId, appReady, personalizedPageState, startDashboardGeneration]);
 
   return (
     <div className="window-shell full">

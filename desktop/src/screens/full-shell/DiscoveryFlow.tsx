@@ -65,7 +65,16 @@ export function useDiscoveryFlow({
     const run = async () => {
       try {
         const exists = await window.electronAPI?.checkCoreMemoryExists?.();
-        if (exists) return;
+        if (exists) {
+          const deviceId = await getOrCreateDeviceId();
+          void startDashboardGeneration({
+            conversationId: activeConversationId,
+            targetDeviceId: deviceId,
+          }).catch(() => {
+            // Silent fail - dashboard generation is non-critical
+          });
+          return;
+        }
 
         const result = await window.electronAPI?.collectAllSignals?.({
           categories: discoveryCategories,
@@ -80,11 +89,13 @@ export function useDiscoveryFlow({
 
         // Sync core memory to Convex immediately (don't wait for runner file watcher)
         await setCoreMemory({ content: synthesisResult.coreMemory });
+        const deviceId = await getOrCreateDeviceId();
 
         // Generate personalized dashboard pages in the background
         void startDashboardGeneration({
           conversationId: activeConversationId,
           coreMemory: synthesisResult.coreMemory,
+          targetDeviceId: deviceId,
         }).catch(() => {
           // Silent fail - dashboard generation is non-critical
         });
@@ -95,7 +106,6 @@ export function useDiscoveryFlow({
         });
 
         if (synthesisResult.welcomeMessage) {
-          const deviceId = await getOrCreateDeviceId();
           const eventPayload = {
             conversationId: activeConversationId,
             type: "assistant_message",

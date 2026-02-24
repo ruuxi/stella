@@ -239,6 +239,10 @@ describe("useDiscoveryFlow", () => {
         (window as unknown as Record<string, { collectAllSignals: ReturnType<typeof vi.fn> }>).electronAPI.collectAllSignals,
       ).not.toHaveBeenCalled();
       expect(synthesizeCoreMemory).not.toHaveBeenCalled();
+      expect(mockStartDashboardGeneration).toHaveBeenCalledWith({
+        conversationId: "conv-1",
+        targetDeviceId: "device-1",
+      });
     });
   });
 
@@ -323,6 +327,7 @@ describe("useDiscoveryFlow", () => {
       expect(mockStartDashboardGeneration).toHaveBeenCalledWith({
         conversationId: "conv-1",
         coreMemory: "User is a developer",
+        targetDeviceId: "device-1",
       });
       expect(getOrCreateDeviceId).toHaveBeenCalled();
       // appendEvent should be called twice: assistant_message + welcome_suggestions
