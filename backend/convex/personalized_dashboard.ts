@@ -22,6 +22,7 @@ const PAGE_MONITOR_INTERVAL_MS = 2_500;
 const PAGE_RETRY_DELAY_MS = 1_500;
 const PAGE_MAX_RETRIES = 2;
 const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
+const PANEL_WRITE_SCAN_LIMIT = 1000;
 
 const dashboardPageStatusValidator = v.union(
   v.literal("queued"),
@@ -256,6 +257,71 @@ const slugify = (value: string) =>
     .replace(/^_+|_+$/g, "")
     .slice(0, 48);
 
+const toLowerPath = (value: string) => value.replace(/\\/g, "/").toLowerCase();
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const asString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value : null;
+
+const didTaskWritePanelFile = async (
+  ctx: ActionCtx,
+  args: {
+    conversationId: Id<"conversations">;
+    taskCreatedAt: number;
+    panelName: string;
+  },
+): Promise<boolean> => {
+  const panelFileSuffix = `/${args.panelName}.tsx`.toLowerCase();
+  const events = await ctx.runQuery(internal.events.listEventsSince, {
+    conversationId: args.conversationId,
+    afterTimestamp: Math.max(0, args.taskCreatedAt - 5_000),
+    limit: PANEL_WRITE_SCAN_LIMIT,
+  });
+
+  const candidateRequestIds = new Set<string>();
+  for (const event of events) {
+    if (event.type !== "tool_request") continue;
+    if (!event.requestId) continue;
+    const payload = asRecord(event.payload);
+    if (!payload) continue;
+    if (asString(payload.toolName)?.toLowerCase() !== "write") continue;
+
+    const toolArgs = asRecord(payload.args);
+    const filePath = asString(toolArgs?.file_path);
+    if (!filePath) continue;
+    if (!toLowerPath(filePath).endsWith(panelFileSuffix)) continue;
+
+    candidateRequestIds.add(event.requestId);
+  }
+
+  if (candidateRequestIds.size === 0) {
+    return false;
+  }
+
+  for (const event of events) {
+    if (event.type !== "tool_result") continue;
+    if (!event.requestId || !candidateRequestIds.has(event.requestId)) continue;
+
+    const payload = asRecord(event.payload);
+    if (!payload) continue;
+    const toolError = asString(payload.error);
+    if (toolError) continue;
+
+    const resultText = asString(payload.result);
+    if (resultText && resultText.trim().toUpperCase().startsWith("ERROR:")) {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
+};
+
 const toPanelName = (pageId: string) => {
   const base = slugify(pageId) || `page_${Date.now()}`;
   const panel = `pd_${base}`.slice(0, 64);
@@ -379,7 +445,7 @@ const resolveTaskAnchorEventId = async (
   conversationId: Id<"conversations">,
   pageId: string,
 ): Promise<Id<"events">> => {
-  const latestEventId = await ctx.runQuery(getLatestEventIdForConversationInternal as any, {
+  const latestEventId = await ctx.runQuery(internal.personalized_dashboard.getLatestEventIdForConversationInternal, {
     conversationId,
   });
 
@@ -672,6 +738,7 @@ export const launchPageGenerationTaskInternal = internalAction({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
     pageId: v.string(),
+    targetDeviceId: v.optional(v.string()),
   },
   returns: v.object({
     launched: v.boolean(),
@@ -712,8 +779,21 @@ export const launchPageGenerationTaskInternal = internalAction({
       ownerId: args.ownerId,
     });
 
-    if (!executionTarget.targetDeviceId) {
-      const error = "Local desktop runtime is offline. Open Stella on your computer to generate pages.";
+    const hintedTargetDeviceId = normalizeText(args.targetDeviceId ?? "", 256);
+    const latestConversationDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
+      conversationId: args.conversationId,
+    });
+
+    let resolvedTargetDeviceId: string | null = executionTarget.targetDeviceId;
+    if (!resolvedTargetDeviceId && hintedTargetDeviceId) {
+      resolvedTargetDeviceId = hintedTargetDeviceId;
+    }
+    if (!resolvedTargetDeviceId && latestConversationDeviceId) {
+      resolvedTargetDeviceId = latestConversationDeviceId;
+    }
+
+    if (!resolvedTargetDeviceId) {
+      const error = "Local desktop runtime appears offline. Keep Stella open and connected, then retry.";
       await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
         ownerId: args.ownerId,
         pageId: args.pageId,
@@ -760,7 +840,7 @@ export const launchPageGenerationTaskInternal = internalAction({
     const created = await ctx.runMutation(internal.agent.tasks.createTaskRecord, {
       conversationId: args.conversationId,
       userMessageId: taskAnchorEventId,
-      targetDeviceId: executionTarget.targetDeviceId,
+      targetDeviceId: resolvedTargetDeviceId,
       description,
       prompt,
       agentType: "general",
@@ -778,8 +858,8 @@ export const launchPageGenerationTaskInternal = internalAction({
     await ctx.runMutation(internal.events.appendInternalEvent, {
       conversationId: args.conversationId,
       type: "task_started",
-      deviceId: executionTarget.targetDeviceId,
-      targetDeviceId: executionTarget.targetDeviceId,
+      deviceId: resolvedTargetDeviceId,
+      targetDeviceId: resolvedTargetDeviceId,
       payload: {
         taskId: created.taskId,
         description,
@@ -792,14 +872,14 @@ export const launchPageGenerationTaskInternal = internalAction({
 
     await ctx.scheduler.runAfter(TASK_CHECKIN_INTERVAL_MS, internal.agent.tasks.taskCheckin, {
       conversationId: args.conversationId,
-      targetDeviceId: executionTarget.targetDeviceId,
+      targetDeviceId: resolvedTargetDeviceId,
       taskId: created.taskId,
     });
 
     await ctx.scheduler.runAfter(0, internal.agent.tasks.executeSubagent, {
       conversationId: args.conversationId,
       userMessageId: taskAnchorEventId,
-      targetDeviceId: executionTarget.targetDeviceId,
+      targetDeviceId: resolvedTargetDeviceId,
       spriteName: undefined,
       description,
       prompt,
@@ -873,6 +953,38 @@ export const monitorPageGenerationTaskInternal = internalAction({
     }
 
     if (task.status === "completed") {
+      const hasWrittenPanelFile = await didTaskWritePanelFile(ctx, {
+        conversationId: args.conversationId,
+        taskCreatedAt: task.createdAt,
+        panelName: page.panelName,
+      });
+
+      if (!hasWrittenPanelFile) {
+        const verificationError = `Generation finished but did not write ${page.panelName}.tsx to workspace/panels.`;
+        if ((page.retryCount ?? 0) < PAGE_MAX_RETRIES) {
+          const retry = await ctx.runMutation(internal.personalized_dashboard.queuePageRetryInternal, {
+            ownerId: args.ownerId,
+            pageId: args.pageId,
+          });
+
+          if (retry.queued) {
+            await ctx.scheduler.runAfter(PAGE_RETRY_DELAY_MS, internal.personalized_dashboard.launchPageGenerationTaskInternal, {
+              ownerId: args.ownerId,
+              conversationId: args.conversationId,
+              pageId: args.pageId,
+            });
+            return null;
+          }
+        }
+
+        await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
+          ownerId: args.ownerId,
+          pageId: args.pageId,
+          error: verificationError,
+        });
+        return null;
+      }
+
       await ctx.runMutation(internal.personalized_dashboard.markPageReadyInternal, {
         ownerId: args.ownerId,
         pageId: args.pageId,
@@ -942,7 +1054,8 @@ export const listPages = query({
 export const startGeneration = action({
   args: {
     conversationId: v.id("conversations"),
-    coreMemory: v.string(),
+    coreMemory: v.optional(v.string()),
+    targetDeviceId: v.optional(v.string()),
     pageAssignments: v.optional(v.array(pageAssignmentInputValidator)),
     force: v.optional(v.boolean()),
   },
@@ -955,18 +1068,34 @@ export const startGeneration = action({
     const ownerId = await requireUserId(ctx);
     await requireConversationOwnerAction(ctx, args.conversationId);
 
-    const normalizedCoreMemory = normalizeText(args.coreMemory, 12_000);
-
     const manualAssignments = args.pageAssignments
       ? buildAssignmentsFromInput(args.pageAssignments)
       : [];
-    const planned = manualAssignments.length >= 2
-      ? manualAssignments.slice(0, 4)
-      : buildHeuristicAssignments(normalizedCoreMemory);
 
     const existing = (await ctx.runQuery(internal.personalized_dashboard.listPagesForOwnerInternal, {
       ownerId,
     })) as Array<{ pageId: string; status: DashboardPageStatus }>;
+
+    let normalizedCoreMemory = normalizeText(args.coreMemory ?? "", 12_000);
+    if (!normalizedCoreMemory) {
+      const storedCoreMemory = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
+        ownerId,
+        key: CORE_MEMORY_KEY,
+      });
+      normalizedCoreMemory = normalizeText(storedCoreMemory ?? "", 12_000);
+    }
+
+    if (!normalizedCoreMemory && manualAssignments.length < 2) {
+      return {
+        started: false,
+        pageIds: existing.map((page) => page.pageId),
+        skippedReason: "missing_core_memory",
+      };
+    }
+
+    const planned = manualAssignments.length >= 2
+      ? manualAssignments.slice(0, 4)
+      : buildHeuristicAssignments(normalizedCoreMemory);
 
     const hasActive = existing.some((page) => page.status === "queued" || page.status === "running");
     if (hasActive && !args.force) {
@@ -986,11 +1115,13 @@ export const startGeneration = action({
       };
     }
 
-    await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
-      ownerId,
-      key: CORE_MEMORY_KEY,
-      value: normalizedCoreMemory,
-    });
+    if (normalizedCoreMemory) {
+      await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
+        ownerId,
+        key: CORE_MEMORY_KEY,
+        value: normalizedCoreMemory,
+      });
+    }
 
     await ctx.runMutation(internal.personalized_dashboard.upsertPlannedPagesInternal, {
       ownerId,
@@ -1004,6 +1135,7 @@ export const startGeneration = action({
           ownerId,
           conversationId: args.conversationId,
           pageId: page.pageId,
+          targetDeviceId: args.targetDeviceId,
         }),
       ),
     );
@@ -1022,6 +1154,7 @@ export const retryPage = action({
   args: {
     conversationId: v.id("conversations"),
     pageId: v.string(),
+    targetDeviceId: v.optional(v.string()),
   },
   returns: v.object({
     started: v.boolean(),
@@ -1053,6 +1186,7 @@ export const retryPage = action({
       ownerId,
       conversationId: args.conversationId,
       pageId: args.pageId,
+      targetDeviceId: args.targetDeviceId,
     });
 
     if (!launch.launched) {
