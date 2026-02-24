@@ -695,7 +695,7 @@ export const launchPageGenerationTaskInternal = internalAction({
       };
     }
 
-    const page = await ctx.runQuery(getPageByOwnerAndPageIdInternal as any, {
+    const page = await ctx.runQuery(internal.personalized_dashboard.getPageByOwnerAndPageIdInternal, {
       ownerId: args.ownerId,
       pageId: args.pageId,
     });
@@ -714,7 +714,7 @@ export const launchPageGenerationTaskInternal = internalAction({
 
     if (!executionTarget.targetDeviceId) {
       const error = "Local desktop runtime is offline. Open Stella on your computer to generate pages.";
-      await ctx.runMutation(markPageFailedInternal as any, {
+      await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
         ownerId: args.ownerId,
         pageId: args.pageId,
         error,
@@ -769,7 +769,7 @@ export const launchPageGenerationTaskInternal = internalAction({
       commandId: undefined,
     });
 
-    await ctx.runMutation(markPageTaskStartedInternal as any, {
+    await ctx.runMutation(internal.personalized_dashboard.markPageTaskStartedInternal, {
       ownerId: args.ownerId,
       pageId: args.pageId,
       taskId: created.taskId,
@@ -813,7 +813,7 @@ export const launchPageGenerationTaskInternal = internalAction({
       suppressDelivery: true,
     });
 
-    await ctx.scheduler.runAfter(PAGE_MONITOR_INTERVAL_MS, monitorPageGenerationTaskInternal as any, {
+    await ctx.scheduler.runAfter(PAGE_MONITOR_INTERVAL_MS, internal.personalized_dashboard.monitorPageGenerationTaskInternal, {
       ownerId: args.ownerId,
       conversationId: args.conversationId,
       pageId: args.pageId,
@@ -836,7 +836,7 @@ export const monitorPageGenerationTaskInternal = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
-    const page = await ctx.runQuery(getPageByOwnerAndPageIdInternal as any, {
+    const page = await ctx.runQuery(internal.personalized_dashboard.getPageByOwnerAndPageIdInternal, {
       ownerId: args.ownerId,
       pageId: args.pageId,
     });
@@ -852,7 +852,7 @@ export const monitorPageGenerationTaskInternal = internalAction({
     });
 
     if (!task) {
-      await ctx.runMutation(markPageFailedInternal as any, {
+      await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
         ownerId: args.ownerId,
         pageId: args.pageId,
         error: "Task record was not found.",
@@ -862,18 +862,18 @@ export const monitorPageGenerationTaskInternal = internalAction({
 
     if (task.status === "running") {
       const latestStatus = task.statusUpdates?.[task.statusUpdates.length - 1]?.text ?? "Generating page...";
-      await ctx.runMutation(updatePageProgressInternal as any, {
+      await ctx.runMutation(internal.personalized_dashboard.updatePageProgressInternal, {
         ownerId: args.ownerId,
         pageId: args.pageId,
         statusText: latestStatus,
       });
 
-      await ctx.scheduler.runAfter(PAGE_MONITOR_INTERVAL_MS, monitorPageGenerationTaskInternal as any, args);
+      await ctx.scheduler.runAfter(PAGE_MONITOR_INTERVAL_MS, internal.personalized_dashboard.monitorPageGenerationTaskInternal, args);
       return null;
     }
 
     if (task.status === "completed") {
-      await ctx.runMutation(markPageReadyInternal as any, {
+      await ctx.runMutation(internal.personalized_dashboard.markPageReadyInternal, {
         ownerId: args.ownerId,
         pageId: args.pageId,
       });
@@ -882,13 +882,13 @@ export const monitorPageGenerationTaskInternal = internalAction({
 
     const errorText = normalizeText(task.error ?? task.result ?? "Generation failed.", 900);
     if ((page.retryCount ?? 0) < PAGE_MAX_RETRIES) {
-      const retry = await ctx.runMutation(queuePageRetryInternal as any, {
+      const retry = await ctx.runMutation(internal.personalized_dashboard.queuePageRetryInternal, {
         ownerId: args.ownerId,
         pageId: args.pageId,
       });
 
       if (retry.queued) {
-        await ctx.scheduler.runAfter(PAGE_RETRY_DELAY_MS, launchPageGenerationTaskInternal as any, {
+        await ctx.scheduler.runAfter(PAGE_RETRY_DELAY_MS, internal.personalized_dashboard.launchPageGenerationTaskInternal, {
           ownerId: args.ownerId,
           conversationId: args.conversationId,
           pageId: args.pageId,
@@ -897,7 +897,7 @@ export const monitorPageGenerationTaskInternal = internalAction({
       }
     }
 
-    await ctx.runMutation(markPageFailedInternal as any, {
+    await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
       ownerId: args.ownerId,
       pageId: args.pageId,
       error: errorText,
@@ -964,7 +964,7 @@ export const startGeneration = action({
       ? manualAssignments.slice(0, 4)
       : buildHeuristicAssignments(normalizedCoreMemory);
 
-    const existing = (await ctx.runQuery(listPagesForOwnerInternal as any, {
+    const existing = (await ctx.runQuery(internal.personalized_dashboard.listPagesForOwnerInternal, {
       ownerId,
     })) as Array<{ pageId: string; status: DashboardPageStatus }>;
 
@@ -992,7 +992,7 @@ export const startGeneration = action({
       value: normalizedCoreMemory,
     });
 
-    await ctx.runMutation(upsertPlannedPagesInternal as any, {
+    await ctx.runMutation(internal.personalized_dashboard.upsertPlannedPagesInternal, {
       ownerId,
       conversationId: args.conversationId,
       pages: planned,
@@ -1000,7 +1000,7 @@ export const startGeneration = action({
 
     const launched = await Promise.all(
       planned.map((page) =>
-        ctx.runAction(launchPageGenerationTaskInternal as any, {
+        ctx.runAction(internal.personalized_dashboard.launchPageGenerationTaskInternal, {
           ownerId,
           conversationId: args.conversationId,
           pageId: page.pageId,
@@ -1031,7 +1031,7 @@ export const retryPage = action({
     const ownerId = await requireUserId(ctx);
     await requireConversationOwnerAction(ctx, args.conversationId);
 
-    const page = await ctx.runQuery(getPageByOwnerAndPageIdInternal as any, {
+    const page = await ctx.runQuery(internal.personalized_dashboard.getPageByOwnerAndPageIdInternal, {
       ownerId,
       pageId: args.pageId,
     });
@@ -1044,12 +1044,12 @@ export const retryPage = action({
       return { started: false, message: "Page is already generating." };
     }
 
-    await ctx.runMutation(queuePageRetryInternal as any, {
+    await ctx.runMutation(internal.personalized_dashboard.queuePageRetryInternal, {
       ownerId,
       pageId: args.pageId,
     });
 
-    const launch = await ctx.runAction(launchPageGenerationTaskInternal as any, {
+    const launch = await ctx.runAction(internal.personalized_dashboard.launchPageGenerationTaskInternal, {
       ownerId,
       conversationId: args.conversationId,
       pageId: args.pageId,
