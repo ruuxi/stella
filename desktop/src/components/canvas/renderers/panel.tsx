@@ -49,7 +49,13 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
       setComponent(() => comp)
       setLoading(false)
     } catch (err) {
-      setError(`Failed to load panel: ${(err as Error).message}`)
+      const message = `Failed to load panel: ${(err as Error).message}`
+      setError(message)
+      window.dispatchEvent(
+        new CustomEvent("stella:panel-load-failed", {
+          detail: { panelName: normalizedName, error: message },
+        }),
+      )
       setLoading(false)
     }
   }, [name])
