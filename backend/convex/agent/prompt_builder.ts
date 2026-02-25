@@ -4,6 +4,7 @@ import { ConvexError, Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireUserId } from "../auth";
+import { getModelConfig } from "./model";
 
 export type PromptBuildResult = {
   systemPrompt: string;
@@ -214,6 +215,8 @@ const agentContextResultValidator = v.object({
   systemPrompt: v.string(),
   dynamicContext: v.string(),
   toolsAllowlist: v.optional(v.array(v.string())),
+  model: v.string(),
+  fallbackModel: v.optional(v.string()),
   maxTaskDepth: v.number(),
   defaultSkills: v.array(v.string()),
   skillIds: v.array(v.string()),
@@ -274,7 +277,22 @@ const fetchAgentContextForOwner = async (
     // Skip if unavailable
   }
 
-  // 3. Get thread history if we have an active thread
+  // 3. Resolve primary/fallback models for the runtime.
+  const modelDefaults = getModelConfig(args.agentType);
+  let model = modelDefaults.model;
+  try {
+    const override = await ctx.runQuery(
+      internal.data.preferences.getPreferenceForOwner,
+      { ownerId: args.ownerId, key: `model_config:${args.agentType}` },
+    );
+    if (typeof override === "string" && override.trim().length > 0) {
+      model = override.trim();
+    }
+  } catch {
+    // Ignore model override lookup errors; defaults remain valid.
+  }
+
+  // 4. Get thread history if we have an active thread
   let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
   let activeThreadId: string | undefined;
 
@@ -305,7 +323,7 @@ const fetchAgentContextForOwner = async (
     }
   }
 
-  // 4. Mint a proxy token for this run
+  // 5. Mint a proxy token for this run
   const proxyToken = await ctx.runMutation(internal.ai_proxy_data.mintProxyToken, {
     ownerId: args.ownerId,
     agentType: args.agentType,
@@ -316,6 +334,8 @@ const fetchAgentContextForOwner = async (
     systemPrompt: promptBuild.systemPrompt,
     dynamicContext: promptBuild.dynamicContext,
     toolsAllowlist: promptBuild.toolsAllowlist,
+    model,
+    fallbackModel: modelDefaults.fallback,
     maxTaskDepth: promptBuild.maxTaskDepth,
     defaultSkills: promptBuild.defaultSkills,
     skillIds: promptBuild.skillIds,
@@ -368,6 +388,20 @@ export const fetchLocalAgentContextForRuntime = action({
     const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
       ownerId,
     });
+    const modelDefaults = getModelConfig(args.agentType);
+
+    let model = modelDefaults.model;
+    try {
+      const override = await ctx.runQuery(
+        internal.data.preferences.getPreferenceForOwner,
+        { ownerId, key: `model_config:${args.agentType}` },
+      );
+      if (typeof override === "string" && override.trim().length > 0) {
+        model = override.trim();
+      }
+    } catch {
+      // Ignore model override lookup errors for local bootstrap.
+    }
 
     let coreMemory: string | undefined;
     try {
@@ -389,6 +423,8 @@ export const fetchLocalAgentContextForRuntime = action({
       systemPrompt: promptBuild.systemPrompt,
       dynamicContext: promptBuild.dynamicContext,
       toolsAllowlist: promptBuild.toolsAllowlist,
+      model,
+      fallbackModel: modelDefaults.fallback,
       maxTaskDepth: promptBuild.maxTaskDepth,
       defaultSkills: promptBuild.defaultSkills,
       skillIds: promptBuild.skillIds,
