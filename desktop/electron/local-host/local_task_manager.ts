@@ -7,7 +7,7 @@
  * - File path serialization across subagents (same path → serialized)
  */
 
-import { runSubagentTask, type AgentContext, type RunSubagentOpts } from "./agent_runtime.js";
+import { runSubagentTask, type AgentContext } from "./agent_runtime.js";
 import type { ToolContext, ToolResult } from "./tools-types.js";
 
 export type LocalTask = {
@@ -42,7 +42,11 @@ const DEFAULT_MAX_CONCURRENT = 3;
 export class LocalTaskManager {
   private tasks = new Map<string, LocalTask>();
   private running = 0;
-  private queue: LocalTask[] = [];
+  private queue: Array<{
+    task: LocalTask;
+    prompt: string;
+    conversationId: string;
+  }> = [];
   private opts: LocalTaskManagerOpts;
   private maxConcurrent: number;
 
@@ -72,7 +76,11 @@ export class LocalTaskManager {
     if (this.running < this.maxConcurrent) {
       void this.executeTask(task, params.prompt, params.conversationId);
     } else {
-      this.queue.push(task);
+      this.queue.push({
+        task,
+        prompt: params.prompt,
+        conversationId: params.conversationId,
+      });
     }
 
     return task;
@@ -153,12 +161,8 @@ export class LocalTaskManager {
   private drainQueue(): void {
     while (this.running < this.maxConcurrent && this.queue.length > 0) {
       const next = this.queue.shift()!;
-      if (next.status === "pending") {
-        // We don't have prompt/conversationId stored on the queue item,
-        // so tasks should be executed immediately or we need to store them.
-        // For now, tasks that can't be immediately executed are dropped.
-        // In practice, with max 3 concurrent, this rarely happens.
-        console.warn("[local-task-manager] Queued task cannot be drained without stored prompt");
+      if (next.task.status === "pending") {
+        void this.executeTask(next.task, next.prompt, next.conversationId);
       }
     }
   }

@@ -158,6 +158,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
 
       const cleanup = window.electronAPI.onAgentStream((event) => {
         if (runIdCounter !== streamRunIdRef.current) return;
+        if (localRunIdRef.current && event.runId !== localRunIdRef.current) return;
 
         // Track seq for reconnect
         localSeqRef.current = Math.max(localSeqRef.current, event.seq);

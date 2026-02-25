@@ -137,6 +137,14 @@ export class RunJournal {
       .run({ runId, now: Date.now() });
   }
 
+  markRunPersisted(runId: string): void {
+    this.db
+      .prepare(
+        `UPDATE runs SET persist_status = 'persisted' WHERE run_id = @runId`,
+      )
+      .run({ runId });
+  }
+
   markRunCrashed(runId: string): void {
     this.db
       .prepare(`UPDATE runs SET status = 'crashed' WHERE run_id = @runId`)
