@@ -10,6 +10,18 @@ const mockStartDashboardGeneration = vi.fn(() =>
   Promise.resolve({ started: false, pageIds: [], skippedReason: "already_generated" }),
 );
 const mockSendMessage = vi.fn();
+const mockUseConversationEvents = vi.fn((..._args: unknown[]) => []);
+const mockUseStreamingChat = vi.fn((_options?: unknown) => ({
+  streamingText: "",
+  reasoningText: "",
+  isStreaming: false,
+  pendingUserMessageId: null,
+  queueNext: null,
+  setQueueNext: vi.fn(),
+  sendMessage: mockSendMessage,
+  syncWithEvents: vi.fn(),
+  processFollowUpQueue: vi.fn(),
+}));
 
 vi.mock("convex/react", () => ({
   useConvexAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
@@ -78,7 +90,8 @@ vi.mock("../theme/theme-context", () => ({
 }));
 
 vi.mock("../hooks/use-conversation-events", () => ({
-  useConversationEvents: vi.fn(() => []),
+  useConversationEvents: (conversationId?: string, options?: { source?: "cloud" | "local" }) =>
+    mockUseConversationEvents(conversationId, options),
 }));
 
 vi.mock("../hooks/use-canvas-commands", () => ({
@@ -235,17 +248,7 @@ vi.mock("../screens/full-shell/DiscoveryFlow", () => ({
 }));
 
 vi.mock("../screens/full-shell/use-streaming-chat", () => ({
-  useStreamingChat: vi.fn(() => ({
-    streamingText: "",
-    reasoningText: "",
-    isStreaming: false,
-    pendingUserMessageId: null,
-    queueNext: null,
-    setQueueNext: vi.fn(),
-    sendMessage: mockSendMessage,
-    syncWithEvents: vi.fn(),
-    processFollowUpQueue: vi.fn(),
-  })),
+  useStreamingChat: (options: unknown) => mockUseStreamingChat(options),
 }));
 
 vi.mock("../screens/full-shell/use-full-shell", () => ({
@@ -319,6 +322,42 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(workspace).toHaveAttribute("data-view", "store");
     // Chat panel is still visible alongside store
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+  });
+
+  it("uses local conversation storage when connected mode has sync off", () => {
+    vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
+      if (args === "skip") return undefined;
+      if (ref === "preferences:getAccountMode") return "connected";
+      if (ref === "preferences:getSyncMode") return "off";
+      return undefined;
+    });
+
+    render(<FullShell />);
+    expect(mockUseConversationEvents).toHaveBeenCalledWith("conv-123", { source: "local" });
+    expect(mockUseStreamingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-123",
+        storageMode: "local",
+      }),
+    );
+  });
+
+  it("uses local conversation storage when account mode is private_local", () => {
+    vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
+      if (args === "skip") return undefined;
+      if (ref === "preferences:getAccountMode") return "private_local";
+      if (ref === "preferences:getSyncMode") return "on";
+      return undefined;
+    });
+
+    render(<FullShell />);
+    expect(mockUseConversationEvents).toHaveBeenCalledWith("conv-123", { source: "local" });
+    expect(mockUseStreamingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-123",
+        storageMode: "local",
+      }),
+    );
   });
 
   it("toggles store view via sidebar onStore", () => {

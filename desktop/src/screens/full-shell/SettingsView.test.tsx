@@ -19,6 +19,10 @@ vi.mock("@/convex/api", () => ({
         getModelOverrides: "preferences.getModelOverrides",
         setModelOverride: "preferences.setModelOverride",
         clearModelOverride: "preferences.clearModelOverride",
+        getAccountMode: "preferences.getAccountMode",
+        setAccountMode: "preferences.setAccountMode",
+        getSyncMode: "preferences.getSyncMode",
+        setSyncMode: "preferences.setSyncMode",
       },
       secrets: {
         listSecrets: "secrets.listSecrets",
@@ -120,9 +124,17 @@ function mockUseMutation(
 function setupUseQuery(opts: {
   modelOverrides?: string;
   secrets?: Array<{ _id: string; provider: string; label: string; status: string }>;
+  accountMode?: "connected" | "private_local";
+  syncMode?: "on" | "off";
 } = {}) {
   mockUseQuery((queryPath: unknown) => {
     const path = queryPath as string;
+    if (path === "preferences.getAccountMode") {
+      return opts.accountMode ?? "connected";
+    }
+    if (path === "preferences.getSyncMode") {
+      return opts.syncMode ?? "on";
+    }
     if (path === "preferences.getModelOverrides") {
       return opts.modelOverrides ?? undefined;
     }
@@ -237,6 +249,37 @@ describe("Tab switching", () => {
     fireEvent.click(screen.getByText("Basic"));
     expect(screen.getByText("Runtime Mode")).toBeTruthy();
     expect(screen.queryByText("Model Configuration")).toBeNull();
+  });
+});
+
+describe("Basic tab privacy copy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver;
+  });
+
+  it("shows sync-off wording that keeps history local to device", () => {
+    setupUseQuery({ accountMode: "connected", syncMode: "off" });
+    render(<SettingsDialog {...defaultProps()} />);
+
+    expect(screen.getByText("Account Mode")).toBeTruthy();
+    expect(screen.getByText("Chat Sync")).toBeTruthy();
+    expect(screen.getByText(/Sync Off\./)).toBeTruthy();
+    expect(
+      screen.getByText(/Conversation history stays on this device and is not synced to cloud\./),
+    ).toBeTruthy();
+  });
+
+  it("hides Chat Sync controls in private local mode", () => {
+    setupUseQuery({ accountMode: "private_local", syncMode: "off" });
+    render(<SettingsDialog {...defaultProps()} />);
+
+    expect(screen.getByText("Account Mode")).toBeTruthy();
+    expect(screen.queryByText("Chat Sync")).toBeNull();
   });
 });
 
