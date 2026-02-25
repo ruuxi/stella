@@ -1,5 +1,6 @@
 import {
   mutation,
+  query,
   internalAction,
   internalMutation,
   internalQuery,
@@ -77,6 +78,12 @@ const isSafariBrowserPreference = (value: string | null): boolean =>
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type TaskStatus = "running" | "completed" | "error" | "canceled";
+type RuntimeFinalTaskStatus = Exclude<TaskStatus, "running">;
+const runtimeFinalTaskStatusValidator = v.union(
+  v.literal("completed"),
+  v.literal("error"),
+  v.literal("canceled"),
+);
 
 /** Strip model field for client responses */
 const toTaskClient = (task: Record<string, unknown>): TaskClient => {
@@ -164,6 +171,29 @@ const appendTaskEvent = async (
     deviceId: args.deviceId,
     targetDeviceId: args.targetDeviceId,
     payload: args.payload,
+  });
+};
+
+const appendRuntimeTaskEvent = async (
+  ctx: MutationCtx,
+  args: {
+    conversationId: Id<"conversations">;
+    type: string;
+    payload: Record<string, Value | undefined>;
+  },
+): Promise<void> => {
+  const compactPayload: Record<string, Value> = {};
+  for (const [key, value] of Object.entries(args.payload)) {
+    if (value !== undefined) {
+      compactPayload[key] = value;
+    }
+  }
+
+  await ctx.db.insert("events", {
+    conversationId: args.conversationId,
+    timestamp: Date.now(),
+    type: args.type,
+    payload: compactPayload,
   });
 };
 
@@ -1148,6 +1178,172 @@ export const createTaskRecord = internalMutation({
     });
 
     return { taskId, taskDepth, maxTaskDepth };
+  },
+});
+
+/**
+ * Public task creation API for the local runtime.
+ * Creates a task row and emits a task_started event, but does not schedule
+ * server-side execution. The Electron local runtime owns execution.
+ */
+export const createRuntimeTask = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    description: v.string(),
+    prompt: v.string(),
+    agentType: v.string(),
+    parentTaskId: v.optional(v.id("tasks")),
+    commandId: v.optional(v.string()),
+    maxTaskDepth: v.optional(v.number()),
+  },
+  returns: v.object({
+    taskId: v.id("tasks"),
+    taskDepth: v.number(),
+    maxTaskDepth: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+
+    const maxTaskDepth = Math.max(
+      0,
+      Math.floor(args.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH),
+    );
+
+    let taskDepth = 1;
+    if (args.parentTaskId) {
+      const parent = await ctx.db.get(args.parentTaskId);
+      if (parent?.taskDepth) {
+        taskDepth = parent.taskDepth + 1;
+      }
+      if (taskDepth > maxTaskDepth) {
+        throw new ConvexError({
+          code: "LIMIT_EXCEEDED",
+          message: `Task depth limit exceeded (${maxTaskDepth})`,
+        });
+      }
+    }
+
+    const now = Date.now();
+    const taskId = await ctx.db.insert("tasks", {
+      conversationId: args.conversationId,
+      parentTaskId: args.parentTaskId,
+      description: args.description,
+      prompt: args.prompt,
+      agentType: args.agentType,
+      commandId: args.commandId,
+      status: "running" satisfies TaskStatus,
+      taskDepth,
+      model: `local:${args.agentType}`,
+      deliveryCompletedAt: undefined,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: undefined,
+    });
+
+    await appendRuntimeTaskEvent(ctx, {
+      conversationId: args.conversationId,
+      type: "task_started",
+      payload: {
+        taskId,
+        description: args.description,
+        agentType: args.agentType,
+        parentTaskId: args.parentTaskId,
+        taskDepth,
+        maxTaskDepth,
+      },
+    });
+
+    return { taskId, taskDepth, maxTaskDepth };
+  },
+});
+
+/**
+ * Public completion API for local runtime tasks.
+ */
+export const completeRuntimeTask = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    status: runtimeFinalTaskStatusValidator,
+    result: v.optional(v.string()),
+    error: v.optional(v.string()),
+  },
+  returns: v.union(taskClientValidator, v.null()),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.taskId);
+    if (!record) {
+      return null;
+    }
+
+    await requireConversationOwner(ctx, record.conversationId);
+
+    const now = Date.now();
+    await ctx.db.patch(args.taskId, {
+      status: args.status satisfies RuntimeFinalTaskStatus,
+      result: args.result,
+      error: args.error,
+      updatedAt: now,
+      completedAt: now,
+    });
+
+    if (args.status === "completed") {
+      await appendRuntimeTaskEvent(ctx, {
+        conversationId: record.conversationId,
+        type: "task_completed",
+        payload: {
+          taskId: args.taskId,
+          result: args.result,
+        },
+      });
+    } else {
+      await appendRuntimeTaskEvent(ctx, {
+        conversationId: record.conversationId,
+        type: "task_failed",
+        payload: {
+          taskId: args.taskId,
+          error: args.error ?? (args.status === "canceled" ? "Canceled" : "Unknown error"),
+        },
+      });
+    }
+
+    const updated = await ctx.db.get(args.taskId);
+    return toTaskClientOrNull(updated);
+  },
+});
+
+/**
+ * Public cancellation API for local runtime tasks.
+ */
+export const cancelRuntimeTask = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    reason: v.optional(v.string()),
+  },
+  returns: v.union(taskClientValidator, v.null()),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.taskId);
+    if (!record) return null;
+    await requireConversationOwner(ctx, record.conversationId);
+    return await applyTaskCancellation(ctx, {
+      taskId: args.taskId,
+      record,
+      reason: args.reason,
+    });
+  },
+});
+
+/**
+ * Public task query for local runtime polling by task id.
+ */
+export const getRuntimeTaskById = query({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  returns: v.union(taskClientValidator, v.null()),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.taskId);
+    if (!record) return null;
+    await requireConversationOwner(ctx, record.conversationId);
+    return toTaskClient(record);
   },
 });
 

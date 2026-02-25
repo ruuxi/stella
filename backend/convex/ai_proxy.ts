@@ -409,16 +409,20 @@ export const llmProxy = httpAction(async (ctx, request) => {
 
   const { ownerId, agentType } = tokenResult;
 
-  // 2. Parse provider and path from headers
-  const provider = request.headers.get("X-Provider")?.trim()?.toLowerCase();
-  if (!provider || !(provider in PROVIDER_UPSTREAMS)) {
+  // 2. Parse provider and path from headers.
+  // Unknown providers are routed through OpenRouter using the model string.
+  const requestedProvider = request.headers.get("X-Provider")?.trim()?.toLowerCase();
+  if (!requestedProvider) {
     return new Response(
       JSON.stringify({
-        error: `Invalid provider. Allowed: ${Object.keys(PROVIDER_UPSTREAMS).join(", ")}`,
+        error: "Missing X-Provider header",
       }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
+  const provider = requestedProvider in PROVIDER_UPSTREAMS
+    ? requestedProvider
+    : "openrouter";
 
   const originalPath = request.headers.get("X-Original-Path")?.trim();
   if (!originalPath) {
@@ -457,20 +461,24 @@ export const llmProxy = httpAction(async (ctx, request) => {
   // 4. Resolve API key via BYOK chain
   //    X-Model-Id header carries the full model string (e.g. "anthropic/claude-opus-4.6")
   //    for BYOK key resolution
-  const modelId = request.headers.get("X-Model-Id")?.trim() || `${provider}/unknown`;
+  const modelId =
+    request.headers.get("X-Model-Id")?.trim() || `${requestedProvider}/unknown`;
   let apiKey: string | null = null;
+  const canUseDirectProviderKey = requestedProvider in PROVIDER_UPSTREAMS;
 
   // Try user's own key first
-  try {
-    const userKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
-      ownerId,
-      provider: `llm:${provider}`,
-    });
-    if (userKey) {
-      apiKey = userKey;
+  if (canUseDirectProviderKey) {
+    try {
+      const userKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
+        ownerId,
+        provider: `llm:${requestedProvider}`,
+      });
+      if (userKey) {
+        apiKey = userKey;
+      }
+    } catch {
+      // No user key — fall through
     }
-  } catch {
-    // No user key — fall through
   }
 
   // Try OpenRouter key as fallback
