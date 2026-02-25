@@ -249,6 +249,11 @@ const fetchAgentContextRuntimeArgs = {
   maxHistoryMessages: v.optional(v.number()),
 };
 
+const fetchLocalAgentContextRuntimeArgs = {
+  agentType: v.string(),
+  runId: v.string(),
+};
+
 const fetchAgentContextForOwner = async (
   ctx: ActionCtx,
   args: FetchAgentContextSharedArgs,
@@ -352,5 +357,46 @@ export const fetchAgentContextForRuntime = action({
       threadId: args.threadId,
       maxHistoryMessages: args.maxHistoryMessages,
     });
+  },
+});
+
+export const fetchLocalAgentContextForRuntime = action({
+  args: fetchLocalAgentContextRuntimeArgs,
+  returns: agentContextResultValidator,
+  handler: async (ctx, args): Promise<AgentContextResult> => {
+    const ownerId = await requireUserId(ctx);
+
+    const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
+      ownerId,
+    });
+
+    let coreMemory: string | undefined;
+    try {
+      coreMemory = await ctx.runQuery(
+        internal.data.preferences.getPreferenceForOwner,
+        { ownerId, key: "core_memory" },
+      ) ?? undefined;
+    } catch {
+      // Skip if unavailable
+    }
+
+    const proxyToken = await ctx.runMutation(internal.ai_proxy_data.mintProxyToken, {
+      ownerId,
+      agentType: args.agentType,
+      runId: args.runId,
+    });
+
+    return {
+      systemPrompt: promptBuild.systemPrompt,
+      dynamicContext: promptBuild.dynamicContext,
+      toolsAllowlist: promptBuild.toolsAllowlist,
+      maxTaskDepth: promptBuild.maxTaskDepth,
+      defaultSkills: promptBuild.defaultSkills,
+      skillIds: promptBuild.skillIds,
+      coreMemory,
+      threadHistory: undefined,
+      activeThreadId: undefined,
+      proxyToken,
+    };
   },
 });

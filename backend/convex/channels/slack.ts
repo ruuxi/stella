@@ -136,7 +136,11 @@ export const handleLinkCommand = internalAction({
     } else if (result === "already_linked") {
       await sendSlackMessage(args.channelId, "Your Slack account is already linked to Stella!", token);
     } else if (result === "linking_disabled") {
-      await sendSlackMessage(args.channelId, "Slack linking is currently disabled.", token);
+      await sendSlackMessage(
+        args.channelId,
+        "Slack linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
+        token,
+      );
     } else if (result === "not_allowed") {
       await sendSlackMessage(args.channelId, "This Slack account is not allowed to link.", token);
     } else {

@@ -121,7 +121,10 @@ export const handleStartCommand = internalAction({
     } else if (result === "already_linked") {
       await sendTelegramMessage(args.chatId, "Your Telegram is already linked to Stella!");
     } else if (result === "linking_disabled") {
-      await sendTelegramMessage(args.chatId, "Telegram linking is currently disabled.");
+      await sendTelegramMessage(
+        args.chatId,
+        "Telegram linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
+      );
     } else if (result === "not_allowed") {
       await sendTelegramMessage(args.chatId, "This Telegram account is not allowed to link.");
     } else {

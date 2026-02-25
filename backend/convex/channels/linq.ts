@@ -20,7 +20,8 @@ type LinkCodeResult = Awaited<ReturnType<typeof processLinkCode>>;
 const LINK_RESULT_MESSAGE: Record<LinkCodeResult, string> = {
   invalid_code: "Invalid or expired code. Please generate a new one in Stella Settings.",
   already_linked: "Your number is already linked to Stella!",
-  linking_disabled: "Linq linking is currently disabled.",
+  linking_disabled:
+    "Linq linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
   not_allowed: "This number is not allowed to link.",
   linked: "Linked! You can now message Stella directly here via iMessage/SMS.",
 };

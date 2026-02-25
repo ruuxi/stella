@@ -237,7 +237,10 @@ export const handleLinkCommand = internalAction({
     } else if (result === "already_linked") {
       await sendGoogleChatMessage(args.spaceName, "Your Google Chat account is already linked to Stella!");
     } else if (result === "linking_disabled") {
-      await sendGoogleChatMessage(args.spaceName, "Google Chat linking is currently disabled.");
+      await sendGoogleChatMessage(
+        args.spaceName,
+        "Google Chat linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
+      );
     } else if (result === "not_allowed") {
       await sendGoogleChatMessage(args.spaceName, "This Google Chat account is not allowed to link.");
     } else {

@@ -149,7 +149,7 @@ export const handleLinkCommand = internalAction({
       await editInteractionResponse(
         args.applicationId,
         args.interactionToken,
-        "Discord linking is currently disabled.",
+        "Discord linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
       );
     } else if (result === "not_allowed") {
       await editInteractionResponse(

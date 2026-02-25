@@ -209,7 +209,11 @@ export const handleLinkCommand = internalAction({
     } else if (result === "already_linked") {
       await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Your Teams account is already linked to Stella!");
     } else if (result === "linking_disabled") {
-      await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "Teams linking is currently disabled.");
+      await sendTeamsMessage(
+        args.serviceUrl,
+        args.conversationIdTeams,
+        "Teams linking is disabled while Private Local mode is on. Enable Connected mode in Stella Settings.",
+      );
     } else if (result === "not_allowed") {
       await sendTeamsMessage(args.serviceUrl, args.conversationIdTeams, "This Teams account is not allowed to link.");
     } else {
