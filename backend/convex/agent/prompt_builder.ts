@@ -16,7 +16,6 @@ export type PromptBuildResult = {
 
 const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
 const MAX_ACTIVE_THREADS_IN_PROMPT = 12;
-const MAX_COMPACTION_SUMMARY_CHARS = 3000;
 type FetchAgentContextSharedArgs = {
   ownerId: string;
   conversationId: Id<"conversations">;

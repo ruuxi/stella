@@ -1,7 +1,6 @@
 import {
   mutation,
   internalMutation,
-  query,
   internalQuery,
   MutationCtx,
   QueryCtx,
@@ -16,23 +15,6 @@ import {
 } from "../prompts/index";
 import { requireUserId } from "../auth";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
-
-const agentValidator = v.object({
-  _id: v.id("agents"),
-  _creationTime: v.number(),
-  id: v.string(),
-  name: v.string(),
-  description: v.string(),
-  systemPrompt: v.string(),
-  agentTypes: v.array(v.string()),
-  toolsAllowlist: v.optional(v.array(v.string())),
-  defaultSkills: v.optional(v.array(v.string())),
-  model: v.optional(v.string()),
-  maxTaskDepth: v.optional(v.number()),
-  version: v.number(),
-  source: v.string(),
-  updatedAt: v.number(),
-});
 
 // Sanitized agent (without model field) for client responses
 const agentClientValidator = v.object({

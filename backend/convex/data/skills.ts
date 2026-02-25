@@ -1,7 +1,6 @@
 import {
   mutation,
   internalMutation,
-  query,
   internalQuery,
   MutationCtx,
   QueryCtx,

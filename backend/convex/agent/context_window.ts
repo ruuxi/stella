@@ -7,7 +7,6 @@ type ContextEventLike = {
 };
 
 const MIN_EVENT_TOKENS = 8;
-const MAX_EVENT_TOKENS = 8_000;
 
 const estimateTextTokens = (value: unknown): number => {
   if (typeof value !== "string") return 0;
