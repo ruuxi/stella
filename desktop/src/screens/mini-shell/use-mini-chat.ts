@@ -100,7 +100,16 @@ export function useMiniChat(opts: {
     api.data.preferences.getAccountMode,
     isAuthenticated ? {} : "skip",
   ) as "private_local" | "connected" | undefined;
-  const storageMode = isAuthenticated && accountMode === "connected" ? "cloud" : "local";
+  const syncMode = useQuery(
+    api.data.preferences.getSyncMode,
+    isAuthenticated && accountMode === "connected" ? {} : "skip",
+  ) as "on" | "off" | undefined;
+  const storageMode =
+    isAuthenticated &&
+    accountMode === "connected" &&
+    (syncMode ?? "on") !== "off"
+      ? "cloud"
+      : "local";
   const isLocalStorage = storageMode === "local";
 
   const appendEvent = useMutation(
