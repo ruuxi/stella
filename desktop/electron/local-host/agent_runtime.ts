@@ -27,6 +27,8 @@ export type AgentContext = {
   systemPrompt: string;
   dynamicContext: string;
   toolsAllowlist?: string[];
+  model: string;
+  fallbackModel?: string;
   maxTaskDepth: number;
   defaultSkills: string[];
   skillIds: string[];
@@ -108,6 +110,26 @@ const PERSIST_CHUNK_MAX_EVENTS = 20;
 const PERSIST_CHUNK_MAX_BYTES = 800_000;
 const MAX_RESULT_PREVIEW_LEN = 200;
 const MAX_TURNS = 50; // safety limit
+
+const isRetryableModelError = (error: unknown): boolean => {
+  const message = (error as Error)?.message?.toLowerCase() ?? "";
+  if (message.length === 0) return false;
+  if (message.includes("aborted") || message.includes("context length")) {
+    return false;
+  }
+  return (
+    message.includes("rate limit") ||
+    message.includes("too many requests") ||
+    message.includes("429") ||
+    message.includes("unauthorized") ||
+    message.includes("forbidden") ||
+    message.includes("invalid api key") ||
+    message.includes("authentication") ||
+    message.includes("model not found") ||
+    message.includes("temporarily unavailable") ||
+    message.includes("upstream")
+  );
+};
 
 // ─── Proxy Fetch ─────────────────────────────────────────────────────────────
 
@@ -249,18 +271,21 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
 
   // Build model
   const proxyBaseUrl = convexUrl.replace(/\/+$/, "");
-  const model = createProxiedModel(
-    proxyBaseUrl,
-    agentContext.proxyToken.token,
-    "anthropic/claude-opus-4.6", // Default model
-  );
+  const primaryModelId = agentContext.model;
+  const fallbackModelId =
+    agentContext.fallbackModel && agentContext.fallbackModel !== primaryModelId
+      ? agentContext.fallbackModel
+      : undefined;
+  const storageMode: "cloud" | "local" = persistToConvex ? "cloud" : "local";
 
   // Build tools
   const toolCallCounters = new Map<string, number>(); // track ordinals per turn+tool+args combo
   let turnIndex = 0;
+  let hasToolSideEffects = false;
 
   const toolCallbacks: AgentToolCallbacks = {
     onToolCallStart: (toolCallId, toolName) => {
+      hasToolSideEffects = true;
       const s = nextSeq();
       callbacks.onToolStart({ runId, seq: s, toolCallId, toolName });
       journal.recordEvent({
@@ -287,6 +312,7 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
   const tools = createAgentTools({
     runId,
     agentType,
+    storageMode,
     toolsAllowlist: agentContext.toolsAllowlist,
     toolExecutor,
     deviceId,
@@ -334,7 +360,13 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
   let fullText = "";
   let usage: { inputTokens?: number; outputTokens?: number } | undefined;
 
-  try {
+  const runStreamWithModel = async (modelId: string) => {
+    const model = createProxiedModel(
+      proxyBaseUrl,
+      agentContext.proxyToken.token,
+      modelId,
+    );
+
     const result = streamText({
       model,
       system: systemPrompt,
@@ -370,16 +402,62 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
     if (!fullText && resolvedText) {
       fullText = resolvedText;
     }
+  };
+
+  try {
+    await runStreamWithModel(primaryModelId);
   } catch (error) {
-    if (signal.aborted) {
+    const shouldTryFallback =
+      Boolean(fallbackModelId) &&
+      !signal.aborted &&
+      !hasToolSideEffects &&
+      fullText.length === 0 &&
+      isRetryableModelError(error);
+
+    if (shouldTryFallback) {
+      const s = nextSeq();
+      const failoverMsg = `Primary model failed (${primaryModelId}). Retrying with fallback (${fallbackModelId}).`;
+      callbacks.onError({ runId, seq: s, error: failoverMsg, fatal: false });
+      journal.recordEvent({
+        runId,
+        seq: s,
+        type: "status_update",
+        errorText: failoverMsg,
+      });
+      try {
+        await runStreamWithModel(fallbackModelId!);
+      } catch (fallbackError) {
+        const s2 = nextSeq();
+        const errMsg = (fallbackError as Error).message ?? "Unknown error";
+        callbacks.onError({ runId, seq: s2, error: errMsg, fatal: true });
+        journal.recordEvent({ runId, seq: s2, type: "status_update", errorText: errMsg });
+        journal.markRunCrashed(runId);
+        clearTimeout(timeoutId);
+        journal.close();
+        return runId;
+      }
+    } else if (signal.aborted) {
       const s = nextSeq();
       callbacks.onError({ runId, seq: s, error: "Run aborted", fatal: true });
+      journal.markRunCrashed(runId);
+      clearTimeout(timeoutId);
+      journal.close();
+      return runId;
     } else {
       const s = nextSeq();
       const errMsg = (error as Error).message ?? "Unknown error";
       callbacks.onError({ runId, seq: s, error: errMsg, fatal: true });
       journal.recordEvent({ runId, seq: s, type: "status_update", errorText: errMsg });
+      journal.markRunCrashed(runId);
+      clearTimeout(timeoutId);
+      journal.close();
+      return runId;
     }
+  }
+
+  if (signal.aborted) {
+    const s = nextSeq();
+    callbacks.onError({ runId, seq: s, error: "Run aborted", fatal: true });
     journal.markRunCrashed(runId);
     clearTimeout(timeoutId);
     journal.close();
@@ -443,6 +521,9 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
   } = opts;
 
   const agentType = opts.agentType ?? "general";
+  const persistToConvex = opts.persistToConvex ?? true;
+  const enableRemoteTools = opts.enableRemoteTools ?? true;
+  const storageMode: "cloud" | "local" = persistToConvex ? "cloud" : "local";
   const runId = `local:sub:${crypto.randomUUID()}`;
 
   const journal = new RunJournal(stellaHome);
@@ -455,19 +536,21 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     : timeoutController.signal;
 
   const proxyBaseUrl = convexUrl.replace(/\/+$/, "");
-  const model = createProxiedModel(
-    proxyBaseUrl,
-    agentContext.proxyToken.token,
-    "anthropic/claude-opus-4.6",
-  );
+  const primaryModelId = agentContext.model;
+  const fallbackModelId =
+    agentContext.fallbackModel && agentContext.fallbackModel !== primaryModelId
+      ? agentContext.fallbackModel
+      : undefined;
 
   let turnIndex = 0;
   const toolCallCounters = new Map<string, number>();
   let subagentSeq = 0;
   const nextSubagentSeq = () => ++subagentSeq;
+  let hasToolSideEffects = false;
 
   const noopCallbacks: AgentToolCallbacks = {
     onToolCallStart: (toolCallId, toolName) => {
+      hasToolSideEffects = true;
       journal.recordEvent({
         runId, seq: nextSubagentSeq(), type: "tool_call",
         toolCallId, toolName,
@@ -486,6 +569,7 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
   const tools = createAgentTools({
     runId,
     agentType,
+    storageMode,
     toolsAllowlist: agentContext.toolsAllowlist,
     toolExecutor,
     deviceId,
@@ -499,20 +583,27 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     },
   });
 
-  const remoteTools = createRemoteTools({
-    convexUrl,
-    authToken,
-    conversationId,
-    agentType,
-  });
+  const remoteTools = enableRemoteTools
+    ? createRemoteTools({
+        convexUrl,
+        authToken,
+        conversationId,
+        agentType,
+      })
+    : {};
 
   const systemPrompt = agentContext.systemPrompt;
   const messages: ModelMessage[] = [
     { role: "user", content: `${taskDescription}\n\n${taskPrompt}` },
   ];
 
-  try {
-    const result = await generateText({
+  const runGenerateWithModel = async (modelId: string) => {
+    const model = createProxiedModel(
+      proxyBaseUrl,
+      agentContext.proxyToken.token,
+      modelId,
+    );
+    return await generateText({
       model,
       system: systemPrompt,
       messages,
@@ -524,24 +615,46 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
         toolCallCounters.clear();
       },
     });
+  };
+
+  try {
+    let result = await runGenerateWithModel(primaryModelId).catch(async (error) => {
+      const shouldTryFallback =
+        Boolean(fallbackModelId) &&
+        !signal.aborted &&
+        !hasToolSideEffects &&
+        isRetryableModelError(error);
+      if (!shouldTryFallback) {
+        throw error;
+      }
+      journal.recordEvent({
+        runId,
+        seq: nextSubagentSeq(),
+        type: "status_update",
+        errorText: `Primary model failed (${primaryModelId}). Retrying fallback (${fallbackModelId}).`,
+      });
+      return await runGenerateWithModel(fallbackModelId!);
+    });
 
     journal.completeRun(runId);
     clearTimeout(timeoutId);
 
-    await persistRunToConvex({
-      journal,
-      runId,
-      conversationId,
-      agentType,
-      convexUrl,
-      authToken,
-      fullText: result.text,
-      usage: {
-        inputTokens: result.usage?.inputTokens,
-        outputTokens: result.usage?.outputTokens,
-      },
-      activeThreadId: agentContext.activeThreadId,
-    });
+    if (persistToConvex) {
+      await persistRunToConvex({
+        journal,
+        runId,
+        conversationId,
+        agentType,
+        convexUrl,
+        authToken,
+        fullText: result.text,
+        usage: {
+          inputTokens: result.usage?.inputTokens,
+          outputTokens: result.usage?.outputTokens,
+        },
+        activeThreadId: agentContext.activeThreadId,
+      });
+    }
 
     journal.close();
     return { runId, result: result.text };

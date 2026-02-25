@@ -63,7 +63,13 @@ import {
 // Re-export types for external consumers
 export type { ToolContext, ToolResult };
 
-export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, resolveSecret }: ToolHostOptions) => {
+export const createToolHost = ({
+  StellaHome,
+  frontendRoot,
+  requestCredential,
+  resolveSecret,
+  taskApi,
+}: ToolHostOptions) => {
   const stateRoot = path.join(StellaHome, "state");
 
   // Configure file tools with frontend root for self-mod interception
@@ -113,7 +119,7 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
 
   // Initialize shell and state contexts
   const shellState: ShellState = createShellState(resolveSecretValue);
-  const stateContext: StateContext = createStateContext(stateRoot);
+  const stateContext: StateContext = createStateContext(stateRoot, taskApi);
 
   const setSkills = (skills: SkillRecord[]) => {
     shellState.skillCache = skills;
@@ -145,8 +151,8 @@ export const createToolHost = ({ StellaHome, frontendRoot, requestCredential, re
     SkillBash: (args, context) => handleSkillBash(shellState, args, context),
 
     // State tools
-    Task: (args) => handleTask(stateContext, args),
-    TaskOutput: (args) => handleTaskOutput(stateContext, args),
+    Task: (args, context) => handleTask(stateContext, args, context),
+    TaskOutput: (args, context) => handleTaskOutput(stateContext, args, context),
 
     // User tools
     AskUserQuestion: (args) => handleAskUser(args),

@@ -19,6 +19,7 @@ export type AgentToolCallbacks = {
 export type CreateAgentToolsOpts = {
   runId: string;
   agentType: string;
+  storageMode?: "cloud" | "local";
   toolsAllowlist?: string[];
   toolExecutor: (
     toolName: string,
@@ -86,12 +87,21 @@ const toolSchemas: Record<string, z.ZodType<Record<string, unknown>>> = {
 
   Task: z.looseObject({
     description: z.string(),
+    prompt: z.string().optional(),
     command: z.string().optional(),
+    subagentType: z.string().optional(),
+    subagent_type: z.string().optional(),
+    threadId: z.string().optional(),
+    threadName: z.string().optional(),
+    task_id: z.string().optional(),
+    action: z.string().optional(),
+    reason: z.string().optional(),
     args: z.record(z.string(), z.unknown()).optional(),
   }) as z.ZodType<Record<string, unknown>>,
 
   TaskOutput: z.looseObject({
     id: z.string().describe("Task ID"),
+    task_id: z.string().optional().describe("Task ID"),
     timeout: z.number().optional(),
   }) as z.ZodType<Record<string, unknown>>,
 
@@ -149,6 +159,7 @@ const toolDescriptions: Record<string, string> = {
 export function createAgentTools(opts: CreateAgentToolsOpts): Record<string, Tool<any, any>> {
   const {
     agentType,
+    storageMode = "cloud",
     toolsAllowlist,
     toolExecutor,
     deviceId,
@@ -178,6 +189,7 @@ export function createAgentTools(opts: CreateAgentToolsOpts): Record<string, Too
           deviceId,
           requestId: toolCallId,
           agentType,
+          storageMode,
         };
 
         callbacks.onToolCallStart(toolCallId, toolName);
