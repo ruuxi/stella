@@ -152,6 +152,18 @@ export const createToolHost = ({
 
     // State tools
     Task: (args, context) => handleTask(stateContext, args, context),
+    TaskCreate: (args, context) =>
+      handleTask(
+        stateContext,
+        { ...args, action: "create" },
+        context,
+      ),
+    TaskCancel: (args, context) =>
+      handleTask(
+        stateContext,
+        { ...args, action: "cancel" },
+        context,
+      ),
     TaskOutput: (args, context) => handleTaskOutput(stateContext, args, context),
 
     // User tools

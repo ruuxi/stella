@@ -378,6 +378,7 @@ export const createLocalHostRunner = ({
       conversationId,
       userMessageId,
       agentType,
+      taskId,
       taskDescription,
       taskPrompt,
       agentContext,
@@ -393,6 +394,7 @@ export const createLocalHostRunner = ({
         conversationId,
         userMessageId,
         agentType,
+        taskId,
         agentContext: agentContext as AgentContext,
         toolExecutor,
         convexUrl,
@@ -1229,6 +1231,9 @@ export const createLocalHostRunner = ({
   // Crash recovery on startup
   const recoverCrashedRuns = async () => {
     try {
+      // Any process restart may leave stale background shells; clear them first.
+      toolHost.killAllShells();
+
       const journal = new RunJournal(StellaHome);
       const crashed = journal.recoverCrashedRuns();
       for (const run of crashed) {
@@ -1248,10 +1253,25 @@ export const createLocalHostRunner = ({
           }
         }
         if (run.status === "running") {
+          if (run.taskId) {
+            try {
+              await callMutation("agent/tasks.completeRuntimeTask", {
+                taskId: run.taskId,
+                status: "error",
+                error: "Local runtime crashed before task completion.",
+              });
+            } catch (err) {
+              logError(`Failed to mark recovered task ${run.taskId} as failed:`, err);
+            }
+          }
           journal.markRunCrashed(run.runId);
         } else if (!hasPersistFailures) {
           journal.markRunPersisted(run.runId);
         }
+      }
+      const cleaned = journal.cleanupResolvedRuns();
+      if (cleaned > 0) {
+        log(`Cleaned ${cleaned} resolved run journal entr${cleaned === 1 ? "y" : "ies"}.`);
       }
       journal.close();
     } catch (err) {
