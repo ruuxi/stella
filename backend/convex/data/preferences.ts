@@ -6,6 +6,8 @@ const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"))
 const RUNTIME_MODE_KEY = "runtime_mode";
 const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
 const ACCOUNT_MODE_KEY = "account_mode";
+const syncModeValidator = v.union(v.literal("on"), v.literal("off"));
+const SYNC_MODE_KEY = "sync_mode";
 const PREFERRED_BROWSER_KEY = "preferred_browser";
 const preferredBrowserValidator = v.union(
   v.literal("arc"),
@@ -25,6 +27,9 @@ const normalizeRuntimeMode = (value: string | null | undefined): "local" | "clou
 const normalizeAccountMode = (
   value: string | null | undefined,
 ): "private_local" | "connected" => (value === "connected" ? "connected" : "private_local");
+
+const normalizeSyncMode = (value: string | null | undefined): "on" | "off" =>
+  value === "off" ? "off" : "on";
 
 const upsertPreferenceRecord = async (
   ctx: MutationCtx,
@@ -132,6 +137,31 @@ export const setAccountMode = mutation({
   },
 });
 
+export const getSyncMode = query({
+  args: {},
+  returns: syncModeValidator,
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const record = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", SYNC_MODE_KEY))
+      .unique();
+    return normalizeSyncMode(record?.value ?? null);
+  },
+});
+
+export const setSyncMode = mutation({
+  args: {
+    mode: syncModeValidator,
+  },
+  returns: syncModeValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    await upsertPreferenceRecord(ctx, ownerId, SYNC_MODE_KEY, args.mode);
+    return args.mode;
+  },
+});
+
 export const setRuntimeMode = internalMutation({
   args: {
     mode: runtimeModeValidator,
@@ -182,6 +212,20 @@ export const getAccountModeForOwner = internalQuery({
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", ACCOUNT_MODE_KEY))
       .unique();
     return normalizeAccountMode(record?.value ?? null);
+  },
+});
+
+export const getSyncModeForOwner = internalQuery({
+  args: {
+    ownerId: v.string(),
+  },
+  returns: syncModeValidator,
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", SYNC_MODE_KEY))
+      .unique();
+    return normalizeSyncMode(record?.value ?? null);
   },
 });
 

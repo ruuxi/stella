@@ -360,6 +360,21 @@ export default defineSchema({
     .index("by_provider_and_externalUserId", ["provider", "externalUserId"])
     .index("by_ownerId_and_provider", ["ownerId", "provider"])
     .index("by_ownerId_and_provider_and_externalUserId", ["ownerId", "provider", "externalUserId"]),
+  transient_channel_events: defineTable({
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    provider: v.string(),
+    direction: v.union(v.literal("inbound"), v.literal("outbound")),
+    text: v.string(),
+    batchKey: v.string(),
+    runId: v.optional(v.string()),
+    metadata: v.optional(jsonObjectValidator),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_batchKey", ["batchKey"])
+    .index("by_expiresAt", ["expiresAt"])
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"]),
   slack_installations: defineTable({
     teamId: v.string(),
     teamName: v.optional(v.string()),

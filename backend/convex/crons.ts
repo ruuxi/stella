@@ -7,6 +7,12 @@ crons.interval("heartbeat tick", { minutes: 1 }, internal.scheduling.heartbeat.t
 crons.interval("cron jobs tick", { minutes: 1 }, internal.scheduling.cron_jobs.tick);
 crons.interval("bridge wake tick", { minutes: 1 }, internal.channels.bridge.bridgeWakeTick);
 crons.interval("device presence sweep", { minutes: 2 }, internal.agent.device_resolver.markStaleOffline);
+crons.interval(
+  "transient connector cleanup",
+  { minutes: 5 },
+  internal.channels.transient_data.purgeExpired,
+  {},
+);
 crons.interval("thread lifecycle sweep", { hours: 24 }, internal.data.threads.sweepThreadLifecycle, {});
 
 crons.cron(
@@ -17,4 +23,3 @@ crons.cron(
 );
 
 export default crons;
-
