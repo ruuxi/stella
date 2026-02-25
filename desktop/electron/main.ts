@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, shell, globalShortcut, type Display, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, shell, globalShortcut, webContents, type Display, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { MouseHookManager } from './mouse-hook.js'
@@ -2384,6 +2384,7 @@ app.whenReady().then(async () => {
 
   // Ring buffer for agent event replay on reconnect
   const agentEventBuffers = new Map<string, Array<{ seq: number; event: unknown }>>()
+  const agentRunOwners = new Map<string, number>()
   const AGENT_BUFFER_MAX_EVENTS = 1000
   const AGENT_BUFFER_TTL_MS = 10 * 60 * 1000
 
@@ -2400,16 +2401,18 @@ app.whenReady().then(async () => {
     }
   }
 
-  function emitAgentEvent(runId: string, event: unknown) {
+  function emitAgentEvent(runId: string, event: unknown, targetWebContentsId?: number) {
     const payload = event as { seq?: number }
     if (payload.seq != null) {
       bufferAgentEvent(runId, payload.seq, event)
     }
-    // Send to all windows
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send('agent:event', event)
-      }
+    const receiverId = targetWebContentsId ?? agentRunOwners.get(runId)
+    if (receiverId == null) {
+      return
+    }
+    const receiver = webContents.fromId(receiverId)
+    if (receiver && !receiver.isDestroyed()) {
+      receiver.send('agent:event', event)
     }
   }
 
@@ -2432,39 +2435,46 @@ app.whenReady().then(async () => {
       throw new Error('Agent runtime not ready')
     }
 
+    const senderWebContentsId = _event.sender.id
     const result = await localHostRunner.handleLocalChat(payload, {
-      onStream: (ev) => emitAgentEvent(ev.runId, { type: 'stream', ...ev }),
-      onToolStart: (ev) => emitAgentEvent(ev.runId, { type: 'tool-start', ...ev }),
-      onToolEnd: (ev) => emitAgentEvent(ev.runId, { type: 'tool-end', ...ev }),
-      onError: (ev) => emitAgentEvent(ev.runId, { type: 'error', ...ev }),
+      onStream: (ev) => emitAgentEvent(ev.runId, { type: 'stream', ...ev }, senderWebContentsId),
+      onToolStart: (ev) => emitAgentEvent(ev.runId, { type: 'tool-start', ...ev }, senderWebContentsId),
+      onToolEnd: (ev) => emitAgentEvent(ev.runId, { type: 'tool-end', ...ev }, senderWebContentsId),
+      onError: (ev) => emitAgentEvent(ev.runId, { type: 'error', ...ev }, senderWebContentsId),
       onEnd: (ev) => {
-        emitAgentEvent(ev.runId, { type: 'end', ...ev })
+        emitAgentEvent(ev.runId, { type: 'end', ...ev }, senderWebContentsId)
         // Clean up buffer after a delay
-        setTimeout(() => agentEventBuffers.delete(ev.runId), 60_000)
+        setTimeout(() => {
+          agentEventBuffers.delete(ev.runId)
+          agentRunOwners.delete(ev.runId)
+        }, 60_000)
       },
     })
 
+    agentRunOwners.set(result.runId, senderWebContentsId)
     return result
   })
 
   ipcMain.on('agent:cancelChat', (_event, runId: string) => {
     if (localHostRunner && typeof runId === 'string') {
       localHostRunner.cancelLocalChat(runId)
+      agentRunOwners.delete(runId)
     }
   })
 
   ipcMain.on('agent:resume', (_event, payload: { runId: string; lastSeq: number }) => {
+    const ownerWebContentsId = agentRunOwners.get(payload.runId)
+    if (ownerWebContentsId != null && ownerWebContentsId !== _event.sender.id) {
+      return
+    }
+
     const buffer = agentEventBuffers.get(payload.runId)
     if (!buffer) return
 
     // Replay events after lastSeq
     for (const entry of buffer) {
       if (entry.seq > payload.lastSeq) {
-        for (const win of BrowserWindow.getAllWindows()) {
-          if (!win.isDestroyed()) {
-            win.webContents.send('agent:event', entry.event)
-          }
-        }
+        _event.sender.send('agent:event', entry.event)
       }
     }
   })

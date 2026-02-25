@@ -14,7 +14,7 @@
 
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import { streamText, generateText, type CoreMessage, type LanguageModel, type Tool } from "ai";
+import { streamText, generateText, stepCountIs, type LanguageModel, type ModelMessage, type Tool } from "ai";
 import crypto from "crypto";
 import { RunJournal } from "./run_journal.js";
 import { createAgentTools, type AgentToolCallbacks } from "./agent_tools.js";
@@ -82,6 +82,7 @@ export type AgentEndEvent = {
 };
 
 export type RunOrchestratorOpts = {
+  runId?: string;
   conversationId: string;
   userMessageId: string;
   agentType?: string;
@@ -212,7 +213,7 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
   } = opts;
 
   const agentType = opts.agentType ?? "orchestrator";
-  const runId = `local:${crypto.randomUUID()}`;
+  const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
   let seq = 0;
   const nextSeq = () => ++seq;
 
@@ -294,7 +295,7 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
   const allTools = { ...tools, ...remoteTools };
 
   // Build messages
-  const messages: CoreMessage[] = [];
+  const messages: ModelMessage[] = [];
 
   // Add thread history if available
   if (agentContext.threadHistory) {
@@ -319,7 +320,7 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
       system: systemPrompt,
       messages,
       tools: allTools as Record<string, Tool>,
-      maxSteps: MAX_TURNS,
+      stopWhen: stepCountIs(MAX_TURNS),
       abortSignal: signal,
       onStepFinish: () => {
         turnIndex++;
@@ -341,13 +342,13 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
     }
 
     // Wait for completion to get usage
-    const finalResult = await result;
+    const [resolvedText, resolvedUsage] = await Promise.all([result.text, result.usage]);
     usage = {
-      inputTokens: finalResult.usage?.promptTokens,
-      outputTokens: finalResult.usage?.completionTokens,
+      inputTokens: resolvedUsage?.inputTokens,
+      outputTokens: resolvedUsage?.outputTokens,
     };
-    if (!fullText && finalResult.text) {
-      fullText = finalResult.text;
+    if (!fullText && resolvedText) {
+      fullText = resolvedText;
     }
   } catch (error) {
     if (signal.aborted) {
@@ -440,17 +441,19 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
 
   let turnIndex = 0;
   const toolCallCounters = new Map<string, number>();
+  let subagentSeq = 0;
+  const nextSubagentSeq = () => ++subagentSeq;
 
   const noopCallbacks: AgentToolCallbacks = {
     onToolCallStart: (toolCallId, toolName) => {
       journal.recordEvent({
-        runId, seq: 0, type: "tool_call",
+        runId, seq: nextSubagentSeq(), type: "tool_call",
         toolCallId, toolName,
       });
     },
     onToolCallEnd: (toolCallId, result, durationMs) => {
       journal.recordEvent({
-        runId, seq: 0, type: "tool_result",
+        runId, seq: nextSubagentSeq(), type: "tool_result",
         toolCallId,
         resultText: typeof result === "string" ? result : JSON.stringify(result),
         durationMs,
@@ -482,7 +485,7 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
   });
 
   const systemPrompt = agentContext.systemPrompt;
-  const messages: CoreMessage[] = [
+  const messages: ModelMessage[] = [
     { role: "user", content: `${taskDescription}\n\n${taskPrompt}` },
   ];
 
@@ -492,7 +495,7 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
       system: systemPrompt,
       messages,
       tools: { ...tools, ...remoteTools } as Record<string, Tool>,
-      maxSteps: MAX_TURNS,
+      stopWhen: stepCountIs(MAX_TURNS),
       abortSignal: signal,
       onStepFinish: () => {
         turnIndex++;
@@ -512,8 +515,8 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
       authToken,
       fullText: result.text,
       usage: {
-        inputTokens: result.usage?.promptTokens,
-        outputTokens: result.usage?.completionTokens,
+        inputTokens: result.usage?.inputTokens,
+        outputTokens: result.usage?.outputTokens,
       },
       activeThreadId: agentContext.activeThreadId,
     });
@@ -611,6 +614,7 @@ async function persistRunToConvex(opts: PersistOpts): Promise<void> {
 
   // Persist each chunk via Convex HTTP
   const baseUrl = convexUrl.replace(/\/+$/, "");
+  const failedChunks: string[] = [];
 
   for (const chunk of chunks) {
     // Record in journal for crash recovery
@@ -633,7 +637,6 @@ async function persistRunToConvex(opts: PersistOpts): Promise<void> {
       usage: chunk.usage,
       conversationId,
       agentType,
-      ownerId: "", // Will be resolved by the mutation
       activeThreadId: opts.activeThreadId,
     };
 
@@ -661,14 +664,22 @@ async function persistRunToConvex(opts: PersistOpts): Promise<void> {
       if (response.ok) {
         journal.markPersisted(chunk.chunkKey);
       } else {
+        failedChunks.push(chunk.chunkKey);
         console.error(
           `[agent-runtime] Persist chunk ${chunk.chunkKey} failed: ${response.status}`,
         );
       }
     } catch (err) {
+      failedChunks.push(chunk.chunkKey);
       console.error(`[agent-runtime] Persist chunk ${chunk.chunkKey} error:`, err);
     }
   }
+
+  if (failedChunks.length > 0) {
+    throw new Error(`Failed to persist ${failedChunks.length} chunk(s)`);
+  }
+
+  journal.markRunPersisted(runId);
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
