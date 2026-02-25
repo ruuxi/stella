@@ -1245,7 +1245,10 @@ export const startGeneration = action({
       ),
     );
 
-    const started = launched.some((result) => result.launched);
+    const started = launched.some(
+      (result: { launched: boolean; taskId: Id<"tasks"> | null; error?: string }) =>
+        result.launched,
+    );
 
     return {
       started,

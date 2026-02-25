@@ -95,7 +95,7 @@ export const recallMemories = action({
     conversationId: v.optional(v.id("conversations")),
   },
   returns: v.string(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
       await requireConversationOwnerAction(ctx, args.conversationId);
@@ -117,7 +117,7 @@ export const saveMemory = action({
     conversationId: v.optional(v.id("conversations")),
   },
   returns: v.string(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
       await requireConversationOwnerAction(ctx, args.conversationId);
@@ -179,7 +179,7 @@ export const activateSkill = action({
     skillId: v.string(),
   },
   returns: v.string(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     const skill = await ctx.runQuery(internal.data.skills.getSkillByIdInternal, {
       skillId: args.skillId,

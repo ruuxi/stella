@@ -839,10 +839,12 @@ const ensureSingleCloudDeviceForOwner = async (
   const primary = pickPrimaryCloudDevice(records);
   if (!primary) return null;
 
-  const duplicates = records.filter((record) => record._id !== primary._id);
+  const duplicates = records.filter(
+    (record: Doc<"cloud_devices">) => record._id !== primary._id,
+  );
   if (duplicates.length === 0) return primary;
 
-  const duplicateIds = duplicates.map((record) => record._id);
+  const duplicateIds = duplicates.map((record: Doc<"cloud_devices">) => record._id);
   await ctx.runMutation(internal.agent.cloud_devices.deleteCloudDevicesByIds, { ids: duplicateIds });
 
   const deletedSpriteNames = new Set<string>();

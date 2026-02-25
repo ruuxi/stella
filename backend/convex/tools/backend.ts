@@ -1409,7 +1409,13 @@ export const createBackendTools = (
 
           const formatted = secrets
             .map(
-              (s, i) =>
+              (s: {
+                  label: string;
+                  provider: string;
+                  status: string;
+                  lastUsedAt?: number;
+                },
+                i: number,) =>
                 `${i + 1}. **${s.label}** (${s.provider}) — ${s.status}${s.lastUsedAt ? ` | last used ${new Date(s.lastUsedAt).toISOString()}` : ""}`,
             )
             .join("\n");
@@ -1432,3 +1438,4 @@ export const createBackendTools = (
     }),
   };
 };
+

@@ -961,6 +961,19 @@ export async function processIncomingMessage(
   const transientBatchKey = useTransientRetention
     ? `channel:${args.provider}:${crypto.randomUUID()}`
     : null;
+  let transientBatchCleaned = false;
+  const cleanupTransientBatch = async () => {
+    if (!transientBatchKey || transientBatchCleaned) {
+      return;
+    }
+    try {
+      await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
+      transientBatchCleaned = true;
+    } catch (cleanupError) {
+      // Best-effort cleanup only.
+      console.error("[channels] Failed to clean transient connector batch:", cleanupError);
+    }
+  };
 
   const persistAssistant = async (params: {
     text: string;
@@ -1027,9 +1040,6 @@ export async function processIncomingMessage(
     }
 
     if (args.respond === false) {
-      if (transientBatchKey) {
-        await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
-      }
       return { text: "" };
     }
 
@@ -1051,16 +1061,10 @@ export async function processIncomingMessage(
       } catch (error) {
         console.error("[channels] Failed to enable 24/7 mode from connector:", error);
         await persistAssistant({ text: ENABLE_247_FAILED_MESSAGE });
-        if (transientBatchKey) {
-          await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
-        }
         return { text: ENABLE_247_FAILED_MESSAGE };
       }
 
       await persistAssistant({ text: ENABLING_247_MESSAGE });
-      if (transientBatchKey) {
-        await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
-      }
       return { text: ENABLING_247_MESSAGE };
     }
 
@@ -1107,9 +1111,6 @@ export async function processIncomingMessage(
         text: failureMessage,
         fallback: "none",
       });
-      if (transientBatchKey) {
-        await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
-      }
       return { text: failureMessage };
     }
 
@@ -1129,15 +1130,13 @@ export async function processIncomingMessage(
       fallback: usedCloudFallback ? "cloud" : selectedMode ?? undefined,
     });
 
-    if (transientBatchKey) {
-      // Primary cleanup path: remove transient data as soon as response is finished.
-      await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
-    }
-
     return { text: responseText };
   } catch (error) {
     console.error("[channels] processIncomingMessage failed:", error);
     return null;
+  } finally {
+    // Always clear transient connector rows, including unexpected error paths.
+    await cleanupTransientBatch();
   }
 }
 /**

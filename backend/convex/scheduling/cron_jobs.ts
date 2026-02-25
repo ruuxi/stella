@@ -686,6 +686,14 @@ export const execute = internalAction({
       scheduleResolved.kind === "at" && status === "ok" && job.deleteAfterRun !== true;
     const safeNextRunAtMs = nextRunAtMs ?? now + 60_000;
     const disabledNextRunAtMs = now + 365 * 24 * 60 * 60 * 1000;
+    const persistedOutputPreview =
+      syncMode === "off"
+        ? undefined
+        : outputText
+          ? truncatePreview(outputText)
+          : undefined;
+    const persistedError =
+      syncMode === "off" && error ? "run failed while sync is off" : error;
 
     if (!shouldDelete) {
       await ctx.runMutation(internal.scheduling.cron_jobs.finishRun, {
@@ -694,9 +702,9 @@ export const execute = internalAction({
         runningAtMs: undefined,
         lastRunAtMs: now,
         lastStatus: status,
-        lastError: error,
+        lastError: persistedError,
         lastDurationMs: durationMs,
-        lastOutputPreview: outputText ? truncatePreview(outputText) : undefined,
+        lastOutputPreview: persistedOutputPreview,
         enabled: shouldDisable ? false : job.enabled,
       });
     } else {
@@ -706,9 +714,9 @@ export const execute = internalAction({
         runningAtMs: undefined,
         lastRunAtMs: now,
         lastStatus: status,
-        lastError: error,
+        lastError: persistedError,
         lastDurationMs: durationMs,
-        lastOutputPreview: outputText ? truncatePreview(outputText) : undefined,
+        lastOutputPreview: persistedOutputPreview,
       });
       await ctx.runMutation(internal.scheduling.cron_jobs.deleteJob, { jobId: job._id });
     }

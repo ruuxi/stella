@@ -81,6 +81,22 @@ async function embedText(modelKey: string, text: string): Promise<number[]> {
 
 type MemoryFact = { content: string };
 type FactExtractionResult = { facts: MemoryFact[]; parseOk: boolean };
+type RecentConversationMessage = {
+  type: string;
+  payload?: unknown;
+};
+type EventEmbeddingDoc = {
+  _id: Id<"event_embeddings">;
+  ownerId: string;
+  conversationId: Id<"conversations">;
+  content: string;
+  timestamp: number;
+  type: "user_message" | "assistant_message";
+};
+type MemoryDoc = {
+  _id: Id<"memories">;
+  content: string;
+};
 type RecallCandidate = {
   id: string;
   content: string;
@@ -480,7 +496,7 @@ export const recallMemories = internalAction({
             limit: RECENT_CONTEXT_MESSAGE_LIMIT,
           });
           const contextLines = recentMessages
-            .map((event) => {
+            .map((event: RecentConversationMessage) => {
               if (event.type !== "user_message" && event.type !== "assistant_message") {
                 return null;
               }
@@ -495,7 +511,7 @@ export const recallMemories = internalAction({
               const speaker = event.type === "user_message" ? "User" : "Assistant";
               return `${speaker}: ${truncate(text, RECENT_CONTEXT_MESSAGE_MAX_CHARS)}`;
             })
-            .filter((line): line is string => !!line);
+            .filter((line: string | null): line is string => !!line);
           if (contextLines.length > 0) {
             recentConversationContext = truncate(
               contextLines.join("\n"),
@@ -518,22 +534,22 @@ export const recallMemories = internalAction({
         }
 
         const candidateIds = candidates.map((candidate) => candidate._id);
-        const docs = await ctx.runQuery(internal.data.event_embeddings.getEmbeddingsByIds, {
+        const docs = (await ctx.runQuery(internal.data.event_embeddings.getEmbeddingsByIds, {
           ids: candidateIds,
-        });
+        })) as EventEmbeddingDoc[];
         const docsById = new Map(
           docs
-            .filter((doc: any) =>
+            .filter((doc: EventEmbeddingDoc) =>
               doc.ownerId === args.ownerId &&
               (!args.conversationId || doc.conversationId === args.conversationId)
             )
-            .map((doc: any) => [String(doc._id), doc]),
+            .map((doc: EventEmbeddingDoc) => [String(doc._id), doc]),
         );
         const orderedDocs = candidateIds
           .map((id) => docsById.get(String(id)))
           .filter((doc): doc is NonNullable<typeof doc> => !!doc);
 
-        const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc: any) => ({
+        const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc: EventEmbeddingDoc) => ({
           id: String(doc._id),
           content: doc.content,
           timestamp: doc.timestamp,
@@ -556,7 +572,7 @@ export const recallMemories = internalAction({
         }
 
         return selectedDocs
-          .map((doc: any) => {
+          .map((doc: EventEmbeddingDoc) => {
             const iso = new Date(doc.timestamp).toISOString();
             const speaker = doc.type === "user_message" ? "user" : "assistant";
             return `- [${iso}] (${speaker}) ${doc.content}`;
@@ -574,17 +590,17 @@ export const recallMemories = internalAction({
       }
 
       const candidateIds = candidates.map((candidate) => candidate._id);
-      const docs = await ctx.runQuery(internal.data.memory.getMemoriesByIds, {
+      const docs = (await ctx.runQuery(internal.data.memory.getMemoriesByIds, {
         ids: candidateIds,
-      });
+      })) as MemoryDoc[];
       const docsById = new Map(
-        docs.map((doc) => [String(doc._id), doc]),
+        docs.map((doc: MemoryDoc) => [String(doc._id), doc]),
       );
       const orderedDocs = candidateIds
         .map((id) => docsById.get(String(id)))
         .filter((doc): doc is NonNullable<typeof doc> => !!doc);
 
-      const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc) => ({
+      const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc: MemoryDoc) => ({
         id: String(doc._id),
         content: doc.content,
       }));
@@ -607,7 +623,7 @@ export const recallMemories = internalAction({
         memoryIds: selectedDocs.map((doc) => doc._id as Id<"memories">),
       });
 
-      return selectedDocs.map((doc) => `- ${doc.content}`).join("\n");
+      return selectedDocs.map((doc: MemoryDoc) => `- ${doc.content}`).join("\n");
     } catch (err) {
       console.error("[memory] recallMemories failed:", err);
       return "";
@@ -648,9 +664,13 @@ export const adjudicateAndStoreFact = internalAction({
 
       // We have similar items, adjudicate.
       const candidateIds = similar.map((c) => c._id);
-      const docs = await ctx.runQuery(internal.data.memory.getMemoriesByIds, { ids: candidateIds });
+      const docs = (await ctx.runQuery(internal.data.memory.getMemoriesByIds, {
+        ids: candidateIds,
+      })) as MemoryDoc[];
       
-      const candidateText = docs.map((doc, idx) => `[${idx + 1}] id=${doc._id} | content=${doc.content}`).join("\\n");
+      const candidateText = docs
+        .map((doc: MemoryDoc, idx: number) => `[${idx + 1}] id=${doc._id} | content=${doc.content}`)
+        .join("\\n");
       
       const promptBody = [
         "Existing Facts:",

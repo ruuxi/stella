@@ -657,7 +657,7 @@ export const compactThread = internalAction({
 
     // 5. Format old messages for summarization (tool-aware, role-aware).
     const oldText = formatThreadMessagesForCompaction(
-      oldMessages.map((m) => ({
+      oldMessages.map((m: { role: string; content: string }) => ({
         role: m.role,
         content: m.content,
       })),
@@ -683,7 +683,7 @@ export const compactThread = internalAction({
     let turnPrefixSummary = "";
     if (turnPrefixMessages.length > 0) {
       const turnPrefixText = formatThreadMessagesForCompaction(
-        turnPrefixMessages.map((m) => ({
+        turnPrefixMessages.map((m: { role: string; content: string }) => ({
           role: m.role,
           content: m.content,
         })),
