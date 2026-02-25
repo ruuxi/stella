@@ -71,9 +71,16 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
     | "private_local"
     | "connected"
     | undefined;
+  const syncMode = useQuery(
+    api.data.preferences.getSyncMode,
+    accountMode === "connected" ? {} : "skip",
+  ) as "on" | "off" | undefined;
   const setAccountMode = useMutation(api.data.preferences.setAccountMode);
+  const setSyncMode = useMutation(api.data.preferences.setSyncMode);
   const [isUpdatingAccountMode, setIsUpdatingAccountMode] = useState(false);
   const [accountModeError, setAccountModeError] = useState<string | null>(null);
+  const [isUpdatingSyncMode, setIsUpdatingSyncMode] = useState(false);
+  const [syncModeError, setSyncModeError] = useState<string | null>(null);
 
   const effectiveAccountMode = accountMode ?? "private_local";
   const accountModeLabel =
@@ -81,8 +88,14 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
 
   const accountModeDescription =
     effectiveAccountMode === "connected"
-      ? "Connectors and cloud sync are enabled."
+      ? "Connectors are enabled."
       : "Connectors and cloud sync are disabled.";
+  const effectiveSyncMode = syncMode ?? "on";
+  const syncModeLabel = effectiveSyncMode === "on" ? "Sync On" : "Sync Off";
+  const syncModeDescription =
+    effectiveSyncMode === "on"
+      ? "Conversation history is persisted to cloud."
+      : "Connector processing uses transient records that are deleted after each response.";
 
   const handleToggleAccountMode = useCallback(async () => {
     if (isUpdatingAccountMode) return;
@@ -99,6 +112,22 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
       setIsUpdatingAccountMode(false);
     }
   }, [effectiveAccountMode, isUpdatingAccountMode, setAccountMode]);
+
+  const handleToggleSyncMode = useCallback(async () => {
+    if (effectiveAccountMode !== "connected") return;
+    if (isUpdatingSyncMode) return;
+    setSyncModeError(null);
+    setIsUpdatingSyncMode(true);
+    const nextMode = effectiveSyncMode === "on" ? "off" : "on";
+
+    try {
+      await setSyncMode({ mode: nextMode });
+    } catch (error) {
+      setSyncModeError((error as Error).message ?? "Failed to update sync mode.");
+    } finally {
+      setIsUpdatingSyncMode(false);
+    }
+  }, [effectiveAccountMode, effectiveSyncMode, isUpdatingSyncMode, setSyncMode]);
 
   return (
     <div className="settings-tab-content">
@@ -134,6 +163,28 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
             </button>
           </div>
         </div>
+        {effectiveAccountMode === "connected" ? (
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Chat Sync</div>
+              <div className="settings-row-sublabel">
+                {syncModeLabel}. {syncModeDescription}
+              </div>
+              {syncModeError ? (
+                <div className="settings-row-sublabel">{syncModeError}</div>
+              ) : null}
+            </div>
+            <div className="settings-row-control">
+              <button className="settings-btn" onClick={handleToggleSyncMode} disabled={isUpdatingSyncMode}>
+                {isUpdatingSyncMode
+                  ? "Updating..."
+                  : effectiveSyncMode === "on"
+                    ? "Turn Sync Off"
+                    : "Turn Sync On"}
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Sign Out</div>

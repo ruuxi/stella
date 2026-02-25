@@ -62,9 +62,14 @@ export const FullShell = () => {
     api.data.preferences.getAccountMode,
     onboarding.isAuthenticated ? {} : "skip",
   ) as "private_local" | "connected" | undefined;
+  const syncMode = useQuery(
+    api.data.preferences.getSyncMode,
+    onboarding.isAuthenticated && accountMode === "connected" ? {} : "skip",
+  ) as "on" | "off" | undefined;
   const cloudFeaturesEnabled =
     onboarding.isAuthenticated && accountMode === "connected";
-  const conversationEventsSource = cloudFeaturesEnabled ? "cloud" : "local";
+  const cloudStorageEnabled = cloudFeaturesEnabled && (syncMode ?? "on") !== "off";
+  const conversationEventsSource = cloudStorageEnabled ? "cloud" : "local";
 
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
