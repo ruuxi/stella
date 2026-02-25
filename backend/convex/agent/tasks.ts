@@ -1980,4 +1980,184 @@ export const deliverTaskResult = internalAction({
   },
 });
 
+// ─── Batch Persist Run Chunk ─────────────────────────────────────────────────
+// Used by the local agent runtime to persist run data to Convex in chunks.
+// Each chunk is idempotent by chunkKey — safe to retry on crash recovery.
 
+const persistChunkEventValidator = v.object({
+  type: v.string(),
+  toolCallId: v.optional(v.string()),
+  toolName: v.optional(v.string()),
+  argsPreview: v.optional(v.string()),
+  resultPreview: v.optional(v.string()),
+  errorText: v.optional(v.string()),
+  durationMs: v.optional(v.number()),
+  timestamp: v.number(),
+});
+
+const persistChunkThreadMessageValidator = v.object({
+  role: v.string(),
+  content: v.string(),
+  toolCallId: v.optional(v.string()),
+});
+
+export const batchPersistRunChunk = internalMutation({
+  args: {
+    runId: v.string(),
+    chunkKey: v.string(),
+    chunkIndex: v.number(),
+    isFinal: v.boolean(),
+    events: v.array(persistChunkEventValidator),
+    assistantText: v.optional(v.string()),
+    threadMessages: v.optional(v.array(persistChunkThreadMessageValidator)),
+    usage: v.optional(v.object({
+      inputTokens: v.optional(v.number()),
+      outputTokens: v.optional(v.number()),
+    })),
+    conversationId: v.id("conversations"),
+    agentType: v.string(),
+    ownerId: v.string(),
+    activeThreadId: v.optional(v.id("threads")),
+  },
+  returns: v.object({
+    persisted: v.boolean(),
+    duplicate: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    // Check for idempotency — if chunkKey already exists, skip
+    const existing = await ctx.db
+      .query("persist_chunks")
+      .withIndex("by_chunkKey", (q) => q.eq("chunkKey", args.chunkKey))
+      .unique();
+
+    if (existing) {
+      return { persisted: true, duplicate: true };
+    }
+
+    // Validate payload size (reject > 1MB)
+    const payloadSize = JSON.stringify(args.events).length;
+    if (payloadSize > 1_000_000) {
+      throw new Error(`Chunk payload too large: ${payloadSize} bytes. Split into smaller chunks.`);
+    }
+
+    // Store the chunk
+    await ctx.db.insert("persist_chunks", {
+      runId: args.runId,
+      chunkKey: args.chunkKey,
+      chunkIndex: args.chunkIndex,
+      isFinal: args.isFinal,
+      events: args.events,
+      assistantText: args.assistantText,
+      threadMessages: args.threadMessages,
+      usage: args.usage,
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+      ownerId: args.ownerId,
+      createdAt: Date.now(),
+    });
+
+    // If this is the final chunk, perform finalization
+    if (args.isFinal) {
+      const now = Date.now();
+
+      // 1. Write assistant_message event if we have text
+      if (args.assistantText && args.assistantText.trim().length > 0) {
+        await ctx.db.insert("events", {
+          conversationId: args.conversationId,
+          timestamp: now,
+          type: "assistant_message",
+          payload: {
+            text: args.assistantText,
+            agentType: args.agentType,
+            source: "local",
+            runId: args.runId,
+          },
+        });
+      }
+
+      // 2. Persist thread messages if provided
+      if (args.threadMessages && args.threadMessages.length > 0 && args.activeThreadId) {
+        const thread = await ctx.db.get(args.activeThreadId);
+        if (thread) {
+          let ordinal = thread.messageCount;
+          for (const msg of args.threadMessages) {
+            const content = msg.content.length > MAX_THREAD_MESSAGE_CONTENT_LENGTH
+              ? msg.content.slice(0, MAX_THREAD_MESSAGE_CONTENT_LENGTH)
+              : msg.content;
+            await ctx.db.insert("thread_messages", {
+              threadId: args.activeThreadId,
+              ordinal,
+              role: msg.role,
+              content,
+              toolCallId: msg.toolCallId,
+              createdAt: now,
+            });
+            ordinal++;
+          }
+          await ctx.db.patch(args.activeThreadId, {
+            messageCount: ordinal,
+            lastUsedAt: now,
+          });
+        }
+      }
+
+      // 3. Log usage
+      if (args.usage) {
+        const totalTokens =
+          (args.usage.inputTokens ?? 0) + (args.usage.outputTokens ?? 0) || undefined;
+
+        // Count tool calls across ALL chunks for this run
+        const allChunks = await ctx.db
+          .query("persist_chunks")
+          .withIndex("by_runId_and_chunkIndex", (q) => q.eq("runId", args.runId))
+          .collect();
+
+        let toolCalls = 0;
+        for (const chunk of allChunks) {
+          toolCalls += chunk.events.filter(
+            (e) => e.type === "tool_call" || e.type === "tool_result",
+          ).length;
+        }
+        // Also count the current chunk's events
+        toolCalls += args.events.filter(
+          (e) => e.type === "tool_call" || e.type === "tool_result",
+        ).length;
+        // Each tool call has a request+result, count pairs
+        toolCalls = Math.ceil(toolCalls / 2);
+
+        await ctx.db.insert("usage_logs", {
+          ownerId: args.ownerId,
+          conversationId: args.conversationId,
+          agentType: args.agentType,
+          model: `local:${args.agentType}`,
+          inputTokens: args.usage.inputTokens,
+          outputTokens: args.usage.outputTokens,
+          totalTokens,
+          durationMs: 0, // Local runs don't have a single duration
+          success: true,
+          toolCalls: toolCalls > 0 ? toolCalls : undefined,
+          createdAt: now,
+        });
+      }
+    }
+
+    return { persisted: true, duplicate: false };
+  },
+});
+
+/** Check if a final persist chunk exists for a given run (used by crash recovery) */
+export const hasFinalPersistChunk = internalQuery({
+  args: {
+    runId: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const chunk = await ctx.db
+      .query("persist_chunks")
+      .withIndex("by_runId_and_isFinal", (q) =>
+        q.eq("runId", args.runId).eq("isFinal", true),
+      )
+      .first();
+    return chunk !== null;
+  },
+});

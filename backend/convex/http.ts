@@ -3503,7 +3503,7 @@ http.route({
 // Stella AI Proxy — thin LLM/embed/search proxy for desktop local runtime
 // ---------------------------------------------------------------------------
 
-import { proxyChat, proxyEmbed, proxySearch } from "./ai_proxy";
+import { proxyChat, proxyEmbed, proxySearch, llmProxy } from "./ai_proxy";
 
 const proxyOptionsHandler = httpAction(async (_ctx, request) => {
   const origin = request.headers.get("origin");
@@ -3518,6 +3518,10 @@ http.route({ path: "/api/ai/embed", method: "POST", handler: proxyEmbed });
 
 http.route({ path: "/api/ai/search", method: "OPTIONS", handler: proxyOptionsHandler });
 http.route({ path: "/api/ai/search", method: "POST", handler: proxySearch });
+
+// Transparent LLM reverse proxy for local agent runtime
+http.route({ path: "/api/ai/llm-proxy", method: "OPTIONS", handler: proxyOptionsHandler });
+http.route({ path: "/api/ai/llm-proxy", method: "POST", handler: llmProxy });
 
 export default http;
 

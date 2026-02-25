@@ -280,6 +280,56 @@ export const logToolExecution = internalMutation({
   },
 });
 
+/**
+ * Log proxy usage — called from the transparent LLM proxy (httpAction).
+ * Does not require a conversationId since proxy requests are stateless.
+ * Logs to usage_logs with a synthetic conversationId if none is available.
+ */
+export const logProxyUsage = internalMutation({
+  args: {
+    ownerId: v.string(),
+    agentType: v.string(),
+    model: v.string(),
+    durationMs: v.number(),
+    success: v.boolean(),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    estimateFromRequest: v.optional(v.boolean()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Find the user's default conversation for logging purposes
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_ownerId_and_isDefault", (q) =>
+        q.eq("ownerId", args.ownerId).eq("isDefault", true),
+      )
+      .first();
+
+    if (!conversations) {
+      // No conversation found — skip logging
+      return null;
+    }
+
+    const totalTokens =
+      (args.inputTokens ?? 0) + (args.outputTokens ?? 0) || undefined;
+
+    await ctx.db.insert("usage_logs", {
+      ownerId: args.ownerId,
+      conversationId: conversations._id,
+      agentType: `proxy:${args.agentType}`,
+      model: args.model,
+      inputTokens: args.inputTokens,
+      outputTokens: args.outputTokens,
+      totalTokens,
+      durationMs: args.durationMs,
+      success: args.success,
+      createdAt: Date.now(),
+    });
+    return null;
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Internal Queries
 // ---------------------------------------------------------------------------

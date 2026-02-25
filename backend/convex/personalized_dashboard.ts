@@ -1,5 +1,6 @@
 import {
   action,
+  mutation,
   internalAction,
   internalMutation,
   internalQuery,
@@ -775,6 +776,20 @@ export const launchPageGenerationTaskInternal = internalAction({
       };
     }
 
+    // Attempt to claim the page via lease before generating
+    const claimResult = await ctx.runMutation(internal.personalized_dashboard.claimPageGeneration, {
+      pageId: page._id,
+      claimantId: "server",
+    });
+
+    if (!claimResult.claimed) {
+      return {
+        launched: false,
+        taskId: null,
+        error: `Page already claimed by ${claimResult.claimedBy ?? "unknown"}`,
+      };
+    }
+
     const executionTarget = await ctx.runQuery(internal.agent.device_resolver.resolveExecutionTarget, {
       ownerId: args.ownerId,
     });
@@ -793,6 +808,11 @@ export const launchPageGenerationTaskInternal = internalAction({
     }
 
     if (!resolvedTargetDeviceId) {
+      // Release the claim since we can't execute
+      await ctx.runMutation(internal.personalized_dashboard.releasePageClaim, {
+        pageId: page._id,
+        claimantId: "server",
+      });
       const error = "Local desktop runtime appears offline. Keep Stella open and connected, then retry.";
       await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
         ownerId: args.ownerId,
@@ -804,6 +824,62 @@ export const launchPageGenerationTaskInternal = internalAction({
         taskId: null,
         error,
       };
+    }
+
+    // If desktop is online, emit a dashboard_generation_request event so the local
+    // runtime can claim and generate locally instead. Release the server claim.
+    if (executionTarget.targetDeviceId && !executionTarget.spriteName) {
+      await ctx.runMutation(internal.personalized_dashboard.releasePageClaim, {
+        pageId: page._id,
+        claimantId: "server",
+      });
+
+      // Build the prompt so the local runner has everything it needs
+      const coreMemoryRaw = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
+        ownerId: args.ownerId,
+        key: CORE_MEMORY_KEY,
+      });
+      const coreMemory = normalizeText(coreMemoryRaw ?? "", 12_000);
+      const assignment = toAssignment({
+        pageId: page.pageId,
+        panelName: page.panelName,
+        title: page.title,
+        topic: page.topic,
+        focus: page.focus,
+        dataSources: page.dataSources,
+        order: page.order,
+      });
+      const userPrompt = buildPersonalizedDashboardPageUserMessage({
+        coreMemory,
+        assignment,
+      });
+
+      await ctx.runMutation(internal.events.appendInternalEvent, {
+        conversationId: args.conversationId,
+        type: "dashboard_generation_request",
+        targetDeviceId: executionTarget.targetDeviceId,
+        payload: {
+          pageId: args.pageId,
+          ownerId: args.ownerId,
+          panelName: page.panelName,
+          title: page.title,
+          topic: page.topic,
+          focus: page.focus,
+          dataSources: page.dataSources,
+          systemPrompt: PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
+          userPrompt,
+        },
+      });
+
+      // Schedule a fallback monitor — if the local runner doesn't claim within 30s, retry server-side
+      await ctx.scheduler.runAfter(30_000, internal.personalized_dashboard.monitorPageGenerationTaskInternal, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        pageId: args.pageId,
+        taskId: "local-pending",
+      });
+
+      return { launched: true, taskId: null };
     }
 
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
@@ -1200,5 +1276,256 @@ export const retryPage = action({
       started: true,
       message: "Retry started.",
     };
+  },
+});
+
+// ─── Dashboard Generation Claim/Lease ──────────────────────────────────────
+// Prevents duplicate generation when both desktop (local) and server (cloud)
+// runners could attempt to generate the same panel.
+//
+// Flow:
+// 1. Runner (local or server) calls claimPageGeneration with its device/runner ID
+// 2. CAS: succeeds only if claimedBy is null OR lease has expired
+// 3. During generation, runner calls renewPageLease every 60s
+// 4. On completion/failure, runner calls releasePageClaim
+// 5. If runner crashes, lease expires and another runner can claim
+
+const DEFAULT_LEASE_DURATION_MS = 2 * 60 * 1000; // 2 minutes
+
+export const claimPageGeneration = internalMutation({
+  args: {
+    pageId: v.id("dashboard_pages"),
+    claimantId: v.string(), // deviceId or "server"
+  },
+  returns: v.object({
+    claimed: v.boolean(),
+    claimedBy: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    const page = await ctx.db.get(args.pageId);
+    if (!page) {
+      return { claimed: false, claimedBy: undefined };
+    }
+
+    const now = Date.now();
+
+    // CAS: only claim if unclaimed or lease expired
+    if (page.claimedBy && page.leaseExpiresAt && page.leaseExpiresAt > now) {
+      return { claimed: false, claimedBy: page.claimedBy };
+    }
+
+    await ctx.db.patch(args.pageId, {
+      claimedBy: args.claimantId,
+      claimedAt: now,
+      leaseExpiresAt: now + DEFAULT_LEASE_DURATION_MS,
+      updatedAt: now,
+    });
+
+    return { claimed: true, claimedBy: args.claimantId };
+  },
+});
+
+export const renewPageLease = internalMutation({
+  args: {
+    pageId: v.id("dashboard_pages"),
+    claimantId: v.string(),
+  },
+  returns: v.object({
+    renewed: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const page = await ctx.db.get(args.pageId);
+    if (!page) {
+      return { renewed: false };
+    }
+
+    // Only the current claimant can renew
+    if (page.claimedBy !== args.claimantId) {
+      return { renewed: false };
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.pageId, {
+      leaseExpiresAt: now + DEFAULT_LEASE_DURATION_MS,
+      updatedAt: now,
+    });
+
+    return { renewed: true };
+  },
+});
+
+export const releasePageClaim = internalMutation({
+  args: {
+    pageId: v.id("dashboard_pages"),
+    claimantId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const page = await ctx.db.get(args.pageId);
+    if (!page) return null;
+
+    // Only the current claimant can release
+    if (page.claimedBy !== args.claimantId) return null;
+
+    await ctx.db.patch(args.pageId, {
+      claimedBy: undefined,
+      claimedAt: undefined,
+      leaseExpiresAt: undefined,
+      updatedAt: Date.now(),
+    });
+
+    return null;
+  },
+});
+
+// ─── Public Mutation Wrappers (for device runner) ──────────────────────────
+// These wrap the internal mutations with auth checks so the local runner
+// can call them via the Convex client.
+
+export const claimPageGenerationDevice = mutation({
+  args: {
+    pageId: v.string(),
+    claimantId: v.string(),
+  },
+  returns: v.object({
+    claimed: v.boolean(),
+    claimedBy: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const record = await ctx.db
+      .query("dashboard_pages")
+      .withIndex("by_ownerId_and_pageId", (q) =>
+        q.eq("ownerId", ownerId).eq("pageId", args.pageId),
+      )
+      .unique();
+    if (!record) return { claimed: false, claimedBy: undefined };
+
+    const now = Date.now();
+    if (record.claimedBy && record.leaseExpiresAt && record.leaseExpiresAt > now) {
+      return { claimed: false, claimedBy: record.claimedBy };
+    }
+
+    await ctx.db.patch(record._id, {
+      claimedBy: args.claimantId,
+      claimedAt: now,
+      leaseExpiresAt: now + DEFAULT_LEASE_DURATION_MS,
+      updatedAt: now,
+    });
+
+    return { claimed: true, claimedBy: args.claimantId };
+  },
+});
+
+export const renewPageLeaseDevice = mutation({
+  args: {
+    pageId: v.string(),
+    claimantId: v.string(),
+  },
+  returns: v.object({ renewed: v.boolean() }),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const record = await ctx.db
+      .query("dashboard_pages")
+      .withIndex("by_ownerId_and_pageId", (q) =>
+        q.eq("ownerId", ownerId).eq("pageId", args.pageId),
+      )
+      .unique();
+    if (!record || record.claimedBy !== args.claimantId) return { renewed: false };
+
+    const now = Date.now();
+    await ctx.db.patch(record._id, {
+      leaseExpiresAt: now + DEFAULT_LEASE_DURATION_MS,
+      updatedAt: now,
+    });
+    return { renewed: true };
+  },
+});
+
+export const releasePageClaimDevice = mutation({
+  args: {
+    pageId: v.string(),
+    claimantId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const record = await ctx.db
+      .query("dashboard_pages")
+      .withIndex("by_ownerId_and_pageId", (q) =>
+        q.eq("ownerId", ownerId).eq("pageId", args.pageId),
+      )
+      .unique();
+    if (!record || record.claimedBy !== args.claimantId) return null;
+
+    await ctx.db.patch(record._id, {
+      claimedBy: undefined,
+      claimedAt: undefined,
+      leaseExpiresAt: undefined,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const markPageReadyDevice = mutation({
+  args: {
+    pageId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const record = await ctx.db
+      .query("dashboard_pages")
+      .withIndex("by_ownerId_and_pageId", (q) =>
+        q.eq("ownerId", ownerId).eq("pageId", args.pageId),
+      )
+      .unique();
+    if (!record) return null;
+
+    const now = Date.now();
+    await ctx.db.patch(record._id, {
+      status: "ready" satisfies DashboardPageStatus,
+      statusText: "Ready",
+      lastError: undefined,
+      updatedAt: now,
+      completedAt: now,
+      claimedBy: undefined,
+      claimedAt: undefined,
+      leaseExpiresAt: undefined,
+    });
+    return null;
+  },
+});
+
+export const markPageFailedDevice = mutation({
+  args: {
+    pageId: v.string(),
+    error: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const record = await ctx.db
+      .query("dashboard_pages")
+      .withIndex("by_ownerId_and_pageId", (q) =>
+        q.eq("ownerId", ownerId).eq("pageId", args.pageId),
+      )
+      .unique();
+    if (!record) return null;
+
+    const now = Date.now();
+    await ctx.db.patch(record._id, {
+      status: "failed" satisfies DashboardPageStatus,
+      statusText: "Failed",
+      lastError: normalizeText(args.error, 800),
+      updatedAt: now,
+      completedAt: now,
+      taskId: undefined,
+      claimedBy: undefined,
+      claimedAt: undefined,
+      leaseExpiresAt: undefined,
+    });
+    return null;
   },
 });
