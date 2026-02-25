@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
@@ -138,8 +137,8 @@ export function useStoreInstallationActions({
   const { setView } = useUiState();
   const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
 
-  const installMutation = useMutation(api.data.store_packages.install as any);
-  const uninstallMutation = useMutation(api.data.store_packages.uninstall as any);
+  const installMutation = useMutation(api.data.store_packages.install);
+  const uninstallMutation = useMutation(api.data.store_packages.uninstall);
 
   const handleInstall = useCallback(
     async (pkg: StorePackage) => {
@@ -173,7 +172,7 @@ export function useStoreInstallationActions({
             "agentTypes",
             16,
           );
-          await (window.electronAPI as any).storeInstallSkill({
+          await window.electronAPI.storeInstallSkill({
             packageId: safePackageId,
             skillId: safePackageId,
             name: safeName,
@@ -188,12 +187,14 @@ export function useStoreInstallationActions({
             const safeName = sanitizeStoreName(pkg.name, "name");
             const light = sanitizeThemePalette(payload.light, "light");
             const dark = sanitizeThemePalette(payload.dark, "dark");
-            await (window.electronAPI as any).storeInstallTheme({
+            const lightRecord = light as unknown as Record<string, string>;
+            const darkRecord = dark as unknown as Record<string, string>;
+            await window.electronAPI.storeInstallTheme({
               packageId: safePackageId,
               themeId: safePackageId,
               name: safeName,
-              light,
-              dark,
+              light: lightRecord,
+              dark: darkRecord,
             });
             registerTheme({
               id: safePackageId,
@@ -213,7 +214,7 @@ export function useStoreInstallationActions({
             payload?.workspaceName ?? pkg.name,
             "workspaceName",
           );
-          await (window.electronAPI as any).storeInstallCanvas({
+          await window.electronAPI.storeInstallCanvas({
             packageId: safePackageId,
             workspaceId: safeWorkspaceId,
             name: safeName,
@@ -249,7 +250,7 @@ export function useStoreInstallationActions({
           );
         } else if (window.electronAPI) {
           const safePackageId = sanitizeStoreId(pkg.packageId, "packageId");
-          await (window.electronAPI as any).storeUninstall({
+          await window.electronAPI.storeUninstall({
             packageId: safePackageId,
             type: sanitizePackageType(pkg.type),
             localId: safePackageId,
