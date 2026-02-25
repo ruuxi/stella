@@ -249,7 +249,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('agent:event', handler)
     }
   },
-
-  resumeAgentStream: (payload: { runId: string; lastSeq: number }) =>
-    ipcRenderer.send('agent:resume', payload),
 })

@@ -2382,30 +2382,9 @@ app.whenReady().then(async () => {
 
   // ─── Local Agent Runtime IPC ──────────────────────────────────────────────
 
-  // Ring buffer for agent event replay on reconnect
-  const agentEventBuffers = new Map<string, Array<{ seq: number; event: unknown }>>()
   const agentRunOwners = new Map<string, number>()
-  const AGENT_BUFFER_MAX_EVENTS = 1000
-  const AGENT_BUFFER_TTL_MS = 10 * 60 * 1000
-
-  function bufferAgentEvent(runId: string, seq: number, event: unknown) {
-    let buffer = agentEventBuffers.get(runId)
-    if (!buffer) {
-      buffer = []
-      agentEventBuffers.set(runId, buffer)
-      // Auto-cleanup after TTL
-      setTimeout(() => agentEventBuffers.delete(runId), AGENT_BUFFER_TTL_MS)
-    }
-    if (buffer.length < AGENT_BUFFER_MAX_EVENTS) {
-      buffer.push({ seq, event })
-    }
-  }
 
   function emitAgentEvent(runId: string, event: unknown, targetWebContentsId?: number) {
-    const payload = event as { seq?: number }
-    if (payload.seq != null) {
-      bufferAgentEvent(runId, payload.seq, event)
-    }
     const receiverId = targetWebContentsId ?? agentRunOwners.get(runId)
     if (receiverId == null) {
       return
@@ -2445,9 +2424,7 @@ app.whenReady().then(async () => {
       onError: (ev) => emitAgentEvent(ev.runId, { type: 'error', ...ev }, senderWebContentsId),
       onEnd: (ev) => {
         emitAgentEvent(ev.runId, { type: 'end', ...ev }, senderWebContentsId)
-        // Clean up buffer after a delay
         setTimeout(() => {
-          agentEventBuffers.delete(ev.runId)
           agentRunOwners.delete(ev.runId)
         }, 60_000)
       },
@@ -2461,23 +2438,6 @@ app.whenReady().then(async () => {
     if (localHostRunner && typeof runId === 'string') {
       localHostRunner.cancelLocalChat(runId)
       agentRunOwners.delete(runId)
-    }
-  })
-
-  ipcMain.on('agent:resume', (_event, payload: { runId: string; lastSeq: number }) => {
-    const ownerWebContentsId = agentRunOwners.get(payload.runId)
-    if (ownerWebContentsId != null && ownerWebContentsId !== _event.sender.id) {
-      return
-    }
-
-    const buffer = agentEventBuffers.get(payload.runId)
-    if (!buffer) return
-
-    // Replay events after lastSeq
-    for (const entry of buffer) {
-      if (entry.seq > payload.lastSeq) {
-        _event.sender.send('agent:event', entry.event)
-      }
     }
   })
 
