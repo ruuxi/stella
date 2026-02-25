@@ -1,11 +1,11 @@
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
-import { withModelFailover } from "./model_failover";
+import { streamTextWithFailover } from "./model_execution";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction } from "../auth";
 import { jsonSchemaValidator, jsonValueValidator } from "../shared_validators";
@@ -364,12 +364,11 @@ export const invoke = internalAction({
         ],
       };
 
-      const result = await withModelFailover(
-        () => streamText({ ...resolvedConfig, ...invokeSharedArgs }),
-        fallbackConfig
-          ? () => streamText({ ...fallbackConfig, ...invokeSharedArgs })
-          : undefined,
-      );
+      const result = await streamTextWithFailover({
+        resolvedConfig: resolvedConfig as Record<string, unknown>,
+        fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+        sharedArgs: invokeSharedArgs as Record<string, unknown>,
+      });
 
       rawText = scrubProviderTerms(truncate(await result.text));
     } catch (error) {
