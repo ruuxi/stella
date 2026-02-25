@@ -14,6 +14,15 @@ import { loadIdentityMap, depseudonymize } from "./identity_map.js";
 import { purgeExpiredDeferredDeletes } from "./deferred_delete.js";
 import type { IdentityMap } from "./discovery_types.js";
 import { sanitizeForLogs } from "./tools-utils.js";
+import {
+  runOrchestratorTurn,
+  runSubagentTask,
+  type AgentContext,
+  type RunCallbacks,
+  type RunSubagentOpts,
+} from "./agent_runtime.js";
+import { LocalTaskManager } from "./local_task_manager.js";
+import { RunJournal } from "./run_journal.js";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
@@ -50,6 +59,24 @@ type ToolRequestEvent = {
     args?: Record<string, unknown>;
     targetDeviceId?: string;
     agentType?: string;
+  };
+};
+
+type DashboardGenRequestEvent = {
+  _id: string;
+  conversationId: string;
+  type: string;
+  targetDeviceId?: string;
+  payload?: {
+    pageId?: string;
+    ownerId?: string;
+    panelName?: string;
+    title?: string;
+    topic?: string;
+    focus?: string;
+    dataSources?: string[];
+    systemPrompt?: string;
+    userPrompt?: string;
   };
 };
 
@@ -113,6 +140,7 @@ export const createLocalHostRunner = ({
   let convexUrl: string | null = null;
   let authToken: string | null = null;
   let unsubscribe: (() => void) | null = null;
+  let unsubscribeDashboardGen: (() => void) | null = null;
   let isRunning = false;
   const processed = new Set<string>();
   const inFlight = new Set<string>();
@@ -291,6 +319,12 @@ export const createLocalHostRunner = ({
     if (!client || !authToken) return Promise.resolve(null);
     const convexName = toConvexName(name);
     return client.query(convexName as never, args as never);
+  };
+
+  const callAction = (name: string, args: Record<string, unknown>) => {
+    if (!client || !authToken) return Promise.resolve(null);
+    const convexName = toConvexName(name);
+    return client.action(convexName as never, args as never);
   };
 
   const subscribeQuery = (
@@ -495,6 +529,119 @@ export const createLocalHostRunner = ({
       unsubscribe = null;
       log("Tool request subscription stopped");
     }
+    if (unsubscribeDashboardGen) {
+      unsubscribeDashboardGen();
+      unsubscribeDashboardGen = null;
+      log("Dashboard gen subscription stopped");
+    }
+  };
+
+  // Track processed dashboard gen requests to avoid duplicates
+  const processedDashboardGen = new Set<string>();
+  const dashboardGenInFlight = new Set<string>();
+
+  const handleDashboardGenRequest = async (request: DashboardGenRequestEvent) => {
+    if (!client || !authToken || !convexUrl) return;
+    if (request.type !== "dashboard_generation_request") return;
+
+    const payload = request.payload;
+    if (!payload?.pageId || !payload.ownerId || !payload.panelName) return;
+
+    const requestKey = `${request._id}:${payload.pageId}`;
+    if (processedDashboardGen.has(requestKey) || dashboardGenInFlight.has(requestKey)) return;
+    dashboardGenInFlight.add(requestKey);
+
+    log("Received dashboard generation request:", {
+      pageId: payload.pageId,
+      panelName: payload.panelName,
+      title: payload.title,
+    });
+
+    try {
+      // Claim the page lease (uses public mutation with auth)
+      const claimResult = await callMutation("personalized_dashboard.claimPageGenerationDevice", {
+        pageId: payload.pageId,
+        claimantId: deviceId,
+      }) as { claimed: boolean; claimedBy?: string } | null;
+
+      if (!claimResult?.claimed) {
+        log(`Page ${payload.pageId} already claimed by ${claimResult?.claimedBy ?? "unknown"}, skipping`);
+        processedDashboardGen.add(requestKey);
+        return;
+      }
+
+      // Set up lease renewal interval (every 60s)
+      const leaseInterval = setInterval(() => {
+        void callMutation("personalized_dashboard.renewPageLeaseDevice", {
+          pageId: payload.pageId,
+          claimantId: deviceId,
+        }).catch((err) => logError("Lease renewal failed:", err));
+      }, 60_000);
+
+      // Fetch agent context for the "general" agent type
+      const agentContext = await callAction(
+        "agent/prompt_builder:fetchAgentContext",
+        {
+          ownerId: payload.ownerId,
+          conversationId: request.conversationId,
+          agentType: "general",
+          runId: `local:dash:${crypto.randomUUID()}`,
+        },
+      ) as AgentContext;
+
+      // Override the system prompt with the dashboard-specific one
+      if (payload.systemPrompt) {
+        agentContext.systemPrompt = payload.systemPrompt;
+      }
+
+      // Run as a local subagent
+      const result = await runSubagentTask({
+        conversationId: request.conversationId,
+        userMessageId: request._id,
+        agentType: "general",
+        agentContext,
+        toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
+        convexUrl,
+        authToken,
+        deviceId,
+        stellaHome: StellaHome,
+        taskDescription: `Generate personalized page: ${payload.title}`,
+        taskPrompt: payload.userPrompt ?? `Generate the dashboard panel ${payload.panelName}.tsx`,
+      });
+
+      clearInterval(leaseInterval);
+
+      if (result.error) {
+        logError(`Dashboard generation failed for ${payload.panelName}:`, result.error);
+        await callMutation("personalized_dashboard.markPageFailedDevice", {
+          pageId: payload.pageId,
+          error: result.error,
+        });
+      } else {
+        log(`Dashboard generation completed for ${payload.panelName}`);
+        await callMutation("personalized_dashboard.markPageReadyDevice", {
+          pageId: payload.pageId,
+        });
+      }
+
+      // Release the lease (markPageReady/Failed already clear it, but be safe)
+      await callMutation("personalized_dashboard.releasePageClaimDevice", {
+        pageId: payload.pageId,
+        claimantId: deviceId,
+      }).catch((err) => logError("Lease release failed:", err));
+
+      processedDashboardGen.add(requestKey);
+    } catch (error) {
+      logError(`Dashboard gen request failed for ${payload.pageId}:`, error);
+      // Release lease on error
+      await callMutation("personalized_dashboard.releasePageClaimDevice", {
+        pageId: payload.pageId,
+        claimantId: deviceId,
+      }).catch(() => {});
+      processedDashboardGen.add(requestKey);
+    } finally {
+      dashboardGenInFlight.delete(requestKey);
+    }
   };
 
   const startSubscription = () => {
@@ -518,6 +665,21 @@ export const createLocalHostRunner = ({
         const result = response as PaginatedResult<ToolRequestEvent>;
         for (const request of result.page) {
           queue = queue.then(() => handleToolRequest(request)).catch(() => undefined);
+        }
+      },
+    );
+
+    // Subscribe to dashboard generation requests
+    unsubscribeDashboardGen = client.onUpdate(
+      "events:listDashboardGenRequestsForDevice" as never,
+      { deviceId, paginationOpts: { cursor: null, numItems: 10 }, since } as never,
+      (response: unknown) => {
+        if (!response || typeof response !== "object" || !("page" in response)) {
+          return;
+        }
+        const result = response as PaginatedResult<DashboardGenRequestEvent>;
+        for (const request of result.page) {
+          queue = queue.then(() => handleDashboardGenRequest(request)).catch(() => undefined);
         }
       },
     );
@@ -754,6 +916,9 @@ export const createLocalHostRunner = ({
       }, DEFERRED_DELETE_SWEEP_INTERVAL_MS);
     }
 
+    // Recover any crashed local agent runs from the journal
+    void recoverCrashedRuns();
+
     // Initial sync on startup, then start file watchers after sync completes
     // (avoids watcher triggering on files the sync itself creates)
     void syncManifests().then(() => {
@@ -788,6 +953,122 @@ export const createLocalHostRunner = ({
     }
   };
 
+  // ─── Local Agent Execution ────────────────────────────────────────────────
+
+  let activeOrchestratorRunId: string | null = null;
+  const activeRunAbortControllers = new Map<string, AbortController>();
+
+  const agentHealthCheck = (): { ready: boolean; runnerVersion: string } | null => {
+    if (!isRunning || !client || !authToken || !convexUrl) {
+      return null;
+    }
+    return { ready: true, runnerVersion: "1.0.0" };
+  };
+
+  const handleLocalChat = async (
+    payload: {
+      conversationId: string;
+      userMessageId: string;
+      agentType?: string;
+    },
+    callbacks: RunCallbacks,
+  ): Promise<{ runId: string }> => {
+    if (!client || !authToken || !convexUrl) {
+      throw new Error("Runner not connected");
+    }
+
+    if (activeOrchestratorRunId) {
+      throw new Error("An orchestrator run is already active for this conversation");
+    }
+
+    const agentType = payload.agentType ?? "orchestrator";
+    const runId = `local:${crypto.randomUUID()}`;
+
+    // Fetch agent context from Convex
+    const agentContext = await callAction(
+      "agent/prompt_builder:fetchAgentContext",
+      {
+        ownerId: "", // Will be resolved server-side from auth
+        conversationId: payload.conversationId,
+        agentType,
+        runId,
+      },
+    ) as AgentContext;
+
+    activeOrchestratorRunId = runId;
+    const abortController = new AbortController();
+    activeRunAbortControllers.set(runId, abortController);
+
+    // Run the agent loop
+    void runOrchestratorTurn({
+      conversationId: payload.conversationId,
+      userMessageId: payload.userMessageId,
+      agentType,
+      agentContext,
+      callbacks: {
+        ...callbacks,
+        onEnd: (event) => {
+          activeOrchestratorRunId = null;
+          activeRunAbortControllers.delete(runId);
+          callbacks.onEnd(event);
+        },
+        onError: (event) => {
+          if (event.fatal) {
+            activeOrchestratorRunId = null;
+            activeRunAbortControllers.delete(runId);
+          }
+          callbacks.onError(event);
+        },
+      },
+      toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
+      convexUrl,
+      authToken,
+      deviceId,
+      stellaHome: StellaHome,
+      abortSignal: abortController.signal,
+    });
+
+    return { runId };
+  };
+
+  const cancelLocalChat = (runId: string): void => {
+    const controller = activeRunAbortControllers.get(runId);
+    if (controller) {
+      controller.abort();
+      activeRunAbortControllers.delete(runId);
+      if (activeOrchestratorRunId === runId) {
+        activeOrchestratorRunId = null;
+      }
+    }
+  };
+
+  // Crash recovery on startup
+  const recoverCrashedRuns = async () => {
+    try {
+      const journal = new RunJournal(StellaHome);
+      const crashed = journal.recoverCrashedRuns();
+      for (const run of crashed) {
+        log(`Recovering crashed run: ${run.runId} (${run.status})`);
+        if (run.persistStatus === "pending" && client && authToken) {
+          const chunks = journal.getUnpersistedChunks(run.runId);
+          for (const chunk of chunks) {
+            try {
+              await callMutation("agent/tasks:batchPersistRunChunk", JSON.parse(chunk.payloadJson));
+              journal.markPersisted(chunk.chunkKey);
+              log(`Recovered chunk: ${chunk.chunkKey}`);
+            } catch (err) {
+              logError(`Failed to recover chunk ${chunk.chunkKey}:`, err);
+            }
+          }
+        }
+        journal.markRunCrashed(run.runId);
+      }
+      journal.close();
+    } catch (err) {
+      logError("Crash recovery failed:", err);
+    }
+  };
+
   return {
     deviceId,
     setConvexUrl,
@@ -798,5 +1079,10 @@ export const createLocalHostRunner = ({
     getConvexUrl: () => convexUrl,
     killAllShells: () => toolHost.killAllShells(),
     killShellsByPort: (port: number) => toolHost.killShellsByPort(port),
+    // Local agent execution
+    agentHealthCheck,
+    handleLocalChat,
+    cancelLocalChat,
+    recoverCrashedRuns,
   };
 };

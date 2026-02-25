@@ -2380,6 +2380,95 @@ app.whenReady().then(async () => {
     }
   })
 
+  // ─── Local Agent Runtime IPC ──────────────────────────────────────────────
+
+  // Ring buffer for agent event replay on reconnect
+  const agentEventBuffers = new Map<string, Array<{ seq: number; event: unknown }>>()
+  const AGENT_BUFFER_MAX_EVENTS = 1000
+  const AGENT_BUFFER_TTL_MS = 10 * 60 * 1000
+
+  function bufferAgentEvent(runId: string, seq: number, event: unknown) {
+    let buffer = agentEventBuffers.get(runId)
+    if (!buffer) {
+      buffer = []
+      agentEventBuffers.set(runId, buffer)
+      // Auto-cleanup after TTL
+      setTimeout(() => agentEventBuffers.delete(runId), AGENT_BUFFER_TTL_MS)
+    }
+    if (buffer.length < AGENT_BUFFER_MAX_EVENTS) {
+      buffer.push({ seq, event })
+    }
+  }
+
+  function emitAgentEvent(runId: string, event: unknown) {
+    const payload = event as { seq?: number }
+    if (payload.seq != null) {
+      bufferAgentEvent(runId, payload.seq, event)
+    }
+    // Send to all windows
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('agent:event', event)
+      }
+    }
+  }
+
+  ipcMain.handle('agent:healthCheck', async () => {
+    if (!localHostRunner) return null
+    return localHostRunner.agentHealthCheck()
+  })
+
+  ipcMain.handle('agent:startChat', async (_event, payload: {
+    conversationId: string
+    userMessageId: string
+    agentType?: string
+  }) => {
+    if (!localHostRunner) {
+      throw new Error('Local host runner not available')
+    }
+
+    const healthCheck = localHostRunner.agentHealthCheck()
+    if (!healthCheck?.ready) {
+      throw new Error('Agent runtime not ready')
+    }
+
+    const result = await localHostRunner.handleLocalChat(payload, {
+      onStream: (ev) => emitAgentEvent(ev.runId, { type: 'stream', ...ev }),
+      onToolStart: (ev) => emitAgentEvent(ev.runId, { type: 'tool-start', ...ev }),
+      onToolEnd: (ev) => emitAgentEvent(ev.runId, { type: 'tool-end', ...ev }),
+      onError: (ev) => emitAgentEvent(ev.runId, { type: 'error', ...ev }),
+      onEnd: (ev) => {
+        emitAgentEvent(ev.runId, { type: 'end', ...ev })
+        // Clean up buffer after a delay
+        setTimeout(() => agentEventBuffers.delete(ev.runId), 60_000)
+      },
+    })
+
+    return result
+  })
+
+  ipcMain.on('agent:cancelChat', (_event, runId: string) => {
+    if (localHostRunner && typeof runId === 'string') {
+      localHostRunner.cancelLocalChat(runId)
+    }
+  })
+
+  ipcMain.on('agent:resume', (_event, payload: { runId: string; lastSeq: number }) => {
+    const buffer = agentEventBuffers.get(payload.runId)
+    if (!buffer) return
+
+    // Replay events after lastSeq
+    for (const entry of buffer) {
+      if (entry.seq > payload.lastSeq) {
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) {
+            win.webContents.send('agent:event', entry.event)
+          }
+        }
+      }
+    }
+  })
+
   ipcMain.handle('screenshot:capture', async (_event, point?: { x: number; y: number }) => {
     const display = getDisplayForPoint(point)
     const cursorDip = point ?? screen.getCursorScreenPoint()

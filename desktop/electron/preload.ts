@@ -214,4 +214,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
   bridgeStatus: (payload: { provider: string }) => ipcRenderer.invoke('bridge:status', payload),
 
   shellKillByPort: (port: number) => ipcRenderer.invoke('shell:killByPort', { port }),
+
+  // ─── Local Agent Runtime IPC ──────────────────────────────────────────────
+  agentHealthCheck: () => ipcRenderer.invoke('agent:healthCheck') as Promise<{ ready: true; runnerVersion: string } | null>,
+
+  startAgentChat: (payload: {
+    conversationId: string;
+    userMessageId: string;
+    agentType?: string;
+  }) => ipcRenderer.invoke('agent:startChat', payload) as Promise<{ runId: string }>,
+
+  cancelAgentChat: (runId: string) => ipcRenderer.send('agent:cancelChat', runId),
+
+  onAgentStream: (callback: (event: {
+    type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';
+    runId: string;
+    seq: number;
+    chunk?: string;
+    toolCallId?: string;
+    toolName?: string;
+    resultPreview?: string;
+    error?: string;
+    fatal?: boolean;
+    finalText?: string;
+    persisted?: boolean;
+  }) => void) => {
+    const handler = (_ipc: IpcRendererEvent, data: unknown) => {
+      callback(data as Parameters<typeof callback>[0])
+    }
+    ipcRenderer.on('agent:event', handler)
+    return () => {
+      ipcRenderer.removeListener('agent:event', handler)
+    }
+  },
+
+  resumeAgentStream: (payload: { runId: string; lastSeq: number }) =>
+    ipcRenderer.send('agent:resume', payload),
 })
