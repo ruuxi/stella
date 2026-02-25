@@ -248,6 +248,7 @@ export type ElectronApi = {
 
   // ─── Local Agent Runtime ────────────────────────────────────────────────
   agentHealthCheck: () => Promise<{ ready: true; runnerVersion: string } | null>
+  getActiveAgentRun: () => Promise<{ runId: string; conversationId: string } | null>
   startAgentChat: (payload: {
     conversationId: string
     userMessageId: string
@@ -256,6 +257,13 @@ export type ElectronApi = {
     localHistory?: Array<{ role: "user" | "assistant"; content: string }>
   }) => Promise<{ runId: string }>
   cancelAgentChat: (runId: string) => void
+  resumeAgentStream: (payload: {
+    runId: string
+    lastSeq: number
+  }) => Promise<{
+    events: AgentStreamIpcEvent[]
+    exhausted: boolean
+  }>
   onAgentStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
 }
 
