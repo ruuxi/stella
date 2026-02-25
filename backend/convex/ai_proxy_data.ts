@@ -4,8 +4,7 @@
  */
 
 import { v } from "convex/values";
-import { internalQuery, internalMutation, internalAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internalQuery, internalMutation } from "./_generated/server";
 
 const DEVICE_USAGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;

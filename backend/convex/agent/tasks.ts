@@ -1,4 +1,5 @@
 import {
+  mutation,
   internalAction,
   internalMutation,
   internalQuery,
@@ -2001,7 +2002,7 @@ const persistChunkThreadMessageValidator = v.object({
   toolCallId: v.optional(v.string()),
 });
 
-export const batchPersistRunChunk = internalMutation({
+export const batchPersistRunChunk = mutation({
   args: {
     runId: v.string(),
     chunkKey: v.string(),
@@ -2016,7 +2017,7 @@ export const batchPersistRunChunk = internalMutation({
     })),
     conversationId: v.id("conversations"),
     agentType: v.string(),
-    ownerId: v.string(),
+    ownerId: v.optional(v.string()),
     activeThreadId: v.optional(v.id("threads")),
   },
   returns: v.object({
@@ -2024,6 +2025,9 @@ export const batchPersistRunChunk = internalMutation({
     duplicate: v.boolean(),
   }),
   handler: async (ctx, args) => {
+    const conversation = await requireConversationOwner(ctx, args.conversationId);
+    const ownerId = conversation.ownerId;
+
     // Check for idempotency — if chunkKey already exists, skip
     const existing = await ctx.db
       .query("persist_chunks")
@@ -2052,7 +2056,7 @@ export const batchPersistRunChunk = internalMutation({
       usage: args.usage,
       conversationId: args.conversationId,
       agentType: args.agentType,
-      ownerId: args.ownerId,
+      ownerId,
       createdAt: Date.now(),
     });
 
@@ -2115,18 +2119,12 @@ export const batchPersistRunChunk = internalMutation({
         let toolCalls = 0;
         for (const chunk of allChunks) {
           toolCalls += chunk.events.filter(
-            (e) => e.type === "tool_call" || e.type === "tool_result",
+            (e) => e.type === "tool_call",
           ).length;
         }
-        // Also count the current chunk's events
-        toolCalls += args.events.filter(
-          (e) => e.type === "tool_call" || e.type === "tool_result",
-        ).length;
-        // Each tool call has a request+result, count pairs
-        toolCalls = Math.ceil(toolCalls / 2);
 
         await ctx.db.insert("usage_logs", {
-          ownerId: args.ownerId,
+          ownerId,
           conversationId: args.conversationId,
           agentType: args.agentType,
           model: `local:${args.agentType}`,

@@ -999,6 +999,35 @@ export const monitorPageGenerationTaskInternal = internalAction({
 
     if (!page) return null;
 
+    if (args.taskId === "local-pending") {
+      if (page.status === "ready" || page.status === "failed") {
+        return null;
+      }
+
+      const now = Date.now();
+      const leaseIsActive = Boolean(
+        page.claimedBy &&
+        page.leaseExpiresAt &&
+        page.leaseExpiresAt > now,
+      );
+
+      if (leaseIsActive) {
+        await ctx.scheduler.runAfter(
+          PAGE_MONITOR_INTERVAL_MS,
+          internal.personalized_dashboard.monitorPageGenerationTaskInternal,
+          args,
+        );
+        return null;
+      }
+
+      await ctx.runAction(internal.personalized_dashboard.launchPageGenerationTaskInternal, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        pageId: args.pageId,
+      });
+      return null;
+    }
+
     if (page.taskId && String(page.taskId) !== args.taskId) {
       return null;
     }

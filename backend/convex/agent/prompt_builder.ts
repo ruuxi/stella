@@ -1,8 +1,9 @@
 import type { ActionCtx } from "../_generated/server";
-import { internalAction } from "../_generated/server";
-import { v } from "convex/values";
+import { action, internalAction } from "../_generated/server";
+import { ConvexError, Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { requireUserId } from "../auth";
 
 export type PromptBuildResult = {
   systemPrompt: string;
@@ -16,6 +17,14 @@ export type PromptBuildResult = {
 const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
 const MAX_ACTIVE_THREADS_IN_PROMPT = 12;
 const MAX_COMPACTION_SUMMARY_CHARS = 3000;
+type FetchAgentContextSharedArgs = {
+  ownerId: string;
+  conversationId: Id<"conversations">;
+  agentType: string;
+  runId: string;
+  threadId?: Id<"threads">;
+  maxHistoryMessages?: number;
+};
 
 const buildSkillsSection = (
   skills: Array<{
@@ -125,10 +134,10 @@ export const buildSystemPrompt = async (
         ownerId: options.ownerId,
         conversationId: options.conversationId,
       });
-      const subagentThreads = activeThreads.filter(t => t.name !== "Main");
+      const subagentThreads = activeThreads.filter((t: { name: string }) => t.name !== "Main");
       if (subagentThreads.length > 0) {
         const visibleThreads = subagentThreads.slice(0, MAX_ACTIVE_THREADS_IN_PROMPT);
-        const lines = visibleThreads.map((t) => {
+        const lines = visibleThreads.map((t: { _id: string; name: string; messageCount: number; lastUsedAt: number }) => {
           const ageMs = Date.now() - t.lastUsedAt;
           const age = ageMs < 60_000 ? "just now"
             : ageMs < 3_600_000 ? `${Math.floor(ageMs / 60_000)}m ago`
@@ -221,84 +230,127 @@ const agentContextResultValidator = v.object({
     expiresAt: v.number(),
   }),
 });
+type AgentContextResult = Infer<typeof agentContextResultValidator>;
 
-export const fetchAgentContext = internalAction({
-  args: {
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    agentType: v.string(),
-    runId: v.string(),
-    threadId: v.optional(v.id("threads")),
-    maxHistoryMessages: v.optional(v.number()),
-  },
-  returns: agentContextResultValidator,
-  handler: async (ctx, args) => {
-    // 1. Build system prompt (includes skills, device status, threads, core memory)
-    const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
-      ownerId: args.ownerId,
-      conversationId: args.conversationId,
-    });
+const fetchAgentContextInternalArgs = {
+  ownerId: v.string(),
+  conversationId: v.id("conversations"),
+  agentType: v.string(),
+  runId: v.string(),
+  threadId: v.optional(v.id("threads")),
+  maxHistoryMessages: v.optional(v.number()),
+};
 
-    // 2. Get core memory separately for the local runtime to use
-    let coreMemory: string | undefined;
-    try {
-      coreMemory = await ctx.runQuery(
-        internal.data.preferences.getPreferenceForOwner,
-        { ownerId: args.ownerId, key: "core_memory" },
-      ) ?? undefined;
-    } catch {
-      // Skip if unavailable
-    }
+const fetchAgentContextRuntimeArgs = {
+  conversationId: v.id("conversations"),
+  agentType: v.string(),
+  runId: v.string(),
+  threadId: v.optional(v.id("threads")),
+  maxHistoryMessages: v.optional(v.number()),
+};
 
-    // 3. Get thread history if we have an active thread
-    let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
-    let activeThreadId: string | undefined;
+const fetchAgentContextForOwner = async (
+  ctx: ActionCtx,
+  args: FetchAgentContextSharedArgs,
+): Promise<AgentContextResult> => {
+  // 1. Build system prompt (includes skills, device status, threads, core memory)
+  const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
+    ownerId: args.ownerId,
+    conversationId: args.conversationId,
+  });
 
-    const resolvedThreadId = args.threadId ?? await ctx.runQuery(
-      internal.conversations.getActiveThreadId,
-      { conversationId: args.conversationId },
-    );
+  // 2. Get core memory separately for the local runtime to use
+  let coreMemory: string | undefined;
+  try {
+    coreMemory = await ctx.runQuery(
+      internal.data.preferences.getPreferenceForOwner,
+      { ownerId: args.ownerId, key: "core_memory" },
+    ) ?? undefined;
+  } catch {
+    // Skip if unavailable
+  }
+
+  // 3. Get thread history if we have an active thread
+  let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
+  let activeThreadId: string | undefined;
+
+  const resolvedThreadId = args.threadId ?? await ctx.runQuery(
+    internal.conversations.getActiveThreadId,
+    { conversationId: args.conversationId },
+  );
 
     if (resolvedThreadId) {
       activeThreadId = resolvedThreadId;
       try {
-        const messages = await ctx.runQuery(
-          internal.data.threads.getRecentThreadMessages,
-          {
-            threadId: resolvedThreadId as Id<"threads">,
-            limit: args.maxHistoryMessages ?? 50,
-          },
-        );
-        if (messages && messages.length > 0) {
-          threadHistory = messages.map((m: { role: string; content: string; toolCallId?: string }) => ({
-            role: m.role,
-            content: m.content,
-            toolCallId: m.toolCallId,
-          }));
-        }
-      } catch {
-        // Thread messages unavailable
+      const messages = await ctx.runQuery(
+        internal.data.threads.loadThreadMessages,
+        {
+          threadId: resolvedThreadId as Id<"threads">,
+        },
+      );
+      const recent = messages.slice(-(args.maxHistoryMessages ?? 50));
+      if (recent.length > 0) {
+        threadHistory = recent.map((m: { role: string; content: string; toolCallId?: string }) => ({
+          role: m.role,
+          content: m.content,
+          toolCallId: m.toolCallId,
+        }));
       }
+    } catch {
+      // Thread messages unavailable
     }
+  }
 
-    // 4. Mint a proxy token for this run
-    const proxyToken = await ctx.runMutation(internal.ai_proxy_data.mintProxyToken, {
-      ownerId: args.ownerId,
+  // 4. Mint a proxy token for this run
+  const proxyToken = await ctx.runMutation(internal.ai_proxy_data.mintProxyToken, {
+    ownerId: args.ownerId,
+    agentType: args.agentType,
+    runId: args.runId,
+  });
+
+  return {
+    systemPrompt: promptBuild.systemPrompt,
+    dynamicContext: promptBuild.dynamicContext,
+    toolsAllowlist: promptBuild.toolsAllowlist,
+    maxTaskDepth: promptBuild.maxTaskDepth,
+    defaultSkills: promptBuild.defaultSkills,
+    skillIds: promptBuild.skillIds,
+    coreMemory,
+    threadHistory,
+    activeThreadId,
+    proxyToken,
+  };
+};
+
+export const fetchAgentContext = internalAction({
+  args: fetchAgentContextInternalArgs,
+  returns: agentContextResultValidator,
+  handler: async (ctx, args): Promise<AgentContextResult> => {
+    return await fetchAgentContextForOwner(ctx, args);
+  },
+});
+
+export const fetchAgentContextForRuntime = action({
+  args: fetchAgentContextRuntimeArgs,
+  returns: agentContextResultValidator,
+  handler: async (ctx, args): Promise<AgentContextResult> => {
+    const ownerId = await requireUserId(ctx);
+    const conversation = await ctx.runQuery(internal.conversations.getById, {
+      id: args.conversationId,
+    });
+    if (!conversation || conversation.ownerId !== ownerId) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Conversation not found",
+      });
+    }
+    return await fetchAgentContextForOwner(ctx, {
+      ownerId,
+      conversationId: args.conversationId,
       agentType: args.agentType,
       runId: args.runId,
+      threadId: args.threadId,
+      maxHistoryMessages: args.maxHistoryMessages,
     });
-
-    return {
-      systemPrompt: promptBuild.systemPrompt,
-      dynamicContext: promptBuild.dynamicContext,
-      toolsAllowlist: promptBuild.toolsAllowlist,
-      maxTaskDepth: promptBuild.maxTaskDepth,
-      defaultSkills: promptBuild.defaultSkills,
-      skillIds: promptBuild.skillIds,
-      coreMemory,
-      threadHistory,
-      activeThreadId,
-      proxyToken,
-    };
   },
 });

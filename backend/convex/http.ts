@@ -132,7 +132,8 @@ const isAllowedCorsOrigin = (origin: string | null) => {
 const getCorsHeaders = (origin: string | null) => {
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-ID",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-Device-ID, X-Proxy-Token, X-Provider, X-Original-Path, X-Model-Id",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
