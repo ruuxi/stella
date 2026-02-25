@@ -147,6 +147,9 @@ describe("security regressions", () => {
     expect(source).toContain("const transient = syncMode === SYNC_MODE_OFF");
     expect(source).toContain("const transientBatchKey = transient");
     expect(source).toContain("const cleanupTransientBatch = async () =>");
+    expect(source).toContain("TRANSIENT_CLEANUP_MAX_ATTEMPTS");
+    expect(source).toContain("getTransientCleanupBackoffMs");
+    expect(source).toContain("recordCleanupFailure");
     expect(source).toContain("internal.channels.transient_data.appendTransientEvent");
     expect(source).toContain("internal.channels.transient_data.deleteTransientBatch");
     expect(source).toContain("await cleanupTransientBatch()");
@@ -224,10 +227,32 @@ describe("security regressions", () => {
 
     expect(source).toContain("const transient = syncMode === SYNC_MODE_OFF");
     expect(source).toContain("const userMessageId = transient");
+    expect(source).toContain("const requestedOwnerAccountMode = await args.ctx.runQuery");
+    expect(source).toContain("requestedOwnerAccountMode !== ACCOUNT_MODE_CONNECTED");
     expect(source).toContain("if (accountMode !== ACCOUNT_MODE_CONNECTED)");
     expect(source).toContain("const candidates = buildExecutionCandidates({");
     expect(source).toContain("runtimeMode === \"cloud_247\"");
     expect(source).toContain("const usedCloudFallback =");
+  });
+
+  test("connection resolver does not auto-create links when account mode is private local", () => {
+    const source = readBackendFile("convex/channels/utils.ts");
+    expect(source).toContain("const accountMode = await args.ctx.runQuery");
+    expect(source).toContain("if (accountMode !== ACCOUNT_MODE_CONNECTED) {");
+    expect(source).toMatch(
+      /policyOwnerId[\s\S]*?accountMode[\s\S]*?ACCOUNT_MODE_CONNECTED[\s\S]*?return null;[\s\S]*?createConnection/,
+    );
+  });
+
+  test("transient channel retention is tightened and cleanup failures are retained", () => {
+    const source = readBackendFile("convex/channels/transient_data.ts");
+    const cronsSource = readBackendFile("convex/crons.ts");
+    expect(source).toContain("const DEFAULT_TTL_MS = 10 * 60 * 1000");
+    expect(source).toContain("const MAX_TTL_MS = 15 * 60 * 1000");
+    expect(source).toContain("recordCleanupFailure");
+    expect(source).toContain("DEFAULT_CLEANUP_FAILURE_RETENTION_MS");
+    expect(cronsSource).toContain("\"transient cleanup failure retention sweep\"");
+    expect(cronsSource).toContain("internal.channels.transient_data.purgeExpiredCleanupFailures");
   });
 
   test("request-id cleanup iterates until no matching events remain", () => {

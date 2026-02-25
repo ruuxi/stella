@@ -14,6 +14,12 @@ crons.interval(
   { maxBatches: 10 },
 );
 crons.interval(
+  "transient cleanup failure retention sweep",
+  { hours: 12 },
+  internal.channels.transient_data.purgeExpiredCleanupFailures,
+  { maxBatches: 10 },
+);
+crons.interval(
   "ephemeral tool event cleanup",
   { minutes: 5 },
   internal.events.purgeExpiredEphemeralToolEvents,

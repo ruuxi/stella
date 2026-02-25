@@ -379,6 +379,19 @@ export default defineSchema({
     .index("by_batchKey", ["batchKey"])
     .index("by_expiresAt", ["expiresAt"])
     .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"]),
+  transient_cleanup_failures: defineTable({
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    provider: v.string(),
+    batchKeyHash: v.string(),
+    attempts: v.number(),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_expiresAt", ["expiresAt"])
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
+    .index("by_provider_and_createdAt", ["provider", "createdAt"]),
   slack_installations: defineTable({
     teamId: v.string(),
     teamName: v.optional(v.string()),
