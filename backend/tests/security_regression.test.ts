@@ -111,12 +111,12 @@ describe("security regressions", () => {
     const source = readBackendFile("convex/http.ts");
 
     expect(source).toContain("consumeWebhookDedup");
-    expect(source).toContain('consumeWebhookDedup(ctx, "telegram"');
-    expect(source).toContain('consumeWebhookDedup(\n          ctx,\n          "discord"');
-    expect(source).toContain('consumeWebhookDedup(\n        ctx,\n        "slack"');
-    expect(source).toContain('consumeWebhookDedup(\n        ctx,\n        "google_chat"');
-    expect(source).toContain('consumeWebhookDedup(ctx, "teams"');
-    expect(source).toContain('consumeWebhookDedup(ctx, "linq"');
+    expect(source).toMatch(/consumeWebhookDedup\(\s*ctx,\s*"telegram"/);
+    expect(source).toMatch(/consumeWebhookDedup\(\s*ctx,\s*"discord"/);
+    expect(source).toMatch(/consumeWebhookDedup\(\s*ctx,\s*"slack"/);
+    expect(source).toMatch(/consumeWebhookDedup\(\s*ctx,\s*"google_chat"/);
+    expect(source).toMatch(/consumeWebhookDedup\(\s*ctx,\s*"teams"/);
+    expect(source).toMatch(/consumeWebhookDedup\(\s*ctx,\s*"linq"/);
   });
 
   test("cron tick requires successful claim before scheduling execution", () => {

@@ -13,6 +13,7 @@ import { runAgentTurn } from "../automation/runner";
 
 const ACTIVE_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]|24):([0-5]\d)$/;
 const DUPLICATE_SUPPRESSION_MS = 24 * 60 * 60 * 1000;
+const STUCK_RUN_MS = 2 * 60 * 60 * 1000;
 type ExecutionCandidate =
   | { mode: "local"; targetDeviceId: string; spriteName?: undefined }
   | { mode: "cloud"; targetDeviceId?: undefined; spriteName?: undefined }
@@ -40,6 +41,7 @@ const heartbeatConfigValidator = v.object({
   agentType: v.optional(v.string()),
   activeHours: activeHoursValidator,
   targetDeviceId: v.optional(v.string()),
+  runningAtMs: v.optional(v.number()),
   lastRunAtMs: v.optional(v.number()),
   nextRunAtMs: v.number(),
   lastStatus: v.optional(v.string()),
@@ -245,6 +247,7 @@ export const upsertConfig = internalMutation({
         activeHours: args.activeHours ?? existing.activeHours,
         targetDeviceId: args.targetDeviceId ?? existing.targetDeviceId,
         nextRunAtMs,
+        runningAtMs: undefined,
         updatedAt: now,
       });
       return await ctx.db.get(existing._id);
@@ -262,6 +265,7 @@ export const upsertConfig = internalMutation({
       agentType: args.agentType,
       activeHours: args.activeHours,
       targetDeviceId: args.targetDeviceId,
+      runningAtMs: undefined,
       lastRunAtMs: undefined,
       nextRunAtMs,
       lastStatus: undefined,
@@ -307,20 +311,38 @@ export const getById = internalQuery({
   },
 });
 
-export const markScheduled = internalMutation({
+export const markRunning = internalMutation({
   args: {
     id: v.id("heartbeat_configs"),
+    runningAtMs: v.number(),
     nextRunAtMs: v.number(),
-    lastRunAtMs: v.optional(v.number()),
+    lastRunAtMs: v.number(),
+    expectedRunningAtMs: v.optional(v.number()),
   },
-  returns: v.null(),
+  returns: v.boolean(),
   handler: async (ctx, args) => {
+    const config = await ctx.db.get(args.id);
+    if (!config || !config.enabled) {
+      return false;
+    }
+    const currentRunningAtMs =
+      typeof config.runningAtMs === "number" ? config.runningAtMs : undefined;
+    if (currentRunningAtMs !== args.expectedRunningAtMs) {
+      return false;
+    }
+    if (
+      typeof currentRunningAtMs === "number" &&
+      args.runningAtMs - currentRunningAtMs < STUCK_RUN_MS
+    ) {
+      return false;
+    }
     await ctx.db.patch(args.id, {
+      runningAtMs: args.runningAtMs,
       nextRunAtMs: args.nextRunAtMs,
       lastRunAtMs: args.lastRunAtMs,
       updatedAt: Date.now(),
     });
-    return null;
+    return true;
   },
 });
 
@@ -339,6 +361,7 @@ export const recordRun = internalMutation({
       lastError: args.error,
       lastSentText: args.lastSentText,
       lastSentAtMs: args.lastSentAtMs,
+      runningAtMs: undefined,
       updatedAt: Date.now(),
     });
     return null;
@@ -350,18 +373,27 @@ export const tick = internalAction({
   returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
-    const due = await ctx.runQuery(internal.scheduling.heartbeat.listDue, { nowMs: now, limit: 100 });
+    const due = await ctx.runQuery(internal.scheduling.heartbeat.listDue, { nowMs: now, limit: 200 });
     for (const config of due) {
       if (!config.enabled) {
         continue;
       }
+      if (typeof config.runningAtMs === "number" && now - config.runningAtMs < STUCK_RUN_MS) {
+        continue;
+      }
       const intervalMs = normalizeIntervalMs(config.intervalMs);
       const nextRunAtMs = now + intervalMs;
-      await ctx.runMutation(internal.scheduling.heartbeat.markScheduled, {
+      const claimed = await ctx.runMutation(internal.scheduling.heartbeat.markRunning, {
         id: config._id,
+        runningAtMs: now,
         nextRunAtMs,
         lastRunAtMs: now,
+        expectedRunningAtMs:
+          typeof config.runningAtMs === "number" ? config.runningAtMs : undefined,
       });
+      if (!claimed) {
+        continue;
+      }
       await ctx.scheduler.runAfter(0, internal.scheduling.heartbeat.run, {
         configId: config._id,
         reason: "interval",
@@ -381,11 +413,35 @@ export const run = internalAction({
     const config = await ctx.runQuery(internal.scheduling.heartbeat.getById, {
       id: args.configId,
     });
-    if (!config || !config.enabled) {
+    if (!config) {
+      return null;
+    }
+    if (!config.enabled) {
+      await ctx.runMutation(internal.scheduling.heartbeat.recordRun, {
+        id: config._id,
+        status: "skipped:disabled",
+      });
       return null;
     }
 
     const now = Date.now();
+    const accountMode = await ctx.runQuery(
+      internal.data.preferences.getAccountModeForOwner,
+      { ownerId: config.ownerId },
+    );
+    if (accountMode !== "connected") {
+      await ctx.runMutation(internal.scheduling.heartbeat.recordRun, {
+        id: config._id,
+        status: "skipped:account-mode",
+      });
+      return null;
+    }
+    const syncMode = await ctx.runQuery(
+      internal.data.preferences.getSyncModeForOwner,
+      { ownerId: config.ownerId },
+    );
+    const transient = syncMode === "off";
+
     if (!isWithinActiveHours(config.activeHours, now)) {
       await ctx.runMutation(internal.scheduling.heartbeat.recordRun, {
         id: config._id,
@@ -443,6 +499,7 @@ export const run = internalAction({
               candidate.mode === "local" ? candidate.targetDeviceId : undefined,
             spriteName:
               candidate.mode === "remote" ? candidate.spriteName : undefined,
+            transient,
           });
           break;
         } catch (error) {
@@ -496,7 +553,7 @@ export const run = internalAction({
       return null;
     }
 
-    const deliver = config.deliver !== false;
+    const deliver = config.deliver !== false && syncMode !== "off";
     if (deliver) {
       await ctx.runMutation(internal.events.appendInternalEvent, {
         conversationId,
@@ -540,6 +597,19 @@ export const runNow = internalMutation({
       .unique();
     if (!config) {
       return null;
+    }
+    const now = Date.now();
+    const intervalMs = normalizeIntervalMs(config.intervalMs);
+    const claimed = await ctx.runMutation(internal.scheduling.heartbeat.markRunning, {
+      id: config._id,
+      runningAtMs: now,
+      nextRunAtMs: now + intervalMs,
+      lastRunAtMs: now,
+      expectedRunningAtMs:
+        typeof config.runningAtMs === "number" ? config.runningAtMs : undefined,
+    });
+    if (!claimed) {
+      return await ctx.db.get(config._id);
     }
     await ctx.scheduler.runAfter(0, internal.scheduling.heartbeat.run, {
       configId: config._id,
