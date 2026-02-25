@@ -21,6 +21,7 @@ import {
   type RunCallbacks,
 } from "./agent_runtime.js";
 import { RunJournal } from "./run_journal.js";
+import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./local_task_manager.js";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
@@ -97,9 +98,30 @@ export const createLocalHostRunner = ({
   requestCredential,
   signHeartbeatPayload,
 }: HostRunnerOptions) => {
+  let localTaskManager: LocalTaskManager | null = null;
   const toolHost = createToolHost({
     StellaHome,
     frontendRoot,
+    taskApi: {
+      createTask: async (request) => {
+        if (!localTaskManager) {
+          throw new Error("Local task manager not initialized");
+        }
+        return await localTaskManager.createTask(request);
+      },
+      getTask: async (taskId) => {
+        if (!localTaskManager) {
+          return null;
+        }
+        return await localTaskManager.getTask(taskId);
+      },
+      cancelTask: async (taskId, reason) => {
+        if (!localTaskManager) {
+          return { canceled: false };
+        }
+        return await localTaskManager.cancelTask(taskId, reason);
+      },
+    },
     requestCredential,
     resolveSecret: async ({ provider, secretId, requestId, toolName, deviceId: contextDeviceId }) => {
       if (!client) return null;
@@ -338,6 +360,138 @@ export const createLocalHostRunner = ({
       onUpdate(value);
     });
   };
+
+  localTaskManager = new LocalTaskManager({
+    maxConcurrent: 3,
+    fetchAgentContext: async ({ conversationId, agentType, runId, threadId }) => {
+      if (!client || !authToken || !convexUrl) {
+        throw new Error("Runner not connected");
+      }
+      return await callAction("agent/prompt_builder:fetchAgentContextForRuntime", {
+        conversationId,
+        agentType,
+        runId,
+        threadId,
+      }) as LocalTaskManagerAgentContext;
+    },
+    runSubagent: async ({
+      conversationId,
+      userMessageId,
+      agentType,
+      taskDescription,
+      taskPrompt,
+      agentContext,
+      persistToConvex,
+      enableRemoteTools,
+      abortSignal,
+      toolExecutor,
+    }) => {
+      if (!authToken || !convexUrl) {
+        throw new Error("Runner not connected");
+      }
+      return await runSubagentTask({
+        conversationId,
+        userMessageId,
+        agentType,
+        agentContext: agentContext as AgentContext,
+        toolExecutor,
+        convexUrl,
+        authToken,
+        deviceId,
+        stellaHome: StellaHome,
+        taskDescription,
+        taskPrompt,
+        persistToConvex,
+        enableRemoteTools,
+        abortSignal,
+      });
+    },
+    toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
+    createCloudTaskRecord: async ({
+      conversationId,
+      description,
+      prompt,
+      agentType,
+      parentTaskId,
+      commandId,
+    }) => {
+      const responseRaw = await callMutation("agent/tasks.createRuntimeTask", {
+        conversationId,
+        description,
+        prompt,
+        agentType,
+        parentTaskId,
+        commandId,
+      });
+      const response =
+        responseRaw && typeof responseRaw === "object" && "taskId" in responseRaw
+          ? responseRaw as { taskId: string }
+          : null;
+      if (!response) {
+        throw new Error("Failed to create cloud task record");
+      }
+      return { taskId: response.taskId };
+    },
+    completeCloudTaskRecord: async ({ taskId, status, result, error }) => {
+      await callMutation("agent/tasks.completeRuntimeTask", {
+        taskId,
+        status,
+        result,
+        error,
+      });
+    },
+    getCloudTaskRecord: async (taskId) => {
+      let task:
+        | {
+            _id: string;
+            description: string;
+            status: string;
+            createdAt: number;
+            completedAt?: number;
+            result?: string;
+            error?: string;
+          }
+        | null = null;
+      try {
+        task = await callQuery("agent/tasks.getRuntimeTaskById", {
+          taskId,
+        }) as
+          | {
+              _id: string;
+              description: string;
+              status: string;
+              createdAt: number;
+              completedAt?: number;
+              result?: string;
+              error?: string;
+            }
+          | null;
+      } catch {
+        task = null;
+      }
+      if (!task) return null;
+      const status =
+        task.status === "completed" || task.status === "error" || task.status === "canceled"
+          ? task.status
+          : "running";
+      return {
+        id: task._id,
+        description: task.description,
+        status,
+        startedAt: task.createdAt,
+        completedAt: task.completedAt ?? null,
+        result: task.result,
+        error: task.error,
+      };
+    },
+    cancelCloudTaskRecord: async (taskId, reason) => {
+      const response = await callMutation("agent/tasks.cancelRuntimeTask", {
+        taskId,
+        reason,
+      });
+      return { canceled: Boolean(response) };
+    },
+  });
 
   const generateMetadataViaBackend = async (
     markdown: string,

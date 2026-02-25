@@ -2,45 +2,141 @@
  * State tools: Task, TaskOutput handlers.
  */
 
-import type { ToolResult, TaskRecord } from "./tools-types.js";
+import type {
+  ToolContext,
+  ToolResult,
+  TaskRecord,
+  TaskToolApi,
+  TaskToolSnapshot,
+} from "./tools-types.js";
 import { truncate } from "./tools-utils.js";
 
 export type StateContext = {
   stateRoot: string;
   tasks: Map<string, TaskRecord>;
+  taskApi?: TaskToolApi;
 };
 
-export const createStateContext = (stateRoot: string): StateContext => ({
+const toOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const formatTaskSnapshot = (snapshot: TaskToolSnapshot): string => {
+  const duration = (snapshot.completedAt ?? Date.now()) - snapshot.startedAt;
+  if (snapshot.status === "completed") {
+    return `Task completed.\nDuration: ${duration}ms\n\n--- Result ---\n${truncate(snapshot.result ?? "")}`;
+  }
+  if (snapshot.status === "error" || snapshot.status === "canceled") {
+    const label = snapshot.status === "canceled" ? "Task canceled." : "Task failed.";
+    return `${label}\nDuration: ${duration}ms\n\n--- Error ---\n${truncate(snapshot.error ?? "")}`;
+  }
+  const elapsed = Date.now() - snapshot.startedAt;
+  return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms`;
+};
+
+export const createStateContext = (
+  stateRoot: string,
+  taskApi?: TaskToolApi,
+): StateContext => ({
   stateRoot,
   tasks: new Map(),
+  taskApi,
 });
 
 export const handleTask = async (
   ctx: StateContext,
   args: Record<string, unknown>,
+  context: ToolContext,
 ): Promise<ToolResult> => {
-  const description = String(args.description ?? "Task");
+  const action = toOptionalString(args.action)?.toLowerCase();
+  const explicitTaskId = toOptionalString(args.task_id ?? args.taskId ?? args.id);
+  if ((action === "cancel" || action === "stop") && explicitTaskId) {
+    if (ctx.taskApi) {
+      const reason = toOptionalString(args.reason);
+      const canceled = await ctx.taskApi.cancelTask(explicitTaskId, reason);
+      if (!canceled.canceled) {
+        return { error: `Task not found: ${explicitTaskId}` };
+      }
+      return { result: `Task canceled.\nTask ID: ${explicitTaskId}` };
+    }
+    const localRecord = ctx.tasks.get(explicitTaskId);
+    if (!localRecord) return { error: `Task not found: ${explicitTaskId}` };
+    localRecord.status = "error";
+    localRecord.error = "Canceled";
+    localRecord.completedAt = Date.now();
+    return { result: `Task canceled.\nTask ID: ${explicitTaskId}` };
+  }
+
+  const description = toOptionalString(args.description) ?? "Task";
+  const prompt =
+    toOptionalString(args.prompt) ??
+    toOptionalString(args.command) ??
+    description;
+  const agentType =
+    toOptionalString(args.subagentType ?? args.subagent_type ?? args.agentType) ??
+    "general";
+  const parentTaskId = toOptionalString(args.parentTaskId ?? args.parent_task_id);
+  const threadId = toOptionalString(args.threadId ?? args.thread_id);
+  const threadName = toOptionalString(args.threadName ?? args.thread_name);
+  const commandId = toOptionalString(args.commandId ?? args.command_id);
+  const systemPromptOverride = toOptionalString(
+    args.systemPromptOverride ?? args.system_prompt_override,
+  );
+  const storageMode = context.storageMode ?? "cloud";
+
+  if (ctx.taskApi) {
+    const created = await ctx.taskApi.createTask({
+      conversationId: context.conversationId,
+      description,
+      prompt,
+      agentType,
+      parentTaskId,
+      threadId,
+      threadName,
+      commandId,
+      systemPromptOverride,
+      storageMode,
+    });
+    return {
+      result: `Task running.\nTask ID: ${created.taskId}\nElapsed: 0ms`,
+    };
+  }
+
+  // Fallback local in-memory task behavior (used only when no task manager is wired).
   const id = crypto.randomUUID();
   const record: TaskRecord = {
     id,
     description,
-    status: "completed",
-    result:
-      "Task delegation is handled server-side. This device should not receive Task requests.",
+    status: "running",
     startedAt: Date.now(),
-    completedAt: Date.now(),
+    completedAt: null,
   };
   ctx.tasks.set(id, record);
   return {
-    result: `Agent completed.\nTask ID: ${id}\n\n--- Agent Result ---\n${record.result}`,
+    result: `Task running.\nTask ID: ${id}\nElapsed: 0ms`,
   };
 };
 
 export const handleTaskOutput = async (
   ctx: StateContext,
   args: Record<string, unknown>,
+  _context: ToolContext,
 ): Promise<ToolResult> => {
-  const taskId = String(args.task_id ?? "");
+  const taskId = toOptionalString(args.task_id ?? args.taskId ?? args.id);
+  if (!taskId) {
+    return { error: "task_id is required" };
+  }
+
+  if (ctx.taskApi) {
+    const snapshot = await ctx.taskApi.getTask(taskId);
+    if (!snapshot) {
+      return { error: `Task not found: ${taskId}` };
+    }
+    return { result: formatTaskSnapshot(snapshot) };
+  }
+
   const record = ctx.tasks.get(taskId);
   if (!record) {
     return { error: `Task not found: ${taskId}` };

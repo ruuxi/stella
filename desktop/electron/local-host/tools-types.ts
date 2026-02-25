@@ -7,6 +7,7 @@ export type ToolContext = {
   deviceId: string;
   requestId: string;
   agentType?: string;
+  storageMode?: "cloud" | "local";
 };
 
 export type ToolResult = {
@@ -55,9 +56,39 @@ export type TaskRecord = {
   completedAt: number | null;
 };
 
+export type TaskToolRequest = {
+  conversationId: string;
+  description: string;
+  prompt: string;
+  agentType: string;
+  parentTaskId?: string;
+  threadId?: string;
+  threadName?: string;
+  commandId?: string;
+  systemPromptOverride?: string;
+  storageMode: "cloud" | "local";
+};
+
+export type TaskToolSnapshot = {
+  id: string;
+  status: "running" | "completed" | "error" | "canceled";
+  description: string;
+  startedAt: number;
+  completedAt: number | null;
+  result?: string;
+  error?: string;
+};
+
+export type TaskToolApi = {
+  createTask: (request: TaskToolRequest) => Promise<{ taskId: string }>;
+  getTask: (taskId: string) => Promise<TaskToolSnapshot | null>;
+  cancelTask: (taskId: string, reason?: string) => Promise<{ canceled: boolean }>;
+};
+
 export type ToolHostOptions = {
   StellaHome: string;
   frontendRoot?: string;
+  taskApi?: TaskToolApi;
   requestCredential?: (payload: {
     provider: string;
     label?: string;
