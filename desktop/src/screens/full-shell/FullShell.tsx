@@ -58,6 +58,13 @@ export const FullShell = () => {
   useBridgeAutoReconnect();
 
   const onboarding = useOnboardingOverlay();
+  const accountMode = useQuery(
+    api.data.preferences.getAccountMode,
+    onboarding.isAuthenticated ? {} : "skip",
+  ) as "private_local" | "connected" | undefined;
+  const cloudFeaturesEnabled =
+    onboarding.isAuthenticated && accountMode === "connected";
+  const conversationEventsSource = cloudFeaturesEnabled ? "cloud" : "local";
 
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
@@ -82,8 +89,12 @@ export const FullShell = () => {
   }, []);
 
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
-    isAuthenticated: onboarding.isAuthenticated,
-    conversationId: activeConversationId,
+    isAuthenticated: cloudFeaturesEnabled,
+    conversationId: cloudFeaturesEnabled ? activeConversationId : null,
+  });
+
+  const events = useConversationEvents(activeConversationId ?? undefined, {
+    source: conversationEventsSource,
   });
 
   const {
@@ -98,6 +109,7 @@ export const FullShell = () => {
     processFollowUpQueue,
   } = useStreamingChat({
     conversationId: activeConversationId,
+    storageMode: conversationEventsSource,
   });
 
   const {
@@ -150,7 +162,6 @@ export const FullShell = () => {
     };
   }, []);
 
-  const events = useConversationEvents(activeConversationId ?? undefined);
   useCanvasCommands(events);
   const retryPersonalPage = useAction(api.personalized_dashboard.retryPage);
   const startDashboardGeneration = useAction(
@@ -159,14 +170,14 @@ export const FullShell = () => {
 
   const personalizedPageState = useQuery(
     api.personalized_dashboard.listPages,
-    onboarding.isAuthenticated ? {} : "skip",
+    cloudFeaturesEnabled ? {} : "skip",
   ) as PersonalizedDashboardPageList | undefined;
   const personalPages = personalizedPageState?.pages ?? [];
 
   // Restore saved canvas state when switching conversations
   const savedCanvasCloudState = useQuery(
     api.data.canvas_states.getForConversation,
-    activeConversationId && onboarding.isAuthenticated
+    activeConversationId && cloudFeaturesEnabled
       ? { conversationId: activeConversationId }
       : "skip",
   ) as
@@ -272,7 +283,7 @@ export const FullShell = () => {
 
   const handleRetryPersonalPage = useCallback(
     (pageId: string) => {
-      if (!activeConversationId) return;
+      if (!activeConversationId || !cloudFeaturesEnabled) return;
       void (async () => {
         const targetDeviceId = await getOrCreateDeviceId();
         await retryPersonalPage({
@@ -284,7 +295,7 @@ export const FullShell = () => {
         // Silent fail - workspace surface already shows failure state
       });
     },
-    [activeConversationId, retryPersonalPage],
+    [activeConversationId, cloudFeaturesEnabled, retryPersonalPage],
   );
 
   // Listen for custom events from the dashboard panel (suggestion clicks)
@@ -307,6 +318,7 @@ export const FullShell = () => {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ panelName?: string; error?: string }>).detail;
+      if (!cloudFeaturesEnabled) return;
       const panelName = detail?.panelName?.trim();
       if (!panelName || !activeConversationId) return;
 
@@ -329,7 +341,7 @@ export const FullShell = () => {
 
     window.addEventListener("stella:panel-load-failed", handler);
     return () => window.removeEventListener("stella:panel-load-failed", handler);
-  }, [activeConversationId, personalPages, retryPersonalPage]);
+  }, [activeConversationId, cloudFeaturesEnabled, personalPages, retryPersonalPage]);
 
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasWindowContext = Boolean(chatContext?.window);
@@ -347,6 +359,7 @@ export const FullShell = () => {
   const appReady = onboarding.isAuthenticated && onboarding.onboardingDone;
 
   useEffect(() => {
+    if (!cloudFeaturesEnabled) return;
     if (!appReady || !activeConversationId) return;
     if (personalizedPageState === undefined) return;
     if (dashboardBootstrapAttemptedRef.current.has(activeConversationId)) return;
@@ -366,7 +379,13 @@ export const FullShell = () => {
     })().catch(() => {
       dashboardBootstrapAttemptedRef.current.delete(activeConversationId);
     });
-  }, [activeConversationId, appReady, personalizedPageState, startDashboardGeneration]);
+  }, [
+    activeConversationId,
+    appReady,
+    cloudFeaturesEnabled,
+    personalizedPageState,
+    startDashboardGeneration,
+  ]);
 
   return (
     <div className="window-shell full">

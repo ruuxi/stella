@@ -322,10 +322,10 @@ describe("BasicTab", () => {
     expect(deleteButtons[1].className).toContain("settings-btn--danger");
   });
 
-  it("renders all four BasicTab rows", () => {
+  it("renders all five BasicTab rows", () => {
     render(<SettingsDialog {...defaultProps()} />);
     const rows = document.querySelectorAll(".settings-row");
-    expect(rows.length).toBe(4);
+    expect(rows.length).toBe(5);
   });
 });
 
