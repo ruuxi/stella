@@ -217,6 +217,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ─── Local Agent Runtime IPC ──────────────────────────────────────────────
   agentHealthCheck: () => ipcRenderer.invoke('agent:healthCheck') as Promise<{ ready: true; runnerVersion: string } | null>,
+  getActiveAgentRun: () =>
+    ipcRenderer.invoke('agent:getActiveRun') as Promise<{ runId: string; conversationId: string } | null>,
 
   startAgentChat: (payload: {
     conversationId: string;
@@ -227,6 +229,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => ipcRenderer.invoke('agent:startChat', payload) as Promise<{ runId: string }>,
 
   cancelAgentChat: (runId: string) => ipcRenderer.send('agent:cancelChat', runId),
+  resumeAgentStream: (payload: { runId: string; lastSeq: number }) =>
+    ipcRenderer.invoke('agent:resume', payload) as Promise<{
+      events: Array<{
+        type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';
+        runId: string;
+        seq: number;
+        chunk?: string;
+        toolCallId?: string;
+        toolName?: string;
+        resultPreview?: string;
+        error?: string;
+        fatal?: boolean;
+        finalText?: string;
+        persisted?: boolean;
+      }>;
+      exhausted: boolean;
+    }>,
 
   onAgentStream: (callback: (event: {
     type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';

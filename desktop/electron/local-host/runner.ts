@@ -957,6 +957,7 @@ export const createLocalHostRunner = ({
   // ─── Local Agent Execution ────────────────────────────────────────────────
 
   let activeOrchestratorRunId: string | null = null;
+  let activeOrchestratorConversationId: string | null = null;
   const activeRunAbortControllers = new Map<string, AbortController>();
 
   const agentHealthCheck = (): { ready: boolean; runnerVersion: string } | null => {
@@ -981,7 +982,7 @@ export const createLocalHostRunner = ({
     }
 
     if (activeOrchestratorRunId) {
-      throw new Error("An orchestrator run is already active for this conversation");
+      throw new Error("The orchestrator is already running. Wait for it to finish before starting another run.");
     }
 
     const agentType = payload.agentType ?? "orchestrator";
@@ -1007,6 +1008,7 @@ export const createLocalHostRunner = ({
         )) as AgentContext;
 
     activeOrchestratorRunId = runId;
+    activeOrchestratorConversationId = payload.conversationId;
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
 
@@ -1021,12 +1023,14 @@ export const createLocalHostRunner = ({
         ...callbacks,
         onEnd: (event) => {
           activeOrchestratorRunId = null;
+          activeOrchestratorConversationId = null;
           activeRunAbortControllers.delete(runId);
           callbacks.onEnd(event);
         },
         onError: (event) => {
           if (event.fatal) {
             activeOrchestratorRunId = null;
+            activeOrchestratorConversationId = null;
             activeRunAbortControllers.delete(runId);
           }
           callbacks.onError(event);
@@ -1053,8 +1057,19 @@ export const createLocalHostRunner = ({
       activeRunAbortControllers.delete(runId);
       if (activeOrchestratorRunId === runId) {
         activeOrchestratorRunId = null;
+        activeOrchestratorConversationId = null;
       }
     }
+  };
+
+  const getActiveOrchestratorRun = (): { runId: string; conversationId: string } | null => {
+    if (!activeOrchestratorRunId || !activeOrchestratorConversationId) {
+      return null;
+    }
+    return {
+      runId: activeOrchestratorRunId,
+      conversationId: activeOrchestratorConversationId,
+    };
   };
 
   // Crash recovery on startup
@@ -1104,6 +1119,7 @@ export const createLocalHostRunner = ({
     agentHealthCheck,
     handleLocalChat,
     cancelLocalChat,
+    getActiveOrchestratorRun,
     recoverCrashedRuns,
   };
 };
