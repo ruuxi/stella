@@ -51,16 +51,24 @@ export const deleteTransientBatch = internalMutation({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
-    const rows = await ctx.db
-      .query("transient_channel_events")
-      .withIndex("by_batchKey", (q) => q.eq("batchKey", args.batchKey))
-      .collect();
-
-    for (const row of rows) {
-      await ctx.db.delete(row._id);
+    let deleted = 0;
+    while (true) {
+      const rows = await ctx.db
+        .query("transient_channel_events")
+        .withIndex("by_batchKey", (q) => q.eq("batchKey", args.batchKey))
+        .take(200);
+      if (rows.length === 0) {
+        break;
+      }
+      for (const row of rows) {
+        await ctx.db.delete(row._id);
+        deleted += 1;
+      }
+      if (rows.length < 200) {
+        break;
+      }
     }
-
-    return rows.length;
+    return deleted;
   },
 });
 
