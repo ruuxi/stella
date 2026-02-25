@@ -19,9 +19,7 @@ import {
   runSubagentTask,
   type AgentContext,
   type RunCallbacks,
-  type RunSubagentOpts,
 } from "./agent_runtime.js";
-import { LocalTaskManager } from "./local_task_manager.js";
 import { RunJournal } from "./run_journal.js";
 import crypto from "crypto";
 import path from "path";
@@ -322,7 +320,9 @@ export const createLocalHostRunner = ({
   };
 
   const callAction = (name: string, args: Record<string, unknown>) => {
-    if (!client || !authToken) return Promise.resolve(null);
+    if (!client || !authToken) {
+      return Promise.reject(new Error("Runner not connected"));
+    }
     const convexName = toConvexName(name);
     return client.action(convexName as never, args as never);
   };
@@ -545,7 +545,7 @@ export const createLocalHostRunner = ({
     if (request.type !== "dashboard_generation_request") return;
 
     const payload = request.payload;
-    if (!payload?.pageId || !payload.ownerId || !payload.panelName) return;
+    if (!payload?.pageId || !payload.panelName) return;
 
     const requestKey = `${request._id}:${payload.pageId}`;
     if (processedDashboardGen.has(requestKey) || dashboardGenInFlight.has(requestKey)) return;
@@ -557,6 +557,7 @@ export const createLocalHostRunner = ({
       title: payload.title,
     });
 
+    let leaseInterval: ReturnType<typeof setInterval> | null = null;
     try {
       // Claim the page lease (uses public mutation with auth)
       const claimResult = await callMutation("personalized_dashboard.claimPageGenerationDevice", {
@@ -571,7 +572,7 @@ export const createLocalHostRunner = ({
       }
 
       // Set up lease renewal interval (every 60s)
-      const leaseInterval = setInterval(() => {
+      leaseInterval = setInterval(() => {
         void callMutation("personalized_dashboard.renewPageLeaseDevice", {
           pageId: payload.pageId,
           claimantId: deviceId,
@@ -580,9 +581,8 @@ export const createLocalHostRunner = ({
 
       // Fetch agent context for the "general" agent type
       const agentContext = await callAction(
-        "agent/prompt_builder:fetchAgentContext",
+        "agent/prompt_builder:fetchAgentContextForRuntime",
         {
-          ownerId: payload.ownerId,
           conversationId: request.conversationId,
           agentType: "general",
           runId: `local:dash:${crypto.randomUUID()}`,
@@ -608,8 +608,6 @@ export const createLocalHostRunner = ({
         taskDescription: `Generate personalized page: ${payload.title}`,
         taskPrompt: payload.userPrompt ?? `Generate the dashboard panel ${payload.panelName}.tsx`,
       });
-
-      clearInterval(leaseInterval);
 
       if (result.error) {
         logError(`Dashboard generation failed for ${payload.panelName}:`, result.error);
@@ -640,6 +638,9 @@ export const createLocalHostRunner = ({
       }).catch(() => {});
       processedDashboardGen.add(requestKey);
     } finally {
+      if (leaseInterval) {
+        clearInterval(leaseInterval);
+      }
       dashboardGenInFlight.delete(requestKey);
     }
   };
@@ -986,9 +987,8 @@ export const createLocalHostRunner = ({
 
     // Fetch agent context from Convex
     const agentContext = await callAction(
-      "agent/prompt_builder:fetchAgentContext",
+      "agent/prompt_builder:fetchAgentContextForRuntime",
       {
-        ownerId: "", // Will be resolved server-side from auth
         conversationId: payload.conversationId,
         agentType,
         runId,
@@ -1001,6 +1001,7 @@ export const createLocalHostRunner = ({
 
     // Run the agent loop
     void runOrchestratorTurn({
+      runId,
       conversationId: payload.conversationId,
       userMessageId: payload.userMessageId,
       agentType,
@@ -1049,6 +1050,7 @@ export const createLocalHostRunner = ({
       const crashed = journal.recoverCrashedRuns();
       for (const run of crashed) {
         log(`Recovering crashed run: ${run.runId} (${run.status})`);
+        let hasPersistFailures = false;
         if (run.persistStatus === "pending" && client && authToken) {
           const chunks = journal.getUnpersistedChunks(run.runId);
           for (const chunk of chunks) {
@@ -1057,11 +1059,16 @@ export const createLocalHostRunner = ({
               journal.markPersisted(chunk.chunkKey);
               log(`Recovered chunk: ${chunk.chunkKey}`);
             } catch (err) {
+              hasPersistFailures = true;
               logError(`Failed to recover chunk ${chunk.chunkKey}:`, err);
             }
           }
         }
-        journal.markRunCrashed(run.runId);
+        if (run.status === "running") {
+          journal.markRunCrashed(run.runId);
+        } else if (!hasPersistFailures) {
+          journal.markRunPersisted(run.runId);
+        }
       }
       journal.close();
     } catch (err) {
