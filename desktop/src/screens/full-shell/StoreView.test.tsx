@@ -1333,6 +1333,30 @@ describe("Theme install/uninstall", () => {
       storeInstallTheme: mockStoreInstallTheme,
     };
 
+    const completePalette = {
+      background: "#101010",
+      backgroundWeak: "#161616",
+      backgroundStrong: "#000000",
+      foreground: "#f5f5f5",
+      foregroundWeak: "#d0d0d0",
+      foregroundStrong: "#ffffff",
+      primary: "#4f9dff",
+      primaryForeground: "#001122",
+      success: "#22c55e",
+      warning: "#f59e0b",
+      error: "#ef4444",
+      info: "#38bdf8",
+      interactive: "#60a5fa",
+      border: "#2a2a2a",
+      borderWeak: "#202020",
+      borderStrong: "#3a3a3a",
+      card: "#131313",
+      cardForeground: "#f2f2f2",
+      muted: "#181818",
+      mutedForeground: "#b8b8b8",
+      accent: "#a78bfa",
+      accentForeground: "#130a24",
+    };
     const pkg1 = makePkg({ packageId: "feat", downloads: 99 });
     const themePkg = makePkg({
       packageId: "theme-pkg",
@@ -1340,8 +1364,8 @@ describe("Theme install/uninstall", () => {
       type: "theme",
       downloads: 5,
       modPayload: {
-        light: { background: "#fff" },
-        dark: { background: "#000" },
+        light: completePalette,
+        dark: completePalette,
       },
     });
     setupUseQuery({
