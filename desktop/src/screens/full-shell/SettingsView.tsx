@@ -95,7 +95,7 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
   const syncModeDescription =
     effectiveSyncMode === "on"
       ? "Conversation history is persisted to cloud."
-      : "Connector processing uses transient records that are deleted after each response.";
+      : "Conversation history stays on this device and is not synced to cloud.";
 
   const handleToggleAccountMode = useCallback(async () => {
     if (isUpdatingAccountMode) return;

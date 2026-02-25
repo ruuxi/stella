@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
@@ -23,27 +22,27 @@ export function useStorePackagesData({
   const typeFilter = category === "all" ? undefined : category;
 
   const browsePackages = useQuery(
-    api.data.store_packages.list as any,
+    api.data.store_packages.list,
     searchQuery ? "skip" : { type: typeFilter },
   ) as StorePackage[] | undefined;
 
   const searchResults = useQuery(
-    api.data.store_packages.search as any,
+    api.data.store_packages.search,
     searchQuery ? { query: searchQuery, type: typeFilter } : "skip",
   ) as StorePackage[] | undefined;
 
   const installedRecords = useQuery(
-    api.data.store_packages.getInstalled as any,
+    api.data.store_packages.getInstalled,
     {},
   ) as InstalledRecord[] | undefined;
 
   const selectedPackage = useQuery(
-    api.data.store_packages.getByPackageId as any,
+    api.data.store_packages.getByPackageId,
     selectedPackageId ? { packageId: selectedPackageId } : "skip",
   ) as StorePackage | null | undefined;
 
   const allPackages = useQuery(
-    api.data.store_packages.list as any,
+    api.data.store_packages.list,
     { type: undefined },
   ) as StorePackage[] | undefined;
 
