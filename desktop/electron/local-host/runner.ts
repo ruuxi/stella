@@ -53,11 +53,15 @@ type ToolRequestEvent = {
   type: string;
   requestId?: string;
   targetDeviceId?: string;
+  ephemeral?: boolean;
+  expiresAt?: number;
   payload?: {
     toolName?: string;
     args?: Record<string, unknown>;
     targetDeviceId?: string;
     agentType?: string;
+    ephemeral?: boolean;
+    expiresAt?: number;
   };
 };
 
@@ -973,6 +977,8 @@ export const createLocalHostRunner = ({
       deviceId,
       requestId: request.requestId,
       targetDeviceId: request.targetDeviceId,
+      ephemeral: request.ephemeral === true || request.payload?.ephemeral === true,
+      ...(typeof request.expiresAt === "number" ? { expiresAt: request.expiresAt } : {}),
       payload: {
         toolName: request.payload?.toolName,
         result: sanitizedResult,
