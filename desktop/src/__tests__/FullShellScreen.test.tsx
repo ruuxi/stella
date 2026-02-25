@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { createRef } from "react";
+import { useQuery } from "convex/react";
 
 // --- Mocks ---
 
@@ -99,6 +100,10 @@ vi.mock("../services/device", () => ({
 vi.mock("@/convex/api", () => ({
   api: {
     data: {
+      preferences: {
+        getAccountMode: "preferences:getAccountMode",
+        getSyncMode: "preferences:getSyncMode",
+      },
       canvas_states: {
         getForConversation: "canvas_states:getForConversation",
       },
@@ -261,6 +266,12 @@ import { useUiState } from "../app/state/ui-state";
 describe("FullShell (full-shell/FullShell.tsx)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
+      if (args === "skip") return undefined;
+      if (ref === "preferences:getAccountMode") return "connected";
+      if (ref === "preferences:getSyncMode") return "on";
+      return undefined;
+    });
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "chat", conversationId: "conv-123" },
       setMode: vi.fn(),
