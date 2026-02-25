@@ -11,7 +11,7 @@ crons.interval(
   "transient connector cleanup",
   { minutes: 5 },
   internal.channels.transient_data.purgeExpired,
-  {},
+  { maxBatches: 10 },
 );
 crons.interval("thread lifecycle sweep", { hours: 24 }, internal.data.threads.sweepThreadLifecycle, {});
 

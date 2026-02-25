@@ -149,6 +149,7 @@ export async function runAgentTurn({
           targetDeviceId,
           agentType,
           sourceDeviceId: targetDeviceId,
+          ephemeral: Boolean(transient),
         }
       : undefined,
     {
@@ -158,6 +159,7 @@ export async function runAgentTurn({
       ownerId: resolvedOwnerId,
       conversationId,
       spriteName,
+      transient: Boolean(transient),
     },
   );
 
@@ -214,17 +216,19 @@ export async function runAgentTurn({
   }
 
   // Fire afterChat hook asynchronously for usage logging + token tracking
-  await ctx.scheduler.runAfter(0, internal.agent.hooks.logUsageAsync, {
-    ownerId: resolvedOwnerId,
-    conversationId,
-    agentType,
-    model: resolvedConfig.model as string,
-    inputTokens: usageSummary?.inputTokens,
-    outputTokens: usageSummary?.outputTokens,
-    totalTokens: usageSummary?.totalTokens,
-    durationMs: Date.now() - runnerStartTime,
-    success: true,
-  });
+  if (!transient) {
+    await ctx.scheduler.runAfter(0, internal.agent.hooks.logUsageAsync, {
+      ownerId: resolvedOwnerId,
+      conversationId,
+      agentType,
+      model: resolvedConfig.model as string,
+      inputTokens: usageSummary?.inputTokens,
+      outputTokens: usageSummary?.outputTokens,
+      totalTokens: usageSummary?.totalTokens,
+      durationMs: Date.now() - runnerStartTime,
+      success: true,
+    });
+  }
 
   return { text, silent: noResponseCalled, usage: usageSummary };
 }

@@ -637,6 +637,31 @@ export const getToolResult = query({
   },
 });
 
+export const deleteEventsByRequestId = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    requestId: v.string(),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
+      .take(100);
+
+    let deleted = 0;
+    for (const row of rows) {
+      if (row.conversationId !== args.conversationId) {
+        continue;
+      }
+      await ctx.db.delete(row._id);
+      deleted += 1;
+    }
+
+    return deleted;
+  },
+});
+
 const deviceRequiredTypes = new Set([
   "user_message",
   "tool_result",

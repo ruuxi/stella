@@ -167,48 +167,67 @@ export const executeDeviceTool = async (
   toolArgs: unknown,
 ) => {
   const requestId = crypto.randomUUID();
-
-  await ctx.runMutation(internal.events.enqueueToolRequest, {
-    conversationId: context.conversationId,
-    requestId,
-    targetDeviceId: context.targetDeviceId,
-    toolName,
-    toolArgs: toolArgs as Value,
-    agentType: context.agentType,
-    sourceDeviceId: context.sourceDeviceId,
-    userMessageId: context.userMessageId,
-  });
-
-  const resultEvent = await waitForToolResult(
-    ctx,
-    requestId,
-    context.targetDeviceId,
-    TOOL_TIMEOUT_MS,
-  );
-
-  if (!resultEvent) {
-    const error = `Tool ${toolName} timed out after ${Math.round(TOOL_TIMEOUT_MS / 1000)}s.`;
+  const cleanupEphemeralEvents = async () => {
+    if (!context.ephemeral) {
+      return;
+    }
     try {
-      await ctx.runMutation(internal.events.appendInternalEvent, {
+      await ctx.runMutation(internal.events.deleteEventsByRequestId, {
         conversationId: context.conversationId,
-        type: "tool_result",
-        deviceId: context.targetDeviceId,
         requestId,
-        targetDeviceId: context.targetDeviceId,
-        payload: {
-          toolName,
-          error,
-          requestId,
-          targetDeviceId: context.targetDeviceId,
-        },
       });
     } catch {
-      // Best-effort: timeout reporting should not fail tool execution.
+      // Best-effort cleanup only.
     }
-    return `ERROR: ${error}`;
-  }
+  };
 
-  return formatToolResult(toolName, resultEvent.payload);
+  try {
+    await ctx.runMutation(internal.events.enqueueToolRequest, {
+      conversationId: context.conversationId,
+      requestId,
+      targetDeviceId: context.targetDeviceId,
+      toolName,
+      toolArgs: toolArgs as Value,
+      agentType: context.agentType,
+      sourceDeviceId: context.sourceDeviceId,
+      userMessageId: context.userMessageId,
+    });
+
+    const resultEvent = await waitForToolResult(
+      ctx,
+      requestId,
+      context.targetDeviceId,
+      TOOL_TIMEOUT_MS,
+    );
+
+    if (!resultEvent) {
+      const error = `Tool ${toolName} timed out after ${Math.round(TOOL_TIMEOUT_MS / 1000)}s.`;
+      if (!context.ephemeral) {
+        try {
+          await ctx.runMutation(internal.events.appendInternalEvent, {
+            conversationId: context.conversationId,
+            type: "tool_result",
+            deviceId: context.targetDeviceId,
+            requestId,
+            targetDeviceId: context.targetDeviceId,
+            payload: {
+              toolName,
+              error,
+              requestId,
+              targetDeviceId: context.targetDeviceId,
+            },
+          });
+        } catch {
+          // Best-effort: timeout reporting should not fail tool execution.
+        }
+      }
+      return `ERROR: ${error}`;
+    }
+
+    return formatToolResult(toolName, resultEvent.payload);
+  } finally {
+    await cleanupEphemeralEvents();
+  }
 };
 
 export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext) => {
