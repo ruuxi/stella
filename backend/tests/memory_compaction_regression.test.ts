@@ -49,7 +49,7 @@ describe("memory + compaction regressions", () => {
 
   test("channel inbound user events are not duplicated into prompt history", () => {
     const source = readBackendFile("convex/channels/utils.ts");
-    expect(source).toContain("const userMessageId = await appendInboundUserMessage");
+    expect(source).toMatch(/const userMessageId =[\s\S]*appendInboundUserMessage/);
     expect(source).toContain("userMessageId: userMessageId ?? undefined");
   });
 

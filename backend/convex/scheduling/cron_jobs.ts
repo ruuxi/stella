@@ -421,11 +421,21 @@ export const run = internalMutation({
     if (!job || job.ownerId !== ownerId) {
       return null;
     }
+    const now = Date.now();
+    const claimed = await ctx.runMutation(internal.scheduling.cron_jobs.markRunning, {
+      id: job._id,
+      runningAtMs: now,
+      expectedRunningAtMs:
+        typeof job.runningAtMs === "number" ? job.runningAtMs : undefined,
+    });
+    if (!claimed) {
+      return sanitizeCronJobForReturn(await ctx.db.get(job._id));
+    }
     await ctx.scheduler.runAfter(0, internal.scheduling.cron_jobs.execute, {
       jobId: job._id,
       forced: true,
     });
-    return sanitizeCronJobForReturn(job);
+    return sanitizeCronJobForReturn(await ctx.db.get(job._id));
   },
 });
 
@@ -527,7 +537,7 @@ export const tick = internalAction({
   returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
-    const due = await ctx.runQuery(internal.scheduling.cron_jobs.listDue, { nowMs: now, limit: 100 });
+    const due = await ctx.runQuery(internal.scheduling.cron_jobs.listDue, { nowMs: now, limit: 200 });
     for (const job of due) {
       if (!job.enabled) {
         continue;
@@ -613,43 +623,59 @@ export const execute = internalAction({
         ? `[cron:${job._id} ${job.name}] ${promptBase}`.trim()
         : promptBase;
 
-    try {
-      const target = await ctx.runQuery(
-        internal.agent.device_resolver.resolveExecutionTarget,
-        { ownerId: job.ownerId },
-      );
-      const candidates = buildExecutionCandidates({
-        targetDeviceId: target.targetDeviceId,
-        spriteName: target.spriteName,
-      });
-      const agentType = payloadResolved.agentType ?? "orchestrator";
-      let result = null as Awaited<ReturnType<typeof runAgentTurn>> | null;
-      let lastExecutionError: Error | null = null;
-      for (const candidate of candidates) {
-        try {
-          result = await runAgentTurn({
-            ctx,
-            conversationId,
-            prompt,
-            agentType,
-            ownerId: job.ownerId,
-            targetDeviceId:
-              candidate.mode === "local" ? candidate.targetDeviceId : undefined,
-            spriteName:
-              candidate.mode === "remote" ? candidate.spriteName : undefined,
-          });
-          break;
-        } catch (error) {
-          lastExecutionError = error as Error;
+    const accountMode = await ctx.runQuery(
+      internal.data.preferences.getAccountModeForOwner,
+      { ownerId: job.ownerId },
+    );
+    const syncMode = await ctx.runQuery(
+      internal.data.preferences.getSyncModeForOwner,
+      { ownerId: job.ownerId },
+    );
+    const transient = syncMode === "off";
+
+    if (accountMode !== "connected") {
+      status = "skipped";
+      error = "connected mode required";
+    } else {
+      try {
+        const target = await ctx.runQuery(
+          internal.agent.device_resolver.resolveExecutionTarget,
+          { ownerId: job.ownerId },
+        );
+        const candidates = buildExecutionCandidates({
+          targetDeviceId: target.targetDeviceId,
+          spriteName: target.spriteName,
+        });
+        const agentType = payloadResolved.agentType ?? "orchestrator";
+        let result = null as Awaited<ReturnType<typeof runAgentTurn>> | null;
+        let lastExecutionError: Error | null = null;
+        for (const candidate of candidates) {
+          try {
+            result = await runAgentTurn({
+              ctx,
+              conversationId,
+              prompt,
+              agentType,
+              ownerId: job.ownerId,
+              targetDeviceId:
+                candidate.mode === "local" ? candidate.targetDeviceId : undefined,
+              spriteName:
+                candidate.mode === "remote" ? candidate.spriteName : undefined,
+              transient,
+            });
+            break;
+          } catch (execError) {
+            lastExecutionError = execError as Error;
+          }
         }
+        if (!result) {
+          throw lastExecutionError ?? new Error("No execution candidate succeeded");
+        }
+        outputText = (result.text ?? "").trim();
+      } catch (err) {
+        status = "error";
+        error = (err as Error).message ?? "cron job failed";
       }
-      if (!result) {
-        throw lastExecutionError ?? new Error("No execution candidate succeeded");
-      }
-      outputText = (result.text ?? "").trim();
-    } catch (err) {
-      status = "error";
-      error = (err as Error).message ?? "cron job failed";
     }
 
     const durationMs = Date.now() - now;
@@ -691,7 +717,7 @@ export const execute = internalAction({
       payloadResolved.kind === "systemEvent"
         ? payloadResolved.deliver !== false
         : payloadResolved.deliver !== false;
-    if (deliver && outputText) {
+    if (deliver && outputText && syncMode !== "off") {
       await ctx.runMutation(internal.events.appendInternalEvent, {
         conversationId,
         type: "assistant_message",

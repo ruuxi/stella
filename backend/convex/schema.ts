@@ -336,6 +336,7 @@ export default defineSchema({
       }),
     ),
     targetDeviceId: v.optional(v.string()),
+    runningAtMs: v.optional(v.number()),
     lastRunAtMs: v.optional(v.number()),
     nextRunAtMs: v.number(),
     lastStatus: v.optional(v.string()),
