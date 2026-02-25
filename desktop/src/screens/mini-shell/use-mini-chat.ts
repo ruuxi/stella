@@ -238,7 +238,7 @@ export function useMiniChat(opts: {
       userMessageId: string;
       attachments?: AttachmentRef[];
       localHistory?: LocalHistoryMessage[];
-    }, runIdCounter: number) => {
+    }, runIdCounter: number, fallbackToHttp: boolean) => {
       if (!activeConversationId || !window.electronAPI) return;
 
       const cleanup = window.electronAPI.onAgentStream((event) => {
@@ -307,7 +307,11 @@ export function useMiniChat(opts: {
         .catch((error) => {
           if (runIdCounter !== streamRunIdRef.current) return;
           console.error("Failed to start local agent chat:", error);
-          resetStreamingState(runIdCounter);
+          if (fallbackToHttp) {
+            startHttpStream(args, runIdCounter);
+          } else {
+            resetStreamingState(runIdCounter);
+          }
         });
     },
     [
@@ -327,10 +331,6 @@ export function useMiniChat(opts: {
       if (!activeConversationId) return;
       const controller = new AbortController();
       streamAbortRef.current = controller;
-      resetStreamingText();
-      resetReasoningText();
-      setIsStreaming(true);
-      setPendingUserMessageId(args.userMessageId);
 
       void streamChat(
         {
@@ -370,10 +370,7 @@ export function useMiniChat(opts: {
       activeConversationId,
       appendStreamingDelta,
       appendReasoningDelta,
-      resetReasoningText,
       resetStreamingState,
-      resetStreamingText,
-      setIsStreaming,
     ],
   );
 
@@ -407,7 +404,7 @@ export function useMiniChat(opts: {
             resetStreamingState(runId);
             return;
           }
-          startLocalStream(args, runId);
+          startLocalStream(args, runId, false);
         }).catch(() => {
           if (runId !== streamRunIdRef.current) return;
           resetStreamingState(runId);
@@ -415,7 +412,21 @@ export function useMiniChat(opts: {
         return;
       }
 
-      startHttpStream(args, runId);
+      if (window.electronAPI?.agentHealthCheck) {
+        void window.electronAPI.agentHealthCheck().then((health) => {
+          if (runId !== streamRunIdRef.current) return;
+          if (health?.ready) {
+            startLocalStream(args, runId, true);
+          } else {
+            startHttpStream(args, runId);
+          }
+        }).catch(() => {
+          if (runId !== streamRunIdRef.current) return;
+          startHttpStream(args, runId);
+        });
+      } else {
+        startHttpStream(args, runId);
+      }
     },
     [
       activeConversationId,
