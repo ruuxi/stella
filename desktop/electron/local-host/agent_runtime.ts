@@ -22,6 +22,7 @@ import { createProxiedModel } from "./agent_core/model_proxy.js";
 import { combineAbortSignals, isRetryableModelError } from "./agent_core/runtime_utils.js";
 import { extractToolNameFromCallId } from "./agent_core/tool_call_ids.js";
 import { createToolCallIdFactory } from "./agent_core/tool_call_factory.js";
+import { runWithFallbackModel } from "./agent_core/failover.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -287,54 +288,44 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
   };
 
   try {
-    await runStreamWithModel(primaryModelId);
+    await runWithFallbackModel({
+      runWithModel: runStreamWithModel,
+      primaryModelId,
+      fallbackModelId,
+      shouldFallback: (error) =>
+        !signal.aborted &&
+        !hasToolSideEffects &&
+        fullText.length === 0 &&
+        isRetryableModelError(error),
+      onFallback: (_error, resolvedFallbackModelId) => {
+        const s = nextSeq();
+        const failoverMsg = `Primary model failed (${primaryModelId}). Retrying with fallback (${resolvedFallbackModelId}).`;
+        callbacks.onError({ runId, seq: s, error: failoverMsg, fatal: false });
+        journal.recordEvent({
+          runId,
+          seq: s,
+          type: "status_update",
+          errorText: failoverMsg,
+        });
+      },
+    });
   } catch (error) {
-    const shouldTryFallback =
-      Boolean(fallbackModelId) &&
-      !signal.aborted &&
-      !hasToolSideEffects &&
-      fullText.length === 0 &&
-      isRetryableModelError(error);
-
-    if (shouldTryFallback) {
-      const s = nextSeq();
-      const failoverMsg = `Primary model failed (${primaryModelId}). Retrying with fallback (${fallbackModelId}).`;
-      callbacks.onError({ runId, seq: s, error: failoverMsg, fatal: false });
-      journal.recordEvent({
-        runId,
-        seq: s,
-        type: "status_update",
-        errorText: failoverMsg,
-      });
-      try {
-        await runStreamWithModel(fallbackModelId!);
-      } catch (fallbackError) {
-        const s2 = nextSeq();
-        const errMsg = (fallbackError as Error).message ?? "Unknown error";
-        callbacks.onError({ runId, seq: s2, error: errMsg, fatal: true });
-        journal.recordEvent({ runId, seq: s2, type: "status_update", errorText: errMsg });
-        journal.markRunCrashed(runId);
-        clearTimeout(timeoutId);
-        journal.close();
-        return runId;
-      }
-    } else if (signal.aborted) {
+    if (signal.aborted) {
       const s = nextSeq();
       callbacks.onError({ runId, seq: s, error: "Run aborted", fatal: true });
       journal.markRunCrashed(runId);
       clearTimeout(timeoutId);
       journal.close();
       return runId;
-    } else {
-      const s = nextSeq();
-      const errMsg = (error as Error).message ?? "Unknown error";
-      callbacks.onError({ runId, seq: s, error: errMsg, fatal: true });
-      journal.recordEvent({ runId, seq: s, type: "status_update", errorText: errMsg });
-      journal.markRunCrashed(runId);
-      clearTimeout(timeoutId);
-      journal.close();
-      return runId;
     }
+    const s = nextSeq();
+    const errMsg = (error as Error).message ?? "Unknown error";
+    callbacks.onError({ runId, seq: s, error: errMsg, fatal: true });
+    journal.recordEvent({ runId, seq: s, type: "status_update", errorText: errMsg });
+    journal.markRunCrashed(runId);
+    clearTimeout(timeoutId);
+    journal.close();
+    return runId;
   }
 
   if (signal.aborted) {
@@ -506,22 +497,22 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
   };
 
   try {
-    let result = await runGenerateWithModel(primaryModelId).catch(async (error) => {
-      const shouldTryFallback =
-        Boolean(fallbackModelId) &&
+    const result = await runWithFallbackModel({
+      runWithModel: runGenerateWithModel,
+      primaryModelId,
+      fallbackModelId,
+      shouldFallback: (error) =>
         !signal.aborted &&
         !hasToolSideEffects &&
-        isRetryableModelError(error);
-      if (!shouldTryFallback) {
-        throw error;
-      }
-      journal.recordEvent({
-        runId,
-        seq: nextSubagentSeq(),
-        type: "status_update",
-        errorText: `Primary model failed (${primaryModelId}). Retrying fallback (${fallbackModelId}).`,
-      });
-      return await runGenerateWithModel(fallbackModelId!);
+        isRetryableModelError(error),
+      onFallback: (_error, resolvedFallbackModelId) => {
+        journal.recordEvent({
+          runId,
+          seq: nextSubagentSeq(),
+          type: "status_update",
+          errorText: `Primary model failed (${primaryModelId}). Retrying fallback (${resolvedFallbackModelId}).`,
+        });
+      },
     });
 
     journal.completeRun(runId);
