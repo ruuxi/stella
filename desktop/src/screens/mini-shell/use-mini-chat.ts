@@ -217,7 +217,6 @@ export function useMiniChat(opts: {
 
   // Track active local agent run for IPC path
   const localRunIdRef = useRef<string | null>(null);
-  const localSeqRef = useRef(0);
   const agentStreamCleanupRef = useRef<(() => void) | null>(null);
 
   const cancelCurrentStream = useCallback(() => {
@@ -245,8 +244,6 @@ export function useMiniChat(opts: {
       const cleanup = window.electronAPI.onAgentStream((event) => {
         if (runIdCounter !== streamRunIdRef.current) return;
         if (localRunIdRef.current && event.runId !== localRunIdRef.current) return;
-
-        localSeqRef.current = Math.max(localSeqRef.current, event.seq);
 
         switch (event.type) {
           case "stream":
@@ -306,7 +303,6 @@ export function useMiniChat(opts: {
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return;
           localRunIdRef.current = agentRunId;
-          localSeqRef.current = 0;
         })
         .catch((error) => {
           if (runIdCounter !== streamRunIdRef.current) return;
