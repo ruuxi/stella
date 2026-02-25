@@ -20,7 +20,7 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
   const [loading, setLoading] = useState(true)
   const retryKeyRef = useRef(0)
 
-  const loadModule = useCallback(async () => {
+  const loadModule = useCallback(async (retryAttempt = 0) => {
     if (!name) {
       setError('No panel name specified')
       setLoading(false)
@@ -49,6 +49,11 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
       setComponent(() => comp)
       setLoading(false)
     } catch (err) {
+      // Retry once after 500ms — the file may still be mid-write by the agent
+      if (retryAttempt < 1) {
+        await new Promise(r => setTimeout(r, 500))
+        return loadModule(retryAttempt + 1)
+      }
       const message = `Failed to load panel: ${(err as Error).message}`
       setError(message)
       window.dispatchEvent(

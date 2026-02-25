@@ -129,25 +129,103 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
   );
 
   const cancelCurrentStream = useCallback(() => {
+    // Cancel HTTP stream if active
     if (streamAbortRef.current) {
       streamAbortRef.current.abort();
     }
     streamAbortRef.current = null;
+
+    // Cancel local agent stream if active
+    if (localRunIdRef.current && window.electronAPI?.cancelAgentChat) {
+      window.electronAPI.cancelAgentChat(localRunIdRef.current);
+      localRunIdRef.current = null;
+    }
+    if (agentStreamCleanupRef.current) {
+      agentStreamCleanupRef.current();
+      agentStreamCleanupRef.current = null;
+    }
   }, []);
 
-  const startStream = useCallback(
-    (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
-      if (!activeConversationId) {
-        return;
-      }
-      const runId = streamRunIdRef.current + 1;
-      streamRunIdRef.current = runId;
+  // Track active local agent run for IPC path
+  const localRunIdRef = useRef<string | null>(null);
+  const localSeqRef = useRef(0);
+  const agentStreamCleanupRef = useRef<(() => void) | null>(null);
+
+  /** Start streaming via IPC (local agent runtime in Electron) */
+  const startLocalStream = useCallback(
+    (args: { userMessageId: string }, runIdCounter: number) => {
+      if (!activeConversationId || !window.electronAPI) return;
+
+      const cleanup = window.electronAPI.onAgentStream((event) => {
+        if (runIdCounter !== streamRunIdRef.current) return;
+
+        // Track seq for reconnect
+        localSeqRef.current = Math.max(localSeqRef.current, event.seq);
+
+        switch (event.type) {
+          case "stream":
+            if (event.chunk) appendStreamingDelta(event.chunk);
+            break;
+          case "tool-start":
+            // Could be used to show tool activity indicators
+            break;
+          case "tool-end":
+            break;
+          case "error":
+            if (event.fatal) {
+              console.error("Local agent error:", event.error);
+              resetStreamingState(runIdCounter);
+            }
+            break;
+          case "end":
+            streamAbortRef.current = null;
+            setIsStreaming(false);
+            setQueueNext(false);
+            localRunIdRef.current = null;
+            if (streamingTextRef.current.trim().length === 0) {
+              resetStreamingText();
+              setPendingUserMessageId(null);
+            }
+            break;
+        }
+      });
+
+      agentStreamCleanupRef.current = cleanup;
+
+      window.electronAPI
+        .startAgentChat({
+          conversationId: activeConversationId,
+          userMessageId: args.userMessageId,
+        })
+        .then(({ runId: agentRunId }) => {
+          if (runIdCounter !== streamRunIdRef.current) return;
+          localRunIdRef.current = agentRunId;
+          localSeqRef.current = 0;
+        })
+        .catch((error) => {
+          if (runIdCounter !== streamRunIdRef.current) return;
+          console.error("Failed to start local agent chat:", error);
+          // Fall back to HTTP stream
+          startHttpStream(args, runIdCounter);
+        });
+    },
+    [
+      activeConversationId,
+      appendStreamingDelta,
+      resetStreamingState,
+      resetStreamingText,
+      streamingTextRef,
+      setQueueNext,
+    ],
+  );
+
+  /** Start streaming via HTTP (server-side agent loop) */
+  const startHttpStream = useCallback(
+    (args: { userMessageId: string; attachments?: AttachmentRef[] }, runIdCounter: number) => {
+      if (!activeConversationId) return;
+
       const controller = new AbortController();
       streamAbortRef.current = controller;
-      resetStreamingText();
-      resetReasoningText();
-      setIsStreaming(true);
-      setPendingUserMessageId(args.userMessageId);
 
       void streamChat(
         {
@@ -157,15 +235,15 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         },
         {
           onTextDelta: (delta) => {
-            if (runId !== streamRunIdRef.current) return;
+            if (runIdCounter !== streamRunIdRef.current) return;
             appendStreamingDelta(delta);
           },
           onReasoningDelta: (delta) => {
-            if (runId !== streamRunIdRef.current) return;
+            if (runIdCounter !== streamRunIdRef.current) return;
             appendReasoningDelta(delta);
           },
           onDone: () => {
-            if (runId !== streamRunIdRef.current) return;
+            if (runIdCounter !== streamRunIdRef.current) return;
             streamAbortRef.current = null;
             setIsStreaming(false);
             setQueueNext(false);
@@ -174,29 +252,81 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
               setPendingUserMessageId(null);
             }
           },
-          onAbort: () => resetStreamingState(runId),
+          onAbort: () => resetStreamingState(runIdCounter),
           onError: (error) => {
-            if (runId !== streamRunIdRef.current) return;
+            if (runIdCounter !== streamRunIdRef.current) return;
             console.error("Model gateway error", error);
-            resetStreamingState(runId);
+            resetStreamingState(runIdCounter);
           },
         },
         { signal: controller.signal },
       ).catch((error) => {
-        if (runId !== streamRunIdRef.current) return;
+        if (runIdCounter !== streamRunIdRef.current) return;
         console.error("Model gateway error", error);
-        resetStreamingState(runId);
+        resetStreamingState(runIdCounter);
       });
+    },
+    [
+      activeConversationId,
+      resetStreamingState,
+      resetStreamingText,
+      appendStreamingDelta,
+      appendReasoningDelta,
+      streamingTextRef,
+      setQueueNext,
+    ],
+  );
+
+  const startStream = useCallback(
+    (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
+      if (!activeConversationId) {
+        return;
+      }
+      const runId = streamRunIdRef.current + 1;
+      streamRunIdRef.current = runId;
+      resetStreamingText();
+      resetReasoningText();
+      setIsStreaming(true);
+      setPendingUserMessageId(args.userMessageId);
+
+      // Clean up any previous local agent stream listener
+      if (agentStreamCleanupRef.current) {
+        agentStreamCleanupRef.current();
+        agentStreamCleanupRef.current = null;
+      }
+
+      // Dual-path: try local agent runtime first, fall back to HTTP
+      if (window.electronAPI?.agentHealthCheck) {
+        void window.electronAPI.agentHealthCheck().then((health) => {
+          if (runId !== streamRunIdRef.current) return;
+          if (health?.ready) {
+            startLocalStream(args, runId);
+          } else {
+            const controller = new AbortController();
+            streamAbortRef.current = controller;
+            startHttpStream(args, runId);
+          }
+        }).catch(() => {
+          if (runId !== streamRunIdRef.current) return;
+          const controller = new AbortController();
+          streamAbortRef.current = controller;
+          startHttpStream(args, runId);
+        });
+      } else {
+        const controller = new AbortController();
+        streamAbortRef.current = controller;
+        startHttpStream(args, runId);
+      }
     },
     [
       resetStreamingState,
       activeConversationId,
       resetStreamingText,
       resetReasoningText,
-      appendStreamingDelta,
-      appendReasoningDelta,
       streamingTextRef,
       setQueueNext,
+      startLocalStream,
+      startHttpStream,
     ],
   );
 
