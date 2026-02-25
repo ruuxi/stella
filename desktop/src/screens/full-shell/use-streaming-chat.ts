@@ -478,12 +478,22 @@ export function useStreamingChat({
       if (isStreaming || pendingUserMessageId || !activeConversationId) return;
       const queued = findQueuedFollowUp<AttachmentRef>(events);
       if (!queued) return;
+      const localHistory = isLocalStorage
+        ? buildLocalHistoryMessages(activeConversationId, 50)
+        : undefined;
       startStream({
         userMessageId: queued.event._id,
         attachments: queued.attachments,
+        localHistory,
       });
     },
-    [isStreaming, pendingUserMessageId, startStream, activeConversationId],
+    [
+      isStreaming,
+      pendingUserMessageId,
+      startStream,
+      activeConversationId,
+      isLocalStorage,
+    ],
   );
 
   const sendMessage = useCallback(
