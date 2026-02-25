@@ -838,53 +838,17 @@ const appendInboundUserMessage = async (args: {
   return event?._id ?? null;
 };
 
-const appendTransientChannelEvent = async (args: {
-  ctx: ActionCtx;
-  ownerId: string;
-  conversationId: Id<"conversations">;
-  provider: string;
-  direction: "inbound" | "outbound";
-  text: string;
-  batchKey: string;
-  runId?: string;
-  metadata?: {
-    source?: string;
-    syncMode?: string;
-    runtimeMode?: string;
-    fallback?: string;
-  };
-}): Promise<void> => {
-  await args.ctx.runMutation(internal.channels.transient_data.appendTransientEvent, {
-    ownerId: args.ownerId,
-    conversationId: args.conversationId,
-    provider: args.provider,
-    direction: args.direction,
-    text: args.text,
-    batchKey: args.batchKey,
-    runId: args.runId,
-    metadata: args.metadata,
-  });
-};
-
-const deleteTransientBatch = async (args: {
-  ctx: ActionCtx;
-  batchKey: string;
-}): Promise<void> => {
-  await args.ctx.runMutation(internal.channels.transient_data.deleteTransientBatch, {
-    batchKey: args.batchKey,
-  });
-};
-
 const resolveExecutionTarget = async (args: {
   ctx: ActionCtx;
   ownerId: string;
+  transient?: boolean;
 }): Promise<{ targetDeviceId: string | null; spriteName: string | null }> => {
   const target = await args.ctx.runQuery(
     internal.agent.device_resolver.resolveExecutionTarget,
     { ownerId: args.ownerId },
   );
 
-  if (target.spriteName) {
+  if (target.spriteName && !args.transient) {
     await args.ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
       ownerId: args.ownerId,
     });
@@ -957,47 +921,16 @@ export async function processIncomingMessage(
     internal.data.preferences.getSyncModeForOwner,
     { ownerId: connection.ownerId },
   )) as SyncMode;
-  const useTransientRetention = syncMode === SYNC_MODE_OFF;
-  const transientBatchKey = useTransientRetention
-    ? `channel:${args.provider}:${crypto.randomUUID()}`
-    : null;
-  let transientBatchCleaned = false;
-  const cleanupTransientBatch = async () => {
-    if (!transientBatchKey || transientBatchCleaned) {
-      return;
-    }
-    try {
-      await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
-      transientBatchCleaned = true;
-    } catch (cleanupError) {
-      // Best-effort cleanup only.
-      console.error("[channels] Failed to clean transient connector batch:", cleanupError);
-    }
-  };
+  const transient = syncMode === SYNC_MODE_OFF;
 
   const persistAssistant = async (params: {
     text: string;
     usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
     silent?: boolean;
-    fallback?: string;
   }) => {
     if (params.silent) return;
-    if (useTransientRetention && transientBatchKey) {
-      await appendTransientChannelEvent({
-        ctx: args.ctx,
-        ownerId: connection.ownerId,
-        conversationId,
-        provider: args.provider,
-        direction: "outbound",
-        text: params.text,
-        batchKey: transientBatchKey,
-        metadata: {
-          source: "connector",
-          syncMode,
-          runtimeMode,
-          ...(params.fallback ? { fallback: params.fallback } : {}),
-        },
-      });
+    // Sync-off mode is intentionally non-durable for connector payload/response text.
+    if (transient) {
       return;
     }
 
@@ -1011,7 +944,7 @@ export async function processIncomingMessage(
   };
 
   try {
-    const userMessageId = useTransientRetention
+    const userMessageId = transient
       ? null
       : await appendInboundUserMessage({
           ctx: args.ctx,
@@ -1022,23 +955,6 @@ export async function processIncomingMessage(
           channelEnvelope: args.channelEnvelope,
         });
 
-    if (useTransientRetention && transientBatchKey) {
-      await appendTransientChannelEvent({
-        ctx: args.ctx,
-        ownerId: connection.ownerId,
-        conversationId,
-        provider: args.provider,
-        direction: "inbound",
-        text: args.text,
-        batchKey: transientBatchKey,
-        metadata: {
-          source: "connector",
-          syncMode,
-          runtimeMode,
-        },
-      });
-    }
-
     if (args.respond === false) {
       return { text: "" };
     }
@@ -1046,6 +962,7 @@ export async function processIncomingMessage(
     const executionTarget = await resolveExecutionTarget({
       ctx: args.ctx,
       ownerId: connection.ownerId,
+      transient,
     });
 
     // Special intent: allow users to enable 24/7 directly from connectors.
@@ -1090,7 +1007,7 @@ export async function processIncomingMessage(
             candidate.mode === "local" ? candidate.targetDeviceId : undefined,
           spriteName:
             candidate.mode === "remote" ? candidate.spriteName : undefined,
-          transient: useTransientRetention,
+          transient,
         });
         selectedMode = candidate.mode;
         break;
@@ -1107,10 +1024,7 @@ export async function processIncomingMessage(
         runtimeMode === "cloud_247"
           ? CLOUD_247_NOT_READY_MESSAGE
           : OFFLINE_ENABLE_247_MESSAGE;
-      await persistAssistant({
-        text: failureMessage,
-        fallback: "none",
-      });
+      await persistAssistant({ text: failureMessage });
       return { text: failureMessage };
     }
 
@@ -1127,16 +1041,12 @@ export async function processIncomingMessage(
       text: responseText,
       usage: result.usage,
       silent: result.silent,
-      fallback: usedCloudFallback ? "cloud" : selectedMode ?? undefined,
     });
 
     return { text: responseText };
   } catch (error) {
     console.error("[channels] processIncomingMessage failed:", error);
     return null;
-  } finally {
-    // Always clear transient connector rows, including unexpected error paths.
-    await cleanupTransientBatch();
   }
 }
 /**

@@ -127,12 +127,13 @@ describe("security regressions", () => {
     expect(source).toContain("if (!claimed) {");
   });
 
-  test("connector transient batches are cleaned in finally", () => {
+  test("sync-off connector mode avoids durable transient transport rows", () => {
     const source = readBackendFile("convex/channels/utils.ts");
 
-    expect(source).toContain("const cleanupTransientBatch = async () =>");
-    expect(source).toContain("await cleanupTransientBatch()");
-    expect(source).toMatch(/\}\s*finally\s*\{/);
+    expect(source).toContain("const transient = syncMode === SYNC_MODE_OFF");
+    expect(source).toContain("Sync-off mode is intentionally non-durable for connector payload/response text.");
+    expect(source).not.toContain("internal.channels.transient_data.appendTransientEvent");
+    expect(source).not.toContain("internal.channels.transient_data.deleteTransientBatch");
   });
 
   test("ephemeral tool events have TTL metadata and cron-backed cleanup", () => {
@@ -187,15 +188,36 @@ describe("security regressions", () => {
     expect(cronSource).toContain("if (deliver && outputText && syncMode !== \"off\")");
   });
 
+  test("transient tool allowlist excludes local device transport tools", () => {
+    const source = readBackendFile("convex/tools/index.ts");
+    const match = source.match(/const TRANSIENT_ALLOWED_TOOLS = new Set<string>\(\[[\s\S]*?\]\);/);
+    expect(match).not.toBeNull();
+    const block = match ? match[0] : "";
+    expect(block).toContain("\"WebSearch\"");
+    expect(block).toContain("\"WebFetch\"");
+    expect(block).not.toContain("\"Read\"");
+    expect(block).not.toContain("\"Write\"");
+    expect(block).not.toContain("\"Edit\"");
+    expect(block).not.toContain("\"Bash\"");
+    expect(block).not.toContain("\"OpenApp\"");
+  });
+
   test("channel mode matrix wiring keeps privacy and routing guarantees", () => {
     const source = readBackendFile("convex/channels/utils.ts");
 
-    expect(source).toContain("const useTransientRetention = syncMode === SYNC_MODE_OFF");
-    expect(source).toContain("const userMessageId = useTransientRetention");
+    expect(source).toContain("const transient = syncMode === SYNC_MODE_OFF");
+    expect(source).toContain("const userMessageId = transient");
     expect(source).toContain("if (accountMode !== ACCOUNT_MODE_CONNECTED)");
     expect(source).toContain("const candidates = buildExecutionCandidates({");
     expect(source).toContain("runtimeMode === \"cloud_247\"");
     expect(source).toContain("const usedCloudFallback =");
+  });
+
+  test("request-id cleanup iterates until no matching events remain", () => {
+    const source = readBackendFile("convex/events.ts");
+    expect(source).toContain("while (true)");
+    expect(source).toContain("deletedThisBatch");
+    expect(source).toContain("rows.length < 100 || deletedThisBatch === 0");
   });
 
   test("fallback resolver preserves provider options", () => {
