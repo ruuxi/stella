@@ -37,6 +37,14 @@ const usageSummaryValidator = v.object({
   totalTokens: v.optional(v.number()),
 });
 
+const localSyncMessageValidator = v.object({
+  localMessageId: v.string(),
+  role: v.union(v.literal("user"), v.literal("assistant")),
+  text: v.string(),
+  timestamp: v.number(),
+  deviceId: v.optional(v.string()),
+});
+
 const sanitizeEventPayloadForStorage = (type: string, payload: Value): Value => {
   if (type === "tool_result") {
     return sanitizeForToolResultPersistence(payload);
@@ -727,6 +735,65 @@ export const appendEvent = mutation({
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     return await appendEventCore(ctx, args);
+  },
+});
+
+export const importLocalMessagesChunk = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    messages: v.array(localSyncMessageValidator),
+  },
+  returns: v.object({
+    imported: v.number(),
+    skipped: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const message of args.messages) {
+      const text = message.text.trim();
+      if (!text) {
+        skipped += 1;
+        continue;
+      }
+
+      const requestId = `local_sync:${args.conversationId}:${message.localMessageId}`;
+      const existing = await ctx.db
+        .query("events")
+        .withIndex("by_requestId", (q) => q.eq("requestId", requestId))
+        .first();
+      if (existing && existing.conversationId === args.conversationId) {
+        skipped += 1;
+        continue;
+      }
+
+      const timestamp = Number.isFinite(message.timestamp) ? message.timestamp : Date.now();
+      const type = message.role === "assistant" ? "assistant_message" : "user_message";
+
+      await appendEventCore(ctx, {
+        conversationId: args.conversationId,
+        type,
+        timestamp,
+        requestId,
+        ...(type === "user_message"
+          ? { deviceId: message.deviceId ?? "local-desktop" }
+          : {}),
+        payload: {
+          text,
+          source: "local_sync",
+          localMessageId: message.localMessageId,
+        },
+      });
+      imported += 1;
+    }
+
+    return {
+      imported,
+      skipped,
+    };
   },
 });
 

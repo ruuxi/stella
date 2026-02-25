@@ -4,6 +4,8 @@ import { requireUserId } from "../auth";
 
 const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"));
 const RUNTIME_MODE_KEY = "runtime_mode";
+const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
+const ACCOUNT_MODE_KEY = "account_mode";
 const PREFERRED_BROWSER_KEY = "preferred_browser";
 const preferredBrowserValidator = v.union(
   v.literal("arc"),
@@ -19,6 +21,10 @@ const preferredBrowserValidator = v.union(
 
 const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
   value === "cloud_247" ? "cloud_247" : "local";
+
+const normalizeAccountMode = (
+  value: string | null | undefined,
+): "private_local" | "connected" => (value === "connected" ? "connected" : "private_local");
 
 const upsertPreferenceRecord = async (
   ctx: MutationCtx,
@@ -101,6 +107,31 @@ export const getRuntimeMode = query({
   },
 });
 
+export const getAccountMode = query({
+  args: {},
+  returns: accountModeValidator,
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const record = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", ACCOUNT_MODE_KEY))
+      .unique();
+    return normalizeAccountMode(record?.value ?? null);
+  },
+});
+
+export const setAccountMode = mutation({
+  args: {
+    mode: accountModeValidator,
+  },
+  returns: accountModeValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    await upsertPreferenceRecord(ctx, ownerId, ACCOUNT_MODE_KEY, args.mode);
+    return args.mode;
+  },
+});
+
 export const setRuntimeMode = internalMutation({
   args: {
     mode: runtimeModeValidator,
@@ -137,6 +168,20 @@ export const getRuntimeModeForOwner = internalQuery({
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", RUNTIME_MODE_KEY))
       .unique();
     return normalizeRuntimeMode(record?.value ?? null);
+  },
+});
+
+export const getAccountModeForOwner = internalQuery({
+  args: {
+    ownerId: v.string(),
+  },
+  returns: accountModeValidator,
+  handler: async (ctx, args) => {
+    const record = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", ACCOUNT_MODE_KEY))
+      .unique();
+    return normalizeAccountMode(record?.value ?? null);
   },
 });
 

@@ -15,8 +15,21 @@ import { requireUserId } from "../auth";
 import { optionalChannelEnvelopeValidator } from "../shared_validators";
 
 type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
+type AccountMode = "private_local" | "connected";
 
 const DM_POLICY_DEFAULT: DmPolicy = "pairing";
+const ACCOUNT_MODE_CONNECTED: AccountMode = "connected";
+const OFFLINE_ENABLE_247_INTENT = /\b(enable|turn on|start)\s*(24\/?7|247|cloud)\b/i;
+const CONNECTED_MODE_REQUIRED_MESSAGE =
+  "Connectors are disabled in Private Local mode. Enable Connected mode in Stella Settings to continue.";
+const OFFLINE_ENABLE_247_MESSAGE =
+  "Your desktop is offline. Reply \"enable 24/7\" to start cloud mode, or open Stella on your desktop.";
+const ENABLING_247_MESSAGE =
+  "Turning on 24/7 mode now. Remote machine is provisioning. Please send your message again in a moment.";
+const CLOUD_247_NOT_READY_MESSAGE =
+  "24/7 mode is enabled, but the remote machine is not ready yet. Please try again shortly.";
+const ENABLE_247_FAILED_MESSAGE =
+  "I couldn't start 24/7 mode right now. Please enable it from Stella Settings and try again.";
 const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const channelConnectionValidator = v.object({
   _id: v.id("channel_connections"),
@@ -131,6 +144,8 @@ const linkCodeSalt = () => generateSecureLinkCode(16);
 
 const hashLinkCode = async (code: string, salt: string) =>
   hashSha256Hex(`${salt}:${code}`);
+
+const isEnable247Intent = (text: string) => OFFLINE_ENABLE_247_INTENT.test(text.trim());
 
 const parseLinkCodeValue = (
   value: string,
@@ -497,6 +512,13 @@ export const generateLinkCode = mutation({
   returns: v.object({ code: v.string() }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
+      ownerId,
+    });
+    if (accountMode !== ACCOUNT_MODE_CONNECTED) {
+      throw new Error("Connectors require Connected mode. Enable Connected mode in Settings.");
+    }
+
     const code = generateSecureLinkCode(6);
 
     await ctx.runMutation(internal.channels.utils.storeLinkCode, {
@@ -516,6 +538,13 @@ export const getConnection = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
     const ownerId = identity.subject;
+    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
+      ownerId,
+    });
+
+    if (accountMode !== ACCOUNT_MODE_CONNECTED) {
+      return null;
+    }
 
     return await ctx.db
       .query("channel_connections")
@@ -831,6 +860,17 @@ export async function processIncomingMessage(
     return null;
   }
 
+  const accountMode = await args.ctx.runQuery(
+    internal.data.preferences.getAccountModeForOwner,
+    { ownerId: connection.ownerId },
+  );
+  if (accountMode !== ACCOUNT_MODE_CONNECTED) {
+    if (args.respond === false) {
+      return { text: "" };
+    }
+    return { text: CONNECTED_MODE_REQUIRED_MESSAGE };
+  }
+
   const conversationId = await resolveConversationIdForIncomingMessage({
     ctx: args.ctx,
     provider: args.provider,
@@ -851,10 +891,60 @@ export async function processIncomingMessage(
     return { text: "" };
   }
 
-  const executionTarget = await resolveExecutionTarget({
+  let executionTarget = await resolveExecutionTarget({
     ctx: args.ctx,
     ownerId: connection.ownerId,
   });
+
+  if (!executionTarget.targetDeviceId && !executionTarget.spriteName) {
+    const runtimeMode = await args.ctx.runQuery(
+      internal.data.preferences.getRuntimeModeForOwner,
+      { ownerId: connection.ownerId },
+    );
+
+    if (runtimeMode === "local") {
+      if (isEnable247Intent(args.text)) {
+        try {
+          await args.ctx.runAction(internal.agent.cloud_devices.spawnForOwner, {
+            ownerId: connection.ownerId,
+          });
+        } catch (error) {
+          console.error("[channels] Failed to enable 24/7 mode from connector:", error);
+          await persistInboundAssistantMessage({
+            ctx: args.ctx,
+            conversationId,
+            provider: args.provider,
+            responseText: ENABLE_247_FAILED_MESSAGE,
+          });
+          return { text: ENABLE_247_FAILED_MESSAGE };
+        }
+
+        await persistInboundAssistantMessage({
+          ctx: args.ctx,
+          conversationId,
+          provider: args.provider,
+          responseText: ENABLING_247_MESSAGE,
+        });
+        return { text: ENABLING_247_MESSAGE };
+      } else {
+        await persistInboundAssistantMessage({
+          ctx: args.ctx,
+          conversationId,
+          provider: args.provider,
+          responseText: OFFLINE_ENABLE_247_MESSAGE,
+        });
+        return { text: OFFLINE_ENABLE_247_MESSAGE };
+      }
+    } else {
+      await persistInboundAssistantMessage({
+        ctx: args.ctx,
+        conversationId,
+        provider: args.provider,
+        responseText: CLOUD_247_NOT_READY_MESSAGE,
+      });
+      return { text: CLOUD_247_NOT_READY_MESSAGE };
+    }
+  }
 
   const result = await runAgentTurn({
     ctx: args.ctx,
@@ -902,6 +992,12 @@ export async function processLinkCode(args: {
     { provider: args.provider, code: args.code },
   );
   if (!ownerId) return "invalid_code";
+
+  const accountMode = await args.ctx.runQuery(
+    internal.data.preferences.getAccountModeForOwner,
+    { ownerId },
+  );
+  if (accountMode !== ACCOUNT_MODE_CONNECTED) return "linking_disabled";
 
   const policy = await args.ctx.runQuery(internal.channels.utils.getDmPolicyConfig, {
     ownerId,

@@ -487,6 +487,12 @@ export const getBridgeStatus = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
+    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
+      ownerId: identity.subject,
+    });
+    if (accountMode !== "connected") {
+      return null;
+    }
     const session = await ctx.db
       .query("bridge_sessions")
       .withIndex("by_ownerId_and_provider", (q) =>
@@ -719,6 +725,12 @@ export const setupBridge = action({
   returns: setupBridgeResultValidator,
   handler: async (ctx, args): Promise<SetupBridgeResult> => {
     const ownerId = await requireSensitiveUserIdAction(ctx);
+    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
+      ownerId,
+    });
+    if (accountMode !== "connected") {
+      throw new Error("Connectors require Connected mode. Enable Connected mode in Settings.");
+    }
     const runtimeMode = await ctx.runQuery(internal.data.preferences.getRuntimeModeForOwner, {
       ownerId,
     });
@@ -847,6 +859,12 @@ export const getBridgeBundle = action({
     args,
   ): Promise<{ code: string; env: Record<string, string>; dependencies: string }> => {
     const ownerId = await requireSensitiveUserIdAction(ctx);
+    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
+      ownerId,
+    });
+    if (accountMode !== "connected") {
+      throw new Error("Connectors require Connected mode. Enable Connected mode in Settings.");
+    }
     const session: { webhookSecret: string } | null = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId,
       provider: args.provider,
