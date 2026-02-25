@@ -1,9 +1,11 @@
 /**
- * Data access for AI proxy rate limiting (anon_device_usage table).
+ * Data access for AI proxy rate limiting (anon_device_usage table)
+ * and proxy token management (proxy_tokens table).
  */
 
 import { v } from "convex/values";
-import { internalQuery, internalMutation } from "./_generated/server";
+import { internalQuery, internalMutation, internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 const DEVICE_USAGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
@@ -166,5 +168,204 @@ export const consumeDeviceAllowance = internalMutation({
       firstRequestAt,
       lastRequestAt: now,
     };
+  },
+});
+
+// ─── Proxy Token Management ──────────────────────────────────────────────────
+
+const PROXY_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const PROXY_TOKEN_AUDIENCE = "stella:llm-proxy";
+const PROXY_TOKEN_BYTES = 32;
+
+function generateTokenString(): string {
+  const bytes = new Uint8Array(PROXY_TOKEN_BYTES);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export const mintProxyToken = internalMutation({
+  args: {
+    ownerId: v.string(),
+    agentType: v.string(),
+    runId: v.string(),
+  },
+  returns: v.object({
+    token: v.string(),
+    expiresAt: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const token = generateTokenString();
+    const expiresAt = now + PROXY_TOKEN_TTL_MS;
+
+    await ctx.db.insert("proxy_tokens", {
+      ownerId: args.ownerId,
+      token,
+      agentType: args.agentType,
+      runId: args.runId,
+      audience: PROXY_TOKEN_AUDIENCE,
+      expiresAt,
+      revoked: false,
+      createdAt: now,
+    });
+
+    return { token, expiresAt };
+  },
+});
+
+export const validateProxyToken = internalQuery({
+  args: {
+    token: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      valid: v.literal(true),
+      ownerId: v.string(),
+      agentType: v.string(),
+      runId: v.string(),
+    }),
+    v.object({
+      valid: v.literal(false),
+      reason: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("proxy_tokens")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+
+    if (!row) {
+      return { valid: false as const, reason: "Token not found" };
+    }
+
+    if (row.revoked) {
+      return { valid: false as const, reason: "Token revoked" };
+    }
+
+    if (Date.now() > row.expiresAt) {
+      return { valid: false as const, reason: "Token expired" };
+    }
+
+    if (row.audience !== PROXY_TOKEN_AUDIENCE) {
+      return { valid: false as const, reason: "Invalid audience" };
+    }
+
+    return {
+      valid: true as const,
+      ownerId: row.ownerId,
+      agentType: row.agentType,
+      runId: row.runId,
+    };
+  },
+});
+
+export const revokeProxyToken = internalMutation({
+  args: {
+    token: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("proxy_tokens")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+
+    if (row) {
+      await ctx.db.patch(row._id, { revoked: true });
+    }
+
+    return null;
+  },
+});
+
+export const revokeProxyTokensByRunId = internalMutation({
+  args: {
+    runId: v.string(),
+    ownerId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const tokens = await ctx.db
+      .query("proxy_tokens")
+      .withIndex("by_ownerId_and_createdAt", (q) => q.eq("ownerId", args.ownerId))
+      .collect();
+
+    for (const token of tokens) {
+      if (token.runId === args.runId && !token.revoked) {
+        await ctx.db.patch(token._id, { revoked: true });
+      }
+    }
+
+    return null;
+  },
+});
+
+export const cleanupExpiredProxyTokens = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const expired = await ctx.db
+      .query("proxy_tokens")
+      .withIndex("by_expiresAt")
+      .filter((q) => q.lt(q.field("expiresAt"), now - 60_000))
+      .take(100);
+
+    for (const token of expired) {
+      await ctx.db.delete(token._id);
+    }
+
+    return expired.length;
+  },
+});
+
+// ─── Per-user rate limiting for proxy ─────────────────────────────────────────
+
+const PROXY_RATE_WINDOW_MS = 60_000; // 1 minute window
+const DEFAULT_PROXY_TOKENS_PER_MINUTE = 1_000_000; // configurable via env
+
+export const checkProxyRateLimit = internalMutation({
+  args: {
+    ownerId: v.string(),
+    estimatedTokens: v.optional(v.number()),
+  },
+  returns: v.object({
+    allowed: v.boolean(),
+    retryAfterMs: v.optional(v.number()),
+  }),
+  handler: async (ctx, args) => {
+    const limitStr = process.env.PROXY_TOKENS_PER_MINUTE;
+    const limit = limitStr ? parseInt(limitStr, 10) : DEFAULT_PROXY_TOKENS_PER_MINUTE;
+    if (!Number.isFinite(limit) || limit <= 0) {
+      return { allowed: true };
+    }
+
+    const now = Date.now();
+    const windowStart = now - PROXY_RATE_WINDOW_MS;
+
+    // Sum recent usage for this owner
+    const recentLogs = await ctx.db
+      .query("usage_logs")
+      .withIndex("by_ownerId_and_createdAt", (q) =>
+        q.eq("ownerId", args.ownerId).gte("createdAt", windowStart),
+      )
+      .collect();
+
+    let totalTokens = 0;
+    for (const log of recentLogs) {
+      totalTokens += log.totalTokens ?? 0;
+    }
+
+    if (totalTokens + (args.estimatedTokens ?? 0) > limit) {
+      return {
+        allowed: false,
+        retryAfterMs: PROXY_RATE_WINDOW_MS,
+      };
+    }
+
+    return { allowed: true };
   },
 });

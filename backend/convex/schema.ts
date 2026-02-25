@@ -473,6 +473,10 @@ export default defineSchema({
     retryCount: v.number(),
     statusText: v.optional(v.string()),
     lastError: v.optional(v.string()),
+    // Lease-based claiming for local vs server generation
+    claimedBy: v.optional(v.string()),
+    claimedAt: v.optional(v.number()),
+    leaseExpiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
@@ -502,6 +506,52 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_phoneNumber", ["phoneNumber"]),
+  proxy_tokens: defineTable({
+    ownerId: v.string(),
+    token: v.string(),
+    agentType: v.string(),
+    runId: v.string(),
+    audience: v.string(),
+    expiresAt: v.number(),
+    revoked: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
+    .index("by_expiresAt", ["expiresAt"]),
+  persist_chunks: defineTable({
+    runId: v.string(),
+    chunkKey: v.string(),
+    chunkIndex: v.number(),
+    isFinal: v.boolean(),
+    events: v.array(v.object({
+      type: v.string(),
+      toolCallId: v.optional(v.string()),
+      toolName: v.optional(v.string()),
+      argsPreview: v.optional(v.string()),
+      resultPreview: v.optional(v.string()),
+      errorText: v.optional(v.string()),
+      durationMs: v.optional(v.number()),
+      timestamp: v.number(),
+    })),
+    assistantText: v.optional(v.string()),
+    threadMessages: v.optional(v.array(v.object({
+      role: v.string(),
+      content: v.string(),
+      toolCallId: v.optional(v.string()),
+    }))),
+    usage: v.optional(v.object({
+      inputTokens: v.optional(v.number()),
+      outputTokens: v.optional(v.number()),
+    })),
+    conversationId: v.id("conversations"),
+    agentType: v.string(),
+    ownerId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_chunkKey", ["chunkKey"])
+    .index("by_runId_and_chunkIndex", ["runId", "chunkIndex"])
+    .index("by_runId_and_isFinal", ["runId", "isFinal"]),
   usage_logs: defineTable({
     ownerId: v.string(),
     conversationId: v.id("conversations"),

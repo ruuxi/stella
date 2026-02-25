@@ -1,4 +1,6 @@
 import type { ActionCtx } from "../_generated/server";
+import { internalAction } from "../_generated/server";
+import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 
@@ -194,3 +196,109 @@ export const buildSystemPrompt = async (
     skillIds: skills.map((skill: { id: string }) => skill.id),
   };
 };
+
+// ─── fetchAgentContext ──────────────────────────────────────────────────────
+// Returns everything the local agent runtime needs in a single round-trip:
+// system prompt, dynamic context, tool allowlist, core memory, skills,
+// thread history, and a proxy token for LLM access.
+
+const agentContextResultValidator = v.object({
+  systemPrompt: v.string(),
+  dynamicContext: v.string(),
+  toolsAllowlist: v.optional(v.array(v.string())),
+  maxTaskDepth: v.number(),
+  defaultSkills: v.array(v.string()),
+  skillIds: v.array(v.string()),
+  coreMemory: v.optional(v.string()),
+  threadHistory: v.optional(v.array(v.object({
+    role: v.string(),
+    content: v.string(),
+    toolCallId: v.optional(v.string()),
+  }))),
+  activeThreadId: v.optional(v.string()),
+  proxyToken: v.object({
+    token: v.string(),
+    expiresAt: v.number(),
+  }),
+});
+
+export const fetchAgentContext = internalAction({
+  args: {
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    agentType: v.string(),
+    runId: v.string(),
+    threadId: v.optional(v.id("threads")),
+    maxHistoryMessages: v.optional(v.number()),
+  },
+  returns: agentContextResultValidator,
+  handler: async (ctx, args) => {
+    // 1. Build system prompt (includes skills, device status, threads, core memory)
+    const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
+      ownerId: args.ownerId,
+      conversationId: args.conversationId,
+    });
+
+    // 2. Get core memory separately for the local runtime to use
+    let coreMemory: string | undefined;
+    try {
+      coreMemory = await ctx.runQuery(
+        internal.data.preferences.getPreferenceForOwner,
+        { ownerId: args.ownerId, key: "core_memory" },
+      ) ?? undefined;
+    } catch {
+      // Skip if unavailable
+    }
+
+    // 3. Get thread history if we have an active thread
+    let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
+    let activeThreadId: string | undefined;
+
+    const resolvedThreadId = args.threadId ?? await ctx.runQuery(
+      internal.conversations.getActiveThreadId,
+      { conversationId: args.conversationId },
+    );
+
+    if (resolvedThreadId) {
+      activeThreadId = resolvedThreadId;
+      try {
+        const messages = await ctx.runQuery(
+          internal.data.threads.getRecentThreadMessages,
+          {
+            threadId: resolvedThreadId as Id<"threads">,
+            limit: args.maxHistoryMessages ?? 50,
+          },
+        );
+        if (messages && messages.length > 0) {
+          threadHistory = messages.map((m: { role: string; content: string; toolCallId?: string }) => ({
+            role: m.role,
+            content: m.content,
+            toolCallId: m.toolCallId,
+          }));
+        }
+      } catch {
+        // Thread messages unavailable
+      }
+    }
+
+    // 4. Mint a proxy token for this run
+    const proxyToken = await ctx.runMutation(internal.ai_proxy_data.mintProxyToken, {
+      ownerId: args.ownerId,
+      agentType: args.agentType,
+      runId: args.runId,
+    });
+
+    return {
+      systemPrompt: promptBuild.systemPrompt,
+      dynamicContext: promptBuild.dynamicContext,
+      toolsAllowlist: promptBuild.toolsAllowlist,
+      maxTaskDepth: promptBuild.maxTaskDepth,
+      defaultSkills: promptBuild.defaultSkills,
+      skillIds: promptBuild.skillIds,
+      coreMemory,
+      threadHistory,
+      activeThreadId,
+      proxyToken,
+    };
+  },
+});

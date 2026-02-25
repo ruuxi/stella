@@ -909,3 +909,79 @@ export const listToolRequestsForDevice = query({
   },
 });
 
+export const listDashboardGenRequestsForDevice = query({
+  args: {
+    deviceId: v.string(),
+    paginationOpts: paginationOptsValidator,
+    since: v.optional(v.number()),
+  },
+  returns: v.object({
+    page: v.array(eventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
+  }),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const filtered: Infer<typeof eventValidator>[] = [];
+    const ownershipCache = new Map<string, boolean>();
+    const requestedItems = normalizeOptionalInt({
+      value: args.paginationOpts.numItems,
+      defaultValue: 20,
+      min: 1,
+      max: 200,
+    });
+    let cursor: string | null = args.paginationOpts.cursor;
+    let isDone = false;
+    let splitCursor: string | null | undefined = undefined;
+    let pageStatus: "SplitRecommended" | "SplitRequired" | null | undefined = undefined;
+
+    while (filtered.length < requestedItems && !isDone) {
+      const page = await ctx.db
+        .query("events")
+        .withIndex("by_targetDeviceId_and_timestamp", (q) => q.eq("targetDeviceId", args.deviceId))
+        .order("desc")
+        .paginate({
+          cursor,
+          numItems: requestedItems,
+        });
+      cursor = page.continueCursor;
+      isDone = page.isDone;
+      splitCursor = page.splitCursor;
+      pageStatus = page.pageStatus;
+
+      for (const event of page.page) {
+        if (event.type !== "dashboard_generation_request") {
+          continue;
+        }
+        if (args.since !== undefined && event.timestamp < args.since) {
+          continue;
+        }
+        const conversationKey = String(event.conversationId);
+        let owned = ownershipCache.get(conversationKey);
+        if (owned === undefined) {
+          const conversation = await ctx.db.get(event.conversationId);
+          owned = Boolean(conversation && conversation.ownerId === ownerId);
+          ownershipCache.set(conversationKey, owned);
+        }
+        if (!owned) {
+          continue;
+        }
+        filtered.push(event);
+        if (filtered.length >= requestedItems) {
+          break;
+        }
+      }
+    }
+
+    return {
+      page: filtered,
+      isDone,
+      continueCursor: cursor ?? args.paginationOpts.cursor ?? "",
+      ...(splitCursor !== undefined ? { splitCursor } : {}),
+      ...(pageStatus !== undefined ? { pageStatus } : {}),
+    };
+  },
+});
+
