@@ -257,7 +257,6 @@ export type ElectronApi = {
   }) => Promise<{ runId: string }>
   cancelAgentChat: (runId: string) => void
   onAgentStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
-  resumeAgentStream: (payload: { runId: string; lastSeq: number }) => void
 }
 
 export type AgentStreamIpcEvent = {
