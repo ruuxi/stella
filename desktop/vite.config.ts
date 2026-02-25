@@ -22,8 +22,73 @@ function devServerUrl(): Plugin {
   }
 }
 
+const PANEL_FILE_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\.tsx$/
+
+/**
+ * Serves workspace panel .tsx files through Vite's transform pipeline.
+ * Path containment: only files inside <projectRoot>/workspace/panels/ are served.
+ * Filename validation: must match PANEL_FILE_PATTERN.
+ */
+function workspacePanelServer(): Plugin {
+  return {
+    name: 'workspace-panel-server',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !req.url.startsWith('/workspace/panels/')) return next()
+
+        // Strip query string (e.g. ?t=timestamp for cache-busting)
+        const urlPath = req.url.split('?')[0]!
+        const filename = path.posix.basename(urlPath)
+
+        // Validate filename pattern
+        if (!PANEL_FILE_PATTERN.test(filename)) {
+          res.statusCode = 403
+          res.end('Forbidden: invalid panel filename')
+          return
+        }
+
+        // Resolve and contain path within workspace/panels/
+        const panelsDir = path.resolve(server.config.root, 'workspace', 'panels')
+        const resolved = path.resolve(panelsDir, filename)
+        const relative = path.relative(panelsDir, resolved)
+
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+          res.statusCode = 403
+          res.end('Forbidden: path outside panels directory')
+          return
+        }
+
+        // Check file exists
+        if (!fs.existsSync(resolved)) {
+          res.statusCode = 404
+          res.end('Panel not found')
+          return
+        }
+
+        try {
+          // Transform the TSX file through Vite's pipeline
+          const result = await server.transformRequest(urlPath)
+          if (!result) {
+            res.statusCode = 500
+            res.end('Transform failed')
+            return
+          }
+
+          res.setHeader('Content-Type', 'application/javascript')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.end(result.code)
+        } catch (err) {
+          console.error('[workspace-panel-server] Transform error:', err)
+          res.statusCode = 500
+          res.end('Transform error')
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), devServerUrl()],
+  plugins: [react(), tailwindcss(), devServerUrl(), workspacePanelServer()],
   base: './',
   build: {
     outDir: 'dist',

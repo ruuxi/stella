@@ -245,6 +245,31 @@ export type ElectronApi = {
   bridgeStatus: (payload: { provider: string }) => Promise<{ running: boolean }>
 
   shellKillByPort: (port: number) => Promise<void>
+
+  // ─── Local Agent Runtime ────────────────────────────────────────────────
+  agentHealthCheck: () => Promise<{ ready: true; runnerVersion: string } | null>
+  startAgentChat: (payload: {
+    conversationId: string
+    userMessageId: string
+    agentType?: string
+  }) => Promise<{ runId: string }>
+  cancelAgentChat: (runId: string) => void
+  onAgentStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
+  resumeAgentStream: (payload: { runId: string; lastSeq: number }) => void
+}
+
+export type AgentStreamIpcEvent = {
+  type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end'
+  runId: string
+  seq: number
+  chunk?: string
+  toolCallId?: string
+  toolName?: string
+  resultPreview?: string
+  error?: string
+  fatal?: boolean
+  finalText?: string
+  persisted?: boolean
 }
 
 declare global {
