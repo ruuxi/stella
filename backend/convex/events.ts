@@ -664,18 +664,29 @@ export const deleteEventsByRequestId = internalMutation({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
-    const rows = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
-      .take(100);
-
     let deleted = 0;
-    for (const row of rows) {
-      if (row.conversationId !== args.conversationId) {
-        continue;
+    while (true) {
+      const rows = await ctx.db
+        .query("events")
+        .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
+        .take(100);
+      if (rows.length === 0) {
+        break;
       }
-      await ctx.db.delete(row._id);
-      deleted += 1;
+
+      let deletedThisBatch = 0;
+      for (const row of rows) {
+        if (row.conversationId !== args.conversationId) {
+          continue;
+        }
+        await ctx.db.delete(row._id);
+        deleted += 1;
+        deletedThisBatch += 1;
+      }
+
+      if (rows.length < 100 || deletedThisBatch === 0) {
+        break;
+      }
     }
 
     return deleted;

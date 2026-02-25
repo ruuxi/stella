@@ -25,19 +25,9 @@ const filterTools = (
   return Object.fromEntries(filteredEntries) as ToolSet;
 };
 
-// Privacy-preserving tool subset for transient connector runs (sync off).
+// Privacy-preserving tool subset for transient runs (sync off):
+// avoid local device transport/persistence risk by limiting to backend read-only tools.
 const TRANSIENT_ALLOWED_TOOLS = new Set<string>([
-  "Read",
-  "Write",
-  "Edit",
-  "Glob",
-  "Grep",
-  "OpenApp",
-  "Bash",
-  "KillShell",
-  "ShellStatus",
-  "AskUserQuestion",
-  "MediaGenerate",
   "WebSearch",
   "WebFetch",
   "StoreSearch",
