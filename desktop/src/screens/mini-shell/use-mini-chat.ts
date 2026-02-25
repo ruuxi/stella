@@ -37,6 +37,33 @@ type AttachmentResponse = {
   size?: number;
 };
 
+type AgentStreamEvent = {
+  type: "stream" | "tool-start" | "tool-end" | "error" | "end";
+  runId: string;
+  seq: number;
+  chunk?: string;
+  toolCallId?: string;
+  toolName?: string;
+  resultPreview?: string;
+  error?: string;
+  fatal?: boolean;
+  finalText?: string;
+  persisted?: boolean;
+};
+
+const isOrchestratorBusyError = (error: unknown): boolean => {
+  const message =
+    typeof error === "string"
+      ? error
+      : typeof error === "object" &&
+          error !== null &&
+          "message" in error &&
+          typeof (error as { message?: unknown }).message === "string"
+        ? (error as { message: string }).message
+        : "";
+  return message.toLowerCase().includes("orchestrator is already running");
+};
+
 const toEventId = (event: AppendedEventResponse | null | undefined): string | null => {
   if (!event) return null;
   if (typeof event._id === "string" && event._id.length > 0) return event._id;
@@ -217,6 +244,7 @@ export function useMiniChat(opts: {
 
   // Track active local agent run for IPC path
   const localRunIdRef = useRef<string | null>(null);
+  const localSeqRef = useRef(0);
   const agentStreamCleanupRef = useRef<(() => void) | null>(null);
 
   const cancelCurrentStream = useCallback(() => {
@@ -226,12 +254,81 @@ export function useMiniChat(opts: {
     if (localRunIdRef.current && window.electronAPI?.cancelAgentChat) {
       window.electronAPI.cancelAgentChat(localRunIdRef.current);
       localRunIdRef.current = null;
+      localSeqRef.current = 0;
     }
     if (agentStreamCleanupRef.current) {
       agentStreamCleanupRef.current();
       agentStreamCleanupRef.current = null;
     }
   }, []);
+
+  const handleAgentEvent = useCallback(
+    (
+      event: AgentStreamEvent,
+      runIdCounter: number,
+      options?: { userMessageId?: string },
+    ) => {
+      if (runIdCounter !== streamRunIdRef.current) return;
+      if (localRunIdRef.current && event.runId !== localRunIdRef.current) return;
+      if (event.seq <= localSeqRef.current) return;
+
+      localSeqRef.current = event.seq;
+
+      switch (event.type) {
+        case "stream":
+          if (event.chunk) appendStreamingDelta(event.chunk);
+          break;
+        case "tool-start":
+          appendLocalAgentEvent({
+            type: "tool_request",
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+          });
+          break;
+        case "tool-end":
+          appendLocalAgentEvent({
+            type: "tool_result",
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            resultPreview: event.resultPreview,
+          });
+          break;
+        case "error":
+          if (event.fatal) {
+            console.error("Local agent error:", event.error);
+            resetStreamingState(runIdCounter);
+          }
+          break;
+        case "end":
+          appendLocalAgentEvent({
+            type: "assistant_message",
+            userMessageId: options?.userMessageId,
+            finalText: event.finalText ?? streamingTextRef.current,
+          });
+          streamAbortRef.current = null;
+          setIsStreaming(false);
+          localRunIdRef.current = null;
+          localSeqRef.current = 0;
+          if (agentStreamCleanupRef.current) {
+            agentStreamCleanupRef.current();
+            agentStreamCleanupRef.current = null;
+          }
+          if (streamingTextRef.current.trim().length === 0) {
+            resetStreamingText();
+            setPendingUserMessageId(null);
+          }
+          break;
+      }
+    },
+    [
+      appendLocalAgentEvent,
+      appendStreamingDelta,
+      resetStreamingState,
+      resetStreamingText,
+      setIsStreaming,
+      streamingTextRef,
+    ],
+  );
 
   const startLocalStream = useCallback(
     (args: {
@@ -242,53 +339,9 @@ export function useMiniChat(opts: {
       if (!activeConversationId || !window.electronAPI) return;
 
       const cleanup = window.electronAPI.onAgentStream((event) => {
-        if (runIdCounter !== streamRunIdRef.current) return;
-        if (localRunIdRef.current && event.runId !== localRunIdRef.current) return;
-
-        switch (event.type) {
-          case "stream":
-            if (event.chunk) appendStreamingDelta(event.chunk);
-            break;
-          case "tool-start":
-            appendLocalAgentEvent({
-              type: "tool_request",
-              toolCallId: event.toolCallId,
-              toolName: event.toolName,
-            });
-            break;
-          case "tool-end":
-            appendLocalAgentEvent({
-              type: "tool_result",
-              toolCallId: event.toolCallId,
-              toolName: event.toolName,
-              resultPreview: event.resultPreview,
-            });
-            break;
-          case "error":
-            if (event.fatal) {
-              console.error("Local agent error:", event.error);
-              resetStreamingState(runIdCounter);
-            }
-            break;
-          case "end":
-            appendLocalAgentEvent({
-              type: "assistant_message",
-              userMessageId: args.userMessageId,
-              finalText: event.finalText ?? streamingTextRef.current,
-            });
-            streamAbortRef.current = null;
-            setIsStreaming(false);
-            localRunIdRef.current = null;
-            if (agentStreamCleanupRef.current) {
-              agentStreamCleanupRef.current();
-              agentStreamCleanupRef.current = null;
-            }
-            if (streamingTextRef.current.trim().length === 0) {
-              resetStreamingText();
-              setPendingUserMessageId(null);
-            }
-            break;
-        }
+        handleAgentEvent(event as AgentStreamEvent, runIdCounter, {
+          userMessageId: args.userMessageId,
+        });
       });
 
       agentStreamCleanupRef.current = cleanup;
@@ -303,10 +356,16 @@ export function useMiniChat(opts: {
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return;
           localRunIdRef.current = agentRunId;
+          localSeqRef.current = 0;
         })
         .catch((error) => {
           if (runIdCounter !== streamRunIdRef.current) return;
           console.error("Failed to start local agent chat:", error);
+          if (isOrchestratorBusyError(error)) {
+            // Do not fall back to cloud chat; only one orchestrator run is allowed.
+            resetStreamingState(runIdCounter);
+            return;
+          }
           if (fallbackToHttp) {
             startHttpStream(args, runIdCounter);
           } else {
@@ -318,6 +377,7 @@ export function useMiniChat(opts: {
       activeConversationId,
       appendStreamingDelta,
       appendLocalAgentEvent,
+      handleAgentEvent,
       storageMode,
       resetStreamingState,
       resetStreamingText,
@@ -439,6 +499,73 @@ export function useMiniChat(opts: {
       startLocalStream,
     ],
   );
+
+  useEffect(() => {
+    if (isStreaming || !activeConversationId || !window.electronAPI) {
+      return;
+    }
+    if (
+      !window.electronAPI.agentHealthCheck ||
+      !window.electronAPI.getActiveAgentRun ||
+      !window.electronAPI.resumeAgentStream
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const runIdCounter = streamRunIdRef.current + 1;
+
+    void (async () => {
+      const health = await window.electronAPI!.agentHealthCheck();
+      if (!health?.ready || cancelled) return;
+
+      const activeRun = await window.electronAPI!.getActiveAgentRun();
+      if (!activeRun || cancelled) return;
+      if (activeRun.conversationId !== activeConversationId) return;
+
+      streamRunIdRef.current = runIdCounter;
+      resetStreamingText();
+      resetReasoningText();
+      setIsStreaming(true);
+      setPendingUserMessageId(null);
+      localRunIdRef.current = activeRun.runId;
+      localSeqRef.current = 0;
+
+      if (agentStreamCleanupRef.current) {
+        agentStreamCleanupRef.current();
+      }
+
+      const cleanup = window.electronAPI!.onAgentStream((event) => {
+        handleAgentEvent(event as AgentStreamEvent, runIdCounter);
+      });
+      agentStreamCleanupRef.current = cleanup;
+
+      const replay = await window.electronAPI!.resumeAgentStream({
+        runId: activeRun.runId,
+        lastSeq: 0,
+      });
+      if (cancelled || runIdCounter !== streamRunIdRef.current) return;
+      for (const replayEvent of replay.events) {
+        handleAgentEvent(replayEvent as AgentStreamEvent, runIdCounter);
+      }
+    })().catch((error) => {
+      if (cancelled) return;
+      console.error("Failed to resume active local agent run:", error);
+      resetStreamingState(runIdCounter);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConversationId,
+    handleAgentEvent,
+    isStreaming,
+    resetReasoningText,
+    resetStreamingState,
+    resetStreamingText,
+    setIsStreaming,
+  ]);
 
   const findQueuedFollowUp = useCallback((source: EventRecord[]) => {
     const responded = new Set<string>();

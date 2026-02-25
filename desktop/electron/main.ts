@@ -2381,9 +2381,62 @@ app.whenReady().then(async () => {
 
   // ─── Local Agent Runtime IPC ──────────────────────────────────────────────
 
-  const agentRunOwners = new Map<string, number>()
+  type AgentEventPayload = {
+    type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end'
+    runId: string
+    seq: number
+    chunk?: string
+    toolCallId?: string
+    toolName?: string
+    resultPreview?: string
+    error?: string
+    fatal?: boolean
+    finalText?: string
+    persisted?: boolean
+  }
 
-  function emitAgentEvent(runId: string, event: unknown, targetWebContentsId?: number) {
+  const AGENT_EVENT_BUFFER_LIMIT = 1000
+  const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000
+
+  const agentRunOwners = new Map<string, number>()
+  const agentEventBuffers = new Map<
+    string,
+    {
+      events: AgentEventPayload[]
+      updatedAt: number
+    }
+  >()
+
+  function pruneAgentEventBuffers() {
+    const now = Date.now()
+    for (const [runId, buffer] of agentEventBuffers.entries()) {
+      if (agentRunOwners.has(runId)) continue
+      if (now - buffer.updatedAt > AGENT_EVENT_BUFFER_TTL_MS) {
+        agentEventBuffers.delete(runId)
+      }
+    }
+  }
+
+  function bufferAgentEvent(runId: string, event: AgentEventPayload) {
+    const existing = agentEventBuffers.get(runId)
+    if (existing) {
+      existing.events.push(event)
+      if (existing.events.length > AGENT_EVENT_BUFFER_LIMIT) {
+        existing.events.splice(0, existing.events.length - AGENT_EVENT_BUFFER_LIMIT)
+      }
+      existing.updatedAt = Date.now()
+      return
+    }
+
+    agentEventBuffers.set(runId, {
+      events: [event],
+      updatedAt: Date.now(),
+    })
+  }
+
+  function emitAgentEvent(runId: string, event: AgentEventPayload, targetWebContentsId?: number) {
+    bufferAgentEvent(runId, event)
+    pruneAgentEventBuffers()
     const receiverId = targetWebContentsId ?? agentRunOwners.get(runId)
     if (receiverId == null) {
       return
@@ -2397,6 +2450,32 @@ app.whenReady().then(async () => {
   ipcMain.handle('agent:healthCheck', async () => {
     if (!localHostRunner) return null
     return localHostRunner.agentHealthCheck()
+  })
+
+  ipcMain.handle('agent:getActiveRun', async () => {
+    if (!localHostRunner) return null
+    const health = localHostRunner.agentHealthCheck()
+    if (!health?.ready) return null
+    return localHostRunner.getActiveOrchestratorRun()
+  })
+
+  ipcMain.handle('agent:resume', async (_event, payload: { runId: string; lastSeq: number }) => {
+    pruneAgentEventBuffers()
+    const runId = typeof payload.runId === 'string' ? payload.runId : ''
+    const lastSeq = Number.isFinite(payload.lastSeq) ? payload.lastSeq : 0
+    if (!runId) {
+      return { events: [] as AgentEventPayload[], exhausted: true }
+    }
+    const buffer = agentEventBuffers.get(runId)
+    if (!buffer) {
+      return { events: [] as AgentEventPayload[], exhausted: true }
+    }
+    const oldestSeq = buffer.events[0]?.seq ?? null
+    const exhausted = oldestSeq !== null && lastSeq < oldestSeq - 1
+    return {
+      events: buffer.events.filter((event) => event.seq > lastSeq),
+      exhausted,
+    }
   })
 
   ipcMain.handle('agent:startChat', async (_event, payload: {
@@ -2425,6 +2504,7 @@ app.whenReady().then(async () => {
         emitAgentEvent(ev.runId, { type: 'end', ...ev }, senderWebContentsId)
         setTimeout(() => {
           agentRunOwners.delete(ev.runId)
+          pruneAgentEventBuffers()
         }, 60_000)
       },
     })
