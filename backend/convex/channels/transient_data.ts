@@ -68,6 +68,7 @@ export const purgeExpired = internalMutation({
   args: {
     nowMs: v.optional(v.number()),
     limit: v.optional(v.number()),
+    maxBatches: v.optional(v.number()),
   },
   returns: v.number(),
   handler: async (ctx, args) => {
@@ -76,16 +77,31 @@ export const purgeExpired = internalMutation({
       typeof args.limit === "number" && Number.isFinite(args.limit)
         ? Math.max(1, Math.min(5_000, Math.floor(args.limit)))
         : 500;
+    const maxBatches =
+      typeof args.maxBatches === "number" && Number.isFinite(args.maxBatches)
+        ? Math.max(1, Math.min(50, Math.floor(args.maxBatches)))
+        : 10;
 
-    const expired = await ctx.db
-      .query("transient_channel_events")
-      .withIndex("by_expiresAt", (q) => q.lte("expiresAt", nowMs))
-      .take(limit);
+    let deleted = 0;
+    for (let i = 0; i < maxBatches; i += 1) {
+      const expired = await ctx.db
+        .query("transient_channel_events")
+        .withIndex("by_expiresAt", (q) => q.lte("expiresAt", nowMs))
+        .take(limit);
 
-    for (const row of expired) {
-      await ctx.db.delete(row._id);
+      if (expired.length === 0) {
+        break;
+      }
+
+      for (const row of expired) {
+        await ctx.db.delete(row._id);
+        deleted += 1;
+      }
+
+      if (expired.length < limit) {
+        break;
+      }
     }
-
-    return expired.length;
+    return deleted;
   },
 });

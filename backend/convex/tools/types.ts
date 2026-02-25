@@ -10,6 +10,7 @@ export type ToolOptions = {
   userMessageId?: Id<"events">;
   targetDeviceId?: string;
   spriteName?: string;
+  transient?: boolean;
 };
 
 /**

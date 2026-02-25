@@ -25,6 +25,26 @@ const filterTools = (
   return Object.fromEntries(filteredEntries) as ToolSet;
 };
 
+// Privacy-preserving tool subset for transient connector runs (sync off).
+const TRANSIENT_ALLOWED_TOOLS = new Set<string>([
+  "Read",
+  "Write",
+  "Edit",
+  "Glob",
+  "Grep",
+  "OpenApp",
+  "Bash",
+  "KillShell",
+  "ShellStatus",
+  "AskUserQuestion",
+  "MediaGenerate",
+  "WebSearch",
+  "WebFetch",
+  "StoreSearch",
+  "ListResources",
+  "NoResponse",
+]);
+
 export const createTools = (
   ctx: ActionCtx,
   context: DeviceToolContext | undefined,
@@ -53,6 +73,13 @@ export const createTools = (
     ...orchestrationTools,
   };
 
+  const privacyFilteredTools =
+    options.transient
+      ? (Object.fromEntries(
+        Object.entries(allTools).filter(([name]) => TRANSIENT_ALLOWED_TOOLS.has(name)),
+      ) as ToolSet)
+      : allTools;
+
   const allowlist = options.toolsAllowlist
       ? Array.from(
         new Set([
@@ -60,5 +87,5 @@ export const createTools = (
         ]),
       )
     : undefined;
-  return filterTools(allTools, allowlist);
+  return filterTools(privacyFilteredTools, allowlist);
 };
