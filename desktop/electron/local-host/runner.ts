@@ -971,6 +971,8 @@ export const createLocalHostRunner = ({
       conversationId: string;
       userMessageId: string;
       agentType?: string;
+      storageMode?: "cloud" | "local";
+      localHistory?: Array<{ role: "user" | "assistant"; content: string }>;
     },
     callbacks: RunCallbacks,
   ): Promise<{ runId: string }> => {
@@ -983,17 +985,26 @@ export const createLocalHostRunner = ({
     }
 
     const agentType = payload.agentType ?? "orchestrator";
+    const storageMode = payload.storageMode ?? "cloud";
     const runId = `local:${crypto.randomUUID()}`;
 
     // Fetch agent context from Convex
-    const agentContext = await callAction(
-      "agent/prompt_builder:fetchAgentContextForRuntime",
-      {
-        conversationId: payload.conversationId,
-        agentType,
-        runId,
-      },
-    ) as AgentContext;
+    const agentContext = (storageMode === "local"
+      ? await callAction(
+          "agent/prompt_builder:fetchLocalAgentContextForRuntime",
+          {
+            agentType,
+            runId,
+          },
+        )
+      : await callAction(
+          "agent/prompt_builder:fetchAgentContextForRuntime",
+          {
+            conversationId: payload.conversationId,
+            agentType,
+            runId,
+          },
+        )) as AgentContext;
 
     activeOrchestratorRunId = runId;
     const abortController = new AbortController();
@@ -1026,6 +1037,9 @@ export const createLocalHostRunner = ({
       authToken,
       deviceId,
       stellaHome: StellaHome,
+      localHistory: payload.localHistory,
+      persistToConvex: storageMode !== "local",
+      enableRemoteTools: storageMode !== "local",
       abortSignal: abortController.signal,
     });
 

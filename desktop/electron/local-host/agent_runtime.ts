@@ -64,6 +64,7 @@ export type AgentToolEndEvent = {
   runId: string;
   seq: number;
   toolCallId: string;
+  toolName: string;
   resultPreview: string;
 };
 
@@ -86,6 +87,9 @@ export type RunOrchestratorOpts = {
   conversationId: string;
   userMessageId: string;
   agentType?: string;
+  localHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+  persistToConvex?: boolean;
+  enableRemoteTools?: boolean;
   agentContext: AgentContext;
   callbacks: RunCallbacks;
   toolExecutor: (toolName: string, args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>;
@@ -197,6 +201,14 @@ function generateToolCallId(
   return `${runId}:${turnIndex}:${toolName}:${argsHash}:${ordinal}`;
 }
 
+function extractToolNameFromToolCallId(toolCallId: string): string {
+  const parts = toolCallId.split(":");
+  if (parts.length < 4) {
+    return "Tool";
+  }
+  return parts[parts.length - 3] ?? "Tool";
+}
+
 // ─── Orchestrator Turn ───────────────────────────────────────────────────────
 
 export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<string> {
@@ -210,9 +222,12 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
     deviceId,
     stellaHome,
     abortSignal,
+    localHistory,
   } = opts;
 
   const agentType = opts.agentType ?? "orchestrator";
+  const persistToConvex = opts.persistToConvex ?? true;
+  const enableRemoteTools = opts.enableRemoteTools ?? true;
   const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
   let seq = 0;
   const nextSeq = () => ++seq;
@@ -254,14 +269,15 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
       });
     },
     onToolCallEnd: (toolCallId, result, durationMs) => {
+      const toolName = extractToolNameFromToolCallId(toolCallId);
       const preview = typeof result === "string"
         ? result.slice(0, MAX_RESULT_PREVIEW_LEN)
         : JSON.stringify(result).slice(0, MAX_RESULT_PREVIEW_LEN);
       const s = nextSeq();
-      callbacks.onToolEnd({ runId, seq: s, toolCallId, resultPreview: preview });
+      callbacks.onToolEnd({ runId, seq: s, toolCallId, toolName, resultPreview: preview });
       journal.recordEvent({
         runId, seq: s, type: "tool_result",
-        toolCallId,
+        toolCallId, toolName,
         resultText: typeof result === "string" ? result : JSON.stringify(result),
         durationMs,
       });
@@ -285,21 +301,25 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
   });
 
   // Add remote tools (RecallMemories, etc.)
-  const remoteTools = createRemoteTools({
-    convexUrl,
-    authToken,
-    conversationId,
-    agentType,
-  });
+  const remoteTools = enableRemoteTools
+    ? createRemoteTools({
+        convexUrl,
+        authToken,
+        conversationId,
+        agentType,
+      })
+    : {};
 
   const allTools = { ...tools, ...remoteTools };
 
   // Build messages
   const messages: ModelMessage[] = [];
 
+  const historyMessages = localHistory ?? agentContext.threadHistory ?? [];
+
   // Add thread history if available
-  if (agentContext.threadHistory) {
-    for (const msg of agentContext.threadHistory) {
+  if (historyMessages) {
+    for (const msg of historyMessages) {
       if (msg.role === "user" || msg.role === "assistant") {
         messages.push({ role: msg.role, content: msg.content });
       }
@@ -372,21 +392,23 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
 
   // Persist to Convex in chunks
   let persisted = false;
-  try {
-    await persistRunToConvex({
-      journal,
-      runId,
-      conversationId,
-      agentType,
-      convexUrl,
-      authToken,
-      fullText,
-      usage,
-      activeThreadId: agentContext.activeThreadId,
-    });
-    persisted = true;
-  } catch (err) {
-    console.error("[agent-runtime] Persist failed:", err);
+  if (persistToConvex) {
+    try {
+      await persistRunToConvex({
+        journal,
+        runId,
+        conversationId,
+        agentType,
+        convexUrl,
+        authToken,
+        fullText,
+        usage,
+        activeThreadId: agentContext.activeThreadId,
+      });
+      persisted = true;
+    } catch (err) {
+      console.error("[agent-runtime] Persist failed:", err);
+    }
   }
 
   const s = nextSeq();
