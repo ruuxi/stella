@@ -40,6 +40,9 @@ const ENABLE_247_FAILED_MESSAGE =
 const CLOUD_FALLBACK_NUDGE_MESSAGE =
   "Your desktop is offline right now. Reply \"enable 24/7\" if you want always-on remote execution.";
 const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const TRANSIENT_CLEANUP_MAX_ATTEMPTS = 4;
+const TRANSIENT_CLEANUP_BACKOFF_BASE_MS = 100;
+const TRANSIENT_CLEANUP_BACKOFF_MAX_MS = 2_000;
 const channelConnectionValidator = v.object({
   _id: v.id("channel_connections"),
   _creationTime: v.number(),
@@ -153,6 +156,24 @@ const linkCodeSalt = () => generateSecureLinkCode(16);
 
 const hashLinkCode = async (code: string, salt: string) =>
   hashSha256Hex(`${salt}:${code}`);
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const toErrorMessage = (value: unknown): string | undefined => {
+  if (value instanceof Error) {
+    return value.message;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return undefined;
+};
+
+const getTransientCleanupBackoffMs = (attempt: number): number =>
+  Math.min(
+    TRANSIENT_CLEANUP_BACKOFF_MAX_MS,
+    TRANSIENT_CLEANUP_BACKOFF_BASE_MS * 2 ** Math.max(0, attempt - 1),
+  );
 
 const isEnable247Intent = (text: string) => OFFLINE_ENABLE_247_INTENT.test(text.trim());
 
@@ -740,6 +761,14 @@ const resolveConnectionForIncomingMessage = async (args: {
     return connection;
   }
 
+  const accountMode = await args.ctx.runQuery(
+    internal.data.preferences.getAccountModeForOwner,
+    { ownerId: policyOwnerId },
+  );
+  if (accountMode !== ACCOUNT_MODE_CONNECTED) {
+    return null;
+  }
+
   await args.ctx.runMutation(internal.channels.utils.createConnection, {
     ownerId: policyOwnerId,
     provider: args.provider,
@@ -924,6 +953,19 @@ const persistInboundAssistantMessage = async (args: {
 export async function processIncomingMessage(
   args: ProcessIncomingMessageArgs,
 ): Promise<{ text: string } | null> {
+  if (args.ownerId) {
+    const requestedOwnerAccountMode = await args.ctx.runQuery(
+      internal.data.preferences.getAccountModeForOwner,
+      { ownerId: args.ownerId },
+    );
+    if (requestedOwnerAccountMode !== ACCOUNT_MODE_CONNECTED) {
+      if (args.respond === false) {
+        return { text: "" };
+      }
+      return { text: CONNECTED_MODE_REQUIRED_MESSAGE };
+    }
+  }
+
   const connection = await resolveConnectionForIncomingMessage({
     ctx: args.ctx,
     ownerId: args.ownerId,
@@ -970,13 +1012,45 @@ export async function processIncomingMessage(
     if (!transientBatchKey || transientBatchCleaned) {
       return;
     }
-    try {
-      await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
-      transientBatchCleaned = true;
-    } catch (cleanupError) {
-      // Best-effort cleanup only.
-      console.error("[channels] Failed to clean transient connector batch:", cleanupError);
+
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= TRANSIENT_CLEANUP_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
+        transientBatchCleaned = true;
+        return;
+      } catch (cleanupError) {
+        lastError = cleanupError;
+        console.error(
+          `[channels] Transient connector cleanup attempt ${attempt}/${TRANSIENT_CLEANUP_MAX_ATTEMPTS} failed:`,
+          cleanupError,
+        );
+        if (attempt < TRANSIENT_CLEANUP_MAX_ATTEMPTS) {
+          await sleep(getTransientCleanupBackoffMs(attempt));
+        }
+      }
     }
+
+    const errorMessage = toErrorMessage(lastError);
+    try {
+      await args.ctx.runMutation(internal.channels.transient_data.recordCleanupFailure, {
+        ownerId: connection.ownerId,
+        conversationId,
+        provider: args.provider,
+        batchKey: transientBatchKey,
+        attempts: TRANSIENT_CLEANUP_MAX_ATTEMPTS,
+        errorMessage,
+      });
+    } catch (reportError) {
+      console.error("[channels] Failed to persist transient cleanup failure metric:", reportError);
+    }
+
+    console.error("[channels][ALERT] Failed to clean transient connector batch after retries.", {
+      ownerId: connection.ownerId,
+      provider: args.provider,
+      attempts: TRANSIENT_CLEANUP_MAX_ATTEMPTS,
+      ...(errorMessage ? { errorMessage } : {}),
+    });
   };
 
   const persistAssistant = async (params: {
