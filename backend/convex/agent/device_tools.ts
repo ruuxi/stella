@@ -191,6 +191,7 @@ export const executeDeviceTool = async (
       agentType: context.agentType,
       sourceDeviceId: context.sourceDeviceId,
       userMessageId: context.userMessageId,
+      ephemeral: context.ephemeral === true,
     });
 
     const resultEvent = await waitForToolResult(

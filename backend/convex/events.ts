@@ -29,6 +29,8 @@ const eventValidator = v.object({
   targetDeviceId: v.optional(v.string()),
   payload: jsonValueValidator,
   channelEnvelope: optionalChannelEnvelopeValidator,
+  ephemeral: v.optional(v.boolean()),
+  expiresAt: v.optional(v.number()),
 });
 
 const usageSummaryValidator = v.object({
@@ -44,6 +46,15 @@ const localSyncMessageValidator = v.object({
   timestamp: v.number(),
   deviceId: v.optional(v.string()),
 });
+
+const DEFAULT_EPHEMERAL_EVENT_TTL_MS = 30 * 60 * 1000;
+
+const normalizeEphemeralEventTtlMs = (ttlMs?: number) => {
+  if (typeof ttlMs !== "number" || !Number.isFinite(ttlMs)) {
+    return DEFAULT_EPHEMERAL_EVENT_TTL_MS;
+  }
+  return Math.max(60_000, Math.floor(ttlMs));
+};
 
 const sanitizeEventPayloadForStorage = (type: string, payload: Value): Value => {
   if (type === "tool_result") {
@@ -548,10 +559,16 @@ export const enqueueToolRequest = internalMutation({
     sourceDeviceId: v.optional(v.string()),
     userMessageId: v.optional(v.id("events")),
     agentType: v.optional(v.string()),
+    ephemeral: v.optional(v.boolean()),
+    ttlMs: v.optional(v.number()),
   },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
+    const isEphemeral = args.ephemeral === true;
+    const expiresAt = isEphemeral
+      ? timestamp + normalizeEphemeralEventTtlMs(args.ttlMs)
+      : undefined;
     const payload = sanitizeEventPayloadForStorage("tool_request", {
       toolName: args.toolName,
       args: args.toolArgs ?? {},
@@ -559,6 +576,7 @@ export const enqueueToolRequest = internalMutation({
       sourceDeviceId: args.sourceDeviceId,
       userMessageId: args.userMessageId,
       agentType: args.agentType,
+      ephemeral: isEphemeral ? true : undefined,
     });
     const eventId = await ctx.db.insert("events", {
       conversationId: args.conversationId,
@@ -568,6 +586,8 @@ export const enqueueToolRequest = internalMutation({
       targetDeviceId: args.targetDeviceId,
       deviceId: args.sourceDeviceId,
       payload,
+      ephemeral: isEphemeral ? true : undefined,
+      expiresAt,
     });
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
     return await ctx.db.get(eventId);
@@ -662,6 +682,54 @@ export const deleteEventsByRequestId = internalMutation({
   },
 });
 
+export const purgeExpiredEphemeralToolEvents = internalMutation({
+  args: {
+    nowMs: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    maxBatches: v.optional(v.number()),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const nowMs = typeof args.nowMs === "number" ? args.nowMs : Date.now();
+    const limit =
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? Math.max(1, Math.min(5_000, Math.floor(args.limit)))
+        : 500;
+    const maxBatches =
+      typeof args.maxBatches === "number" && Number.isFinite(args.maxBatches)
+        ? Math.max(1, Math.min(50, Math.floor(args.maxBatches)))
+        : 10;
+
+    let deleted = 0;
+    for (let i = 0; i < maxBatches; i += 1) {
+      const expired = await ctx.db
+        .query("events")
+        .withIndex("by_ephemeral_and_expiresAt", (q) =>
+          q.eq("ephemeral", true).lte("expiresAt", nowMs),
+        )
+        .take(limit);
+
+      if (expired.length === 0) {
+        break;
+      }
+
+      for (const row of expired) {
+        if (row.type !== "tool_request" && row.type !== "tool_result") {
+          continue;
+        }
+        await ctx.db.delete(row._id);
+        deleted += 1;
+      }
+
+      if (expired.length < limit) {
+        break;
+      }
+    }
+
+    return deleted;
+  },
+});
+
 const deviceRequiredTypes = new Set([
   "user_message",
   "tool_result",
@@ -681,6 +749,8 @@ type AppendEventArgs = {
   targetDeviceId?: string;
   payload: Value;
   channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
+  ephemeral?: boolean;
+  expiresAt?: number;
 };
 
 const resolveAppendEventPayload = (args: AppendEventArgs) => {
@@ -723,8 +793,47 @@ const resolveAppendEventPayload = (args: AppendEventArgs) => {
   };
 };
 
+const resolveEphemeralPersistence = async (
+  ctx: MutationCtx,
+  args: AppendEventArgs,
+  timestamp: number,
+): Promise<{ ephemeral?: boolean; expiresAt?: number }> => {
+  if (args.ephemeral === true) {
+    const expiresAt =
+      typeof args.expiresAt === "number"
+        ? args.expiresAt
+        : timestamp + normalizeEphemeralEventTtlMs();
+    return { ephemeral: true, expiresAt };
+  }
+
+  if (args.type !== "tool_result" || !args.requestId) {
+    return {};
+  }
+
+  const relatedEvents = await ctx.db
+    .query("events")
+    .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId as string))
+    .order("desc")
+    .take(20);
+  const toolRequest = relatedEvents.find(
+    (event) =>
+      event.type === "tool_request" &&
+      event.requestId === args.requestId &&
+      event.conversationId === args.conversationId,
+  );
+  if (!toolRequest || toolRequest.ephemeral !== true) {
+    return {};
+  }
+  const expiresAt =
+    typeof toolRequest.expiresAt === "number"
+      ? toolRequest.expiresAt
+      : timestamp + normalizeEphemeralEventTtlMs();
+  return { ephemeral: true, expiresAt };
+};
+
 const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
   const { sanitizedPayload, resolvedTargetDeviceId, timestamp } = resolveAppendEventPayload(args);
+  const { ephemeral, expiresAt } = await resolveEphemeralPersistence(ctx, args, timestamp);
   const eventId = await ctx.db.insert("events", {
     conversationId: args.conversationId,
     timestamp,
@@ -734,6 +843,8 @@ const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
     targetDeviceId: resolvedTargetDeviceId,
     payload: sanitizedPayload,
     channelEnvelope: args.channelEnvelope,
+    ephemeral,
+    expiresAt,
   });
 
   await ctx.db.patch(args.conversationId, { updatedAt: timestamp });

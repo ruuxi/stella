@@ -587,6 +587,17 @@ export const execute = internalAction({
     let status: "ok" | "error" | "skipped" = "ok";
     let error: string | undefined;
     let outputText = "";
+    const accountMode = await ctx.runQuery(
+      internal.data.preferences.getAccountModeForOwner,
+      { ownerId: job.ownerId },
+    );
+    const syncMode = await ctx.runQuery(
+      internal.data.preferences.getSyncModeForOwner,
+      { ownerId: job.ownerId },
+    );
+    const transient = syncMode === "off";
+    const toPersistedError = (rawError?: string) =>
+      transient && rawError ? "run failed while sync is off" : rawError;
 
     let schedule: CronSchedule | null = null;
     let payload: CronPayload | null = null;
@@ -598,7 +609,7 @@ export const execute = internalAction({
         id: job._id,
         runningAtMs: undefined,
         lastStatus: "error",
-        lastError: (err as Error).message ?? "invalid cron job",
+        lastError: toPersistedError((err as Error).message ?? "invalid cron job"),
       });
       return null;
     }
@@ -608,7 +619,7 @@ export const execute = internalAction({
         id: job._id,
         runningAtMs: undefined,
         lastStatus: "error",
-        lastError: "cron job missing conversationId",
+        lastError: toPersistedError("cron job missing conversationId"),
       });
       return null;
     }
@@ -622,16 +633,6 @@ export const execute = internalAction({
       job.sessionTarget === "isolated"
         ? `[cron:${job._id} ${job.name}] ${promptBase}`.trim()
         : promptBase;
-
-    const accountMode = await ctx.runQuery(
-      internal.data.preferences.getAccountModeForOwner,
-      { ownerId: job.ownerId },
-    );
-    const syncMode = await ctx.runQuery(
-      internal.data.preferences.getSyncModeForOwner,
-      { ownerId: job.ownerId },
-    );
-    const transient = syncMode === "off";
 
     if (accountMode !== "connected") {
       status = "skipped";
@@ -692,8 +693,7 @@ export const execute = internalAction({
         : outputText
           ? truncatePreview(outputText)
           : undefined;
-    const persistedError =
-      syncMode === "off" && error ? "run failed while sync is off" : error;
+    const persistedError = toPersistedError(error);
 
     if (!shouldDelete) {
       await ctx.runMutation(internal.scheduling.cron_jobs.finishRun, {

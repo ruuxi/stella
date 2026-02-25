@@ -135,6 +135,25 @@ describe("security regressions", () => {
     expect(source).toMatch(/\}\s*finally\s*\{/);
   });
 
+  test("ephemeral tool events have TTL metadata and cron-backed cleanup", () => {
+    const eventsSource = readBackendFile("convex/events.ts");
+    const schemaSource = readBackendFile("convex/schema.ts");
+    const cronsSource = readBackendFile("convex/crons.ts");
+    const deviceToolsSource = readBackendFile("convex/agent/device_tools.ts");
+
+    expect(eventsSource).toContain("DEFAULT_EPHEMERAL_EVENT_TTL_MS");
+    expect(eventsSource).toContain("export const purgeExpiredEphemeralToolEvents = internalMutation");
+    expect(eventsSource).toContain("withIndex(\"by_ephemeral_and_expiresAt\"");
+    expect(eventsSource).toContain("event.type === \"tool_request\"");
+    expect(eventsSource).toContain("event.type === \"tool_result\"");
+    expect(schemaSource).toContain("ephemeral: v.optional(v.boolean())");
+    expect(schemaSource).toContain("expiresAt: v.optional(v.number())");
+    expect(schemaSource).toContain(".index(\"by_ephemeral_and_expiresAt\", [\"ephemeral\", \"expiresAt\"])");
+    expect(cronsSource).toContain("\"ephemeral tool event cleanup\"");
+    expect(cronsSource).toContain("internal.events.purgeExpiredEphemeralToolEvents");
+    expect(deviceToolsSource).toContain("ephemeral: context.ephemeral === true");
+  });
+
   test("cron sync-off mode avoids persisting output previews", () => {
     const source = readBackendFile("convex/scheduling/cron_jobs.ts");
 
@@ -145,6 +164,19 @@ describe("security regressions", () => {
     expect(source).toContain("lastError: persistedError");
   });
 
+  test("scheduler error persistence is redacted in sync-off mode", () => {
+    const cronSource = readBackendFile("convex/scheduling/cron_jobs.ts");
+    const heartbeatSource = readBackendFile("convex/scheduling/heartbeat.ts");
+
+    expect(cronSource).toContain("const toPersistedError = (rawError?: string) =>");
+    expect(cronSource).toContain(
+      "transient && rawError ? \"run failed while sync is off\" : rawError",
+    );
+    expect(heartbeatSource).toMatch(
+      /syncMode === "off"[\s\S]*\? "run failed while sync is off"/,
+    );
+  });
+
   test("heartbeat and cron suppress durable assistant delivery when sync is off", () => {
     const heartbeatSource = readBackendFile("convex/scheduling/heartbeat.ts");
     const cronSource = readBackendFile("convex/scheduling/cron_jobs.ts");
@@ -153,6 +185,17 @@ describe("security regressions", () => {
     expect(heartbeatSource).toContain("const deliver = config.deliver !== false && syncMode !== \"off\"");
     expect(cronSource).toContain("const transient = syncMode === \"off\"");
     expect(cronSource).toContain("if (deliver && outputText && syncMode !== \"off\")");
+  });
+
+  test("channel mode matrix wiring keeps privacy and routing guarantees", () => {
+    const source = readBackendFile("convex/channels/utils.ts");
+
+    expect(source).toContain("const useTransientRetention = syncMode === SYNC_MODE_OFF");
+    expect(source).toContain("const userMessageId = useTransientRetention");
+    expect(source).toContain("if (accountMode !== ACCOUNT_MODE_CONNECTED)");
+    expect(source).toContain("const candidates = buildExecutionCandidates({");
+    expect(source).toContain("runtimeMode === \"cloud_247\"");
+    expect(source).toContain("const usedCloudFallback =");
   });
 
   test("fallback resolver preserves provider options", () => {
