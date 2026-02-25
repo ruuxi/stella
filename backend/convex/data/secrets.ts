@@ -1,7 +1,6 @@
 import { mutation, query, internalQuery, internalMutation } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
-import type { Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { requireSensitiveUserId } from "../auth";
 import { optionalJsonValueValidator } from "../shared_validators";

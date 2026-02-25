@@ -8,7 +8,7 @@ import {
 import { createBackendTools } from "./backend";
 import { createCloudTools } from "./cloud";
 import { createOrchestrationTools, createOrchestrationToolsWithoutDevice } from "./orchestration";
-import { BASE_TOOL_NAMES, type ToolOptions } from "./types";
+import { type ToolOptions } from "./types";
 
 export { BASE_TOOL_NAMES, type ToolOptions } from "./types";
 export type { DeviceToolContext } from "../agent/device_tools";

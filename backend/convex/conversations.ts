@@ -2,11 +2,9 @@ import {
   mutation,
   internalQuery,
   internalMutation,
-  type MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
 import { requireUserId } from "./auth";
 
 const conversationValidator = v.object({

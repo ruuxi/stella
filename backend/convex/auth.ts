@@ -6,7 +6,6 @@ import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { jwt, magicLink } from "better-auth/plugins";
 import {
   internalAction,
-  internalMutation,
   internalQuery,
   mutation,
   query,

@@ -30,25 +30,6 @@ import { withModelFailoverAsync } from "./model_failover";
 import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
 
-const taskValidator = v.object({
-  _id: v.id("tasks"),
-  _creationTime: v.number(),
-  conversationId: v.id("conversations"),
-  parentTaskId: v.optional(v.id("tasks")),
-  description: v.string(),
-  prompt: v.string(),
-  agentType: v.string(),
-  status: v.string(),
-  taskDepth: v.number(),
-  model: v.optional(v.string()),
-  result: v.optional(v.string()),
-  error: v.optional(v.string()),
-  deliveryCompletedAt: v.optional(v.number()),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-  completedAt: v.optional(v.number()),
-});
-
 // Task without model field for client responses
 const taskClientValidator = v.object({
   _id: v.id("tasks"),

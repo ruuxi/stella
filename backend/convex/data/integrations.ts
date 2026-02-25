@@ -1,4 +1,4 @@
-import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
+import { mutation, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { requireUserId } from "../auth";
 import { jsonObjectValidator } from "../shared_validators";

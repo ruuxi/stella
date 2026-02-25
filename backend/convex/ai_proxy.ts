@@ -267,7 +267,6 @@ export const proxySearch = httpAction(async (ctx, request) => {
 
   // Web search requires server-side API key (Brave, Tavily, etc.)
   const searchApiKey = process.env.SEARCH_API_KEY;
-  const searchProvider = process.env.SEARCH_PROVIDER || "tavily";
 
   if (!searchApiKey) {
     return new Response(
