@@ -765,6 +765,23 @@ type AppendEventArgs = {
 };
 
 const resolveAppendEventPayload = (args: AppendEventArgs) => {
+  if (
+    args.ephemeral === true &&
+    args.type !== "tool_request" &&
+    args.type !== "tool_result"
+  ) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: "ephemeral is only supported for tool_request/tool_result",
+    });
+  }
+  if (args.expiresAt !== undefined && args.ephemeral !== true) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: "expiresAt requires ephemeral=true",
+    });
+  }
+
   if (deviceRequiredTypes.has(args.type) && !args.deviceId) {
     throw new ConvexError({
       code: "INVALID_ARGUMENT",
@@ -877,6 +894,8 @@ export const appendEvent = mutation({
     targetDeviceId: v.optional(v.string()),
     payload: jsonValueValidator,
     channelEnvelope: optionalChannelEnvelopeValidator,
+    ephemeral: v.optional(v.boolean()),
+    expiresAt: v.optional(v.number()),
   },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
@@ -954,6 +973,8 @@ export const appendInternalEvent = internalMutation({
     targetDeviceId: v.optional(v.string()),
     payload: jsonValueValidator,
     channelEnvelope: optionalChannelEnvelopeValidator,
+    ephemeral: v.optional(v.boolean()),
+    expiresAt: v.optional(v.number()),
   },
   returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
