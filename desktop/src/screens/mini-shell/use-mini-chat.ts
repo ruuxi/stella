@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRafStringAccumulator } from "../../hooks/use-raf-state";
-import { useAction, useMutation } from "convex/react";
+import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
 import { api } from "../../convex/api";
 import {
@@ -10,6 +10,11 @@ import {
 import { getOrCreateDeviceId } from "../../services/device";
 import { streamChat } from "../../services/model-gateway";
 import type { ChatContext } from "../../types/electron";
+import {
+  appendLocalEvent,
+  buildLocalHistoryMessages,
+  type LocalHistoryMessage,
+} from "../../services/local-chat-store";
 
 export type AttachmentRef = { id?: string; url?: string; mimeType?: string };
 
@@ -52,7 +57,7 @@ export function useMiniChat(opts: {
   const { state } = useUiState();
   const activeConversationId = state.conversationId;
   const [message, setMessage] = useState("");
-  const [streamingText, appendStreamingDelta, resetStreamingText] =
+  const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] =
     useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] =
     useRafStringAccumulator();
@@ -62,6 +67,14 @@ export function useMiniChat(opts: {
   const [expanded, setExpanded] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
+
+  const { isAuthenticated } = useConvexAuth();
+  const accountMode = useQuery(
+    api.data.preferences.getAccountMode,
+    isAuthenticated ? {} : "skip",
+  ) as "private_local" | "connected" | undefined;
+  const storageMode = isAuthenticated && accountMode === "connected" ? "cloud" : "local";
+  const isLocalStorage = storageMode === "local";
 
   const appendEvent = useMutation(
     api.events.appendEvent,
@@ -90,10 +103,24 @@ export function useMiniChat(opts: {
   });
 
   const createAttachmentAction = useAction(api.data.attachments.createFromDataUrl);
-  const events = useConversationEvents(activeConversationId ?? undefined);
+  const events = useConversationEvents(activeConversationId ?? undefined, {
+    source: storageMode,
+  });
 
   const appendConversationEvent = useCallback(
     async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
+      if (isLocalStorage) {
+        const localEvent = appendLocalEvent({
+          conversationId: args.conversationId,
+          type: args.type,
+          deviceId: args.deviceId,
+          requestId: args.requestId,
+          targetDeviceId: args.targetDeviceId,
+          payload: args.payload,
+        });
+        return { _id: localEvent._id };
+      }
+
       const event = await appendEvent({
         conversationId: args.conversationId as never,
         type: args.type,
@@ -104,7 +131,7 @@ export function useMiniChat(opts: {
       });
       return event as AppendedEventResponse | null;
     },
-    [appendEvent],
+    [appendEvent, isLocalStorage],
   );
 
   const createAttachment = useCallback(
@@ -123,6 +150,55 @@ export function useMiniChat(opts: {
     [createAttachmentAction],
   );
 
+  const appendLocalAgentEvent = useCallback(
+    (event: {
+      type: "tool_request" | "tool_result" | "assistant_message";
+      userMessageId?: string;
+      toolCallId?: string;
+      toolName?: string;
+      resultPreview?: string;
+      finalText?: string;
+    }) => {
+      if (!isLocalStorage || !activeConversationId) return;
+
+      if (event.type === "assistant_message") {
+        appendLocalEvent({
+          conversationId: activeConversationId,
+          type: "assistant_message",
+          requestId: event.userMessageId,
+          payload: {
+            text: event.finalText ?? "",
+            ...(event.userMessageId ? { userMessageId: event.userMessageId } : {}),
+          },
+        });
+        return;
+      }
+
+      if (event.type === "tool_request") {
+        appendLocalEvent({
+          conversationId: activeConversationId,
+          type: "tool_request",
+          requestId: event.toolCallId,
+          payload: {
+            toolName: event.toolName ?? "Tool",
+          },
+        });
+        return;
+      }
+
+      appendLocalEvent({
+        conversationId: activeConversationId,
+        type: "tool_result",
+        requestId: event.toolCallId,
+        payload: {
+          toolName: event.toolName ?? "Tool",
+          result: event.resultPreview ?? "",
+        },
+      });
+    },
+    [activeConversationId, isLocalStorage],
+  );
+
   const resetStreamingState = useCallback(
     (runId?: number) => {
       if (typeof runId === "number" && runId !== streamRunIdRef.current) return;
@@ -139,16 +215,120 @@ export function useMiniChat(opts: {
     [resetStreamingText, resetReasoningText, setIsStreaming],
   );
 
+  // Track active local agent run for IPC path
+  const localRunIdRef = useRef<string | null>(null);
+  const localSeqRef = useRef(0);
+  const agentStreamCleanupRef = useRef<(() => void) | null>(null);
+
   const cancelCurrentStream = useCallback(() => {
     if (streamAbortRef.current) streamAbortRef.current.abort();
     streamAbortRef.current = null;
+
+    if (localRunIdRef.current && window.electronAPI?.cancelAgentChat) {
+      window.electronAPI.cancelAgentChat(localRunIdRef.current);
+      localRunIdRef.current = null;
+    }
+    if (agentStreamCleanupRef.current) {
+      agentStreamCleanupRef.current();
+      agentStreamCleanupRef.current = null;
+    }
   }, []);
 
-  const startStream = useCallback(
-    (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
+  const startLocalStream = useCallback(
+    (args: {
+      userMessageId: string;
+      attachments?: AttachmentRef[];
+      localHistory?: LocalHistoryMessage[];
+    }, runIdCounter: number) => {
+      if (!activeConversationId || !window.electronAPI) return;
+
+      const cleanup = window.electronAPI.onAgentStream((event) => {
+        if (runIdCounter !== streamRunIdRef.current) return;
+        if (localRunIdRef.current && event.runId !== localRunIdRef.current) return;
+
+        localSeqRef.current = Math.max(localSeqRef.current, event.seq);
+
+        switch (event.type) {
+          case "stream":
+            if (event.chunk) appendStreamingDelta(event.chunk);
+            break;
+          case "tool-start":
+            appendLocalAgentEvent({
+              type: "tool_request",
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+            });
+            break;
+          case "tool-end":
+            appendLocalAgentEvent({
+              type: "tool_result",
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              resultPreview: event.resultPreview,
+            });
+            break;
+          case "error":
+            if (event.fatal) {
+              console.error("Local agent error:", event.error);
+              resetStreamingState(runIdCounter);
+            }
+            break;
+          case "end":
+            appendLocalAgentEvent({
+              type: "assistant_message",
+              userMessageId: args.userMessageId,
+              finalText: event.finalText ?? streamingTextRef.current,
+            });
+            streamAbortRef.current = null;
+            setIsStreaming(false);
+            localRunIdRef.current = null;
+            if (agentStreamCleanupRef.current) {
+              agentStreamCleanupRef.current();
+              agentStreamCleanupRef.current = null;
+            }
+            if (streamingTextRef.current.trim().length === 0) {
+              resetStreamingText();
+              setPendingUserMessageId(null);
+            }
+            break;
+        }
+      });
+
+      agentStreamCleanupRef.current = cleanup;
+
+      window.electronAPI
+        .startAgentChat({
+          conversationId: activeConversationId,
+          userMessageId: args.userMessageId,
+          storageMode,
+          localHistory: args.localHistory,
+        })
+        .then(({ runId: agentRunId }) => {
+          if (runIdCounter !== streamRunIdRef.current) return;
+          localRunIdRef.current = agentRunId;
+          localSeqRef.current = 0;
+        })
+        .catch((error) => {
+          if (runIdCounter !== streamRunIdRef.current) return;
+          console.error("Failed to start local agent chat:", error);
+          resetStreamingState(runIdCounter);
+        });
+    },
+    [
+      activeConversationId,
+      appendStreamingDelta,
+      appendLocalAgentEvent,
+      storageMode,
+      resetStreamingState,
+      resetStreamingText,
+      setIsStreaming,
+      streamingTextRef,
+    ],
+  );
+
+  const startHttpStream = useCallback(
+    (args: { userMessageId: string; attachments?: AttachmentRef[] }, runIdCounter: number) => {
       if (!activeConversationId) return;
-      const runId = streamRunIdRef.current + 1;
-      streamRunIdRef.current = runId;
       const controller = new AbortController();
       streamAbortRef.current = controller;
       resetStreamingText();
@@ -164,40 +344,92 @@ export function useMiniChat(opts: {
         },
         {
           onTextDelta: (delta) => {
-            if (runId !== streamRunIdRef.current) return;
+            if (runIdCounter !== streamRunIdRef.current) return;
             appendStreamingDelta(delta);
           },
           onReasoningDelta: (delta) => {
-            if (runId !== streamRunIdRef.current) return;
+            if (runIdCounter !== streamRunIdRef.current) return;
             appendReasoningDelta(delta);
           },
           onDone: () => {
-            if (runId !== streamRunIdRef.current) return;
+            if (runIdCounter !== streamRunIdRef.current) return;
             streamAbortRef.current = null;
             setIsStreaming(false);
           },
-          onAbort: () => resetStreamingState(runId),
+          onAbort: () => resetStreamingState(runIdCounter),
           onError: (error) => {
-            if (runId !== streamRunIdRef.current) return;
+            if (runIdCounter !== streamRunIdRef.current) return;
             console.error("Model gateway error", error);
-            resetStreamingState(runId);
+            resetStreamingState(runIdCounter);
           },
         },
         { signal: controller.signal },
       ).catch((error) => {
-        if (runId !== streamRunIdRef.current) return;
+        if (runIdCounter !== streamRunIdRef.current) return;
         console.error("Model gateway error", error);
-        resetStreamingState(runId);
+        resetStreamingState(runIdCounter);
       });
     },
     [
-      resetStreamingState,
       activeConversationId,
-      resetStreamingText,
-      resetReasoningText,
-      setIsStreaming,
       appendStreamingDelta,
       appendReasoningDelta,
+      resetReasoningText,
+      resetStreamingState,
+      resetStreamingText,
+      setIsStreaming,
+    ],
+  );
+
+  const startStream = useCallback(
+    (args: {
+      userMessageId: string;
+      attachments?: AttachmentRef[];
+      localHistory?: LocalHistoryMessage[];
+    }) => {
+      if (!activeConversationId) return;
+      const runId = streamRunIdRef.current + 1;
+      streamRunIdRef.current = runId;
+      resetStreamingText();
+      resetReasoningText();
+      setIsStreaming(true);
+      setPendingUserMessageId(args.userMessageId);
+
+      if (agentStreamCleanupRef.current) {
+        agentStreamCleanupRef.current();
+        agentStreamCleanupRef.current = null;
+      }
+
+      if (isLocalStorage) {
+        if (!window.electronAPI?.agentHealthCheck) {
+          resetStreamingState(runId);
+          return;
+        }
+        void window.electronAPI.agentHealthCheck().then((health) => {
+          if (runId !== streamRunIdRef.current) return;
+          if (!health?.ready) {
+            resetStreamingState(runId);
+            return;
+          }
+          startLocalStream(args, runId);
+        }).catch(() => {
+          if (runId !== streamRunIdRef.current) return;
+          resetStreamingState(runId);
+        });
+        return;
+      }
+
+      startHttpStream(args, runId);
+    },
+    [
+      activeConversationId,
+      isLocalStorage,
+      resetReasoningText,
+      resetStreamingState,
+      resetStreamingText,
+      setIsStreaming,
+      startHttpStream,
+      startLocalStream,
     ],
   );
 
@@ -250,9 +482,13 @@ export function useMiniChat(opts: {
     let cancelled = false;
     void Promise.resolve().then(() => {
       if (cancelled) return;
+      const localHistory = isLocalStorage
+        ? buildLocalHistoryMessages(activeConversationId, 50)
+        : undefined;
       startStream({
         userMessageId: queued.event._id,
         attachments: queued.attachments,
+        localHistory,
       });
     });
 
@@ -260,12 +496,13 @@ export function useMiniChat(opts: {
       cancelled = true;
     };
   }, [
+    activeConversationId,
     events,
     findQueuedFollowUp,
+    isLocalStorage,
     isStreaming,
     pendingUserMessageId,
     startStream,
-    activeConversationId,
   ]);
 
   const sendMessage = async () => {
@@ -276,11 +513,13 @@ export function useMiniChat(opts: {
           .join(" - ")
       : "";
     const rawText = message.trim();
+    const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
     if (
       !activeConversationId ||
-      (!rawText && !selectedSnippet && !windowSnippet)
-    )
+      (!rawText && !selectedSnippet && !windowSnippet && !hasScreenshotContext)
+    ) {
       return;
+    }
     const conversationId = activeConversationId;
 
     const deviceId = await getOrCreateDeviceId();
@@ -293,13 +532,16 @@ export function useMiniChat(opts: {
     const contextParts: string[] = [];
     if (windowSnippet) contextParts.push(`<active-window context="The user's currently focused window. May or may not be relevant to their request.">${windowSnippet}</active-window>`);
     if (selectedSnippet) contextParts.push(`"${selectedSnippet}"`);
+    if (hasScreenshotContext && isLocalStorage) {
+      contextParts.push(`[User included ${chatContext?.regionScreenshots?.length ?? 0} screenshot(s).]`);
+    }
     if (cleanedText) contextParts.push(cleanedText);
     const combinedText = contextParts.join("\n\n");
     if (!combinedText) return;
 
     const attachments: AttachmentRef[] = [];
 
-    if (chatContext?.regionScreenshots?.length) {
+    if (!isLocalStorage && chatContext?.regionScreenshots?.length) {
       const uploadedAttachments: Array<AttachmentRef | null> =
         await Promise.all(
           chatContext.regionScreenshots.map(async (screenshot) => {
@@ -361,7 +603,10 @@ export function useMiniChat(opts: {
       setSelectedText(null);
       setChatContext(null);
       setExpanded(true);
-      startStream({ userMessageId: eventId, attachments });
+      const localHistory = isLocalStorage
+        ? buildLocalHistoryMessages(conversationId, 50)
+        : undefined;
+      startStream({ userMessageId: eventId, attachments, localHistory });
     }
   };
 

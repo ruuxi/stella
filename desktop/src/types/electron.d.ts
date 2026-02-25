@@ -252,6 +252,8 @@ export type ElectronApi = {
     conversationId: string
     userMessageId: string
     agentType?: string
+    storageMode?: "cloud" | "local"
+    localHistory?: Array<{ role: "user" | "assistant"; content: string }>
   }) => Promise<{ runId: string }>
   cancelAgentChat: (runId: string) => void
   onAgentStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void

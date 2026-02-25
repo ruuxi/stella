@@ -67,9 +67,62 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
   onOpenRuntimeMode?: () => void;
   onSignOut?: () => void;
 }) {
+  const accountMode = useQuery(api.data.preferences.getAccountMode) as
+    | "private_local"
+    | "connected"
+    | undefined;
+  const setAccountMode = useMutation(api.data.preferences.setAccountMode);
+  const [isUpdatingAccountMode, setIsUpdatingAccountMode] = useState(false);
+  const [accountModeError, setAccountModeError] = useState<string | null>(null);
+
+  const effectiveAccountMode = accountMode ?? "private_local";
+  const accountModeLabel =
+    effectiveAccountMode === "connected" ? "Connected mode" : "Private Local mode";
+
+  const accountModeDescription =
+    effectiveAccountMode === "connected"
+      ? "Connectors and cloud sync are enabled."
+      : "Connectors and cloud sync are disabled.";
+
+  const handleToggleAccountMode = useCallback(async () => {
+    if (isUpdatingAccountMode) return;
+
+    setAccountModeError(null);
+    setIsUpdatingAccountMode(true);
+    const nextMode = effectiveAccountMode === "connected" ? "private_local" : "connected";
+
+    try {
+      await setAccountMode({ mode: nextMode });
+    } catch (error) {
+      setAccountModeError((error as Error).message ?? "Failed to update account mode.");
+    } finally {
+      setIsUpdatingAccountMode(false);
+    }
+  }, [effectiveAccountMode, isUpdatingAccountMode, setAccountMode]);
+
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Account Mode</div>
+            <div className="settings-row-sublabel">
+              {accountModeLabel}. {accountModeDescription}
+            </div>
+            {accountModeError ? (
+              <div className="settings-row-sublabel">{accountModeError}</div>
+            ) : null}
+          </div>
+          <div className="settings-row-control">
+            <button className="settings-btn" onClick={handleToggleAccountMode} disabled={isUpdatingAccountMode}>
+              {isUpdatingAccountMode
+                ? "Updating..."
+                : effectiveAccountMode === "connected"
+                  ? "Switch to Private Local"
+                  : "Switch to Connected"}
+            </button>
+          </div>
+        </div>
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Runtime Mode</div>

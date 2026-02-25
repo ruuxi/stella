@@ -1,6 +1,10 @@
 import { useConvexAuth, useQuery } from "convex/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../convex/api";
+import {
+  listLocalEvents,
+  subscribeToLocalChatUpdates,
+} from "../services/local-chat-store";
 import type { StepItem } from "../components/steps-container";
 
 // Base event record from Convex
@@ -419,22 +423,46 @@ export function getRunningTasks(events: EventRecord[]): TaskItem[] {
 }
 
 // Main hook to fetch conversation events
-export const useConversationEvents = (conversationId?: string) => {
+export type ConversationEventsSource = "cloud" | "local";
+
+export const useConversationEvents = (
+  conversationId?: string,
+  options?: { source?: ConversationEventsSource },
+) => {
+  const source = options?.source ?? "cloud";
   const { isAuthenticated } = useConvexAuth();
-  const result = useQuery(
+  const cloudResult = useQuery(
     api.events.listEvents,
-    isAuthenticated && conversationId
+    source === "cloud" && isAuthenticated && conversationId
       ? {
           conversationId,
           paginationOpts: { cursor: null, numItems: 200 },
         }
       : "skip"
   ) as { page: EventRecord[] } | undefined;
+  const [localEvents, setLocalEvents] = useState<EventRecord[]>([]);
+
+  useEffect(() => {
+    if (source !== "local" || !conversationId) {
+      setLocalEvents([]);
+      return;
+    }
+
+    const refresh = () => {
+      setLocalEvents(listLocalEvents(conversationId, 200));
+    };
+
+    refresh();
+    return subscribeToLocalChatUpdates(refresh);
+  }, [source, conversationId]);
 
   return useMemo(() => {
-    const events = result?.page ?? [];
+    if (source === "local") {
+      return localEvents;
+    }
+    const events = cloudResult?.page ?? [];
     return [...events].reverse();
-  }, [result?.page]);
+  }, [source, localEvents, cloudResult?.page]);
 };
 
 // Hook to extract steps from events

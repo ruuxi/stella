@@ -2425,6 +2425,8 @@ app.whenReady().then(async () => {
     conversationId: string
     userMessageId: string
     agentType?: string
+    storageMode?: 'cloud' | 'local'
+    localHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   }) => {
     if (!localHostRunner) {
       throw new Error('Local host runner not available')

@@ -19,6 +19,11 @@ import {
   uploadScreenshotAttachments,
   type AttachmentUploadResponse,
 } from "./streaming/attachment-upload";
+import {
+  appendLocalEvent,
+  buildLocalHistoryMessages,
+  type LocalHistoryMessage,
+} from "../../services/local-chat-store";
 
 export type AttachmentRef = {
   id?: string;
@@ -26,8 +31,11 @@ export type AttachmentRef = {
   mimeType?: string;
 };
 
+type ChatStorageMode = "cloud" | "local";
+
 type UseStreamingChatOptions = {
   conversationId: string | null;
+  storageMode?: ChatStorageMode;
 };
 
 type AppendEventArgs = {
@@ -39,8 +47,12 @@ type AppendEventArgs = {
   payload?: unknown;
 };
 
-export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
+export function useStreamingChat({
+  conversationId,
+  storageMode = "cloud",
+}: UseStreamingChatOptions) {
   const activeConversationId = conversationId;
+  const isLocalStorage = storageMode === "local";
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
@@ -78,6 +90,18 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
 
   const appendConversationEvent = useCallback(
     async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
+      if (isLocalStorage) {
+        const localEvent = appendLocalEvent({
+          conversationId: args.conversationId,
+          type: args.type,
+          deviceId: args.deviceId,
+          requestId: args.requestId,
+          targetDeviceId: args.targetDeviceId,
+          payload: args.payload,
+        });
+        return { _id: localEvent._id };
+      }
+
       const event = await appendEvent({
         conversationId: args.conversationId as never,
         type: args.type,
@@ -88,7 +112,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       });
       return event as AppendedEventResponse | null;
     },
-    [appendEvent],
+    [appendEvent, isLocalStorage],
   );
 
   const createAttachment = useCallback(
@@ -105,6 +129,55 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       return attachment as AttachmentUploadResponse | null;
     },
     [createAttachmentAction],
+  );
+
+  const appendLocalAgentEvent = useCallback(
+    (event: {
+      type: "tool_request" | "tool_result" | "assistant_message";
+      userMessageId?: string;
+      toolCallId?: string;
+      toolName?: string;
+      resultPreview?: string;
+      finalText?: string;
+    }) => {
+      if (!isLocalStorage || !activeConversationId) return;
+
+      if (event.type === "assistant_message") {
+        appendLocalEvent({
+          conversationId: activeConversationId,
+          type: "assistant_message",
+          requestId: event.userMessageId,
+          payload: {
+            text: event.finalText ?? "",
+            ...(event.userMessageId ? { userMessageId: event.userMessageId } : {}),
+          },
+        });
+        return;
+      }
+
+      if (event.type === "tool_request") {
+        appendLocalEvent({
+          conversationId: activeConversationId,
+          type: "tool_request",
+          requestId: event.toolCallId,
+          payload: {
+            toolName: event.toolName ?? "Tool",
+          },
+        });
+        return;
+      }
+
+      appendLocalEvent({
+        conversationId: activeConversationId,
+        type: "tool_result",
+        requestId: event.toolCallId,
+        payload: {
+          toolName: event.toolName ?? "Tool",
+          result: event.resultPreview ?? "",
+        },
+      });
+    },
+    [activeConversationId, isLocalStorage],
   );
 
   const resetStreamingState = useCallback(
@@ -153,7 +226,15 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
 
   /** Start streaming via IPC (local agent runtime in Electron) */
   const startLocalStream = useCallback(
-    (args: { userMessageId: string }, runIdCounter: number) => {
+    (
+      args: {
+        userMessageId: string;
+        attachments?: AttachmentRef[];
+        localHistory?: LocalHistoryMessage[];
+      },
+      runIdCounter: number,
+      fallbackToHttp: boolean,
+    ) => {
       if (!activeConversationId || !window.electronAPI) return;
 
       const cleanup = window.electronAPI.onAgentStream((event) => {
@@ -168,9 +249,19 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
             if (event.chunk) appendStreamingDelta(event.chunk);
             break;
           case "tool-start":
-            // Could be used to show tool activity indicators
+            appendLocalAgentEvent({
+              type: "tool_request",
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+            });
             break;
           case "tool-end":
+            appendLocalAgentEvent({
+              type: "tool_result",
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              resultPreview: event.resultPreview,
+            });
             break;
           case "error":
             if (event.fatal) {
@@ -179,10 +270,19 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
             }
             break;
           case "end":
+            appendLocalAgentEvent({
+              type: "assistant_message",
+              userMessageId: args.userMessageId,
+              finalText: event.finalText ?? streamingTextRef.current,
+            });
             streamAbortRef.current = null;
             setIsStreaming(false);
             setQueueNext(false);
             localRunIdRef.current = null;
+            if (agentStreamCleanupRef.current) {
+              agentStreamCleanupRef.current();
+              agentStreamCleanupRef.current = null;
+            }
             if (streamingTextRef.current.trim().length === 0) {
               resetStreamingText();
               setPendingUserMessageId(null);
@@ -197,6 +297,8 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         .startAgentChat({
           conversationId: activeConversationId,
           userMessageId: args.userMessageId,
+          storageMode,
+          localHistory: args.localHistory,
         })
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return;
@@ -206,13 +308,18 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         .catch((error) => {
           if (runIdCounter !== streamRunIdRef.current) return;
           console.error("Failed to start local agent chat:", error);
-          // Fall back to HTTP stream
-          startHttpStream(args, runIdCounter);
+          if (fallbackToHttp) {
+            startHttpStream(args, runIdCounter);
+          } else {
+            resetStreamingState(runIdCounter);
+          }
         });
     },
     [
       activeConversationId,
       appendStreamingDelta,
+      appendLocalAgentEvent,
+      storageMode,
       resetStreamingState,
       resetStreamingText,
       streamingTextRef,
@@ -279,7 +386,11 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
   );
 
   const startStream = useCallback(
-    (args: { userMessageId: string; attachments?: AttachmentRef[] }) => {
+    (args: {
+      userMessageId: string;
+      attachments?: AttachmentRef[];
+      localHistory?: LocalHistoryMessage[];
+    }) => {
       if (!activeConversationId) {
         return;
       }
@@ -297,11 +408,30 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       }
 
       // Dual-path: try local agent runtime first, fall back to HTTP
+      if (isLocalStorage) {
+        if (!window.electronAPI?.agentHealthCheck) {
+          resetStreamingState(runId);
+          return;
+        }
+        void window.electronAPI.agentHealthCheck().then((health) => {
+          if (runId !== streamRunIdRef.current) return;
+          if (!health?.ready) {
+            resetStreamingState(runId);
+            return;
+          }
+          startLocalStream(args, runId, false);
+        }).catch(() => {
+          if (runId !== streamRunIdRef.current) return;
+          resetStreamingState(runId);
+        });
+        return;
+      }
+
       if (window.electronAPI?.agentHealthCheck) {
         void window.electronAPI.agentHealthCheck().then((health) => {
           if (runId !== streamRunIdRef.current) return;
           if (health?.ready) {
-            startLocalStream(args, runId);
+            startLocalStream(args, runId, true);
           } else {
             const controller = new AbortController();
             streamAbortRef.current = controller;
@@ -322,6 +452,7 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
     [
       resetStreamingState,
       activeConversationId,
+      isLocalStorage,
       resetStreamingText,
       resetReasoningText,
       streamingTextRef,
@@ -405,6 +536,9 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
       if (selectedSnippet) {
         contextParts.push(`"${selectedSnippet}"`);
       }
+      if (hasScreenshotContext && isLocalStorage) {
+        contextParts.push(`[User included ${opts.chatContext?.regionScreenshots?.length ?? 0} screenshot(s).]`);
+      }
       if (cleanedText) {
         contextParts.push(cleanedText);
       }
@@ -414,12 +548,14 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         return;
       }
 
-      const attachments: AttachmentRef[] = await uploadScreenshotAttachments({
-        screenshots: opts.chatContext?.regionScreenshots,
-        conversationId: resolvedConversationId,
-        deviceId,
-        createAttachment,
-      });
+      const attachments: AttachmentRef[] = isLocalStorage
+        ? []
+        : await uploadScreenshotAttachments({
+            screenshots: opts.chatContext?.regionScreenshots,
+            conversationId: resolvedConversationId,
+            deviceId,
+            createAttachment,
+          });
 
       const platform = window.electronAPI?.platform ?? "unknown";
       const shouldQueue =
@@ -455,11 +591,15 @@ export function useStreamingChat({ conversationId }: UseStreamingChatOptions) {
         }
         setQueueNext(false);
         opts.onClear();
-        startStream({ userMessageId: eventId, attachments });
+        const localHistory = isLocalStorage
+          ? buildLocalHistoryMessages(resolvedConversationId, 50)
+          : undefined;
+        startStream({ userMessageId: eventId, attachments, localHistory });
       }
     },
     [
       activeConversationId,
+      isLocalStorage,
       isStreaming,
       queueNext,
       cancelCurrentStream,

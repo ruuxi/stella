@@ -7,6 +7,8 @@ import { renderHook, act } from "@testing-library/react";
 
 const mockAppendEvent = vi.fn();
 const mockCreateAttachment = vi.fn();
+const mockUseConvexAuth = vi.fn(() => ({ isAuthenticated: true, isLoading: false }));
+const mockUseQuery = vi.fn(() => "connected");
 
 vi.mock("convex/react", () => ({
   useAction: vi.fn(() => mockCreateAttachment),
@@ -15,6 +17,8 @@ vi.mock("convex/react", () => ({
       withOptimisticUpdate: vi.fn(() => mockAppendEvent),
     }),
   ),
+  useConvexAuth: vi.fn(() => mockUseConvexAuth()),
+  useQuery: vi.fn(() => mockUseQuery()),
 }));
 
 vi.mock("../../hooks/use-raf-state", async () => {
@@ -56,6 +60,9 @@ vi.mock("../../convex/api", () => ({
     data: {
       attachments: {
         createFromDataUrl: "createFromDataUrl",
+      },
+      preferences: {
+        getAccountMode: "getAccountMode",
       },
     },
   },
@@ -129,6 +136,8 @@ describe("useMiniChat", () => {
     // Reset per-test state
     mockConversationId = "conv-123";
     mockEvents = [];
+    mockUseConvexAuth.mockReturnValue({ isAuthenticated: true, isLoading: false });
+    mockUseQuery.mockReturnValue("connected");
 
     // Reset mocks fully (clears calls AND queued mockResolvedValueOnce, etc.)
     vi.clearAllMocks();
