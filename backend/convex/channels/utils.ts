@@ -527,8 +527,9 @@ export const consumeWebhookRateLimit = internalMutation({
   handler: async (ctx, args) => {
     const limit = Math.max(1, Math.floor(args.limit));
     const periodMs = Math.max(1_000, Math.floor(args.windowMs), Math.floor(args.blockMs ?? 0));
+    const hashedKey = await hashSha256Hex(`${args.scope}:${args.key}`);
     const status = await webhookRateLimiter.limit(ctx, `webhook:${args.scope}:${limit}:${periodMs}`, {
-      key: args.key,
+      key: hashedKey,
       config: { kind: "fixed window", rate: limit, period: periodMs },
     });
 
@@ -838,6 +839,43 @@ const appendInboundUserMessage = async (args: {
   return event?._id ?? null;
 };
 
+const appendTransientChannelEvent = async (args: {
+  ctx: ActionCtx;
+  ownerId: string;
+  conversationId: Id<"conversations">;
+  provider: string;
+  direction: "inbound" | "outbound";
+  text: string;
+  batchKey: string;
+  runId?: string;
+  metadata?: {
+    source?: string;
+    syncMode?: string;
+    runtimeMode?: string;
+    fallback?: string;
+  };
+}): Promise<void> => {
+  await args.ctx.runMutation(internal.channels.transient_data.appendTransientEvent, {
+    ownerId: args.ownerId,
+    conversationId: args.conversationId,
+    provider: args.provider,
+    direction: args.direction,
+    text: args.text,
+    batchKey: args.batchKey,
+    runId: args.runId,
+    metadata: args.metadata,
+  });
+};
+
+const deleteTransientBatch = async (args: {
+  ctx: ActionCtx;
+  batchKey: string;
+}): Promise<void> => {
+  await args.ctx.runMutation(internal.channels.transient_data.deleteTransientBatch, {
+    batchKey: args.batchKey,
+  });
+};
+
 const resolveExecutionTarget = async (args: {
   ctx: ActionCtx;
   ownerId: string;
@@ -921,16 +959,49 @@ export async function processIncomingMessage(
     internal.data.preferences.getSyncModeForOwner,
     { ownerId: connection.ownerId },
   )) as SyncMode;
+  // See backend/docs/sync_off_operational_writes.md for intentionally retained
+  // operational metadata writes while sync mode is off.
   const transient = syncMode === SYNC_MODE_OFF;
+  const transientBatchKey = transient
+    ? `channel:${args.provider}:${crypto.randomUUID()}`
+    : null;
+  let transientBatchCleaned = false;
+  const cleanupTransientBatch = async () => {
+    if (!transientBatchKey || transientBatchCleaned) {
+      return;
+    }
+    try {
+      await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
+      transientBatchCleaned = true;
+    } catch (cleanupError) {
+      // Best-effort cleanup only.
+      console.error("[channels] Failed to clean transient connector batch:", cleanupError);
+    }
+  };
 
   const persistAssistant = async (params: {
     text: string;
     usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
     silent?: boolean;
+    fallback?: string;
   }) => {
     if (params.silent) return;
-    // Sync-off mode is intentionally non-durable for connector payload/response text.
-    if (transient) {
+    if (transient && transientBatchKey) {
+      await appendTransientChannelEvent({
+        ctx: args.ctx,
+        ownerId: connection.ownerId,
+        conversationId,
+        provider: args.provider,
+        direction: "outbound",
+        text: params.text,
+        batchKey: transientBatchKey,
+        metadata: {
+          source: "connector",
+          syncMode,
+          runtimeMode,
+          ...(params.fallback ? { fallback: params.fallback } : {}),
+        },
+      });
       return;
     }
 
@@ -954,6 +1025,23 @@ export async function processIncomingMessage(
           attachments: args.attachments,
           channelEnvelope: args.channelEnvelope,
         });
+
+    if (transient && transientBatchKey) {
+      await appendTransientChannelEvent({
+        ctx: args.ctx,
+        ownerId: connection.ownerId,
+        conversationId,
+        provider: args.provider,
+        direction: "inbound",
+        text: args.text,
+        batchKey: transientBatchKey,
+        metadata: {
+          source: "connector",
+          syncMode,
+          runtimeMode,
+        },
+      });
+    }
 
     if (args.respond === false) {
       return { text: "" };
@@ -1024,7 +1112,10 @@ export async function processIncomingMessage(
         runtimeMode === "cloud_247"
           ? CLOUD_247_NOT_READY_MESSAGE
           : OFFLINE_ENABLE_247_MESSAGE;
-      await persistAssistant({ text: failureMessage });
+      await persistAssistant({
+        text: failureMessage,
+        fallback: "none",
+      });
       return { text: failureMessage };
     }
 
@@ -1041,12 +1132,16 @@ export async function processIncomingMessage(
       text: responseText,
       usage: result.usage,
       silent: result.silent,
+      fallback: usedCloudFallback ? "cloud" : selectedMode ?? undefined,
     });
 
     return { text: responseText };
   } catch (error) {
     console.error("[channels] processIncomingMessage failed:", error);
     return null;
+  } finally {
+    // Always clear transient connector rows, including unexpected error paths.
+    await cleanupTransientBatch();
   }
 }
 /**

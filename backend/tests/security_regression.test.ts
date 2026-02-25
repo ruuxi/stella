@@ -119,6 +119,20 @@ describe("security regressions", () => {
     expect(source).toMatch(/consumeWebhookDedup\(\s*ctx,\s*"linq"/);
   });
 
+  test("webhook limiter keys are hashed before persistence", () => {
+    const source = readBackendFile("convex/channels/utils.ts");
+
+    expect(source).toContain("const hashedKey = await hashSha256Hex");
+    expect(source).toContain("key: hashedKey");
+  });
+
+  test("sync-off operational write policy is explicitly documented", () => {
+    const source = readBackendFile("docs/sync_off_operational_writes.md");
+    expect(source).toContain("Sync-off blocks durable chat content persistence");
+    expect(source).toContain("Expected operational writes");
+    expect(source).toContain("Explicitly blocked in sync-off");
+  });
+
   test("cron tick requires successful claim before scheduling execution", () => {
     const source = readBackendFile("convex/scheduling/cron_jobs.ts");
 
@@ -127,13 +141,16 @@ describe("security regressions", () => {
     expect(source).toContain("if (!claimed) {");
   });
 
-  test("sync-off connector mode avoids durable transient transport rows", () => {
+  test("connector transient batches are cleaned in finally", () => {
     const source = readBackendFile("convex/channels/utils.ts");
 
     expect(source).toContain("const transient = syncMode === SYNC_MODE_OFF");
-    expect(source).toContain("Sync-off mode is intentionally non-durable for connector payload/response text.");
-    expect(source).not.toContain("internal.channels.transient_data.appendTransientEvent");
-    expect(source).not.toContain("internal.channels.transient_data.deleteTransientBatch");
+    expect(source).toContain("const transientBatchKey = transient");
+    expect(source).toContain("const cleanupTransientBatch = async () =>");
+    expect(source).toContain("internal.channels.transient_data.appendTransientEvent");
+    expect(source).toContain("internal.channels.transient_data.deleteTransientBatch");
+    expect(source).toContain("await cleanupTransientBatch()");
+    expect(source).toMatch(/\}\s*finally\s*\{/);
   });
 
   test("ephemeral tool events have TTL metadata and cron-backed cleanup", () => {
