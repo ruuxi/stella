@@ -10,15 +10,22 @@ import { v, Infer } from "convex/values";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { runAgentTurn } from "../automation/runner";
+import { runAgentTurn, type RunAgentTurnResult } from "../automation/runner";
 import { requireUserId } from "../auth";
 import { optionalChannelEnvelopeValidator } from "../shared_validators";
 
 type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 type AccountMode = "private_local" | "connected";
+type RuntimeMode = "local" | "cloud_247";
+type SyncMode = "on" | "off";
+type ExecutionCandidate =
+  | { mode: "local"; targetDeviceId: string; spriteName?: undefined }
+  | { mode: "cloud"; targetDeviceId?: undefined; spriteName?: undefined }
+  | { mode: "remote"; targetDeviceId?: undefined; spriteName: string };
 
 const DM_POLICY_DEFAULT: DmPolicy = "pairing";
 const ACCOUNT_MODE_CONNECTED: AccountMode = "connected";
+const SYNC_MODE_OFF: SyncMode = "off";
 const OFFLINE_ENABLE_247_INTENT = /\b(enable|turn on|start)\s*(24\/?7|247|cloud)\b/i;
 const CONNECTED_MODE_REQUIRED_MESSAGE =
   "Connectors are disabled in Private Local mode. Enable Connected mode in Stella Settings to continue.";
@@ -30,6 +37,8 @@ const CLOUD_247_NOT_READY_MESSAGE =
   "24/7 mode is enabled, but the remote machine is not ready yet. Please try again shortly.";
 const ENABLE_247_FAILED_MESSAGE =
   "I couldn't start 24/7 mode right now. Please enable it from Stella Settings and try again.";
+const CLOUD_FALLBACK_NUDGE_MESSAGE =
+  "Your desktop is offline right now. Reply \"enable 24/7\" if you want always-on remote execution.";
 const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const channelConnectionValidator = v.object({
   _id: v.id("channel_connections"),
@@ -146,6 +155,32 @@ const hashLinkCode = async (code: string, salt: string) =>
   hashSha256Hex(`${salt}:${code}`);
 
 const isEnable247Intent = (text: string) => OFFLINE_ENABLE_247_INTENT.test(text.trim());
+
+const buildExecutionCandidates = (args: {
+  runtimeMode: RuntimeMode;
+  targetDeviceId: string | null;
+  spriteName: string | null;
+}): ExecutionCandidate[] => {
+  const candidates: ExecutionCandidate[] = [];
+  if (args.targetDeviceId) {
+    candidates.push({ mode: "local", targetDeviceId: args.targetDeviceId });
+  }
+
+  if (args.runtimeMode === "cloud_247") {
+    if (args.spriteName) {
+      candidates.push({ mode: "remote", spriteName: args.spriteName });
+    }
+    candidates.push({ mode: "cloud" });
+    return candidates;
+  }
+
+  // runtimeMode === "local": prefer local when online, then cloud fallback, then remote.
+  candidates.push({ mode: "cloud" });
+  if (args.spriteName) {
+    candidates.push({ mode: "remote", spriteName: args.spriteName });
+  }
+  return candidates;
+};
 
 const parseLinkCodeValue = (
   value: string,
@@ -803,6 +838,43 @@ const appendInboundUserMessage = async (args: {
   return event?._id ?? null;
 };
 
+const appendTransientChannelEvent = async (args: {
+  ctx: ActionCtx;
+  ownerId: string;
+  conversationId: Id<"conversations">;
+  provider: string;
+  direction: "inbound" | "outbound";
+  text: string;
+  batchKey: string;
+  runId?: string;
+  metadata?: {
+    source?: string;
+    syncMode?: string;
+    runtimeMode?: string;
+    fallback?: string;
+  };
+}): Promise<void> => {
+  await args.ctx.runMutation(internal.channels.transient_data.appendTransientEvent, {
+    ownerId: args.ownerId,
+    conversationId: args.conversationId,
+    provider: args.provider,
+    direction: args.direction,
+    text: args.text,
+    batchKey: args.batchKey,
+    runId: args.runId,
+    metadata: args.metadata,
+  });
+};
+
+const deleteTransientBatch = async (args: {
+  ctx: ActionCtx;
+  batchKey: string;
+}): Promise<void> => {
+  await args.ctx.runMutation(internal.channels.transient_data.deleteTransientBatch, {
+    batchKey: args.batchKey,
+  });
+};
+
 const resolveExecutionTarget = async (args: {
   ctx: ActionCtx;
   ownerId: string;
@@ -877,98 +949,196 @@ export async function processIncomingMessage(
     ownerId: connection.ownerId,
     groupId: args.groupId,
   });
+  const runtimeMode = (await args.ctx.runQuery(
+    internal.data.preferences.getRuntimeModeForOwner,
+    { ownerId: connection.ownerId },
+  )) as RuntimeMode;
+  const syncMode = (await args.ctx.runQuery(
+    internal.data.preferences.getSyncModeForOwner,
+    { ownerId: connection.ownerId },
+  )) as SyncMode;
+  const useTransientRetention = syncMode === SYNC_MODE_OFF;
+  const transientBatchKey = useTransientRetention
+    ? `channel:${args.provider}:${crypto.randomUUID()}`
+    : null;
 
-  const userMessageId = await appendInboundUserMessage({
-    ctx: args.ctx,
-    conversationId,
-    provider: args.provider,
-    text: args.text,
-    attachments: args.attachments,
-    channelEnvelope: args.channelEnvelope,
-  });
-
-  if (args.respond === false) {
-    return { text: "" };
-  }
-
-  let executionTarget = await resolveExecutionTarget({
-    ctx: args.ctx,
-    ownerId: connection.ownerId,
-  });
-
-  if (!executionTarget.targetDeviceId && !executionTarget.spriteName) {
-    const runtimeMode = await args.ctx.runQuery(
-      internal.data.preferences.getRuntimeModeForOwner,
-      { ownerId: connection.ownerId },
-    );
-
-    if (runtimeMode === "local") {
-      if (isEnable247Intent(args.text)) {
-        try {
-          await args.ctx.runAction(internal.agent.cloud_devices.spawnForOwner, {
-            ownerId: connection.ownerId,
-          });
-        } catch (error) {
-          console.error("[channels] Failed to enable 24/7 mode from connector:", error);
-          await persistInboundAssistantMessage({
-            ctx: args.ctx,
-            conversationId,
-            provider: args.provider,
-            responseText: ENABLE_247_FAILED_MESSAGE,
-          });
-          return { text: ENABLE_247_FAILED_MESSAGE };
-        }
-
-        await persistInboundAssistantMessage({
-          ctx: args.ctx,
-          conversationId,
-          provider: args.provider,
-          responseText: ENABLING_247_MESSAGE,
-        });
-        return { text: ENABLING_247_MESSAGE };
-      } else {
-        await persistInboundAssistantMessage({
-          ctx: args.ctx,
-          conversationId,
-          provider: args.provider,
-          responseText: OFFLINE_ENABLE_247_MESSAGE,
-        });
-        return { text: OFFLINE_ENABLE_247_MESSAGE };
-      }
-    } else {
-      await persistInboundAssistantMessage({
+  const persistAssistant = async (params: {
+    text: string;
+    usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+    silent?: boolean;
+    fallback?: string;
+  }) => {
+    if (params.silent) return;
+    if (useTransientRetention && transientBatchKey) {
+      await appendTransientChannelEvent({
         ctx: args.ctx,
+        ownerId: connection.ownerId,
         conversationId,
         provider: args.provider,
-        responseText: CLOUD_247_NOT_READY_MESSAGE,
+        direction: "outbound",
+        text: params.text,
+        batchKey: transientBatchKey,
+        metadata: {
+          source: "connector",
+          syncMode,
+          runtimeMode,
+          ...(params.fallback ? { fallback: params.fallback } : {}),
+        },
       });
-      return { text: CLOUD_247_NOT_READY_MESSAGE };
+      return;
     }
-  }
 
-  const result = await runAgentTurn({
-    ctx: args.ctx,
-    conversationId,
-    prompt: args.text,
-    agentType: "orchestrator",
-    ownerId: connection.ownerId,
-    userMessageId: userMessageId ?? undefined,
-    targetDeviceId: executionTarget.targetDeviceId ?? undefined,
-    spriteName: executionTarget.spriteName ?? undefined,
-  });
-
-  const responseText = result.text.trim() || "(Stella had nothing to say.)";
-  if (!result.silent) {
     await persistInboundAssistantMessage({
       ctx: args.ctx,
       conversationId,
       provider: args.provider,
-      responseText,
-      usage: result.usage,
+      responseText: params.text,
+      usage: params.usage,
     });
-  }
+  };
 
-  return { text: responseText };
+  try {
+    const userMessageId = useTransientRetention
+      ? null
+      : await appendInboundUserMessage({
+          ctx: args.ctx,
+          conversationId,
+          provider: args.provider,
+          text: args.text,
+          attachments: args.attachments,
+          channelEnvelope: args.channelEnvelope,
+        });
+
+    if (useTransientRetention && transientBatchKey) {
+      await appendTransientChannelEvent({
+        ctx: args.ctx,
+        ownerId: connection.ownerId,
+        conversationId,
+        provider: args.provider,
+        direction: "inbound",
+        text: args.text,
+        batchKey: transientBatchKey,
+        metadata: {
+          source: "connector",
+          syncMode,
+          runtimeMode,
+        },
+      });
+    }
+
+    if (args.respond === false) {
+      if (transientBatchKey) {
+        await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
+      }
+      return { text: "" };
+    }
+
+    const executionTarget = await resolveExecutionTarget({
+      ctx: args.ctx,
+      ownerId: connection.ownerId,
+    });
+
+    // Special intent: allow users to enable 24/7 directly from connectors.
+    if (
+      runtimeMode === "local" &&
+      !executionTarget.targetDeviceId &&
+      isEnable247Intent(args.text)
+    ) {
+      try {
+        await args.ctx.runAction(internal.agent.cloud_devices.spawnForOwner, {
+          ownerId: connection.ownerId,
+        });
+      } catch (error) {
+        console.error("[channels] Failed to enable 24/7 mode from connector:", error);
+        await persistAssistant({ text: ENABLE_247_FAILED_MESSAGE });
+        if (transientBatchKey) {
+          await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
+        }
+        return { text: ENABLE_247_FAILED_MESSAGE };
+      }
+
+      await persistAssistant({ text: ENABLING_247_MESSAGE });
+      if (transientBatchKey) {
+        await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
+      }
+      return { text: ENABLING_247_MESSAGE };
+    }
+
+    const candidates = buildExecutionCandidates({
+      runtimeMode,
+      targetDeviceId: executionTarget.targetDeviceId,
+      spriteName: executionTarget.spriteName,
+    });
+
+    let result: RunAgentTurnResult | null = null;
+    let selectedMode: ExecutionCandidate["mode"] | null = null;
+    let lastError: Error | null = null;
+    for (const candidate of candidates) {
+      try {
+        result = await runAgentTurn({
+          ctx: args.ctx,
+          conversationId,
+          prompt: args.text,
+          agentType: "orchestrator",
+          ownerId: connection.ownerId,
+          userMessageId: userMessageId ?? undefined,
+          targetDeviceId:
+            candidate.mode === "local" ? candidate.targetDeviceId : undefined,
+          spriteName:
+            candidate.mode === "remote" ? candidate.spriteName : undefined,
+          transient: useTransientRetention,
+        });
+        selectedMode = candidate.mode;
+        break;
+      } catch (error) {
+        lastError = error as Error;
+      }
+    }
+
+    if (!result) {
+      if (lastError) {
+        console.error("[channels] Agent turn failed across all execution candidates:", lastError);
+      }
+      const failureMessage =
+        runtimeMode === "cloud_247"
+          ? CLOUD_247_NOT_READY_MESSAGE
+          : OFFLINE_ENABLE_247_MESSAGE;
+      await persistAssistant({
+        text: failureMessage,
+        fallback: "none",
+      });
+      if (transientBatchKey) {
+        await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
+      }
+      return { text: failureMessage };
+    }
+
+    let responseText = result.text.trim() || "(Stella had nothing to say.)";
+    const usedCloudFallback =
+      runtimeMode === "local" &&
+      !executionTarget.targetDeviceId &&
+      selectedMode === "cloud";
+    if (usedCloudFallback) {
+      responseText = `${responseText}\n\n${CLOUD_FALLBACK_NUDGE_MESSAGE}`;
+    }
+
+    await persistAssistant({
+      text: responseText,
+      usage: result.usage,
+      silent: result.silent,
+      fallback: usedCloudFallback ? "cloud" : selectedMode ?? undefined,
+    });
+
+    if (transientBatchKey) {
+      // Primary cleanup path: remove transient data as soon as response is finished.
+      await deleteTransientBatch({ ctx: args.ctx, batchKey: transientBatchKey });
+    }
+
+    return { text: responseText };
+  } catch (error) {
+    console.error("[channels] processIncomingMessage failed:", error);
+    return null;
+  }
 }
 /**
  * Common link code validation: consume code -> check existing ->

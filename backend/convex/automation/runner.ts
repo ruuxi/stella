@@ -35,6 +35,7 @@ type RunAgentTurnArgs = {
   userMessageId?: Id<"events">;
   targetDeviceId?: string;
   spriteName?: string;
+  transient?: boolean;
 };
 
 const BUILTIN_ENSURE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -67,6 +68,7 @@ export async function runAgentTurn({
   userMessageId,
   targetDeviceId,
   spriteName,
+  transient,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
   await ensureBuiltins(ctx);
 
@@ -108,7 +110,7 @@ export async function runAgentTurn({
         text: prompt,
       },
       history: {
-        enabled: true,
+        enabled: !transient,
         maxTokens: normalizeOptionalInt({
           value: AUTOMATION_HISTORY_MAX_TOKENS,
           defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
@@ -193,18 +195,21 @@ export async function runAgentTurn({
   const text = await result.text;
   if (agentType === "orchestrator" && orchestratorTurn) {
     const response = await result.response;
+    const reminderState = transient
+      ? { shouldInjectDynamicReminder: false, reminderHash: "" }
+      : orchestratorTurn.reminderState;
     await finalizeOrchestratorTurn(ctx, {
       conversationId,
       ownerId: resolvedOwnerId,
       userMessageId,
-      activeThreadId: orchestratorTurn.activeThreadId,
+      activeThreadId: transient ? null : orchestratorTurn.activeThreadId,
       threadUserMessage: orchestratorTurn.threadUserMessage,
-      responseMessages: response?.messages,
+      responseMessages: transient ? undefined : response?.messages,
       assistantText: text,
       usage: usageSummary,
       saveAssistantMessage: false,
-      scheduleSuggestions: false,
-      reminderState: orchestratorTurn.reminderState,
+      scheduleSuggestions: !transient,
+      reminderState,
     });
   }
 

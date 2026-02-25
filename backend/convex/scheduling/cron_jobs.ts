@@ -24,6 +24,11 @@ type CronPayload =
       deliver?: boolean;
     };
 
+type ExecutionCandidate =
+  | { mode: "local"; targetDeviceId: string; spriteName?: undefined }
+  | { mode: "cloud"; targetDeviceId?: undefined; spriteName?: undefined }
+  | { mode: "remote"; targetDeviceId?: undefined; spriteName: string };
+
 const cronScheduleValidator = v.union(
   v.object({
     kind: v.literal("at"),
@@ -194,6 +199,23 @@ function computeNextRunAtMs(schedule: CronSchedule, nowMs: number): number | und
   });
   const next = cron.nextRun(new Date(nowMs));
   return next ? next.getTime() : undefined;
+}
+
+function buildExecutionCandidates(args: {
+  targetDeviceId: string | null;
+  spriteName: string | null;
+}): ExecutionCandidate[] {
+  const candidates: ExecutionCandidate[] = [];
+  if (args.targetDeviceId) {
+    candidates.push({ mode: "local", targetDeviceId: args.targetDeviceId });
+  }
+
+  // Local-first scheduler policy: local -> cloud -> remote.
+  candidates.push({ mode: "cloud" });
+  if (args.spriteName) {
+    candidates.push({ mode: "remote", spriteName: args.spriteName });
+  }
+  return candidates;
 }
 
 async function resolveConversationId(
@@ -596,20 +618,34 @@ export const execute = internalAction({
         internal.agent.device_resolver.resolveExecutionTarget,
         { ownerId: job.ownerId },
       );
-      const targetDeviceId = target.targetDeviceId ?? undefined;
-      const spriteName = target.spriteName ?? undefined;
-
-      const agentType = payloadResolved.agentType ?? "orchestrator";
-
-      const result = await runAgentTurn({
-        ctx,
-        conversationId,
-        prompt,
-        agentType,
-        ownerId: job.ownerId,
-        targetDeviceId: targetDeviceId ?? undefined,
-        spriteName: spriteName ?? undefined,
+      const candidates = buildExecutionCandidates({
+        targetDeviceId: target.targetDeviceId,
+        spriteName: target.spriteName,
       });
+      const agentType = payloadResolved.agentType ?? "orchestrator";
+      let result = null as Awaited<ReturnType<typeof runAgentTurn>> | null;
+      let lastExecutionError: Error | null = null;
+      for (const candidate of candidates) {
+        try {
+          result = await runAgentTurn({
+            ctx,
+            conversationId,
+            prompt,
+            agentType,
+            ownerId: job.ownerId,
+            targetDeviceId:
+              candidate.mode === "local" ? candidate.targetDeviceId : undefined,
+            spriteName:
+              candidate.mode === "remote" ? candidate.spriteName : undefined,
+          });
+          break;
+        } catch (error) {
+          lastExecutionError = error as Error;
+        }
+      }
+      if (!result) {
+        throw lastExecutionError ?? new Error("No execution candidate succeeded");
+      }
       outputText = (result.text ?? "").trim();
     } catch (err) {
       status = "error";

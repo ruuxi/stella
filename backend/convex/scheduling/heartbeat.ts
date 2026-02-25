@@ -13,6 +13,10 @@ import { runAgentTurn } from "../automation/runner";
 
 const ACTIVE_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]|24):([0-5]\d)$/;
 const DUPLICATE_SUPPRESSION_MS = 24 * 60 * 60 * 1000;
+type ExecutionCandidate =
+  | { mode: "local"; targetDeviceId: string; spriteName?: undefined }
+  | { mode: "cloud"; targetDeviceId?: undefined; spriteName?: undefined }
+  | { mode: "remote"; targetDeviceId?: undefined; spriteName: string };
 
 const activeHoursValidator = v.optional(
   v.object({
@@ -136,6 +140,23 @@ function isWithinActiveHours(
     return currentMin >= startMin && currentMin < endMin;
   }
   return currentMin >= startMin || currentMin < endMin;
+}
+
+function buildExecutionCandidates(args: {
+  targetDeviceId?: string;
+  spriteName?: string;
+}): ExecutionCandidate[] {
+  const candidates: ExecutionCandidate[] = [];
+  if (args.targetDeviceId) {
+    candidates.push({ mode: "local", targetDeviceId: args.targetDeviceId });
+  }
+
+  // Local-first scheduler policy: local -> cloud -> remote.
+  candidates.push({ mode: "cloud" });
+  if (args.spriteName) {
+    candidates.push({ mode: "remote", spriteName: args.spriteName });
+  }
+  return candidates;
 }
 
 async function resolveConversationId(
@@ -389,7 +410,6 @@ export const run = internalAction({
 
     let targetDeviceId: string | undefined = config.targetDeviceId ?? undefined;
     let spriteName: string | undefined;
-
     if (!targetDeviceId) {
       const target = await ctx.runQuery(
         internal.agent.device_resolver.resolveExecutionTarget,
@@ -400,20 +420,38 @@ export const run = internalAction({
     }
 
     const agentType = config.agentType ?? "orchestrator";
+    const candidates = buildExecutionCandidates({
+      targetDeviceId,
+      spriteName,
+    });
 
     let text = "";
     let silent = false;
     let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
     try {
-      const result = await runAgentTurn({
-        ctx,
-        conversationId,
-        prompt,
-        agentType,
-        ownerId: config.ownerId,
-        targetDeviceId: targetDeviceId ?? undefined,
-        spriteName: spriteName ?? undefined,
-      });
+      let result = null as Awaited<ReturnType<typeof runAgentTurn>> | null;
+      let lastExecutionError: Error | null = null;
+      for (const candidate of candidates) {
+        try {
+          result = await runAgentTurn({
+            ctx,
+            conversationId,
+            prompt,
+            agentType,
+            ownerId: config.ownerId,
+            targetDeviceId:
+              candidate.mode === "local" ? candidate.targetDeviceId : undefined,
+            spriteName:
+              candidate.mode === "remote" ? candidate.spriteName : undefined,
+          });
+          break;
+        } catch (error) {
+          lastExecutionError = error as Error;
+        }
+      }
+      if (!result) {
+        throw lastExecutionError ?? new Error("No execution candidate succeeded");
+      }
       text = result.text ?? "";
       silent = result.silent;
       usage = result.usage;
