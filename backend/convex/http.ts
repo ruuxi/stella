@@ -2,7 +2,7 @@ import { httpRouter } from "convex/server";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { streamText, generateText, createGateway } from "ai";
+import { generateText, createGateway } from "ai";
 import { buildSystemPrompt } from "./agent/prompt_builder";
 import { eventsToHistoryMessages } from "./agent/history_messages";
 import {
@@ -13,11 +13,13 @@ import {
 import {
   finalizeOrchestratorTurn,
   prepareOrchestratorTurn,
-  toUsageSummary,
 } from "./agent/orchestrator_turn";
 import { createTools } from "./tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./agent/model_resolver";
-import { withModelFailover } from "./agent/model_failover";
+import {
+  streamTextWithFailover,
+  usageSummaryFromFinish,
+} from "./agent/model_execution";
 import { beforeChat, afterChat } from "./agent/hooks";
 import {
   assertSensitiveSessionPolicyAction,
@@ -965,7 +967,7 @@ http.route({
       messages: requestMessages,
       abortSignal: request.signal,
       onFinish: async ({ text, usage, totalUsage, response }: { text: string; usage: any; totalUsage: any; response: any }) => {
-        const usageSummary = toUsageSummary(totalUsage ?? usage);
+        const usageSummary = usageSummaryFromFinish(usage, totalUsage);
 
         if (agentType === "orchestrator" && orchestratorTurn) {
           await finalizeOrchestratorTurn(ctx, {
@@ -1069,12 +1071,11 @@ http.route({
       },
     };
 
-    const result = await withModelFailover(
-      () => streamText({ ...resolvedConfig, ...streamTextSharedArgs }),
-      fallbackConfig
-        ? () => streamText({ ...fallbackConfig, ...streamTextSharedArgs })
-        : undefined,
-    );
+    const result = await streamTextWithFailover({
+      resolvedConfig: resolvedConfig as Record<string, unknown>,
+      fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+      sharedArgs: streamTextSharedArgs as Record<string, unknown>,
+    });
 
     const response = result.toUIMessageStreamResponse();
     return withCors(response, origin);

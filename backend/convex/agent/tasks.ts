@@ -9,7 +9,6 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { v, ConvexError, Infer, type Value } from "convex/values";
-import { generateText } from "ai";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { buildSystemPrompt } from "./prompt_builder";
@@ -27,7 +26,10 @@ import {
 import type { DeviceToolContext } from "./device_tools";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
-import { withModelFailoverAsync } from "./model_failover";
+import {
+  generateTextWithFailover,
+  hasNoResponseInSteps,
+} from "./model_execution";
 import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
 
@@ -964,12 +966,11 @@ const executeSubagentRun = async (
     };
 
     const subagentStartTime = Date.now();
-    const result = await withModelFailoverAsync(
-      () => generateText({ ...resolvedConfig, ...generateTextSharedArgs }),
-      fallbackConfig
-        ? () => generateText({ ...fallbackConfig, ...generateTextSharedArgs })
-        : undefined,
-    );
+    const result = await generateTextWithFailover({
+      resolvedConfig: resolvedConfig as Record<string, unknown>,
+      fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+      sharedArgs: generateTextSharedArgs as Record<string, unknown>,
+    });
 
     // Fire afterChat hook asynchronously for usage logging
     if (args.ownerId) {
@@ -2092,16 +2093,15 @@ export const deliverTaskResult = internalAction({
         messages: orchestratorTurn.messages as any[],
       };
 
-      const genResult = await withModelFailoverAsync(
-        () => generateText({ ...resolvedConfig, ...deliverySharedArgs }),
-        deliveryFallbackConfig
-          ? () => generateText({ ...deliveryFallbackConfig, ...deliverySharedArgs })
-          : undefined,
-      );
+      const genResult = await generateTextWithFailover({
+        resolvedConfig: resolvedConfig as Record<string, unknown>,
+        fallbackConfig:
+          (deliveryFallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+        sharedArgs: deliverySharedArgs as Record<string, unknown>,
+      });
 
-      const noResponseCalled = genResult.steps?.some(
-        (step: { toolCalls?: Array<{ toolName: string }> }) =>
-          step.toolCalls?.some((tc) => tc.toolName === "NoResponse"),
+      const noResponseCalled = hasNoResponseInSteps(
+        genResult.steps as Array<{ toolCalls?: Array<{ toolName?: string }> }> | undefined,
       );
 
       const responseMessages = (genResult.response?.messages ?? []).map((message) => {

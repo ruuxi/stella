@@ -1,4 +1,3 @@
-import { streamText } from "ai";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -9,12 +8,14 @@ import {
 import { normalizeOptionalInt } from "../lib/number_utils";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
-import { withModelFailover } from "../agent/model_failover";
 import {
   finalizeOrchestratorTurn,
   prepareOrchestratorTurn,
-  toUsageSummary,
 } from "../agent/orchestrator_turn";
+import {
+  createStreamExecutionLifecycle,
+  streamTextWithFailover,
+} from "../agent/model_execution";
 
 export type RunAgentTurnResult = {
   text: string;
@@ -163,38 +164,25 @@ export async function runAgentTurn({
     },
   );
 
-  let usageSummary:
-    | {
-        inputTokens?: number;
-        outputTokens?: number;
-        totalTokens?: number;
-      }
-    | undefined;
-  let noResponseCalled = false;
+  const streamLifecycle = createStreamExecutionLifecycle();
 
   const runnerSharedArgs = {
     system: promptBuild.systemPrompt,
     tools,
     messages: requestMessages,
-    onStepFinish: ({ toolCalls }: { toolCalls?: Array<{ toolName: string }> }) => {
-      if (toolCalls?.some((tc: { toolName: string }) => tc.toolName === "NoResponse")) {
-        noResponseCalled = true;
-      }
-    },
-    onFinish: ({ usage, totalUsage }: { usage: any; totalUsage: any }) => {
-      usageSummary = toUsageSummary(totalUsage ?? usage);
-    },
+    onStepFinish: streamLifecycle.onStepFinish,
+    onFinish: streamLifecycle.onFinish,
   };
 
   const runnerStartTime = Date.now();
-  const result = await withModelFailover(
-    () => streamText({ ...resolvedConfig, ...runnerSharedArgs }),
-    fallbackConfig
-      ? () => streamText({ ...fallbackConfig, ...runnerSharedArgs })
-      : undefined,
-  );
+  const result = await streamTextWithFailover({
+    resolvedConfig: resolvedConfig as Record<string, unknown>,
+    fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+    sharedArgs: runnerSharedArgs as Record<string, unknown>,
+  });
 
   const text = await result.text;
+  const { noResponseCalled, usageSummary } = streamLifecycle.getState();
   if (agentType === "orchestrator" && orchestratorTurn) {
     const response = await result.response;
     const reminderState = transient
