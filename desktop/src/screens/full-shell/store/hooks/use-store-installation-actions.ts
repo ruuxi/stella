@@ -3,12 +3,8 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useUiState } from "@/app/state/ui-state";
 import { registerTheme, unregisterTheme } from "@/theme/themes";
-import type {
-  CanvasPackagePayload,
-  SkillPackagePayload,
-  StorePackage,
-  ThemePackagePayload,
-} from "../constants";
+import type { ThemeColors } from "@/theme/themes/types";
+import type { StorePackage } from "../constants";
 
 const STORE_ID_PATTERN = /^[a-zA-Z0-9._-]{1,80}$/;
 const STORE_TOKEN_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
@@ -19,6 +15,33 @@ const MAX_SKILL_MARKDOWN_CHARS = 250_000;
 const MAX_CANVAS_SOURCE_CHARS = 250_000;
 const MAX_CANVAS_DEPENDENCIES = 64;
 const MAX_THEME_TOKENS = 256;
+const THEME_COLOR_KEYS: Array<keyof ThemeColors> = [
+  "background",
+  "backgroundWeak",
+  "backgroundStrong",
+  "foreground",
+  "foregroundWeak",
+  "foregroundStrong",
+  "primary",
+  "primaryForeground",
+  "success",
+  "warning",
+  "error",
+  "info",
+  "interactive",
+  "border",
+  "borderWeak",
+  "borderStrong",
+  "card",
+  "cardForeground",
+  "muted",
+  "mutedForeground",
+  "accent",
+  "accentForeground",
+];
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 const sanitizeStoreId = (value: unknown, fieldName: string): string => {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -58,17 +81,18 @@ const sanitizeTokenList = (
   return result;
 };
 
-const sanitizeThemePalette = <T extends object>(
-  value: T,
+const sanitizeThemePalette = (
+  value: unknown,
   fieldName: string,
-): T => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+): Record<string, string> => {
+  if (!isRecord(value)) {
     throw new Error(`Invalid ${fieldName} palette.`);
   }
-  const entries = Object.entries(value as Record<string, unknown>);
+  const entries = Object.entries(value);
   if (entries.length === 0 || entries.length > MAX_THEME_TOKENS) {
     throw new Error(`Invalid ${fieldName} palette.`);
   }
+  const palette: Record<string, string> = {};
   for (const [key, rawValue] of entries) {
     const normalizedKey = key.trim();
     const normalizedValue = typeof rawValue === "string" ? rawValue.trim() : "";
@@ -79,8 +103,24 @@ const sanitizeThemePalette = <T extends object>(
     ) {
       throw new Error(`Invalid ${fieldName} palette.`);
     }
+    palette[normalizedKey] = normalizedValue;
   }
-  return value;
+  return palette;
+};
+
+const toThemeColors = (
+  palette: Record<string, string>,
+  fieldName: string,
+): ThemeColors => {
+  const normalized: Partial<ThemeColors> = {};
+  for (const key of THEME_COLOR_KEYS) {
+    const value = palette[key];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new Error(`Invalid ${fieldName} palette.`);
+    }
+    normalized[key] = value;
+  }
+  return normalized as ThemeColors;
 };
 
 const sanitizeCanvasDependencies = (
@@ -152,7 +192,7 @@ export function useStoreInstallationActions({
             `Install the "${pkg.name}" mod from package "${pkg.packageId}". Use SelfModInstallBlueprint with this package ID, adapt it to the current codebase, then apply the feature.`,
           );
         } else if (pkg.type === "skill" && window.electronAPI) {
-          const payload = pkg.modPayload as SkillPackagePayload | undefined;
+          const payload = isRecord(pkg.modPayload) ? pkg.modPayload : undefined;
           const markdown =
             typeof payload?.markdown === "string" ? payload.markdown.trim() : "";
           if (!markdown) {
@@ -181,14 +221,14 @@ export function useStoreInstallationActions({
             tags: sanitizeTokenList(payload?.tags ?? pkg.tags, "tags", 32),
           });
         } else if (pkg.type === "theme" && window.electronAPI) {
-          const payload = pkg.modPayload as ThemePackagePayload | undefined;
-          if (payload?.light && payload?.dark) {
+          const payload = isRecord(pkg.modPayload) ? pkg.modPayload : undefined;
+          if (payload?.light !== undefined && payload?.dark !== undefined) {
             const safePackageId = sanitizeStoreId(pkg.packageId, "packageId");
             const safeName = sanitizeStoreName(pkg.name, "name");
-            const light = sanitizeThemePalette(payload.light, "light");
-            const dark = sanitizeThemePalette(payload.dark, "dark");
-            const lightRecord = light as unknown as Record<string, string>;
-            const darkRecord = dark as unknown as Record<string, string>;
+            const lightRecord = sanitizeThemePalette(payload.light, "light");
+            const darkRecord = sanitizeThemePalette(payload.dark, "dark");
+            const light = toThemeColors(lightRecord, "light");
+            const dark = toThemeColors(darkRecord, "dark");
             await window.electronAPI.storeInstallTheme({
               packageId: safePackageId,
               themeId: safePackageId,
@@ -204,14 +244,14 @@ export function useStoreInstallationActions({
             });
           }
         } else if (pkg.type === "canvas" && window.electronAPI) {
-          const payload = pkg.modPayload as CanvasPackagePayload | undefined;
+          const payload = isRecord(pkg.modPayload) ? pkg.modPayload : undefined;
           const safePackageId = sanitizeStoreId(pkg.packageId, "packageId");
           const safeWorkspaceId = sanitizeStoreId(
-            payload?.workspaceId ?? pkg.packageId,
+            typeof payload?.workspaceId === "string" ? payload.workspaceId : pkg.packageId,
             "workspaceId",
           );
           const safeName = sanitizeStoreName(
-            payload?.workspaceName ?? pkg.name,
+            typeof payload?.workspaceName === "string" ? payload.workspaceName : pkg.name,
             "workspaceName",
           );
           await window.electronAPI.storeInstallCanvas({
