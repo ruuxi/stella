@@ -27,7 +27,6 @@ import {
   createVoiceWindow,
   showVoiceWindow,
   hideVoiceWindow,
-  getVoiceWindow,
 } from './voice-window.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'

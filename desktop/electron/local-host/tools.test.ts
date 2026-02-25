@@ -263,7 +263,7 @@ describe("Tools Module - Unit Tests", () => {
         // Mock spawn for ripgrep
         const mockSpawn = spawn as unknown as ReturnType<typeof vi.fn>;
         mockSpawn.mockReturnValue({
-          stdout: { on: vi.fn((event, callback) => callback(Buffer.from("file1.ts:10:pattern\n"))),
+          stdout: { on: vi.fn((_event, callback) => callback(Buffer.from("file1.ts:10:pattern\n"))),
           },
           stderr: { on: vi.fn() },
           on: vi.fn((event, callback) => {
