@@ -62,6 +62,7 @@ type LocalTaskManagerOpts = {
     conversationId: string;
     userMessageId: string;
     agentType: string;
+    taskId?: string;
     taskDescription: string;
     taskPrompt: string;
     agentContext: LocalTaskManagerAgentContext;
@@ -129,14 +130,20 @@ const getFsLockKey = (
   if (toolName === "Write" || toolName === "Edit") {
     const filePath = normalizeString(args.file_path ?? args.path ?? args.target_path);
     if (!filePath) return "*";
-    return normalizeFsPathKey(filePath, normalizeString(args.cwd));
+    return normalizeFsPathKey(
+      filePath,
+      normalizeString(args.working_directory ?? args.cwd),
+    );
   }
   if (toolName === "Bash" || toolName === "SkillBash") {
     const command = normalizeString(args.command);
     if (!command) return "*";
     const pathFromCommand = extractBashPath(command);
     if (!pathFromCommand) return "*";
-    return normalizeFsPathKey(pathFromCommand, normalizeString(args.cwd));
+    return normalizeFsPathKey(
+      pathFromCommand,
+      normalizeString(args.working_directory ?? args.cwd),
+    );
   }
   return null;
 };
@@ -223,6 +230,7 @@ export class LocalTaskManager implements TaskToolApi {
         conversationId: task.conversationId,
         userMessageId: runId,
         agentType: task.agentType,
+        ...(task.cloudTaskId ? { taskId: task.cloudTaskId } : {}),
         taskDescription: task.description,
         taskPrompt: task.prompt,
         agentContext: context,

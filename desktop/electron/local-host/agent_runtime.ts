@@ -498,6 +498,7 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
 // ─── Subagent Turn ───────────────────────────────────────────────────────────
 
 export type RunSubagentOpts = Omit<RunOrchestratorOpts, "callbacks"> & {
+  taskId?: string;
   taskDescription: string;
   taskPrompt: string;
 };
@@ -527,7 +528,12 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
   const runId = `local:sub:${crypto.randomUUID()}`;
 
   const journal = new RunJournal(stellaHome);
-  journal.startRun({ runId, conversationId, agentType });
+  journal.startRun({
+    runId,
+    conversationId,
+    taskId: opts.taskId,
+    agentType,
+  });
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), SUBAGENT_TIMEOUT_MS);
@@ -750,30 +756,54 @@ async function persistRunToConvex(opts: PersistOpts): Promise<void> {
   // Persist each chunk via Convex HTTP
   const baseUrl = convexUrl.replace(/\/+$/, "");
   const failedChunks: string[] = [];
+  const truncationSuffix = "\n\n[Assistant text truncated for persistence limit]";
 
   for (const chunk of chunks) {
-    // Record in journal for crash recovery
-    const payload = {
+    const serializedEvents = chunk.events.map((e) => ({
+      type: e.type,
+      toolCallId: e.toolCallId,
+      toolName: e.toolName,
+      argsPreview: e.argsJson?.slice(0, 200),
+      resultPreview: e.resultText?.slice(0, 200),
+      errorText: e.errorText,
+      durationMs: e.durationMs,
+      timestamp: e.createdAt,
+    }));
+
+    const buildPayload = (assistantText?: string) => ({
       runId,
       chunkKey: chunk.chunkKey,
       chunkIndex: chunk.chunkIndex,
       isFinal: chunk.isFinal,
-      events: chunk.events.map((e) => ({
-        type: e.type,
-        toolCallId: e.toolCallId,
-        toolName: e.toolName,
-        argsPreview: e.argsJson?.slice(0, 200),
-        resultPreview: e.resultText?.slice(0, 200),
-        errorText: e.errorText,
-        durationMs: e.durationMs,
-        timestamp: e.createdAt,
-      })),
-      assistantText: chunk.assistantText,
+      events: serializedEvents,
+      assistantText,
       usage: chunk.usage,
       conversationId,
       agentType,
       activeThreadId: opts.activeThreadId,
-    };
+    });
+
+    let assistantText = chunk.assistantText;
+    let payload = buildPayload(assistantText);
+    let payloadSize = JSON.stringify(payload).length;
+
+    if (chunk.isFinal && assistantText && payloadSize > PERSIST_CHUNK_MAX_BYTES) {
+      let candidate = assistantText;
+      while (candidate.length > 0 && payloadSize > PERSIST_CHUNK_MAX_BYTES) {
+        candidate = candidate.slice(0, Math.max(0, Math.floor(candidate.length * 0.8)));
+        assistantText =
+          candidate.length > 0
+            ? `${candidate}${truncationSuffix}`
+            : undefined;
+        payload = buildPayload(assistantText);
+        payloadSize = JSON.stringify(payload).length;
+      }
+    }
+
+    if (payloadSize > PERSIST_CHUNK_MAX_BYTES) {
+      // Last-resort guardrail: avoid repeatedly failing persistence with oversized payloads.
+      throw new Error(`Persist payload exceeds ${PERSIST_CHUNK_MAX_BYTES} bytes for ${chunk.chunkKey}`);
+    }
 
     journal.addPendingPersist({
       runId,

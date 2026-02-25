@@ -291,13 +291,14 @@ export class RunJournal {
   recoverCrashedRuns(): Array<{
     runId: string;
     conversationId: string;
+    taskId?: string;
     agentType: string;
     status: string;
     persistStatus: string;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT run_id, conversation_id, agent_type, status, persist_status
+        `SELECT run_id, conversation_id, task_id, agent_type, status, persist_status
          FROM runs
          WHERE status = 'running' OR (status = 'completed' AND persist_status = 'pending')
          ORDER BY started_at`,
@@ -305,6 +306,7 @@ export class RunJournal {
       .all() as Array<{
       run_id: string;
       conversation_id: string;
+      task_id: string | null;
       agent_type: string;
       status: string;
       persist_status: string;
@@ -313,10 +315,42 @@ export class RunJournal {
     return rows.map((r) => ({
       runId: r.run_id,
       conversationId: r.conversation_id,
+      ...(r.task_id ? { taskId: r.task_id } : {}),
       agentType: r.agent_type,
       status: r.status,
       persistStatus: r.persist_status,
     }));
+  }
+
+  cleanupResolvedRuns(maxAgeMs = 7 * 24 * 60 * 60 * 1000): number {
+    const cutoff = Date.now() - maxAgeMs;
+    const rows = this.db
+      .prepare(
+        `SELECT run_id
+         FROM runs
+         WHERE (status = 'completed' OR status = 'crashed')
+           AND (persist_status = 'persisted' OR status = 'crashed')
+           AND COALESCE(completed_at, started_at) < @cutoff`,
+      )
+      .all({ cutoff }) as Array<{ run_id: string }>;
+
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    const tx = this.db.transaction((runIds: string[]) => {
+      const deleteEvents = this.db.prepare(`DELETE FROM run_events WHERE run_id = ?`);
+      const deletePending = this.db.prepare(`DELETE FROM pending_persist WHERE run_id = ?`);
+      const deleteRun = this.db.prepare(`DELETE FROM runs WHERE run_id = ?`);
+      for (const runId of runIds) {
+        deleteEvents.run(runId);
+        deletePending.run(runId);
+        deleteRun.run(runId);
+      }
+    });
+
+    tx(rows.map((row) => row.run_id));
+    return rows.length;
   }
 
   // -------------------------------------------------------------------------
