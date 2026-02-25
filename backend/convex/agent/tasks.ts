@@ -806,7 +806,12 @@ const executeSubagentRun = async (
     });
 
     threadMessages = selectRecentThreadMessagesByTokens(
-      rawMessages.map((m) => ({
+      rawMessages.map((m: {
+        role: string;
+        content: string;
+        toolCallId?: string;
+        tokenEstimate?: number;
+      }) => ({
         role: m.role as "user" | "assistant" | "tool",
         content: m.content,
         ...(m.toolCallId ? { toolCallId: m.toolCallId } : {}),

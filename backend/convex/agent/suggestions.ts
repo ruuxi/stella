@@ -68,7 +68,10 @@ export const generateSuggestions = internalAction({
 
     // 3. Build catalog text
     const catalogText = catalog
-      .map((c) => `${c.commandId}: ${c.name} - ${c.description}`)
+      .map(
+        (c: { commandId: string; name: string; description?: string }) =>
+          `${c.commandId}: ${c.name} - ${c.description ?? ""}`,
+      )
       .join("\n");
 
     // 4. Build prompt
@@ -124,4 +127,3 @@ export const generateSuggestions = internalAction({
     return null;
   },
 });
-

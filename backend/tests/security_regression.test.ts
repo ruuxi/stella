@@ -127,6 +127,34 @@ describe("security regressions", () => {
     expect(source).toContain("if (!claimed) {");
   });
 
+  test("connector transient batches are cleaned in finally", () => {
+    const source = readBackendFile("convex/channels/utils.ts");
+
+    expect(source).toContain("const cleanupTransientBatch = async () =>");
+    expect(source).toContain("await cleanupTransientBatch()");
+    expect(source).toMatch(/\}\s*finally\s*\{/);
+  });
+
+  test("cron sync-off mode avoids persisting output previews", () => {
+    const source = readBackendFile("convex/scheduling/cron_jobs.ts");
+
+    expect(source).toContain("const persistedOutputPreview =");
+    expect(source).toContain('syncMode === "off"');
+    expect(source).toContain("lastOutputPreview: persistedOutputPreview");
+    expect(source).toContain("const persistedError =");
+    expect(source).toContain("lastError: persistedError");
+  });
+
+  test("heartbeat and cron suppress durable assistant delivery when sync is off", () => {
+    const heartbeatSource = readBackendFile("convex/scheduling/heartbeat.ts");
+    const cronSource = readBackendFile("convex/scheduling/cron_jobs.ts");
+
+    expect(heartbeatSource).toContain("const transient = syncMode === \"off\"");
+    expect(heartbeatSource).toContain("const deliver = config.deliver !== false && syncMode !== \"off\"");
+    expect(cronSource).toContain("const transient = syncMode === \"off\"");
+    expect(cronSource).toContain("if (deliver && outputText && syncMode !== \"off\")");
+  });
+
   test("fallback resolver preserves provider options", () => {
     const source = readBackendFile("convex/agent/model_resolver.ts");
     expect(source).toMatch(/resolveFallbackConfig[\s\S]*providerOptions/);
