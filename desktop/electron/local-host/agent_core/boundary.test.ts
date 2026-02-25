@@ -9,6 +9,7 @@ const read = (relativePath: string) =>
 describe("agent core boundaries", () => {
   test("core helpers stay runtime-agnostic", () => {
     const files = [
+      "electron/local-host/agent_core/failover.ts",
       "electron/local-host/agent_core/model_proxy.ts",
       "electron/local-host/agent_core/runtime_utils.ts",
       "electron/local-host/agent_core/tool_call_ids.ts",
