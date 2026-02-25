@@ -6,6 +6,27 @@ import { requireConversationOwnerAction, requireUserId } from "../auth";
 import { createBackendTools } from "../tools/backend";
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
+const ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS = new Set([
+  "WebSearch",
+  "WebFetch",
+  "IntegrationRequest",
+  "ActivateSkill",
+  "HeartbeatGet",
+  "HeartbeatUpsert",
+  "HeartbeatRun",
+  "CronList",
+  "CronAdd",
+  "CronUpdate",
+  "CronRemove",
+  "CronRun",
+  "OpenCanvas",
+  "CloseCanvas",
+  "StoreSearch",
+  "GenerateApiSkill",
+  "SpawnRemoteMachine",
+  "ListResources",
+  "NoResponse",
+]);
 
 const toToolResultText = (value: unknown): string =>
   typeof value === "string" ? value : JSON.stringify(value ?? null);
@@ -17,9 +38,12 @@ const executeBackendTool = async (
     conversationId?: Id<"conversations">;
     agentType?: string;
   },
-  toolName: "WebSearch" | "WebFetch",
+  toolName: string,
   toolArgs: Record<string, unknown>,
 ): Promise<string> => {
+  if (!ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS.has(toolName)) {
+    throw new Error(`Tool ${toolName} is not allowed from local runtime`);
+  }
   const tools = createBackendTools(ctx, {
     ownerId: args.ownerId,
     conversationId: args.conversationId,
@@ -35,6 +59,34 @@ const executeBackendTool = async (
   const output = await tool.execute(toolArgs);
   return toToolResultText(output);
 };
+
+export const executeTool = action({
+  args: {
+    toolName: v.string(),
+    toolArgs: v.optional(v.any()),
+    conversationId: v.optional(v.id("conversations")),
+    agentType: v.optional(v.string()),
+  },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    if (args.conversationId) {
+      await requireConversationOwnerAction(ctx, args.conversationId);
+    }
+
+    const toolArgs =
+      args.toolArgs && typeof args.toolArgs === "object"
+        ? (args.toolArgs as Record<string, unknown>)
+        : {};
+
+    return await executeBackendTool(
+      ctx,
+      { ownerId, conversationId: args.conversationId, agentType: args.agentType },
+      args.toolName,
+      toolArgs,
+    );
+  },
+});
 
 export const recallMemories = action({
   args: {
