@@ -12,14 +12,16 @@
  * 5. Persist run data to Convex via chunked batch persist
  */
 
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createOpenAI } from "@ai-sdk/openai";
-import { streamText, generateText, stepCountIs, type LanguageModel, type ModelMessage, type Tool } from "ai";
+import { streamText, generateText, stepCountIs, type ModelMessage, type Tool } from "ai";
 import crypto from "crypto";
 import { RunJournal } from "./run_journal.js";
 import { createAgentTools, type AgentToolCallbacks } from "./agent_tools.js";
 import { createRemoteTools } from "./remote_tools.js";
 import type { ToolContext, ToolResult } from "./tools-types.js";
+import { createProxiedModel } from "./agent_core/model_proxy.js";
+import { combineAbortSignals, isRetryableModelError } from "./agent_core/runtime_utils.js";
+import { extractToolNameFromCallId } from "./agent_core/tool_call_ids.js";
+import { createToolCallIdFactory } from "./agent_core/tool_call_factory.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -111,126 +113,6 @@ const PERSIST_CHUNK_MAX_BYTES = 800_000;
 const MAX_RESULT_PREVIEW_LEN = 200;
 const MAX_TURNS = 50; // safety limit
 
-const isRetryableModelError = (error: unknown): boolean => {
-  const message = (error as Error)?.message?.toLowerCase() ?? "";
-  if (message.length === 0) return false;
-  if (message.includes("aborted") || message.includes("context length")) {
-    return false;
-  }
-  return (
-    message.includes("rate limit") ||
-    message.includes("too many requests") ||
-    message.includes("429") ||
-    message.includes("unauthorized") ||
-    message.includes("forbidden") ||
-    message.includes("invalid api key") ||
-    message.includes("authentication") ||
-    message.includes("model not found") ||
-    message.includes("temporarily unavailable") ||
-    message.includes("upstream")
-  );
-};
-
-// ─── Proxy Fetch ─────────────────────────────────────────────────────────────
-
-/**
- * Creates a custom fetch wrapper that injects proxy auth for requests
- * to our Convex LLM proxy. ONLY adds auth for same-origin requests.
- */
-function createProxyFetch(
-  proxyBaseUrl: string,
-  proxyToken: string,
-  provider: string,
-  modelId: string,
-) {
-  const proxyOrigin = new URL(proxyBaseUrl).origin;
-
-  return (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    const targetUrl = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
-    const target = new URL(targetUrl);
-
-    if (target.origin === proxyOrigin) {
-      // Extract the path suffix that the provider SDK appended
-      const fullPath = target.pathname;
-      // The provider SDK sends to baseURL + /v1/messages (Anthropic) or /v1/chat/completions (OpenAI)
-      // We need to forward this path to the upstream
-      const headers = new Headers(init?.headers);
-      headers.set("X-Proxy-Token", proxyToken);
-      headers.set("X-Provider", provider);
-      headers.set("X-Original-Path", fullPath.replace(/^\/api\/ai\/llm-proxy\/?/, "/"));
-      headers.set("X-Model-Id", modelId);
-
-      // Rewrite URL to the single proxy endpoint
-      const proxyUrl = `${proxyOrigin}/api/ai/llm-proxy`;
-      return fetch(proxyUrl, { ...init, headers });
-    }
-
-    return fetch(url, init);
-  };
-}
-
-/**
- * Creates an AI SDK model instance that routes through our LLM proxy.
- */
-function createProxiedModel(
-  proxyBaseUrl: string,
-  proxyToken: string,
-  modelId: string,
-): LanguageModel {
-  const provider = modelId.split("/")[0] ?? "anthropic";
-  const modelName = modelId.includes("/") ? modelId.split("/").slice(1).join("/") : modelId;
-  const customFetch = createProxyFetch(proxyBaseUrl, proxyToken, provider, modelId);
-
-  switch (provider) {
-    case "anthropic": {
-      const anthropic = createAnthropic({
-        baseURL: `${proxyBaseUrl}/api/ai/llm-proxy`,
-        fetch: customFetch,
-        apiKey: "proxy-managed", // Placeholder — real key injected by proxy
-      });
-      return anthropic(modelName);
-    }
-    case "openai":
-    case "openrouter":
-    case "moonshotai":
-    case "zai":
-    default: {
-      const openai = createOpenAI({
-        baseURL: `${proxyBaseUrl}/api/ai/llm-proxy`,
-        fetch: customFetch,
-        apiKey: "proxy-managed",
-      });
-      return openai(modelId); // Full model ID for gateway routing
-    }
-  }
-}
-
-// ─── Tool Call ID Generation ─────────────────────────────────────────────────
-
-function hashArgs(args: Record<string, unknown>): string {
-  const canonical = JSON.stringify(args, Object.keys(args).sort());
-  return crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 12);
-}
-
-function generateToolCallId(
-  runId: string,
-  turnIndex: number,
-  toolName: string,
-  args: Record<string, unknown>,
-  ordinal: number,
-): string {
-  const argsHash = hashArgs(args);
-  return `${runId}:${turnIndex}:${toolName}:${argsHash}:${ordinal}`;
-}
-
-function extractToolNameFromToolCallId(toolCallId: string): string {
-  const parts = toolCallId.split(":");
-  if (parts.length < 4) {
-    return "Tool";
-  }
-  return parts[parts.length - 3] ?? "Tool";
-}
-
 // ─── Orchestrator Turn ───────────────────────────────────────────────────────
 
 export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<string> {
@@ -294,7 +176,7 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
       });
     },
     onToolCallEnd: (toolCallId, result, durationMs) => {
-      const toolName = extractToolNameFromToolCallId(toolCallId);
+      const toolName = extractToolNameFromCallId(toolCallId);
       const preview = typeof result === "string"
         ? result.slice(0, MAX_RESULT_PREVIEW_LEN)
         : JSON.stringify(result).slice(0, MAX_RESULT_PREVIEW_LEN);
@@ -308,6 +190,11 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
       });
     },
   };
+  const generateToolCallId = createToolCallIdFactory({
+    runId,
+    getTurnIndex: () => turnIndex,
+    toolCallCounters,
+  });
 
   const tools = createAgentTools({
     runId,
@@ -318,12 +205,7 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
     deviceId,
     conversationId,
     callbacks: toolCallbacks,
-    generateToolCallId: (toolName, args) => {
-      const key = `${turnIndex}:${toolName}:${hashArgs(args)}`;
-      const ordinal = toolCallCounters.get(key) ?? 0;
-      toolCallCounters.set(key, ordinal + 1);
-      return generateToolCallId(runId, turnIndex, toolName, args, ordinal);
-    },
+    generateToolCallId,
   });
 
   // Add remote tools (RecallMemories, etc.)
@@ -571,6 +453,11 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
       });
     },
   };
+  const generateToolCallId = createToolCallIdFactory({
+    runId,
+    getTurnIndex: () => turnIndex,
+    toolCallCounters,
+  });
 
   const tools = createAgentTools({
     runId,
@@ -581,12 +468,7 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     deviceId,
     conversationId,
     callbacks: noopCallbacks,
-    generateToolCallId: (toolName, args) => {
-      const key = `${turnIndex}:${toolName}:${hashArgs(args)}`;
-      const ordinal = toolCallCounters.get(key) ?? 0;
-      toolCallCounters.set(key, ordinal + 1);
-      return generateToolCallId(runId, turnIndex, toolName, args, ordinal);
-    },
+    generateToolCallId,
   });
 
   const remoteTools = enableRemoteTools
@@ -847,16 +729,3 @@ async function persistRunToConvex(opts: PersistOpts): Promise<void> {
   journal.markRunPersisted(runId);
 }
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
-
-function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
-  const controller = new AbortController();
-  for (const signal of signals) {
-    if (signal.aborted) {
-      controller.abort(signal.reason);
-      return controller.signal;
-    }
-    signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
-  }
-  return controller.signal;
-}
