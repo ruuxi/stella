@@ -516,7 +516,10 @@ export const run = internalAction({
       await ctx.runMutation(internal.scheduling.heartbeat.recordRun, {
         id: config._id,
         status: "failed",
-        error: (error as Error).message ?? "Heartbeat failed",
+        error:
+          syncMode === "off"
+            ? "run failed while sync is off"
+            : ((error as Error).message ?? "Heartbeat failed"),
       });
       return null;
     }

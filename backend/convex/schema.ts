@@ -75,11 +75,14 @@ export default defineSchema({
     targetDeviceId: v.optional(v.string()),
     payload: jsonValueValidator,
     channelEnvelope: optionalChannelEnvelopeValidator,
+    ephemeral: v.optional(v.boolean()),
+    expiresAt: v.optional(v.number()),
   })
     .index("by_conversationId_and_timestamp", ["conversationId", "timestamp"])
     .index("by_conversationId_and_type_and_timestamp", ["conversationId", "type", "timestamp"])
     .index("by_targetDeviceId_and_timestamp", ["targetDeviceId", "timestamp"])
-    .index("by_requestId", ["requestId"]),
+    .index("by_requestId", ["requestId"])
+    .index("by_ephemeral_and_expiresAt", ["ephemeral", "expiresAt"]),
   attachments: defineTable({
     conversationId: v.id("conversations"),
     deviceId: v.string(),
