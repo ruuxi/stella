@@ -39,7 +39,7 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
 
     try {
       const file = `${normalizedName}.tsx`
-      const mod = await import(/* @vite-ignore */ `/workspace/panels/${file}?t=${Date.now()}`)
+      const mod = await import(/* @vite-ignore */ `/src/views/home/pages/${file}?t=${Date.now()}`)
       const comp = mod.default
       if (typeof comp !== 'function') {
         setError('Panel module does not export a default component.')
