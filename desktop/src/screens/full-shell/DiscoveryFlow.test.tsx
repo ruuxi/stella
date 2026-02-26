@@ -8,11 +8,16 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 
 const mockAppendEvent = vi.fn();
 const mockSetCoreMemory = vi.fn(() => Promise.resolve(null));
+const mockGetOrCreateDefaultConversation = vi.fn(() =>
+  Promise.resolve({ _id: "conv-cloud-default" }),
+);
 const mockStartGeneration = vi.fn(() => Promise.resolve(null));
 
 vi.mock("convex/react", () => ({
   useMutation: vi.fn((ref: string) => {
     if (ref === "setCoreMemory") return mockSetCoreMemory;
+    if (ref === "getOrCreateDefaultConversation")
+      return mockGetOrCreateDefaultConversation;
     return mockAppendEvent;
   }),
   useAction: vi.fn(() => mockStartGeneration),
@@ -22,6 +27,9 @@ vi.mock("../../convex/api", () => ({
   api: {
     events: { appendEvent: "appendEvent" },
     data: { preferences: { setCoreMemory: "setCoreMemory" } },
+    conversations: {
+      getOrCreateDefaultConversation: "getOrCreateDefaultConversation",
+    },
     personalized_dashboard: { startGeneration: "startGeneration" },
   },
 }));
@@ -323,6 +331,7 @@ describe("useDiscoveryFlow", () => {
     await vi.waitFor(() => {
       expect(synthesizeCoreMemory).toHaveBeenCalledWith(
         "## Dev projects\n- project-a",
+        { includeAuth: true },
       );
       expect(writeCoreMemory).toHaveBeenCalledWith(
         "User is a developer",
@@ -354,6 +363,7 @@ describe("useDiscoveryFlow", () => {
       expect(mockStartGeneration).toHaveBeenCalledWith({
         conversationId: "conv-1",
         coreMemory: "User is a developer",
+        targetDeviceId: "device-1",
       });
     });
   });
@@ -432,9 +442,51 @@ describe("useDiscoveryFlow", () => {
 
     await vi.waitFor(() => {
       expect(mockStartGeneration).toHaveBeenCalledWith({
-        conversationId: "conv-local-1",
+        conversationId: "conv-cloud-default",
         coreMemory: "Local user profile",
+        targetDeviceId: "device-1",
       });
+    });
+  });
+
+  it("runs discovery synthesis in unauthenticated local mode", async () => {
+    const { synthesizeCoreMemory } = await import(
+      "../../services/synthesis"
+    );
+
+    vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
+      coreMemory: "Unauth local profile",
+      welcomeMessage: "",
+    });
+
+    const writeCoreMemory = vi.fn(() => Promise.resolve());
+    (window as unknown as Record<string, unknown>).electronAPI = {
+      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+      collectAllSignals: vi.fn(() =>
+        Promise.resolve({ formatted: "local unauth signals", error: null }),
+      ),
+      writeCoreMemory,
+    };
+
+    const { result } = renderHook(() =>
+      useDiscoveryFlow({
+        isAuthenticated: false,
+        conversationId: "conv-local-unauth",
+        storageMode: "local" as const,
+      }),
+    );
+
+    act(() => {
+      result.current.handleDiscoveryConfirm(["messages_notes"]);
+    });
+
+    await vi.waitFor(() => {
+      expect(synthesizeCoreMemory).toHaveBeenCalledWith(
+        "local unauth signals",
+        { includeAuth: false },
+      );
+      expect(writeCoreMemory).toHaveBeenCalledWith("Unauth local profile");
+      expect(mockStartGeneration).not.toHaveBeenCalled();
     });
   });
 

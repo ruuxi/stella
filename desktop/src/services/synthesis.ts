@@ -21,12 +21,23 @@ export type SynthesisResult = {
   suggestions?: WelcomeSuggestion[];
 };
 
+type SynthesisRequestOptions = {
+  includeAuth?: boolean;
+};
+
 export async function synthesizeCoreMemory(
   formattedSignals: string,
+  options: SynthesisRequestOptions = {},
 ): Promise<SynthesisResult> {
-  const { endpoint, headers } = await createServiceRequest("/api/synthesize", {
-    "Content-Type": "application/json",
-  });
+  const { endpoint, headers } = await createServiceRequest(
+    "/api/synthesize",
+    {
+      "Content-Type": "application/json",
+    },
+    {
+      includeAuth: options.includeAuth ?? true,
+    },
+  );
 
   const response = await fetch(endpoint, {
     method: "POST",

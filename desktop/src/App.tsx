@@ -49,6 +49,7 @@ function App() {
   const windowParam = useMemo(() => new URLSearchParams(window.location.search).get('window'), [])
   const isElectron = Boolean(api)
   const windowType = getWindowType(isElectron, windowParam, state.window)
+  const usesCloudFeatures = windowType === 'full' || windowType === 'mini'
 
   const shellFallback =
     windowType === 'radial' ? (
@@ -85,10 +86,14 @@ function App() {
   // Always show the shell - auth is handled inline with a dialog
   return (
     <>
-      <AuthDeepLinkHandler />
-      <Authenticated>
-        <AuthTokenBridge />
-      </Authenticated>
+      {usesCloudFeatures ? (
+        <>
+          <AuthDeepLinkHandler />
+          <Authenticated>
+            <AuthTokenBridge />
+          </Authenticated>
+        </>
+      ) : null}
       <Suspense fallback={shellFallback}>{shell}</Suspense>
     </>
   )

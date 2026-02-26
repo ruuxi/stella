@@ -70,18 +70,46 @@ import { convexClient } from './services/convex-client'
 import { authClient } from './lib/auth-client'
 const authClientForProvider = authClient as unknown as AuthClient
 
+type BootWindowType = 'full' | 'mini' | 'radial' | 'region' | 'voice'
+
+const getBootWindowType = (): BootWindowType => {
+  const windowParam = new URLSearchParams(window.location.search).get('window')
+  switch (windowParam) {
+    case 'mini':
+    case 'radial':
+    case 'region':
+    case 'voice':
+      return windowParam
+    default:
+      return 'full'
+  }
+}
+
+const shouldEnableConvex = (() => {
+  const windowType = getBootWindowType()
+  return windowType === 'full' || windowType === 'mini'
+})()
+
+const appTree = (
+  <ThemeProvider>
+    <ErrorBoundary>
+      <UiStateProvider>
+        <WorkspaceProvider>
+          <App />
+        </WorkspaceProvider>
+      </UiStateProvider>
+    </ErrorBoundary>
+  </ThemeProvider>
+)
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ConvexBetterAuthProvider client={convexClient} authClient={authClientForProvider}>
-      <ThemeProvider>
-        <ErrorBoundary>
-          <UiStateProvider>
-            <WorkspaceProvider>
-              <App />
-            </WorkspaceProvider>
-          </UiStateProvider>
-        </ErrorBoundary>
-      </ThemeProvider>
-    </ConvexBetterAuthProvider>
+    {shouldEnableConvex ? (
+      <ConvexBetterAuthProvider client={convexClient} authClient={authClientForProvider}>
+        {appTree}
+      </ConvexBetterAuthProvider>
+    ) : (
+      appTree
+    )}
   </StrictMode>,
 )
