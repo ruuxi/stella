@@ -1131,7 +1131,9 @@ export const listPages = query({
     hasRunning: v.boolean(),
   }),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return { pages: [], hasRunning: false };
+    const ownerId = identity.subject;
     const rows = await ctx.db
       .query("dashboard_pages")
       .withIndex("by_ownerId_and_order", (q) => q.eq("ownerId", ownerId))
