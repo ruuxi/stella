@@ -155,6 +155,52 @@ export const listOlderMessages = internalQuery({
   },
 });
 
+/**
+ * Simple non-paginated query for HTTP polling (no multi-paginate issue).
+ * Returns recent dashboard gen and tool request events for a device.
+ */
+export const listRecentDeviceEvents = query({
+  args: {
+    deviceId: v.string(),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const limit = args.limit ?? 20;
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_targetDeviceId_and_timestamp", (q) =>
+        q.eq("targetDeviceId", args.deviceId).gte("timestamp", args.since),
+      )
+      .order("desc")
+      .take(limit * 3); // Over-fetch to account for filtering
+
+    const result: Infer<typeof eventValidator>[] = [];
+    const ownershipCache = new Map<string, boolean>();
+
+    for (const event of events) {
+      if (event.type !== "tool_request" && event.type !== "dashboard_generation_request") {
+        continue;
+      }
+      const conversationKey = String(event.conversationId);
+      let owned = ownershipCache.get(conversationKey);
+      if (owned === undefined) {
+        const conversation = await ctx.db.get(event.conversationId);
+        owned = Boolean(conversation && conversation.ownerId === ownerId);
+        ownershipCache.set(conversationKey, owned);
+      }
+      if (!owned) continue;
+
+      result.push(event as Infer<typeof eventValidator>);
+      if (result.length >= limit) break;
+    }
+
+    return result;
+  },
+});
 
 export const listMessagesInWindow = internalQuery({
   args: {
