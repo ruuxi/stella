@@ -43,8 +43,7 @@ Output rules (must follow):
   status, panel_file_path, title, data_sources.
 
 Implementation reliability:
-- Read \`src/views/home/HomeView.tsx\` to understand the existing design system, then write your panel to \`src/views/home/pages/\`.
-- Determine the absolute path of \`src/views/home/pages/\` from the HomeView location.
+- Write to the exact file path provided in the task prompt.
 - Prefer resilient fetching and graceful loading/error UI states.`;
 
 export const buildPersonalizedDashboardPageUserMessage = (args: {
@@ -70,10 +69,8 @@ Core memory (user profile):
 ${args.coreMemory}
 
 Execution requirements:
-1. Read \`src/views/home/HomeView.tsx\` to understand the component structure and design patterns.
-2. Determine the absolute path of \`src/views/home/pages/\` from the HomeView location.
-3. Create or overwrite ${assignment.panelName}.tsx in that directory.
-4. Implement a complete, polished page with live public data, loading states, and error handling.
-5. Include actions that send messages back to Stella using stella:send-message events.
-6. End with a JSON summary object only.`;
+1. Write the panel file to the exact path provided in the task prompt.
+2. Implement a complete, polished page with live public data, loading states, and error handling.
+3. Include actions that send messages back to Stella using stella:send-message events.
+4. End with a JSON summary object only.`;
 };
