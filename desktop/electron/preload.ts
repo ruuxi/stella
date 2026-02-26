@@ -277,4 +277,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // App reload (used by recovery page)
   appReload: () => ipcRenderer.send('app:reload'),
+  hardResetLocalState: () => ipcRenderer.invoke('app:hardResetLocalState') as Promise<{ ok: boolean }>,
 })
