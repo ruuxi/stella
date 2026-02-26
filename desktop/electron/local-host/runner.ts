@@ -779,25 +779,60 @@ export const createLocalHostRunner = ({
           error: result.error,
         });
       } else {
+        const expectedPanelRelativePath = payload.panelName
+          ? `src/views/home/pages/${payload.panelName}.tsx`
+          : null;
+        const normalizedExpectedPanelPath = expectedPanelRelativePath
+          ? expectedPanelRelativePath.replace(/\\/g, "/").toLowerCase()
+          : null;
+        let hasExpectedPanelWrite = false;
+
         // Apply any staged self-mod files (pages written to src/ are auto-staged)
         if (frontendRoot) {
           try {
             const featureId = await getActiveFeature(request.conversationId);
             if (featureId) {
               const staged = await listStagedFiles(featureId);
+              if (normalizedExpectedPanelPath) {
+                hasExpectedPanelWrite = staged.some(
+                  (filePath) =>
+                    filePath.replace(/\\/g, "/").toLowerCase() === normalizedExpectedPanelPath,
+                );
+              }
               if (staged.length > 0) {
                 await applyBatch(featureId, frontendRoot);
               }
+            }
+
+            // Fallback verification on disk (covers direct writes that bypass staging).
+            if (!hasExpectedPanelWrite && expectedPanelRelativePath) {
+              const expectedPanelAbsolutePath = path.join(
+                frontendRoot,
+                ...expectedPanelRelativePath.split("/"),
+              );
+              hasExpectedPanelWrite = fs.existsSync(expectedPanelAbsolutePath);
             }
           } catch (applyErr) {
             logError("Self-mod apply failed for page gen:", applyErr);
           }
         }
 
-        log(`Dashboard generation completed for ${payload.panelName}`);
-        await callMutation("personalized_dashboard.markPageReadyDevice", {
-          pageId: payload.pageId,
-        });
+        if (!hasExpectedPanelWrite) {
+          const verificationError = `Generation finished but did not write ${payload.panelName}.tsx to src/views/home/pages.`;
+          logError(verificationError, {
+            pageId: payload.pageId,
+            panelName: payload.panelName,
+          });
+          await callMutation("personalized_dashboard.markPageFailedDevice", {
+            pageId: payload.pageId,
+            error: verificationError,
+          });
+        } else {
+          log(`Dashboard generation completed for ${payload.panelName}`);
+          await callMutation("personalized_dashboard.markPageReadyDevice", {
+            pageId: payload.pageId,
+          });
+        }
       }
 
       // Release the lease (markPageReady/Failed already clear it, but be safe)
