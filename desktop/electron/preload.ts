@@ -268,4 +268,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('agent:event', handler)
     }
   },
+
+  // Self-mod revert
+  selfModRevert: (featureId: string, steps?: number) =>
+    ipcRenderer.invoke('selfmod:revert', { featureId, steps }),
+  getLastSelfModFeature: () =>
+    ipcRenderer.invoke('selfmod:lastFeature'),
+
+  // App reload (used by recovery page)
+  appReload: () => ipcRenderer.send('app:reload'),
 })

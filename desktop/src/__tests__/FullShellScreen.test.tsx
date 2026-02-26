@@ -1,14 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { createRef } from "react";
 import { useQuery } from "convex/react";
 
 // --- Mocks ---
 
-const mockRetryPersonalPage = vi.fn(() => Promise.resolve(undefined));
-const mockStartDashboardGeneration = vi.fn(() =>
-  Promise.resolve({ started: false, pageIds: [], skippedReason: "already_generated" }),
-);
 const mockSendMessage = vi.fn();
 const mockUseConversationEvents = vi.fn((..._args: unknown[]) => []);
 const mockUseStreamingChat = vi.fn((_options?: unknown) => ({
@@ -18,6 +14,7 @@ const mockUseStreamingChat = vi.fn((_options?: unknown) => ({
   pendingUserMessageId: null,
   queueNext: null,
   setQueueNext: vi.fn(),
+  selfModMap: {},
   sendMessage: mockSendMessage,
   syncWithEvents: vi.fn(),
   processFollowUpQueue: vi.fn(),
@@ -27,18 +24,14 @@ vi.mock("convex/react", () => ({
   useConvexAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
   useQuery: vi.fn(() => undefined),
   useMutation: vi.fn(() => vi.fn()),
-  useAction: vi.fn((ref: string) =>
-    ref === "personalized_dashboard:startGeneration"
-      ? mockStartDashboardGeneration
-      : mockRetryPersonalPage,
-  ),
+  useAction: vi.fn(() => vi.fn()),
   Authenticated: ({ children }: any) => <>{children}</>,
 }));
 
 const mockSetView = vi.fn();
 vi.mock("../app/state/ui-state", () => ({
   useUiState: vi.fn(() => ({
-    state: { mode: "chat", window: "full", view: "chat", conversationId: "conv-123" },
+    state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
     setMode: vi.fn(),
     setView: mockSetView,
     setConversationId: vi.fn(),
@@ -121,11 +114,6 @@ vi.mock("@/convex/api", () => ({
         getForConversation: "canvas_states:getForConversation",
       },
     },
-    personalized_dashboard: {
-      listPages: "personalized_dashboard:listPages",
-      retryPage: "personalized_dashboard:retryPage",
-      startGeneration: "personalized_dashboard:startGeneration",
-    },
   },
 }));
 
@@ -152,22 +140,6 @@ vi.mock("../components/Sidebar", () => ({
       <button data-testid="sidebar-signin" onClick={props.onSignIn}>Sign In</button>
       <button data-testid="sidebar-connect" onClick={props.onConnect}>Connect</button>
       <button data-testid="sidebar-settings" onClick={props.onSettings}>Settings</button>
-      {props.onPersonalPageSelect && (
-        <button
-          data-testid="sidebar-personal-page"
-          onClick={() =>
-            props.onPersonalPageSelect({
-              pageId: "page-1",
-              panelName: "pd_tech_feed",
-              title: "Tech Feed",
-              status: "ready",
-              order: 0,
-            })
-          }
-        >
-          Personal Page
-        </button>
-      )}
       {props.storeActive && <span data-testid="store-active" />}
     </div>
   ),
@@ -175,14 +147,7 @@ vi.mock("../components/Sidebar", () => ({
 
 vi.mock("../components/workspace/WorkspaceArea", () => ({
   WorkspaceArea: (props: any) => (
-    <div data-testid="workspace-area" data-view={props.view}>
-      <button
-        data-testid="workspace-retry-page"
-        onClick={() => props.onRetryPersonalPage?.("page-1")}
-      >
-        Retry Page
-      </button>
-    </div>
+    <div data-testid="workspace-area" data-view={props.view} />
   ),
 }));
 
@@ -276,7 +241,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
       return undefined;
     });
     vi.mocked(useUiState).mockReturnValue({
-      state: { mode: "chat", window: "full", view: "chat", conversationId: "conv-123" },
+      state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
       setMode: vi.fn(),
       setView: mockSetView,
       setConversationId: vi.fn(),
@@ -300,7 +265,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   });
 
-  it("renders WorkspaceArea and ChatPanel in chat view", () => {
+  it("renders WorkspaceArea and ChatPanel in home view", () => {
     render(<FullShell />);
     expect(screen.getByTestId("workspace-area")).toBeInTheDocument();
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
@@ -320,7 +285,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     render(<FullShell />);
     const workspace = screen.getByTestId("workspace-area");
     expect(workspace).toHaveAttribute("data-view", "store");
-    // Chat panel is still visible alongside store
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
   });
 
@@ -366,7 +330,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(mockSetView).toHaveBeenCalledWith("store");
   });
 
-  it("toggles back to chat view via sidebar onStore when already in store", () => {
+  it("toggles back to home view via sidebar onStore when already in store", () => {
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "store", conversationId: "conv-123" },
       setMode: vi.fn(),
@@ -378,7 +342,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
 
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-store"));
-    expect(mockSetView).toHaveBeenCalledWith("chat");
+    expect(mockSetView).toHaveBeenCalledWith("home");
   });
 
   it("opens auth dialog when sidebar sign-in is clicked", () => {
@@ -402,7 +366,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
   it("navigates home via sidebar onHome", () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-home"));
-    expect(mockSetView).toHaveBeenCalledWith("chat");
+    expect(mockSetView).toHaveBeenCalledWith("home");
   });
 
   it("passes storeActive=true to Sidebar when view is store", () => {
@@ -419,35 +383,13 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(screen.getByTestId("store-active")).toBeInTheDocument();
   });
 
-  it("opens selected personal page in canvas and returns to chat view", () => {
-    render(<FullShell />);
-    fireEvent.click(screen.getByTestId("sidebar-personal-page"));
-    expect(mockSetView).toHaveBeenCalledWith("chat");
-    expect(mockOpenCanvas).toHaveBeenCalledWith({
-      name: "pd_tech_feed",
-      title: "Tech Feed",
-    });
-  });
-
-  it("retries a personal page via WorkspaceArea callback", async () => {
-    render(<FullShell />);
-    fireEvent.click(screen.getByTestId("workspace-retry-page"));
-    await waitFor(() => {
-      expect(mockRetryPersonalPage).toHaveBeenCalledWith({
-        conversationId: "conv-123",
-        pageId: "page-1",
-        targetDeviceId: "device-1",
-      });
-    });
-  });
-
   it("routes stella:send-message events to sendMessage", () => {
     render(<FullShell />);
     window.dispatchEvent(
-      new CustomEvent("stella:send-message", { detail: { text: "Ping from dashboard" } }),
+      new CustomEvent("stella:send-message", { detail: { text: "Ping from home" } }),
     );
     expect(mockSendMessage).toHaveBeenCalledWith({
-      text: "Ping from dashboard",
+      text: "Ping from home",
       selectedText: null,
       chatContext: null,
       onClear: expect.any(Function),

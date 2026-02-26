@@ -12,6 +12,7 @@ import {
 } from "./MessageTurn";
 import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import { useTurnViewModels } from "./use-turn-view-models";
+import type { SelfModAppliedData } from "../full-shell/use-streaming-chat";
 
 type Props = {
   events: EventRecord[];
@@ -20,6 +21,7 @@ type Props = {
   reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
+  selfModMap?: Record<string, SelfModAppliedData>;
   onOpenAttachment?: (attachment: Attachment) => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 };
@@ -247,6 +249,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   reasoningText,
   isStreaming,
   pendingUserMessageId,
+  selfModMap,
   onOpenAttachment,
   scrollContainerRef,
 }: Props) {
@@ -265,6 +268,7 @@ export const ConversationEvents = memo(function ConversationEvents({
     reasoningText,
     isStreaming,
     pendingUserMessageId,
+    selfModMap,
   });
 
   const shouldVirtualize =

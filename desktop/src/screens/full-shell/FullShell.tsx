@@ -4,7 +4,7 @@
  */
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
 import { useWorkspace } from "../../app/state/workspace-state";
 import { useTheme } from "../../theme/theme-context";
@@ -12,7 +12,6 @@ import { useConversationEvents } from "../../hooks/use-conversation-events";
 import { useCanvasCommands } from "../../hooks/use-canvas-commands";
 import { getElectronApi } from "../../services/electron";
 import { secureSignOut } from "../../services/auth";
-import { getOrCreateDeviceId } from "../../services/device";
 import { api } from "@/convex/api";
 import { ShiftingGradient } from "../../components/background/ShiftingGradient";
 import { TitleBar } from "../../components/TitleBar";
@@ -32,20 +31,17 @@ import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
-import type { PersonalizedDashboardPage, PersonalizedDashboardPageList } from "../../types/personalized-dashboard";
 
 const SettingsDialog = lazy(() => import("./SettingsView"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
-  const { state: workspaceState, openCanvas, closeCanvas } = useWorkspace();
+  const { openCanvas, closeCanvas } = useWorkspace();
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
   const restoredCanvasConversationRef = useRef<string | null>(null);
   const isNearBottomRef = useRef(true);
-  const dashboardBootstrapAttemptedRef = useRef<Set<string>>(new Set());
-  const panelLoadRecoveryRef = useRef<Set<string>>(new Set());
 
   const [message, setMessage] = useState("");
   const [chatContext, setChatContext] = useState<ChatContext | null>(null);
@@ -109,6 +105,7 @@ export const FullShell = () => {
     pendingUserMessageId,
     queueNext,
     setQueueNext,
+    selfModMap,
     sendMessage,
     syncWithEvents,
     processFollowUpQueue,
@@ -168,16 +165,6 @@ export const FullShell = () => {
   }, []);
 
   useCanvasCommands(events);
-  const retryPersonalPage = useAction(api.personalized_dashboard.retryPage);
-  const startDashboardGeneration = useAction(
-    api.personalized_dashboard.startGeneration,
-  );
-
-  const personalizedPageState = useQuery(
-    api.personalized_dashboard.listPages,
-    cloudFeaturesEnabled ? {} : "skip",
-  ) as PersonalizedDashboardPageList | undefined;
-  const personalPages = personalizedPageState?.pages ?? [];
 
   // Restore saved canvas state when switching conversations
   const savedCanvasCloudState = useQuery(
@@ -275,35 +262,7 @@ export const FullShell = () => {
     [sendMessage],
   );
 
-  const handlePersonalPageSelect = useCallback(
-    (page: PersonalizedDashboardPage) => {
-      setView("chat");
-      openCanvas({
-        name: page.panelName,
-        title: page.title,
-      });
-    },
-    [openCanvas, setView],
-  );
-
-  const handleRetryPersonalPage = useCallback(
-    (pageId: string) => {
-      if (!activeConversationId || !cloudFeaturesEnabled) return;
-      void (async () => {
-        const targetDeviceId = await getOrCreateDeviceId();
-        await retryPersonalPage({
-          conversationId: activeConversationId,
-          pageId,
-          targetDeviceId,
-        });
-      })().catch(() => {
-        // Silent fail - workspace surface already shows failure state
-      });
-    },
-    [activeConversationId, cloudFeaturesEnabled, retryPersonalPage],
-  );
-
-  // Listen for custom events from the dashboard panel (suggestion clicks)
+  // Listen for custom events from the home view (suggestion clicks)
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ text: string }>).detail;
@@ -320,34 +279,6 @@ export const FullShell = () => {
     return () => window.removeEventListener("stella:send-message", handler);
   }, [sendMessage]);
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ panelName?: string; error?: string }>).detail;
-      if (!cloudFeaturesEnabled) return;
-      const panelName = detail?.panelName?.trim();
-      if (!panelName || !activeConversationId) return;
-
-      const page = personalPages.find((entry) => entry.panelName === panelName);
-      if (!page) return;
-      if (panelLoadRecoveryRef.current.has(page.pageId)) return;
-      panelLoadRecoveryRef.current.add(page.pageId);
-
-      void (async () => {
-        const targetDeviceId = await getOrCreateDeviceId();
-        await retryPersonalPage({
-          conversationId: activeConversationId,
-          pageId: page.pageId,
-          targetDeviceId,
-        });
-      })().catch(() => {
-        panelLoadRecoveryRef.current.delete(page.pageId);
-      });
-    };
-
-    window.addEventListener("stella:panel-load-failed", handler);
-    return () => window.removeEventListener("stella:panel-load-failed", handler);
-  }, [activeConversationId, cloudFeaturesEnabled, personalPages, retryPersonalPage]);
-
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasWindowContext = Boolean(chatContext?.window);
   const hasSelectedTextContext = Boolean(selectedText);
@@ -363,35 +294,6 @@ export const FullShell = () => {
 
   const appReady = onboarding.isAuthenticated && onboarding.onboardingDone;
 
-  useEffect(() => {
-    if (!cloudFeaturesEnabled) return;
-    if (!appReady || !activeConversationId) return;
-    if (personalizedPageState === undefined) return;
-    if (dashboardBootstrapAttemptedRef.current.has(activeConversationId)) return;
-
-    if (personalizedPageState.pages.length > 0 || personalizedPageState.hasRunning) {
-      dashboardBootstrapAttemptedRef.current.add(activeConversationId);
-      return;
-    }
-
-    dashboardBootstrapAttemptedRef.current.add(activeConversationId);
-    void (async () => {
-      const targetDeviceId = await getOrCreateDeviceId();
-      await startDashboardGeneration({
-        conversationId: activeConversationId,
-        targetDeviceId,
-      });
-    })().catch(() => {
-      dashboardBootstrapAttemptedRef.current.delete(activeConversationId);
-    });
-  }, [
-    activeConversationId,
-    appReady,
-    cloudFeaturesEnabled,
-    personalizedPageState,
-    startDashboardGeneration,
-  ]);
-
   return (
     <div className="window-shell full">
       <TitleBar />
@@ -404,28 +306,22 @@ export const FullShell = () => {
               onSignIn={() => setAuthDialogOpen(true)}
               onConnect={() => setConnectDialogOpen(true)}
               onSettings={() => setSettingsDialogOpen(true)}
-              onStore={() => setView(state.view === 'store' ? 'chat' : 'store')}
-              onHome={() => setView('chat')}
+              onStore={() => setView(state.view === 'store' ? 'home' : 'store')}
+              onHome={() => setView('home')}
               storeActive={state.view === 'store'}
-              personalPages={personalPages}
-              personalPagesLoading={Boolean(personalizedPageState?.hasRunning)}
-              activePersonalPanelName={workspaceState.canvas?.name ?? null}
-              onPersonalPageSelect={handlePersonalPageSelect}
             />
 
             <WorkspaceArea
               view={state.view}
-              isAuthenticated={onboarding.isAuthenticated}
-              onboardingDone={onboarding.onboardingDone}
               activeDemo={activeDemo}
               demoClosing={demoClosing}
-              onStoreBack={() => setView('chat')}
+              onStoreBack={() => setView('home')}
               onComposePrompt={(text) => {
-                setView("chat");
+                setView("home");
                 setMessage(text);
               }}
-              personalPages={personalPages}
-              onRetryPersonalPage={handleRetryPersonalPage}
+              conversationId={activeConversationId ?? undefined}
+              eventsSource={conversationEventsSource}
             />
 
             <ChatPanel>
@@ -435,6 +331,7 @@ export const FullShell = () => {
                 reasoningText={reasoningText}
                 isStreaming={isStreaming}
                 pendingUserMessageId={pendingUserMessageId}
+                selfModMap={selfModMap}
                 message={message}
                 setMessage={setMessage}
                 chatContext={chatContext}
@@ -477,6 +374,7 @@ export const FullShell = () => {
             reasoningText={reasoningText}
             isStreaming={isStreaming}
             pendingUserMessageId={pendingUserMessageId}
+            selfModMap={selfModMap}
             message={message}
             setMessage={setMessage}
             chatContext={chatContext}

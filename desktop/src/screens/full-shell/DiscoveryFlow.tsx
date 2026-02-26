@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAction, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "../../convex/api";
 import { getOrCreateDeviceId } from "../../services/device";
 import { synthesizeCoreMemory } from "../../services/synthesis";
@@ -39,9 +39,6 @@ export function useDiscoveryFlow({
   const activeConversationId = conversationId;
   const appendEvent = useMutation(api.events.appendEvent);
   const setCoreMemory = useMutation(api.data.preferences.setCoreMemory);
-  const startDashboardGeneration = useAction(
-    api.personalized_dashboard.startGeneration,
-  );
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
@@ -66,13 +63,6 @@ export function useDiscoveryFlow({
       try {
         const exists = await window.electronAPI?.checkCoreMemoryExists?.();
         if (exists) {
-          const deviceId = await getOrCreateDeviceId();
-          void startDashboardGeneration({
-            conversationId: activeConversationId,
-            targetDeviceId: deviceId,
-          }).catch(() => {
-            // Silent fail - dashboard generation is non-critical
-          });
           return;
         }
 
@@ -90,15 +80,6 @@ export function useDiscoveryFlow({
         // Sync core memory to Convex immediately (don't wait for runner file watcher)
         await setCoreMemory({ content: synthesisResult.coreMemory });
         const deviceId = await getOrCreateDeviceId();
-
-        // Generate personalized dashboard pages in the background
-        void startDashboardGeneration({
-          conversationId: activeConversationId,
-          coreMemory: synthesisResult.coreMemory,
-          targetDeviceId: deviceId,
-        }).catch(() => {
-          // Silent fail - dashboard generation is non-critical
-        });
 
         // Select default skills based on user profile (fire-and-forget)
         void selectDefaultSkills(synthesisResult.coreMemory).catch(() => {
@@ -130,7 +111,7 @@ export function useDiscoveryFlow({
     };
 
     void run();
-  }, [discoveryCategories, isAuthenticated, activeConversationId, appendEvent, setCoreMemory, startDashboardGeneration]);
+  }, [discoveryCategories, isAuthenticated, activeConversationId, appendEvent, setCoreMemory]);
 
   return {
     handleDiscoveryConfirm,

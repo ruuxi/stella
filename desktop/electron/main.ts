@@ -845,6 +845,14 @@ const createFullWindow = () => {
     fullWindow.webContents.openDevTools()
   }
 
+  // Crash recovery: load static recovery page if renderer process crashes
+  fullWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('Renderer process gone:', details.reason)
+    if (fullWindow && !fullWindow.isDestroyed()) {
+      fullWindow.loadFile(path.join(__dirname, 'recovery.html'))
+    }
+  })
+
   fullWindow.on('closed', () => {
     fullWindow = null
   })
@@ -2517,6 +2525,33 @@ app.whenReady().then(async () => {
     if (localHostRunner && typeof runId === 'string') {
       localHostRunner.cancelLocalChat(runId)
       agentRunOwners.delete(runId)
+    }
+  })
+
+  ipcMain.handle('selfmod:revert', async (_event, payload: { featureId: string; steps?: number }) => {
+    if (!localHostRunner) {
+      throw new Error('Local host runner not available')
+    }
+    // Import revert handler dynamically to avoid circular deps
+    const { handleSelfModRevert } = await import('./local-host/tools_self_mod.js')
+    const frontendRoot = path.join(__dirname, '..')
+    const context = { conversationId: '', requestId: '', deviceId: '', agentType: 'user' }
+    return handleSelfModRevert(
+      { feature_id: payload.featureId, steps: payload.steps },
+      context,
+      frontendRoot,
+    )
+  })
+
+  ipcMain.handle('selfmod:lastFeature', async () => {
+    if (!localHostRunner) return null
+    return localHostRunner.getLastAppliedFeatureId()
+  })
+
+  // App reload — used by recovery page to restart the full app after crash recovery
+  ipcMain.on('app:reload', () => {
+    if (fullWindow && !fullWindow.isDestroyed()) {
+      loadWindow(fullWindow, 'full')
     }
   })
 

@@ -2,7 +2,6 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { secureSignOut } from "@/services/auth";
 import { ThemePicker } from "./ThemePicker";
-import type { PersonalizedDashboardPage } from "@/types/personalized-dashboard";
 
 interface SidebarProps {
   hideThemePicker?: boolean;
@@ -15,10 +14,6 @@ interface SidebarProps {
   onStore?: () => void;
   onHome?: () => void;
   storeActive?: boolean;
-  personalPages?: PersonalizedDashboardPage[];
-  activePersonalPanelName?: string | null;
-  onPersonalPageSelect?: (page: PersonalizedDashboardPage) => void;
-  personalPagesLoading?: boolean;
 }
 
 const navItems = [
@@ -39,18 +34,6 @@ const navItems = [
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-      </svg>
-    ),
-  },
-  {
-    label: "Social",
-    disabled: true,
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
       </svg>
     ),
   },
@@ -105,26 +88,6 @@ const AuthButton = ({
   );
 };
 
-const PageStatusGlyph = ({ status }: { status: PersonalizedDashboardPage["status"] }) => {
-  if (status === "failed") {
-    return (
-      <span className="sidebar-page-status sidebar-page-status--failed" aria-hidden="true">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 9v4" />
-          <path d="M12 17h.01" />
-          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-        </svg>
-      </span>
-    );
-  }
-
-  if (status === "queued" || status === "running") {
-    return <span className="sidebar-page-status sidebar-page-status--running" aria-hidden="true" />;
-  }
-
-  return <span className="sidebar-page-status sidebar-page-status--ready" aria-hidden="true" />;
-};
-
 export const Sidebar = ({
   hideThemePicker,
   themePickerOpen,
@@ -136,10 +99,6 @@ export const Sidebar = ({
   onStore,
   onHome,
   storeActive,
-  personalPages = [],
-  activePersonalPanelName,
-  onPersonalPageSelect,
-  personalPagesLoading,
 }: SidebarProps) => {
   const { isAuthenticated } = useConvexAuth();
 
@@ -162,41 +121,14 @@ export const Sidebar = ({
         {navItems.map((item) => (
           <button
             key={item.label}
-            className={`sidebar-nav-item${item.label === "App Store" && storeActive ? " sidebar-nav-item--active" : ""}${item.disabled ? " sidebar-nav-item--disabled" : ""}`}
+            className={`sidebar-nav-item${item.label === "App Store" && storeActive ? " sidebar-nav-item--active" : ""}`}
             type="button"
-            disabled={Boolean(item.disabled)}
             onClick={getClickHandler(item.label)}
           >
             <span className="sidebar-nav-icon">{item.icon}</span>
             <span className="sidebar-nav-label">{item.label}</span>
           </button>
         ))}
-
-        {(personalPagesLoading || personalPages.length > 0) && (
-          <>
-            <div className="sidebar-nav-section-label">Your Pages</div>
-            {personalPages.map((page) => {
-              const active = activePersonalPanelName === page.panelName;
-              const loading = page.status === "queued" || page.status === "running";
-              return (
-                <button
-                  key={page.pageId}
-                  type="button"
-                  className={`sidebar-nav-item${active ? " sidebar-nav-item--active" : ""}${loading ? " sidebar-nav-item--loading" : ""}`}
-                  onClick={() => onPersonalPageSelect?.(page)}
-                >
-                  <span className="sidebar-nav-icon">
-                    <PageStatusGlyph status={page.status} />
-                  </span>
-                  <span className="sidebar-nav-label">{page.title}</span>
-                </button>
-              );
-            })}
-            {personalPagesLoading && personalPages.length === 0 && (
-              <div className="sidebar-nav-loading">Generating your pages...</div>
-            )}
-          </>
-        )}
       </nav>
       <div className="sidebar-footer">
         <div className="sidebar-footer-item">
