@@ -3,11 +3,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "../../convex/api";
 import { getOrCreateDeviceId } from "../../services/device";
 import { synthesizeCoreMemory } from "../../services/synthesis";
 import { selectDefaultSkills } from "../../services/skill-selection";
+import { appendLocalEvent } from "../../services/local-chat-store";
 
 type DiscoveryCategory =
   | "browsing_bookmarks"
@@ -30,15 +31,18 @@ const withBrowserDiscoveryCategory = (
 type UseDiscoveryFlowOptions = {
   isAuthenticated: boolean;
   conversationId: string | null;
+  storageMode: "cloud" | "local";
 };
 
 export function useDiscoveryFlow({
   isAuthenticated,
   conversationId,
+  storageMode,
 }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
   const appendEvent = useMutation(api.events.appendEvent);
   const setCoreMemory = useMutation(api.data.preferences.setCoreMemory);
+  const startGeneration = useAction(api.personalized_dashboard.startGeneration);
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
@@ -77,8 +81,12 @@ export function useDiscoveryFlow({
 
         await window.electronAPI?.writeCoreMemory?.(synthesisResult.coreMemory);
 
-        // Sync core memory to Convex immediately (don't wait for runner file watcher)
-        await setCoreMemory({ content: synthesisResult.coreMemory });
+        // Sync core memory to Convex (skip silently if mutation fails in local mode)
+        try {
+          await setCoreMemory({ content: synthesisResult.coreMemory });
+        } catch {
+          // Non-critical — local file is the source of truth
+        }
         const deviceId = await getOrCreateDeviceId();
 
         // Select default skills based on user profile (fire-and-forget)
@@ -87,23 +95,50 @@ export function useDiscoveryFlow({
         });
 
         if (synthesisResult.welcomeMessage) {
-          const eventPayload = {
-            conversationId: activeConversationId,
-            type: "assistant_message",
-            deviceId,
-            payload: { text: synthesisResult.welcomeMessage },
-          };
-          await appendEvent(eventPayload);
-
-          if (synthesisResult.suggestions?.length) {
-            const suggestionPayload = {
+          if (storageMode === "local") {
+            appendLocalEvent({
               conversationId: activeConversationId,
-              type: "welcome_suggestions",
+              type: "assistant_message",
               deviceId,
-              payload: { suggestions: synthesisResult.suggestions },
+              payload: { text: synthesisResult.welcomeMessage },
+            });
+            if (synthesisResult.suggestions?.length) {
+              appendLocalEvent({
+                conversationId: activeConversationId,
+                type: "welcome_suggestions",
+                deviceId,
+                payload: { suggestions: synthesisResult.suggestions },
+              });
+            }
+          } else {
+            const eventPayload = {
+              conversationId: activeConversationId,
+              type: "assistant_message",
+              deviceId,
+              payload: { text: synthesisResult.welcomeMessage },
             };
-            await appendEvent(suggestionPayload);
+            await appendEvent(eventPayload);
+
+            if (synthesisResult.suggestions?.length) {
+              const suggestionPayload = {
+                conversationId: activeConversationId,
+                type: "welcome_suggestions",
+                deviceId,
+                payload: { suggestions: synthesisResult.suggestions },
+              };
+              await appendEvent(suggestionPayload);
+            }
           }
+        }
+
+        // Fire-and-forget page generation (cloud mode only)
+        if (storageMode === "cloud" && synthesisResult.coreMemory) {
+          void startGeneration({
+            conversationId: activeConversationId,
+            coreMemory: synthesisResult.coreMemory,
+          }).catch(() => {
+            // Silent fail - page generation is non-critical
+          });
         }
       } catch {
         // Silent fail - discovery is non-critical
@@ -111,7 +146,7 @@ export function useDiscoveryFlow({
     };
 
     void run();
-  }, [discoveryCategories, isAuthenticated, activeConversationId, appendEvent, setCoreMemory]);
+  }, [discoveryCategories, isAuthenticated, activeConversationId, storageMode, appendEvent, setCoreMemory, startGeneration]);
 
   return {
     handleDiscoveryConfirm,

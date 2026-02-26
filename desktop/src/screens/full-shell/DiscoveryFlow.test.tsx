@@ -47,6 +47,7 @@ function defaultOptions() {
   return {
     isAuthenticated: false,
     conversationId: null as string | null,
+    storageMode: "cloud" as const,
   };
 }
 
@@ -92,6 +93,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -117,6 +119,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -136,6 +139,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -172,6 +176,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: false,
         conversationId: "conv-1",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -196,6 +201,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: null,
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -222,6 +228,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -253,6 +260,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -301,6 +309,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -365,6 +374,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-2",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -405,6 +415,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-3",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -428,6 +439,7 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-4",
+        storageMode: "cloud" as const,
       }),
     );
 
@@ -465,6 +477,7 @@ describe("useDiscoveryFlow", () => {
         initialProps: {
           isAuthenticated: true,
           conversationId: "conv-5",
+          storageMode: "cloud" as const,
         },
       },
     );
@@ -481,6 +494,7 @@ describe("useDiscoveryFlow", () => {
     rerender({
       isAuthenticated: true,
       conversationId: "conv-5",
+      storageMode: "cloud" as const,
     });
 
     // Still only called once
