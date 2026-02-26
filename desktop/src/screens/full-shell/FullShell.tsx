@@ -3,7 +3,7 @@
  * renders .full-body grid: Sidebar | WorkspaceArea | ChatPanel.
  */
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
 import { useWorkspace } from "../../app/state/workspace-state";
@@ -34,6 +34,38 @@ import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
 
 const SettingsDialog = lazy(() => import("./SettingsView"));
 
+type PersonalPage = {
+  pageId: string;
+  panelName: string;
+  title: string;
+  status: "queued" | "running" | "ready" | "failed";
+  order: number;
+};
+
+type LocalWorkspacePanel = {
+  name: string;
+  title: string;
+};
+
+const LOCAL_PANEL_PAGE_PREFIX = "local_panel:";
+const LOCAL_PANELS_POLL_INTERVAL_MS = 3_000;
+
+const arePanelListsEqual = (
+  left: LocalWorkspacePanel[],
+  right: LocalWorkspacePanel[],
+) => {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (
+      left[index]?.name !== right[index]?.name ||
+      left[index]?.title !== right[index]?.title
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
 export const FullShell = () => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
@@ -50,6 +82,9 @@ export const FullShell = () => {
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [runtimeModeDialogOpen, setRuntimeModeDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [localWorkspacePanels, setLocalWorkspacePanels] = useState<
+    LocalWorkspacePanel[]
+  >([]);
 
   useBridgeAutoReconnect();
 
@@ -70,16 +105,112 @@ export const FullShell = () => {
   const pagesResult = useQuery(
     api.personalized_dashboard.listPages,
     cloudFeaturesEnabled ? {} : "skip",
-  ) as { pages: Array<{ pageId: string; panelName: string; title: string; status: string }>; hasRunning: boolean } | undefined;
-  const personalPages = pagesResult?.pages;
+  ) as
+    | {
+        pages: Array<{
+          pageId: string;
+          panelName: string;
+          title: string;
+          status: "queued" | "running" | "ready" | "failed";
+          order: number;
+        }>;
+        hasRunning: boolean;
+      }
+    | undefined;
+  const cloudPages = pagesResult?.pages ?? [];
 
-  const handlePageSelect = useCallback((pageId: string, title: string) => {
-    const page = personalPages?.find(p => p.pageId === pageId);
-    if (page) {
-      openCanvas({ name: page.panelName, title: page.title });
-      setView('app');
+  useEffect(() => {
+    const electronApi = getElectronApi();
+    if (!electronApi?.listWorkspacePanels) {
+      setLocalWorkspacePanels([]);
+      return;
     }
-  }, [personalPages, openCanvas, setView]);
+
+    let cancelled = false;
+    const loadPanels = async () => {
+      try {
+        const result = await electronApi.listWorkspacePanels();
+        if (cancelled) return;
+
+        const normalized = (Array.isArray(result) ? result : [])
+          .filter(
+            (panel): panel is LocalWorkspacePanel =>
+              Boolean(
+                panel &&
+                  typeof panel.name === "string" &&
+                  typeof panel.title === "string",
+              ),
+          )
+          .map((panel) => ({
+            name: panel.name.trim(),
+            title: panel.title.trim() || panel.name.trim(),
+          }))
+          .filter((panel) => panel.name.length > 0);
+
+        setLocalWorkspacePanels((previous) =>
+          arePanelListsEqual(previous, normalized) ? previous : normalized,
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("[FullShell] Failed to load local workspace pages", error);
+        }
+      }
+    };
+
+    void loadPanels();
+    const intervalId = window.setInterval(() => {
+      void loadPanels();
+    }, LOCAL_PANELS_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const personalPages = useMemo<PersonalPage[]>(() => {
+    const pagesByPanelName = new Map<string, PersonalPage>();
+
+    for (const page of cloudPages) {
+      pagesByPanelName.set(page.panelName, page);
+    }
+
+    for (const panel of localWorkspacePanels) {
+      const existing = pagesByPanelName.get(panel.name);
+      if (existing) {
+        // Local panel file exists, so the page is openable even if cloud status lags.
+        pagesByPanelName.set(panel.name, {
+          ...existing,
+          status: "ready",
+          title: existing.title || panel.title,
+        });
+        continue;
+      }
+
+      pagesByPanelName.set(panel.name, {
+        pageId: `${LOCAL_PANEL_PAGE_PREFIX}${panel.name}`,
+        panelName: panel.name,
+        title: panel.title,
+        status: "ready",
+        order: Number.MAX_SAFE_INTEGER,
+      });
+    }
+
+    return Array.from(pagesByPanelName.values()).sort(
+      (left, right) => left.order - right.order || left.title.localeCompare(right.title),
+    );
+  }, [cloudPages, localWorkspacePanels]);
+
+  const handlePageSelect = useCallback(
+    (pageId: string) => {
+      const page = personalPages.find((entry) => entry.pageId === pageId);
+      if (page) {
+        openCanvas({ name: page.panelName, title: page.title });
+        setView("app");
+      }
+    },
+    [personalPages, openCanvas, setView],
+  );
 
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);

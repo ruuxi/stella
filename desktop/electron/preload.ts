@@ -160,6 +160,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   detectPreferredBrowser: () => ipcRenderer.invoke('browserData:detectPreferredBrowser'),
   listBrowserProfiles: (browserType: string) => ipcRenderer.invoke('browserData:listProfiles', browserType),
   writeCoreMemory: (content: string) => ipcRenderer.invoke('browserData:writeCoreMemory', content),
+  listWorkspacePanels: () =>
+    ipcRenderer.invoke('workspace:listPanels') as Promise<Array<{ name: string; title: string }>>,
 
   // Comprehensive user signal collection (browser + dev projects + shell + apps)
   collectAllSignals: (options?: { categories?: string[] }) =>

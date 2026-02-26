@@ -164,6 +164,7 @@ export function useDiscoveryFlow({
               conversationId: generationConversationId,
               coreMemory: synthesisResult.coreMemory,
               targetDeviceId: deviceId,
+              force: storageMode === "local",
             }).catch((error) => {
               console.warn("[DiscoveryFlow] Dashboard generation trigger failed:", error);
             });

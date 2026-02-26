@@ -105,6 +105,9 @@ vi.mock("../services/device", () => ({
 
 vi.mock("@/convex/api", () => ({
   api: {
+    personalized_dashboard: {
+      listPages: "personalized_dashboard:listPages",
+    },
     data: {
       preferences: {
         getAccountMode: "preferences:getAccountMode",
@@ -140,6 +143,15 @@ vi.mock("../components/Sidebar", () => ({
       <button data-testid="sidebar-signin" onClick={props.onSignIn}>Sign In</button>
       <button data-testid="sidebar-connect" onClick={props.onConnect}>Connect</button>
       <button data-testid="sidebar-settings" onClick={props.onSettings}>Settings</button>
+      {(props.pages ?? []).map((page: any) => (
+        <button
+          key={page.pageId}
+          data-testid={`sidebar-page-${page.pageId}`}
+          onClick={() => props.onPageSelect?.(page.pageId, page.title)}
+        >
+          {page.title}
+        </button>
+      ))}
       {props.storeActive && <span data-testid="store-active" />}
     </div>
   ),
@@ -228,6 +240,7 @@ vi.mock("../screens/full-shell/use-full-shell", () => ({
 
 import { FullShell } from "../screens/full-shell/FullShell";
 import { useUiState } from "../app/state/ui-state";
+import { getElectronApi } from "../services/electron";
 
 // --- Tests ---
 
@@ -248,6 +261,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
       setWindow: vi.fn(),
       updateState: vi.fn(),
     } as any);
+    vi.mocked(getElectronApi).mockReturnValue(undefined);
   });
 
   it("renders TitleBar", () => {
@@ -400,5 +414,30 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     const { container } = render(<FullShell />);
     const shell = container.querySelector(".window-shell.full");
     expect(shell).toBeInTheDocument();
+  });
+
+  it("shows and opens local workspace pages when cloud pages are unavailable", async () => {
+    vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
+      if (args === "skip") return undefined;
+      if (ref === "preferences:getAccountMode") return "private_local";
+      if (ref === "preferences:getSyncMode") return "off";
+      return undefined;
+    });
+
+    const listWorkspacePanels = vi.fn(() =>
+      Promise.resolve([{ name: "pd_focus", title: "Focus" }]),
+    );
+
+    vi.mocked(getElectronApi).mockReturnValue({
+      listWorkspacePanels,
+    } as any);
+
+    render(<FullShell />);
+    const pageButton = await screen.findByTestId("sidebar-page-local_panel:pd_focus");
+    fireEvent.click(pageButton);
+
+    expect(listWorkspacePanels).toHaveBeenCalled();
+    expect(mockOpenCanvas).toHaveBeenCalledWith({ name: "pd_focus", title: "Focus" });
+    expect(mockSetView).toHaveBeenCalledWith("app");
   });
 });

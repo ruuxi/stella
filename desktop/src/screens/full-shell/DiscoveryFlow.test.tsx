@@ -364,6 +364,7 @@ describe("useDiscoveryFlow", () => {
         conversationId: "conv-1",
         coreMemory: "User is a developer",
         targetDeviceId: "device-1",
+        force: false,
       });
     });
   });
@@ -445,6 +446,7 @@ describe("useDiscoveryFlow", () => {
         conversationId: "conv-cloud-default",
         coreMemory: "Local user profile",
         targetDeviceId: "device-1",
+        force: true,
       });
     });
   });
