@@ -336,24 +336,46 @@ export const createLocalHostRunner = ({
     return `${name.slice(0, firstDot)}:${name.slice(firstDot + 1)}`;
   };
 
-  const callMutation = (name: string, args: Record<string, unknown>) => {
-    if (!client || !authToken) return Promise.resolve(null);
+  // Direct HTTP calls to Convex — bypasses the ConvexClient WebSocket which
+  // can stall indefinitely when the connection is unstable.
+  const callHttp = async (
+    endpoint: "mutation" | "action" | "query",
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> => {
+    if (!convexUrl || !authToken) {
+      throw new Error("Runner not connected");
+    }
     const convexName = toConvexName(name);
-    return client.mutation(convexName as never, args as never);
+    const baseUrl = convexUrl.replace(/\/+$/, "");
+    const response = await fetch(`${baseUrl}/api/${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ path: convexName, args, format: "json" }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Convex ${endpoint} ${convexName} failed (${response.status}): ${text}`);
+    }
+    const json = await response.json();
+    return json.value;
+  };
+
+  const callMutation = (name: string, args: Record<string, unknown>) => {
+    if (!authToken || !convexUrl) return Promise.resolve(null);
+    return callHttp("mutation", name, args);
   };
 
   const callQuery = (name: string, args: Record<string, unknown>) => {
-    if (!client || !authToken) return Promise.resolve(null);
-    const convexName = toConvexName(name);
-    return client.query(convexName as never, args as never);
+    if (!authToken || !convexUrl) return Promise.resolve(null);
+    return callHttp("query", name, args);
   };
 
   const callAction = (name: string, args: Record<string, unknown>) => {
-    if (!client || !authToken) {
-      return Promise.reject(new Error("Runner not connected"));
-    }
-    const convexName = toConvexName(name);
-    return client.action(convexName as never, args as never);
+    return callHttp("action", name, args);
   };
 
   const subscribeQuery = (
@@ -757,6 +779,18 @@ export const createLocalHostRunner = ({
         agentContext.systemPrompt = payload.systemPrompt;
       }
 
+      // Compute the exact target path so the LLM doesn't have to guess
+      const pagesDir = frontendRoot
+        ? path.join(frontendRoot, "src", "views", "home", "pages")
+        : null;
+      const targetFile = pagesDir
+        ? path.join(pagesDir, `${payload.panelName}.tsx`)
+        : null;
+
+      const taskPrompt = targetFile
+        ? `Write the dashboard panel to exactly this path: ${targetFile}\n\n${payload.userPrompt ?? ""}`
+        : payload.userPrompt ?? `Generate the dashboard panel ${payload.panelName}.tsx`;
+
       // Run as a local subagent
       const result = await runSubagentTask({
         conversationId: request.conversationId,
@@ -769,7 +803,7 @@ export const createLocalHostRunner = ({
         deviceId,
         stellaHome: StellaHome,
         taskDescription: `Generate personalized page: ${payload.title}`,
-        taskPrompt: payload.userPrompt ?? `Generate the dashboard panel ${payload.panelName}.tsx`,
+        taskPrompt,
       });
 
       if (result.error) {
@@ -779,43 +813,11 @@ export const createLocalHostRunner = ({
           error: result.error,
         });
       } else {
-        const expectedPanelRelativePath = payload.panelName
-          ? `src/views/home/pages/${payload.panelName}.tsx`
+        // Dashboard pages use DIRECT_WRITE_PREFIXES, so just verify on disk
+        const expectedPath = frontendRoot
+          ? path.join(frontendRoot, "src", "views", "home", "pages", `${payload.panelName}.tsx`)
           : null;
-        const normalizedExpectedPanelPath = expectedPanelRelativePath
-          ? expectedPanelRelativePath.replace(/\\/g, "/").toLowerCase()
-          : null;
-        let hasExpectedPanelWrite = false;
-
-        // Apply any staged self-mod files (pages written to src/ are auto-staged)
-        if (frontendRoot) {
-          try {
-            const featureId = await getActiveFeature(request.conversationId);
-            if (featureId) {
-              const staged = await listStagedFiles(featureId);
-              if (normalizedExpectedPanelPath) {
-                hasExpectedPanelWrite = staged.some(
-                  (filePath) =>
-                    filePath.replace(/\\/g, "/").toLowerCase() === normalizedExpectedPanelPath,
-                );
-              }
-              if (staged.length > 0) {
-                await applyBatch(featureId, frontendRoot);
-              }
-            }
-
-            // Fallback verification on disk (covers direct writes that bypass staging).
-            if (!hasExpectedPanelWrite && expectedPanelRelativePath) {
-              const expectedPanelAbsolutePath = path.join(
-                frontendRoot,
-                ...expectedPanelRelativePath.split("/"),
-              );
-              hasExpectedPanelWrite = fs.existsSync(expectedPanelAbsolutePath);
-            }
-          } catch (applyErr) {
-            logError("Self-mod apply failed for page gen:", applyErr);
-          }
-        }
+        const hasExpectedPanelWrite = expectedPath ? fs.existsSync(expectedPath) : false;
 
         if (!hasExpectedPanelWrite) {
           const verificationError = `Generation finished but did not write ${payload.panelName}.tsx to src/views/home/pages.`;
@@ -862,9 +864,9 @@ export const createLocalHostRunner = ({
     // Only start subscription if we have client, auth, and not already subscribed
     if (!client || !authToken || unsubscribe) return;
 
-    // Use current timestamp to filter out historical requests
-    // Only requests created AFTER this moment will be received
-    const since = Date.now();
+    // Look back 2 minutes to avoid missing events created just before subscription starts.
+    // Dedup sets (processedDashboardGen, dashboardGenInFlight) prevent double-processing.
+    const since = Date.now() - 120_000;
     log("Starting tool request subscription for device:", deviceId, { since });
 
     // Use onUpdate for real-time subscription to tool requests
@@ -878,7 +880,9 @@ export const createLocalHostRunner = ({
         }
         const result = response as PaginatedResult<ToolRequestEvent>;
         for (const request of result.page) {
-          queue = queue.then(() => handleToolRequest(request)).catch(() => undefined);
+          queue = queue.then(() => handleToolRequest(request)).catch((err) => {
+            logError("Tool request queue error:", err);
+          });
         }
       },
     );
@@ -893,13 +897,17 @@ export const createLocalHostRunner = ({
         }
         const result = response as PaginatedResult<DashboardGenRequestEvent>;
         for (const request of result.page) {
-          queue = queue.then(() => handleDashboardGenRequest(request)).catch(() => undefined);
+          queue = queue.then(() => handleDashboardGenRequest(request)).catch((err) => {
+            logError("Dashboard gen queue error:", err);
+          });
         }
       },
     );
 
     log("Tool request subscription active - receiving only new requests");
   };
+
+  let lastSetAuthToken: string | null = null;
 
   const disposeClient = () => {
     stopSubscription();
@@ -908,6 +916,7 @@ export const createLocalHostRunner = ({
     }
     client.close();
     client = null;
+    lastSetAuthToken = null;
   };
 
   const ensureConnectedClient = () => {
@@ -916,9 +925,19 @@ export const createLocalHostRunner = ({
     }
     if (!client) {
       client = new ConvexClient(convexUrl);
+      lastSetAuthToken = null; // Force setAuth on new client
     }
-    const token = authToken;
-    client.setAuth(() => Promise.resolve(token));
+    // Only call setAuth when the token actually changes to avoid WebSocket churn
+    if (lastSetAuthToken !== authToken) {
+      const token = authToken;
+      lastSetAuthToken = token;
+      client.setAuth(
+        () => Promise.resolve(token),
+        (isAuthenticated) => {
+          log("ConvexClient auth state:", isAuthenticated);
+        },
+      );
+    }
     return client;
   };
 
@@ -944,6 +963,12 @@ export const createLocalHostRunner = ({
   const setAuthToken = (token: string | null) => {
     const normalizedToken =
       typeof token === "string" && token.trim().length > 0 ? token.trim() : null;
+
+    // Skip if token hasn't changed — avoids WebSocket churn from repeated setAuth calls
+    if (normalizedToken === authToken) {
+      return;
+    }
+
     authToken = normalizedToken;
     if (!authToken) {
       disposeClient();
@@ -1221,22 +1246,34 @@ export const createLocalHostRunner = ({
     const runId = `local:${crypto.randomUUID()}`;
 
     // Fetch agent context from Convex
-    const agentContext = (storageMode === "local"
-      ? await callAction(
-          "agent/prompt_builder:fetchLocalAgentContextForRuntime",
-          {
-            agentType,
-            runId,
-          },
-        )
-      : await callAction(
-          "agent/prompt_builder:fetchAgentContextForRuntime",
-          {
-            conversationId: payload.conversationId,
-            agentType,
-            runId,
-          },
-        )) as AgentContext;
+    log("Fetching agent context", { storageMode, agentType, runId });
+    let agentContext: AgentContext;
+    try {
+      agentContext = (storageMode === "local"
+        ? await callAction(
+            "agent/prompt_builder:fetchLocalAgentContextForRuntime",
+            {
+              agentType,
+              runId,
+            },
+          )
+        : await callAction(
+            "agent/prompt_builder:fetchAgentContextForRuntime",
+            {
+              conversationId: payload.conversationId,
+              agentType,
+              runId,
+            },
+          )) as AgentContext;
+      log("Agent context fetched", {
+        hasSystemPrompt: !!agentContext?.systemPrompt,
+        model: agentContext?.model,
+        hasProxyToken: !!agentContext?.proxyToken,
+      });
+    } catch (err) {
+      logError("Failed to fetch agent context:", err);
+      throw err;
+    }
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = payload.conversationId;
@@ -1244,6 +1281,7 @@ export const createLocalHostRunner = ({
     activeRunAbortControllers.set(runId, abortController);
 
     // Run the agent loop
+    log("Starting orchestrator turn", { runId, agentType, model: agentContext.model });
     void runOrchestratorTurn({
       runId,
       conversationId: payload.conversationId,
@@ -1284,6 +1322,7 @@ export const createLocalHostRunner = ({
           callbacks.onEnd(event);
         },
         onError: (event) => {
+          logError("Orchestrator error:", { fatal: event.fatal, error: event.error });
           if (event.fatal) {
             activeOrchestratorRunId = null;
             activeOrchestratorConversationId = null;

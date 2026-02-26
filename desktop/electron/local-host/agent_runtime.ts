@@ -18,7 +18,7 @@ import { RunJournal } from "./run_journal.js";
 import { createAgentTools, type AgentToolCallbacks } from "./agent_tools.js";
 import { createRemoteTools } from "./remote_tools.js";
 import type { ToolContext, ToolResult } from "./tools-types.js";
-import { createProxiedModel } from "./agent_core/model_proxy.js";
+import { createProxiedModel, createGatewayModel } from "./agent_core/model_proxy.js";
 import { combineAbortSignals, isRetryableModelError } from "./agent_core/runtime_utils.js";
 import { extractToolNameFromCallId } from "./agent_core/tool_call_ids.js";
 import { createToolCallIdFactory } from "./agent_core/tool_call_factory.js";
@@ -153,8 +153,8 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
     ? combineAbortSignals(abortSignal, timeoutController.signal)
     : timeoutController.signal;
 
-  // Build model
-  const proxyBaseUrl = convexUrl.replace(/\/+$/, "");
+  // Build model — custom HTTP routes (llm-proxy) live on .convex.site, not .convex.cloud
+  const proxyBaseUrl = convexUrl.replace(/\/+$/, "").replace(".convex.cloud", ".convex.site");
   const primaryModelId = agentContext.model;
   const fallbackModelId =
     agentContext.fallbackModel && agentContext.fallbackModel !== primaryModelId
@@ -245,11 +245,11 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
   let usage: { inputTokens?: number; outputTokens?: number } | undefined;
 
   const runStreamWithModel = async (modelId: string) => {
-    const model = createProxiedModel(
-      proxyBaseUrl,
-      agentContext.proxyToken.token,
-      modelId,
-    );
+    // Prefer gateway (direct AI SDK integration) over raw proxy
+    const gatewayKey = (agentContext as Record<string, unknown>).gatewayApiKey as string | undefined;
+    const model = gatewayKey
+      ? createGatewayModel(gatewayKey, modelId)
+      : createProxiedModel(proxyBaseUrl, agentContext.proxyToken.token, modelId);
 
     const result = streamText({
       model,
@@ -320,7 +320,13 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
       return runId;
     }
     const s = nextSeq();
-    const errMsg = (error as Error).message ?? "Unknown error";
+    // Extract nested cause from RetryError / AI SDK errors
+    const rawErr = error as Error & { cause?: unknown; lastError?: unknown; responseBody?: string };
+    const causeMsg = rawErr.cause instanceof Error ? rawErr.cause.message : "";
+    const lastErrMsg = rawErr.lastError instanceof Error ? (rawErr.lastError as Error).message : "";
+    const errMsg = [rawErr.message, causeMsg, lastErrMsg, rawErr.responseBody]
+      .filter(Boolean).join(" | ") || "Unknown error";
+    console.error("[agent-runtime] LLM error:", errMsg, error);
     callbacks.onError({ runId, seq: s, error: errMsg, fatal: true });
     journal.recordEvent({ runId, seq: s, type: "status_update", errorText: errMsg });
     journal.markRunCrashed(runId);
@@ -415,7 +421,7 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     ? combineAbortSignals(abortSignal, timeoutController.signal)
     : timeoutController.signal;
 
-  const proxyBaseUrl = convexUrl.replace(/\/+$/, "");
+  const proxyBaseUrl = convexUrl.replace(/\/+$/, "").replace(".convex.cloud", ".convex.site");
   const primaryModelId = agentContext.model;
   const fallbackModelId =
     agentContext.fallbackModel && agentContext.fallbackModel !== primaryModelId
@@ -478,11 +484,10 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
   ];
 
   const runGenerateWithModel = async (modelId: string) => {
-    const model = createProxiedModel(
-      proxyBaseUrl,
-      agentContext.proxyToken.token,
-      modelId,
-    );
+    const gatewayKey = (agentContext as Record<string, unknown>).gatewayApiKey as string | undefined;
+    const model = gatewayKey
+      ? createGatewayModel(gatewayKey, modelId)
+      : createProxiedModel(proxyBaseUrl, agentContext.proxyToken.token, modelId);
     return await generateText({
       model,
       system: systemPrompt,

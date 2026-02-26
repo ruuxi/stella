@@ -19,6 +19,7 @@ import {
   uploadScreenshotAttachments,
   type AttachmentUploadResponse,
 } from "./streaming/attachment-upload";
+import { showToast } from "../../components/toast";
 import {
   appendLocalEvent,
   buildLocalHistoryMessages,
@@ -294,6 +295,7 @@ export function useStreamingChat({
         case "error":
           if (event.fatal) {
             console.error("Local agent error:", event.error);
+            showToast({ title: "Something went wrong", variant: "error" });
             resetStreamingState(runIdCounter);
           }
           break;
@@ -479,18 +481,24 @@ export function useStreamingChat({
       // Dual-path: try local agent runtime first, fall back to HTTP
       if (isLocalStorage) {
         if (!window.electronAPI?.agentHealthCheck) {
+          console.error("[chat] Local agent not available (no electronAPI)");
+          showToast({ title: "Stella agent is not running", variant: "error" });
           resetStreamingState(runId);
           return;
         }
         void window.electronAPI.agentHealthCheck().then((health) => {
           if (runId !== streamRunIdRef.current) return;
           if (!health?.ready) {
+            console.error("[chat] Local agent health check failed:", health);
+            showToast({ title: "Stella agent is starting up — try again in a moment", variant: "error" });
             resetStreamingState(runId);
             return;
           }
           startLocalStream(args, runId, false);
-        }).catch(() => {
+        }).catch((err) => {
           if (runId !== streamRunIdRef.current) return;
+          console.error("[chat] Local agent health check error:", err);
+          showToast({ title: "Stella agent is not responding", variant: "error" });
           resetStreamingState(runId);
         });
         return;
