@@ -1,5 +1,5 @@
 /**
- * Onboarding flow: Start → Auth → Intro (center) → split layout steps.
+ * Onboarding flow: Start -> Auth -> Intro (center) -> split layout steps.
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -119,22 +119,26 @@ export function useOnboardingOverlay() {
     stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
 
-    void (async () => {
-      try {
-        await resetUserData();
-      } catch (error) {
-        console.error(error);
-      }
-
+    const finishLocalReset = async () => {
       try {
         await clearLocalRuntimeState();
       } catch (error) {
         console.error(error);
       }
-
       window.location.reload();
-    })();
-  }, [resetOnboarding, resetUserData]);
+    };
+
+    if (!isAuthenticated) {
+      void finishLocalReset();
+      return;
+    }
+
+    resetUserData()
+      .catch(console.error)
+      .finally(() => {
+        void finishLocalReset();
+      });
+  }, [isAuthenticated, resetOnboarding, resetUserData]);
 
   return {
     onboardingDone,

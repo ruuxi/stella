@@ -395,12 +395,14 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       localStorage.removeItem(BROWSER_PROFILE_KEY);
     }
 
-    const preferredBrowser = (browserEnabled && selectedBrowser) ? selectedBrowser : "none";
-    void savePreferredBrowser({
-      browser: preferredBrowser,
-    }).catch(() => {
-      // Browser preference sync is best-effort only.
-    });
+    if (isAuthenticated) {
+      const preferredBrowser = (browserEnabled && selectedBrowser) ? selectedBrowser : "none";
+      void savePreferredBrowser({
+        browser: preferredBrowser,
+      }).catch(() => {
+        // Browser preference sync is best-effort only.
+      });
+    }
 
     onDiscoveryConfirm?.(selected);
     nextSplitStep();
@@ -842,7 +844,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       onClick={() => {
                         setExpressionStyle(style);
                         const backendStyle = style === "none" ? "none" as const : "emoji" as const;
-                        saveExpressionStyle({ style: backendStyle }).catch(() => {});
+                        if (isAuthenticated) {
+                          saveExpressionStyle({ style: backendStyle }).catch(() => {});
+                        }
                       }}
                     >
                       {style.charAt(0).toUpperCase() + style.slice(1)}
