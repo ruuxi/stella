@@ -866,50 +866,65 @@ export const createLocalHostRunner = ({
     log("Tool request subscription active - receiving only new requests");
   };
 
-  const setConvexUrl = (url: string) => {
-    if (convexUrl === url && client) {
+  const disposeClient = () => {
+    stopSubscription();
+    if (!client) {
       return;
     }
-    // Stop existing subscription before changing client
-    stopSubscription();
-    convexUrl = url;
-    // Close existing client if any
-    if (client) {
-      client.close();
+    client.close();
+    client = null;
+  };
+
+  const ensureConnectedClient = () => {
+    if (!convexUrl || !authToken) {
+      return null;
     }
-    client = new ConvexClient(url);
-    if (authToken) {
-      client.setAuth(() => Promise.resolve(authToken));
+    if (!client) {
+      client = new ConvexClient(convexUrl);
     }
+    const token = authToken;
+    client.setAuth(() => Promise.resolve(token));
+    return client;
+  };
+
+  const setConvexUrl = (url: string) => {
+    const normalized = url.trim();
+    if (!normalized) {
+      return;
+    }
+    if (convexUrl === normalized && client) {
+      return;
+    }
+    convexUrl = normalized;
+    disposeClient();
+    ensureConnectedClient();
     // Defer sync work until runner start to avoid duplicate startup refreshes.
     // If already running, refresh immediately for live updates.
-    if (isRunning) {
+    if (isRunning && client && authToken) {
       void syncManifests();
       startSubscription();
     }
   };
 
   const setAuthToken = (token: string | null) => {
-    authToken = token;
-    if (!client) {
+    const normalizedToken =
+      typeof token === "string" && token.trim().length > 0 ? token.trim() : null;
+    authToken = normalizedToken;
+    if (!authToken) {
+      disposeClient();
       return;
     }
-    if (authToken) {
-      client.setAuth(() => Promise.resolve(authToken));
-      // Start subscription if runner is running and we now have auth.
-      // Note: avoid restarting an active subscription on token refresh; Convex
-      // will re-authenticate as needed via the updated auth callback.
-      if (isRunning) {
-        startSubscription();
-        // Send immediate heartbeat when auth becomes available
-        void sendHeartbeat();
-        void syncManifests();
-      }
-    } else {
-      // Stop subscription when auth is cleared (logout/unauthenticated).
-      stopSubscription();
-      // Clear auth by setting it to return null
-      client.setAuth(() => Promise.resolve(null));
+    if (!ensureConnectedClient()) {
+      return;
+    }
+    // Start subscription if runner is running and we now have auth.
+    // Note: avoid restarting an active subscription on token refresh; Convex
+    // will re-authenticate as needed via the updated auth callback.
+    if (isRunning) {
+      startSubscription();
+      // Send immediate heartbeat when auth becomes available
+      void sendHeartbeat();
+      void syncManifests();
     }
   };
 

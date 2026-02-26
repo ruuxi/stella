@@ -1,8 +1,14 @@
 import { getAuthHeaders } from "../auth-token";
+import { getOrCreateDeviceId } from "../device";
 
 type ServiceRequest = {
   endpoint: string;
   headers: Record<string, string>;
+};
+
+type ServiceRequestOptions = {
+  includeAuth?: boolean;
+  includeDeviceId?: boolean;
 };
 
 const resolveCloudBaseUrl = (): string => {
@@ -29,10 +35,30 @@ export const resolveServiceEndpoint = (path: string): string =>
 export const createServiceRequest = async (
   path: string,
   headers: Record<string, string> = {},
+  options: ServiceRequestOptions = {},
 ): Promise<ServiceRequest> => {
   const endpoint = resolveServiceEndpoint(path);
+  const includeAuth = options.includeAuth ?? true;
+  const includeDeviceId = options.includeDeviceId ?? true;
+
+  const requestHeaders = includeAuth ? await getAuthHeaders(headers) : { ...headers };
+
+  if (
+    includeDeviceId &&
+    !requestHeaders["X-Device-ID"]
+  ) {
+    try {
+      const deviceId = await getOrCreateDeviceId();
+      if (deviceId) {
+        requestHeaders["X-Device-ID"] = deviceId;
+      }
+    } catch {
+      // Device ID is best-effort for anonymous endpoint access.
+    }
+  }
+
   return {
     endpoint,
-    headers: await getAuthHeaders(headers),
+    headers: requestHeaders,
   };
 };

@@ -202,6 +202,19 @@ describe("App", () => {
     expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
   });
 
+  it("does not render auth bridges for utility windows", async () => {
+    mockGetElectronApi.mockReturnValue({} as any);
+    Object.defineProperty(window, "location", {
+      value: { search: "?window=region", href: "http://localhost/?window=region" },
+      writable: true,
+    });
+
+    render(<App />);
+    expect(await screen.findByTestId("region-capture")).toBeInTheDocument();
+    expect(screen.queryByTestId("auth-deep-link-handler")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("auth-token-bridge")).not.toBeInTheDocument();
+  });
+
   it("renders AppBootstrap and CredentialRequestLayer for full/mini shells", async () => {
     render(<App />);
     expect(await screen.findByTestId("app-bootstrap")).toBeInTheDocument();

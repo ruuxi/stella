@@ -1657,7 +1657,7 @@ const fetchRunnerAuthToken = async (): Promise<string | null> => {
     return null
   }
 
-  const tokenUrl = new URL('/convex/token', convexSiteUrl).toString()
+  const tokenUrl = new URL('/api/auth/convex/token', convexSiteUrl).toString()
   try {
     const appSession = session.fromPartition(STELLA_SESSION_PARTITION)
     const cookies = await appSession.cookies.get({ url: tokenUrl })
