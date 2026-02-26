@@ -27,7 +27,15 @@ vi.mock("./OnboardingMockWindows", () => ({
 }));
 
 vi.mock("../InlineAuth", () => ({
-  InlineAuth: () => <div data-testid="inline-auth" />,
+  InlineAuth: (props: any) => (
+    <div data-testid="inline-auth">
+      {props.onSkip ? (
+        <button data-testid="inline-auth-skip" onClick={props.onSkip}>
+          Skip for now
+        </button>
+      ) : null}
+    </div>
+  ),
 }));
 
 vi.mock("../../theme/theme-context", () => ({
@@ -153,6 +161,21 @@ describe("OnboardingStep1", () => {
         vi.advanceTimersByTime(600);
       });
 
+      expect(container.querySelector(".onboarding-dialogue")?.getAttribute("data-phase")).toBe("start");
+      expect(screen.getByText("Start Stella")).toBeTruthy();
+    });
+
+    it("moves to start phase when skip is clicked in auth phase", () => {
+      const props = makeProps({ isAuthenticated: false });
+      const { container } = render(<OnboardingStep1 {...props} />);
+
+      fireEvent.click(screen.getByTestId("inline-auth-skip"));
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(props.onInteract).toHaveBeenCalledOnce();
       expect(container.querySelector(".onboarding-dialogue")?.getAttribute("data-phase")).toBe("start");
       expect(screen.getByText("Start Stella")).toBeTruthy();
     });

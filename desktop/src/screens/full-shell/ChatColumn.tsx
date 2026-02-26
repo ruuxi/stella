@@ -101,8 +101,8 @@ export function ChatColumn({
   onCommandSelect,
 }: ChatColumnProps) {
   const suggestions = useCommandSuggestions(events, isStreaming);
-  const showConversation = isAuthenticated && onboardingDone;
-  const showLoading = !isAuthenticated && onboardingDone && (isAuthLoading ?? false);
+  const showLoading = onboardingDone && (isAuthLoading ?? false);
+  const showConversation = onboardingDone && !showLoading;
 
   return (
     <div className="full-body-main">
@@ -169,7 +169,7 @@ export function ChatColumn({
         </button>
       )}
 
-      {isAuthenticated && onboardingDone && (
+      {showConversation && (
         <div className={onboardingExiting ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
           <Composer
             message={message}

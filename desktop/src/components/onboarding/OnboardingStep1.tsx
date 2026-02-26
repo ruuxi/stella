@@ -253,6 +253,12 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }, 1600);
   };
 
+  const handleAuthSkip = useCallback(() => {
+    if (phase !== "auth" || leaving) return;
+    onInteract?.();
+    transitionTo("start");
+  }, [phase, leaving, onInteract, transitionTo]);
+
   // Auto-advance from auth to start once signed in
   useEffect(() => {
     if (isAuthenticated && phase === "auth" && !leaving) {
@@ -471,7 +477,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       {phase === "auth" && (
         <div className="onboarding-moment onboarding-moment--auth">
           <div className="onboarding-text">Sign in to begin</div>
-          <InlineAuth />
+          <InlineAuth onSkip={handleAuthSkip} />
         </div>
       )}
 

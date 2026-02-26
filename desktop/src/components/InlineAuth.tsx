@@ -11,9 +11,10 @@ const getCallbackUrl = () => {
 
 interface InlineAuthProps {
   className?: string;
+  onSkip?: () => void;
 }
 
-export function InlineAuth({ className }: InlineAuthProps) {
+export function InlineAuth({ className, onSkip }: InlineAuthProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const callbackURL = useMemo(getCallbackUrl, []);
@@ -74,6 +75,11 @@ export function InlineAuth({ className }: InlineAuthProps) {
             <div className="onboarding-inline-auth-error">Something went wrong, try again</div>
           )}
         </>
+      )}
+      {onSkip && (
+        <button type="button" className="onboarding-inline-auth-skip" onClick={onSkip}>
+          Skip for now
+        </button>
       )}
     </div>
   );

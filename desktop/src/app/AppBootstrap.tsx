@@ -56,62 +56,68 @@ export const AppBootstrap = () => {
       const devicePromise = getOrCreateDeviceId();
       setConversationId(null);
 
-      if (isAuthenticated) {
-        if (accountMode === undefined) {
-          await Promise.allSettled([hostPromise, devicePromise]);
-          return;
+      if (!isAuthenticated) {
+        if (!cancelled) {
+          setConversationId(getOrCreateLocalConversationId());
         }
+        await Promise.allSettled([hostPromise, devicePromise]);
+        return;
+      }
 
-        if (accountMode === "private_local") {
-          if (!cancelled) {
-            setConversationId(getOrCreateLocalConversationId());
-          }
-          await Promise.allSettled([hostPromise, devicePromise]);
-          return;
+      if (accountMode === undefined) {
+        await Promise.allSettled([hostPromise, devicePromise]);
+        return;
+      }
+
+      if (accountMode === "private_local") {
+        if (!cancelled) {
+          setConversationId(getOrCreateLocalConversationId());
         }
+        await Promise.allSettled([hostPromise, devicePromise]);
+        return;
+      }
 
-        try {
-          const conversation = await getOrCreateDefaultConversation({});
-          if (!cancelled && conversation?._id) {
-            const localConversationId = getOrCreateLocalConversationId();
-            const localMessages = buildLocalSyncMessages(localConversationId);
-            const checkpoint = getLocalSyncCheckpoint(localConversationId);
-            const unsyncedMessages = getUnsyncedMessages(localMessages, checkpoint);
+      try {
+        const conversation = await getOrCreateDefaultConversation({});
+        if (!cancelled && conversation?._id) {
+          const localConversationId = getOrCreateLocalConversationId();
+          const localMessages = buildLocalSyncMessages(localConversationId);
+          const checkpoint = getLocalSyncCheckpoint(localConversationId);
+          const unsyncedMessages = getUnsyncedMessages(localMessages, checkpoint);
 
-            if (unsyncedMessages.length > 0) {
-              try {
-                const chunks = chunkMessages(unsyncedMessages);
-                for (const chunk of chunks) {
-                  if (cancelled) {
-                    break;
-                  }
-                  await importLocalMessagesChunk({
-                    conversationId: conversation._id as never,
-                    messages: chunk,
-                  });
+          if (unsyncedMessages.length > 0) {
+            try {
+              const chunks = chunkMessages(unsyncedMessages);
+              for (const chunk of chunks) {
+                if (cancelled) {
+                  break;
                 }
-                const lastSyncedMessage = unsyncedMessages[unsyncedMessages.length - 1];
-                if (!cancelled && lastSyncedMessage) {
-                  setLocalSyncCheckpoint(localConversationId, lastSyncedMessage.localMessageId);
-                }
-              } catch (syncError) {
-                console.error("[AppBootstrap] Local message sync failed:", syncError);
+                await importLocalMessagesChunk({
+                  conversationId: conversation._id as never,
+                  messages: chunk,
+                });
               }
+              const lastSyncedMessage = unsyncedMessages[unsyncedMessages.length - 1];
+              if (!cancelled && lastSyncedMessage) {
+                setLocalSyncCheckpoint(localConversationId, lastSyncedMessage.localMessageId);
+              }
+            } catch (syncError) {
+              console.error("[AppBootstrap] Local message sync failed:", syncError);
             }
+          }
 
-            if (!cancelled) {
-              setConversationId(conversation._id);
-            }
-          }
-          const savedShortcut = localStorage.getItem("stella-voice-shortcut");
-          if (savedShortcut) {
-            window.electronAPI?.setVoiceShortcut?.(savedShortcut);
-          }
-        } catch (err) {
-          console.error("[AppBootstrap] Cloud conversation setup failed:", err);
           if (!cancelled) {
-            setConversationId(null);
+            setConversationId(conversation._id);
           }
+        }
+        const savedShortcut = localStorage.getItem("stella-voice-shortcut");
+        if (savedShortcut) {
+          window.electronAPI?.setVoiceShortcut?.(savedShortcut);
+        }
+      } catch (err) {
+        console.error("[AppBootstrap] Cloud conversation setup failed:", err);
+        if (!cancelled) {
+          setConversationId(null);
         }
       }
 
