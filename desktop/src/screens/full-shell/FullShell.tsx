@@ -67,6 +67,20 @@ export const FullShell = () => {
   const cloudStorageEnabled = cloudFeaturesEnabled && (syncMode ?? "on") !== "off";
   const conversationEventsSource = cloudStorageEnabled ? "cloud" : "local";
 
+  const pagesResult = useQuery(
+    api.personalized_dashboard.listPages,
+    cloudFeaturesEnabled ? {} : "skip",
+  ) as { pages: Array<{ pageId: string; panelName: string; title: string; status: string }>; hasRunning: boolean } | undefined;
+  const personalPages = pagesResult?.pages;
+
+  const handlePageSelect = useCallback((pageId: string, title: string) => {
+    const page = personalPages?.find(p => p.pageId === pageId);
+    if (page) {
+      openCanvas({ name: page.panelName, title: page.title });
+      setView('app');
+    }
+  }, [personalPages, openCanvas, setView]);
+
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -90,8 +104,9 @@ export const FullShell = () => {
   }, []);
 
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
-    isAuthenticated: cloudFeaturesEnabled,
-    conversationId: cloudFeaturesEnabled ? activeConversationId : null,
+    isAuthenticated: onboarding.isAuthenticated,
+    conversationId: activeConversationId,
+    storageMode: conversationEventsSource,
   });
 
   const events = useConversationEvents(activeConversationId ?? undefined, {
@@ -309,6 +324,8 @@ export const FullShell = () => {
               onStore={() => setView(state.view === 'store' ? 'home' : 'store')}
               onHome={() => setView('home')}
               storeActive={state.view === 'store'}
+              pages={personalPages}
+              onPageSelect={handlePageSelect}
             />
 
             <WorkspaceArea

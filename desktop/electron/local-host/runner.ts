@@ -779,6 +779,21 @@ export const createLocalHostRunner = ({
           error: result.error,
         });
       } else {
+        // Apply any staged self-mod files (pages written to src/ are auto-staged)
+        if (frontendRoot) {
+          try {
+            const featureId = await getActiveFeature(request.conversationId);
+            if (featureId) {
+              const staged = await listStagedFiles(featureId);
+              if (staged.length > 0) {
+                await applyBatch(featureId, frontendRoot);
+              }
+            }
+          } catch (applyErr) {
+            logError("Self-mod apply failed for page gen:", applyErr);
+          }
+        }
+
         log(`Dashboard generation completed for ${payload.panelName}`);
         await callMutation("personalized_dashboard.markPageReadyDevice", {
           pageId: payload.pageId,
