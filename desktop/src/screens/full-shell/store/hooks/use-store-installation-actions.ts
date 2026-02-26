@@ -187,7 +187,7 @@ export function useStoreInstallationActions({
 
       try {
         if (pkg.type === "mod") {
-          setView("chat");
+          setView("home");
           onComposePrompt(
             `Install the "${pkg.name}" mod from package "${pkg.packageId}". Use SelfModInstallBlueprint with this package ID, adapt it to the current codebase, then apply the feature.`,
           );
@@ -284,7 +284,7 @@ export function useStoreInstallationActions({
 
       try {
         if (pkg.type === "mod") {
-          setView("chat");
+          setView("home");
           onComposePrompt(
             `Uninstall the "${pkg.name}" mod (package "${pkg.packageId}") by reverting its applied self-mod feature batches, then confirm cleanup.`,
           );

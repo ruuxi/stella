@@ -53,11 +53,16 @@ import './styles/canvas-renderers.css'
 import './styles/store.css'
 import './styles/settings.css'
 import './styles/selfmod-demo.css'
+import './styles/selfmod-undo.css'
 import './styles/command-chips.css'
 import './styles/welcome-suggestions.css'
+import './views/home/home-view.css'
+import './styles/error-boundary.css'
 import './styles/voice-widget.css'
 
+import './utils/vite-error-recovery'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { UiStateProvider } from './app/state/ui-state'
 import { WorkspaceProvider } from './app/state/workspace-state'
 import { ThemeProvider } from './theme/theme-context'
@@ -69,11 +74,13 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ConvexBetterAuthProvider client={convexClient} authClient={authClientForProvider}>
       <ThemeProvider>
-        <UiStateProvider>
-          <WorkspaceProvider>
-            <App />
-          </WorkspaceProvider>
-        </UiStateProvider>
+        <ErrorBoundary>
+          <UiStateProvider>
+            <WorkspaceProvider>
+              <App />
+            </WorkspaceProvider>
+          </UiStateProvider>
+        </ErrorBoundary>
       </ThemeProvider>
     </ConvexBetterAuthProvider>
   </StrictMode>,

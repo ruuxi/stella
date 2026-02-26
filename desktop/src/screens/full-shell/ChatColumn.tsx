@@ -10,6 +10,7 @@ import { useCommandSuggestions, type CommandSuggestion } from "../../hooks/use-c
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
+import type { SelfModAppliedData } from "./use-streaming-chat";
 
 type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
 
@@ -20,6 +21,7 @@ type ChatColumnProps = {
   reasoningText: string;
   isStreaming: boolean;
   pendingUserMessageId: string | null;
+  selfModMap: Record<string, SelfModAppliedData>;
 
   message: string;
   setMessage: (message: string) => void;
@@ -64,6 +66,7 @@ export function ChatColumn({
   reasoningText,
   isStreaming,
   pendingUserMessageId,
+  selfModMap,
   message,
   setMessage,
   chatContext,
@@ -116,6 +119,7 @@ export function ChatColumn({
               reasoningText={reasoningText}
               isStreaming={isStreaming}
               pendingUserMessageId={pendingUserMessageId}
+              selfModMap={selfModMap}
               scrollContainerRef={scrollContainerRef}
             />
             {!isStreaming && suggestions.length > 0 && onCommandSelect && (

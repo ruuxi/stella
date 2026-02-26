@@ -4,9 +4,14 @@ import type { EventRecord } from "./use-conversation-events";
 import { useCanvasCommands } from "./use-canvas-commands";
 
 const mockUseCanvas = vi.fn();
+const mockSetView = vi.fn();
 
 vi.mock("@/app/state/workspace-state", () => ({
   useWorkspace: () => mockUseCanvas(),
+}));
+
+vi.mock("@/app/state/ui-state", () => ({
+  useUiState: () => ({ setView: mockSetView }),
 }));
 
 const createEvent = (

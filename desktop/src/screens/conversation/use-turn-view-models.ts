@@ -16,6 +16,7 @@ import {
   getAttachments,
   getChannelEnvelope,
 } from "./MessageTurn";
+import type { SelfModAppliedData } from "../full-shell/use-streaming-chat";
 
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   if (!event?.payload || typeof event.payload !== "object") {
@@ -31,6 +32,7 @@ export function useTurnViewModels(opts: {
   reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
+  selfModMap?: Record<string, SelfModAppliedData>;
 }) {
   const {
     events,
@@ -39,6 +41,7 @@ export function useTurnViewModels(opts: {
     reasoningText,
     isStreaming,
     pendingUserMessageId,
+    selfModMap,
   } = opts;
 
   // Check if the pending user message already has an assistant reply
@@ -106,9 +109,10 @@ export function useTurnViewModels(opts: {
         assistantText,
         assistantMessageId,
         assistantEmotesEnabled,
+        selfModApplied: selfModMap?.[turn.id],
       };
     });
-  }, [slicedTurns, depseudonymize]);
+  }, [slicedTurns, depseudonymize, selfModMap]);
 
   const deferredStreamingText = useDeferredValue(streamingText);
   const deferredReasoningText = useDeferredValue(reasoningText);

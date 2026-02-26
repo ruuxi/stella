@@ -4,6 +4,8 @@ import { WorkingIndicator } from "../../components/chat/WorkingIndicator";
 import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import { Markdown } from "../../components/chat/Markdown";
 import { ReasoningSection } from "../../components/chat/ReasoningSection";
+import { SelfModUndoButton } from "../../components/chat/SelfModUndoButton";
+import type { SelfModApplied } from "../../components/chat/SelfModUndoButton";
 import type { EventRecord, MessagePayload } from "../../hooks/use-conversation-events";
 import { sanitizeAttachmentImageUrl } from "@/lib/url-safety";
 
@@ -15,6 +17,7 @@ export type TurnViewModel = {
   assistantText: string;
   assistantMessageId: string | null;
   assistantEmotesEnabled: boolean;
+  selfModApplied?: SelfModApplied;
 };
 
 export type StreamingTurnProps = {
@@ -288,6 +291,10 @@ export const TurnItem = memo(function TurnItem({
               }
               enableEmotes={assistantEnableEmotes}
             />
+          )}
+
+          {turn.selfModApplied && !shouldShowStreamingAssistant && (
+            <SelfModUndoButton selfModApplied={turn.selfModApplied} />
           )}
         </div>
       )}
