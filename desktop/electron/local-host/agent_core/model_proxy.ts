@@ -1,5 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGateway } from "ai";
 import type { LanguageModel } from "ai";
 
 /**
@@ -65,4 +66,16 @@ export function createProxiedModel(
       return openai(modelId);
     }
   }
+}
+
+/**
+ * Creates a model using the Vercel AI Gateway directly.
+ * Used when the raw proxy doesn't have provider API keys configured.
+ */
+export function createGatewayModel(
+  gatewayApiKey: string,
+  modelId: string,
+): LanguageModel {
+  const gateway = createGateway({ apiKey: gatewayApiKey });
+  return gateway(modelId);
 }

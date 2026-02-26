@@ -1750,8 +1750,11 @@ const refreshRunnerAuthToken = async () => {
     return
   }
   const token = await fetchRunnerAuthToken()
-  localHostRunner?.setAuthToken(token)
-
+  // Only update if we actually got a token from cookies.
+  // If null, the renderer's token (via auth:setState) is still valid — don't clear it.
+  if (token) {
+    localHostRunner?.setAuthToken(token)
+  }
 }
 
 const stopAuthRefreshLoop = () => {
@@ -1773,12 +1776,28 @@ const startAuthRefreshLoop = () => {
   }, TOKEN_REFRESH_INTERVAL_MS)
 }
 
-const setHostAuthState = (authenticated: boolean) => {
+const setHostAuthState = (authenticated: boolean, token?: string) => {
+  console.log('[auth] setHostAuthState called', {
+    authenticated,
+    hasToken: !!token,
+    tokenLength: token?.length ?? 0,
+    hasRunner: !!localHostRunner,
+  })
   hostAuthAuthenticated = authenticated
   if (!authenticated) {
     stopAuthRefreshLoop()
     return
   }
+
+  // If the renderer provided a Convex JWT directly, use it immediately.
+  // This bypasses the cookie-based fetch which fails with BetterAuth crossDomain
+  // (sessions are in localStorage, not cookies).
+  if (token) {
+    localHostRunner?.setAuthToken(token)
+  }
+
+  // Still start the refresh loop as a fallback (it will no-op if cookies aren't available,
+  // but the renderer will keep pushing fresh tokens via auth:setState).
   startAuthRefreshLoop()
 }
 
@@ -1951,8 +1970,8 @@ app.whenReady().then(async () => {
     }
     return { deviceId }
   })
-  ipcMain.handle('auth:setState', (_event, payload: { authenticated?: boolean }) => {
-    setHostAuthState(Boolean(payload?.authenticated))
+  ipcMain.handle('auth:setState', (_event, payload: { authenticated?: boolean; token?: string }) => {
+    setHostAuthState(Boolean(payload?.authenticated), payload?.token)
     return { ok: true }
   })
   ipcMain.handle('app:hardResetLocalState', async (event) => {
@@ -2587,8 +2606,13 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.handle('agent:healthCheck', async () => {
-    if (!localHostRunner) return null
-    return localHostRunner.agentHealthCheck()
+    if (!localHostRunner) {
+      console.log('[agent:healthCheck] no runner')
+      return null
+    }
+    const result = localHostRunner.agentHealthCheck()
+    console.log('[agent:healthCheck]', result)
+    return result
   })
 
   ipcMain.handle('agent:getActiveRun', async () => {
@@ -2624,11 +2648,17 @@ app.whenReady().then(async () => {
     storageMode?: 'cloud' | 'local'
     localHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   }) => {
+    console.log('[agent:startChat] received', {
+      hasRunner: !!localHostRunner,
+      conversationId: payload.conversationId,
+      storageMode: payload.storageMode,
+    })
     if (!localHostRunner) {
       throw new Error('Local host runner not available')
     }
 
     const healthCheck = localHostRunner.agentHealthCheck()
+    console.log('[agent:startChat] healthCheck =', healthCheck)
     if (!healthCheck?.ready) {
       throw new Error('Agent runtime not ready')
     }

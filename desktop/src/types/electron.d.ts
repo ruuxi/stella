@@ -150,7 +150,7 @@ export type ElectronApi = {
   onDismissPreview: (callback: () => void) => () => void
   getDeviceId: () => Promise<string | null>
   configureHost: (config: { convexUrl?: string; convexSiteUrl?: string }) => Promise<{ deviceId: string | null }>
-  setAuthState: (payload: { authenticated: boolean }) => Promise<{ ok: boolean }>
+  setAuthState: (payload: { authenticated: boolean; token?: string }) => Promise<{ ok: boolean }>
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void
   // App readiness gate (controls radial menu + mini shell)
   setAppReady: (ready: boolean) => void
