@@ -47,6 +47,12 @@ type AppendEventArgs = {
   payload?: unknown;
 };
 
+export type SelfModAppliedData = {
+  featureId: string;
+  files: string[];
+  batchIndex: number;
+};
+
 type AgentStreamEvent = {
   type: "stream" | "tool-start" | "tool-end" | "error" | "end";
   runId: string;
@@ -59,6 +65,7 @@ type AgentStreamEvent = {
   fatal?: boolean;
   finalText?: string;
   persisted?: boolean;
+  selfModApplied?: SelfModAppliedData;
 };
 
 const isOrchestratorBusyError = (error: unknown): boolean => {
@@ -87,6 +94,7 @@ export function useStreamingChat({
   const streamRunIdRef = useRef(0);
   const [queueNext, setQueueNext] = useState(false);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(null);
+  const [selfModMap, setSelfModMap] = useState<Record<string, SelfModAppliedData>>({});
 
   const appendEvent = useMutation(api.events.appendEvent).withOptimisticUpdate(
     (localStore, args) => {
@@ -295,6 +303,12 @@ export function useStreamingChat({
             userMessageId: options?.userMessageId,
             finalText: event.finalText ?? streamingTextRef.current,
           });
+          if (event.selfModApplied && options?.userMessageId) {
+            setSelfModMap((prev) => ({
+              ...prev,
+              [options.userMessageId!]: event.selfModApplied!,
+            }));
+          }
           streamAbortRef.current = null;
           setIsStreaming(false);
           setQueueNext(false);
@@ -743,6 +757,7 @@ export function useStreamingChat({
     pendingUserMessageId,
     queueNext,
     setQueueNext,
+    selfModMap,
     sendMessage,
     syncWithEvents,
     processFollowUpQueue,

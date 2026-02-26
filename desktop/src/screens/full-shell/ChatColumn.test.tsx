@@ -31,6 +31,7 @@ function makeProps(overrides: Partial<Parameters<typeof ChatColumn>[0]> = {}) {
     reasoningText: "",
     isStreaming: false,
     pendingUserMessageId: null,
+    selfModMap: {},
     message: "",
     setMessage: vi.fn(),
     chatContext: null,

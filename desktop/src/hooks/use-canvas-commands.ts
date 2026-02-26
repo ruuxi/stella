@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useWorkspace } from '@/app/state/workspace-state'
+import { useUiState } from '@/app/state/ui-state'
 import type { EventRecord } from './use-conversation-events'
 
 type CanvasCommandPayload = {
@@ -49,6 +50,7 @@ const getLocalhostPort = (url?: string): number | null => {
  */
 export const useCanvasCommands = (events: EventRecord[]) => {
   const { state, openCanvas, closeCanvas } = useWorkspace()
+  const { setView } = useUiState()
   const processedRef = useRef<Set<string>>(new Set())
   const previousLengthRef = useRef(events.length)
 
@@ -80,6 +82,7 @@ export const useCanvasCommands = (events: EventRecord[]) => {
             title: payload.title,
             url: payload.url,
           })
+          setView('app')
           break
         }
         case 'close': {
@@ -89,9 +92,10 @@ export const useCanvasCommands = (events: EventRecord[]) => {
             window.electronAPI?.shellKillByPort(port)
           }
           closeCanvas()
+          setView('home')
           break
         }
       }
     }
-  }, [events, state.canvas, openCanvas, closeCanvas])
+  }, [events, state.canvas, openCanvas, closeCanvas, setView])
 }

@@ -1115,7 +1115,7 @@ describe("Install and Uninstall actions", () => {
       fireEvent.click(cardBtn);
     });
 
-    expect(mockSetView).toHaveBeenCalledWith("chat");
+    expect(mockSetView).toHaveBeenCalledWith("home");
     expect(onComposePrompt).toHaveBeenCalled();
   });
 
@@ -1145,7 +1145,7 @@ describe("Install and Uninstall actions", () => {
       fireEvent.click(cardBtn);
     });
 
-    expect(mockSetView).toHaveBeenCalledWith("chat");
+    expect(mockSetView).toHaveBeenCalledWith("home");
     expect(onComposePrompt).toHaveBeenCalled();
   });
 
@@ -1205,7 +1205,7 @@ describe("Install and Uninstall actions", () => {
       fireEvent.click(updateBtn);
     });
 
-    expect(mockSetView).toHaveBeenCalledWith("chat");
+    expect(mockSetView).toHaveBeenCalledWith("home");
     expect(onComposePrompt).toHaveBeenCalled();
   });
 });

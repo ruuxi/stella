@@ -1,0 +1,262 @@
+.home-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--font-family-sans, Inter, sans-serif);
+  color: var(--foreground);
+  background: transparent;
+  overflow: hidden;
+}
+.home-root * { box-sizing: border-box; }
+
+.home-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  scrollbar-width: none;
+}
+.home-content::-webkit-scrollbar { display: none; }
+
+.home-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.4;
+  margin-bottom: 8px;
+}
+
+/* --- Suggestions --- */
+
+.home-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-suggestion-card {
+  display: flex;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  cursor: pointer;
+  transition: background 0.25s, border-color 0.25s, opacity 0.25s;
+  text-align: left;
+  font-family: inherit;
+  width: 100%;
+  opacity: 0.8;
+}
+.home-suggestion-card:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  opacity: 1;
+}
+
+.home-suggestion-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.home-suggestion-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.home-suggestion-title {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--foreground);
+  line-height: 1.3;
+}
+.home-suggestion-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  flex-shrink: 0;
+  background: none;
+}
+.home-suggestion-badge[data-category="cron"] { color: oklch(0.45 0.12 155); }
+.home-suggestion-badge[data-category="skill"] { color: oklch(0.45 0.12 250); }
+.home-suggestion-badge[data-category="app"] { color: oklch(0.50 0.12 75); }
+:root[data-theme="dark"] .home-suggestion-badge[data-category="cron"] { color: oklch(0.78 0.10 155); }
+:root[data-theme="dark"] .home-suggestion-badge[data-category="skill"] { color: oklch(0.78 0.10 250); }
+:root[data-theme="dark"] .home-suggestion-badge[data-category="app"] { color: oklch(0.80 0.10 75); }
+
+.home-suggestion-desc {
+  font-size: 12px;
+  color: var(--foreground);
+  opacity: 0.5;
+  line-height: 1.4;
+}
+
+/* --- Tasks --- */
+
+.home-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.home-task-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+.home-task-description {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+.home-task-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.home-task-agent-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: oklch(0.45 0.12 250);
+}
+:root[data-theme="dark"] .home-task-agent-badge { color: oklch(0.78 0.10 250); }
+
+.home-task-status {
+  font-size: 11px;
+  color: var(--foreground);
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Schedule conveyor --- */
+
+.home-conveyor {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 8px;
+}
+.home-conveyor::-webkit-scrollbar { display: none; }
+
+.home-schedule-card {
+  flex-shrink: 0;
+  width: 180px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.home-schedule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.home-schedule-name {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--foreground);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.home-schedule-kind {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+.home-schedule-kind[data-kind="scheduled"] { color: oklch(0.45 0.12 155); }
+.home-schedule-kind[data-kind="monitoring"] { color: oklch(0.45 0.12 280); }
+:root[data-theme="dark"] .home-schedule-kind[data-kind="scheduled"] { color: oklch(0.78 0.10 155); }
+:root[data-theme="dark"] .home-schedule-kind[data-kind="monitoring"] { color: oklch(0.78 0.10 280); }
+
+.home-schedule-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.home-schedule-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.home-schedule-dot[data-status="ok"] { background: oklch(0.65 0.18 145); }
+.home-schedule-dot[data-status="error"] { background: oklch(0.60 0.20 25); }
+.home-schedule-dot[data-status="none"] { background: color-mix(in oklch, var(--foreground) 25%, transparent); }
+
+.home-schedule-time {
+  font-size: 11px;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+.home-schedule-preview {
+  font-size: 11px;
+  color: var(--foreground);
+  opacity: 0.4;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* --- Stella orb --- */
+
+.home-stella-orb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  flex-shrink: 0;
+  margin: 8px 0;
+}
+
+/* --- Empty state --- */
+
+.home-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+}
+.home-empty-text {
+  font-size: 12px;
+  color: var(--foreground);
+  opacity: 0.3;
+  text-align: center;
+  line-height: 1.5;
+}

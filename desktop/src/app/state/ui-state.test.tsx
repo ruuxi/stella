@@ -17,7 +17,7 @@ describe("UiStateProvider + useUiState", () => {
     expect(result.current.state).toEqual({
       mode: "chat",
       window: "full",
-      view: "chat",
+      view: "home",
       conversationId: null,
       isVoiceActive: false,
     });

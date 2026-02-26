@@ -265,6 +265,13 @@ export type ElectronApi = {
     exhausted: boolean
   }>
   onAgentStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
+
+  // Self-mod revert (used by undo button and crash recovery)
+  selfModRevert: (featureId: string, steps?: number) => Promise<unknown>
+  getLastSelfModFeature: () => Promise<string | null>
+
+  // App reload (used by recovery page)
+  appReload: () => void
 }
 
 export type AgentStreamIpcEvent = {
@@ -279,6 +286,7 @@ export type AgentStreamIpcEvent = {
   fatal?: boolean
   finalText?: string
   persisted?: boolean
+  selfModApplied?: { featureId: string; files: string[]; batchIndex: number }
 }
 
 declare global {

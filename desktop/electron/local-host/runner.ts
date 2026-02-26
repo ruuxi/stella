@@ -22,6 +22,9 @@ import {
 } from "./agent_runtime.js";
 import { RunJournal } from "./run_journal.js";
 import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./local_task_manager.js";
+import { getActiveFeature } from "../self-mod/features.js";
+import { listStagedFiles } from "../self-mod/staging.js";
+import { applyBatch } from "../self-mod/apply.js";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
@@ -1120,6 +1123,7 @@ export const createLocalHostRunner = ({
 
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
+  let lastAppliedFeatureId: string | null = null;
   const activeRunAbortControllers = new Map<string, AbortController>();
 
   const agentHealthCheck = (): { ready: boolean; runnerVersion: string } | null => {
@@ -1183,10 +1187,35 @@ export const createLocalHostRunner = ({
       agentContext,
       callbacks: {
         ...callbacks,
-        onEnd: (event) => {
+        onEnd: async (event) => {
           activeOrchestratorRunId = null;
           activeOrchestratorConversationId = null;
           activeRunAbortControllers.delete(runId);
+
+          // Auto-apply staged self-mod files
+          if (frontendRoot) {
+            try {
+              const featureId = await getActiveFeature(payload.conversationId);
+              if (featureId) {
+                const staged = await listStagedFiles(featureId);
+                if (staged.length > 0) {
+                  const result = await applyBatch(featureId, frontendRoot);
+                  if (result.batchIndex >= 0) {
+                    lastAppliedFeatureId = featureId;
+                    event.selfModApplied = {
+                      featureId,
+                      files: result.files,
+                      batchIndex: result.batchIndex,
+                    };
+                    log(`Auto-applied ${result.files.length} self-mod file(s) [feature: ${featureId}]`);
+                  }
+                }
+              }
+            } catch (err) {
+              logError("Self-mod auto-apply failed:", err);
+            }
+          }
+
           callbacks.onEnd(event);
         },
         onError: (event) => {
@@ -1300,6 +1329,7 @@ export const createLocalHostRunner = ({
     handleLocalChat,
     cancelLocalChat,
     getActiveOrchestratorRun,
+    getLastAppliedFeatureId: () => lastAppliedFeatureId,
     recoverCrashedRuns,
   };
 };

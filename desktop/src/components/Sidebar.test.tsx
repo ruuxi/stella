@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import "convex/react";
 import { Sidebar } from "./Sidebar";
-import type { PersonalizedDashboardPage } from "@/types/personalized-dashboard";
 
 vi.mock("convex/react", () => ({
   useConvexAuth: vi.fn(() => ({ isAuthenticated: false, isLoading: false })),
@@ -27,11 +26,10 @@ describe("Sidebar", () => {
     expect(screen.getByText("Stella")).toBeTruthy();
   });
 
-  it("renders nav items: App Store, Connect, Social", () => {
+  it("renders nav items: App Store, Connect", () => {
     render(<Sidebar />);
     expect(screen.getByText("App Store")).toBeTruthy();
     expect(screen.getByText("Connect")).toBeTruthy();
-    expect(screen.getByText("Social")).toBeTruthy();
   });
 
   it("calls onStore when clicking App Store", () => {
@@ -71,34 +69,5 @@ describe("Sidebar", () => {
     render(<Sidebar storeActive />);
     const appStoreButton = screen.getByText("App Store").closest("button");
     expect(appStoreButton?.className).toContain("sidebar-nav-item--active");
-  });
-
-  it("renders personalized pages and handles clicks", () => {
-    const pages: PersonalizedDashboardPage[] = [
-      {
-        pageId: "tech_feed",
-        panelName: "pd_tech_feed",
-        title: "Tech Feed",
-        status: "ready",
-        order: 0,
-      },
-    ];
-    const onPersonalPageSelect = vi.fn();
-
-    render(
-      <Sidebar
-        personalPages={pages}
-        onPersonalPageSelect={onPersonalPageSelect}
-      />,
-    );
-
-    expect(screen.getByText("Your Pages")).toBeTruthy();
-    fireEvent.click(screen.getByText("Tech Feed"));
-    expect(onPersonalPageSelect).toHaveBeenCalledWith(pages[0]);
-  });
-
-  it("shows personalized page loading text while running", () => {
-    render(<Sidebar personalPagesLoading personalPages={[]} />);
-    expect(screen.getByText("Generating your pages...")).toBeTruthy();
   });
 });

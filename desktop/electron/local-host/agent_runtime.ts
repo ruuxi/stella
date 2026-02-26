@@ -85,6 +85,7 @@ export type AgentEndEvent = {
   seq: number;
   finalText: string;
   persisted: boolean;
+  selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
 };
 
 export type RunOrchestratorOpts = {
