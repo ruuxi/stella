@@ -80,6 +80,16 @@ describe("ChatColumn", () => {
     expect(screen.queryByTestId("onboarding-view")).toBeNull();
   });
 
+  it("shows ConversationEvents when unauthenticated + onboardingDone", () => {
+    render(
+      <ChatColumn
+        {...makeProps({ isAuthenticated: false, onboardingDone: true })}
+      />,
+    );
+    expect(screen.getByTestId("conversation-events")).toBeTruthy();
+    expect(screen.queryByTestId("onboarding-view")).toBeNull();
+  });
+
   it("shows Composer when authenticated + onboardingDone", () => {
     render(
       <ChatColumn
@@ -89,9 +99,9 @@ describe("ChatColumn", () => {
     expect(screen.getByTestId("composer")).toBeTruthy();
   });
 
-  it("hides Composer when not authenticated", () => {
+  it("shows Composer when unauthenticated after onboarding", () => {
     render(<ChatColumn {...makeProps({ isAuthenticated: false })} />);
-    expect(screen.queryByTestId("composer")).toBeNull();
+    expect(screen.getByTestId("composer")).toBeTruthy();
   });
 
   it("shows scroll-to-bottom button when showScrollButton=true and conversation visible", () => {
@@ -109,7 +119,7 @@ describe("ChatColumn", () => {
     expect(screen.getByLabelText("Scroll to bottom")).toBeTruthy();
   });
 
-  it("hides scroll-to-bottom button when not authenticated", () => {
+  it("shows scroll-to-bottom button when unauthenticated after onboarding", () => {
     render(
       <ChatColumn
         {...makeProps({
@@ -119,7 +129,7 @@ describe("ChatColumn", () => {
         })}
       />,
     );
-    expect(screen.queryByLabelText("Scroll to bottom")).toBeNull();
+    expect(screen.getByLabelText("Scroll to bottom")).toBeTruthy();
   });
 
   it("shows nothing when auth is loading and onboarding done", () => {

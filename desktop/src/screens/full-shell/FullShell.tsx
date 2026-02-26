@@ -142,9 +142,9 @@ export const FullShell = () => {
   }, [isNearBottom]);
 
   useEffect(() => {
-    const ready = onboarding.isAuthenticated && onboarding.onboardingDone;
+    const ready = onboarding.onboardingDone && !onboarding.isAuthLoading;
     window.electronAPI?.setAppReady?.(ready);
-  }, [onboarding.isAuthenticated, onboarding.onboardingDone]);
+  }, [onboarding.onboardingDone, onboarding.isAuthLoading]);
 
   useEffect(() => {
     const electronApi = getElectronApi();
@@ -307,7 +307,7 @@ export const FullShell = () => {
     activeConversationId && (message.trim() || hasComposerContext),
   );
 
-  const appReady = onboarding.isAuthenticated && onboarding.onboardingDone;
+  const appReady = onboarding.onboardingDone && !onboarding.isAuthLoading;
 
   return (
     <div className="window-shell full">
