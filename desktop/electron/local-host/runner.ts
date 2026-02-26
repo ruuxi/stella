@@ -597,7 +597,8 @@ export const createLocalHostRunner = ({
           return;
         }
 
-        await callMutation("agent/agents.ensureBuiltins", {});
+        // Best-effort: ensureBuiltins may be internal-only on some deployments
+        await callMutation("agent/agents.ensureBuiltins", {}).catch(() => {});
 
         // Diff against persisted manifest to skip unchanged items
         const manifest = await loadSyncManifest(statePath);
@@ -907,6 +908,51 @@ export const createLocalHostRunner = ({
     log("Tool request subscription active - receiving only new requests");
   };
 
+  // HTTP polling fallback — the WebSocket subscription may be unreliable
+  // (1006 errors), so poll periodically to catch missed events.
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  const pollSince = Date.now() - 120_000;
+
+  const pollForRequests = async () => {
+    if (!authToken || !convexUrl) return;
+    try {
+      const events = await callQuery("events.listRecentDeviceEvents", {
+        deviceId,
+        since: pollSince,
+        limit: 20,
+      }) as Array<ToolRequestEvent | DashboardGenRequestEvent> | null;
+      if (!events) return;
+      for (const event of events) {
+        if (event.type === "tool_request") {
+          queue = queue.then(() => handleToolRequest(event as ToolRequestEvent)).catch((err) => {
+            logError("Tool request queue error (poll):", err);
+          });
+        } else if (event.type === "dashboard_generation_request") {
+          queue = queue.then(() => handleDashboardGenRequest(event as DashboardGenRequestEvent)).catch((err) => {
+            logError("Dashboard gen queue error (poll):", err);
+          });
+        }
+      }
+    } catch (err) {
+      // Poll failures are non-fatal — log once for visibility
+      logError("Poll error:", (err as Error).message);
+    }
+  };
+
+  const startPolling = () => {
+    if (pollTimer) return;
+    // Initial poll after a short delay, then every 10 seconds
+    setTimeout(() => void pollForRequests(), 3_000);
+    pollTimer = setInterval(() => void pollForRequests(), 10_000);
+  };
+
+  const stopPolling = () => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  };
+
   let lastSetAuthToken: string | null = null;
 
   const disposeClient = () => {
@@ -982,6 +1028,7 @@ export const createLocalHostRunner = ({
     // will re-authenticate as needed via the updated auth callback.
     if (isRunning) {
       startSubscription();
+      startPolling();
       // Send immediate heartbeat when auth becomes available
       void sendHeartbeat();
       void syncManifests();
@@ -1184,6 +1231,7 @@ export const createLocalHostRunner = ({
 
     // Start real-time subscription for tool requests (only if auth is ready)
     startSubscription();
+    startPolling();
 
     // Start device heartbeat (only sends if auth is available)
     startHeartbeat();
@@ -1200,6 +1248,7 @@ export const createLocalHostRunner = ({
       syncDebounceTimer = null;
     }
     stopHeartbeat();
+    stopPolling();
     stopWatchers();
     stopCoreMemoryWatcher();
     stopSubscription();
