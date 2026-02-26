@@ -566,13 +566,13 @@ export const llmProxy = httpAction(async (ctx, request) => {
   }
 
   if (!apiKey) {
-    // Last resort: use AI gateway
+    // Last resort: use AI gateway — forward to its provider-compatible endpoint
     const gatewayKey = process.env.AI_GATEWAY_API_KEY;
     if (gatewayKey) {
-      // Use gateway — rewrite to gateway URL
-      // The gateway handles provider routing via the model string
+      // Gateway passthrough not supported for raw proxy — the local agent
+      // runtime should use createGateway() directly via gatewayApiKey instead.
       return new Response(
-        JSON.stringify({ error: "Gateway passthrough not supported for raw proxy. Configure a provider API key." }),
+        JSON.stringify({ error: "Use gateway mode. Raw proxy requires a provider API key." }),
         { status: 503, headers: { "Content-Type": "application/json" } },
       );
     }

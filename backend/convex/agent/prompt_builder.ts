@@ -231,6 +231,7 @@ const agentContextResultValidator = v.object({
     token: v.string(),
     expiresAt: v.number(),
   }),
+  gatewayApiKey: v.optional(v.string()),
 });
 type AgentContextResult = Infer<typeof agentContextResultValidator>;
 
@@ -343,6 +344,7 @@ const fetchAgentContextForOwner = async (
     threadHistory,
     activeThreadId,
     proxyToken,
+    gatewayApiKey: process.env.AI_GATEWAY_API_KEY,
   };
 };
 
@@ -432,6 +434,7 @@ export const fetchLocalAgentContextForRuntime = action({
       threadHistory: undefined,
       activeThreadId: undefined,
       proxyToken,
+      gatewayApiKey: process.env.AI_GATEWAY_API_KEY,
     };
   },
 });
