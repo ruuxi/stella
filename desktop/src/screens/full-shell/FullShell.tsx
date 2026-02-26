@@ -104,7 +104,7 @@ export const FullShell = () => {
 
   const pagesResult = useQuery(
     api.personalized_dashboard.listPages,
-    cloudFeaturesEnabled ? {} : "skip",
+    onboarding.isAuthenticated ? {} : "skip",
   ) as
     | {
         pages: Array<{
