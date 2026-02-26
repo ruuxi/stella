@@ -6,7 +6,7 @@ import type { ActionCtx } from "../_generated/server";
 import type { DeviceToolContext } from "../agent/device_tools";
 import { type ToolOptions } from "./types";
 
-const SUBAGENT_TYPES = ["general", "self_mod", "explore", "browser"] as const;
+const SUBAGENT_TYPES = ["general", "explore", "browser"] as const;
 const subagentTypeSchema = z.enum(SUBAGENT_TYPES);
 
 const formatTaskResult = (task: {
@@ -55,9 +55,9 @@ const createTaskTools = (
       "Usage:\n" +
       "- description: short summary for logging (e.g. \"Search for React components\").\n" +
       "- prompt: the full instructions the subagent will follow. Be specific - the subagent only sees this prompt.\n" +
-      "- subagent_type: which agent to use - \"general\" (files, shell, web, coding), \"self_mod\" (UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n\n" +
+      "- subagent_type: which agent to use - \"general\" (files, shell, web, coding, UI changes), \"explore\" (codebase search), \"browser\" (web automation).\n\n" +
       "Explore tasks are standalone discovery tasks, not context prep for other agents.\n\n" +
-      "Threads (general and self_mod only):\n" +
+      "Threads (general only):\n" +
       "- thread_id: continue an existing thread - the agent sees its full prior message history and picks up where it left off.\n" +
       "- thread_name: create or reuse a named thread (short, kebab-case, e.g. \"sidebar-refactor\"). If an active thread with this name exists, it's reused.\n" +
       "- Use threads for multi-step work, iterative tasks, or follow-ups on the same topic. Skip for one-shot tasks or explore agents.\n\n" +
@@ -65,7 +65,7 @@ const createTaskTools = (
     inputSchema: z.object({
       description: z.string().describe("Short summary for logging"),
       prompt: z.string().describe("Full instructions for the subagent"),
-      subagent_type: subagentTypeSchema.describe("Agent type: general, self_mod, explore, or browser"),
+      subagent_type: subagentTypeSchema.describe("Agent type: general, explore, or browser"),
       thread_id: z.string().optional().describe(
         "Continue an existing thread by ID. Agent sees full prior history.",
       ),

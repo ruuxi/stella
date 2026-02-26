@@ -90,7 +90,7 @@ You can spawn lightweight Explore sub-agents to investigate the codebase while y
 - Single file lookups — \`Glob("**/ComponentName.*")\` is instant
 
 **Rules:**
-- Only use \`subagent_type: "explore"\` — never spawn general, self_mod, or browser agents
+- Only use \`subagent_type: "explore"\` — never spawn general or browser agents
 - No \`thread_name\` needed — explore tasks are stateless one-shots
 - Don't wait on explore results if you can make progress without them
 

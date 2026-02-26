@@ -27,10 +27,7 @@ export const CORE_DEVICE_TOOL_NAMES = [
   "RequestCredential",
   "SkillBash",
   "MediaGenerate",
-  "SelfModStart",
-  "SelfModApply",
   "SelfModRevert",
-  "SelfModStatus",
   "SelfModPackage",
   "ManagePackage",
 ] as const;
@@ -523,33 +520,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       }),
       execute: (args) => call("MediaGenerate", args),
     }),
-    SelfModStart: tool({
-      description:
-        "Start a new self-modification feature.\n\n" +
-        "Usage:\n" +
-        "- Groups related file changes under a named feature for atomic apply and revert.\n" +
-        "- All subsequent Write/Edit calls go to a staging area, not the live source files.\n" +
-        "- Call SelfModApply when the batch is complete to apply all changes at once.\n" +
-        "- If a feature with this name already exists, it becomes the active feature.",
-      inputSchema: z.object({
-        name: z.string().min(1).describe("Descriptive name for this modification (e.g. \"Compact Sidebar\")"),
-        description: z.string().optional().describe("What this modification does"),
-      }),
-      execute: (args) => call("SelfModStart", args),
-    }),
-    SelfModApply: tool({
-      description:
-        "Apply all staged file changes atomically.\n\n" +
-        "Usage:\n" +
-        "- Copies staged files to the live source directory in one batch.\n" +
-        "- Vite HMR picks up all changes simultaneously — the UI updates in one shot.\n" +
-        "- Creates a revert point so changes can be undone with SelfModRevert.\n" +
-        "- The user continues using the current UI while you stage changes — they only see the update when you apply.",
-      inputSchema: z.object({
-        message: z.string().optional().describe("Description of what this batch changes"),
-      }),
-      execute: (args) => call("SelfModApply", args),
-    }),
     SelfModRevert: tool({
       description:
         "Revert applied changes, restoring source files to their previous state.\n\n" +
@@ -562,15 +532,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
         steps: z.number().optional().describe("Number of batches to revert (default 1)"),
       }),
       execute: (args) => call("SelfModRevert", args),
-    }),
-    SelfModStatus: tool({
-      description:
-        "Check the status of a self-modification feature.\n\n" +
-        "Returns: staged files, applied batches, revert points, and the active feature name.",
-      inputSchema: z.object({
-        feature_id: z.string().optional().describe("Feature to check (defaults to active feature)"),
-      }),
-      execute: (args) => call("SelfModStatus", args),
     }),
     SelfModPackage: tool({
       description:

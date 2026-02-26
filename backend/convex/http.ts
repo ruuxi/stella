@@ -52,7 +52,7 @@ type ChatRequest = {
     url?: string;
     mimeType?: string;
   }>;
-  agent?: "orchestrator" | "general" | "self_mod";
+  agent?: "orchestrator" | "general";
 };
 
 const getPlatformGuidance = (platform: string): string => {
@@ -774,11 +774,9 @@ http.route({
     const userText = userPayload.text ?? "";
     const userPlatform = userPayload.platform ?? "unknown";
     const agentType =
-      body.agent === "self_mod"
-        ? "self_mod"
-        : body.agent === "general"
-          ? "general"
-          : "orchestrator";
+      body.agent === "general"
+        ? "general"
+        : "orchestrator";
 
     const attachments = body.attachments ?? [];
     const resolvedImages: Array<{ url: string; mimeType?: string }> = [];

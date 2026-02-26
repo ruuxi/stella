@@ -206,7 +206,7 @@ const STORE_MANAGEMENT: BuiltinSkill = {
   id: "store-management",
   name: "Store Search & Package Installation",
   description:
-    "Search the app store and install packages (skills, themes, mini-apps). Mod installs must be delegated to Self-Mod.",
+    "Search the app store and install packages (skills, themes, mini-apps).",
   agentTypes: ["general"],
   tags: ["store", "packages", "install"],
   source: "builtin",
@@ -219,8 +219,6 @@ const STORE_MANAGEMENT: BuiltinSkill = {
 Search proactively when the user asks for something that might exist as a package. Suggest packages conversationally — don't force installation.
 
 ## Installing
-
-**Mod installs**: General cannot install mods — they are blueprints that need re-implementation by the Self-Mod agent. Report the mod details (package ID, name, description) back to the Orchestrator, who will route the installation to Self-Mod.
 
 **Install any package (single tool)**:
 \`ManagePackage({ action: "install", package: { type: "...", ... } })\`
@@ -324,7 +322,7 @@ const FRONTEND_ARCHITECTURE: BuiltinSkill = {
   name: "Frontend Architecture Reference",
   description:
     "Full design system reference: directory structure, layout, CSS tokens, slot system, canvas system. Activate before structural changes.",
-  agentTypes: ["self_mod"],
+  agentTypes: ["general"],
   tags: ["architecture", "design-system", "reference"],
   source: "builtin",
   enabled: true,
@@ -344,21 +342,27 @@ frontend/src/
 ├── main.tsx                    # Entry point, provider nesting, CSS imports
 ├── App.tsx                     # Window router (full/mini/radial/region)
 ├── app/state/
-│   ├── ui-state.tsx            # UiStateProvider (mode, window, conversationId)
-│   └── canvas-state.tsx        # CanvasProvider (isOpen, canvas, width)
+│   ├── ui-state.tsx            # UiStateProvider (mode, window, view, conversationId)
+│   └── workspace-state.tsx     # WorkspaceProvider (canvas, chatWidth, isChatOpen)
+├── views/
+│   └── home/
+│       ├── HomeView.tsx        # Default home screen (suggestions, tasks, schedule)
+│       └── home-view.css       # Home view styles
 ├── components/
+│   ├── workspace/
+│   │   └── WorkspaceArea.tsx   # View router (home/store/app/onboarding)
 │   ├── canvas/
-│   │   ├── CanvasPanel.tsx     # Canvas panel (url → iframe, else → panel)
-│   │   ├── CanvasErrorBoundary.tsx # Error boundary for renderers
+│   │   ├── CanvasErrorBoundary.tsx # Error boundary for canvas renderers
 │   │   └── renderers/          # panel.tsx (Vite dynamic), appframe.tsx (iframe)
-│   ├── chat/                   # Message rendering (Markdown, MessageGroup, etc.)
-│   ├── Sidebar.tsx             # Left navigation
+│   ├── chat/                   # Message rendering (Markdown, TurnItem, etc.)
+│   ├── Sidebar.tsx             # Left navigation (Home, Store, Connect)
+│   ├── ErrorBoundary.tsx       # App-level error boundary with revert
 │   ├── button.tsx / .css       # Button component (pattern for all primitives)
 │   └── ...                     # 30+ component files (each with paired .css)
 ├── screens/
 │   ├── FullShell.tsx           # Re-export from full-shell/
 │   ├── full-shell/
-│   │   ├── FullShell.tsx       # Layout shell (sidebar + chat + canvas)
+│   │   ├── FullShell.tsx       # Layout shell (sidebar + workspace + chat)
 │   │   ├── ChatColumn.tsx      # Chat area (messages + composer)
 │   │   ├── Composer.tsx        # Input bar, attachments, submit
 │   │   ├── OnboardingOverlay.tsx # Onboarding state + view
@@ -373,7 +377,7 @@ frontend/src/
 │   ├── types.ts                # UIPlugin, SlotDefinition types
 │   └── slots.ts                # Default slot registrations
 ├── styles/
-│   ├── canvas-panel.css        # Canvas panel layout
+│   ├── workspace.css           # Workspace area layout
 │   ├── full-shell.layout.css   # Main layout (.full-body flex row)
 │   ├── full-shell.composer.css # Message composer
 │   └── ...                     # Modular CSS files (each imported in main.tsx)
@@ -383,15 +387,25 @@ frontend/src/
     └── color.ts                # OKLCH color math
 \`\`\`
 
+## View System
+The app uses a \`ViewType = 'home' | 'store' | 'app'\` to control what \`WorkspaceArea\` displays:
+
+- **\`'home'\`** (default): Renders \`HomeView\` — built-in component at \`src/views/home/HomeView.tsx\` showing welcome suggestions, active tasks, and schedule. To customize the home screen, edit this file directly.
+- **\`'store'\`**: Renders \`StoreView\` for browsing/installing packages.
+- **\`'app'\`**: Renders a canvas app (set by \`OpenCanvas\` tool or \`canvas_command\` events). Routes by URL: if \`canvas.url\` → iframe (\`AppframeRenderer\`), otherwise → Vite dynamic import (\`PanelRenderer\`).
+
+\`WorkspaceArea.tsx\` handles the routing. \`use-canvas-commands.ts\` automatically sets view to \`'app'\` when a canvas opens, \`'home'\` when it closes.
+
 ## Key Layout Structure
 \`\`\`
 .full-body (flex-direction: row)
 ├── Sidebar (left nav, ~240px)
-├── .full-body-main (flex: 1, column)
-│   ├── .session-content (scrollable messages)
-│   │   └── .session-messages (max-width: 50rem, centered)
-│   └── Composer (absolute bottom, input bar)
-└── CanvasPanel (right side, resizable, conditional)
+├── WorkspaceArea (flex: 1)
+│   ├── HomeView (default — suggestions, tasks, schedule)
+│   ├── StoreView (when view === 'store')
+│   └── Canvas content (when view === 'app' && canvas active)
+└── ChatPanel (right side, collapsible)
+    └── ChatColumn (messages + composer)
 \`\`\`
 
 ## CSS Design Tokens
@@ -426,11 +440,11 @@ overrideSlot('sidebar', MyCustomSidebar, { priority: 10, source: 'self-mod' })
 \`\`\`
 
 ## Canvas System
-Side panel for rendering interactive content alongside chat:
+Interactive content rendered in \`WorkspaceArea\` when view is \`'app'\`:
 - **Panels**: Single-file TSX in \`workspace/panels/\` — Vite-compiled on demand via dynamic import
 - **Apps**: Full Vite+React projects in \`~/.stella/apps/\` — rendered via sandboxed iframe
 
-\`CanvasPanel.tsx\` routes by URL: if \`canvas.url\` is set → iframe (AppframeRenderer), otherwise → Vite dynamic import (PanelRenderer).`,
+Open a canvas via the \`OpenCanvas\` tool (sets view to \`'app'\`). Close via \`CloseCanvas\` (returns to \`'home'\`).`,
 };
 
 const BLUEPRINT_MANAGEMENT: BuiltinSkill = {
@@ -438,7 +452,7 @@ const BLUEPRINT_MANAGEMENT: BuiltinSkill = {
   name: "Blueprint Management",
   description:
     "Create shareable blueprints from features, or install blueprints from the store. Activate before blueprint operations.",
-  agentTypes: ["self_mod"],
+  agentTypes: ["general"],
   tags: ["blueprint", "self-mod", "sharing"],
   source: "builtin",
   enabled: true,
@@ -466,19 +480,58 @@ When the user wants to share a feature:
    - **CSS variable overrides**: For pure style changes (colors, spacing, fonts)
    - **Component edits**: For structural changes to existing components
    - **New files**: For entirely new features or components
-6. Re-implement the feature fresh, adapting to the current codebase:
-   - Use SelfModStart to create a new feature
-   - Use Write/Edit to implement (goes through staging)
-   - Use SelfModApply when done
+6. Re-implement the feature fresh, adapting to the current codebase — use Write/Edit normally (changes are auto-staged and auto-applied)
 7. You are NOT copying files — you are understanding the blueprint and making engineering decisions about how to achieve the same result in the current codebase
-8. After applying, summarize what you did differently from the blueprint and why
+8. After the response completes, summarize what you did differently from the blueprint and why
 
 ## Safety
 - Always Read files before modifying — understand existing patterns
 - Before risky multi-file edits, run \`Bash("git stash push -u -m 'self-mod-prep'")\` if the working tree is dirty
 - Use error boundaries for complex new components
-- Prefer SelfModRevert over manual fixups when something goes wrong
-- Split large batches (5+ files) into smaller applies for safer rollback`,
+- Prefer SelfModRevert over manual fixups when something goes wrong`,
+};
+
+const SELF_MODIFICATION: BuiltinSkill = {
+  id: "self-modification",
+  name: "Self-Modification Guidelines",
+  description:
+    "Guidelines for modifying Stella's own UI. Activate before making changes to frontend/src/.",
+  agentTypes: ["general"],
+  tags: ["self-mod", "ui", "frontend"],
+  source: "builtin",
+  enabled: true,
+  markdown: `# Self-Modification Guidelines
+
+You can modify Stella's own interface — UI components, styles, layouts, and the slot system.
+
+## How It Works
+- Writes to \`frontend/src/\` are **auto-staged** and **auto-applied** when your response ends.
+- Changes are applied atomically — the user sees a single HMR update.
+- Each response that modifies Stella files creates a revert point the user can undo.
+
+## Before Structural Changes
+Activate the **frontend-architecture** skill to load the full design system reference before:
+- Adding new components or layout restructuring
+- Slot overrides
+- Theme system modifications
+
+## Best Practices
+- Read files before modifying — understand existing patterns
+- New CSS files MUST be imported in \`src/main.tsx\`
+- Use CSS custom properties for colors — never hardcode
+- Use \`@/*\` import paths, never relative beyond one level
+- Component files are paired: \`.tsx\` + \`.css\`
+- After modifying files, run \`Bash("cd frontend && bunx tsc --noEmit --pretty 2>&1 | head -40")\` to catch type errors
+
+## Constraints
+- Never modify backend code (Convex functions, prompts, tools)
+- Never expose API keys, secrets, or internal agent names in UI
+- Chat is the primary interface — always
+- Canvas in the right panel only — no pop-out windows
+- Theme compatibility: CSS custom properties, never hardcoded colors
+
+## Revert
+Use \`SelfModRevert(feature_id?, steps?)\` to undo applied changes if something goes wrong.`,
 };
 
 // ---------------------------------------------------------------------------
@@ -804,9 +857,10 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   STORE_MANAGEMENT,
   API_SKILL_GENERATION,
   MEDIA_GENERATION,
-  // Self-mod agent
+  // Self-mod (now on general agent)
   FRONTEND_ARCHITECTURE,
   BLUEPRINT_MANAGEMENT,
+  SELF_MODIFICATION,
   // Browser agent
   BROWSER_API_DISCOVERY,
   BROWSER_ADVANCED_TOOLS,
