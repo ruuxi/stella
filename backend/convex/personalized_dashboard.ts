@@ -52,6 +52,9 @@ const dashboardPageRecordValidator = v.object({
   createdAt: v.number(),
   updatedAt: v.number(),
   completedAt: v.optional(v.number()),
+  claimedAt: v.optional(v.number()),
+  claimedBy: v.optional(v.string()),
+  leaseExpiresAt: v.optional(v.number()),
 });
 
 const plannedPageValidator = v.object({
