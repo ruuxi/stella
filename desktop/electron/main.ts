@@ -1898,6 +1898,76 @@ app.whenReady().then(async () => {
     setHostAuthState(Boolean(payload?.authenticated))
     return { ok: true }
   })
+  ipcMain.handle('app:hardResetLocalState', async (event) => {
+    if (!assertPrivilegedSender(event, 'app:hardResetLocalState')) {
+      throw new Error('Blocked untrusted local reset request.')
+    }
+
+    const hadRunner = Boolean(localHostRunner)
+
+    if (localHostRunner) {
+      localHostRunner.stop()
+      localHostRunner = null
+    }
+
+    setHostAuthState(false)
+    appReady = false
+    pendingAuthCallback = null
+    hideVoiceWindow()
+    uiState.isVoiceActive = false
+
+    if (pendingMiniChatContextAck) {
+      clearTimeout(pendingMiniChatContextAck.timeout)
+      pendingMiniChatContextAck.resolve()
+      pendingMiniChatContextAck = null
+    }
+    setPendingChatContext(null)
+    lastBroadcastChatContextVersion = -1
+    lastMiniChatContextAckVersion = -1
+    hideMiniWindow(false)
+
+    trustedPrivilegedActions.clear()
+    externalOpenRateBySender.clear()
+
+    const appSession = session.fromPartition(STELLA_SESSION_PARTITION)
+    await Promise.allSettled([
+      appSession.clearStorageData(),
+      appSession.clearCache(),
+    ])
+
+    const homePath = app.getPath('home')
+    await Promise.allSettled([
+      fs.rm(path.join(homePath, '.stella'), { recursive: true, force: true }),
+      fs.rm(path.join(homePath, '.Stella'), { recursive: true, force: true }),
+    ])
+
+    if (hadRunner) {
+      const StellaHome = await resolveStellaHome(app)
+      StellaHomePath = StellaHome.homePath
+      securityPolicyPath = path.join(StellaHome.statePath, 'security_policy.json')
+      await loadSecurityPolicy()
+      const deviceIdentity = await getOrCreateDeviceIdentity(StellaHome.statePath)
+      deviceId = deviceIdentity.deviceId
+
+      localHostRunner = createLocalHostRunner({
+        deviceId,
+        StellaHome: StellaHome.homePath,
+        frontendRoot: path.resolve(__dirname, '..'),
+        requestCredential,
+        signHeartbeatPayload: async (signedAtMs: number) => ({
+          publicKey: deviceIdentity.publicKey,
+          signature: signDeviceHeartbeat(deviceIdentity, signedAtMs),
+        }),
+      })
+      if (pendingConvexUrl) {
+        localHostRunner.setConvexUrl(pendingConvexUrl)
+      }
+      localHostRunner.start()
+    }
+
+    broadcastUiState()
+    return { ok: true }
+  })
 
   // Window control handlers for custom title bar
   ipcMain.on('window:minimize', (event) => {
