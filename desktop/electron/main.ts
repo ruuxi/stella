@@ -204,6 +204,7 @@ const STORE_TOKEN_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/
 const STORE_PACKAGE_TYPES = new Set(['skill', 'theme', 'canvas', 'mod'] as const)
 const NPM_PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i
 const NPM_PACKAGE_VERSION_PATTERN = /^[a-z0-9*^~<>=|.+-]+$/i
+const WORKSPACE_PANEL_FILE_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\.tsx$/
 const MAX_STORE_NAME_CHARS = 120
 const MAX_STORE_MARKDOWN_CHARS = 250_000
 const MAX_STORE_SOURCE_CHARS = 250_000
@@ -229,6 +230,62 @@ const sendMiniVisibility = (visible: boolean, force = false) => {
   if (!force && miniVisibilitySent === visible) return
   miniVisibilitySent = visible
   miniWindow.webContents.send('mini:visibility', { visible })
+}
+
+const formatWorkspacePanelTitle = (name: string) => {
+  const withoutPrefix = name.replace(/^pd_/, '')
+  const parts = withoutPrefix
+    .split(/[_-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length === 0) {
+    return name
+  }
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const listWorkspacePanels = async () => {
+  const pagesDir = path.resolve(__dirname, '..', 'src', 'views', 'home', 'pages')
+
+  let entries: import('fs').Dirent[]
+  try {
+    entries = await fs.readdir(pagesDir, { withFileTypes: true, encoding: 'utf8' })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('[workspace:listPanels] Failed to read pages directory', error)
+    }
+    return []
+  }
+
+  const candidates = entries.filter(
+    (entry) => entry.isFile() && WORKSPACE_PANEL_FILE_PATTERN.test(entry.name),
+  )
+
+  const withMeta = await Promise.all(
+    candidates.map(async (entry) => {
+      const fullPath = path.join(pagesDir, entry.name)
+      let mtimeMs = 0
+      try {
+        const stat = await fs.stat(fullPath)
+        mtimeMs = stat.mtimeMs
+      } catch {
+        // Best effort metadata; stale/deleted files are still listable.
+      }
+
+      const name = entry.name.slice(0, -4)
+      return {
+        name,
+        title: formatWorkspacePanelTitle(name),
+        mtimeMs,
+      }
+    }),
+  )
+
+  return withMeta
+    .sort((a, b) => b.mtimeMs - a.mtimeMs || a.title.localeCompare(b.title))
+    .map(({ name, title }) => ({ name, title }))
 }
 
 const hideMiniWindow = (animate = true) => {
@@ -2221,6 +2278,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('browserData:listProfiles', async (_event, browserType: string) => {
     return listBrowserProfiles(browserType as BrowserType)
+  })
+
+  ipcMain.handle('workspace:listPanels', async () => {
+    return listWorkspacePanels()
   })
 
   // Comprehensive user signal collection (with category support)

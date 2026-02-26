@@ -189,6 +189,7 @@ export type ElectronApi = {
   detectPreferredBrowser: () => Promise<PreferredBrowserProfile>
   listBrowserProfiles: (browserType: string) => Promise<BrowserProfile[]>
   writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
+  listWorkspacePanels: () => Promise<Array<{ name: string; title: string }>>
   // Comprehensive user signal collection (browser + dev projects + shell + apps)
   collectAllSignals: (options?: { categories?: string[] }) => Promise<AllUserSignalsResult>
   // Identity map for pseudonymization
