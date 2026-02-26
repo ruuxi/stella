@@ -1095,6 +1095,8 @@ type SynthesizeResponse = {
 };
 const DEFAULT_WELCOME_MESSAGE = "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 const MAX_ANON_SYNTHESIS_REQUESTS = 10;
+const ANON_DEVICE_HASH_SALT_MISSING_MESSAGE = "Missing ANON_DEVICE_ID_HASH_SALT";
+let didLogMissingAnonDeviceSaltForSynthesis = false;
 const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
 const CLIENT_ADDRESS_KEY_PATTERN = /^[0-9a-fA-F:.]+$/;
 const MAX_TRANSCRIBE_AUDIO_BYTES = 25 * 1024 * 1024;
@@ -1128,6 +1130,9 @@ const getAnonDeviceId = (request: Request): string | null => {
   if (trimmed.length === 0 || trimmed.length >= 256) return null;
   return trimmed;
 };
+
+const isAnonDeviceHashSaltMissingError = (error: unknown): boolean =>
+  error instanceof Error && error.message.includes(ANON_DEVICE_HASH_SALT_MISSING_MESSAGE);
 
 const normalizeClientAddressKey = (value: string | null): string | null => {
   if (!value) return null;
@@ -1226,25 +1231,37 @@ http.route({
 
     try {
       if (!identity && anonDeviceId) {
-        const usage = await ctx.runMutation(internal.ai_proxy_data.consumeDeviceAllowance, {
-          deviceId: anonDeviceId,
-          maxRequests: MAX_ANON_SYNTHESIS_REQUESTS,
-          clientAddressKey: getClientAddressKey(request) ?? undefined,
-        });
-        if (!usage.allowed) {
-          return withCors(
-            new Response(
-              JSON.stringify({
-                error:
-                  "Rate limit exceeded. Please create an account for continued access.",
-              }),
-              {
-                status: 429,
-                headers: { "Content-Type": "application/json" },
-              },
-            ),
-            origin,
-          );
+        try {
+          const usage = await ctx.runMutation(internal.ai_proxy_data.consumeDeviceAllowance, {
+            deviceId: anonDeviceId,
+            maxRequests: MAX_ANON_SYNTHESIS_REQUESTS,
+            clientAddressKey: getClientAddressKey(request) ?? undefined,
+          });
+          if (!usage.allowed) {
+            return withCors(
+              new Response(
+                JSON.stringify({
+                  error:
+                    "Rate limit exceeded. Please create an account for continued access.",
+                }),
+                {
+                  status: 429,
+                  headers: { "Content-Type": "application/json" },
+                },
+              ),
+              origin,
+            );
+          }
+        } catch (error) {
+          if (!isAnonDeviceHashSaltMissingError(error)) {
+            throw error;
+          }
+          if (!didLogMissingAnonDeviceSaltForSynthesis) {
+            didLogMissingAnonDeviceSaltForSynthesis = true;
+            console.warn(
+              "[synthesize] Missing ANON_DEVICE_ID_HASH_SALT; anonymous rate limiting is disabled until configured.",
+            );
+          }
         }
       }
 

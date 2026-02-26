@@ -21,6 +21,8 @@ import { streamText, generateText, createGateway, embed } from "ai";
 import { getModelConfig } from "./agent/model";
 
 const MAX_ANON_REQUESTS = 10;
+const ANON_DEVICE_HASH_SALT_MISSING_MESSAGE = "Missing ANON_DEVICE_ID_HASH_SALT";
+let didLogMissingAnonDeviceSaltForProxy = false;
 const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
 const CLIENT_ADDRESS_KEY_PATTERN = /^[0-9a-fA-F:.]+$/;
 
@@ -71,17 +73,33 @@ const getClientAddressKey = (request: Request): string | null => {
   return normalizeClientAddressKey(firstHop);
 };
 
+const isAnonDeviceHashSaltMissingError = (error: unknown): boolean =>
+  error instanceof Error && error.message.includes(ANON_DEVICE_HASH_SALT_MISSING_MESSAGE);
+
 async function consumeDeviceRateLimit(
   ctx: ActionCtx,
   deviceId: string,
   clientAddressKey: string | null,
 ): Promise<boolean> {
-  const usage = await ctx.runMutation(internal.ai_proxy_data.consumeDeviceAllowance, {
-    deviceId,
-    maxRequests: MAX_ANON_REQUESTS,
-    clientAddressKey: clientAddressKey ?? undefined,
-  });
-  return usage.allowed;
+  try {
+    const usage = await ctx.runMutation(internal.ai_proxy_data.consumeDeviceAllowance, {
+      deviceId,
+      maxRequests: MAX_ANON_REQUESTS,
+      clientAddressKey: clientAddressKey ?? undefined,
+    });
+    return usage.allowed;
+  } catch (error) {
+    if (!isAnonDeviceHashSaltMissingError(error)) {
+      throw error;
+    }
+    if (!didLogMissingAnonDeviceSaltForProxy) {
+      didLogMissingAnonDeviceSaltForProxy = true;
+      console.warn(
+        "[ai-proxy] Missing ANON_DEVICE_ID_HASH_SALT; anonymous rate limiting is disabled until configured.",
+      );
+    }
+    return true;
+  }
 }
 
 function getGateway() {
