@@ -1509,6 +1509,27 @@
   opacity: 0.35;
 }
 
+.onboarding-inline-auth-skip {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--foreground);
+  opacity: 0.45;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+  transition: opacity 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+.onboarding-inline-auth-skip:hover {
+  opacity: 0.8;
+  text-decoration-color: color-mix(in oklch, var(--foreground) 55%, transparent);
+}
+
 /* Static variant (post-onboarding) */
 .onboarding-inline-auth--static {
   position: relative;

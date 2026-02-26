@@ -29,6 +29,18 @@ describe("InlineAuth", () => {
     expect(root.className).toContain("my-custom-class");
   });
 
+  it("does not render skip action by default", () => {
+    render(<InlineAuth />);
+    expect(screen.queryByText("Skip for now")).toBeNull();
+  });
+
+  it("renders skip action and triggers callback when provided", () => {
+    const onSkip = vi.fn();
+    render(<InlineAuth onSkip={onSkip} />);
+    fireEvent.click(screen.getByText("Skip for now"));
+    expect(onSkip).toHaveBeenCalledOnce();
+  });
+
   it("does nothing when submitting empty email", async () => {
     render(<InlineAuth />);
     fireEvent.click(screen.getByText("Send"));

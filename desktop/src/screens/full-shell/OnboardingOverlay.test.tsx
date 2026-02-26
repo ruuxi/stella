@@ -39,12 +39,6 @@ vi.mock("../../components/Onboarding", () => ({
   useOnboardingState: vi.fn(),
 }));
 
-vi.mock("../../components/InlineAuth", () => ({
-  InlineAuth: (props: any) => (
-    <div data-testid="inline-auth" className={props.className} />
-  ),
-}));
-
 const mockResetUserData = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("convex/react", () => ({
@@ -102,33 +96,6 @@ describe("OnboardingView", () => {
   it("hides OnboardingStep1 when onboardingDone=true", () => {
     render(<OnboardingView {...makeProps({ onboardingDone: true })} />);
     expect(screen.queryByTestId("onboarding-step1")).toBeNull();
-  });
-
-  it("shows InlineAuth when !isAuthenticated && onboardingDone", () => {
-    render(
-      <OnboardingView
-        {...makeProps({ isAuthenticated: false, onboardingDone: true })}
-      />,
-    );
-    expect(screen.getByTestId("inline-auth")).toBeTruthy();
-  });
-
-  it("hides InlineAuth when authenticated", () => {
-    render(
-      <OnboardingView
-        {...makeProps({ isAuthenticated: true, onboardingDone: true })}
-      />,
-    );
-    expect(screen.queryByTestId("inline-auth")).toBeNull();
-  });
-
-  it("hides InlineAuth when onboarding not done (even if not authenticated)", () => {
-    render(
-      <OnboardingView
-        {...makeProps({ isAuthenticated: false, onboardingDone: false })}
-      />,
-    );
-    expect(screen.queryByTestId("inline-auth")).toBeNull();
   });
 
   it("sets data-expanded attribute on title based on hasExpanded", () => {
@@ -254,15 +221,6 @@ describe("OnboardingView", () => {
     expect(screen.getByTestId("stella-animation")).toBeInTheDocument();
   });
 
-  it("applies onboarding-inline-auth--static class to InlineAuth", () => {
-    render(
-      <OnboardingView
-        {...makeProps({ isAuthenticated: false, onboardingDone: true })}
-      />,
-    );
-    const authEl = screen.getByTestId("inline-auth");
-    expect(authEl.className).toBe("onboarding-inline-auth--static");
-  });
 });
 
 // ---------- useOnboardingOverlay Hook Tests ----------

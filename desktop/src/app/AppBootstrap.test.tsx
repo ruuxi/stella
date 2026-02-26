@@ -162,7 +162,7 @@ describe("AppBootstrap", () => {
     // Should not throw -- Promise.allSettled handles the rejection
   });
 
-  it("skips cloud conversation bootstrap when unauthenticated", async () => {
+  it("uses local conversation bootstrap when unauthenticated", async () => {
     mockUseConvexAuth.mockReturnValue({ isAuthenticated: false, isLoading: false });
 
     render(<AppBootstrap />);
@@ -172,8 +172,9 @@ describe("AppBootstrap", () => {
       expect(mockGetOrCreateDeviceId).toHaveBeenCalled();
     });
     expect(mockGetOrCreateDefaultConversation).not.toHaveBeenCalled();
-    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
-    expect(mockSetConversationId).toHaveBeenCalledWith(null);
+    expect(mockGetOrCreateLocalConversationId).toHaveBeenCalledTimes(1);
+    expect(mockSetConversationId).toHaveBeenNthCalledWith(1, null);
+    expect(mockSetConversationId).toHaveBeenNthCalledWith(2, "01KHVRH3ZAPQN48JWYNJNYDCVC");
   });
 
   it("uses local conversation id when account mode is private_local", async () => {

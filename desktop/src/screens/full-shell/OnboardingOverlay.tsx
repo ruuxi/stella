@@ -10,7 +10,6 @@ import {
   type StellaAnimationHandle,
 } from "../../components/StellaAnimation";
 import { OnboardingStep1, useOnboardingState } from "../../components/Onboarding";
-import { InlineAuth } from "../../components/InlineAuth";
 
 const CREATURE_INITIAL_SIZE = 0.22;
 
@@ -174,7 +173,6 @@ export function OnboardingView({
           isAuthenticated={isAuthenticated}
         />
       )}
-      {!isAuthenticated && onboardingDone && <InlineAuth className="onboarding-inline-auth--static" />}
     </div>
   );
 }
