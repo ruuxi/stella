@@ -828,7 +828,7 @@ export const launchPageGenerationTaskInternal = internalAction({
 
     // If desktop is online, emit a dashboard_generation_request event so the local
     // runtime can claim and generate locally instead. Release the server claim.
-    if (executionTarget.targetDeviceId && !executionTarget.spriteName) {
+    if (resolvedTargetDeviceId && !executionTarget.spriteName) {
       await ctx.runMutation(internal.personalized_dashboard.releasePageClaim, {
         pageId: page._id,
         claimantId: "server",
@@ -857,7 +857,7 @@ export const launchPageGenerationTaskInternal = internalAction({
       await ctx.runMutation(internal.events.appendInternalEvent, {
         conversationId: args.conversationId,
         type: "dashboard_generation_request",
-        targetDeviceId: executionTarget.targetDeviceId,
+        targetDeviceId: resolvedTargetDeviceId,
         payload: {
           pageId: args.pageId,
           ownerId: args.ownerId,
