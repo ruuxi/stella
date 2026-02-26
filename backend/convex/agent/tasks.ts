@@ -66,7 +66,7 @@ const MAX_THREAD_MESSAGE_CONTENT_LENGTH = 500_000;
 const PREFERRED_BROWSER_KEY = "preferred_browser";
 const BROWSER_AGENT_SAFARI_DENIED_REASON =
   "Browser Agent is unavailable when the selected browser is Safari. Use a Chromium-based browser for browser automation.";
-const ALLOWED_SUBAGENT_TYPES = new Set(["general", "self_mod", "explore", "browser"]);
+const ALLOWED_SUBAGENT_TYPES = new Set(["general", "explore", "browser"]);
 
 const usageSummaryValidator = v.object({
   inputTokens: v.optional(v.number()),
@@ -776,7 +776,7 @@ const executeSubagentRun = async (
   }
 
   // --- Thread loading ---
-  const threadSupported = args.subagentType === "general" || args.subagentType === "self_mod";
+  const threadSupported = args.subagentType === "general";
   let threadMessages: Array<{
     role: "user" | "assistant" | "tool";
     content: string;
@@ -1784,7 +1784,7 @@ export const runSubagent = internalAction({
       : executionTarget.spriteName ?? undefined;
 
     // Resolve thread: threadId takes priority, then threadName lookup/create
-    const threadSupported = args.subagentType === "general" || args.subagentType === "self_mod";
+    const threadSupported = args.subagentType === "general";
     let resolvedThreadId: Id<"threads"> | undefined;
 
     if (threadSupported) {

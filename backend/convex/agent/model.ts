@@ -82,18 +82,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  self_mod: {
-    model: "anthropic/claude-opus-4.6",
-    fallback: "moonshotai/kimi-k2.5",
-    temperature: 1.0,
-    maxOutputTokens: 16000,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks"],
-      },
-    },
-  },
-
   memory_discovery_fact_extraction: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
