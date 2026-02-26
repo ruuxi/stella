@@ -3,6 +3,7 @@ import { useUiState } from './app/state/ui-state'
 import { getElectronApi } from './services/electron'
 import { Authenticated } from 'convex/react'
 import { AuthTokenBridge } from './app/AuthTokenBridge'
+import { AutoAnonAuth } from './app/AutoAnonAuth'
 import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
 
@@ -89,6 +90,7 @@ function App() {
       {usesCloudFeatures ? (
         <>
           <AuthDeepLinkHandler />
+          <AutoAnonAuth />
           <Authenticated>
             <AuthTokenBridge />
           </Authenticated>
