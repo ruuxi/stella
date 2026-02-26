@@ -36,15 +36,30 @@ export function setFileToolsConfig(config: FileToolsConfig) {
 }
 
 /**
+ * Paths under src/ that should bypass staging and write directly to disk.
+ * Dashboard page panels are generated content — staging adds unnecessary
+ * complexity and failure modes for files that don't need revert support.
+ */
+const DIRECT_WRITE_PREFIXES = [
+  "src/views/home/pages/",
+];
+
+/**
  * Check if a file path is within frontend/src/ and should be intercepted.
  * Returns the relative path (e.g., "src/components/Sidebar.tsx") or null.
+ * Returns null for paths in DIRECT_WRITE_PREFIXES (bypasses staging).
  */
 function getSrcRelativePath(filePath: string): string | null {
   if (!_config.frontendRoot) return null;
   const srcRoot = path.join(_config.frontendRoot, "src");
   const normalized = path.normalize(filePath);
   if (normalized.startsWith(srcRoot + path.sep) || normalized === srcRoot) {
-    return path.relative(_config.frontendRoot, normalized);
+    const relative = path.relative(_config.frontendRoot, normalized)
+      .replace(/\\/g, "/");
+    if (DIRECT_WRITE_PREFIXES.some((prefix) => relative.startsWith(prefix))) {
+      return null;
+    }
+    return relative;
   }
   return null;
 }
