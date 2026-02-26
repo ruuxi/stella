@@ -116,7 +116,9 @@ export const getAccountMode = query({
   args: {},
   returns: accountModeValidator,
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return "private_local";
+    const ownerId = identity.subject;
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", ACCOUNT_MODE_KEY))
@@ -141,7 +143,9 @@ export const getSyncMode = query({
   args: {},
   returns: syncModeValidator,
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return "on";
+    const ownerId = identity.subject;
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", SYNC_MODE_KEY))

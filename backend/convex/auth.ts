@@ -3,7 +3,7 @@ import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { Resend } from "@convex-dev/resend";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
-import { jwt, magicLink } from "better-auth/plugins";
+import { anonymous, jwt, magicLink } from "better-auth/plugins";
 import {
   internalAction,
   internalQuery,
@@ -234,6 +234,21 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
     // },
     plugins: [
       crossDomain({ siteUrl }),
+      anonymous({
+        emailDomainName: "anon.stella.local",
+        disableDeleteAnonymousUser: true,
+        onLinkAccount: async ({ anonymousUser, newUser }) => {
+          const actionCtx = requireActionCtx(ctx);
+          await actionCtx.scheduler.runAfter(
+            0,
+            internal.auth_migration.migrateOwnership,
+            {
+              fromOwnerId: anonymousUser.user.id,
+              toOwnerId: newUser.user.id,
+            },
+          );
+        },
+      }),
       magicLink({
         sendMagicLink: async ({ email, url }) => {
           const actionCtx = requireActionCtx(ctx);
@@ -331,6 +346,7 @@ const currentUserValidator = v.object({
   email: v.optional(v.string()),
   name: v.optional(v.string()),
   image: v.optional(v.string()),
+  isAnonymous: v.optional(v.boolean()),
 });
 
 export const getCurrentUser = query({
@@ -351,6 +367,7 @@ export const getCurrentUser = query({
       email: typeof record.email === "string" ? record.email : undefined,
       name: typeof record.name === "string" ? record.name : undefined,
       image: typeof record.image === "string" ? record.image : undefined,
+      isAnonymous: record.isAnonymous === true ? true : undefined,
     };
   },
 });

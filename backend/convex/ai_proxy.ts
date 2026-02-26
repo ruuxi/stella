@@ -27,7 +27,7 @@ const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
 const CLIENT_ADDRESS_KEY_PATTERN = /^[0-9a-fA-F:.]+$/;
 
 type ProxyAuth =
-  | { type: "jwt"; userId: string }
+  | { type: "jwt"; userId: string; isAnonymous: boolean }
   | { type: "device"; deviceId: string }
   | { type: "none" };
 
@@ -35,7 +35,9 @@ async function resolveAuth(ctx: ActionCtx, request: Request): Promise<ProxyAuth>
   // Try JWT first
   const identity = await ctx.auth.getUserIdentity();
   if (identity) {
-    return { type: "jwt", userId: identity.subject };
+    const isAnonymous =
+      (identity as Record<string, unknown>).isAnonymous === true;
+    return { type: "jwt", userId: identity.subject, isAnonymous };
   }
 
   // Try device ID
@@ -102,6 +104,29 @@ async function consumeDeviceRateLimit(
   }
 }
 
+async function consumeAnonJwtRateLimit(
+  ctx: ActionCtx,
+  auth: Extract<ProxyAuth, { type: "jwt" }>,
+  request: Request,
+): Promise<Response | null> {
+  if (!auth.isAnonymous) return null;
+  const allowed = await consumeDeviceRateLimit(
+    ctx,
+    `anon-jwt:${auth.userId}`,
+    getClientAddressKey(request),
+  );
+  if (!allowed) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "Rate limit exceeded. Please create an account for continued access.",
+      }),
+      { status: 429, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  return null;
+}
+
 function getGateway() {
   const apiKey = process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) throw new Error("Missing AI_GATEWAY_API_KEY");
@@ -148,6 +173,9 @@ export const proxyChat = httpAction(async (ctx, request) => {
         { status: 429, headers: { "Content-Type": "application/json" } },
       );
     }
+  } else if (auth.type === "jwt") {
+    const rateLimitResponse = await consumeAnonJwtRateLimit(ctx, auth, request);
+    if (rateLimitResponse) return rateLimitResponse;
   }
 
   const gateway = getGateway();
@@ -226,6 +254,9 @@ export const proxyEmbed = httpAction(async (ctx, request) => {
         { status: 429, headers: { "Content-Type": "application/json" } },
       );
     }
+  } else if (auth.type === "jwt") {
+    const rateLimitResponse = await consumeAnonJwtRateLimit(ctx, auth, request);
+    if (rateLimitResponse) return rateLimitResponse;
   }
 
   const gateway = getGateway();
@@ -281,6 +312,9 @@ export const proxySearch = httpAction(async (ctx, request) => {
         { status: 429, headers: { "Content-Type": "application/json" } },
       );
     }
+  } else if (auth.type === "jwt") {
+    const rateLimitResponse = await consumeAnonJwtRateLimit(ctx, auth, request);
+    if (rateLimitResponse) return rateLimitResponse;
   }
 
   // Web search requires server-side API key (Brave, Tavily, etc.)

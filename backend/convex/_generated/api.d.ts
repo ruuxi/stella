@@ -32,6 +32,7 @@ import type * as agent_tasks from "../agent/tasks.js";
 import type * as ai_proxy from "../ai_proxy.js";
 import type * as ai_proxy_data from "../ai_proxy_data.js";
 import type * as auth from "../auth.js";
+import type * as auth_migration from "../auth_migration.js";
 import type * as automation_index from "../automation/index.js";
 import type * as automation_runner from "../automation/runner.js";
 import type * as automation_utils from "../automation/utils.js";
@@ -128,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   ai_proxy: typeof ai_proxy;
   ai_proxy_data: typeof ai_proxy_data;
   auth: typeof auth;
+  auth_migration: typeof auth_migration;
   "automation/index": typeof automation_index;
   "automation/runner": typeof automation_runner;
   "automation/utils": typeof automation_utils;
