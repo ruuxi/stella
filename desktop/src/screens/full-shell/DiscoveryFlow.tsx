@@ -131,8 +131,8 @@ export function useDiscoveryFlow({
           }
         }
 
-        // Fire-and-forget page generation (cloud mode only)
-        if (storageMode === "cloud" && synthesisResult.coreMemory) {
+        // Fire-and-forget page generation in both local and cloud modes.
+        if (synthesisResult.coreMemory) {
           void startGeneration({
             conversationId: activeConversationId,
             coreMemory: synthesisResult.coreMemory,

@@ -8,18 +8,21 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 
 const mockAppendEvent = vi.fn();
 const mockSetCoreMemory = vi.fn(() => Promise.resolve(null));
+const mockStartGeneration = vi.fn(() => Promise.resolve(null));
 
 vi.mock("convex/react", () => ({
   useMutation: vi.fn((ref: string) => {
     if (ref === "setCoreMemory") return mockSetCoreMemory;
     return mockAppendEvent;
   }),
+  useAction: vi.fn(() => mockStartGeneration),
 }));
 
 vi.mock("../../convex/api", () => ({
   api: {
     events: { appendEvent: "appendEvent" },
     data: { preferences: { setCoreMemory: "setCoreMemory" } },
+    personalized_dashboard: { startGeneration: "startGeneration" },
   },
 }));
 
@@ -348,6 +351,10 @@ describe("useDiscoveryFlow", () => {
           },
         }),
       );
+      expect(mockStartGeneration).toHaveBeenCalledWith({
+        conversationId: "conv-1",
+        coreMemory: "User is a developer",
+      });
     });
   });
 
@@ -390,6 +397,44 @@ describe("useDiscoveryFlow", () => {
           type: "assistant_message",
         }),
       );
+    });
+  });
+
+  it("starts generation in local mode when core memory is synthesized", async () => {
+    const { synthesizeCoreMemory } = await import(
+      "../../services/synthesis"
+    );
+
+    vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
+      coreMemory: "Local user profile",
+      welcomeMessage: "",
+    });
+
+    (window as unknown as Record<string, unknown>).electronAPI = {
+      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+      collectAllSignals: vi.fn(() =>
+        Promise.resolve({ formatted: "signals", error: null }),
+      ),
+      writeCoreMemory: vi.fn(() => Promise.resolve()),
+    };
+
+    const { result } = renderHook(() =>
+      useDiscoveryFlow({
+        isAuthenticated: true,
+        conversationId: "conv-local-1",
+        storageMode: "local" as const,
+      }),
+    );
+
+    act(() => {
+      result.current.handleDiscoveryConfirm(["apps_system"]);
+    });
+
+    await vi.waitFor(() => {
+      expect(mockStartGeneration).toHaveBeenCalledWith({
+        conversationId: "conv-local-1",
+        coreMemory: "Local user profile",
+      });
     });
   });
 
