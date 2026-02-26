@@ -272,6 +272,7 @@ export type ElectronApi = {
 
   // App reload (used by recovery page)
   appReload: () => void
+  hardResetLocalState: () => Promise<{ ok: boolean }>
 }
 
 export type AgentStreamIpcEvent = {

@@ -5,6 +5,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useConvexAuth, useAction } from "convex/react";
 import { api } from "@/convex/api";
+import { clearCachedToken } from "@/services/auth-token";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
@@ -17,6 +18,52 @@ type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
 
 export type OnboardingOverlayProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
+};
+
+const deleteIndexedDatabase = (name: string) =>
+  new Promise<void>((resolve) => {
+    try {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve();
+      request.onblocked = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+
+const clearLocalBrowserState = async () => {
+  clearCachedToken();
+
+  try {
+    localStorage.clear();
+  } catch {}
+
+  try {
+    sessionStorage.clear();
+  } catch {}
+
+  if (typeof indexedDB !== "undefined" && typeof indexedDB.databases === "function") {
+    try {
+      const databases = await indexedDB.databases();
+      const names = databases
+        .map((database) => database.name)
+        .filter((name): name is string => typeof name === "string" && name.length > 0);
+      await Promise.all(names.map(deleteIndexedDatabase));
+    } catch {}
+  }
+
+  if (typeof caches !== "undefined") {
+    try {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+    } catch {}
+  }
+};
+
+const clearLocalRuntimeState = async () => {
+  await clearLocalBrowserState();
+  await window.electronAPI?.hardResetLocalState?.();
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -71,14 +118,23 @@ export function useOnboardingOverlay() {
     setOnboardingKey((k) => k + 1);
     stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
-    if (!isAuthenticated) {
+
+    void (async () => {
+      try {
+        await resetUserData();
+      } catch (error) {
+        console.error(error);
+      }
+
+      try {
+        await clearLocalRuntimeState();
+      } catch (error) {
+        console.error(error);
+      }
+
       window.location.reload();
-      return;
-    }
-    resetUserData()
-      .then(() => window.location.reload())
-      .catch(console.error);
-  }, [isAuthenticated, resetOnboarding, resetUserData]);
+    })();
+  }, [resetOnboarding, resetUserData]);
 
   return {
     onboardingDone,
