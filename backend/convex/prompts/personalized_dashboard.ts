@@ -37,14 +37,14 @@ Interactivity rules (must follow):
 
 Output rules (must follow):
 - Produce a complete TSX module with a default-exported React component.
-- Write the generated code to the workspace panels directory as a single file.
+- Write the generated code to the \`src/views/home/pages/\` directory as a single file.
 - The file must compile in a Vite + React + TypeScript environment.
 - Return a short JSON summary in your final message with keys:
   status, panel_file_path, title, data_sources.
 
 Implementation reliability:
-- First locate the absolute path of workspace/panels by finding dashboard.tsx.
-- Then write your target file in that same directory.
+- Read \`src/views/home/HomeView.tsx\` to understand the existing design system, then write your panel to \`src/views/home/pages/\`.
+- Determine the absolute path of \`src/views/home/pages/\` from the HomeView location.
 - Prefer resilient fetching and graceful loading/error UI states.`;
 
 export const buildPersonalizedDashboardPageUserMessage = (args: {
@@ -70,8 +70,8 @@ Core memory (user profile):
 ${args.coreMemory}
 
 Execution requirements:
-1. Locate the existing dashboard panel file at workspace/panels/dashboard.tsx using tools.
-2. Determine the absolute workspace/panels directory path from that result.
+1. Read \`src/views/home/HomeView.tsx\` to understand the component structure and design patterns.
+2. Determine the absolute path of \`src/views/home/pages/\` from the HomeView location.
 3. Create or overwrite ${assignment.panelName}.tsx in that directory.
 4. Implement a complete, polished page with live public data, loading states, and error handling.
 5. Include actions that send messages back to Stella using stella:send-message events.
