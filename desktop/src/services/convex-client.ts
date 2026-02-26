@@ -6,6 +6,4 @@ if (!convexUrl) {
   console.warn("VITE_CONVEX_URL is not set; Convex client will be offline.");
 }
 
-export const convexClient = new ConvexReactClient(convexUrl ?? "", {
-  expectAuth: true,
-});
+export const convexClient = new ConvexReactClient(convexUrl ?? "");
