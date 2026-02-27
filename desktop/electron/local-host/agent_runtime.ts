@@ -381,6 +381,7 @@ export type RunSubagentOpts = Omit<RunOrchestratorOpts, "callbacks"> & {
   taskId?: string;
   taskDescription: string;
   taskPrompt: string;
+  cwd?: string;
 };
 
 export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
@@ -391,7 +392,6 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
   const {
     conversationId,
     agentContext,
-    toolExecutor,
     convexUrl,
     authToken,
     deviceId,
@@ -399,7 +399,21 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     abortSignal,
     taskDescription,
     taskPrompt,
+    cwd,
   } = opts;
+
+  // Wrap tool executor to inject default working directory when cwd is provided
+  const toolExecutor = cwd
+    ? async (toolName: string, args: Record<string, unknown>, context: ToolContext) => {
+        if ((toolName === "Bash" || toolName === "SkillBash") && !args.working_directory && !args.cwd) {
+          args = { ...args, working_directory: cwd };
+        }
+        if ((toolName === "Glob" || toolName === "Grep" || toolName === "Read") && !args.path) {
+          args = { ...args, path: cwd };
+        }
+        return opts.toolExecutor(toolName, args, context);
+      }
+    : opts.toolExecutor;
 
   const agentType = opts.agentType ?? "general";
   const persistToConvex = opts.persistToConvex ?? true;

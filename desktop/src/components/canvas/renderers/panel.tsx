@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ComponentType } from 'react'
 import { CanvasErrorBoundary } from '../CanvasErrorBoundary'
 import { Spinner } from '@/components/spinner'
 import type { CanvasPayload } from '@/app/state/workspace-state'
@@ -15,7 +15,7 @@ const normalizePanelName = (value: string): string | null => {
 
 const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
   const { name } = canvas
-  const [Component, setComponent] = useState<React.ComponentType<Record<string, unknown>> | null>(null)
+  const [Component, setComponent] = useState<ComponentType<Record<string, unknown>> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const retryKeyRef = useRef(0)
@@ -38,15 +38,24 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
     setError(null)
 
     try {
-      const file = `${normalizedName}.tsx`
-      const mod = await import(/* @vite-ignore */ `/src/views/home/pages/${file}?t=${Date.now()}`)
-      const comp = mod.default
+      // Try folder convention first (pages/{name}/index.tsx), then flat file ({name}.tsx)
+      let mod: { default?: unknown } | undefined
+      try {
+        mod = await import(/* @vite-ignore */ `/src/views/home/pages/${normalizedName}/index.tsx?t=${Date.now()}`)
+      } catch {
+        // Fall through to flat file
+      }
+      if (!mod?.default) {
+        const file = `${normalizedName}.tsx`
+        mod = await import(/* @vite-ignore */ `/src/views/home/pages/${file}?t=${Date.now()}`)
+      }
+      const comp = mod?.default as ComponentType<Record<string, unknown>> | undefined
       if (typeof comp !== 'function') {
         setError('Panel module does not export a default component.')
         setLoading(false)
         return
       }
-      setComponent(() => comp)
+      setComponent(() => comp as ComponentType<Record<string, unknown>>)
       setLoading(false)
     } catch (err) {
       // Retry once after 500ms — the file may still be mid-write by the agent
