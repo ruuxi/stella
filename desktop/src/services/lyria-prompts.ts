@@ -115,7 +115,8 @@ Rules:
 - The label should be creative and poetic, never generic
 - Config values must stay within the ranges shown
 - Each generation should feel distinct from the previous one while staying within the mood
-- If user instructions are provided, incorporate them as the primary creative direction — translate casual requests (e.g. "kpop superhit") into detailed Lyria prompts`
+- If user instructions are provided, incorporate them as the primary creative direction — translate casual requests (e.g. "kpop superhit") into detailed Lyria prompts
+- NEVER include real artist names, song titles, or copyrighted material in prompts or lyrics`
 
 // ---------------------------------------------------------------------------
 // LLM prompt generation
