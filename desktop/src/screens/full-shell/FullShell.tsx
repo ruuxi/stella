@@ -40,7 +40,6 @@ type PersonalPage = {
   pageId: string;
   panelName: string;
   title: string;
-  status: "queued" | "running" | "ready" | "failed";
   order: number;
 };
 
@@ -105,23 +104,6 @@ export const FullShell = () => {
   const cloudStorageEnabled = cloudFeaturesEnabled && (syncMode ?? "on") !== "off";
   const conversationEventsSource = cloudStorageEnabled ? "cloud" : "local";
 
-  const pagesResult = useQuery(
-    api.personalized_dashboard.listPages,
-    onboarding.isAuthenticated ? {} : "skip",
-  ) as
-    | {
-        pages: Array<{
-          pageId: string;
-          panelName: string;
-          title: string;
-          status: "queued" | "running" | "ready" | "failed";
-          order: number;
-        }>;
-        hasRunning: boolean;
-      }
-    | undefined;
-  const cloudPages = pagesResult?.pages ?? [];
-
   useEffect(() => {
     const electronApi = getElectronApi();
     if (!electronApi?.listWorkspacePanels) {
@@ -172,37 +154,13 @@ export const FullShell = () => {
   }, []);
 
   const personalPages = useMemo<PersonalPage[]>(() => {
-    const pagesByPanelName = new Map<string, PersonalPage>();
-
-    for (const page of cloudPages) {
-      pagesByPanelName.set(page.panelName, page);
-    }
-
-    for (const panel of localWorkspacePanels) {
-      const existing = pagesByPanelName.get(panel.name);
-      if (existing) {
-        // Local panel file exists, so the page is openable even if cloud status lags.
-        pagesByPanelName.set(panel.name, {
-          ...existing,
-          status: "ready",
-          title: existing.title || panel.title,
-        });
-        continue;
-      }
-
-      pagesByPanelName.set(panel.name, {
-        pageId: `${LOCAL_PANEL_PAGE_PREFIX}${panel.name}`,
-        panelName: panel.name,
-        title: panel.title,
-        status: "ready",
-        order: Number.MAX_SAFE_INTEGER,
-      });
-    }
-
-    return Array.from(pagesByPanelName.values()).sort(
-      (left, right) => left.order - right.order || left.title.localeCompare(right.title),
-    );
-  }, [cloudPages, localWorkspacePanels]);
+    return localWorkspacePanels.map((panel, index) => ({
+      pageId: `${LOCAL_PANEL_PAGE_PREFIX}${panel.name}`,
+      panelName: panel.name,
+      title: panel.title,
+      order: index,
+    }));
+  }, [localWorkspacePanels]);
 
   const handlePageSelect = useCallback(
     (pageId: string) => {
