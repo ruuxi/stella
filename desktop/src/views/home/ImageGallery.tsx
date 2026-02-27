@@ -1,0 +1,26 @@
+import { RefreshCw, Image as ImageIcon } from "lucide-react"
+import { DashboardCard } from "./DashboardCard"
+
+export function ImageGallery() {
+  return (
+    <DashboardCard
+      label="Gallery"
+      actions={
+        <button className="gallery-refresh-btn" disabled aria-label="Refresh gallery">
+          <RefreshCw size={12} />
+        </button>
+      }
+    >
+      <div className="gallery-grid">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="gallery-placeholder">
+            <ImageIcon size={20} />
+          </div>
+        ))}
+      </div>
+      <span className="gallery-footnote">
+        AI-generated images will appear here
+      </span>
+    </DashboardCard>
+  )
+}
