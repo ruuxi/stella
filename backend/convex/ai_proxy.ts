@@ -20,7 +20,30 @@ import { internal } from "./_generated/api";
 import { streamText, generateText, createGateway, embed } from "ai";
 import { getModelConfig } from "./agent/model";
 
-const MAX_ANON_REQUESTS = 10;
+function corsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get("origin");
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-ID",
+    "Access-Control-Max-Age": "86400",
+  };
+  if (origin) headers["Access-Control-Allow-Origin"] = origin;
+  return headers;
+}
+
+function withProxyCors(response: Response, request: Request): Response {
+  const headers = new Headers(response.headers);
+  for (const [k, v] of Object.entries(corsHeaders(request))) {
+    headers.set(k, v);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+const MAX_ANON_REQUESTS = 50000;
 const ANON_DEVICE_HASH_SALT_MISSING_MESSAGE = "Missing ANON_DEVICE_ID_HASH_SALT";
 let didLogMissingAnonDeviceSaltForProxy = false;
 const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
@@ -138,7 +161,7 @@ function getGateway() {
 export const proxyChat = httpAction(async (ctx, request) => {
   const auth = await resolveAuth(ctx, request);
   if (auth.type === "none") {
-    return new Response("Unauthorized", { status: 401 });
+    return withProxyCors(new Response("Unauthorized", { status: 401 }), request);
   }
 
   let body: {
@@ -154,11 +177,11 @@ export const proxyChat = httpAction(async (ctx, request) => {
   try {
     body = await request.json();
   } catch {
-    return new Response("Invalid JSON", { status: 400 });
+    return withProxyCors(new Response("Invalid JSON", { status: 400 }), request);
   }
 
   if (!body.messages || !Array.isArray(body.messages)) {
-    return new Response("messages array is required", { status: 400 });
+    return withProxyCors(new Response("messages array is required", { status: 400 }), request);
   }
 
   if (auth.type === "device") {
@@ -168,14 +191,17 @@ export const proxyChat = httpAction(async (ctx, request) => {
       getClientAddressKey(request),
     );
     if (!allowed) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
+      return withProxyCors(
+        new Response(
+          JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
+          { status: 429, headers: { "Content-Type": "application/json" } },
+        ),
+        request,
       );
     }
   } else if (auth.type === "jwt") {
     const rateLimitResponse = await consumeAnonJwtRateLimit(ctx, auth, request);
-    if (rateLimitResponse) return rateLimitResponse;
+    if (rateLimitResponse) return withProxyCors(rateLimitResponse, request);
   }
 
   const gateway = getGateway();
@@ -195,7 +221,7 @@ export const proxyChat = httpAction(async (ctx, request) => {
         temperature: body.temperature ?? defaults.temperature,
       });
 
-      return result.toUIMessageStreamResponse();
+      return withProxyCors(result.toUIMessageStreamResponse(), request);
     } else {
       // Non-streaming response
       const result = await generateText({
@@ -206,19 +232,25 @@ export const proxyChat = httpAction(async (ctx, request) => {
         temperature: body.temperature ?? defaults.temperature,
       });
 
-      return new Response(
-        JSON.stringify({
-          text: result.text,
-          usage: result.usage,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
+      return withProxyCors(
+        new Response(
+          JSON.stringify({
+            text: result.text,
+            usage: result.usage,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+        request,
       );
     }
   } catch (error) {
     console.error("[ai-proxy] Chat error:", error);
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+    return withProxyCors(
+      new Response(
+        JSON.stringify({ error: (error as Error).message }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
+      ),
+      request,
     );
   }
 });

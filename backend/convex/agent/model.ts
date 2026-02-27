@@ -213,6 +213,18 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
       },
     },
   },
+
+  music_prompt: {
+    model: "google/gemini-3-flash",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
 };
 
 /**
