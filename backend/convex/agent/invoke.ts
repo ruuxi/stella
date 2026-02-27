@@ -1,18 +1,17 @@
-import { internalAction, type ActionCtx } from "../_generated/server";
+import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { stepCountIs } from "ai";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "../tools/index";
-import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
-import { streamTextWithFailover } from "./model_execution";
-import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction } from "../auth";
 import { jsonSchemaValidator, jsonValueValidator } from "../shared_validators";
 import { normalizeOptionalInt } from "../lib/number_utils";
 import { stableStringify, extractJsonBlock } from "../lib/json";
 import { validateAgainstSchema } from "../lib/validator";
 import { scrubProviderTerms, scrubValue } from "../lib/provider_redaction";
+import { coerceDeviceContext } from "./execution_context";
+import { executeStream } from "./execution";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
@@ -48,36 +47,6 @@ type AgentInvokeResult =
       rawText: string;
       outputJson: string;
     };
-
-const coerceDeviceContext = async (
-  ctx: ActionCtx,
-  args: {
-    conversationId?: Id<"conversations">;
-    userMessageId?: Id<"events">;
-    targetDeviceId?: string;
-  },
-) => {
-  const conversationId = args.conversationId;
-  const userMessageId = args.userMessageId;
-  let targetDeviceId = args.targetDeviceId;
-
-  if (!targetDeviceId && userMessageId) {
-    try {
-      const userEvent = await ctx.runQuery(internal.events.getById, { id: userMessageId });
-      if (userEvent?.deviceId) {
-        targetDeviceId = userEvent.deviceId;
-      }
-    } catch {
-      // Ignore lookup failures.
-    }
-  }
-
-  if (!conversationId || !userMessageId || !targetDeviceId) {
-    return null;
-  }
-
-  return { conversationId, userMessageId, targetDeviceId };
-};
 
 export const invoke = internalAction({
   args: {
@@ -176,9 +145,6 @@ export const invoke = internalAction({
 
     let rawText = "";
     try {
-      const resolvedConfig = await resolveModelConfig(ctx, args.agentType, ownerId);
-      const fallbackConfig = await resolveFallbackConfig(ctx, args.agentType, ownerId).catch(() => null);
-
       const invokeSharedArgs = {
         system: `${promptBuild.systemPrompt}\n\n${invocationInstructions}`.trim(),
         tools,
@@ -191,9 +157,10 @@ export const invoke = internalAction({
         ],
       };
 
-      const result = await streamTextWithFailover({
-        resolvedConfig: resolvedConfig as Record<string, unknown>,
-        fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+      const result = await executeStream({
+        ctx,
+        agentType: args.agentType,
+        ownerId,
         sharedArgs: invokeSharedArgs as Record<string, unknown>,
       });
 
