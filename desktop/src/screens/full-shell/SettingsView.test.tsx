@@ -145,7 +145,7 @@ function setupUseQuery(opts: {
   });
 }
 
-const LLM_PROVIDER_ROW_COUNT = 12;
+const LLM_PROVIDER_ROW_COUNT = 21;
 
 // ---------------------------------------------------------------------------
 // Tests: Dialog rendering
@@ -632,9 +632,18 @@ describe("ApiKeysSection", () => {
     expect(screen.getByText("Azure OpenAI")).toBeTruthy();
     expect(screen.getByText("Azure Cognitive Services")).toBeTruthy();
     expect(screen.getByText("Cloudflare Workers AI")).toBeTruthy();
+    expect(screen.getByText("Cloudflare AI Gateway")).toBeTruthy();
     expect(screen.getByText("Vercel AI Gateway (Direct)")).toBeTruthy();
     expect(screen.getByText("OpenRouter")).toBeTruthy();
     expect(screen.getByText("Vercel AI Gateway")).toBeTruthy();
+    expect(screen.getByText("Amazon Bedrock")).toBeTruthy();
+    expect(screen.getByText("Google Vertex AI")).toBeTruthy();
+    expect(screen.getByText("Vertex AI (Anthropic)")).toBeTruthy();
+    expect(screen.getByText("GitLab Duo")).toBeTruthy();
+    expect(screen.getByText("GitHub Copilot")).toBeTruthy();
+    expect(screen.getByText("GitHub Copilot Enterprise")).toBeTruthy();
+    expect(screen.getByText("SAP AI Core")).toBeTruthy();
+    expect(screen.getByText("OpenCode Zen")).toBeTruthy();
     expect(screen.getByText("ZenMux")).toBeTruthy();
     expect(screen.getByText("Cerebras")).toBeTruthy();
     expect(screen.getByText("Kilo Gateway")).toBeTruthy();
