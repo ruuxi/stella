@@ -145,6 +145,8 @@ function setupUseQuery(opts: {
   });
 }
 
+const LLM_PROVIDER_ROW_COUNT = 12;
+
 // ---------------------------------------------------------------------------
 // Tests: Dialog rendering
 // ---------------------------------------------------------------------------
@@ -627,8 +629,15 @@ describe("ApiKeysSection", () => {
     expect(screen.getByText("Anthropic")).toBeTruthy();
     expect(screen.getByText("OpenAI")).toBeTruthy();
     expect(screen.getByText("Google")).toBeTruthy();
+    expect(screen.getByText("Azure OpenAI")).toBeTruthy();
+    expect(screen.getByText("Azure Cognitive Services")).toBeTruthy();
+    expect(screen.getByText("Cloudflare Workers AI")).toBeTruthy();
+    expect(screen.getByText("Vercel AI Gateway (Direct)")).toBeTruthy();
     expect(screen.getByText("OpenRouter")).toBeTruthy();
     expect(screen.getByText("Vercel AI Gateway")).toBeTruthy();
+    expect(screen.getByText("ZenMux")).toBeTruthy();
+    expect(screen.getByText("Cerebras")).toBeTruthy();
+    expect(screen.getByText("Kilo Gateway")).toBeTruthy();
   });
 
   it("shows 'No key' status when no secrets exist", () => {
@@ -637,7 +646,7 @@ describe("ApiKeysSection", () => {
     fireEvent.click(screen.getByText("Models"));
 
     const noKeyStatuses = screen.getAllByText("No key");
-    expect(noKeyStatuses.length).toBe(5); // one for each provider
+    expect(noKeyStatuses.length).toBe(LLM_PROVIDER_ROW_COUNT); // one for each provider
   });
 
   it("shows 'Key set' status when secret exists for a provider", () => {
@@ -650,9 +659,9 @@ describe("ApiKeysSection", () => {
     fireEvent.click(screen.getByText("Models"));
 
     expect(screen.getByText("Key set")).toBeTruthy();
-    // The other four should show "No key"
+    // The other providers should still show "No key"
     const noKeyStatuses = screen.getAllByText("No key");
-    expect(noKeyStatuses.length).toBe(4);
+    expect(noKeyStatuses.length).toBe(LLM_PROVIDER_ROW_COUNT - 1);
   });
 
   it("shows 'Add Key' button when provider has no secret", () => {
@@ -661,7 +670,7 @@ describe("ApiKeysSection", () => {
     fireEvent.click(screen.getByText("Models"));
 
     const addKeyButtons = screen.getAllByText("Add Key");
-    expect(addKeyButtons.length).toBe(5);
+    expect(addKeyButtons.length).toBe(LLM_PROVIDER_ROW_COUNT);
   });
 
   it("shows 'Update Key' and 'Remove' buttons when provider has a secret", () => {
@@ -899,7 +908,7 @@ describe("ApiKeysSection", () => {
 
     // All providers should show "No key" since the only secret is revoked
     const noKeyStatuses = screen.getAllByText("No key");
-    expect(noKeyStatuses.length).toBe(5);
+    expect(noKeyStatuses.length).toBe(LLM_PROVIDER_ROW_COUNT);
     expect(screen.queryByText("Key set")).toBeNull();
   });
 
