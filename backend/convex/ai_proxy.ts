@@ -18,7 +18,6 @@ import type { ActionCtx } from "./_generated/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { streamText, generateText, createGateway, embed } from "ai";
-import { GoogleAuth } from "google-auth-library";
 import { getModelConfig } from "./agent/model";
 
 function corsHeaders(request: Request): Record<string, string> {
@@ -458,24 +457,6 @@ function googleVertexLocation(defaultLocation: string): string {
   );
 }
 
-function resolveGoogleVertexTokenFromKey(apiKey: string): Promise<string> {
-  const parsed = parseJsonObject(apiKey);
-  if (!parsed) {
-    return Promise.resolve(apiKey.trim());
-  }
-  const auth = new GoogleAuth({ credentials: parsed });
-  return auth
-    .getClient()
-    .then((client) => client.getAccessToken())
-    .then((tokenResult) => {
-      const accessToken =
-        typeof tokenResult === "string"
-          ? tokenResult
-          : tokenResult?.token ?? null;
-      if (!accessToken) throw new Error("Google Vertex token exchange returned no access token");
-      return accessToken;
-    });
-}
 
 function extractSapAiCoreBaseUrlFromServiceKey(parsed: Record<string, unknown>): string | null {
   const serviceUrls =
@@ -499,43 +480,6 @@ function extractSapAiCoreBaseUrlFromServiceKey(parsed: Record<string, unknown>):
 
   const found = candidates.find((v) => typeof v === "string");
   return found ? withoutTrailingSlash(found) : null;
-}
-
-async function resolveSapAiCoreAccessToken(apiKey: string): Promise<string> {
-  const parsed = parseJsonObject(apiKey);
-  if (!parsed) {
-    return apiKey.trim();
-  }
-
-  const directToken = asNonEmptyString(parsed.access_token) ?? asNonEmptyString(parsed.accessToken);
-  if (directToken) return directToken;
-
-  const clientId = asNonEmptyString(parsed.clientid) ?? asNonEmptyString(parsed.clientId);
-  const clientSecret = asNonEmptyString(parsed.clientsecret) ?? asNonEmptyString(parsed.clientSecret);
-  const oauthBase = asNonEmptyString(parsed.url);
-  if (!clientId || !clientSecret || !oauthBase) {
-    return apiKey.trim();
-  }
-
-  const tokenUrl = `${withoutTrailingSlash(oauthBase)}/oauth/token`;
-  const basic = Buffer.from(`${clientId}:${clientSecret}`, "utf8").toString("base64");
-  const response = await fetch(tokenUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-  if (!response.ok) {
-    throw new Error(`SAP AI Core token exchange failed (${response.status})`);
-  }
-
-  const payload = await response.json() as { access_token?: string };
-  if (!payload.access_token) {
-    throw new Error("SAP AI Core token exchange returned no access_token");
-  }
-  return payload.access_token;
 }
 
 /** Hard-bound upstream allowlist — client CANNOT influence destination */
@@ -645,6 +589,7 @@ const STRIP_REQUEST_HEADERS = new Set([
 
 /** Build upstream-specific auth headers */
 async function buildUpstreamAuthHeaders(
+  ctx: ActionCtx,
   provider: string,
   apiKey: string,
 ): Promise<Record<string, string>> {
@@ -689,19 +634,14 @@ async function buildUpstreamAuthHeaders(
         "x-goog-api-key": apiKey,
       };
     case "google-vertex":
-    case "google-vertex-anthropic": {
-      const accessToken = await resolveGoogleVertexTokenFromKey(apiKey);
-      return {
-        Authorization: `Bearer ${accessToken}`,
-      };
-    }
+    case "google-vertex-anthropic":
     case "sap-ai-core": {
-      const accessToken = await resolveSapAiCoreAccessToken(apiKey);
-      const resourceGroup = process.env.AICORE_RESOURCE_GROUP?.trim();
-      return {
-        Authorization: `Bearer ${accessToken}`,
-        ...(resourceGroup ? { "AI-Resource-Group": resourceGroup } : {}),
-      };
+      // Delegate to Node.js runtime for auth resolution (GoogleAuth, SAP OAuth)
+      const headers = await ctx.runAction(internal.ai_proxy_node.resolveNodeAuthHeaders, {
+        provider,
+        apiKey,
+      });
+      return headers as Record<string, string>;
     }
     default:
       return {
@@ -917,7 +857,7 @@ async function forwardRequest(
   });
 
   // Replace auth headers with real credentials
-  const authHeaders = await buildUpstreamAuthHeaders(provider, apiKey);
+  const authHeaders = await buildUpstreamAuthHeaders(ctx, provider, apiKey);
   // Remove any existing auth headers the client might have sent
   delete forwardHeaders["authorization"];
   delete forwardHeaders["Authorization"];
