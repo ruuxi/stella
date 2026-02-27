@@ -1,15 +1,98 @@
-import { Play, Pause, Square } from "lucide-react"
+import { Play, Pause, Square, Mic, MicOff } from "lucide-react"
+import { useRef, useEffect, useState, useCallback } from "react"
 import { DashboardCard } from "./DashboardCard"
 import { useLyriaMusic } from "@/services/use-lyria-music"
 import type { MusicMood } from "@/services/lyria-music"
 
-const MOODS: MusicMood[] = ["Focus", "Calm", "Energy", "Sleep", "Lo-fi"]
+const MOODS: MusicMood[] = ["Auto", "Focus", "Calm", "Energy", "Sleep", "Lo-fi"]
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
   return `${m}:${String(s).padStart(2, "0")}`
 }
+
+// ---------------------------------------------------------------------------
+// Waveform canvas
+// ---------------------------------------------------------------------------
+
+function Waveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode | null> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const rafRef = useRef<number>(0)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const draw = () => {
+      rafRef.current = requestAnimationFrame(draw)
+
+      const analyser = analyserRef.current
+      if (!analyser) {
+        const w = canvas.width
+        const h = canvas.height
+        ctx.clearRect(0, 0, w, h)
+        return
+      }
+
+      const bufferLength = analyser.frequencyBinCount
+      const dataArray = new Uint8Array(bufferLength)
+      analyser.getByteFrequencyData(dataArray)
+
+      const dpr = window.devicePixelRatio || 1
+      const rect = canvas.getBoundingClientRect()
+      const w = rect.width * dpr
+      const h = rect.height * dpr
+
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w
+        canvas.height = h
+      }
+
+      ctx.clearRect(0, 0, w, h)
+
+      const style = getComputedStyle(canvas)
+      const fg = style.color || "rgba(255,255,255,0.5)"
+
+      const barCount = Math.min(bufferLength, 64)
+      const barWidth = w / barCount
+      const gap = Math.max(1, barWidth * 0.2)
+
+      for (let i = 0; i < barCount; i++) {
+        const value = dataArray[i] / 255
+        const barHeight = Math.max(2 * dpr, value * h * 0.85)
+
+        const x = i * barWidth + gap / 2
+        const y = (h - barHeight) / 2
+
+        ctx.fillStyle = fg
+        ctx.globalAlpha = 0.15 + value * 0.45
+        ctx.beginPath()
+        ctx.roundRect(x, y, barWidth - gap, barHeight, 1.5 * dpr)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+    }
+
+    draw()
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [analyserRef])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="music-waveform"
+      aria-hidden="true"
+    />
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MusicPlayer
+// ---------------------------------------------------------------------------
 
 export function MusicPlayer() {
   const {
@@ -18,12 +101,26 @@ export function MusicPlayer() {
     error,
     currentPromptLabel,
     elapsedSeconds,
+    userHint,
+    lyrics,
+    analyserRef,
     togglePlayPause,
+    play,
     selectMood,
     stop,
+    setUserHint,
+    toggleLyrics,
   } = useLyriaMusic()
 
+  const [localHint, setLocalHint] = useState(userHint)
+
   const isActive = status === "playing" || status === "paused" || status === "loading"
+
+  const handlePlay = useCallback(() => {
+    // Sync the local hint to state before playing
+    setUserHint(localHint)
+    play()
+  }, [localHint, play, setUserHint])
 
   return (
     <DashboardCard
@@ -36,6 +133,10 @@ export function MusicPlayer() {
         ) : undefined
       }
     >
+      {/* Waveform visualization */}
+      {isActive && <Waveform analyserRef={analyserRef} />}
+
+      {/* Playback row */}
       <div className="music-player-row">
         <button
           className={`music-play-btn${isActive ? " music-play-btn--active" : ""}`}
@@ -51,21 +152,37 @@ export function MusicPlayer() {
             <Play size={14} />
           )}
         </button>
-        <div className="music-track-info">
-          <span className="music-track-title">
-            {error
-              ? "Unable to play"
-              : status === "loading"
-                ? "Starting..."
-                : isActive
-                  ? currentPromptLabel || mood
-                  : "Tap play to start"}
-          </span>
+
+        {/* Progress bar + info */}
+        <div className="music-player-center">
+          <div className="music-track-info">
+            <span className="music-track-title">
+              {error
+                ? "Unable to play"
+                : status === "loading"
+                  ? "Starting..."
+                  : isActive
+                    ? currentPromptLabel || mood
+                    : "Tap play to start"}
+            </span>
+            <span className="music-track-duration">
+              {isActive ? formatTime(elapsedSeconds) : ""}
+            </span>
+          </div>
+          {isActive && (
+            <div className="music-progress">
+              <div
+                className="music-progress-fill"
+                style={{
+                  width: `${Math.min(100, (elapsedSeconds / 600) * 100)}%`,
+                }}
+              />
+            </div>
+          )}
         </div>
-        <span className="music-track-duration">
-          {isActive ? formatTime(elapsedSeconds) : ""}
-        </span>
       </div>
+
+      {/* Mood chips + lyrics toggle */}
       <div className="music-moods">
         {MOODS.map((m) => (
           <button
@@ -76,6 +193,41 @@ export function MusicPlayer() {
             {m}
           </button>
         ))}
+        <button
+          className={`music-mood-chip music-lyrics-toggle${lyrics ? " music-mood-chip--selected" : ""}`}
+          onClick={toggleLyrics}
+          aria-label={lyrics ? "Disable lyrics" : "Enable lyrics"}
+          title={lyrics ? "Lyrics on" : "Lyrics off"}
+        >
+          {lyrics ? <Mic size={11} /> : <MicOff size={11} />}
+          <span>Lyrics</span>
+        </button>
+      </div>
+
+      {/* Prompt bar with play button */}
+      <div className="music-prompt-bar">
+        <input
+          type="text"
+          className="music-prompt-input"
+          placeholder="Describe your vibe..."
+          value={localHint}
+          onChange={(e) => setLocalHint(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              handlePlay()
+            }
+          }}
+          maxLength={200}
+        />
+        <button
+          className="music-prompt-submit"
+          onClick={handlePlay}
+          disabled={status === "loading"}
+          aria-label="Play with this vibe"
+        >
+          <Play size={12} />
+        </button>
       </div>
     </DashboardCard>
   )
