@@ -24,11 +24,6 @@ export const execute = action({
     }),
     responseType: v.optional(v.string()),
   },
-  returns: v.object({
-    data: v.optional(jsonValueValidator),
-    error: v.optional(v.string()),
-    body: v.optional(v.string()),
-  }),
   handler: async (ctx, args) => {
     await requireUserId(ctx);
 

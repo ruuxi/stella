@@ -22,7 +22,6 @@ export const getForConversation = query({
   args: {
     conversationId: v.id("conversations"),
   },
-  returns: v.union(canvasStateValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const result = await ctx.db
@@ -47,7 +46,6 @@ export const save = internalMutation({
     url: v.optional(v.string()),
     width: v.optional(v.number()),
   },
-  returns: v.id("canvas_states"),
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) {
@@ -101,7 +99,6 @@ export const getForConversationInternal = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
-  returns: v.union(canvasStateValidator, v.null()),
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) {
@@ -126,7 +123,6 @@ export const remove = internalMutation({
   args: {
     conversationId: v.id("conversations"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) {

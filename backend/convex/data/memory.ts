@@ -363,7 +363,6 @@ export const insertMemory = internalMutation({
     content: v.string(),
     embedding: v.optional(v.array(v.float64())),
   },
-  returns: v.id("memories"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("memories", {
@@ -389,7 +388,6 @@ export const mergeMemory = internalMutation({
     content: v.string(),
     embedding: v.optional(v.array(v.float64())),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     const patch: Record<string, unknown> = {
@@ -411,7 +409,6 @@ export const mergeMemory = internalMutation({
 
 export const touchMemoriesById = internalMutation({
   args: { memoryIds: v.array(v.id("memories")) },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     await Promise.all(
@@ -434,7 +431,6 @@ export const touchMemoriesById = internalMutation({
 
 export const getMemoryById = internalQuery({
   args: { id: v.id("memories") },
-  returns: v.union(memoryValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -446,7 +442,6 @@ export const getMemoryById = internalQuery({
 
 export const getMemoriesByIds = internalQuery({
   args: { ids: v.array(v.id("memories")) },
-  returns: v.array(memoryValidator),
   handler: async (ctx, args) => {
     const results = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
     return results.filter((m): m is NonNullable<typeof m> => m !== null);
@@ -459,7 +454,6 @@ export const getMemoriesByIds = internalQuery({
 
 export const deleteMemory = internalMutation({
   args: { memoryId: v.id("memories") },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.memoryId);
     return null;
@@ -477,7 +471,6 @@ export const recallMemories = internalAction({
     source: v.optional(v.union(v.literal("memory"), v.literal("history"))),
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const query = args.query.trim();
     if (!query) return "";
@@ -642,7 +635,6 @@ export const adjudicateAndStoreFact = internalAction({
     conversationId: v.optional(v.id("conversations")),
     embeddingModelKey: v.string(),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     try {
       const vector = await embedText(args.embeddingModelKey, args.content);
@@ -730,7 +722,6 @@ export const saveMemory = internalAction({
     content: v.string(),
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     return await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
       ownerId: args.ownerId,
@@ -750,7 +741,6 @@ export const seedFromDiscovery = internalAction({
     ownerId: v.string(),
     formattedSignals: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const response = await cheapLLM(
       MEMORY_DISCOVERY_FACT_EXTRACTION_MODEL_KEY,

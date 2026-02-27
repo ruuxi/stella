@@ -264,7 +264,6 @@ export const invoke = internalAction({
     userMessageId: v.optional(v.id("events")),
     targetDeviceId: v.optional(v.string()),
   },
-  returns: agentInvokeResultValidator,
   handler: async (ctx, args): Promise<AgentInvokeResult> => {
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
     await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
