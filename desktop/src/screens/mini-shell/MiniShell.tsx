@@ -4,7 +4,6 @@ import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
-import { StellaAnimation } from "../../components/StellaAnimation";
 
 export const MiniShell = () => {
   const { setWindow } = useUiState();
@@ -62,9 +61,6 @@ export const MiniShell = () => {
     >
       <div className="raycast-panel">
         <div className="mini-titlebar">
-          <div className="mini-titlebar-left">
-            <StellaAnimation width={40} height={40} paused={!shellVisible} />
-          </div>
           <span className="mini-titlebar-title">
             {windowTitle ?? "Stella"}
           </span>
@@ -87,6 +83,24 @@ export const MiniShell = () => {
                 <polyline points="9 21 3 21 3 15" />
                 <line x1="21" y1="3" x2="14" y2="10" />
                 <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            </button>
+            <button
+              className="mini-titlebar-action"
+              type="button"
+              onClick={() => window.electronAPI?.closeWindow?.()}
+              title="Close"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
