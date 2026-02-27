@@ -174,7 +174,7 @@ export const createLocalHostRunner = ({
   let queue = Promise.resolve();
 
   // Concurrency-limited parallel executor for dashboard generation
-  const MAX_CONCURRENT_DASHBOARD_GEN = 3;
+  const MAX_CONCURRENT_DASHBOARD_GEN = 4;
   let dashboardGenRunning = 0;
   const dashboardGenPending: Array<() => void> = [];
 
