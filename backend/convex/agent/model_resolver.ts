@@ -13,14 +13,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
-import { createVertex } from "@ai-sdk/google-vertex";
-import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
-import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
-import { createGitLab } from "@gitlab/gitlab-ai-provider";
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 import { createGateway, type LanguageModel } from "ai";
-import { GoogleAuth } from "google-auth-library";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -63,114 +56,6 @@ function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function toGoogleAuthFetch(apiKey: string) {
-  const parsed = parseJsonObject(apiKey);
-
-  // Treat non-JSON keys as short-lived access tokens.
-  if (!parsed) {
-    const accessToken = apiKey.trim();
-    return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set("Authorization", `Bearer ${accessToken}`);
-      return fetch(input, { ...init, headers });
-    };
-  }
-
-  const credentials = parsed;
-  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const auth = new GoogleAuth({ credentials });
-    const client = await auth.getClient();
-    const tokenResult = await client.getAccessToken();
-    const accessToken =
-      typeof tokenResult === "string"
-        ? tokenResult
-        : tokenResult?.token ?? null;
-    if (!accessToken) {
-      throw new Error("Google Vertex token exchange returned no access token");
-    }
-    const headers = new Headers(init?.headers);
-    headers.set("Authorization", `Bearer ${accessToken}`);
-    return fetch(input, { ...init, headers });
-  };
-}
-
-function buildBedrockModelId(modelName: string, region: string): string {
-  const crossRegionPrefixes = ["global.", "us.", "eu.", "jp.", "apac.", "au."];
-  if (crossRegionPrefixes.some((prefix) => modelName.startsWith(prefix))) {
-    return modelName;
-  }
-
-  let regionPrefix = region.split("-")[0];
-  let resolvedModel = modelName;
-
-  switch (regionPrefix) {
-    case "us": {
-      const modelRequiresPrefix = [
-        "nova-micro",
-        "nova-lite",
-        "nova-pro",
-        "nova-premier",
-        "nova-2",
-        "claude",
-        "deepseek",
-      ].some((m) => modelName.includes(m));
-      const isGovCloud = region.startsWith("us-gov");
-      if (modelRequiresPrefix && !isGovCloud) {
-        resolvedModel = `${regionPrefix}.${modelName}`;
-      }
-      break;
-    }
-    case "eu": {
-      const regionRequiresPrefix = [
-        "eu-west-1",
-        "eu-west-2",
-        "eu-west-3",
-        "eu-north-1",
-        "eu-central-1",
-        "eu-south-1",
-        "eu-south-2",
-      ].some((r) => region.includes(r));
-      const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "llama3", "pixtral"].some((m) =>
-        modelName.includes(m),
-      );
-      if (regionRequiresPrefix && modelRequiresPrefix) {
-        resolvedModel = `${regionPrefix}.${modelName}`;
-      }
-      break;
-    }
-    case "ap": {
-      const isAustraliaRegion = ["ap-southeast-2", "ap-southeast-4"].includes(region);
-      const isTokyoRegion = region === "ap-northeast-1";
-      if (
-        isAustraliaRegion &&
-        ["anthropic.claude-sonnet-4-5", "anthropic.claude-haiku"].some((m) => modelName.includes(m))
-      ) {
-        regionPrefix = "au";
-        resolvedModel = `${regionPrefix}.${modelName}`;
-      } else if (isTokyoRegion) {
-        const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "nova-pro"].some((m) =>
-          modelName.includes(m),
-        );
-        if (modelRequiresPrefix) {
-          regionPrefix = "jp";
-          resolvedModel = `${regionPrefix}.${modelName}`;
-        }
-      } else {
-        const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "nova-pro"].some((m) =>
-          modelName.includes(m),
-        );
-        if (modelRequiresPrefix) {
-          regionPrefix = "apac";
-          resolvedModel = `${regionPrefix}.${modelName}`;
-        }
-      }
-      break;
-    }
-  }
-
-  return resolvedModel;
 }
 
 /** Create a direct provider model instance for BYOK */
@@ -275,104 +160,15 @@ function createProviderModel(modelString: string, apiKey: string): LanguageModel
       });
       return opencode(modelName);
     }
-    case "amazon-bedrock": {
-      const parsed = parseJsonObject(apiKey);
-      const regionFromKey =
-        asNonEmptyString(parsed?.region) ??
-        asNonEmptyString(parsed?.aws_region);
-      const region = regionFromKey ?? process.env.AWS_REGION?.trim() ?? "us-east-1";
-
-      const accessKeyId = asNonEmptyString(parsed?.accessKeyId) ?? asNonEmptyString(parsed?.aws_access_key_id);
-      const secretAccessKey =
-        asNonEmptyString(parsed?.secretAccessKey) ?? asNonEmptyString(parsed?.aws_secret_access_key);
-      const sessionToken = asNonEmptyString(parsed?.sessionToken) ?? asNonEmptyString(parsed?.aws_session_token);
-      const profile = asNonEmptyString(parsed?.profile) ?? process.env.AWS_PROFILE?.trim();
-
-      const provider = createAmazonBedrock({
-        region,
-        ...(apiKey ? { apiKey } : {}),
-        ...(accessKeyId && secretAccessKey
-          ? {
-              credentialProvider: async () => ({
-                accessKeyId,
-                secretAccessKey,
-                ...(sessionToken ? { sessionToken } : {}),
-              }),
-            }
-          : {
-              credentialProvider: fromNodeProviderChain(profile ? { profile } : {}),
-            }),
-      });
-
-      return provider.languageModel(buildBedrockModelId(modelName, region));
-    }
-    case "google-vertex": {
-      const project =
-        process.env.GOOGLE_VERTEX_PROJECT?.trim() ||
-        process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
-        process.env.GCP_PROJECT?.trim() ||
-        process.env.GCLOUD_PROJECT?.trim();
-      if (!project) return null;
-
-      const location =
-        process.env.GOOGLE_VERTEX_LOCATION?.trim() ||
-        process.env.GOOGLE_CLOUD_LOCATION?.trim() ||
-        process.env.VERTEX_LOCATION?.trim() ||
-        "us-central1";
-
-      const vertex = createVertex({
-        project,
-        location,
-        fetch: toGoogleAuthFetch(apiKey),
-      });
-
-      return vertex.languageModel(modelName.trim());
-    }
-    case "google-vertex-anthropic": {
-      const project =
-        process.env.GOOGLE_VERTEX_PROJECT?.trim() ||
-        process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
-        process.env.GCP_PROJECT?.trim() ||
-        process.env.GCLOUD_PROJECT?.trim();
-      if (!project) return null;
-
-      const location =
-        process.env.GOOGLE_VERTEX_LOCATION?.trim() ||
-        process.env.GOOGLE_CLOUD_LOCATION?.trim() ||
-        process.env.VERTEX_LOCATION?.trim() ||
-        "global";
-
-      const vertexAnthropic = createVertexAnthropic({
-        project,
-        location,
-        fetch: toGoogleAuthFetch(apiKey),
-      });
-
-      return vertexAnthropic.languageModel(modelName.trim());
-    }
-    case "gitlab": {
-      const instanceUrl = process.env.GITLAB_INSTANCE_URL?.trim() || "https://gitlab.com";
-      const gitlab = createGitLab({
-        instanceUrl,
-        apiKey,
-        aiGatewayHeaders: {
-          "User-Agent": "stella",
-        },
-      });
-      return gitlab.agenticChat(modelName);
-    }
-    case "sap-ai-core": {
-      if (!process.env.AICORE_SERVICE_KEY?.trim()) {
-        process.env.AICORE_SERVICE_KEY = apiKey;
-      }
-      const deploymentId = process.env.AICORE_DEPLOYMENT_ID?.trim();
-      const resourceGroup = process.env.AICORE_RESOURCE_GROUP?.trim();
-      const sap = createSAPAIProvider({
-        ...(deploymentId ? { deploymentId } : {}),
-        ...(resourceGroup ? { resourceGroup } : {}),
-      });
-      return sap(modelName);
-    }
+    // Node-only providers — require "use node" runtime.
+    // In V8 context, these fall through to OpenRouter/gateway via BYOK chain.
+    // Direct SDK support is available via the llmProxy reverse proxy path.
+    case "amazon-bedrock":
+    case "google-vertex":
+    case "google-vertex-anthropic":
+    case "gitlab":
+    case "sap-ai-core":
+      return null;
     default:
       return null;
   }
