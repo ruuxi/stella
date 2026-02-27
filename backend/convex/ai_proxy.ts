@@ -369,7 +369,7 @@ export const proxySearch = httpAction(async (ctx, request) => {
 // Client sends:
 //   POST /api/ai/llm-proxy
 //   X-Proxy-Token: <token>
-//   X-Provider: anthropic|openai|google|openrouter|azure|azure-cognitive-services|cloudflare-workers-ai|vercel|zenmux|cerebras|kilo
+//   X-Provider: anthropic|openai|google|openrouter|azure|azure-cognitive-services|cloudflare-workers-ai|vercel|zenmux|cerebras|kilo|cloudflare-ai-gateway|github-copilot|github-copilot-enterprise|opencode
 //   X-Original-Path: /v1/messages (the provider-specific path suffix)
 //   Body: raw provider request
 //
@@ -391,12 +391,16 @@ const STATIC_PROVIDER_UPSTREAMS: Record<string, string> = {
   zenmux: "https://zenmux.ai/api/anthropic/v1",
   cerebras: "https://api.cerebras.ai/v1",
   kilo: "https://api.kilo.ai/api/gateway",
+  "github-copilot": "https://api.githubcopilot.com",
+  "github-copilot-enterprise": "https://api.githubcopilot.com",
+  opencode: "https://opencode.ai/zen/v1",
 };
 
 const DYNAMIC_PROVIDER_IDS = new Set([
   "azure",
   "azure-cognitive-services",
   "cloudflare-workers-ai",
+  "cloudflare-ai-gateway",
 ]);
 
 function isSupportedProvider(provider: string): boolean {
@@ -423,6 +427,13 @@ function resolveProviderUpstream(provider: string): string | null {
     const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
     if (!accountId) return null;
     return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
+  }
+
+  if (provider === "cloudflare-ai-gateway") {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+    const gatewayId = process.env.CLOUDFLARE_GATEWAY_ID?.trim();
+    if (!accountId || !gatewayId) return null;
+    return `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/compat`;
   }
 
   return null;
@@ -459,7 +470,11 @@ function buildUpstreamAuthHeaders(
     case "openai":
     case "openrouter":
     case "cloudflare-workers-ai":
+    case "cloudflare-ai-gateway":
     case "vercel":
+    case "github-copilot":
+    case "github-copilot-enterprise":
+    case "opencode":
       return {
         Authorization: `Bearer ${apiKey}`,
       };
@@ -621,10 +636,14 @@ export const llmProxy = httpAction(async (ctx, request) => {
       azure: "AZURE_API_KEY",
       "azure-cognitive-services": "AZURE_COGNITIVE_SERVICES_API_KEY",
       "cloudflare-workers-ai": "CLOUDFLARE_API_KEY",
+      "cloudflare-ai-gateway": "CLOUDFLARE_API_TOKEN",
       vercel: "AI_GATEWAY_API_KEY",
       zenmux: "ZENMUX_API_KEY",
       cerebras: "CEREBRAS_API_KEY",
       kilo: "KILO_API_KEY",
+      "github-copilot": "GITHUB_TOKEN",
+      "github-copilot-enterprise": "GITHUB_TOKEN",
+      opencode: "OPENCODE_API_KEY",
     };
     const envKey = envKeyMap[provider];
     if (envKey) {
