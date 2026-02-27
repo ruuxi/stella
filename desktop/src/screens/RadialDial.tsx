@@ -133,10 +133,14 @@ export function RadialDial() {
     }
   }, [colors])
 
-  // Sync selection to refs
+  // Sync selection to refs — but only show on the blob once the SVG is visible.
+  // During the opening animation the blob's asymmetric wobble makes the visual
+  // wedge positions look different from the mathematical boundaries, so
+  // highlighting a wedge on the blob would show what appears to be the "wrong"
+  // one until the animation settles.
   useEffect(() => {
     const idx = WEDGES.findIndex((w) => w.id === selectedWedge)
-    selectedIdxRef.current = idx
+    selectedIdxRef.current = phase === 'open' || phase === 'closing' ? idx : -1
 
     const cardVec = cssToVec3(colors.card)
     const selVec = cssToVec3(colors.interactive)
@@ -144,7 +148,7 @@ export function RadialDial() {
       ...colorsRef.current,
       fills: WEDGES.map((_, i) => (i === idx ? selVec : cardVec)),
     }
-  }, [selectedWedge, colors])
+  }, [selectedWedge, colors, phase])
 
   const calculateWedge = useCallback(
     (x: number, y: number, centerX: number, centerY: number): RadialWedge => {
