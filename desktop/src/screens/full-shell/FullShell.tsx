@@ -17,7 +17,9 @@ import { ShiftingGradient } from "../../components/background/ShiftingGradient";
 import { TitleBar } from "../../components/TitleBar";
 import { Sidebar } from "../../components/Sidebar";
 import { WorkspaceArea } from "../../components/workspace/WorkspaceArea";
-import { ChatPanel } from "../../components/chat/ChatPanel";
+import { HeaderTabBar } from "../../components/header/HeaderTabBar";
+import { FloatingOrb } from "../../components/orb/FloatingOrb";
+import { useOrbMessage } from "../../hooks/use-orb-message";
 import { AuthDialog } from "../../app/AuthDialog";
 import { ConnectDialog } from "../../app/ConnectDialog";
 import { RuntimeModeDialog } from "../../app/RuntimeModeDialog";
@@ -69,7 +71,8 @@ const arePanelListsEqual = (
 export const FullShell = () => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
-  const { openCanvas, closeCanvas } = useWorkspace();
+  const { state: workspaceState, openCanvas, closeCanvas } = useWorkspace();
+  const canvas = workspaceState.canvas;
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
   const restoredCanvasConversationRef = useRef<string | null>(null);
@@ -212,6 +215,18 @@ export const FullShell = () => {
     [personalPages, openCanvas, setView],
   );
 
+  const handleTabSelect = useCallback(
+    (view: "home" | "store" | "app" | "chat", page?: PersonalPage) => {
+      if (view === "app" && page) {
+        openCanvas({ name: page.panelName, title: page.title });
+        setView("app");
+      } else {
+        setView(view);
+      }
+    },
+    [openCanvas, setView],
+  );
+
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -271,6 +286,9 @@ export const FullShell = () => {
   useEffect(() => {
     isNearBottomRef.current = isNearBottom;
   }, [isNearBottom]);
+
+  const isOrbVisible = state.view !== "chat" && onboarding.onboardingDone && !onboarding.isAuthLoading;
+  const orbMessage = useOrbMessage(events, isOrbVisible);
 
   useEffect(() => {
     const ready = onboarding.onboardingDone && !onboarding.isAuthLoading;
@@ -440,6 +458,54 @@ export const FullShell = () => {
 
   const appReady = onboarding.onboardingDone && !onboarding.isAuthLoading;
 
+  const chatColumnProps = {
+    events,
+    streamingText,
+    reasoningText,
+    isStreaming,
+    pendingUserMessageId,
+    selfModMap,
+    message,
+    setMessage,
+    chatContext,
+    setChatContext,
+    selectedText,
+    setSelectedText,
+    queueNext,
+    setQueueNext,
+    scrollContainerRef,
+    handleScroll,
+    showScrollButton,
+    scrollToBottom,
+    conversationId: activeConversationId,
+    onboardingDone: onboarding.onboardingDone,
+    onboardingExiting: onboarding.onboardingExiting,
+    isAuthenticated: onboarding.isAuthenticated,
+    isAuthLoading: onboarding.isAuthLoading,
+    canSubmit,
+    onSend: handleSend,
+    hasExpanded: onboarding.hasExpanded,
+    splitMode: onboarding.splitMode,
+    hasDiscoverySelections: onboarding.hasDiscoverySelections,
+    onboardingKey: onboarding.onboardingKey,
+    stellaAnimationRef: onboarding.stellaAnimationRef,
+    triggerFlash: onboarding.triggerFlash,
+    startBirthAnimation: onboarding.startBirthAnimation,
+    completeOnboarding: onboarding.completeOnboarding,
+    handleEnterSplit: onboarding.handleEnterSplit,
+    onDiscoveryConfirm: handleDiscoveryConfirm,
+    onSelectionChange: onboarding.setHasDiscoverySelections,
+    onDemoChange: handleDemoChange,
+    onCommandSelect: handleCommandSelect,
+  };
+
+  const handleOrbSend = useCallback(
+    (text: string) => {
+      void sendMessage({ text, selectedText: null, chatContext: null, onClear: () => {} });
+    },
+    [sendMessage],
+  );
+
   return (
     <div className="window-shell full">
       <TitleBar />
@@ -455,107 +521,44 @@ export const FullShell = () => {
               onStore={() => setView(state.view === 'store' ? 'home' : 'store')}
               onHome={() => setView('home')}
               storeActive={state.view === 'store'}
-              pages={personalPages}
-              onPageSelect={handlePageSelect}
             />
 
-            <WorkspaceArea
-              view={state.view}
-              activeDemo={activeDemo}
-              demoClosing={demoClosing}
-              onStoreBack={() => setView('home')}
-              onComposePrompt={(text) => {
-                setView("home");
-                setMessage(text);
-              }}
-              conversationId={activeConversationId ?? undefined}
-              eventsSource={conversationEventsSource}
-            />
-
-            <ChatPanel>
-              <ChatColumn
-                events={events}
-                streamingText={streamingText}
-                reasoningText={reasoningText}
-                isStreaming={isStreaming}
-                pendingUserMessageId={pendingUserMessageId}
-                selfModMap={selfModMap}
-                message={message}
-                setMessage={setMessage}
-                chatContext={chatContext}
-                setChatContext={setChatContext}
-                selectedText={selectedText}
-                setSelectedText={setSelectedText}
-                queueNext={queueNext}
-                setQueueNext={setQueueNext}
-                scrollContainerRef={scrollContainerRef}
-                handleScroll={handleScroll}
-                showScrollButton={showScrollButton}
-                scrollToBottom={scrollToBottom}
-                conversationId={activeConversationId}
-                onboardingDone={onboarding.onboardingDone}
-                onboardingExiting={onboarding.onboardingExiting}
-                isAuthenticated={onboarding.isAuthenticated}
-                isAuthLoading={onboarding.isAuthLoading}
-                canSubmit={canSubmit}
-                onSend={handleSend}
-                hasExpanded={onboarding.hasExpanded}
-                splitMode={onboarding.splitMode}
-                hasDiscoverySelections={onboarding.hasDiscoverySelections}
-                onboardingKey={onboarding.onboardingKey}
-                stellaAnimationRef={onboarding.stellaAnimationRef}
-                triggerFlash={onboarding.triggerFlash}
-                startBirthAnimation={onboarding.startBirthAnimation}
-                completeOnboarding={onboarding.completeOnboarding}
-                handleEnterSplit={onboarding.handleEnterSplit}
-                onDiscoveryConfirm={handleDiscoveryConfirm}
-                onSelectionChange={onboarding.setHasDiscoverySelections}
-                onDemoChange={handleDemoChange}
-                onCommandSelect={handleCommandSelect}
+            <div className="content-area">
+              <HeaderTabBar
+                activeView={state.view}
+                activeCanvasName={canvas?.name}
+                pages={personalPages}
+                onTabSelect={handleTabSelect}
               />
-            </ChatPanel>
+
+              {state.view === "chat" ? (
+                <ChatColumn {...chatColumnProps} />
+              ) : (
+                <WorkspaceArea
+                  view={state.view}
+                  activeDemo={activeDemo}
+                  demoClosing={demoClosing}
+                  onStoreBack={() => setView('home')}
+                  onComposePrompt={(text) => {
+                    setView("home");
+                    setMessage(text);
+                  }}
+                  conversationId={activeConversationId ?? undefined}
+                  eventsSource={conversationEventsSource}
+                />
+              )}
+
+              <FloatingOrb
+                visible={isOrbVisible}
+                bubbleText={orbMessage.text}
+                bubbleOpacity={orbMessage.opacity}
+                isStreaming={isStreaming}
+                onSend={handleOrbSend}
+              />
+            </div>
           </>
         ) : (
-          <ChatColumn
-            events={events}
-            streamingText={streamingText}
-            reasoningText={reasoningText}
-            isStreaming={isStreaming}
-            pendingUserMessageId={pendingUserMessageId}
-            selfModMap={selfModMap}
-            message={message}
-            setMessage={setMessage}
-            chatContext={chatContext}
-            setChatContext={setChatContext}
-            selectedText={selectedText}
-            setSelectedText={setSelectedText}
-            queueNext={queueNext}
-            setQueueNext={setQueueNext}
-            scrollContainerRef={scrollContainerRef}
-            handleScroll={handleScroll}
-            showScrollButton={showScrollButton}
-            scrollToBottom={scrollToBottom}
-            conversationId={activeConversationId}
-            onboardingDone={onboarding.onboardingDone}
-            onboardingExiting={onboarding.onboardingExiting}
-            isAuthenticated={onboarding.isAuthenticated}
-            isAuthLoading={onboarding.isAuthLoading}
-            canSubmit={canSubmit}
-            onSend={handleSend}
-            hasExpanded={onboarding.hasExpanded}
-            splitMode={onboarding.splitMode}
-            hasDiscoverySelections={onboarding.hasDiscoverySelections}
-            onboardingKey={onboarding.onboardingKey}
-            stellaAnimationRef={onboarding.stellaAnimationRef}
-            triggerFlash={onboarding.triggerFlash}
-            startBirthAnimation={onboarding.startBirthAnimation}
-            completeOnboarding={onboarding.completeOnboarding}
-            handleEnterSplit={onboarding.handleEnterSplit}
-            onDiscoveryConfirm={handleDiscoveryConfirm}
-            onSelectionChange={onboarding.setHasDiscoverySelections}
-            onDemoChange={handleDemoChange}
-            onCommandSelect={handleCommandSelect}
-          />
+          <ChatColumn {...chatColumnProps} />
         )}
       </div>
 
