@@ -18,6 +18,7 @@ import type { ActionCtx } from "./_generated/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { streamText, generateText, createGateway, embed } from "ai";
+import { GoogleAuth } from "google-auth-library";
 import { getModelConfig } from "./agent/model";
 
 function corsHeaders(request: Request): Record<string, string> {
@@ -401,7 +402,7 @@ export const proxySearch = httpAction(async (ctx, request) => {
 // Client sends:
 //   POST /api/ai/llm-proxy
 //   X-Proxy-Token: <token>
-//   X-Provider: anthropic|openai|google|openrouter|azure|azure-cognitive-services|cloudflare-workers-ai|vercel|zenmux|cerebras|kilo|cloudflare-ai-gateway|github-copilot|github-copilot-enterprise|opencode
+//   X-Provider: anthropic|openai|google|openrouter|azure|azure-cognitive-services|cloudflare-workers-ai|vercel|zenmux|cerebras|kilo|cloudflare-ai-gateway|amazon-bedrock|google-vertex|google-vertex-anthropic|gitlab|github-copilot|github-copilot-enterprise|sap-ai-core|opencode
 //   X-Original-Path: /v1/messages (the provider-specific path suffix)
 //   Body: raw provider request
 //
@@ -412,6 +413,130 @@ export const proxySearch = httpAction(async (ctx, request) => {
 //   4. Forwards request to upstream with real credentials
 //   5. Pipes response body directly
 //   6. Post-hoc usage logging (best-effort)
+
+function parseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function withoutTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+function googleVertexProject(apiKey?: string): string | null {
+  const parsed = apiKey ? parseJsonObject(apiKey) : null;
+  return (
+    process.env.GOOGLE_VERTEX_PROJECT?.trim() ||
+    process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
+    process.env.GCP_PROJECT?.trim() ||
+    process.env.GCLOUD_PROJECT?.trim() ||
+    asNonEmptyString(parsed?.project_id) ||
+    asNonEmptyString(parsed?.projectId) ||
+    null
+  );
+}
+
+function googleVertexLocation(defaultLocation: string): string {
+  return (
+    process.env.GOOGLE_VERTEX_LOCATION?.trim() ||
+    process.env.GOOGLE_CLOUD_LOCATION?.trim() ||
+    process.env.VERTEX_LOCATION?.trim() ||
+    defaultLocation
+  );
+}
+
+function resolveGoogleVertexTokenFromKey(apiKey: string): Promise<string> {
+  const parsed = parseJsonObject(apiKey);
+  if (!parsed) {
+    return Promise.resolve(apiKey.trim());
+  }
+  const auth = new GoogleAuth({ credentials: parsed });
+  return auth
+    .getClient()
+    .then((client) => client.getAccessToken())
+    .then((tokenResult) => {
+      const accessToken =
+        typeof tokenResult === "string"
+          ? tokenResult
+          : tokenResult?.token ?? null;
+      if (!accessToken) throw new Error("Google Vertex token exchange returned no access token");
+      return accessToken;
+    });
+}
+
+function extractSapAiCoreBaseUrlFromServiceKey(parsed: Record<string, unknown>): string | null {
+  const serviceUrls =
+    parsed.serviceurls && typeof parsed.serviceurls === "object"
+      ? (parsed.serviceurls as Record<string, unknown>)
+      : null;
+  const urls =
+    parsed.urls && typeof parsed.urls === "object"
+      ? (parsed.urls as Record<string, unknown>)
+      : null;
+
+  const candidates = [
+    asNonEmptyString(parsed.apiUrl),
+    asNonEmptyString(parsed.baseUrl),
+    asNonEmptyString(parsed.AI_API_URL),
+    asNonEmptyString(serviceUrls?.AI_API_URL),
+    asNonEmptyString(serviceUrls?.apiUrl),
+    asNonEmptyString(urls?.AI_API_URL),
+    asNonEmptyString(urls?.apiUrl),
+  ];
+
+  const found = candidates.find((v) => typeof v === "string");
+  return found ? withoutTrailingSlash(found) : null;
+}
+
+async function resolveSapAiCoreAccessToken(apiKey: string): Promise<string> {
+  const parsed = parseJsonObject(apiKey);
+  if (!parsed) {
+    return apiKey.trim();
+  }
+
+  const directToken = asNonEmptyString(parsed.access_token) ?? asNonEmptyString(parsed.accessToken);
+  if (directToken) return directToken;
+
+  const clientId = asNonEmptyString(parsed.clientid) ?? asNonEmptyString(parsed.clientId);
+  const clientSecret = asNonEmptyString(parsed.clientsecret) ?? asNonEmptyString(parsed.clientSecret);
+  const oauthBase = asNonEmptyString(parsed.url);
+  if (!clientId || !clientSecret || !oauthBase) {
+    return apiKey.trim();
+  }
+
+  const tokenUrl = `${withoutTrailingSlash(oauthBase)}/oauth/token`;
+  const basic = Buffer.from(`${clientId}:${clientSecret}`, "utf8").toString("base64");
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+  if (!response.ok) {
+    throw new Error(`SAP AI Core token exchange failed (${response.status})`);
+  }
+
+  const payload = await response.json() as { access_token?: string };
+  if (!payload.access_token) {
+    throw new Error("SAP AI Core token exchange returned no access_token");
+  }
+  return payload.access_token;
+}
 
 /** Hard-bound upstream allowlist — client CANNOT influence destination */
 const STATIC_PROVIDER_UPSTREAMS: Record<string, string> = {
@@ -433,13 +558,18 @@ const DYNAMIC_PROVIDER_IDS = new Set([
   "azure-cognitive-services",
   "cloudflare-workers-ai",
   "cloudflare-ai-gateway",
+  "amazon-bedrock",
+  "google-vertex",
+  "google-vertex-anthropic",
+  "gitlab",
+  "sap-ai-core",
 ]);
 
 function isSupportedProvider(provider: string): boolean {
   return provider in STATIC_PROVIDER_UPSTREAMS || DYNAMIC_PROVIDER_IDS.has(provider);
 }
 
-function resolveProviderUpstream(provider: string): string | null {
+function resolveProviderUpstream(provider: string, apiKey?: string): string | null {
   const staticUpstream = STATIC_PROVIDER_UPSTREAMS[provider];
   if (staticUpstream) return staticUpstream;
 
@@ -468,6 +598,37 @@ function resolveProviderUpstream(provider: string): string | null {
     return `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/compat`;
   }
 
+  if (provider === "amazon-bedrock") {
+    const parsed = apiKey ? parseJsonObject(apiKey) : null;
+    const region =
+      asNonEmptyString(parsed?.region) ??
+      asNonEmptyString(parsed?.aws_region) ??
+      process.env.AWS_REGION?.trim() ??
+      "us-east-1";
+    return `https://bedrock-runtime.${region}.amazonaws.com`;
+  }
+
+  if (provider === "google-vertex" || provider === "google-vertex-anthropic") {
+    const project = googleVertexProject(apiKey);
+    if (!project) return null;
+    const location = googleVertexLocation(provider === "google-vertex" ? "us-central1" : "global");
+    const endpoint = location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
+    return `https://${endpoint}/v1/projects/${project}/locations/${location}/endpoints/openapi`;
+  }
+
+  if (provider === "gitlab") {
+    return withoutTrailingSlash(process.env.GITLAB_INSTANCE_URL?.trim() || "https://gitlab.com");
+  }
+
+  if (provider === "sap-ai-core") {
+    const explicitBase = process.env.SAP_AI_CORE_BASE_URL?.trim();
+    if (explicitBase) return withoutTrailingSlash(explicitBase);
+    if (!apiKey) return null;
+    const parsed = parseJsonObject(apiKey);
+    if (!parsed) return null;
+    return extractSapAiCoreBaseUrlFromServiceKey(parsed);
+  }
+
   return null;
 }
 
@@ -483,10 +644,10 @@ const STRIP_REQUEST_HEADERS = new Set([
 ]);
 
 /** Build upstream-specific auth headers */
-function buildUpstreamAuthHeaders(
+async function buildUpstreamAuthHeaders(
   provider: string,
   apiKey: string,
-): Record<string, string> {
+): Promise<Record<string, string>> {
   switch (provider) {
     case "anthropic":
     case "zenmux":
@@ -504,6 +665,8 @@ function buildUpstreamAuthHeaders(
     case "cloudflare-workers-ai":
     case "cloudflare-ai-gateway":
     case "vercel":
+    case "amazon-bedrock":
+    case "gitlab":
     case "github-copilot":
     case "github-copilot-enterprise":
     case "opencode":
@@ -525,6 +688,21 @@ function buildUpstreamAuthHeaders(
       return {
         "x-goog-api-key": apiKey,
       };
+    case "google-vertex":
+    case "google-vertex-anthropic": {
+      const accessToken = await resolveGoogleVertexTokenFromKey(apiKey);
+      return {
+        Authorization: `Bearer ${accessToken}`,
+      };
+    }
+    case "sap-ai-core": {
+      const accessToken = await resolveSapAiCoreAccessToken(apiKey);
+      const resourceGroup = process.env.AICORE_RESOURCE_GROUP?.trim();
+      return {
+        Authorization: `Bearer ${accessToken}`,
+        ...(resourceGroup ? { "AI-Resource-Group": resourceGroup } : {}),
+      };
+    }
     default:
       return {
         Authorization: `Bearer ${apiKey}`,
@@ -538,8 +716,8 @@ function sanitizePathSuffix(pathSuffix: string): string | null {
   if (!pathSuffix.startsWith("/")) return null;
   // Reject path traversal
   if (pathSuffix.includes("..")) return null;
-  // Only allow alphanumeric, slashes, hyphens, underscores, dots, query params
-  if (!/^[a-zA-Z0-9/_\-.\?&=%]+$/.test(pathSuffix)) return null;
+  // Only allow URL-safe characters used by provider REST paths.
+  if (!/^[a-zA-Z0-9/_\-.\?&=%:+,]+$/.test(pathSuffix)) return null;
   return pathSuffix;
 }
 
@@ -580,7 +758,6 @@ export const llmProxy = httpAction(async (ctx, request) => {
   const provider = isSupportedProvider(requestedProvider)
     ? requestedProvider
     : "openrouter";
-  const providerUpstream = resolveProviderUpstream(provider);
 
   const originalPath = request.headers.get("X-Original-Path")?.trim();
   if (!originalPath) {
@@ -622,8 +799,7 @@ export const llmProxy = httpAction(async (ctx, request) => {
   const modelId =
     request.headers.get("X-Model-Id")?.trim() || `${requestedProvider}/unknown`;
   let apiKey: string | null = null;
-  const canUseDirectProviderKey =
-    isSupportedProvider(requestedProvider) && Boolean(providerUpstream);
+  const canUseDirectProviderKey = isSupportedProvider(requestedProvider);
 
   // Try user's own key first
   if (canUseDirectProviderKey) {
@@ -673,13 +849,22 @@ export const llmProxy = httpAction(async (ctx, request) => {
       zenmux: "ZENMUX_API_KEY",
       cerebras: "CEREBRAS_API_KEY",
       kilo: "KILO_API_KEY",
+      "amazon-bedrock": "AWS_BEARER_TOKEN_BEDROCK",
+      gitlab: "GITLAB_TOKEN",
       "github-copilot": "GITHUB_TOKEN",
       "github-copilot-enterprise": "GITHUB_TOKEN",
+      "sap-ai-core": "AICORE_SERVICE_KEY",
       opencode: "OPENCODE_API_KEY",
     };
     const envKey = envKeyMap[provider];
     if (envKey) {
       apiKey = process.env[envKey] ?? null;
+    }
+    if (!apiKey && (provider === "google-vertex" || provider === "google-vertex-anthropic")) {
+      apiKey =
+        process.env.GOOGLE_VERTEX_ACCESS_TOKEN?.trim() ||
+        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim() ||
+        null;
     }
   }
 
@@ -701,10 +886,10 @@ export const llmProxy = httpAction(async (ctx, request) => {
   }
 
   // 5. Forward to upstream
-  const upstreamBase = providerUpstream;
+  const upstreamBase = resolveProviderUpstream(provider, apiKey);
   if (!upstreamBase) {
     return new Response(
-      JSON.stringify({ error: `Provider ${provider} is not configured on server` }),
+      JSON.stringify({ error: `Provider ${provider} is not configured on server. Missing required environment configuration.` }),
       { status: 503, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -732,10 +917,12 @@ async function forwardRequest(
   });
 
   // Replace auth headers with real credentials
-  const authHeaders = buildUpstreamAuthHeaders(provider, apiKey);
+  const authHeaders = await buildUpstreamAuthHeaders(provider, apiKey);
   // Remove any existing auth headers the client might have sent
   delete forwardHeaders["authorization"];
+  delete forwardHeaders["Authorization"];
   delete forwardHeaders["x-api-key"];
+  delete forwardHeaders["api-key"];
   delete forwardHeaders["x-goog-api-key"];
   Object.assign(forwardHeaders, authHeaders);
 
