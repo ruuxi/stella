@@ -86,11 +86,6 @@ type DashboardGenRequestEvent = {
   };
 };
 
-type PaginatedResult<T> = {
-  page: T[];
-  isDone: boolean;
-  continueCursor: string | null;
-};
 
 const SYNC_DEBOUNCE_MS = 500;
 const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
