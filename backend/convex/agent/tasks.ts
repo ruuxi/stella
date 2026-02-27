@@ -1419,6 +1419,9 @@ export const finalizeDeliveredTaskTurn = internalMutation({
     if (typeof task.deliveryCompletedAt === "number") {
       return { applied: false, assistantSaved: false };
     }
+    if (task.status === "canceled") {
+      return { applied: false, assistantSaved: false };
+    }
 
     const now = Date.now();
 
@@ -1977,6 +1980,14 @@ export const deliverTaskResult = internalAction({
       taskId: args.taskId,
     });
     if (alreadyDelivered) {
+      return null;
+    }
+
+    // Skip delivery if the task was canceled while the subagent was running.
+    const taskStatus = await ctx.runQuery(internal.agent.tasks.getTaskStatus, {
+      taskId: args.taskId,
+    });
+    if (taskStatus === "canceled") {
       return null;
     }
 

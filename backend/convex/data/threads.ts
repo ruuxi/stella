@@ -552,44 +552,6 @@ export const deleteMessagesBefore = internalMutation({
 });
 
 // ---------------------------------------------------------------------------
-// evictOldestThread
-// ---------------------------------------------------------------------------
-
-export const evictOldestThread = internalMutation({
-  args: {
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-  },
-  handler: async (ctx, args) => {
-    const conversation = await loadConversationForOwner(
-      ctx,
-      args.conversationId,
-      args.ownerId,
-    );
-    if (!conversation) {
-      return null;
-    }
-
-    const oldest = await ctx.db
-      .query("threads")
-      .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
-        q.eq("conversationId", args.conversationId).eq("status", "active"),
-      )
-      .order("asc")
-      .first();
-
-    if (oldest) {
-      await ctx.db.patch(oldest._id, {
-        status: "archived",
-        closedAt: Date.now(),
-      });
-    }
-
-    return null;
-  },
-});
-
-// ---------------------------------------------------------------------------
 // compactThread (internal action - uses LLM to summarize old messages)
 // ---------------------------------------------------------------------------
 
