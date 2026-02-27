@@ -50,13 +50,72 @@ function createProviderModel(modelString: string, apiKey: string): LanguageModel
       const anthropic = createAnthropic({ apiKey });
       return anthropic(modelName);
     }
+    case "zenmux": {
+      const zenmux = createAnthropic({
+        apiKey,
+        baseURL: "https://zenmux.ai/api/anthropic/v1",
+      });
+      return zenmux(modelName);
+    }
     case "openai": {
       const openai = createOpenAI({ apiKey });
       return openai(modelName);
     }
+    case "azure": {
+      const resourceName = process.env.AZURE_RESOURCE_NAME?.trim();
+      if (!resourceName) return null;
+      const azure = createOpenAI({
+        apiKey,
+        baseURL: `https://${resourceName}.openai.azure.com/openai/v1`,
+      });
+      return azure(modelName);
+    }
+    case "azure-cognitive-services": {
+      const resourceName = process.env.AZURE_COGNITIVE_SERVICES_RESOURCE_NAME?.trim();
+      if (!resourceName) return null;
+      const azureCognitive = createOpenAI({
+        apiKey,
+        baseURL: `https://${resourceName}.cognitiveservices.azure.com/openai/v1`,
+      });
+      return azureCognitive(modelName);
+    }
     case "google": {
       const google = createGoogleGenerativeAI({ apiKey });
       return google(modelName);
+    }
+    case "cloudflare-workers-ai": {
+      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+      if (!accountId) return null;
+      const cloudflare = createOpenAI({
+        apiKey,
+        baseURL: `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`,
+      });
+      return cloudflare(modelName);
+    }
+    case "vercel": {
+      const gateway = createGateway({ apiKey });
+      return gateway(modelName);
+    }
+    case "cerebras": {
+      const cerebras = createOpenAI({
+        apiKey,
+        baseURL: "https://api.cerebras.ai/v1",
+        headers: {
+          "X-Cerebras-3rd-Party-Integration": "stella",
+        },
+      });
+      return cerebras(modelName);
+    }
+    case "kilo": {
+      const kilo = createOpenAI({
+        apiKey,
+        baseURL: "https://api.kilo.ai/api/gateway",
+        headers: {
+          "HTTP-Referer": "https://stella.app/",
+          "X-Title": "stella",
+        },
+      });
+      return kilo(modelName);
     }
     default:
       return null;
@@ -97,6 +156,20 @@ function providerToSecretKey(provider: string): string | null {
       return "llm:openai";
     case "google":
       return "llm:google";
+    case "azure":
+      return "llm:azure";
+    case "azure-cognitive-services":
+      return "llm:azure-cognitive-services";
+    case "cloudflare-workers-ai":
+      return "llm:cloudflare-workers-ai";
+    case "vercel":
+      return "llm:vercel";
+    case "zenmux":
+      return "llm:zenmux";
+    case "cerebras":
+      return "llm:cerebras";
+    case "kilo":
+      return "llm:kilo";
     default:
       return null;
   }
