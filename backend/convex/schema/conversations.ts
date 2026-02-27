@@ -1,0 +1,139 @@
+import { defineTable } from "convex/server";
+import { v } from "convex/values";
+import { jsonValueValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
+
+export const conversationsSchema = {
+  conversations: defineTable({
+    ownerId: v.string(),
+    title: v.optional(v.string()),
+    isDefault: v.boolean(),
+    activeThreadId: v.optional(v.id("threads")),
+    orchestratorReminderHash: v.optional(v.string()),
+    orchestratorReminderThreadId: v.optional(v.id("threads")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_ownerId_and_isDefault", ["ownerId", "isDefault"])
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
+
+  events: defineTable({
+    conversationId: v.id("conversations"),
+    timestamp: v.number(),
+    type: v.string(),
+    deviceId: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    targetDeviceId: v.optional(v.string()),
+    payload: jsonValueValidator,
+    channelEnvelope: optionalChannelEnvelopeValidator,
+    ephemeral: v.optional(v.boolean()),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_conversationId_and_timestamp", ["conversationId", "timestamp"])
+    .index("by_conversationId_and_type_and_timestamp", ["conversationId", "type", "timestamp"])
+    .index("by_targetDeviceId_and_timestamp", ["targetDeviceId", "timestamp"])
+    .index("by_requestId", ["requestId"])
+    .index("by_ephemeral_and_expiresAt", ["ephemeral", "expiresAt"]),
+
+  attachments: defineTable({
+    conversationId: v.id("conversations"),
+    deviceId: v.string(),
+    storageKey: v.string(),
+    url: v.optional(v.string()),
+    mimeType: v.string(),
+    size: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_conversationId", ["conversationId"])
+    .index("by_deviceId", ["deviceId"]),
+
+  tasks: defineTable({
+    conversationId: v.id("conversations"),
+    parentTaskId: v.optional(v.id("tasks")),
+    description: v.string(),
+    prompt: v.string(),
+    agentType: v.string(),
+    status: v.string(),
+    taskDepth: v.number(),
+    model: v.optional(v.string()),
+    commandId: v.optional(v.string()),
+    result: v.optional(v.string()),
+    error: v.optional(v.string()),
+    statusUpdates: v.optional(v.array(v.object({
+      text: v.string(),
+      timestamp: v.number(),
+    }))),
+    deliveryCompletedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_conversationId_and_createdAt", ["conversationId", "createdAt"])
+    .index("by_conversationId_and_updatedAt", ["conversationId", "updatedAt"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"])
+    .index("by_parentTaskId_and_createdAt", ["parentTaskId", "createdAt"]),
+
+  threads: defineTable({
+    conversationId: v.id("conversations"),
+    name: v.string(),
+    status: v.string(),
+    summary: v.optional(v.string()),
+    messageCount: v.number(),
+    totalTokenEstimate: v.number(),
+    createdAt: v.number(),
+    lastUsedAt: v.number(),
+    resurfacedAt: v.optional(v.number()),
+    closedAt: v.optional(v.number()),
+  })
+    .index("by_conversationId_and_status_and_lastUsedAt", ["conversationId", "status", "lastUsedAt"])
+    .index("by_conversationId_and_name", ["conversationId", "name"])
+    .index("by_conversationId_and_lastUsedAt", ["conversationId", "lastUsedAt"])
+    .index("by_status_and_lastUsedAt", ["status", "lastUsedAt"]),
+
+  thread_messages: defineTable({
+    threadId: v.id("threads"),
+    ordinal: v.number(),
+    role: v.string(),
+    content: v.string(),
+    toolCallId: v.optional(v.string()),
+    tokenEstimate: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_threadId_and_ordinal", ["threadId", "ordinal"]),
+
+  memories: defineTable({
+    ownerId: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    content: v.string(),
+    embedding: v.optional(v.array(v.float64())),
+    accessCount: v.number(),
+    accessedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_ownerId_and_accessedAt", ["ownerId", "accessedAt"])
+    .index("by_accessedAt", ["accessedAt"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["ownerId"],
+    }),
+
+  event_embeddings: defineTable({
+    ownerId: v.string(),
+    conversationId: v.id("conversations"),
+    eventId: v.id("events"),
+    type: v.union(v.literal("user_message"), v.literal("assistant_message")),
+    content: v.string(),
+    timestamp: v.number(),
+    embedding: v.array(v.float64()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_ownerId_and_timestamp", ["ownerId", "timestamp"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["ownerId", "conversationId", "type"],
+    }),
+};
