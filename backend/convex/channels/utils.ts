@@ -13,9 +13,16 @@ import type { Id } from "../_generated/dataModel";
 import { runAgentTurn, type RunAgentTurnResult } from "../automation/runner";
 import { requireUserId } from "../auth";
 import { optionalChannelEnvelopeValidator } from "../shared_validators";
+import {
+  CONNECTED_MODE_REQUIRED_ERROR,
+  ensureOwnerConnection,
+  evaluateLinkingDmPolicy,
+  isOwnerInConnectedMode,
+  resolveConnectionForIncomingMessage,
+  type ChannelConnection,
+  type DmPolicy,
+} from "./routing_flow";
 
-type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
-type AccountMode = "private_local" | "connected";
 type RuntimeMode = "local" | "cloud_247";
 type SyncMode = "on" | "off";
 type ExecutionCandidate =
@@ -24,7 +31,6 @@ type ExecutionCandidate =
   | { mode: "remote"; targetDeviceId?: undefined; spriteName: string };
 
 const DM_POLICY_DEFAULT: DmPolicy = "pairing";
-const ACCOUNT_MODE_CONNECTED: AccountMode = "connected";
 const SYNC_MODE_OFF: SyncMode = "off";
 const OFFLINE_ENABLE_247_INTENT = /\b(enable|turn on|start)\s*(24\/?7|247|cloud)\b/i;
 const CONNECTED_MODE_REQUIRED_MESSAGE =
@@ -43,18 +49,6 @@ const LINK_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const TRANSIENT_CLEANUP_MAX_ATTEMPTS = 4;
 const TRANSIENT_CLEANUP_BACKOFF_BASE_MS = 100;
 const TRANSIENT_CLEANUP_BACKOFF_MAX_MS = 2_000;
-const channelConnectionValidator = v.object({
-  _id: v.id("channel_connections"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  provider: v.string(),
-  externalUserId: v.string(),
-  conversationId: v.optional(v.id("conversations")),
-  displayName: v.optional(v.string()),
-  linkedAt: v.number(),
-  updatedAt: v.number(),
-});
-type ChannelConnection = Infer<typeof channelConnectionValidator>;
 
 type ChannelInboundAttachment = {
   id?: string;
@@ -74,6 +68,8 @@ type ProcessIncomingMessageArgs = {
   groupId?: string;
   attachments?: ChannelInboundAttachment[];
   channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
+  displayName?: string;
+  preEnsureOwnerConnection?: boolean;
   respond?: boolean;
 };
 
@@ -545,11 +541,8 @@ export const generateLinkCode = mutation({
   args: { provider: v.string() },
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
-      ownerId,
-    });
-    if (accountMode !== ACCOUNT_MODE_CONNECTED) {
-      throw new Error("Connectors require Connected mode. Enable Connected mode in Settings.");
+    if (!(await isOwnerInConnectedMode({ ctx, ownerId }))) {
+      throw new Error(CONNECTED_MODE_REQUIRED_ERROR);
     }
 
     const code = generateSecureLinkCode(6);
@@ -570,11 +563,7 @@ export const getConnection = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
     const ownerId = identity.subject;
-    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
-      ownerId,
-    });
-
-    if (accountMode !== ACCOUNT_MODE_CONNECTED) {
+    if (!(await isOwnerInConnectedMode({ ctx, ownerId }))) {
       return null;
     }
 
@@ -657,121 +646,7 @@ export const setDmDenylist = internalMutation({
 // Shared Helper Functions (called from provider action handlers)
 // ---------------------------------------------------------------------------
 
-/**
- * Internal helpers for inbound channel message processing.
- */
-const findConnection = async (args: {
-  ctx: ActionCtx;
-  ownerId?: string;
-  provider: string;
-  externalUserId: string;
-}): Promise<ChannelConnection | null> => {
-  if (args.ownerId) {
-    return await args.ctx.runQuery(
-      internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-      {
-        ownerId: args.ownerId,
-        provider: args.provider,
-        externalUserId: args.externalUserId,
-      },
-    );
-  }
-
-  return await args.ctx.runQuery(
-    internal.channels.utils.getConnectionByProviderAndExternalId,
-    { provider: args.provider, externalUserId: args.externalUserId },
-  );
-};
-
-export const ensureOwnerConnection = async (args: {
-  ctx: ActionCtx;
-  ownerId: string;
-  provider: string;
-  externalUserId: string;
-  displayName?: string;
-}): Promise<ChannelConnection | null> => {
-  await args.ctx.runMutation(internal.channels.utils.createConnection, {
-    ownerId: args.ownerId,
-    provider: args.provider,
-    externalUserId: args.externalUserId,
-    ...(args.displayName ? { displayName: args.displayName } : {}),
-  });
-
-  return await args.ctx.runQuery(
-    internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-    {
-      ownerId: args.ownerId,
-      provider: args.provider,
-      externalUserId: args.externalUserId,
-    },
-  );
-};
-
-const shouldBlockInboundByDmPolicy = (args: {
-  policy: { policy: DmPolicy; allowlist: string[]; denylist: string[] };
-  externalUserId: string;
-  hasExistingConnection: boolean;
-}): boolean => {
-  if (args.policy.denylist.includes(args.externalUserId)) return true;
-  if (args.policy.policy === "disabled") return true;
-  if (
-    args.policy.policy === "allowlist" &&
-    !args.policy.allowlist.includes(args.externalUserId)
-  ) {
-    return true;
-  }
-  if (args.policy.policy === "pairing" && !args.hasExistingConnection) {
-    return true;
-  }
-  return false;
-};
-
-const resolveConnectionForIncomingMessage = async (args: {
-  ctx: ActionCtx;
-  ownerId?: string;
-  provider: string;
-  externalUserId: string;
-}): Promise<ChannelConnection | null> => {
-  let connection = await findConnection(args);
-  const policyOwnerId = args.ownerId ?? connection?.ownerId;
-  if (!policyOwnerId) {
-    return null;
-  }
-
-  const policy = await args.ctx.runQuery(internal.channels.utils.getDmPolicyConfig, {
-    ownerId: policyOwnerId,
-    provider: args.provider,
-  });
-  if (
-    shouldBlockInboundByDmPolicy({
-      policy,
-      externalUserId: args.externalUserId,
-      hasExistingConnection: Boolean(connection),
-    })
-  ) {
-    return null;
-  }
-
-  if (connection) {
-    return connection;
-  }
-
-  const accountMode = await args.ctx.runQuery(
-    internal.data.preferences.getAccountModeForOwner,
-    { ownerId: policyOwnerId },
-  );
-  if (accountMode !== ACCOUNT_MODE_CONNECTED) {
-    return null;
-  }
-
-  connection = await ensureOwnerConnection({
-    ctx: args.ctx,
-    ownerId: policyOwnerId,
-    provider: args.provider,
-    externalUserId: args.externalUserId,
-  });
-  return connection;
-};
+export { ensureOwnerConnection };
 
 const resolveConversationIdForIncomingMessage = async (args: {
   ctx: ActionCtx;
@@ -933,17 +808,11 @@ const persistInboundAssistantMessage = async (args: {
 export async function processIncomingMessage(
   args: ProcessIncomingMessageArgs,
 ): Promise<{ text: string } | null> {
-  if (args.ownerId) {
-    const requestedOwnerAccountMode = await args.ctx.runQuery(
-      internal.data.preferences.getAccountModeForOwner,
-      { ownerId: args.ownerId },
-    );
-    if (requestedOwnerAccountMode !== ACCOUNT_MODE_CONNECTED) {
-      if (args.respond === false) {
-        return { text: "" };
-      }
-      return { text: CONNECTED_MODE_REQUIRED_MESSAGE };
+  if (args.ownerId && !(await isOwnerInConnectedMode({ ctx: args.ctx, ownerId: args.ownerId }))) {
+    if (args.respond === false) {
+      return { text: "" };
     }
+    return { text: CONNECTED_MODE_REQUIRED_MESSAGE };
   }
 
   const connection = await resolveConnectionForIncomingMessage({
@@ -951,16 +820,14 @@ export async function processIncomingMessage(
     ownerId: args.ownerId,
     provider: args.provider,
     externalUserId: args.externalUserId,
+    displayName: args.displayName,
+    preEnsureOwnerConnection: args.preEnsureOwnerConnection,
   });
   if (!connection) {
     return null;
   }
 
-  const accountMode = await args.ctx.runQuery(
-    internal.data.preferences.getAccountModeForOwner,
-    { ownerId: connection.ownerId },
-  );
-  if (accountMode !== ACCOUNT_MODE_CONNECTED) {
+  if (!(await isOwnerInConnectedMode({ ctx: args.ctx, ownerId: connection.ownerId }))) {
     if (args.respond === false) {
       return { text: "" };
     }
@@ -1221,21 +1088,17 @@ export async function processLinkCode(args: {
   );
   if (!ownerId) return "invalid_code";
 
-  const accountMode = await args.ctx.runQuery(
-    internal.data.preferences.getAccountModeForOwner,
-    { ownerId },
-  );
-  if (accountMode !== ACCOUNT_MODE_CONNECTED) return "linking_disabled";
+  if (!(await isOwnerInConnectedMode({ ctx: args.ctx, ownerId }))) return "linking_disabled";
 
   const policy = await args.ctx.runQuery(internal.channels.utils.getDmPolicyConfig, {
     ownerId,
     provider: args.provider,
   });
-  if (policy.policy === "disabled") return "linking_disabled";
-  if (policy.denylist.includes(args.externalUserId)) return "not_allowed";
-  if (policy.policy === "allowlist" && !policy.allowlist.includes(args.externalUserId)) {
-    return "not_allowed";
-  }
+  const linkingPolicyOutcome = evaluateLinkingDmPolicy({
+    policy,
+    externalUserId: args.externalUserId,
+  });
+  if (linkingPolicyOutcome) return linkingPolicyOutcome;
 
   const consumedOwnerId = await args.ctx.runMutation(
     internal.channels.utils.consumeLinkCode,

@@ -34,10 +34,11 @@ describe("security regressions", () => {
   });
 
   test("CORS is no longer wildcard-reflective", () => {
-    const source = readBackendFile("convex/http.ts");
-    expect(source).not.toContain('"Access-Control-Allow-Origin": origin ?? "*"');
-    expect(source).toContain("const CORS_ALLOWED_ORIGINS");
-    expect(source).toContain("rejectDisallowedCorsOrigin");
+    const httpSource = readBackendFile("convex/http.ts");
+    const corsSource = readBackendFile("convex/http_shared/cors.ts");
+    expect(httpSource).not.toContain('"Access-Control-Allow-Origin": origin ?? "*"');
+    expect(corsSource).toContain("const CORS_ALLOWED_ORIGINS");
+    expect(httpSource).toContain("rejectDisallowedCorsOrigin");
   });
 
   test("commands upsertMany requires auth and short-circuits when already seeded", () => {
@@ -62,11 +63,13 @@ describe("security regressions", () => {
   test("integration requests enforce unsafe-host guard", () => {
     const integrationProxySource = readBackendFile("convex/tools/integration_proxy.ts");
     const backendToolsSource = readBackendFile("convex/tools/backend.ts");
+    const integrationServiceSource = readBackendFile("convex/tools/integration_request_service.ts");
     const networkSafetySource = readBackendFile("convex/tools/network_safety.ts");
 
     expect(integrationProxySource).toMatch(/getUnsafeIntegrationHostError/);
     expect(backendToolsSource).toMatch(/getUnsafeIntegrationHostError/);
-    expect(backendToolsSource).toMatch(/allowPrivateNetworkHosts:\s*mode === "private"/);
+    expect(backendToolsSource).toContain("executeIntegrationRequestService");
+    expect(integrationServiceSource).toMatch(/allowPrivateNetworkHosts:\s*mode === "private"/);
     expect(networkSafetySource).toContain("Host");
     expect(networkSafetySource).not.toContain("STELLA_ALLOW_PRIVATE_INTEGRATION_HOSTS");
   });
@@ -108,7 +111,7 @@ describe("security regressions", () => {
   });
 
   test("webhook handlers apply message-level dedup", () => {
-    const source = readBackendFile("convex/http.ts");
+    const source = readBackendFile("convex/http_routes/connectors.ts");
 
     expect(source).toContain("consumeWebhookDedup");
     expect(source).toMatch(/consumeWebhookDedup\(\s*ctx,\s*"telegram"/);
@@ -134,11 +137,14 @@ describe("security regressions", () => {
   });
 
   test("cron tick requires successful claim before scheduling execution", () => {
-    const source = readBackendFile("convex/scheduling/cron_jobs.ts");
+    const cronSource = readBackendFile("convex/scheduling/cron_jobs.ts");
+    const claimFlowSource = readBackendFile("convex/scheduling/claim_flow.ts");
 
-    expect(source).toContain("expectedRunningAtMs");
-    expect(source).toContain("const claimed = await ctx.runMutation");
-    expect(source).toContain("if (!claimed) {");
+    expect(cronSource).toContain("claimAndScheduleDueRuns");
+    expect(cronSource).toContain("claimAndScheduleSingleRun");
+    expect(claimFlowSource).toContain("expectedRunningAtMs");
+    expect(claimFlowSource).toContain("const claimed = await args.markRunning");
+    expect(claimFlowSource).toContain("if (!claimed) {");
   });
 
   test("connector transient batches are cleaned in finally", () => {
@@ -158,7 +164,7 @@ describe("security regressions", () => {
 
   test("ephemeral tool events have TTL metadata and cron-backed cleanup", () => {
     const eventsSource = readBackendFile("convex/events.ts");
-    const schemaSource = readBackendFile("convex/schema.ts");
+    const schemaSource = readBackendFile("convex/schema/conversations.ts");
     const cronsSource = readBackendFile("convex/crons.ts");
     const deviceToolsSource = readBackendFile("convex/agent/device_tools.ts");
 
@@ -223,24 +229,24 @@ describe("security regressions", () => {
   });
 
   test("channel mode matrix wiring keeps privacy and routing guarantees", () => {
-    const source = readBackendFile("convex/channels/utils.ts");
+    const utilsSource = readBackendFile("convex/channels/utils.ts");
+    const routingFlowSource = readBackendFile("convex/channels/routing_flow.ts");
 
-    expect(source).toContain("const transient = syncMode === SYNC_MODE_OFF");
-    expect(source).toContain("const userMessageId = transient");
-    expect(source).toContain("const requestedOwnerAccountMode = await args.ctx.runQuery");
-    expect(source).toContain("requestedOwnerAccountMode !== ACCOUNT_MODE_CONNECTED");
-    expect(source).toContain("if (accountMode !== ACCOUNT_MODE_CONNECTED)");
-    expect(source).toContain("const candidates = buildExecutionCandidates({");
-    expect(source).toContain("runtimeMode === \"cloud_247\"");
-    expect(source).toContain("const usedCloudFallback =");
+    expect(utilsSource).toContain("const transient = syncMode === SYNC_MODE_OFF");
+    expect(utilsSource).toContain("const userMessageId = transient");
+    expect(routingFlowSource).toContain("isOwnerInConnectedMode");
+    expect(routingFlowSource).toContain("resolveConnectionForIncomingMessage");
+    expect(utilsSource).toContain("const candidates = buildExecutionCandidates({");
+    expect(utilsSource).toContain("runtimeMode === \"cloud_247\"");
+    expect(utilsSource).toContain("const usedCloudFallback =");
   });
 
   test("connection resolver does not auto-create links when account mode is private local", () => {
-    const source = readBackendFile("convex/channels/utils.ts");
-    expect(source).toContain("const accountMode = await args.ctx.runQuery");
-    expect(source).toContain("if (accountMode !== ACCOUNT_MODE_CONNECTED) {");
+    const source = readBackendFile("convex/channels/routing_flow.ts");
+    expect(source).toContain("isOwnerInConnectedMode");
+    expect(source).toContain("if (!(await isOwnerInConnectedMode");
     expect(source).toMatch(
-      /policyOwnerId[\s\S]*?accountMode[\s\S]*?ACCOUNT_MODE_CONNECTED[\s\S]*?return null;[\s\S]*?createConnection/,
+      /policyOwnerId[\s\S]*?isOwnerInConnectedMode[\s\S]*?return null;[\s\S]*?ensureOwnerConnection/,
     );
   });
 
@@ -288,7 +294,8 @@ describe("security regressions", () => {
     expect(source).toContain("countByConversation");
     expect(source).toContain("let total = 0;");
     expect(source).toContain("ownershipCache");
-    expect(source).toContain("while (filtered.length < requestedItems && !isDone)");
+    expect(source).toContain("take(maxItems * 3)");
+    expect(source).toContain("if (filtered.length >= maxItems) break;");
   });
 
   test("discord signature verifier checks timestamp freshness", () => {

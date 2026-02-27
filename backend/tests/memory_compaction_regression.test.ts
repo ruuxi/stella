@@ -55,7 +55,7 @@ describe("memory + compaction regressions", () => {
 
   test("task delivery persistence is idempotent via task-level completion marker", () => {
     const taskSource = readBackendFile("convex/agent/tasks.ts");
-    const schemaSource = readBackendFile("convex/schema.ts");
+    const schemaSource = readBackendFile("convex/schema/conversations.ts");
     expect(taskSource).toContain("export const finalizeDeliveredTaskTurn = internalMutation");
     expect(taskSource).toContain("typeof task.deliveryCompletedAt === \"number\"");
     expect(taskSource).toContain("deliveryCompletedAt: now");

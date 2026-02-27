@@ -11,11 +11,13 @@ describe("execution core regressions", () => {
     const automationRunner = readBackendFile("convex/automation/runner.ts");
     const httpSource = readBackendFile("convex/http.ts");
     const invokeSource = readBackendFile("convex/agent/invoke.ts");
+    const executionSource = readBackendFile("convex/agent/execution.ts");
     const tasksSource = readBackendFile("convex/agent/tasks.ts");
 
     expect(automationRunner).toContain('from "../agent/model_execution"');
     expect(httpSource).toContain('from "./agent/model_execution"');
-    expect(invokeSource).toContain('from "./model_execution"');
+    expect(invokeSource).toContain('from "./execution"');
+    expect(executionSource).toContain('from "./model_execution"');
     expect(tasksSource).toContain('from "./model_execution"');
   });
 
