@@ -53,6 +53,14 @@ export function createProxiedModel(
       });
       return anthropic(modelName);
     }
+    case "zenmux": {
+      const anthropic = createAnthropic({
+        baseURL: `${proxyBaseUrl}/api/ai/llm-proxy`,
+        fetch: customFetch,
+        apiKey: "proxy-managed",
+      });
+      return anthropic(modelName);
+    }
     case "openai":
     case "openrouter":
     case "moonshotai":

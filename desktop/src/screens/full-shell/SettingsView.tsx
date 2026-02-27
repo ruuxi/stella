@@ -50,8 +50,15 @@ const LLM_PROVIDERS = [
   { key: "llm:anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
   { key: "llm:openai", label: "OpenAI", placeholder: "sk-..." },
   { key: "llm:google", label: "Google", placeholder: "AIza..." },
+  { key: "llm:azure", label: "Azure OpenAI", placeholder: "..." },
+  { key: "llm:azure-cognitive-services", label: "Azure Cognitive Services", placeholder: "..." },
+  { key: "llm:cloudflare-workers-ai", label: "Cloudflare Workers AI", placeholder: "..." },
+  { key: "llm:vercel", label: "Vercel AI Gateway (Direct)", placeholder: "..." },
   { key: "llm:openrouter", label: "OpenRouter", placeholder: "sk-or-..." },
   { key: "llm:gateway", label: "Vercel AI Gateway", placeholder: "..." },
+  { key: "llm:zenmux", label: "ZenMux", placeholder: "..." },
+  { key: "llm:cerebras", label: "Cerebras", placeholder: "..." },
+  { key: "llm:kilo", label: "Kilo Gateway", placeholder: "..." },
 ] as const;
 
 const TABS: { key: SettingsTab; label: string }[] = [
