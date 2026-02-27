@@ -117,6 +117,31 @@ function createProviderModel(modelString: string, apiKey: string): LanguageModel
       });
       return kilo(modelName);
     }
+    case "cloudflare-ai-gateway": {
+      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+      const gatewayId = process.env.CLOUDFLARE_GATEWAY_ID?.trim();
+      if (!accountId || !gatewayId) return null;
+      const cloudflareGateway = createOpenAI({
+        apiKey,
+        baseURL: `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/compat`,
+      });
+      return cloudflareGateway(modelName);
+    }
+    case "github-copilot":
+    case "github-copilot-enterprise": {
+      const copilot = createOpenAI({
+        apiKey,
+        baseURL: "https://api.githubcopilot.com",
+      });
+      return copilot(modelName);
+    }
+    case "opencode": {
+      const opencode = createOpenAI({
+        apiKey,
+        baseURL: "https://opencode.ai/zen/v1",
+      });
+      return opencode(modelName);
+    }
     default:
       return null;
   }
@@ -170,6 +195,24 @@ function providerToSecretKey(provider: string): string | null {
       return "llm:cerebras";
     case "kilo":
       return "llm:kilo";
+    case "amazon-bedrock":
+      return "llm:amazon-bedrock";
+    case "google-vertex":
+      return "llm:google-vertex";
+    case "google-vertex-anthropic":
+      return "llm:google-vertex-anthropic";
+    case "cloudflare-ai-gateway":
+      return "llm:cloudflare-ai-gateway";
+    case "gitlab":
+      return "llm:gitlab";
+    case "github-copilot":
+      return "llm:github-copilot";
+    case "github-copilot-enterprise":
+      return "llm:github-copilot-enterprise";
+    case "sap-ai-core":
+      return "llm:sap-ai-core";
+    case "opencode":
+      return "llm:opencode";
     default:
       return null;
   }
