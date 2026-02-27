@@ -811,13 +811,8 @@ export const createLocalHostRunner = ({
 
       if (result.error) {
         logError(`Dashboard generation failed for ${payload.panelName}:`, result.error);
-        await callMutation("personalized_dashboard.markPageFailedDevice", {
-          pageId: payload.pageId,
-          error: result.error,
-        });
       } else {
-        // Dashboard pages use DIRECT_WRITE_PREFIXES, so just verify on disk.
-        // Support both flat file and folder/index.tsx convention.
+        // Verify the panel file was written to disk
         let hasExpectedPanelWrite = false;
         if (frontendRoot) {
           const flatPath = path.join(frontendRoot, "src", "views", "home", "pages", `${payload.panelName}.tsx`);
@@ -826,20 +821,12 @@ export const createLocalHostRunner = ({
         }
 
         if (!hasExpectedPanelWrite) {
-          const verificationError = `Generation finished but did not write ${payload.panelName}.tsx to src/views/home/pages.`;
-          logError(verificationError, {
+          logError(`Generation finished but did not write ${payload.panelName}.tsx to src/views/home/pages.`, {
             pageId: payload.pageId,
             panelName: payload.panelName,
           });
-          await callMutation("personalized_dashboard.markPageFailedDevice", {
-            pageId: payload.pageId,
-            error: verificationError,
-          });
         } else {
           log(`Dashboard generation completed for ${payload.panelName}`);
-          await callMutation("personalized_dashboard.markPageReadyDevice", {
-            pageId: payload.pageId,
-          });
         }
       }
 
