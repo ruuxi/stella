@@ -1,5 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGitLab } from "@gitlab/gitlab-ai-provider";
 import { createGateway } from "ai";
 import type { LanguageModel } from "ai";
 
@@ -67,9 +69,12 @@ export function createProxiedModel(
     case "azure-cognitive-services":
     case "cloudflare-workers-ai":
     case "cloudflare-ai-gateway":
+    case "google-vertex":
+    case "google-vertex-anthropic":
     case "vercel":
     case "cerebras":
     case "kilo":
+    case "sap-ai-core":
     case "github-copilot":
     case "github-copilot-enterprise":
     case "opencode": {
@@ -79,6 +84,25 @@ export function createProxiedModel(
         apiKey: "proxy-managed",
       });
       return openai(modelName);
+    }
+    case "amazon-bedrock": {
+      const bedrock = createAmazonBedrock({
+        baseURL: `${proxyBaseUrl}/api/ai/llm-proxy`,
+        fetch: customFetch,
+        apiKey: "proxy-managed",
+        region: process.env.AWS_REGION ?? "us-east-1",
+      });
+      return bedrock.languageModel(modelName);
+    }
+    case "gitlab": {
+      const gitlab = createGitLab({
+        instanceUrl: process.env.GITLAB_INSTANCE_URL ?? "https://gitlab.com",
+        apiKey: "proxy-managed",
+        aiGatewayHeaders: {
+          "User-Agent": "stella",
+        },
+      });
+      return gitlab.agenticChat(modelName);
     }
     case "moonshotai":
     case "zai":
