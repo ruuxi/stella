@@ -97,7 +97,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   memory_recall_rerank: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
-    temperature: 0.7,
+    temperature: 1.0,
     maxOutputTokens: 4096,
     providerOptions: {
       gateway: {
@@ -176,7 +176,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   synthesis: {
-    model: "openai/gpt-5.2-codex",
+    model: "openai/gpt-5.3-codex",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 9500,
