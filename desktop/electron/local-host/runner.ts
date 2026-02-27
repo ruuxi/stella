@@ -172,6 +172,28 @@ export const createLocalHostRunner = ({
   const processed = new Set<string>();
   const inFlight = new Set<string>();
   let queue = Promise.resolve();
+
+  // Concurrency-limited parallel executor for dashboard generation
+  const MAX_CONCURRENT_DASHBOARD_GEN = 3;
+  let dashboardGenRunning = 0;
+  const dashboardGenPending: Array<() => void> = [];
+
+  const runDashboardGenConcurrent = (fn: () => Promise<void>): Promise<void> => {
+    if (dashboardGenRunning >= MAX_CONCURRENT_DASHBOARD_GEN) {
+      return new Promise<void>((resolve) => {
+        dashboardGenPending.push(() => {
+          runDashboardGenConcurrent(fn).then(resolve);
+        });
+      });
+    }
+    dashboardGenRunning++;
+    return fn().finally(() => {
+      dashboardGenRunning--;
+      const next = dashboardGenPending.shift();
+      if (next) next();
+    });
+  };
+
   let syncPromise: Promise<void> | null = null;
   let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const watchers: fs.FSWatcher[] = [];
@@ -788,8 +810,16 @@ export const createLocalHostRunner = ({
         ? path.join(pagesDir, `${payload.panelName}.tsx`)
         : null;
 
-      const taskPrompt = targetFile
-        ? `Write the dashboard panel to exactly this path: ${targetFile}\n\n${payload.userPrompt ?? ""}`
+      const taskPrompt = frontendRoot
+        ? [
+            `Your working directory is ${frontendRoot}.`,
+            `Write the dashboard panel to: src/views/home/pages/${payload.panelName}.tsx`,
+            ``,
+            `Before writing, explore the existing pages directory (src/views/home/pages/) and`,
+            `src/views/home/ to understand patterns, styling, and component structure.`,
+            ``,
+            payload.userPrompt ?? "",
+          ].filter(Boolean).join("\n")
         : payload.userPrompt ?? `Generate the dashboard panel ${payload.panelName}.tsx`;
 
       // Run as a local subagent
@@ -805,6 +835,7 @@ export const createLocalHostRunner = ({
         stellaHome: StellaHome,
         taskDescription: `Generate personalized page: ${payload.title}`,
         taskPrompt,
+        cwd: frontendRoot ?? undefined,
       });
 
       if (result.error) {
@@ -814,11 +845,14 @@ export const createLocalHostRunner = ({
           error: result.error,
         });
       } else {
-        // Dashboard pages use DIRECT_WRITE_PREFIXES, so just verify on disk
-        const expectedPath = frontendRoot
-          ? path.join(frontendRoot, "src", "views", "home", "pages", `${payload.panelName}.tsx`)
-          : null;
-        const hasExpectedPanelWrite = expectedPath ? fs.existsSync(expectedPath) : false;
+        // Dashboard pages use DIRECT_WRITE_PREFIXES, so just verify on disk.
+        // Support both flat file and folder/index.tsx convention.
+        let hasExpectedPanelWrite = false;
+        if (frontendRoot) {
+          const flatPath = path.join(frontendRoot, "src", "views", "home", "pages", `${payload.panelName}.tsx`);
+          const folderPath = path.join(frontendRoot, "src", "views", "home", "pages", payload.panelName, "index.tsx");
+          hasExpectedPanelWrite = fs.existsSync(flatPath) || fs.existsSync(folderPath);
+        }
 
         if (!hasExpectedPanelWrite) {
           const verificationError = `Generation finished but did not write ${payload.panelName}.tsx to src/views/home/pages.`;
@@ -898,7 +932,7 @@ export const createLocalHostRunner = ({
         }
         const result = response as PaginatedResult<DashboardGenRequestEvent>;
         for (const request of result.page) {
-          queue = queue.then(() => handleDashboardGenRequest(request)).catch((err) => {
+          void runDashboardGenConcurrent(() => handleDashboardGenRequest(request)).catch((err) => {
             logError("Dashboard gen queue error:", err);
           });
         }
@@ -911,7 +945,7 @@ export const createLocalHostRunner = ({
   // HTTP polling fallback — the WebSocket subscription may be unreliable
   // (1006 errors), so poll periodically to catch missed events.
   let pollTimer: ReturnType<typeof setInterval> | null = null;
-  const pollSince = Date.now() - 120_000;
+  let pollSince = Date.now() - 120_000;
 
   const pollForRequests = async () => {
     if (!authToken || !convexUrl) return;
@@ -921,20 +955,25 @@ export const createLocalHostRunner = ({
         since: pollSince,
         limit: 20,
       }) as Array<ToolRequestEvent | DashboardGenRequestEvent> | null;
-      if (!events) return;
+      if (!events || events.length === 0) {
+        // Advance window even with no events to avoid re-scanning old range
+        pollSince = Date.now() - 10_000;
+        return;
+      }
       for (const event of events) {
         if (event.type === "tool_request") {
           queue = queue.then(() => handleToolRequest(event as ToolRequestEvent)).catch((err) => {
             logError("Tool request queue error (poll):", err);
           });
         } else if (event.type === "dashboard_generation_request") {
-          queue = queue.then(() => handleDashboardGenRequest(event as DashboardGenRequestEvent)).catch((err) => {
+          void runDashboardGenConcurrent(() => handleDashboardGenRequest(event as DashboardGenRequestEvent)).catch((err) => {
             logError("Dashboard gen queue error (poll):", err);
           });
         }
       }
+      // Advance window with 10s lookback for safety overlap
+      pollSince = Date.now() - 10_000;
     } catch (err) {
-      // Poll failures are non-fatal — log once for visibility
       logError("Poll error:", (err as Error).message);
     }
   };
@@ -943,7 +982,7 @@ export const createLocalHostRunner = ({
     if (pollTimer) return;
     // Initial poll after a short delay, then every 10 seconds
     setTimeout(() => void pollForRequests(), 3_000);
-    pollTimer = setInterval(() => void pollForRequests(), 10_000);
+    pollTimer = setInterval(() => void pollForRequests(), 3_000);
   };
 
   const stopPolling = () => {
