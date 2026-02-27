@@ -10,7 +10,7 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { requireSensitiveUserIdAction } from "../auth";
-import { processIncomingMessage } from "./utils";
+import { ensureOwnerConnection, processIncomingMessage } from "./utils";
 import {
   getSpritesTokenForOwner,
   spritesExec,
@@ -936,23 +936,13 @@ export const handleAuthUpdate = internalAction({
         "";
 
       if (externalId) {
-        const existing = await ctx.runQuery(
-          internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-          {
-            ownerId: args.ownerId,
-            provider: args.provider,
-            externalUserId: externalId,
-          },
-        );
-        if (!existing) {
-          await ctx.runMutation(internal.channels.utils.createConnection, {
-            ownerId: args.ownerId,
-            provider: args.provider,
-            externalUserId: externalId,
-            displayName:
-              (args.authState as Record<string, string>)?.displayName,
-          });
-        }
+        await ensureOwnerConnection({
+          ctx,
+          ownerId: args.ownerId,
+          provider: args.provider,
+          externalUserId: externalId,
+          displayName: (args.authState as Record<string, string>)?.displayName,
+        });
       }
 
       if (sessionMode === "cloud") {
@@ -1005,22 +995,13 @@ export const handleBridgeMessage = internalAction({
 
     // Bridge providers receive sender IDs that are not pre-linked via code.
     // Ensure owner-scoped routing exists for this sender before processing.
-    const existing = await ctx.runQuery(
-      internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-      {
-        ownerId: args.ownerId,
-        provider: args.provider,
-        externalUserId: args.externalUserId,
-      },
-    );
-    if (!existing) {
-      await ctx.runMutation(internal.channels.utils.createConnection, {
-        ownerId: args.ownerId,
-        provider: args.provider,
-        externalUserId: args.externalUserId,
-        displayName: args.displayName,
-      });
-    }
+    await ensureOwnerConnection({
+      ctx,
+      ownerId: args.ownerId,
+      provider: args.provider,
+      externalUserId: args.externalUserId,
+      displayName: args.displayName,
+    });
 
     const result = await processIncomingMessage({
       ctx,

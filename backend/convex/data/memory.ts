@@ -96,12 +96,23 @@ type EventEmbeddingDoc = {
 type MemoryDoc = {
   _id: Id<"memories">;
   content: string;
+  accessCount?: number;
 };
 type RecallCandidate = {
   id: string;
   content: string;
   timestamp?: number;
   type?: string;
+};
+
+const orderDocsByCandidateIds = <TDoc extends { _id: unknown }>(
+  candidateIds: Array<unknown>,
+  docs: TDoc[],
+): TDoc[] => {
+  const docsById = new Map(docs.map((doc) => [String(doc._id), doc]));
+  return candidateIds
+    .map((id) => docsById.get(String(id)))
+    .filter((doc): doc is TDoc => !!doc);
 };
 
 // ---------------------------------------------------------------------------
@@ -299,6 +310,44 @@ const selectRelevantCandidateIds = async (args: {
   return selectedIds.slice(0, args.maxSelected);
 };
 
+const selectRecallDocs = async <TDoc extends { _id: unknown }>(args: {
+  query: string;
+  source: "memory" | "history";
+  conversationContext?: string;
+  docs: TDoc[];
+  maxSelected: number;
+  fallbackCount?: number;
+  toCandidate: (doc: TDoc) => RecallCandidate;
+}): Promise<TDoc[]> => {
+  if (args.docs.length === 0) {
+    return [];
+  }
+
+  const docsByCandidateId = new Map<string, TDoc>();
+  const rerankCandidates = args.docs.map((doc) => {
+    const candidate = args.toCandidate(doc);
+    docsByCandidateId.set(candidate.id, doc);
+    return candidate;
+  });
+
+  const selectedIds = await selectRelevantCandidateIds({
+    query: args.query,
+    source: args.source,
+    conversationContext: args.conversationContext,
+    candidates: rerankCandidates,
+    maxSelected: args.maxSelected,
+  });
+
+  const selectedCandidateIds =
+    selectedIds.length > 0
+      ? selectedIds
+      : rerankCandidates.slice(0, args.fallbackCount ?? 5).map((candidate) => candidate.id);
+
+  return selectedCandidateIds
+    .map((id) => docsByCandidateId.get(id))
+    .filter((doc): doc is TDoc => !!doc);
+};
+
 // ---------------------------------------------------------------------------
 // Prompts
 // ---------------------------------------------------------------------------
@@ -408,14 +457,29 @@ export const mergeMemory = internalMutation({
 // ---------------------------------------------------------------------------
 
 export const touchMemoriesById = internalMutation({
-  args: { memoryIds: v.array(v.id("memories")) },
+  args: {
+    touches: v.array(
+      v.object({
+        memoryId: v.id("memories"),
+        currentAccessCount: v.optional(v.number()),
+      }),
+    ),
+  },
   handler: async (ctx, args) => {
     const now = Date.now();
     await Promise.all(
-      args.memoryIds.map(async (id) => {
-        const mem = await ctx.db.get(id);
+      args.touches.map(async (touch) => {
+        if (typeof touch.currentAccessCount === "number" && Number.isFinite(touch.currentAccessCount)) {
+          await ctx.db.patch(touch.memoryId, {
+            accessedAt: now,
+            accessCount: touch.currentAccessCount + 1,
+          });
+          return;
+        }
+
+        const mem = await ctx.db.get(touch.memoryId);
         if (!mem) return;
-        await ctx.db.patch(id, {
+        await ctx.db.patch(touch.memoryId, {
           accessedAt: now,
           accessCount: (mem.accessCount ?? 0) + 1,
         });
@@ -530,35 +594,25 @@ export const recallMemories = internalAction({
         const docs = (await ctx.runQuery(internal.data.event_embeddings.getEmbeddingsByIds, {
           ids: candidateIds,
         })) as EventEmbeddingDoc[];
-        const docsById = new Map(
-          docs
-            .filter((doc: EventEmbeddingDoc) =>
-              doc.ownerId === args.ownerId &&
-              (!args.conversationId || doc.conversationId === args.conversationId)
-            )
-            .map((doc: EventEmbeddingDoc) => [String(doc._id), doc]),
+        const eligibleDocs = docs.filter(
+          (doc: EventEmbeddingDoc) =>
+            doc.ownerId === args.ownerId &&
+            (!args.conversationId || doc.conversationId === args.conversationId),
         );
-        const orderedDocs = candidateIds
-          .map((id) => docsById.get(String(id)))
-          .filter((doc): doc is NonNullable<typeof doc> => !!doc);
-
-        const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc: EventEmbeddingDoc) => ({
-          id: String(doc._id),
-          content: doc.content,
-          timestamp: doc.timestamp,
-          type: doc.type,
-        }));
-        const selectedIds = await selectRelevantCandidateIds({
+        const orderedDocs = orderDocsByCandidateIds(candidateIds, eligibleDocs);
+        const selectedDocs = await selectRecallDocs({
           query,
           source: "history",
           conversationContext: recentConversationContext,
-          candidates: rerankCandidates,
+          docs: orderedDocs,
           maxSelected: HISTORY_MAX_SELECTED,
+          toCandidate: (doc: EventEmbeddingDoc) => ({
+            id: String(doc._id),
+            content: doc.content,
+            timestamp: doc.timestamp,
+            type: doc.type,
+          }),
         });
-
-        const selectedDocs = (selectedIds.length > 0 ? selectedIds : rerankCandidates.slice(0, 5).map((c) => c.id))
-          .map((id) => docsById.get(id))
-          .filter((doc): doc is NonNullable<typeof doc> => !!doc);
 
         if (selectedDocs.length === 0) {
           return "";
@@ -586,34 +640,30 @@ export const recallMemories = internalAction({
       const docs = (await ctx.runQuery(internal.data.memory.getMemoriesByIds, {
         ids: candidateIds,
       })) as MemoryDoc[];
-      const docsById = new Map(
-        docs.map((doc: MemoryDoc) => [String(doc._id), doc]),
-      );
-      const orderedDocs = candidateIds
-        .map((id) => docsById.get(String(id)))
-        .filter((doc): doc is NonNullable<typeof doc> => !!doc);
-
-      const rerankCandidates: RecallCandidate[] = orderedDocs.map((doc: MemoryDoc) => ({
-        id: String(doc._id),
-        content: doc.content,
-      }));
-      const selectedIds = await selectRelevantCandidateIds({
+      const orderedDocs = orderDocsByCandidateIds(candidateIds, docs);
+      const selectedDocs = await selectRecallDocs({
         query,
         source: "memory",
         conversationContext: recentConversationContext,
-        candidates: rerankCandidates,
+        docs: orderedDocs,
         maxSelected: RECALL_MAX_SELECTED,
+        toCandidate: (doc: MemoryDoc) => ({
+          id: String(doc._id),
+          content: doc.content,
+        }),
       });
 
-      const selectedDocs = (selectedIds.length > 0 ? selectedIds : rerankCandidates.slice(0, 5).map((c) => c.id))
-        .map((id) => docsById.get(id))
-        .filter((doc): doc is NonNullable<typeof doc> => !!doc);
       if (selectedDocs.length === 0) {
         return "";
       }
 
       await ctx.runMutation(internal.data.memory.touchMemoriesById, {
-        memoryIds: selectedDocs.map((doc) => doc._id as Id<"memories">),
+        touches: selectedDocs.map((doc) => ({
+          memoryId: doc._id as Id<"memories">,
+          ...(typeof doc.accessCount === "number"
+            ? { currentAccessCount: doc.accessCount }
+            : {}),
+        })),
       });
 
       return selectedDocs.map((doc: MemoryDoc) => `- ${doc.content}`).join("\n");
@@ -659,8 +709,12 @@ export const adjudicateAndStoreFact = internalAction({
       const docs = (await ctx.runQuery(internal.data.memory.getMemoriesByIds, {
         ids: candidateIds,
       })) as MemoryDoc[];
+      const orderedDocs = orderDocsByCandidateIds(candidateIds, docs);
+      const docsById = new Map(
+        orderedDocs.map((doc: MemoryDoc) => [String(doc._id), doc]),
+      );
       
-      const candidateText = docs
+      const candidateText = orderedDocs
         .map((doc: MemoryDoc, idx: number) => `[${idx + 1}] id=${doc._id} | content=${doc.content}`)
         .join("\\n");
       
@@ -681,8 +735,16 @@ export const adjudicateAndStoreFact = internalAction({
       const decision = parseAdjudicationResponse(response);
 
       if (decision.action === "duplicate") {
+        const existing = docsById.get(String(decision.memoryId));
         await ctx.runMutation(internal.data.memory.touchMemoriesById, {
-          memoryIds: [decision.memoryId as Id<"memories">],
+          touches: [
+            {
+              memoryId: decision.memoryId as Id<"memories">,
+              ...(typeof existing?.accessCount === "number"
+                ? { currentAccessCount: existing.accessCount }
+                : {}),
+            },
+          ],
         });
         return "Already captured.";
       }
@@ -772,4 +834,3 @@ export const seedFromDiscovery = internalAction({
     return null;
   },
 });
-

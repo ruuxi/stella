@@ -5,6 +5,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { ToolOptions } from "./types";
 import { getUnsafeIntegrationHostError } from "./network_safety";
+import { executeIntegrationRequestService } from "./integration_request_service";
 
 const integrationAuthSchema = z
   .object({
@@ -663,121 +664,60 @@ export const createBackendTools = (
         "- Response is returned as JSON with status, ok, and data fields.",
       inputSchema: integrationRequestSchema,
       execute: async (args) => {
-        const mode =
-          args.mode ?? (args.secretId ? "private" : args.publicKeyEnv ? "public" : "private");
-        let requestUrl: URL;
-        try {
-          requestUrl = new URL(args.request.url);
-        } catch {
-          return "IntegrationRequest requires a valid URL.";
-        }
-        if (!["http:", "https:"].includes(requestUrl.protocol)) {
-          return "IntegrationRequest only supports http(s) URLs.";
-        }
-        const unsafeHostError = getUnsafeIntegrationHostError(requestUrl, {
-          allowPrivateNetworkHosts: mode === "private",
-        });
-        if (unsafeHostError) {
-          return unsafeHostError;
-        }
-        const providerKey = args.provider.trim().toLowerCase();
-
-        if (mode === "public") {
-          let policy = publicPoliciesFromEnv[providerKey] ?? null;
-
-          if (!policy) {
-            const publicIntegration = await ctx.runQuery(
-              internal.data.integrations.getPublicIntegrationByIdInternal,
-              { id: args.provider },
-            );
-            if (publicIntegration?.usagePolicy) {
-              policy = parsePublicPolicyFromUsagePolicy(publicIntegration.usagePolicy);
+        return await executeIntegrationRequestService({
+          request: args,
+          wrapExternalContent,
+          readEnv: (name) => process.env[name],
+          hostAllowed,
+          deriveHostPatterns,
+          providersCompatible,
+          runIntegrationRequest,
+          lookupPublicPolicy: async (provider) => {
+            const providerKey = provider.trim().toLowerCase();
+            let policy = publicPoliciesFromEnv[providerKey] ?? null;
+            if (!policy) {
+              const publicIntegration = await ctx.runQuery(
+                internal.data.integrations.getPublicIntegrationByIdInternal,
+                { id: provider },
+              );
+              if (publicIntegration?.usagePolicy) {
+                policy = parsePublicPolicyFromUsagePolicy(publicIntegration.usagePolicy);
+              }
             }
-          }
-
-          if (!policy) {
-            return `Public integration policy is not configured for provider "${args.provider}". Configure STELLA_PUBLIC_INTEGRATION_RULES env var or add a row to integrations_public.`;
-          }
-
-          const requestedEnvName = args.publicKeyEnv?.trim();
-          if (
-            requestedEnvName &&
-            requestedEnvName.length > 0 &&
-            requestedEnvName !== policy.envVar
-          ) {
-            return `publicKeyEnv does not match the configured env for provider "${args.provider}".`;
-          }
-
-          if (!hostAllowed(requestUrl.hostname, policy.allowedHosts)) {
-            return `Public integration host "${requestUrl.hostname}" is not allowed for provider "${args.provider}".`;
-          }
-
-          const key = process.env[policy.envVar];
-          if (!key) {
-            return `Public integration is missing env var: ${policy.envVar}.`;
-          }
-
-          const publicResult = await runIntegrationRequest(args, key, {
-            allowPrivateNetworkHosts: false,
-          });
-          if (publicResult.startsWith("IntegrationRequest")) {
-            return publicResult; // Error message — don't wrap
-          }
-          return wrapExternalContent(publicResult, args.request.url);
-        }
-
-        if (!args.secretId) {
-          return "IntegrationRequest requires secretId when mode is private.";
-        }
-        const ownerCheck = requireOwnerId("IntegrationRequest");
-        if (ownerCheck) {
-          return ownerCheck;
-        }
-
-        const ownerId = options.ownerId as string;
-        const secretId = String(args.secretId);
-        const privateResult = await withSecret(secretId, "IntegrationRequest", async (secret) => {
-          if (!providersCompatible(args.provider, secret.provider)) {
-            return `IntegrationRequest provider "${args.provider}" is not compatible with secret provider "${secret.provider}".`;
-          }
-
-          const envPolicyHosts = privatePoliciesFromEnv[providerKey] ?? [];
-          let allowedHosts = envPolicyHosts;
-          if (allowedHosts.length === 0) {
-            const prefValue = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
-              ownerId,
-              key: privateHostPrefKey(providerKey, String(secret.secretId)),
-            });
-            allowedHosts = parseStoredAllowedHosts(prefValue);
-          }
-
-          if (allowedHosts.length === 0) {
-            allowedHosts = deriveHostPatterns(requestUrl.hostname);
-            if (allowedHosts.length > 0) {
-              await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
+            return policy;
+          },
+          lookupPrivateAllowedHosts: async (providerKey, secretId) => {
+            const envPolicyHosts = privatePoliciesFromEnv[providerKey] ?? [];
+            if (envPolicyHosts.length > 0) {
+              return envPolicyHosts;
+            }
+            const ownerId = options.ownerId as string;
+            const prefValue = await ctx.runQuery(
+              internal.data.preferences.getPreferenceForOwner,
+              {
                 ownerId,
-                key: privateHostPrefKey(providerKey, String(secret.secretId)),
-                value: JSON.stringify(allowedHosts),
-              });
-            }
-          }
-
-          if (allowedHosts.length > 0 && !hostAllowed(requestUrl.hostname, allowedHosts)) {
-            return `Private integration host "${requestUrl.hostname}" is not allowed for provider "${args.provider}". Allowed hosts: ${allowedHosts.join(", ")}.`;
-          }
-
-          return runIntegrationRequest(args, secret.plaintext, {
-            allowPrivateNetworkHosts: true,
-          });
+                key: privateHostPrefKey(providerKey, secretId),
+              },
+            );
+            return parseStoredAllowedHosts(prefValue);
+          },
+          persistPrivateAllowedHosts: async (providerKey, secretId, hosts) => {
+            const ownerId = options.ownerId as string;
+            await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
+              ownerId,
+              key: privateHostPrefKey(providerKey, secretId),
+              value: JSON.stringify(hosts),
+            });
+          },
+          requireOwnerContextError: () => requireOwnerId("IntegrationRequest"),
+          withSecret: async (secretId, handler) =>
+            await withSecret(secretId, "IntegrationRequest", async (secret) =>
+              await handler({
+                ...secret,
+                secretId: String(secret.secretId),
+              }),
+            ),
         });
-        // Wrap successful content, but not error messages from withSecret or runIntegrationRequest
-        if (
-          privateResult.startsWith("Secret access failed") ||
-          privateResult.startsWith("IntegrationRequest")
-        ) {
-          return privateResult;
-        }
-        return wrapExternalContent(privateResult, args.request.url);
       },
     }),
     ActivateSkill: tool({
