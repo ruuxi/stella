@@ -21,7 +21,6 @@ const OWNER_TABLES: Array<{
   index: string;
 }> = [
   { table: "conversations", index: "by_ownerId_and_updatedAt" },
-  { table: "dashboard_pages", index: "by_ownerId_and_updatedAt" },
   { table: "user_preferences", index: "by_ownerId_and_key" },
   { table: "memories", index: "by_ownerId_and_accessedAt" },
   { table: "event_embeddings", index: "by_ownerId_and_timestamp" },

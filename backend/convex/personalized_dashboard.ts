@@ -1,17 +1,7 @@
-import {
-  action,
-  mutation,
-  internalAction,
-  internalMutation,
-  internalQuery,
-  query,
-  type ActionCtx,
-} from "./_generated/server";
+import { action } from "./_generated/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireConversationOwnerAction, requireUserId } from "./auth";
-import { buildSystemPrompt } from "./agent/prompt_builder";
 import {
   PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
   buildPersonalizedDashboardPageUserMessage,
@@ -19,76 +9,8 @@ import {
 } from "./prompts/personalized_dashboard";
 
 const CORE_MEMORY_KEY = "core_memory";
-const PAGE_MONITOR_INTERVAL_MS = 2_500;
-const PAGE_RETRY_DELAY_MS = 1_500;
-const PAGE_MAX_RETRIES = 2;
-const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
-const PANEL_WRITE_SCAN_LIMIT = 1000;
 
-const dashboardPageStatusValidator = v.union(
-  v.literal("queued"),
-  v.literal("running"),
-  v.literal("ready"),
-  v.literal("failed"),
-);
-
-const dashboardPageRecordValidator = v.object({
-  _id: v.id("dashboard_pages"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  conversationId: v.id("conversations"),
-  pageId: v.string(),
-  panelName: v.string(),
-  title: v.string(),
-  topic: v.string(),
-  focus: v.string(),
-  dataSources: v.array(v.string()),
-  status: dashboardPageStatusValidator,
-  order: v.number(),
-  taskId: v.optional(v.id("tasks")),
-  retryCount: v.number(),
-  statusText: v.optional(v.string()),
-  lastError: v.optional(v.string()),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-  completedAt: v.optional(v.number()),
-});
-
-const plannedPageValidator = v.object({
-  pageId: v.string(),
-  panelName: v.string(),
-  title: v.string(),
-  topic: v.string(),
-  focus: v.string(),
-  dataSources: v.array(v.string()),
-  order: v.number(),
-});
-
-const pageAssignmentInputValidator = v.object({
-  pageId: v.optional(v.string()),
-  title: v.string(),
-  topic: v.string(),
-  focus: v.string(),
-  dataSources: v.optional(v.array(v.string())),
-});
-
-const sidebarPageValidator = v.object({
-  pageId: v.string(),
-  panelName: v.string(),
-  title: v.string(),
-  status: dashboardPageStatusValidator,
-  order: v.number(),
-  statusText: v.optional(v.string()),
-  lastError: v.optional(v.string()),
-});
-
-const startGenerationResultValidator = v.object({
-  started: v.boolean(),
-  pageIds: v.array(v.string()),
-  skippedReason: v.optional(v.string()),
-});
-
-type DashboardPageStatus = "queued" | "running" | "ready" | "failed";
+// --- Types ---
 
 type PlannedPage = {
   pageId: string;
@@ -108,6 +30,8 @@ type PageTemplate = {
   tags: string[];
   dataSources: string[];
 };
+
+// --- Templates ---
 
 const PAGE_TEMPLATES: PageTemplate[] = [
   {
@@ -245,6 +169,8 @@ const TAG_KEYWORDS: Record<string, string[]> = {
 
 const DEFAULT_TEMPLATE_IDS = ["learning_brief", "world_briefing", "tech_feed"];
 
+// --- Utilities ---
+
 const normalizeText = (value: string, maxLength: number) =>
   value
     .replace(/\s+/g, " ")
@@ -257,71 +183,6 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 48);
-
-const toLowerPath = (value: string) => value.replace(/\\/g, "/").toLowerCase();
-
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-
-const asString = (value: unknown): string | null =>
-  typeof value === "string" && value.trim().length > 0 ? value : null;
-
-const didTaskWritePanelFile = async (
-  ctx: ActionCtx,
-  args: {
-    conversationId: Id<"conversations">;
-    taskCreatedAt: number;
-    panelName: string;
-  },
-): Promise<boolean> => {
-  const panelFileSuffix = `/${args.panelName}.tsx`.toLowerCase();
-  const events = await ctx.runQuery(internal.events.listEventsSince, {
-    conversationId: args.conversationId,
-    afterTimestamp: Math.max(0, args.taskCreatedAt - 5_000),
-    limit: PANEL_WRITE_SCAN_LIMIT,
-  });
-
-  const candidateRequestIds = new Set<string>();
-  for (const event of events) {
-    if (event.type !== "tool_request") continue;
-    if (!event.requestId) continue;
-    const payload = asRecord(event.payload);
-    if (!payload) continue;
-    if (asString(payload.toolName)?.toLowerCase() !== "write") continue;
-
-    const toolArgs = asRecord(payload.args);
-    const filePath = asString(toolArgs?.file_path);
-    if (!filePath) continue;
-    if (!toLowerPath(filePath).endsWith(panelFileSuffix)) continue;
-
-    candidateRequestIds.add(event.requestId);
-  }
-
-  if (candidateRequestIds.size === 0) {
-    return false;
-  }
-
-  for (const event of events) {
-    if (event.type !== "tool_result") continue;
-    if (!event.requestId || !candidateRequestIds.has(event.requestId)) continue;
-
-    const payload = asRecord(event.payload);
-    if (!payload) continue;
-    const toolError = asString(payload.error);
-    if (toolError) continue;
-
-    const resultText = asString(payload.result);
-    if (resultText && resultText.trim().toUpperCase().startsWith("ERROR:")) {
-      continue;
-    }
-
-    return true;
-  }
-
-  return false;
-};
 
 const toPanelName = (pageId: string) => {
   const base = slugify(pageId) || `page_${Date.now()}`;
@@ -362,6 +223,8 @@ const scoreTemplate = (template: PageTemplate, profileText: string): number => {
 
   return score;
 };
+
+// --- Planning ---
 
 const buildHeuristicAssignments = (coreMemory: string): PlannedPage[] => {
   const profileText = coreMemory.toLowerCase();
@@ -441,678 +304,23 @@ const toAssignment = (page: PlannedPage): PersonalizedDashboardPageAssignment =>
   dataSources: page.dataSources,
 });
 
-const resolveTaskAnchorEventId = async (
-  ctx: ActionCtx,
-  conversationId: Id<"conversations">,
-  pageId: string,
-): Promise<Id<"events">> => {
-  const latestEventId = await ctx.runQuery(internal.personalized_dashboard.getLatestEventIdForConversationInternal, {
-    conversationId,
-  });
+// --- Validators ---
 
-  if (latestEventId) {
-    return latestEventId;
-  }
-
-  const created = await ctx.runMutation(internal.events.appendInternalEvent, {
-    conversationId,
-    type: "dashboard_generation_anchor",
-    payload: {
-      source: "personalized_dashboard",
-      pageId,
-    },
-  });
-
-  if (!created) {
-    throw new Error("Failed to create task anchor event.");
-  }
-
-  return created._id;
-};
-
-export const listPagesForOwnerInternal = internalQuery({
-  args: {
-    ownerId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_order", (q) => q.eq("ownerId", args.ownerId))
-      .collect();
-  },
+const pageAssignmentInputValidator = v.object({
+  pageId: v.optional(v.string()),
+  title: v.string(),
+  topic: v.string(),
+  focus: v.string(),
+  dataSources: v.optional(v.array(v.string())),
 });
 
-export const getPageByOwnerAndPageIdInternal = internalQuery({
-  args: {
-    ownerId: v.string(),
-    pageId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_pageId", (q) =>
-        q.eq("ownerId", args.ownerId).eq("pageId", args.pageId),
-      )
-      .unique();
-  },
+const startGenerationResultValidator = v.object({
+  started: v.boolean(),
+  pageIds: v.array(v.string()),
+  skippedReason: v.optional(v.string()),
 });
 
-export const getLatestEventIdForConversationInternal = internalQuery({
-  args: {
-    conversationId: v.id("conversations"),
-  },
-  handler: async (ctx, args) => {
-    const latest = await ctx.db
-      .query("events")
-      .withIndex("by_conversationId_and_timestamp", (q) =>
-        q.eq("conversationId", args.conversationId),
-      )
-      .order("desc")
-      .first();
-
-    return latest?._id ?? null;
-  },
-});
-
-export const upsertPlannedPagesInternal = internalMutation({
-  args: {
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    pages: v.array(plannedPageValidator),
-  },
-  handler: async (ctx, args) => {
-    const now = Date.now();
-    const existing = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_order", (q) => q.eq("ownerId", args.ownerId))
-      .collect();
-
-    const keepPageIds = new Set(args.pages.map((page) => page.pageId));
-    const existingByPageId = new Map(existing.map((page) => [page.pageId, page]));
-
-    for (const page of existing) {
-      if (!keepPageIds.has(page.pageId)) {
-        await ctx.db.delete(page._id);
-      }
-    }
-
-    for (const page of args.pages) {
-      const prev = existingByPageId.get(page.pageId);
-      if (prev) {
-        await ctx.db.patch(prev._id, {
-          conversationId: args.conversationId,
-          panelName: page.panelName,
-          title: page.title,
-          topic: page.topic,
-          focus: page.focus,
-          dataSources: page.dataSources,
-          status: "queued" satisfies DashboardPageStatus,
-          order: page.order,
-          taskId: undefined,
-          retryCount: 0,
-          statusText: "Queued",
-          lastError: undefined,
-          completedAt: undefined,
-          updatedAt: now,
-        });
-      } else {
-        await ctx.db.insert("dashboard_pages", {
-          ownerId: args.ownerId,
-          conversationId: args.conversationId,
-          pageId: page.pageId,
-          panelName: page.panelName,
-          title: page.title,
-          topic: page.topic,
-          focus: page.focus,
-          dataSources: page.dataSources,
-          status: "queued" satisfies DashboardPageStatus,
-          order: page.order,
-          taskId: undefined,
-          retryCount: 0,
-          statusText: "Queued",
-          lastError: undefined,
-          createdAt: now,
-          updatedAt: now,
-          completedAt: undefined,
-        });
-      }
-    }
-
-    return args.pages.map((page) => page.pageId);
-  },
-});
-
-export const markPageTaskStartedInternal = internalMutation({
-  args: {
-    ownerId: v.string(),
-    pageId: v.string(),
-    taskId: v.optional(v.id("tasks")),
-  },
-  handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_pageId", (q) =>
-        q.eq("ownerId", args.ownerId).eq("pageId", args.pageId),
-      )
-      .unique();
-    if (!record) return null;
-
-    await ctx.db.patch(record._id, {
-      status: "running" satisfies DashboardPageStatus,
-      taskId: args.taskId,
-      statusText: "Generating page...",
-      lastError: undefined,
-      updatedAt: Date.now(),
-      completedAt: undefined,
-    });
-
-    return null;
-  },
-});
-
-export const updatePageProgressInternal = internalMutation({
-  args: {
-    ownerId: v.string(),
-    pageId: v.string(),
-    statusText: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_pageId", (q) =>
-        q.eq("ownerId", args.ownerId).eq("pageId", args.pageId),
-      )
-      .unique();
-    if (!record) return null;
-
-    await ctx.db.patch(record._id, {
-      status: "running" satisfies DashboardPageStatus,
-      statusText: normalizeText(args.statusText, 180),
-      updatedAt: Date.now(),
-    });
-
-    return null;
-  },
-});
-
-export const markPageReadyInternal = internalMutation({
-  args: {
-    ownerId: v.string(),
-    pageId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_pageId", (q) =>
-        q.eq("ownerId", args.ownerId).eq("pageId", args.pageId),
-      )
-      .unique();
-    if (!record) return null;
-
-    const now = Date.now();
-    await ctx.db.patch(record._id, {
-      status: "ready" satisfies DashboardPageStatus,
-      statusText: "Ready",
-      lastError: undefined,
-      updatedAt: now,
-      completedAt: now,
-    });
-
-    return null;
-  },
-});
-
-export const markPageFailedInternal = internalMutation({
-  args: {
-    ownerId: v.string(),
-    pageId: v.string(),
-    error: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_pageId", (q) =>
-        q.eq("ownerId", args.ownerId).eq("pageId", args.pageId),
-      )
-      .unique();
-    if (!record) return null;
-
-    const now = Date.now();
-    await ctx.db.patch(record._id, {
-      status: "failed" satisfies DashboardPageStatus,
-      statusText: "Failed",
-      lastError: normalizeText(args.error, 800),
-      updatedAt: now,
-      completedAt: now,
-      taskId: undefined,
-    });
-
-    return null;
-  },
-});
-
-export const queuePageRetryInternal = internalMutation({
-  args: {
-    ownerId: v.string(),
-    pageId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_pageId", (q) =>
-        q.eq("ownerId", args.ownerId).eq("pageId", args.pageId),
-      )
-      .unique();
-    if (!record) {
-      return { queued: false, retryCount: 0 };
-    }
-
-    const retryCount = (record.retryCount ?? 0) + 1;
-    await ctx.db.patch(record._id, {
-      status: "queued" satisfies DashboardPageStatus,
-      statusText: `Retrying (${retryCount}/${PAGE_MAX_RETRIES})...`,
-      retryCount,
-      lastError: undefined,
-      taskId: undefined,
-      updatedAt: Date.now(),
-      completedAt: undefined,
-    });
-
-    return { queued: true, retryCount };
-  },
-});
-
-export const launchPageGenerationTaskInternal = internalAction({
-  args: {
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    pageId: v.string(),
-    targetDeviceId: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<{
-    launched: boolean;
-    taskId: Id<"tasks"> | null;
-    error?: string;
-  }> => {
-    const conversation = await ctx.runQuery(internal.conversations.getById, {
-      id: args.conversationId,
-    });
-
-    if (!conversation || conversation.ownerId !== args.ownerId) {
-      return {
-        launched: false,
-        taskId: null,
-        error: "Conversation not found.",
-      };
-    }
-
-    const page = await ctx.runQuery(internal.personalized_dashboard.getPageByOwnerAndPageIdInternal, {
-      ownerId: args.ownerId,
-      pageId: args.pageId,
-    });
-
-    if (!page) {
-      return {
-        launched: false,
-        taskId: null,
-        error: "Page assignment not found.",
-      };
-    }
-
-    const executionTarget = await ctx.runQuery(internal.agent.device_resolver.resolveExecutionTarget, {
-      ownerId: args.ownerId,
-    });
-
-    const hintedTargetDeviceId = normalizeText(args.targetDeviceId ?? "", 256);
-    const latestConversationDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
-      conversationId: args.conversationId,
-    });
-
-    let resolvedTargetDeviceId: string | null = executionTarget.targetDeviceId;
-    if (!resolvedTargetDeviceId && hintedTargetDeviceId) {
-      resolvedTargetDeviceId = hintedTargetDeviceId;
-    }
-    if (!resolvedTargetDeviceId && latestConversationDeviceId) {
-      resolvedTargetDeviceId = latestConversationDeviceId;
-    }
-
-    if (!resolvedTargetDeviceId) {
-      const error = "Local desktop runtime appears offline. Keep Stella open and connected, then retry.";
-      await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
-        ownerId: args.ownerId,
-        pageId: args.pageId,
-        error,
-      });
-      return {
-        launched: false,
-        taskId: null,
-        error,
-      };
-    }
-
-    // If desktop is online, emit a dashboard_generation_request event so the local
-    // runtime generates locally.
-    if (resolvedTargetDeviceId && !executionTarget.spriteName) {
-      // Mark the page as running so the fallback monitor knows generation is in progress
-      await ctx.runMutation(internal.personalized_dashboard.markPageTaskStartedInternal, {
-        ownerId: args.ownerId,
-        pageId: args.pageId,
-        taskId: undefined,
-      });
-
-      // Build the prompt so the local runner has everything it needs
-      const coreMemoryRaw = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
-        ownerId: args.ownerId,
-        key: CORE_MEMORY_KEY,
-      });
-      const coreMemory = normalizeText(coreMemoryRaw ?? "", 12_000);
-      const assignment = toAssignment({
-        pageId: page.pageId,
-        panelName: page.panelName,
-        title: page.title,
-        topic: page.topic,
-        focus: page.focus,
-        dataSources: page.dataSources,
-        order: page.order,
-      });
-      const userPrompt = buildPersonalizedDashboardPageUserMessage({
-        coreMemory,
-        assignment,
-      });
-
-      await ctx.runMutation(internal.events.appendInternalEvent, {
-        conversationId: args.conversationId,
-        type: "dashboard_generation_request",
-        targetDeviceId: resolvedTargetDeviceId,
-        payload: {
-          pageId: args.pageId,
-          ownerId: args.ownerId,
-          panelName: page.panelName,
-          title: page.title,
-          topic: page.topic,
-          focus: page.focus,
-          dataSources: page.dataSources,
-          systemPrompt: PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
-          userPrompt,
-        },
-      });
-
-      // Schedule a fallback monitor — if the local runner doesn't claim within 30s, retry server-side
-      await ctx.scheduler.runAfter(30_000, internal.personalized_dashboard.monitorPageGenerationTaskInternal, {
-        ownerId: args.ownerId,
-        conversationId: args.conversationId,
-        pageId: args.pageId,
-        taskId: "local-pending",
-      });
-
-      return { launched: true, taskId: null };
-    }
-
-    await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
-    await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
-
-    const promptBuild = await buildSystemPrompt(ctx, "general", {
-      ownerId: args.ownerId,
-    });
-
-    const taskAnchorEventId = await resolveTaskAnchorEventId(ctx, args.conversationId, args.pageId);
-
-    const coreMemoryRaw = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
-      ownerId: args.ownerId,
-      key: CORE_MEMORY_KEY,
-    });
-    const coreMemory = normalizeText(coreMemoryRaw ?? "", 12_000);
-
-    const assignment = toAssignment({
-      pageId: page.pageId,
-      panelName: page.panelName,
-      title: page.title,
-      topic: page.topic,
-      focus: page.focus,
-      dataSources: page.dataSources,
-      order: page.order,
-    });
-
-    const prompt = buildPersonalizedDashboardPageUserMessage({
-      coreMemory,
-      assignment,
-    });
-    const description = `Generate personalized page: ${page.title}`;
-
-    const created = await ctx.runMutation(internal.agent.tasks.createTaskRecord, {
-      conversationId: args.conversationId,
-      userMessageId: taskAnchorEventId,
-      targetDeviceId: resolvedTargetDeviceId,
-      description,
-      prompt,
-      agentType: "general",
-      parentTaskId: undefined,
-      maxTaskDepth: promptBuild.maxTaskDepth,
-      commandId: undefined,
-    });
-
-    await ctx.runMutation(internal.personalized_dashboard.markPageTaskStartedInternal, {
-      ownerId: args.ownerId,
-      pageId: args.pageId,
-      taskId: created.taskId,
-    });
-
-    await ctx.runMutation(internal.events.appendInternalEvent, {
-      conversationId: args.conversationId,
-      type: "task_started",
-      deviceId: resolvedTargetDeviceId,
-      targetDeviceId: resolvedTargetDeviceId,
-      payload: {
-        taskId: created.taskId,
-        description,
-        agentType: "general",
-        source: "personalized_dashboard",
-        taskDepth: created.taskDepth,
-        maxTaskDepth: created.maxTaskDepth,
-      },
-    });
-
-    await ctx.scheduler.runAfter(TASK_CHECKIN_INTERVAL_MS, internal.agent.tasks.taskCheckin, {
-      conversationId: args.conversationId,
-      targetDeviceId: resolvedTargetDeviceId,
-      taskId: created.taskId,
-    });
-
-    await ctx.scheduler.runAfter(0, internal.agent.tasks.executeSubagent, {
-      conversationId: args.conversationId,
-      userMessageId: taskAnchorEventId,
-      targetDeviceId: resolvedTargetDeviceId,
-      spriteName: undefined,
-      description,
-      prompt,
-      subagentType: "general",
-      taskId: created.taskId,
-      ownerId: args.ownerId,
-      parentTaskId: undefined,
-      threadId: undefined,
-      commandId: undefined,
-      systemPromptOverride: PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
-      suppressDelivery: true,
-    });
-
-    await ctx.scheduler.runAfter(PAGE_MONITOR_INTERVAL_MS, internal.personalized_dashboard.monitorPageGenerationTaskInternal, {
-      ownerId: args.ownerId,
-      conversationId: args.conversationId,
-      pageId: args.pageId,
-      taskId: String(created.taskId),
-    });
-
-    return {
-      launched: true,
-      taskId: created.taskId,
-    };
-  },
-});
-
-export const monitorPageGenerationTaskInternal = internalAction({
-  args: {
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    pageId: v.string(),
-    taskId: v.string(),
-  },
-  handler: async (ctx, args): Promise<null> => {
-    const page = await ctx.runQuery(internal.personalized_dashboard.getPageByOwnerAndPageIdInternal, {
-      ownerId: args.ownerId,
-      pageId: args.pageId,
-    });
-
-    if (!page) return null;
-
-    if (args.taskId === "local-pending") {
-      if (page.status === "ready" || page.status === "failed") {
-        return null;
-      }
-
-      // If the local runner has started (status is "running"), keep monitoring
-      if (page.status === "running") {
-        await ctx.scheduler.runAfter(
-          PAGE_MONITOR_INTERVAL_MS,
-          internal.personalized_dashboard.monitorPageGenerationTaskInternal,
-          args,
-        );
-        return null;
-      }
-
-      // Still queued after the fallback delay — retry server-side
-      await ctx.runAction(internal.personalized_dashboard.launchPageGenerationTaskInternal, {
-        ownerId: args.ownerId,
-        conversationId: args.conversationId,
-        pageId: args.pageId,
-      });
-      return null;
-    }
-
-    if (page.taskId && String(page.taskId) !== args.taskId) {
-      return null;
-    }
-
-    const task = await ctx.runQuery(internal.agent.tasks.getOutputByExternalIdInternal, {
-      taskId: args.taskId,
-    });
-
-    if (!task) {
-      await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
-        ownerId: args.ownerId,
-        pageId: args.pageId,
-        error: "Task record was not found.",
-      });
-      return null;
-    }
-
-    if (task.status === "running") {
-      const latestStatus = task.statusUpdates?.[task.statusUpdates.length - 1]?.text ?? "Generating page...";
-      await ctx.runMutation(internal.personalized_dashboard.updatePageProgressInternal, {
-        ownerId: args.ownerId,
-        pageId: args.pageId,
-        statusText: latestStatus,
-      });
-
-      await ctx.scheduler.runAfter(PAGE_MONITOR_INTERVAL_MS, internal.personalized_dashboard.monitorPageGenerationTaskInternal, args);
-      return null;
-    }
-
-    if (task.status === "completed") {
-      const hasWrittenPanelFile = await didTaskWritePanelFile(ctx, {
-        conversationId: args.conversationId,
-        taskCreatedAt: task.createdAt,
-        panelName: page.panelName,
-      });
-
-      if (!hasWrittenPanelFile) {
-        const verificationError = `Generation finished but did not write ${page.panelName}.tsx to workspace/panels.`;
-        if ((page.retryCount ?? 0) < PAGE_MAX_RETRIES) {
-          const retry = await ctx.runMutation(internal.personalized_dashboard.queuePageRetryInternal, {
-            ownerId: args.ownerId,
-            pageId: args.pageId,
-          });
-
-          if (retry.queued) {
-            await ctx.scheduler.runAfter(PAGE_RETRY_DELAY_MS, internal.personalized_dashboard.launchPageGenerationTaskInternal, {
-              ownerId: args.ownerId,
-              conversationId: args.conversationId,
-              pageId: args.pageId,
-            });
-            return null;
-          }
-        }
-
-        await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
-          ownerId: args.ownerId,
-          pageId: args.pageId,
-          error: verificationError,
-        });
-        return null;
-      }
-
-      await ctx.runMutation(internal.personalized_dashboard.markPageReadyInternal, {
-        ownerId: args.ownerId,
-        pageId: args.pageId,
-      });
-      return null;
-    }
-
-    const errorText = normalizeText(task.error ?? task.result ?? "Generation failed.", 900);
-    if ((page.retryCount ?? 0) < PAGE_MAX_RETRIES) {
-      const retry = await ctx.runMutation(internal.personalized_dashboard.queuePageRetryInternal, {
-        ownerId: args.ownerId,
-        pageId: args.pageId,
-      });
-
-      if (retry.queued) {
-        await ctx.scheduler.runAfter(PAGE_RETRY_DELAY_MS, internal.personalized_dashboard.launchPageGenerationTaskInternal, {
-          ownerId: args.ownerId,
-          conversationId: args.conversationId,
-          pageId: args.pageId,
-        });
-        return null;
-      }
-    }
-
-    await ctx.runMutation(internal.personalized_dashboard.markPageFailedInternal, {
-      ownerId: args.ownerId,
-      pageId: args.pageId,
-      error: errorText,
-    });
-
-    return null;
-  },
-});
-
-export const listPages = query({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return { pages: [], hasRunning: false };
-    const ownerId = identity.subject;
-    const rows = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_order", (q) => q.eq("ownerId", ownerId))
-      .collect();
-
-    const pages = rows
-      .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title))
-      .map((page) => ({
-        pageId: page.pageId,
-        panelName: page.panelName,
-        title: page.title,
-        status: page.status,
-        order: page.order,
-        statusText: page.statusText,
-        lastError: page.lastError,
-      }));
-
-    return {
-      pages,
-      hasRunning: pages.some((page) => page.status === "queued" || page.status === "running"),
-    };
-  },
-});
+// --- Public API ---
 
 export const startGeneration = action({
   args: {
@@ -1135,10 +343,6 @@ export const startGeneration = action({
       ? buildAssignmentsFromInput(args.pageAssignments)
       : [];
 
-    const existing = (await ctx.runQuery(internal.personalized_dashboard.listPagesForOwnerInternal, {
-      ownerId,
-    })) as Array<{ pageId: string; status: DashboardPageStatus }>;
-
     let normalizedCoreMemory = normalizeText(args.coreMemory ?? "", 12_000);
     if (!normalizedCoreMemory) {
       const storedCoreMemory = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
@@ -1151,7 +355,7 @@ export const startGeneration = action({
     if (!normalizedCoreMemory && manualAssignments.length < 2) {
       return {
         started: false,
-        pageIds: existing.map((page) => page.pageId),
+        pageIds: [],
         skippedReason: "missing_core_memory",
       };
     }
@@ -1159,24 +363,6 @@ export const startGeneration = action({
     const planned = manualAssignments.length >= 2
       ? manualAssignments.slice(0, 4)
       : buildHeuristicAssignments(normalizedCoreMemory);
-
-    const hasActive = existing.some((page) => page.status === "queued" || page.status === "running");
-    if (hasActive && !args.force) {
-      return {
-        started: false,
-        pageIds: existing.map((page) => page.pageId),
-        skippedReason: "generation_in_progress",
-      };
-    }
-
-    const hasReady = existing.some((page) => page.status === "ready");
-    if (hasReady && !args.force && !args.pageAssignments) {
-      return {
-        started: false,
-        pageIds: existing.map((page) => page.pageId),
-        skippedReason: "already_generated",
-      };
-    }
 
     if (normalizedCoreMemory) {
       await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
@@ -1186,135 +372,61 @@ export const startGeneration = action({
       });
     }
 
-    await ctx.runMutation(internal.personalized_dashboard.upsertPlannedPagesInternal, {
+    // Resolve which device to target
+    const executionTarget = await ctx.runQuery(internal.agent.device_resolver.resolveExecutionTarget, {
       ownerId,
+    });
+
+    const hintedTargetDeviceId = normalizeText(args.targetDeviceId ?? "", 256);
+    const latestConversationDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
       conversationId: args.conversationId,
-      pages: planned,
     });
 
-    const launched = await Promise.all(
-      planned.map((page) =>
-        ctx.runAction(internal.personalized_dashboard.launchPageGenerationTaskInternal, {
-          ownerId,
-          conversationId: args.conversationId,
-          pageId: page.pageId,
-          targetDeviceId: args.targetDeviceId,
-        }),
-      ),
-    );
-
-    const started = launched.some(
-      (result: { launched: boolean; taskId: Id<"tasks"> | null; error?: string }) =>
-        result.launched,
-    );
-
-    return {
-      started,
-      pageIds: planned.map((page) => page.pageId),
-      skippedReason: started ? undefined : launched[0]?.error ?? "no_launchable_pages",
-    };
-  },
-});
-
-export const retryPage = action({
-  args: {
-    conversationId: v.id("conversations"),
-    pageId: v.string(),
-    targetDeviceId: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<{ started: boolean; message: string }> => {
-    const ownerId = await requireUserId(ctx);
-    await requireConversationOwnerAction(ctx, args.conversationId);
-
-    const page = await ctx.runQuery(internal.personalized_dashboard.getPageByOwnerAndPageIdInternal, {
-      ownerId,
-      pageId: args.pageId,
-    });
-
-    if (!page) {
-      return { started: false, message: "Page was not found." };
+    let resolvedTargetDeviceId: string | null = executionTarget.targetDeviceId;
+    if (!resolvedTargetDeviceId && hintedTargetDeviceId) {
+      resolvedTargetDeviceId = hintedTargetDeviceId;
+    }
+    if (!resolvedTargetDeviceId && latestConversationDeviceId) {
+      resolvedTargetDeviceId = latestConversationDeviceId;
     }
 
-    if (page.status === "running" || page.status === "queued") {
-      return { started: false, message: "Page is already generating." };
-    }
-
-    await ctx.runMutation(internal.personalized_dashboard.queuePageRetryInternal, {
-      ownerId,
-      pageId: args.pageId,
-    });
-
-    const launch = await ctx.runAction(internal.personalized_dashboard.launchPageGenerationTaskInternal, {
-      ownerId,
-      conversationId: args.conversationId,
-      pageId: args.pageId,
-      targetDeviceId: args.targetDeviceId,
-    });
-
-    if (!launch.launched) {
+    if (!resolvedTargetDeviceId) {
       return {
         started: false,
-        message: launch.error ?? "Failed to start retry.",
+        pageIds: [],
+        skippedReason: "device_offline",
       };
+    }
+
+    // Dispatch each page as a dashboard_generation_request event to the local runner
+    for (const page of planned) {
+      const assignment = toAssignment(page);
+      const userPrompt = buildPersonalizedDashboardPageUserMessage({
+        coreMemory: normalizedCoreMemory,
+        assignment,
+      });
+
+      await ctx.runMutation(internal.events.appendInternalEvent, {
+        conversationId: args.conversationId,
+        type: "dashboard_generation_request",
+        targetDeviceId: resolvedTargetDeviceId,
+        payload: {
+          pageId: page.pageId,
+          ownerId,
+          panelName: page.panelName,
+          title: page.title,
+          topic: page.topic,
+          focus: page.focus,
+          dataSources: page.dataSources,
+          systemPrompt: PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
+          userPrompt,
+        },
+      });
     }
 
     return {
       started: true,
-      message: "Retry started.",
+      pageIds: planned.map((page) => page.pageId),
     };
-  },
-});
-
-export const markPageReadyDevice = mutation({
-  args: {
-    pageId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    const record = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_pageId", (q) =>
-        q.eq("ownerId", ownerId).eq("pageId", args.pageId),
-      )
-      .unique();
-    if (!record) return null;
-
-    const now = Date.now();
-    await ctx.db.patch(record._id, {
-      status: "ready" satisfies DashboardPageStatus,
-      statusText: "Ready",
-      lastError: undefined,
-      updatedAt: now,
-      completedAt: now,
-    });
-    return null;
-  },
-});
-
-export const markPageFailedDevice = mutation({
-  args: {
-    pageId: v.string(),
-    error: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    const record = await ctx.db
-      .query("dashboard_pages")
-      .withIndex("by_ownerId_and_pageId", (q) =>
-        q.eq("ownerId", ownerId).eq("pageId", args.pageId),
-      )
-      .unique();
-    if (!record) return null;
-
-    const now = Date.now();
-    await ctx.db.patch(record._id, {
-      status: "failed" satisfies DashboardPageStatus,
-      statusText: "Failed",
-      lastError: normalizeText(args.error, 800),
-      updatedAt: now,
-      completedAt: now,
-      taskId: undefined,
-    });
-    return null;
   },
 });
