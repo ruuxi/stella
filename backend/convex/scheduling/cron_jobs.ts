@@ -236,7 +236,6 @@ async function resolveConversationId(
 
 export const list = internalQuery({
   args: {},
-  returns: v.array(cronJobValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const jobs = await ctx.db
@@ -259,7 +258,6 @@ export const add = internalMutation({
     enabled: v.optional(v.boolean()),
     deleteAfterRun: v.optional(v.boolean()),
   },
-  returns: v.union(cronJobValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const schedule = assertValidSchedule(args.schedule);
@@ -317,7 +315,6 @@ export const update = internalMutation({
     jobId: v.id("cron_jobs"),
     patch: cronPatchValidator,
   },
-  returns: v.union(cronJobValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
@@ -387,7 +384,6 @@ export const remove = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
@@ -403,7 +399,6 @@ export const deleteJob = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.jobId);
     return null;
@@ -414,7 +409,6 @@ export const run = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
-  returns: v.union(cronJobValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
@@ -444,7 +438,6 @@ export const listDue = internalQuery({
     nowMs: v.number(),
     limit: v.optional(v.number()),
   },
-  returns: v.array(cronJobValidator),
   handler: async (ctx, args) => {
     const limit = normalizeOptionalInt({
       value: args.limit,
@@ -464,7 +457,6 @@ export const getById = internalQuery({
   args: {
     id: v.id("cron_jobs"),
   },
-  returns: v.union(cronJobValidator, v.null()),
   handler: async (ctx, args) => {
     return sanitizeCronJobForReturn(await ctx.db.get(args.id));
   },
@@ -476,7 +468,6 @@ export const markRunning = internalMutation({
     runningAtMs: v.number(),
     expectedRunningAtMs: v.optional(v.number()),
   },
-  returns: v.boolean(),
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.id);
     if (!job || !job.enabled) {
@@ -514,7 +505,6 @@ export const finishRun = internalMutation({
     lastOutputPreview: v.optional(v.string()),
     enabled: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = {
       updatedAt: Date.now(),
@@ -534,7 +524,6 @@ export const finishRun = internalMutation({
 
 export const tick = internalAction({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
     const due = await ctx.runQuery(internal.scheduling.cron_jobs.listDue, { nowMs: now, limit: 200 });
@@ -567,7 +556,6 @@ export const execute = internalAction({
     jobId: v.id("cron_jobs"),
     forced: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const job = await ctx.runQuery(internal.scheduling.cron_jobs.getById, { id: args.jobId });
     if (!job || (!job.enabled && !args.forced)) {

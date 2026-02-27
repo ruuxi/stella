@@ -5,16 +5,6 @@ import { jsonObjectValidator } from "../shared_validators";
 
 export const listPublicIntegrations = internalQuery({
   args: {},
-  returns: v.array(
-    v.object({
-      _id: v.id("integrations_public"),
-      id: v.string(),
-      provider: v.string(),
-      enabled: v.boolean(),
-      usagePolicy: v.string(),
-      updatedAt: v.number(),
-    }),
-  ),
   handler: async (ctx) => {
     return await ctx.db.query("integrations_public").take(200);
   },
@@ -27,7 +17,6 @@ export const upsertPublicIntegration = internalMutation({
     enabled: v.boolean(),
     usagePolicy: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("integrations_public")
@@ -104,10 +93,6 @@ const parseSlackState = (
 
 export const createSlackInstallUrl = mutation({
   args: {},
-  returns: v.object({
-    url: v.string(),
-    expiresAt: v.number(),
-  }),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const clientId = process.env.SLACK_CLIENT_ID;
@@ -165,7 +150,6 @@ export const consumeSlackOAuthState = internalMutation({
   args: {
     state: v.string(),
   },
-  returns: v.union(v.null(), v.object({ ownerId: v.string() })),
   handler: async (ctx, args) => {
     const prefs = await ctx.db
       .query("user_preferences")
@@ -258,18 +242,6 @@ export const getPublicIntegrationByIdInternal = internalQuery({
 
 export const listUserIntegrations = internalQuery({
   args: {},
-  returns: v.array(
-    v.object({
-      _id: v.id("user_integrations"),
-      ownerId: v.string(),
-      provider: v.string(),
-      mode: v.string(),
-      externalId: v.optional(v.string()),
-      config: jsonObjectValidator,
-      createdAt: v.number(),
-      updatedAt: v.number(),
-    }),
-  ),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     return await ctx.db
@@ -287,7 +259,6 @@ export const upsertUserIntegration = internalMutation({
     externalId: v.optional(v.string()),
     config: jsonObjectValidator,
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db

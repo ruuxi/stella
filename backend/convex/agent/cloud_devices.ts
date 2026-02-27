@@ -517,7 +517,6 @@ export const assertNdjsonNoError = (raw: string, context: string) => {
 
 export const resolveForOwner = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const runtimePreference = await ctx.db
       .query("user_preferences")
@@ -546,7 +545,6 @@ export const resolveForOwner = internalQuery({
  */
 export const resolveForOwnerUngated = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -586,7 +584,6 @@ export const listInactiveBefore = internalQuery({
 
 export const getForOwner = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.union(cloudDeviceValidator, v.null()),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -602,7 +599,6 @@ export const getForOwner = internalQuery({
 
 export const touchActivity = internalMutation({
   args: { ownerId: v.string() },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -626,7 +622,6 @@ export const updateStatus = internalMutation({
     status: v.string(),
     setupComplete: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = {
       status: args.status,
@@ -644,7 +639,6 @@ export const deleteCloudDevicesByIds = internalMutation({
   args: {
     ids: v.array(v.id("cloud_devices")),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     for (const id of args.ids) {
       await ctx.db.delete(id);
@@ -700,7 +694,6 @@ export const ensureSingleRecordForOwner = internalMutation({
 
 export const deleteCloudDevice = internalMutation({
   args: { id: v.id("cloud_devices") },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
     return null;
@@ -717,7 +710,6 @@ export const setupSprite = internalAction({
     spriteName: v.string(),
     ownerId: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       const spritesToken = await getSpritesTokenForOwner(ctx, args.ownerId);
@@ -812,7 +804,6 @@ export const get247Status = query({
 
 export const getActive = internalQuery({
   args: {},
-  returns: v.union(cloudDeviceValidator, v.null()),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;

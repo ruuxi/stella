@@ -67,7 +67,6 @@ export const executeTool = action({
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
   },
-  returns: v.string(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -94,7 +93,6 @@ export const recallMemories = action({
     source: v.optional(v.union(v.literal("memory"), v.literal("history"))),
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -116,7 +114,6 @@ export const saveMemory = action({
     content: v.string(),
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -137,7 +134,6 @@ export const webSearch = action({
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
   },
-  returns: v.string(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -159,7 +155,6 @@ export const webFetch = action({
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
   },
-  returns: v.string(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -178,7 +173,6 @@ export const activateSkill = action({
   args: {
     skillId: v.string(),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     const skill = await ctx.runQuery(internal.data.skills.getSkillByIdInternal, {
