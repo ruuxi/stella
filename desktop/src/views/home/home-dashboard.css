@@ -230,6 +230,13 @@
 
 /* ===== Music Player ===== */
 
+.music-waveform {
+  width: 100%;
+  height: 40px;
+  border-radius: 6px;
+  color: var(--foreground);
+}
+
 .music-player-row {
   display: flex;
   align-items: center;
@@ -284,8 +291,19 @@
   opacity: 0.7;
 }
 
-.music-track-info {
+.music-player-center {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.music-track-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -294,6 +312,10 @@
   font-weight: 500;
   color: var(--foreground);
   opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .music-track-duration {
@@ -301,6 +323,22 @@
   color: var(--foreground);
   opacity: 0.4;
   flex-shrink: 0;
+}
+
+.music-progress {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  overflow: hidden;
+}
+
+.music-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--foreground) 25%, transparent);
+  transition: width 1s linear;
+  min-width: 2px;
 }
 
 .music-moods {
@@ -331,6 +369,65 @@
   opacity: 1;
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
   border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.music-lyrics-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.music-prompt-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.music-prompt-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-family: var(--font-family-sans, Inter, sans-serif);
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-radius: 8px;
+  padding: 5px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.music-prompt-input::placeholder {
+  color: var(--foreground);
+  opacity: 0.3;
+}
+.music-prompt-input:focus {
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.music-prompt-submit {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  color: var(--foreground);
+  opacity: 0.4;
+  flex-shrink: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+.music-prompt-submit:hover:not(:disabled) {
+  opacity: 0.7;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+.music-prompt-submit:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
 }
 
 .music-loading-dot {
