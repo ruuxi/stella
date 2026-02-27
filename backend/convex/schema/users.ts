@@ -23,35 +23,6 @@ export const usersSchema = {
     .index("by_ownerId_and_conversationId", ["ownerId", "conversationId"])
     .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
 
-  dashboard_pages: defineTable({
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    pageId: v.string(),
-    panelName: v.string(),
-    title: v.string(),
-    topic: v.string(),
-    focus: v.string(),
-    dataSources: v.array(v.string()),
-    status: v.union(
-      v.literal("queued"),
-      v.literal("running"),
-      v.literal("ready"),
-      v.literal("failed"),
-    ),
-    order: v.number(),
-    taskId: v.optional(v.id("tasks")),
-    retryCount: v.number(),
-    statusText: v.optional(v.string()),
-    lastError: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    completedAt: v.optional(v.number()),
-  })
-    .index("by_ownerId_and_order", ["ownerId", "order"])
-    .index("by_ownerId_and_pageId", ["ownerId", "pageId"])
-    .index("by_ownerId_and_status", ["ownerId", "status"])
-    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
-
   self_mod_features: defineTable({
     featureId: v.string(),
     ownerId: v.string(),
