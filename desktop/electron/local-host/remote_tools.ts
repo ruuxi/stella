@@ -1,18 +1,212 @@
 /**
- * AI SDK tool() instances for Convex-backed operations.
+ * AI SDK tool() instances for remote/local memory-assisted operations.
  *
- * These tools call Convex actions/mutations for operations that require
- * server-side execution (memory recall, web search, embeddings, etc.).
+ * - Cloud mode: forwards tool calls to Convex actions.
+ * - Local mode: uses a local SQLite BM25 memory store and Convex LLM proxy
+ *   only for reranking.
  */
 
-import { tool, type Tool } from "ai";
+import { generateText, tool, type Tool } from "ai";
 import { z } from "zod";
+import { createProxiedModel } from "./agent_core/model_proxy.js";
+import {
+  LocalMemoryStore,
+  type LocalHistoryMessage,
+  type LocalMemoryCandidate,
+  type LocalMemorySource,
+} from "./local_memory_store.js";
+
+const LOCAL_RECALL_CANDIDATE_LIMIT = 30;
+const LOCAL_RECALL_MAX_SELECTED = 8;
+const LOCAL_HISTORY_MAX_SELECTED = 10;
+const LOCAL_RECENT_CONTEXT_MESSAGE_LIMIT = 5;
+const LOCAL_RECENT_CONTEXT_MESSAGE_MAX_CHARS = 400;
+const LOCAL_RECENT_CONTEXT_TOTAL_MAX_CHARS = 2_000;
+const RERANK_CANDIDATE_TEXT_MAX_CHARS = 500;
+
+const RERANK_SELECTION_PROMPT = `You select the most relevant recall candidates for a query.
+
+Return ONLY valid JSON in this shape:
+{"selected":[1,2,3]}
+
+Rules:
+- Use candidate ordinals from the list.
+- Use recent conversation context to infer intent behind the query.
+- Select only truly relevant entries.
+- Prefer precision over recall.
+- If none are relevant, return {"selected":[]}.`;
+
+type LocalMemoryConfig = {
+  stellaHome: string;
+  proxyBaseUrl: string;
+  proxyToken: string;
+  rerankModelId: string;
+  localHistory?: LocalHistoryMessage[];
+};
 
 export type RemoteToolsOpts = {
   convexUrl: string;
   authToken: string;
   conversationId: string;
   agentType: string;
+  mode?: "cloud" | "local";
+  localMemory?: LocalMemoryConfig;
+};
+
+type RecallCandidate = {
+  id: string;
+  content: string;
+  role?: "user" | "assistant";
+};
+
+const localMemoryStores = new Map<string, LocalMemoryStore>();
+
+const getLocalMemoryStore = (stellaHome: string): LocalMemoryStore => {
+  const existing = localMemoryStores.get(stellaHome);
+  if (existing) return existing;
+  const created = new LocalMemoryStore(stellaHome);
+  localMemoryStores.set(stellaHome, created);
+  return created;
+};
+
+const truncate = (value: string, maxChars: number): string => {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars - 3)}...`;
+};
+
+const extractJsonObject = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  return trimmed.slice(start, end + 1).trim();
+};
+
+const parseRerankSelection = (
+  response: string,
+  candidates: RecallCandidate[],
+): string[] => {
+  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate.id]));
+  const byOrdinal = new Map(candidates.map((candidate, index) => [index + 1, candidate.id]));
+
+  const toId = (value: unknown): string | null => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return byOrdinal.get(Math.floor(value)) ?? null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (byId.has(trimmed)) return trimmed;
+      const asNumber = Number(trimmed);
+      if (Number.isFinite(asNumber)) {
+        return byOrdinal.get(Math.floor(asNumber)) ?? null;
+      }
+    }
+    return null;
+  };
+
+  const parsePayload = (payload: unknown): string[] => {
+    if (!payload || typeof payload !== "object") return [];
+    const selected = (payload as { selected?: unknown }).selected;
+    if (!Array.isArray(selected)) return [];
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const item of selected) {
+      const id = toId(item);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      deduped.push(id);
+    }
+    return deduped;
+  };
+
+  const trimmed = response.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    const direct = parsePayload(parsed);
+    if (direct.length > 0) return direct;
+  } catch {
+    // Continue to object extraction path
+  }
+
+  const objectBlock = extractJsonObject(trimmed);
+  if (!objectBlock) return [];
+  try {
+    const parsed = JSON.parse(objectBlock);
+    return parsePayload(parsed);
+  } catch {
+    return [];
+  }
+};
+
+const buildConversationContext = (
+  localHistory: LocalHistoryMessage[] | undefined,
+): string => {
+  if (!localHistory || localHistory.length === 0) return "";
+  const recent = localHistory.slice(-LOCAL_RECENT_CONTEXT_MESSAGE_LIMIT);
+  const lines = recent
+    .map((message) => {
+      const text = message.content.trim();
+      if (!text) return null;
+      const speaker = message.role === "assistant" ? "Assistant" : "User";
+      return `${speaker}: ${truncate(text, LOCAL_RECENT_CONTEXT_MESSAGE_MAX_CHARS)}`;
+    })
+    .filter((line: string | null): line is string => !!line);
+  if (lines.length === 0) return "";
+  return truncate(lines.join("\n"), LOCAL_RECENT_CONTEXT_TOTAL_MAX_CHARS);
+};
+
+const selectRelevantLocalCandidateIds = async (args: {
+  proxyBaseUrl: string;
+  proxyToken: string;
+  modelId: string;
+  query: string;
+  source: LocalMemorySource;
+  conversationContext: string;
+  candidates: RecallCandidate[];
+  maxSelected: number;
+}): Promise<string[]> => {
+  if (args.candidates.length === 0) return [];
+
+  const model = createProxiedModel(args.proxyBaseUrl, args.proxyToken, args.modelId);
+  const candidateText = args.candidates
+    .map((candidate, index) => {
+      const parts = [`[${index + 1}]`, `id=${candidate.id}`];
+      if (candidate.role) {
+        parts.push(`role=${candidate.role}`);
+      }
+      parts.push(`content=${truncate(candidate.content, RERANK_CANDIDATE_TEXT_MAX_CHARS)}`);
+      return parts.join(" | ");
+    })
+    .join("\n");
+
+  const { text } = await generateText({
+    model,
+    system: RERANK_SELECTION_PROMPT,
+    messages: [{
+      role: "user",
+      content: [
+        `Source: ${args.source}`,
+        "Recent Conversation Context:",
+        args.conversationContext || "Unavailable.",
+        "",
+        `Search Query: ${args.query}`,
+        "",
+        "Candidates:",
+        candidateText,
+        "",
+        `Maximum selections: ${args.maxSelected}`,
+      ].join("\n"),
+    }],
+  });
+
+  const selectedIds = parseRerankSelection(text, args.candidates);
+  if (selectedIds.length <= args.maxSelected) {
+    return selectedIds;
+  }
+  return selectedIds.slice(0, args.maxSelected);
 };
 
 async function callConvexAction(
@@ -55,7 +249,138 @@ async function callBackendTool(
 const looseObject = <T extends z.ZodRawShape>(shape: T) =>
   z.object(shape).passthrough();
 
+const createLocalRecallTools = (opts: RemoteToolsOpts): Record<string, Tool<any, any>> => {
+  const config = opts.localMemory;
+  if (!config) {
+    return {
+      RecallMemories: tool({
+        description: "Look up local memories.",
+        inputSchema: z.object({
+          query: z.string().describe("Search query for memory recall"),
+          source: z.enum(["memory", "history"]).optional(),
+          limit: z.number().optional().describe("Max results to return"),
+        }),
+        execute: async () => "Local memory is unavailable: missing runtime configuration.",
+      }),
+      SaveMemory: tool({
+        description: "Save a local memory entry.",
+        inputSchema: z.object({ content: z.string().describe("Memory content") }),
+        execute: async () => "Local memory is unavailable: missing runtime configuration.",
+      }),
+    };
+  }
+
+  const store = getLocalMemoryStore(config.stellaHome);
+  store.ingestHistoryMessages(opts.conversationId, config.localHistory ?? []);
+  const recallCache = new Map<string, string>();
+  const recentConversationContext = buildConversationContext(config.localHistory);
+
+  return {
+    RecallMemories: tool({
+      description: "Search local memory and local history for relevant context.",
+      inputSchema: z.object({
+        query: z.string().describe("Search query for memory recall"),
+        source: z.enum(["memory", "history"]).optional(),
+        limit: z.number().optional().describe("Max candidates before rerank"),
+      }),
+      execute: async (args: { query: string; source?: LocalMemorySource; limit?: number }) => {
+        const source = args.source ?? "memory";
+        const normalizedQuery = args.query.trim();
+        if (!normalizedQuery) {
+          return "No relevant memories found.";
+        }
+
+        const cacheKey = `${source}::${normalizedQuery}::${args.limit ?? "default"}`;
+        const cached = recallCache.get(cacheKey);
+        if (cached) return cached;
+
+        const candidates = store.search({
+          conversationId: opts.conversationId,
+          source,
+          query: normalizedQuery,
+          limit: args.limit ?? LOCAL_RECALL_CANDIDATE_LIMIT,
+        });
+        if (candidates.length === 0) {
+          const none = "No relevant memories found.";
+          recallCache.set(cacheKey, none);
+          return none;
+        }
+
+        const recallCandidates: RecallCandidate[] = candidates.map((candidate) => ({
+          id: String(candidate.id),
+          content: candidate.content,
+          ...(candidate.role ? { role: candidate.role } : {}),
+        }));
+
+        let selectedIds: string[] = [];
+        try {
+          selectedIds = await selectRelevantLocalCandidateIds({
+            proxyBaseUrl: config.proxyBaseUrl,
+            proxyToken: config.proxyToken,
+            modelId: config.rerankModelId,
+            query: normalizedQuery,
+            source,
+            conversationContext: recentConversationContext,
+            candidates: recallCandidates,
+            maxSelected: source === "history" ? LOCAL_HISTORY_MAX_SELECTED : LOCAL_RECALL_MAX_SELECTED,
+          });
+        } catch (error) {
+          selectedIds = [];
+          console.error("[remote_tools] local recall rerank failed:", error);
+        }
+
+        const docsById = new Map(candidates.map((candidate) => [String(candidate.id), candidate]));
+        const selectedDocs = (selectedIds.length > 0
+          ? selectedIds
+          : recallCandidates.slice(0, 5).map((candidate) => candidate.id))
+          .map((id) => docsById.get(id))
+          .filter((doc): doc is LocalMemoryCandidate => !!doc);
+
+        if (selectedDocs.length === 0) {
+          const none = "No relevant memories found.";
+          recallCache.set(cacheKey, none);
+          return none;
+        }
+
+        if (source === "memory") {
+          store.touch(selectedDocs.map((doc) => doc.id));
+        }
+
+        const text = source === "history"
+          ? selectedDocs
+            .map((doc) => {
+              const speaker = doc.role === "assistant" ? "assistant" : "user";
+              return `- (${speaker}) ${doc.content}`;
+            })
+            .join("\n")
+          : selectedDocs.map((doc) => `- ${doc.content}`).join("\n");
+        recallCache.set(cacheKey, text);
+        return text;
+      },
+    }),
+
+    SaveMemory: tool({
+      description: "Save an important fact or insight to local long-term memory",
+      inputSchema: z.object({
+        content: z.string().describe("The memory content to save"),
+      }),
+      execute: async (args: { content: string }) => {
+        const content = args.content.trim();
+        if (!content) {
+          return "Memory content cannot be empty.";
+        }
+        store.saveMemory(opts.conversationId, content);
+        return "Memory saved.";
+      },
+    }),
+  };
+};
+
 export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<any, any>> {
+  if ((opts.mode ?? "cloud") === "local") {
+    return createLocalRecallTools(opts);
+  }
+
   const memoryRecallCache = new Map<string, string>();
 
   const passthroughTool = (
@@ -77,13 +402,14 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
 
   return {
     RecallMemories: tool({
-      description: "Search semantic memory for relevant past interactions and knowledge",
+      description: "Search memory for relevant past interactions and knowledge",
       inputSchema: z.object({
         query: z.string().describe("Search query for memory recall"),
+        source: z.enum(["memory", "history"]).optional(),
         limit: z.number().optional().describe("Max results to return"),
       }),
-      execute: async (args: { query: string; limit?: number }) => {
-        const cacheKey = `${args.query}::${args.limit ?? "default"}`;
+      execute: async (args: { query: string; source?: "memory" | "history"; limit?: number }) => {
+        const cacheKey = `${args.source ?? "memory"}::${args.query}::${args.limit ?? "default"}`;
         const cached = memoryRecallCache.get(cacheKey);
         if (cached) {
           return cached;
@@ -91,7 +417,7 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
         try {
           const result = await callConvexAction(opts, "agent/local_runtime:recallMemories", {
             query: args.query,
-            source: "memory",
+            source: args.source ?? "memory",
             conversationId: opts.conversationId,
           });
           if (!result || (Array.isArray(result) && result.length === 0)) {
@@ -311,3 +637,4 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
     ),
   };
 }
+
