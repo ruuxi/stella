@@ -369,25 +369,64 @@ export const proxySearch = httpAction(async (ctx, request) => {
 // Client sends:
 //   POST /api/ai/llm-proxy
 //   X-Proxy-Token: <token>
-//   X-Provider: anthropic|openai|google|openrouter|gateway
+//   X-Provider: anthropic|openai|google|openrouter|azure|azure-cognitive-services|cloudflare-workers-ai|vercel|zenmux|cerebras|kilo
 //   X-Original-Path: /v1/messages (the provider-specific path suffix)
 //   Body: raw provider request
 //
 // Server:
 //   1. Validates proxy token
-//   2. Looks up upstream from PROVIDER_UPSTREAMS
+//   2. Looks up upstream from provider allowlist
 //   3. Resolves API key via BYOK chain (user key → OpenRouter → platform gateway)
 //   4. Forwards request to upstream with real credentials
 //   5. Pipes response body directly
 //   6. Post-hoc usage logging (best-effort)
 
 /** Hard-bound upstream allowlist — client CANNOT influence destination */
-const PROVIDER_UPSTREAMS: Record<string, string> = {
+const STATIC_PROVIDER_UPSTREAMS: Record<string, string> = {
   anthropic: "https://api.anthropic.com",
   openai: "https://api.openai.com",
   google: "https://generativelanguage.googleapis.com",
   openrouter: "https://openrouter.ai/api",
+  vercel: "https://ai-gateway.vercel.sh/v1",
+  zenmux: "https://zenmux.ai/api/anthropic/v1",
+  cerebras: "https://api.cerebras.ai/v1",
+  kilo: "https://api.kilo.ai/api/gateway",
 };
+
+const DYNAMIC_PROVIDER_IDS = new Set([
+  "azure",
+  "azure-cognitive-services",
+  "cloudflare-workers-ai",
+]);
+
+function isSupportedProvider(provider: string): boolean {
+  return provider in STATIC_PROVIDER_UPSTREAMS || DYNAMIC_PROVIDER_IDS.has(provider);
+}
+
+function resolveProviderUpstream(provider: string): string | null {
+  const staticUpstream = STATIC_PROVIDER_UPSTREAMS[provider];
+  if (staticUpstream) return staticUpstream;
+
+  if (provider === "azure") {
+    const resourceName = process.env.AZURE_RESOURCE_NAME?.trim();
+    if (!resourceName) return null;
+    return `https://${resourceName}.openai.azure.com/openai/v1`;
+  }
+
+  if (provider === "azure-cognitive-services") {
+    const resourceName = process.env.AZURE_COGNITIVE_SERVICES_RESOURCE_NAME?.trim();
+    if (!resourceName) return null;
+    return `https://${resourceName}.cognitiveservices.azure.com/openai/v1`;
+  }
+
+  if (provider === "cloudflare-workers-ai") {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+    if (!accountId) return null;
+    return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
+  }
+
+  return null;
+}
 
 /** Headers that should NOT be forwarded to the upstream */
 const STRIP_REQUEST_HEADERS = new Set([
@@ -407,14 +446,33 @@ function buildUpstreamAuthHeaders(
 ): Record<string, string> {
   switch (provider) {
     case "anthropic":
+    case "zenmux":
       return {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       };
+    case "azure":
+    case "azure-cognitive-services":
+      return {
+        "api-key": apiKey,
+      };
     case "openai":
     case "openrouter":
+    case "cloudflare-workers-ai":
+    case "vercel":
       return {
         Authorization: `Bearer ${apiKey}`,
+      };
+    case "cerebras":
+      return {
+        Authorization: `Bearer ${apiKey}`,
+        "X-Cerebras-3rd-Party-Integration": "stella",
+      };
+    case "kilo":
+      return {
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://stella.app/",
+        "X-Title": "stella",
       };
     case "google":
       return {
@@ -472,9 +530,10 @@ export const llmProxy = httpAction(async (ctx, request) => {
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
-  const provider = requestedProvider in PROVIDER_UPSTREAMS
+  const provider = isSupportedProvider(requestedProvider)
     ? requestedProvider
     : "openrouter";
+  const providerUpstream = resolveProviderUpstream(provider);
 
   const originalPath = request.headers.get("X-Original-Path")?.trim();
   if (!originalPath) {
@@ -516,7 +575,8 @@ export const llmProxy = httpAction(async (ctx, request) => {
   const modelId =
     request.headers.get("X-Model-Id")?.trim() || `${requestedProvider}/unknown`;
   let apiKey: string | null = null;
-  const canUseDirectProviderKey = requestedProvider in PROVIDER_UPSTREAMS;
+  const canUseDirectProviderKey =
+    isSupportedProvider(requestedProvider) && Boolean(providerUpstream);
 
   // Try user's own key first
   if (canUseDirectProviderKey) {
@@ -543,7 +603,7 @@ export const llmProxy = httpAction(async (ctx, request) => {
       if (openrouterKey) {
         apiKey = openrouterKey;
         // Redirect to OpenRouter upstream
-        const upstreamUrl = `${PROVIDER_UPSTREAMS.openrouter}${sanitizedPath}`;
+        const upstreamUrl = `${STATIC_PROVIDER_UPSTREAMS.openrouter}${sanitizedPath}`;
         return await forwardRequest(ctx, request, upstreamUrl, "openrouter", openrouterKey, ownerId, agentType, modelId);
       }
     } catch {
@@ -558,6 +618,13 @@ export const llmProxy = httpAction(async (ctx, request) => {
       openai: "OPENAI_API_KEY",
       google: "GOOGLE_AI_API_KEY",
       openrouter: "OPENROUTER_API_KEY",
+      azure: "AZURE_API_KEY",
+      "azure-cognitive-services": "AZURE_COGNITIVE_SERVICES_API_KEY",
+      "cloudflare-workers-ai": "CLOUDFLARE_API_KEY",
+      vercel: "AI_GATEWAY_API_KEY",
+      zenmux: "ZENMUX_API_KEY",
+      cerebras: "CEREBRAS_API_KEY",
+      kilo: "KILO_API_KEY",
     };
     const envKey = envKeyMap[provider];
     if (envKey) {
@@ -583,7 +650,13 @@ export const llmProxy = httpAction(async (ctx, request) => {
   }
 
   // 5. Forward to upstream
-  const upstreamBase = PROVIDER_UPSTREAMS[provider]!;
+  const upstreamBase = providerUpstream;
+  if (!upstreamBase) {
+    return new Response(
+      JSON.stringify({ error: `Provider ${provider} is not configured on server` }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
+  }
   const upstreamUrl = `${upstreamBase}${sanitizedPath}`;
 
   return await forwardRequest(ctx, request, upstreamUrl, provider, apiKey, ownerId, agentType, modelId);
