@@ -217,7 +217,7 @@ const createRecallMemoriesTool = (ctx: ActionCtx, options: ToolOptions) =>
   tool({
     description:
       "Look up relevant memories from past conversations.\n\n" +
-      "Provide a natural language query describing what you need. Returns relevant memories ranked by similarity.\n\n" +
+      "Provide a natural language query describing what you need. Returns relevant memories ranked by relevance.\n\n" +
       "Use when:\n" +
       "- The user references something from a previous conversation (\"remember when...\", \"like last time\").\n" +
       "- You need historical context (user preferences, past decisions, prior work).\n" +

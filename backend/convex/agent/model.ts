@@ -130,42 +130,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  memory_recall_query_embedding: {
-    model: "alibaba/qwen3-embedding-8b",
-    providerOptions: {
-      deepinfra: {
-        dimensions: 1536,
-      },
-    },
-  },
-
-  memory_save_embedding: {
-    model: "alibaba/qwen3-embedding-8b",
-    providerOptions: {
-      deepinfra: {
-        dimensions: 1536,
-      },
-    },
-  },
-
-  memory_ingest_embedding: {
-    model: "alibaba/qwen3-embedding-8b",
-    providerOptions: {
-      deepinfra: {
-        dimensions: 1536,
-      },
-    },
-  },
-
-  event_semantic_embedding: {
-    model: "alibaba/qwen3-embedding-8b",
-    providerOptions: {
-      deepinfra: {
-        dimensions: 1536,
-      },
-    },
-  },
-
   ai_proxy_embedding: {
     model: "alibaba/qwen3-embedding-8b",
     providerOptions: {

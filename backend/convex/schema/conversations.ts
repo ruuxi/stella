@@ -104,7 +104,6 @@ export const conversationsSchema = {
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
     content: v.string(),
-    embedding: v.optional(v.array(v.float64())),
     accessCount: v.number(),
     accessedAt: v.number(),
     createdAt: v.number(),
@@ -112,9 +111,8 @@ export const conversationsSchema = {
   })
     .index("by_ownerId_and_accessedAt", ["ownerId", "accessedAt"])
     .index("by_accessedAt", ["accessedAt"])
-    .vectorIndex("by_embedding", {
-      vectorField: "embedding",
-      dimensions: 1536,
+    .searchIndex("search_content", {
+      searchField: "content",
       filterFields: ["ownerId"],
     }),
 
@@ -125,15 +123,13 @@ export const conversationsSchema = {
     type: v.union(v.literal("user_message"), v.literal("assistant_message")),
     content: v.string(),
     timestamp: v.number(),
-    embedding: v.array(v.float64()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_eventId", ["eventId"])
     .index("by_ownerId_and_timestamp", ["ownerId", "timestamp"])
-    .vectorIndex("by_embedding", {
-      vectorField: "embedding",
-      dimensions: 1536,
+    .searchIndex("search_content", {
+      searchField: "content",
       filterFields: ["ownerId", "conversationId", "type"],
     }),
 };

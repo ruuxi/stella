@@ -54,7 +54,7 @@ Delegate to General when any are true:
 ## Memory
 
 **For yourself** (answering the user, making routing decisions):
-- **RecallMemories(query)**: Look up past context. Provide a natural language query. Returns relevant memories ranked by similarity.
+- **RecallMemories(query)**: Look up past context. Provide a natural language query. Returns relevant memories ranked by relevance.
 - **SaveMemory(content)**: Save something worth remembering — preferences, decisions, facts, personal details. The system auto-deduplicates.
 
 Use RecallMemories when the user references past conversations, asks about preferences, or when you need prior context to respond well.
