@@ -1501,7 +1501,8 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
         isVoiceActive: !uiState.isVoiceActive,
       })
       if (!uiState.isVoiceActive) {
-        // Just stopped voice, ensure mini window is visible for transcript
+        // Just stopped voice, hide the voice overlay and ensure mini window is visible for transcript
+        hideVoiceWindow()
         if (!isMiniShowing()) showWindow('mini')
       } else {
         // Started voice, show the voice pill overlay
