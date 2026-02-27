@@ -4,7 +4,7 @@ import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
 import { useUiState } from '../app/state/ui-state'
-import { hexToRgb } from '../theme/color'
+// hexToRgb no longer needed — toRgba uses cssToVec3 for universal color parsing
 import { StellaAnimation } from '../components/StellaAnimation'
 import {
   initBlob,
@@ -36,9 +36,16 @@ const CENTER_BG_RADIUS = INNER_RADIUS - 5
 const CONTENT_FADE_DELAY = 180 // ms
 
 const toRgba = (color: string, alpha: number): string => {
-  if (!color.startsWith('#')) return color
-  const { r, g, b } = hexToRgb(color)
+  const [r, g, b] = cssToVec3(color)
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`
+}
+
+/** Blend two colors (opaque), t=0 → colorA, t=1 → colorB */
+const blendOpaque = (colorA: string, colorB: string, t: number): string => {
+  const [ar, ag, ab] = cssToVec3(colorA)
+  const [br, bg, bb] = cssToVec3(colorB)
+  const mix = (a: number, b: number) => Math.round((a + (b - a) * t) * 255)
+  return `rgb(${mix(ar, br)}, ${mix(ag, bg)}, ${mix(ab, bb)})`
 }
 
 const createWedgePath = (startAngle: number, endAngle: number): string => {
@@ -308,10 +315,10 @@ export function RadialDial() {
             const Icon = wedge.icon
 
             const fillColor = isSelected
-              ? toRgba(colors.interactive, 0.9)
+              ? toRgba(colors.interactive, 1)
               : isVoiceToggleActive
-              ? toRgba(colors.interactive, 0.5)
-              : colors.card
+              ? toRgba(colors.interactive, 0.6)
+              : toRgba(colors.card, 1)
 
             const strokeColor = isActiveOrSelected
               ? toRgba(colors.interactive, 0.9)
@@ -370,7 +377,7 @@ export function RadialDial() {
             cx={CENTER}
             cy={CENTER}
             r={CENTER_BG_RADIUS}
-            fill={toRgba(colors.background, 0.95)}
+            fill={toRgba(colors.background, 1)}
             stroke={toRgba(colors.border, 0.5)}
             strokeWidth={1}
             style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
