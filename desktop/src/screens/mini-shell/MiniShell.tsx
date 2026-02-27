@@ -50,12 +50,8 @@ export const MiniShell = () => {
     : null;
 
   const handleShellClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      if (previewIndex !== null) {
-        setPreviewIndex(null);
-      } else {
-        window.electronAPI?.closeWindow?.();
-      }
+    if (e.target === e.currentTarget && previewIndex !== null) {
+      setPreviewIndex(null);
     }
   };
 
