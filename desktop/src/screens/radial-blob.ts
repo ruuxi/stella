@@ -407,6 +407,8 @@ export function startClose(
   onComplete: () => void,
 ) {
   if (animFrame !== null) cancelAnimationFrame(animFrame)
+  draw(1, 1, 1, 1, 0, selIdxRef.current, colorsRef.current)
+
   const start = performance.now()
 
   const tick = (now: number) => {
