@@ -1,12 +1,10 @@
-import { useRef, useEffect } from "react";
-import { Spinner } from "@/components/spinner";
+import { useRef } from "react";
 import type { ViewType } from "@/types/ui";
 
 type PersonalPage = {
   pageId: string;
   panelName: string;
   title: string;
-  status: "queued" | "running" | "ready" | "failed";
   order: number;
 };
 
@@ -39,13 +37,9 @@ export function HeaderTabBar({ activeView, activeCanvasName, pages, onTabSelect 
           <button
             key={page.pageId}
             className={`htb-tab ${isPageActive(page) ? "htb-tab--active" : ""}`}
-            data-status={page.status}
             onClick={() => onTabSelect("app", page)}
             title={page.title}
           >
-            {(page.status === "queued" || page.status === "running") && (
-              <Spinner size="xs" className="htb-tab-spinner" />
-            )}
             <span className="htb-tab-label">{page.title}</span>
           </button>
         ))}

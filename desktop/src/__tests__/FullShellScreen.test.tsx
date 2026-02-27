@@ -105,9 +105,6 @@ vi.mock("../services/device", () => ({
 
 vi.mock("@/convex/api", () => ({
   api: {
-    personalized_dashboard: {
-      listPages: "personalized_dashboard:listPages",
-    },
     data: {
       preferences: {
         getAccountMode: "preferences:getAccountMode",
