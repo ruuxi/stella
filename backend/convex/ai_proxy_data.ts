@@ -59,6 +59,14 @@ export const getDeviceUsage = internalQuery({
     deviceId: v.string(),
     clientAddressKey: v.optional(v.string()),
   },
+  returns: v.union(
+    v.object({
+      requestCount: v.number(),
+      firstRequestAt: v.number(),
+      lastRequestAt: v.number(),
+    }),
+    v.null(),
+  ),
   handler: async (ctx, args) => {
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
     const row = await ctx.db
@@ -82,6 +90,7 @@ export const incrementDeviceUsage = internalMutation({
     deviceId: v.string(),
     clientAddressKey: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
     const existing = await ctx.db
@@ -120,6 +129,7 @@ export const consumeDeviceAllowance = internalMutation({
     maxRequests: v.number(),
     clientAddressKey: v.optional(v.string()),
   },
+  returns: consumeDeviceAllowanceResultValidator,
   handler: async (ctx, args) => {
     const maxRequests = Math.max(1, Math.floor(args.maxRequests));
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
@@ -180,6 +190,10 @@ export const mintProxyToken = internalMutation({
     agentType: v.string(),
     runId: v.string(),
   },
+  returns: v.object({
+    token: v.string(),
+    expiresAt: v.number(),
+  }),
   handler: async (ctx, args) => {
     const now = Date.now();
     const token = generateTokenString();
@@ -204,6 +218,18 @@ export const validateProxyToken = internalQuery({
   args: {
     token: v.string(),
   },
+  returns: v.union(
+    v.object({
+      valid: v.literal(true),
+      ownerId: v.string(),
+      agentType: v.string(),
+      runId: v.string(),
+    }),
+    v.object({
+      valid: v.literal(false),
+      reason: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("proxy_tokens")
@@ -239,6 +265,7 @@ export const revokeProxyToken = internalMutation({
   args: {
     token: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("proxy_tokens")
@@ -258,6 +285,7 @@ export const revokeProxyTokensByRunId = internalMutation({
     runId: v.string(),
     ownerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const tokens = await ctx.db
       .query("proxy_tokens")
@@ -276,6 +304,7 @@ export const revokeProxyTokensByRunId = internalMutation({
 
 export const cleanupExpiredProxyTokens = internalMutation({
   args: {},
+  returns: v.number(),
   handler: async (ctx) => {
     const now = Date.now();
     const expired = await ctx.db
@@ -302,6 +331,10 @@ export const checkProxyRateLimit = internalMutation({
     ownerId: v.string(),
     estimatedTokens: v.optional(v.number()),
   },
+  returns: v.object({
+    allowed: v.boolean(),
+    retryAfterMs: v.optional(v.number()),
+  }),
   handler: async (ctx, args) => {
     const limitStr = process.env.PROXY_TOKENS_PER_MINUTE;
     const limit = limitStr ? parseInt(limitStr, 10) : DEFAULT_PROXY_TOKENS_PER_MINUTE;

@@ -115,6 +115,7 @@ export const handleLinkCommand = internalAction({
     displayName: v.optional(v.string()),
     teamId: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const token = await resolveSlackToken(ctx, args.teamId);
     if (!token) {
@@ -161,6 +162,7 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 

@@ -7,6 +7,14 @@ import { requireUserId } from "../auth";
  */
 export const listCatalog = internalQuery({
   args: {},
+  returns: v.array(
+    v.object({
+      commandId: v.string(),
+      name: v.string(),
+      description: v.string(),
+      pluginName: v.string(),
+    }),
+  ),
   handler: async (ctx) => {
     const rows = await ctx.db
       .query("commands")
@@ -26,6 +34,16 @@ export const listCatalog = internalQuery({
  */
 export const getByCommandId = internalQuery({
   args: { commandId: v.string() },
+  returns: v.union(
+    v.object({
+      commandId: v.string(),
+      name: v.string(),
+      description: v.string(),
+      pluginName: v.string(),
+      content: v.string(),
+    }),
+    v.null(),
+  ),
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("commands")
@@ -58,6 +76,7 @@ export const upsertMany = mutation({
       }),
     ),
   },
+  returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
     await requireUserId(ctx);
 
