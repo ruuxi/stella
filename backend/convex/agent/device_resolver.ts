@@ -58,7 +58,6 @@ export const heartbeat = mutation({
     signature: v.string(),
     publicKey: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const now = Date.now();
@@ -123,7 +122,6 @@ export const heartbeat = mutation({
  */
 export const goOffline = mutation({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const device = await ctx.db
@@ -150,7 +148,6 @@ const STALE_THRESHOLD_MS = 90_000; // 90 seconds
  */
 export const markStaleOffline = internalMutation({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     const cutoff = Date.now() - STALE_THRESHOLD_MS;
     const staleDevices = await ctx.db
@@ -178,10 +175,6 @@ export const markStaleOffline = internalMutation({
  */
 export const resolveExecutionTarget = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.object({
-    targetDeviceId: v.union(v.string(), v.null()),
-    spriteName: v.union(v.string(), v.null()),
-  }),
   handler: async (ctx, args): Promise<{
     targetDeviceId: string | null;
     spriteName: string | null;
@@ -217,11 +210,6 @@ export const resolveExecutionTarget = internalQuery({
  */
 export const getDeviceStatus = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.object({
-    localOnline: v.boolean(),
-    cloudAvailable: v.boolean(),
-    cloudStatus: v.union(v.string(), v.null()),
-  }),
   handler: async (ctx, args) => {
     const device = await ctx.db
       .query("devices")

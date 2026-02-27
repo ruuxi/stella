@@ -350,7 +350,6 @@ const fetchAgentContextForOwner = async (
 
 export const fetchAgentContext = internalAction({
   args: fetchAgentContextInternalArgs,
-  returns: agentContextResultValidator,
   handler: async (ctx, args): Promise<AgentContextResult> => {
     return await fetchAgentContextForOwner(ctx, args);
   },
@@ -358,7 +357,6 @@ export const fetchAgentContext = internalAction({
 
 export const fetchAgentContextForRuntime = action({
   args: fetchAgentContextRuntimeArgs,
-  returns: agentContextResultValidator,
   handler: async (ctx, args): Promise<AgentContextResult> => {
     const ownerId = await requireUserId(ctx);
     const conversation = await ctx.runQuery(internal.conversations.getById, {
@@ -383,7 +381,6 @@ export const fetchAgentContextForRuntime = action({
 
 export const fetchLocalAgentContextForRuntime = action({
   args: fetchLocalAgentContextRuntimeArgs,
-  returns: agentContextResultValidator,
   handler: async (ctx, args): Promise<AgentContextResult> => {
     const ownerId = await requireUserId(ctx);
 

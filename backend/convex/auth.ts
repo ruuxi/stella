@@ -351,7 +351,6 @@ const currentUserValidator = v.object({
 
 export const getCurrentUser = query({
   args: {},
-  returns: v.union(currentUserValidator, v.null()),
   handler: async (ctx) => {
     const user = await authComponent.getAuthUser(ctx);
     if (!user || typeof user !== "object") {
@@ -374,7 +373,6 @@ export const getCurrentUser = query({
 
 export const rotateKeys = internalAction({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     const auth = createAuth(ctx);
     await auth.api.rotateKeys();
@@ -384,7 +382,6 @@ export const rotateKeys = internalAction({
 
 export const getSessionPolicyByOwnerInternal = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.union(sessionPolicyValidator, v.null()),
   handler: async (ctx, args) => {
     const policy = await ctx.db
       .query("auth_session_policies")
@@ -403,7 +400,6 @@ export const getSessionPolicyByOwnerInternal = internalQuery({
 
 export const getSessionPolicy = query({
   args: {},
-  returns: sessionPolicyValidator,
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const policy = await getSessionPolicyFromDb(ctx, ownerId);
@@ -454,7 +450,6 @@ const upsertSessionPolicy = async (
 
 export const revokeActiveSessions = mutation({
   args: {},
-  returns: sessionPolicyValidator,
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const minIssuedAtSec = Math.floor(Date.now() / 1000);
@@ -464,7 +459,6 @@ export const revokeActiveSessions = mutation({
 
 export const bumpSessionVersion = mutation({
   args: {},
-  returns: sessionPolicyValidator,
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const existing = await getSessionPolicyFromDb(ctx, ownerId);
