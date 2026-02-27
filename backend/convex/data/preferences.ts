@@ -63,7 +63,6 @@ export const setPreference = internalMutation({
     key: v.string(),
     value: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, args.key, args.value);
@@ -77,7 +76,6 @@ export const setPreferenceForOwner = internalMutation({
     key: v.string(),
     value: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await upsertPreferenceRecord(ctx, args.ownerId, args.key, args.value);
     return null;
@@ -88,7 +86,6 @@ export const getPreference = internalQuery({
   args: {
     key: v.string(),
   },
-  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db
@@ -182,7 +179,6 @@ export const setPreferredBrowser = mutation({
   args: {
     browser: preferredBrowserValidator,
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, PREFERRED_BROWSER_KEY, args.browser);
@@ -241,7 +237,6 @@ const MODEL_CONFIG_PREFIX = "model_config:";
 
 export const getModelOverrides = query({
   args: {},
-  returns: v.string(),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const records = await ctx.db
@@ -265,7 +260,6 @@ export const setModelOverride = mutation({
     agentType: v.string(),
     model: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
@@ -278,7 +272,6 @@ export const clearModelOverride = mutation({
   args: {
     agentType: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
@@ -300,7 +293,6 @@ export const setCoreMemory = mutation({
   args: {
     content: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, CORE_MEMORY_KEY, args.content);
@@ -314,7 +306,6 @@ export const setExpressionStyle = mutation({
   args: {
     style: v.union(v.literal("emoji"), v.literal("none")),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, EXPRESSION_STYLE_KEY, args.style);
@@ -327,7 +318,6 @@ export const getPreferenceForOwner = internalQuery({
     ownerId: v.string(),
     key: v.string(),
   },
-  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("user_preferences")

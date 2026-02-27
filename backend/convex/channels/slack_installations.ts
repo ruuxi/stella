@@ -21,7 +21,6 @@ const slackInstallationWithTokenValidator = v.object({
 
 export const getByTeamId = internalQuery({
   args: { teamId: v.string() },
-  returns: v.union(slackInstallationWithTokenValidator, v.null()),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("slack_installations")
@@ -58,7 +57,6 @@ export const upsert = internalMutation({
     scope: v.optional(v.string()),
     installedBy: v.optional(v.string()),
   },
-  returns: v.id("slack_installations"),
   handler: async (ctx, args) => {
     const now = Date.now();
     const encrypted = await encryptSecret(args.botToken);

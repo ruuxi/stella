@@ -123,7 +123,6 @@ export const handleLinkCommand = internalAction({
     codeArg: v.string(),
     displayName: v.optional(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const result = await processLinkCode({
       ctx,
@@ -180,7 +179,6 @@ export const handleAskCommand = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 
@@ -233,10 +231,6 @@ export const handleAskCommand = internalAction({
 
 export const registerCommands = internalAction({
   args: {},
-  returns: v.object({
-    ok: v.boolean(),
-    commandCount: v.number(),
-  }),
   handler: async () => {
     const applicationId = process.env.DISCORD_APPLICATION_ID;
     if (!applicationId) {
