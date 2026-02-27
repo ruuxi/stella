@@ -228,7 +228,7 @@
   color: var(--foreground);
 }
 
-/* ===== Music Player placeholder ===== */
+/* ===== Music Player ===== */
 
 .music-player-row {
   display: flex;
@@ -245,11 +245,43 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: not-allowed;
-  opacity: 0.5;
+  cursor: pointer;
+  opacity: 1;
   padding: 0;
   color: var(--foreground);
   flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+}
+.music-play-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.music-play-btn:not(:disabled):hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+.music-play-btn--active {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.music-stop-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  color: var(--foreground);
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+.music-stop-btn:hover {
+  opacity: 0.7;
 }
 
 .music-track-info {
@@ -261,13 +293,13 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--foreground);
-  opacity: 0.4;
+  opacity: 0.6;
 }
 
 .music-track-duration {
   font-size: 11px;
   color: var(--foreground);
-  opacity: 0.3;
+  opacity: 0.4;
   flex-shrink: 0;
 }
 
@@ -288,8 +320,31 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   background: transparent;
   color: var(--foreground);
-  opacity: 0.4;
-  cursor: not-allowed;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+}
+.music-mood-chip:hover {
+  opacity: 0.8;
+}
+.music-mood-chip--selected {
+  opacity: 1;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.music-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--foreground);
+  opacity: 0.5;
+  animation: music-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes music-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 0.7; transform: scale(1.1); }
 }
 
 /* ===== Generative Canvas ===== */
