@@ -757,28 +757,7 @@ export const createLocalHostRunner = ({
       title: payload.title,
     });
 
-    let leaseInterval: ReturnType<typeof setInterval> | null = null;
     try {
-      // Claim the page lease (uses public mutation with auth)
-      const claimResult = await callMutation("personalized_dashboard.claimPageGenerationDevice", {
-        pageId: payload.pageId,
-        claimantId: deviceId,
-      }) as { claimed: boolean; claimedBy?: string } | null;
-
-      if (!claimResult?.claimed) {
-        log(`Page ${payload.pageId} already claimed by ${claimResult?.claimedBy ?? "unknown"}, skipping`);
-        processedDashboardGen.add(requestKey);
-        return;
-      }
-
-      // Set up lease renewal interval (every 60s)
-      leaseInterval = setInterval(() => {
-        void callMutation("personalized_dashboard.renewPageLeaseDevice", {
-          pageId: payload.pageId,
-          claimantId: deviceId,
-        }).catch((err) => logError("Lease renewal failed:", err));
-      }, 60_000);
-
       // Fetch agent context for the "general" agent type
       const agentContext = await callAction(
         "agent/prompt_builder:fetchAgentContextForRuntime",
@@ -864,25 +843,11 @@ export const createLocalHostRunner = ({
         }
       }
 
-      // Release the lease (markPageReady/Failed already clear it, but be safe)
-      await callMutation("personalized_dashboard.releasePageClaimDevice", {
-        pageId: payload.pageId,
-        claimantId: deviceId,
-      }).catch((err) => logError("Lease release failed:", err));
-
       processedDashboardGen.add(requestKey);
     } catch (error) {
       logError(`Dashboard gen request failed for ${payload.pageId}:`, error);
-      // Release lease on error
-      await callMutation("personalized_dashboard.releasePageClaimDevice", {
-        pageId: payload.pageId,
-        claimantId: deviceId,
-      }).catch(() => {});
       processedDashboardGen.add(requestKey);
     } finally {
-      if (leaseInterval) {
-        clearInterval(leaseInterval);
-      }
       dashboardGenInFlight.delete(requestKey);
     }
   };
