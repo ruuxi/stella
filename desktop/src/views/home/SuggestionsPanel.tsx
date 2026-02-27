@@ -1,0 +1,39 @@
+import type { WelcomeSuggestion } from "@/services/synthesis"
+import { DashboardCard } from "./DashboardCard"
+
+const CATEGORY_LABELS: Record<WelcomeSuggestion["category"], string> = {
+  cron: "Automation",
+  skill: "Skill",
+  app: "App",
+}
+
+type SuggestionsPanelProps = {
+  suggestions: WelcomeSuggestion[]
+  onSuggestionClick: (s: WelcomeSuggestion) => void
+}
+
+export function SuggestionsPanel({ suggestions, onSuggestionClick }: SuggestionsPanelProps) {
+  return (
+    <DashboardCard label="Suggestions">
+      <div className="home-suggestions">
+        {suggestions.map((s, i) => (
+          <button
+            key={i}
+            className="home-suggestion-card"
+            onClick={() => onSuggestionClick(s)}
+          >
+            <div className="home-suggestion-content">
+              <div className="home-suggestion-header">
+                <span className="home-suggestion-title">{s.title}</span>
+                <span className="home-suggestion-badge" data-category={s.category}>
+                  {CATEGORY_LABELS[s.category]}
+                </span>
+              </div>
+              <span className="home-suggestion-desc">{s.description}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </DashboardCard>
+  )
+}
