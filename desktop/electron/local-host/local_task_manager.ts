@@ -235,7 +235,7 @@ export class LocalTaskManager implements TaskToolApi {
         taskPrompt: task.prompt,
         agentContext: context,
         persistToConvex: task.storageMode === "cloud",
-        enableRemoteTools: task.storageMode === "cloud",
+        enableRemoteTools: true,
         abortSignal: task.controller.signal,
         toolExecutor: async (toolName, toolArgs, toolContext) => {
           const lockKey = getFsLockKey(toolName, toolArgs);

@@ -1335,7 +1335,7 @@ export const createLocalHostRunner = ({
       stellaHome: StellaHome,
       localHistory: payload.localHistory,
       persistToConvex: storageMode !== "local",
-      enableRemoteTools: storageMode !== "local",
+      enableRemoteTools: true,
       abortSignal: abortController.signal,
     });
 

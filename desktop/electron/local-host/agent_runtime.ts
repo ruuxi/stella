@@ -161,6 +161,13 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
       ? agentContext.fallbackModel
       : undefined;
   const storageMode: "cloud" | "local" = persistToConvex ? "cloud" : "local";
+  const historyForLocalMemory = (
+    localHistory ??
+    (agentContext.threadHistory ?? [])
+      .filter((msg): msg is { role: "user" | "assistant"; content: string } =>
+        (msg.role === "user" || msg.role === "assistant") && typeof msg.content === "string")
+      .map((msg) => ({ role: msg.role, content: msg.content }))
+  );
 
   // Build tools
   const toolCallCounters = new Map<string, number>(); // track ordinals per turn+tool+args combo
@@ -217,6 +224,18 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
         authToken,
         conversationId,
         agentType,
+        mode: storageMode,
+        ...(storageMode === "local"
+          ? {
+            localMemory: {
+              stellaHome,
+              proxyBaseUrl,
+              proxyToken: agentContext.proxyToken.token,
+              rerankModelId: "openai/gpt-4.1-mini",
+              localHistory: historyForLocalMemory,
+            },
+          }
+          : {}),
       })
     : {};
 
@@ -419,6 +438,10 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
   const persistToConvex = opts.persistToConvex ?? true;
   const enableRemoteTools = opts.enableRemoteTools ?? true;
   const storageMode: "cloud" | "local" = persistToConvex ? "cloud" : "local";
+  const historyForLocalMemory = (agentContext.threadHistory ?? [])
+    .filter((msg): msg is { role: "user" | "assistant"; content: string } =>
+      (msg.role === "user" || msg.role === "assistant") && typeof msg.content === "string")
+    .map((msg) => ({ role: msg.role, content: msg.content }));
   const runId = `local:sub:${crypto.randomUUID()}`;
 
   const journal = new RunJournal(stellaHome);
@@ -489,6 +512,18 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
         authToken,
         conversationId,
         agentType,
+        mode: storageMode,
+        ...(storageMode === "local"
+          ? {
+            localMemory: {
+              stellaHome,
+              proxyBaseUrl,
+              proxyToken: agentContext.proxyToken.token,
+              rerankModelId: "openai/gpt-4.1-mini",
+              localHistory: historyForLocalMemory,
+            },
+          }
+          : {}),
       })
     : {};
 
