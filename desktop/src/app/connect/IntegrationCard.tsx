@@ -11,8 +11,8 @@ import {
 import { sanitizeExternalLinkUrl } from "@/lib/url-safety";
 
 function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
-  const setupBridge = useAction(api.channels.bridge.setupBridge);
-  const getBridgeBundle = useAction(api.channels.bridge.getBridgeBundle);
+  const setupBridge = useAction(api.channels.bridge_actions.setupBridge);
+  const getBridgeBundle = useAction(api.channels.bridge_actions.getBridgeBundle);
   const runtimeMode = useQuery(api.data.preferences.getRuntimeMode);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +55,7 @@ function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
 
 function ConnectedView({ integration }: { integration: Integration }) {
   const deleteConnection = useMutation(api.channels.utils.deleteConnection);
-  const stopBridge = useAction(api.channels.bridge.stopBridge);
+  const stopBridge = useAction(api.channels.bridge_actions.stopBridge);
   const [disconnecting, setDisconnecting] = useState(false);
 
   const isBridge = integration.provider === "whatsapp" || integration.provider === "signal";
