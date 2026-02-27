@@ -995,38 +995,8 @@ const createMiniWindow = () => {
 
   // Blur event hides mini window (like Spotlight)
   miniWindow.on('blur', () => {
-    if (isMiniShowing()) {
-      // Focus can bounce between the radial/overlay and mini during fast selections.
-      // Don't dismiss on transient blur during the open handshake.
-      if (
-        Date.now() < suppressMiniBlurUntil ||
-        radialGestureActive ||
-        miniConcealedForCapture ||
-        Boolean(pendingRegionCapturePromise)
-      ) {
-        return
-      }
-      if (pendingMiniBlurHideTimer) {
-        clearTimeout(pendingMiniBlurHideTimer)
-      }
-      pendingMiniBlurHideTimer = setTimeout(() => {
-        pendingMiniBlurHideTimer = null
-        if (!miniWindow) {
-          return
-        }
-        if (
-          Date.now() < suppressMiniBlurUntil ||
-          radialGestureActive ||
-          miniConcealedForCapture ||
-          Boolean(pendingRegionCapturePromise)
-        ) {
-          return
-        }
-        if (!miniWindow.isFocused() && isMiniShowing()) {
-          hideMiniWindow(true)
-        }
-      }, 50)
-    }
+    // Mini shell no longer auto-hides on blur.
+    // It is dismissed via the radial dial (selecting "chat" again).
   })
 
   positionMiniWindow()
@@ -1487,10 +1457,14 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
     }
     case 'chat':
     case 'auto': {
-      radialContextShouldCommit = true
-      commitStagedRadialContext()
-      updateUiState({ mode: 'chat' })
-      if (!isMiniShowing()) showWindow('mini')
+      if (isMiniShowing()) {
+        hideMiniWindow(true)
+      } else {
+        radialContextShouldCommit = true
+        commitStagedRadialContext()
+        updateUiState({ mode: 'chat' })
+        showWindow('mini')
+      }
       break
     }
     case 'voice':
@@ -1550,30 +1524,9 @@ const initMouseHook = () => {
         }
       }
     },
-    onLeftClick: (x: number, y: number) => {
-      if (radialGestureActive || miniConcealedForCapture || pendingRegionCapturePromise) {
-        return
-      }
-      // Hide mini window if clicking outside its bounds
-      const win = miniWindow
-      if (win && isMiniShowing() && win.getOpacity() > 0.01) {
-        const bounds = win.getBounds()
-        const display = screen.getDisplayNearestPoint({ x, y })
-        // On macOS uiohook coords are already logical; on Windows/Linux divide to convert.
-        const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
-        const clickX = x / scaleFactor
-        const clickY = y / scaleFactor
-        
-        const isOutside = 
-          clickX < bounds.x || 
-          clickX > bounds.x + bounds.width ||
-          clickY < bounds.y || 
-          clickY > bounds.y + bounds.height
-
-        if (isOutside) {
-          hideMiniWindow(true)
-        }
-      }
+    onLeftClick: () => {
+      // Mini shell no longer auto-hides on external click.
+      // It is dismissed via the radial dial (selecting "chat" again).
     },
     onRadialShow: (x: number, y: number) => {
       if (!appReady) return
