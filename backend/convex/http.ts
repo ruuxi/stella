@@ -1102,6 +1102,9 @@ const CLIENT_ADDRESS_KEY_PATTERN = /^[0-9a-fA-F:.]+$/;
 const TRANSCRIBE_OWNER_RATE_LIMIT = 30;
 const TRANSCRIBE_ANON_RATE_LIMIT = 10;
 const TRANSCRIBE_RATE_WINDOW_MS = 60_000;
+
+const MUSIC_KEY_RATE_LIMIT = 10;
+const MUSIC_KEY_RATE_WINDOW_MS = 300_000;
 const DEFAULT_TRANSCRIBE_CLIENT_TOKEN_DURATION_SECS = 120;
 const MIN_TRANSCRIBE_CLIENT_TOKEN_DURATION_SECS = 30;
 const MAX_TRANSCRIBE_CLIENT_TOKEN_DURATION_SECS = 600;
@@ -3492,6 +3495,83 @@ http.route({ path: "/api/ai/search", method: "POST", handler: proxySearch });
 // Transparent LLM reverse proxy for local agent runtime
 http.route({ path: "/api/ai/llm-proxy", method: "OPTIONS", handler: proxyOptionsHandler });
 http.route({ path: "/api/ai/llm-proxy", method: "POST", handler: llmProxy });
+
+// ---------------------------------------------------------------------------
+// Music Generation — API Key Endpoint
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/music/api-key",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+    return new Response(null, { status: 204, headers: getCorsHeaders(origin) });
+  }),
+});
+
+http.route({
+  path: "/api/music/api-key",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+
+    // Require authenticated user (no anonymous access for API key distribution)
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: "music_api_key",
+      key: identity.subject,
+      limit: MUSIC_KEY_RATE_LIMIT,
+      windowMs: MUSIC_KEY_RATE_WINDOW_MS,
+      blockMs: MUSIC_KEY_RATE_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+    }
+
+    // Resolve Google AI API key via BYOK chain, then platform env var
+    const ownerId = identity.subject;
+    let apiKey: string | null = null;
+
+    try {
+      apiKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
+        ownerId,
+        provider: "llm:google",
+      });
+    } catch {
+      // No BYOK key stored, fall through to env var
+    }
+
+    if (!apiKey) {
+      apiKey = process.env.GOOGLE_AI_API_KEY ?? null;
+    }
+
+    if (!apiKey) {
+      return withCors(
+        new Response(
+          JSON.stringify({ error: "No Google AI API key configured. Add one in Settings or contact your administrator." }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        ),
+        origin,
+      );
+    }
+
+    return withCors(
+      new Response(JSON.stringify({ apiKey }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+      origin,
+    );
+  }),
+});
 
 export default http;
 
