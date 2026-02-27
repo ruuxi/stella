@@ -279,7 +279,10 @@ html:has(.window-mini) body,
 html:has(.window-mini) #root,
 html:has(.window-region),
 html:has(.window-region) body,
-html:has(.window-region) #root {
+html:has(.window-region) #root,
+html:has(.window-voice),
+html:has(.window-voice) body,
+html:has(.window-voice) #root {
   background: transparent !important;
   min-height: 100vh;
 }
