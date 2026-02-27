@@ -4,7 +4,6 @@ import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
 import { useUiState } from '../app/state/ui-state'
-// hexToRgb no longer needed — toRgba uses cssToVec3 for universal color parsing
 import { StellaAnimation } from '../components/StellaAnimation'
 import {
   initBlob,
@@ -317,7 +316,7 @@ export function RadialDial() {
             const fillColor = isSelected
               ? toRgba(colors.interactive, 1)
               : isVoiceToggleActive
-              ? toRgba(colors.interactive, 0.6)
+              ? blendOpaque(colors.card, colors.interactive, 0.5)
               : toRgba(colors.card, 1)
 
             const strokeColor = isActiveOrSelected
