@@ -57,6 +57,7 @@ import './styles/selfmod-undo.css'
 import './styles/command-chips.css'
 import './styles/welcome-suggestions.css'
 import './views/home/home-view.css'
+import './views/home/home-dashboard.css'
 import './styles/error-boundary.css'
 import './styles/voice-widget.css'
 
