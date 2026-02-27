@@ -49,6 +49,7 @@ export const appendTransientEvent = internalMutation({
     })),
     ttlMs: v.optional(v.number()),
   },
+  returns: v.id("transient_channel_events"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("transient_channel_events", {
@@ -70,6 +71,7 @@ export const deleteTransientBatch = internalMutation({
   args: {
     batchKey: v.string(),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
     let deleted = 0;
     while (true) {
@@ -98,6 +100,7 @@ export const purgeExpired = internalMutation({
     limit: v.optional(v.number()),
     maxBatches: v.optional(v.number()),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
     const nowMs = typeof args.nowMs === "number" ? args.nowMs : Date.now();
     const limit =
@@ -142,6 +145,7 @@ export const recordCleanupFailure = internalMutation({
     attempts: v.number(),
     errorMessage: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     await ctx.db.insert("transient_cleanup_failures", {
@@ -164,6 +168,7 @@ export const purgeExpiredCleanupFailures = internalMutation({
     limit: v.optional(v.number()),
     maxBatches: v.optional(v.number()),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
     const nowMs = typeof args.nowMs === "number" ? args.nowMs : Date.now();
     const limit =

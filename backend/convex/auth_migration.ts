@@ -60,6 +60,7 @@ export const migrateTableBatch = internalMutation({
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (ctx.db as any)
@@ -86,6 +87,7 @@ export const deduplicateDefaultConversation = internalMutation({
   args: {
     toOwnerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const defaults = await ctx.db
       .query("conversations")
@@ -116,6 +118,7 @@ export const migrateOwnership = internalAction({
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     if (args.fromOwnerId === args.toOwnerId) return null;
 
@@ -172,6 +175,7 @@ export const migratePersistChunksBatch = internalMutation({
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     // persist_chunks doesn't have a by_ownerId index, so we scan
     const rows = await ctx.db

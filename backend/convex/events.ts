@@ -87,6 +87,7 @@ const sanitizeEventForRead = <T extends { type: string; payload: Value } | null>
 
 export const countByConversation = internalQuery({
   args: { conversationId: v.id("conversations") },
+  returns: v.number(),
   handler: async (ctx, args) => {
     let total = 0;
     let cursor: string | null = null;
@@ -116,6 +117,7 @@ export const listOlderMessages = internalQuery({
     afterTimestamp: v.optional(v.number()),
     limit: v.number(),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const afterTs = args.afterTimestamp ?? 0;
     // Use by_conversation_type index for efficient type-scoped queries.
@@ -163,6 +165,7 @@ export const listRecentDeviceEvents = query({
     since: v.number(),
     limit: v.optional(v.number()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const limit = args.limit ?? 20;
@@ -206,6 +209,7 @@ export const listMessagesInWindow = internalQuery({
     endTimestamp: v.number(),
     limit: v.optional(v.number()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     if (args.endTimestamp <= args.startTimestamp) {
       return [];
@@ -246,6 +250,7 @@ export const listMessagesInWindow = internalQuery({
 });
 export const getById = internalQuery({
   args: { id: v.id("events") },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     return sanitizeEventForRead(await ctx.db.get(args.id));
   },
@@ -258,6 +263,7 @@ export const listRecentMessages = internalQuery({
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const requestedLimit = args.limit ?? 20;
     if (requestedLimit <= 0) {
@@ -439,6 +445,7 @@ export const listRecentContextEvents = internalQuery({
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const requestedLimit = args.limit ?? 20;
     if (requestedLimit <= 0) {
@@ -471,6 +478,7 @@ export const listSessionContextEvents = internalQuery({
     contextAgentType: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const limit = normalizeOptionalInt({
       value: args.limit,
@@ -501,6 +509,7 @@ export const listRecentContextEventsByTokens = internalQuery({
     includeOperationalEvents: v.optional(v.boolean()),
     contextAgentType: v.optional(v.string()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const maxTokens = Math.min(
       Math.max(Math.floor(args.maxTokens ?? 24_000), 1),
@@ -544,6 +553,7 @@ export const getLatestDeviceIdForConversation = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const event = await ctx.db
       .query("events")
@@ -564,6 +574,7 @@ export const saveAssistantMessage = internalMutation({
     userMessageId: v.optional(v.id("events")),
     usage: v.optional(usageSummaryValidator),
   },
+  returns: v.id("events"),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
     const eventId = await ctx.db.insert("events", {
@@ -597,6 +608,7 @@ export const enqueueToolRequest = internalMutation({
     ephemeral: v.optional(v.boolean()),
     ttlMs: v.optional(v.number()),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
     const isEphemeral = args.ephemeral === true;
@@ -633,6 +645,7 @@ export const getToolResultByRequestId = internalQuery({
     requestId: v.string(),
     deviceId: v.optional(v.string()),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const results = await ctx.db
       .query("events")
@@ -658,6 +671,7 @@ export const getToolResult = query({
     requestId: v.string(),
     deviceId: v.optional(v.string()),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const results = await ctx.db
@@ -694,6 +708,7 @@ export const deleteEventsByRequestId = internalMutation({
     conversationId: v.id("conversations"),
     requestId: v.string(),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
     let deleted = 0;
     while (true) {
@@ -730,6 +745,7 @@ export const purgeExpiredEphemeralToolEvents = internalMutation({
     limit: v.optional(v.number()),
     maxBatches: v.optional(v.number()),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
     const nowMs = typeof args.nowMs === "number" ? args.nowMs : Date.now();
     const limit =
@@ -927,6 +943,7 @@ export const appendEvent = mutation({
     ephemeral: v.optional(v.boolean()),
     expiresAt: v.optional(v.number()),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     return await appendEventCore(ctx, args);
@@ -938,6 +955,10 @@ export const importLocalMessagesChunk = mutation({
     conversationId: v.id("conversations"),
     messages: v.array(localSyncMessageValidator),
   },
+  returns: v.object({
+    imported: v.number(),
+    skipped: v.number(),
+  }),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
 
@@ -1001,6 +1022,7 @@ export const appendInternalEvent = internalMutation({
     ephemeral: v.optional(v.boolean()),
     expiresAt: v.optional(v.number()),
   },
+  returns: v.union(eventValidator, v.null()),
   handler: async (ctx, args) => {
     return await appendEventCore(ctx, args);
   },
@@ -1011,6 +1033,13 @@ export const listEvents = query({
     conversationId: v.id("conversations"),
     paginationOpts: paginationOptsValidator,
   },
+  returns: v.object({
+    page: v.array(eventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
+  }),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     const page = await ctx.db
@@ -1033,6 +1062,7 @@ export const listEventsSince = internalQuery({
     afterTimestamp: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const afterTimestamp = args.afterTimestamp ?? 0;
     const limit = normalizeOptionalInt({
@@ -1060,6 +1090,10 @@ export const getConversationEventHead = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.object({
+    latestTimestamp: v.number(),
+    latestEventId: v.union(v.id("events"), v.null()),
+  }),
   handler: async (ctx, args) => {
     const latest = await ctx.db
       .query("events")
@@ -1082,6 +1116,13 @@ export const listToolRequestsForDevice = query({
     // Only return requests created after this timestamp (for fresh subscriptions)
     since: v.optional(v.number()),
   },
+  returns: v.object({
+    page: v.array(eventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
+  }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const filtered: Infer<typeof eventValidator>[] = [];
@@ -1155,6 +1196,13 @@ export const listDashboardGenRequestsForDevice = query({
     paginationOpts: paginationOptsValidator,
     since: v.optional(v.number()),
   },
+  returns: v.object({
+    page: v.array(eventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
+  }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const filtered: Infer<typeof eventValidator>[] = [];

@@ -89,6 +89,11 @@ export const checkChatRateLimit = internalMutation({
   args: {
     ownerId: v.string(),
   },
+  returns: v.object({
+    allowed: v.boolean(),
+    reason: v.optional(v.string()),
+    retryAfterMs: v.optional(v.number()),
+  }),
   handler: async (ctx, args) => {
     const status = await chatRateLimiter.limit(
       ctx,
@@ -190,6 +195,7 @@ export const logUsage = internalMutation({
     fallbackUsed: v.optional(v.boolean()),
     toolCalls: v.optional(v.number()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.insert("usage_logs", {
       ownerId: args.ownerId,
@@ -226,6 +232,7 @@ export const logUsageAsync = internalMutation({
     success: v.boolean(),
     fallbackUsed: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.insert("usage_logs", {
       ownerId: args.ownerId,
@@ -256,6 +263,7 @@ export const logToolExecution = internalMutation({
     durationMs: v.number(),
     success: v.boolean(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     // Lightweight logging — insert a minimal usage_logs entry for tool tracking.
     // Using the same table avoids schema sprawl; toolName is stored in the model field.
@@ -288,6 +296,7 @@ export const logProxyUsage = internalMutation({
     outputTokens: v.optional(v.number()),
     estimateFromRequest: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     // Find the user's default conversation for logging purposes
     const conversations = await ctx.db
@@ -334,6 +343,13 @@ export const getOwnerUsage = internalQuery({
     ownerId: v.string(),
     windowMs: v.optional(v.number()),
   },
+  returns: v.object({
+    totalInputTokens: v.number(),
+    totalOutputTokens: v.number(),
+    totalTokens: v.number(),
+    requestCount: v.number(),
+    toolCallCount: v.number(),
+  }),
   handler: async (ctx, args) => {
     const windowMs = args.windowMs ?? 24 * 60 * 60 * 1000; // 24h default
     const since = Date.now() - windowMs;

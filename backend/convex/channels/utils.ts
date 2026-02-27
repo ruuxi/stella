@@ -232,6 +232,7 @@ export const getConnectionByProviderAndExternalId = internalQuery({
     provider: v.string(),
     externalUserId: v.string(),
   },
+  returns: v.union(channelConnectionValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("channel_connections")
@@ -248,6 +249,7 @@ export const getConnectionByOwnerProviderAndExternalId = internalQuery({
     provider: v.string(),
     externalUserId: v.string(),
   },
+  returns: v.union(channelConnectionValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("channel_connections")
@@ -266,6 +268,16 @@ export const getDmPolicyConfig = internalQuery({
     ownerId: v.string(),
     provider: v.string(),
   },
+  returns: v.object({
+    policy: v.union(
+      v.literal("pairing"),
+      v.literal("allowlist"),
+      v.literal("open"),
+      v.literal("disabled"),
+    ),
+    allowlist: v.array(v.string()),
+    denylist: v.array(v.string()),
+  }),
   handler: async (ctx, args) => {
     const policyKey = getDmPolicyKey(args.provider);
     const allowlistKey = getDmAllowlistKey(args.provider);
@@ -305,6 +317,7 @@ export const peekLinkCodeOwner = internalQuery({
     provider: v.string(),
     code: v.string(),
   },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const key = `${args.provider}_link_code`;
     const prefs = await ctx.db
@@ -349,6 +362,7 @@ export const createConnection = internalMutation({
     externalUserId: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.id("channel_connections"),
   handler: async (ctx, args) => {
     const now = Date.now();
     const existing = await ctx.db
@@ -388,6 +402,7 @@ export const getOrCreateConversationForOwner = internalMutation({
     ownerId: v.string(),
     title: v.optional(v.string()),
   },
+  returns: v.id("conversations"),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("conversations")
@@ -414,6 +429,7 @@ export const createGroupConversation = internalMutation({
     ownerId: v.string(),
     title: v.optional(v.string()),
   },
+  returns: v.id("conversations"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("conversations", {
@@ -431,6 +447,7 @@ export const setConnectionConversation = internalMutation({
     connectionId: v.id("channel_connections"),
     conversationId: v.id("conversations"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.connectionId, {
       conversationId: args.conversationId,
@@ -446,6 +463,7 @@ export const storeLinkCode = internalMutation({
     provider: v.string(),
     code: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const key = `${args.provider}_link_code`;
     const now = Date.now();
@@ -481,6 +499,7 @@ export const consumeLinkCode = internalMutation({
     provider: v.string(),
     code: v.string(),
   },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const key = `${args.provider}_link_code`;
     const prefs = await ctx.db
@@ -522,6 +541,10 @@ export const consumeWebhookRateLimit = internalMutation({
     windowMs: v.number(),
     blockMs: v.optional(v.number()),
   },
+  returns: v.object({
+    allowed: v.boolean(),
+    retryAfterMs: v.number(),
+  }),
   handler: async (ctx, args) => {
     const limit = Math.max(1, Math.floor(args.limit));
     const periodMs = Math.max(1_000, Math.floor(args.windowMs), Math.floor(args.blockMs ?? 0));
@@ -543,6 +566,7 @@ export const consumeWebhookRateLimit = internalMutation({
 
 export const generateLinkCode = mutation({
   args: { provider: v.string() },
+  returns: v.object({ code: v.string() }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
@@ -566,6 +590,7 @@ export const generateLinkCode = mutation({
 
 export const getConnection = query({
   args: { provider: v.string() },
+  returns: v.union(channelConnectionValidator, v.null()),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -589,6 +614,7 @@ export const getConnection = query({
 
 export const deleteConnection = mutation({
   args: { provider: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const conn = await ctx.db
@@ -614,6 +640,7 @@ export const setDmPolicy = internalMutation({
       v.literal("disabled"),
     ),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = getDmPolicyKey(args.provider);
@@ -628,6 +655,7 @@ export const setDmAllowlist = internalMutation({
     provider: v.string(),
     externalUserIds: v.array(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = getDmAllowlistKey(args.provider);
@@ -643,6 +671,7 @@ export const setDmDenylist = internalMutation({
     provider: v.string(),
     externalUserIds: v.array(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = getDmDenylistKey(args.provider);

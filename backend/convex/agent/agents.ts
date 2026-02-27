@@ -294,6 +294,7 @@ const upsertAgent = async (
 
 export const ensureBuiltins = internalMutation({
   args: {},
+  returns: v.object({ ok: v.boolean() }),
   handler: async (ctx) => {
     for (const builtin of BUILTIN_AGENT_DEFS) {
       await upsertAgent(ctx, BUILTIN_OWNER_ID, {
@@ -309,6 +310,7 @@ export const upsertMany = mutation({
   args: {
     agents: v.array(agentImportValidator),
   },
+  returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const items = Array.isArray(args.agents) ? args.agents : [];
@@ -376,6 +378,7 @@ export const getAgentConfig = internalQuery({
   args: {
     agentType: v.string(),
   },
+  returns: agentConfigValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     return await getAgentConfigHandler(ctx, { ...args, ownerId });
@@ -387,6 +390,7 @@ export const getAgentConfigInternal = internalQuery({
     agentType: v.string(),
     ownerId: v.optional(v.string()),
   },
+  returns: agentConfigValidator,
   handler: async (ctx, args) => {
     return await getAgentConfigHandler(ctx, args);
   },
@@ -394,6 +398,7 @@ export const getAgentConfigInternal = internalQuery({
 
 export const listAgents = internalQuery({
   args: {},
+  returns: v.array(agentClientValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const [builtinRecords, ownerRecords] = await Promise.all([

@@ -22,6 +22,7 @@ const conversationValidator = v.object({
 
 export const getById = internalQuery({
   args: { id: v.id("conversations") },
+  returns: v.union(conversationValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -31,6 +32,7 @@ export const getOrCreateDefaultConversation = mutation({
   args: {
     title: v.optional(v.string()),
   },
+  returns: v.union(conversationValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
@@ -79,6 +81,7 @@ export const createConversation = mutation({
   args: {
     title: v.optional(v.string()),
   },
+  returns: v.union(conversationValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const now = Date.now();
@@ -107,6 +110,7 @@ export const getActiveThreadId = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.union(v.id("threads"), v.null()),
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     return conversation?.activeThreadId ?? null;
@@ -118,6 +122,7 @@ export const setActiveThreadId = internalMutation({
     conversationId: v.id("conversations"),
     threadId: v.id("threads"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.conversationId, {
       activeThreadId: args.threadId,
@@ -133,6 +138,7 @@ export const markOrchestratorReminderSeen = internalMutation({
     threadId: v.id("threads"),
     reminderHash: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.conversationId, {
       orchestratorReminderHash: args.reminderHash,

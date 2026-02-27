@@ -477,6 +477,7 @@ export const listPagesForOwnerInternal = internalQuery({
   args: {
     ownerId: v.string(),
   },
+  returns: v.array(dashboardPageRecordValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("dashboard_pages")
@@ -490,6 +491,7 @@ export const getPageByOwnerAndPageIdInternal = internalQuery({
     ownerId: v.string(),
     pageId: v.string(),
   },
+  returns: v.union(dashboardPageRecordValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("dashboard_pages")
@@ -504,6 +506,7 @@ export const getLatestEventIdForConversationInternal = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.union(v.id("events"), v.null()),
   handler: async (ctx, args) => {
     const latest = await ctx.db
       .query("events")
@@ -523,6 +526,7 @@ export const upsertPlannedPagesInternal = internalMutation({
     conversationId: v.id("conversations"),
     pages: v.array(plannedPageValidator),
   },
+  returns: v.array(v.string()),
   handler: async (ctx, args) => {
     const now = Date.now();
     const existing = await ctx.db
@@ -591,6 +595,7 @@ export const markPageTaskStartedInternal = internalMutation({
     pageId: v.string(),
     taskId: v.id("tasks"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("dashboard_pages")
@@ -619,6 +624,7 @@ export const updatePageProgressInternal = internalMutation({
     pageId: v.string(),
     statusText: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("dashboard_pages")
@@ -643,6 +649,7 @@ export const markPageReadyInternal = internalMutation({
     ownerId: v.string(),
     pageId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("dashboard_pages")
@@ -671,6 +678,7 @@ export const markPageFailedInternal = internalMutation({
     pageId: v.string(),
     error: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("dashboard_pages")
@@ -699,6 +707,10 @@ export const queuePageRetryInternal = internalMutation({
     ownerId: v.string(),
     pageId: v.string(),
   },
+  returns: v.object({
+    queued: v.boolean(),
+    retryCount: v.number(),
+  }),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("dashboard_pages")
@@ -732,6 +744,11 @@ export const launchPageGenerationTaskInternal = internalAction({
     pageId: v.string(),
     targetDeviceId: v.optional(v.string()),
   },
+  returns: v.object({
+    launched: v.boolean(),
+    taskId: v.union(v.id("tasks"), v.null()),
+    error: v.optional(v.string()),
+  }),
   handler: async (ctx, args): Promise<{
     launched: boolean;
     taskId: Id<"tasks"> | null;
@@ -976,6 +993,7 @@ export const monitorPageGenerationTaskInternal = internalAction({
     pageId: v.string(),
     taskId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
     const page = await ctx.runQuery(internal.personalized_dashboard.getPageByOwnerAndPageIdInternal, {
       ownerId: args.ownerId,
@@ -1111,6 +1129,10 @@ export const monitorPageGenerationTaskInternal = internalAction({
 
 export const listPages = query({
   args: {},
+  returns: v.object({
+    pages: v.array(sidebarPageValidator),
+    hasRunning: v.boolean(),
+  }),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return { pages: [], hasRunning: false };
@@ -1147,6 +1169,7 @@ export const startGeneration = action({
     pageAssignments: v.optional(v.array(pageAssignmentInputValidator)),
     force: v.optional(v.boolean()),
   },
+  returns: startGenerationResultValidator,
   handler: async (ctx, args): Promise<{
     started: boolean;
     pageIds: string[];
@@ -1246,6 +1269,10 @@ export const retryPage = action({
     pageId: v.string(),
     targetDeviceId: v.optional(v.string()),
   },
+  returns: v.object({
+    started: v.boolean(),
+    message: v.string(),
+  }),
   handler: async (ctx, args): Promise<{ started: boolean; message: string }> => {
     const ownerId = await requireUserId(ctx);
     await requireConversationOwnerAction(ctx, args.conversationId);
@@ -1307,6 +1334,10 @@ export const claimPageGeneration = internalMutation({
     pageId: v.id("dashboard_pages"),
     claimantId: v.string(), // deviceId or "server"
   },
+  returns: v.object({
+    claimed: v.boolean(),
+    claimedBy: v.optional(v.string()),
+  }),
   handler: async (ctx, args) => {
     const page = await ctx.db.get(args.pageId);
     if (!page) {
@@ -1336,6 +1367,9 @@ export const renewPageLease = internalMutation({
     pageId: v.id("dashboard_pages"),
     claimantId: v.string(),
   },
+  returns: v.object({
+    renewed: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const page = await ctx.db.get(args.pageId);
     if (!page) {
@@ -1362,6 +1396,7 @@ export const releasePageClaim = internalMutation({
     pageId: v.id("dashboard_pages"),
     claimantId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const page = await ctx.db.get(args.pageId);
     if (!page) return null;
@@ -1389,6 +1424,10 @@ export const claimPageGenerationDevice = mutation({
     pageId: v.string(),
     claimantId: v.string(),
   },
+  returns: v.object({
+    claimed: v.boolean(),
+    claimedBy: v.optional(v.string()),
+  }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db
@@ -1420,6 +1459,7 @@ export const renewPageLeaseDevice = mutation({
     pageId: v.string(),
     claimantId: v.string(),
   },
+  returns: v.object({ renewed: v.boolean() }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db
@@ -1444,6 +1484,7 @@ export const releasePageClaimDevice = mutation({
     pageId: v.string(),
     claimantId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db
@@ -1468,6 +1509,7 @@ export const markPageReadyDevice = mutation({
   args: {
     pageId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db
@@ -1498,6 +1540,7 @@ export const markPageFailedDevice = mutation({
     pageId: v.string(),
     error: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db

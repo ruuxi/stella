@@ -11,6 +11,7 @@ export const enqueue = internalMutation({
     externalUserId: v.string(),
     text: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.insert("bridge_outbound", {
       sessionId: args.sessionId,
@@ -28,6 +29,12 @@ export const claim = internalMutation({
   args: {
     sessionId: v.id("bridge_sessions"),
   },
+  returns: v.array(
+    v.object({
+      externalUserId: v.string(),
+      text: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const pending = await ctx.db
       .query("bridge_outbound")
@@ -49,6 +56,7 @@ export const claim = internalMutation({
 
 export const gc = internalMutation({
   args: {},
+  returns: v.number(),
   handler: async (ctx) => {
     const cutoff = Date.now() - OUTBOUND_GC_MAX_AGE_MS;
     const stale = await ctx.db

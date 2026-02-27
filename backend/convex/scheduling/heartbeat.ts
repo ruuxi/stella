@@ -181,6 +181,7 @@ export const getConfig = internalQuery({
   args: {
     conversationId: v.optional(v.id("conversations")),
   },
+  returns: v.union(heartbeatConfigValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const conversationId = await resolveConversationId(ctx, ownerId, args.conversationId);
@@ -209,6 +210,7 @@ export const upsertConfig = internalMutation({
     activeHours: activeHoursValidator,
     targetDeviceId: v.optional(v.string()),
   },
+  returns: v.union(heartbeatConfigValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const conversationId = await resolveConversationId(ctx, ownerId, args.conversationId);
@@ -283,6 +285,7 @@ export const listDue = internalQuery({
     nowMs: v.number(),
     limit: v.optional(v.number()),
   },
+  returns: v.array(heartbeatConfigValidator),
   handler: async (ctx, args) => {
     const limit = normalizeOptionalInt({
       value: args.limit,
@@ -302,6 +305,7 @@ export const getById = internalQuery({
   args: {
     id: v.id("heartbeat_configs"),
   },
+  returns: v.union(heartbeatConfigValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -315,6 +319,7 @@ export const markRunning = internalMutation({
     lastRunAtMs: v.number(),
     expectedRunningAtMs: v.optional(v.number()),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const config = await ctx.db.get(args.id);
     if (!config || !config.enabled) {
@@ -349,6 +354,7 @@ export const recordRun = internalMutation({
     lastSentText: v.optional(v.string()),
     lastSentAtMs: v.optional(v.number()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, {
       lastStatus: args.status,
@@ -364,6 +370,7 @@ export const recordRun = internalMutation({
 
 export const tick = internalAction({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
     const due = await ctx.runQuery(internal.scheduling.heartbeat.listDue, { nowMs: now, limit: 200 });
@@ -401,6 +408,7 @@ export const run = internalAction({
     configId: v.id("heartbeat_configs"),
     reason: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const config = await ctx.runQuery(internal.scheduling.heartbeat.getById, {
       id: args.configId,
@@ -577,6 +585,7 @@ export const runNow = internalMutation({
   args: {
     conversationId: v.optional(v.id("conversations")),
   },
+  returns: v.union(heartbeatConfigValidator, v.null()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const conversationId = await resolveConversationId(ctx, ownerId, args.conversationId);

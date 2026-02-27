@@ -78,6 +78,13 @@ export const createSecret = mutation({
     plaintext: v.string(),
     metadata: optionalJsonValueValidator,
   },
+  returns: v.object({
+    secretId: v.id("secrets"),
+    provider: v.string(),
+    label: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const now = Date.now();
@@ -114,6 +121,13 @@ export const upsertManagedSecretForOwner = internalMutation({
     plaintext: v.string(),
     metadata: optionalJsonValueValidator,
   },
+  returns: v.object({
+    secretId: v.id("secrets"),
+    provider: v.string(),
+    label: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
   handler: async (ctx, args) => {
     const now = Date.now();
     const encryptedPayload = await encryptSecret(args.plaintext);
@@ -171,6 +185,12 @@ export const listSecrets = query({
   args: {
     provider: v.optional(v.string()),
   },
+  returns: v.array(
+    v.object({
+      _id: v.id("secrets"),
+      ...secretPublicFields,
+    }),
+  ),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const records = args.provider
@@ -207,6 +227,12 @@ export const updateSecret = internalMutation({
     label: v.optional(v.string()),
     metadata: optionalJsonValueValidator,
   },
+  returns: v.object({
+    secretId: v.id("secrets"),
+    provider: v.string(),
+    label: v.string(),
+    updatedAt: v.number(),
+  }),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const record = await ctx.db.get(args.secretId);
@@ -240,6 +266,7 @@ export const deleteSecret = mutation({
   args: {
     secretId: v.id("secrets"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const record = await ctx.db.get(args.secretId);
@@ -255,6 +282,13 @@ export const getSecretHandle = internalQuery({
   args: {
     provider: v.string(),
   },
+  returns: v.array(
+    v.object({
+      secretId: v.id("secrets"),
+      label: v.string(),
+      provider: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const records = await ctx.db
@@ -280,6 +314,15 @@ export const getSecretValueForProvider = query({
     toolName: v.string(),
     deviceId: v.optional(v.string()),
   },
+  returns: v.union(
+    v.null(),
+    v.object({
+      secretId: v.id("secrets"),
+      provider: v.string(),
+      label: v.string(),
+      plaintext: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     await assertSecretReadToolContext(ctx, ownerId, {
@@ -314,6 +357,15 @@ export const getSecretValueById = query({
     toolName: v.string(),
     deviceId: v.optional(v.string()),
   },
+  returns: v.union(
+    v.null(),
+    v.object({
+      secretId: v.id("secrets"),
+      provider: v.string(),
+      label: v.string(),
+      plaintext: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     await assertSecretReadToolContext(ctx, ownerId, {
@@ -339,6 +391,12 @@ export const listSecretsInternal = internalQuery({
   args: {
     ownerId: v.string(),
   },
+  returns: v.array(
+    v.object({
+      _id: v.id("secrets"),
+      ...secretPublicFields,
+    }),
+  ),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("secrets")
@@ -364,6 +422,14 @@ export const getSecretForTool = internalQuery({
     ownerId: v.string(),
     secretId: v.id("secrets"),
   },
+  returns: v.object({
+    secretId: v.id("secrets"),
+    provider: v.string(),
+    label: v.string(),
+    plaintext: v.string(),
+    status: v.string(),
+    metadata: optionalJsonValueValidator,
+  }),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== args.ownerId) {
@@ -386,6 +452,7 @@ export const touchSecretUsage = internalMutation({
     ownerId: v.string(),
     secretId: v.id("secrets"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== args.ownerId) {
@@ -401,6 +468,7 @@ export const getDecryptedLlmKey = internalQuery({
     ownerId: v.string(),
     provider: v.string(),
   },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("secrets")
@@ -425,6 +493,7 @@ export const auditSecretAccess = internalMutation({
     status: v.string(),
     reason: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.insert("secret_access_audit", {
       ownerId: args.ownerId,

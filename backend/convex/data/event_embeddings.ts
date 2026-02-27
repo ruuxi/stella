@@ -36,6 +36,7 @@ export const getByEventId = internalQuery({
   args: {
     eventId: v.id("events"),
   },
+  returns: v.union(eventEmbeddingValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("event_embeddings")
@@ -48,6 +49,7 @@ export const getEmbeddingsByIds = internalQuery({
   args: {
     ids: v.array(v.id("event_embeddings")),
   },
+  returns: v.array(eventEmbeddingValidator),
   handler: async (ctx, args) => {
     const docs = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
     return docs.filter((doc): doc is NonNullable<typeof doc> => !!doc);
@@ -64,6 +66,7 @@ export const upsertEventEmbedding = internalMutation({
     timestamp: v.number(),
     embedding: v.array(v.float64()),
   },
+  returns: v.id("event_embeddings"),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("event_embeddings")
@@ -100,6 +103,7 @@ export const indexEventForSemanticSearch = internalAction({
   args: {
     eventId: v.id("events"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const event = await ctx.runQuery(internal.events.getById, {
       id: args.eventId,
