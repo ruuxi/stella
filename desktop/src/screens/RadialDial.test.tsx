@@ -216,11 +216,11 @@ describe("RadialDial", () => {
     const { container } = render(<RadialDial />);
     const wedgePaths = container.querySelectorAll("path.wedge-path");
     // With selectedWedge='dismiss', all wedges should use the card color as fill
-    // The mock card color is "#111111"
+    // The mock card color is "#111111" → opaque rgba via toRgba
     wedgePaths.forEach((path) => {
       const fill = path.getAttribute("fill");
-      // Should be the card color, not the interactive (rgba) color
-      expect(fill).toBe("#111111");
+      // Should be the card color made opaque, not the interactive color
+      expect(fill).toBe("rgba(17, 17, 17, 1)");
     });
   });
 
@@ -280,13 +280,13 @@ describe("RadialDial helper functions (via rendering)", () => {
     });
   });
 
-  it("center circle fill uses rgba of background color with 0.95 alpha", () => {
+  it("center circle fill uses opaque rgba of background color", () => {
     const { container } = render(<RadialDial />);
     const svg = container.querySelector("svg.radial-dial")!;
     const circle = svg.querySelector(":scope > circle")!;
     const fill = circle.getAttribute("fill")!;
-    // Background is #000000 -> rgb(0, 0, 0)
-    expect(fill).toBe("rgba(0, 0, 0, 0.95)");
+    // Background is #000000 -> rgb(0, 0, 0), fully opaque for transparent window
+    expect(fill).toBe("rgba(0, 0, 0, 1)");
   });
 
   it("center circle stroke uses rgba of border color with 0.5 alpha", () => {

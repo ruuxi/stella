@@ -619,9 +619,6 @@ export const createLocalHostRunner = ({
           return;
         }
 
-        // Best-effort: ensureBuiltins may be internal-only on some deployments
-        await callMutation("agent/agents.ensureBuiltins", {}).catch(() => {});
-
         // Diff against persisted manifest to skip unchanged items
         const manifest = await loadSyncManifest(statePath);
         const skillsDiff = diffSkills(skills, manifest);
