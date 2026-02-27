@@ -43,10 +43,6 @@ export const usersSchema = {
     retryCount: v.number(),
     statusText: v.optional(v.string()),
     lastError: v.optional(v.string()),
-    // Lease-based claiming for local vs server generation
-    claimedBy: v.optional(v.string()),
-    claimedAt: v.optional(v.number()),
-    leaseExpiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
