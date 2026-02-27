@@ -1,11 +1,15 @@
 import { Cron } from "croner";
-import { internalAction, internalMutation, internalQuery, type QueryCtx, type MutationCtx } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { requireConversationOwner, requireUserId } from "../auth";
+import { requireUserId } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
-import { runAgentTurn } from "../automation/runner";
+import {
+  buildExecutionCandidates,
+  resolveOwnedConversationId,
+  runAgentTurnWithFallback,
+} from "./execution_policy";
 
 const STUCK_RUN_MS = 2 * 60 * 60 * 1000;
 const MAX_PREVIEW_CHARS = 800;
@@ -23,11 +27,6 @@ type CronPayload =
       agentType?: string;
       deliver?: boolean;
     };
-
-type ExecutionCandidate =
-  | { mode: "local"; targetDeviceId: string; spriteName?: undefined }
-  | { mode: "cloud"; targetDeviceId?: undefined; spriteName?: undefined }
-  | { mode: "remote"; targetDeviceId?: undefined; spriteName: string };
 
 const cronScheduleValidator = v.union(
   v.object({
@@ -201,39 +200,6 @@ function computeNextRunAtMs(schedule: CronSchedule, nowMs: number): number | und
   return next ? next.getTime() : undefined;
 }
 
-function buildExecutionCandidates(args: {
-  targetDeviceId: string | null;
-  spriteName: string | null;
-}): ExecutionCandidate[] {
-  const candidates: ExecutionCandidate[] = [];
-  if (args.targetDeviceId) {
-    candidates.push({ mode: "local", targetDeviceId: args.targetDeviceId });
-  }
-
-  // Local-first scheduler policy: local -> cloud -> remote.
-  candidates.push({ mode: "cloud" });
-  if (args.spriteName) {
-    candidates.push({ mode: "remote", spriteName: args.spriteName });
-  }
-  return candidates;
-}
-
-async function resolveConversationId(
-  ctx: QueryCtx | MutationCtx,
-  ownerId: string,
-  conversationId?: Id<"conversations">,
-): Promise<Id<"conversations"> | null> {
-  if (conversationId) {
-    const conversation = await requireConversationOwner(ctx, conversationId);
-    return conversation?._id ?? null;
-  }
-  const conversation = await ctx.db
-    .query("conversations")
-    .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId).eq("isDefault", true))
-    .unique();
-  return conversation?._id ?? null;
-}
-
 export const list = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -273,7 +239,7 @@ export const add = internalMutation({
       throw new Error('sessionTarget="isolated" requires payload.kind="agentTurn"');
     }
 
-    const conversationId = await resolveConversationId(ctx, ownerId, args.conversationId);
+    const conversationId = await resolveOwnedConversationId(ctx, ownerId, args.conversationId);
     if (!conversationId) {
       throw new Error("No conversation available for cron job.");
     }
@@ -346,7 +312,7 @@ export const update = internalMutation({
 
     const conversationId =
       patch.conversationId !== undefined
-        ? await resolveConversationId(ctx, ownerId, patch.conversationId as Id<"conversations">)
+        ? await resolveOwnedConversationId(ctx, ownerId, patch.conversationId as Id<"conversations">)
         : job.conversationId;
     if (!conversationId) {
       throw new Error("No conversation available for cron job.");
@@ -636,30 +602,15 @@ export const execute = internalAction({
           spriteName: target.spriteName,
         });
         const agentType = payloadResolved.agentType ?? "orchestrator";
-        let result = null as Awaited<ReturnType<typeof runAgentTurn>> | null;
-        let lastExecutionError: Error | null = null;
-        for (const candidate of candidates) {
-          try {
-            result = await runAgentTurn({
-              ctx,
-              conversationId,
-              prompt,
-              agentType,
-              ownerId: job.ownerId,
-              targetDeviceId:
-                candidate.mode === "local" ? candidate.targetDeviceId : undefined,
-              spriteName:
-                candidate.mode === "remote" ? candidate.spriteName : undefined,
-              transient,
-            });
-            break;
-          } catch (execError) {
-            lastExecutionError = execError as Error;
-          }
-        }
-        if (!result) {
-          throw lastExecutionError ?? new Error("No execution candidate succeeded");
-        }
+        const result = await runAgentTurnWithFallback({
+          ctx,
+          conversationId,
+          prompt,
+          agentType,
+          ownerId: job.ownerId,
+          transient,
+          candidates,
+        });
         outputText = (result.text ?? "").trim();
       } catch (err) {
         status = "error";

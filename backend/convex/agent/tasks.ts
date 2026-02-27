@@ -62,7 +62,7 @@ type TaskClient = Infer<typeof taskClientValidator>;
 const DEFAULT_MAX_TASK_DEPTH = 2;
 const TASK_CANCEL_POLL_INTERVAL_MS = 2000;
 const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
-const MAX_THREAD_MESSAGE_CONTENT_LENGTH = 500_000;
+const PERSIST_CHUNK_DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const PREFERRED_BROWSER_KEY = "preferred_browser";
 const BROWSER_AGENT_SAFARI_DENIED_REASON =
   "Browser Agent is unavailable when the selected browser is Safari. Use a Chromium-based browser for browser automation.";
@@ -87,6 +87,9 @@ const runtimeFinalTaskStatusValidator = v.union(
   v.literal("canceled"),
 );
 
+const isTaskTerminalStatus = (status: string): status is RuntimeFinalTaskStatus =>
+  status === "completed" || status === "error" || status === "canceled";
+
 /** Strip model field for client responses */
 const toTaskClient = (task: Record<string, unknown>): TaskClient => {
   const { model: _model, ...rest } = task;
@@ -104,12 +107,15 @@ const applyTaskCancellation = async (
   ctx: MutationCtx,
   args: {
     taskId: Id<"tasks">;
-    record: Doc<"tasks">;
     reason?: string;
   },
 ): Promise<TaskClient | null> => {
-  if (args.record.status !== "running") {
-    return toTaskClient(args.record);
+  const current = await ctx.db.get(args.taskId);
+  if (!current) {
+    return null;
+  }
+  if (current.status !== "running") {
+    return toTaskClient(current);
   }
 
   const now = Date.now();
@@ -122,11 +128,11 @@ const applyTaskCancellation = async (
   });
 
   const targetDeviceId = await ctx.runQuery(internal.events.getLatestDeviceIdForConversation, {
-    conversationId: args.record.conversationId,
+    conversationId: current.conversationId,
   });
   if (targetDeviceId) {
     await appendTaskEvent(ctx, {
-      conversationId: args.record.conversationId,
+      conversationId: current.conversationId,
       type: "task_failed",
       deviceId: targetDeviceId,
       targetDeviceId,
@@ -257,11 +263,6 @@ const asThreadMessageText = (value: unknown): string => {
     return String(value);
   }
 };
-
-const truncateThreadMessageContent = (value: string): string =>
-  value.length <= MAX_THREAD_MESSAGE_CONTENT_LENGTH
-    ? value
-    : value.slice(0, MAX_THREAD_MESSAGE_CONTENT_LENGTH);
 
 const toStoredThreadEnvelope = (message: { role: string; content: unknown; toolCallId?: string }) =>
   JSON.stringify({
@@ -1056,11 +1057,15 @@ const executeSubagentRun = async (
       }
     }
 
-    await ctx.runMutation(internal.agent.tasks.completeTaskRecord, {
+    const completion = await ctx.runMutation(internal.agent.tasks.completeTaskRecord, {
       taskId: args.taskId,
       status: "completed",
       result: text,
     });
+    if (!completion.applied || completion.task?.status !== "completed") {
+      const currentStatus = completion.task?.status ?? "missing";
+      return `Task ${currentStatus}.\nTask ID: ${args.taskId}`;
+    }
 
     await appendTaskEvent(ctx, {
       conversationId: args.conversationId,
@@ -1115,23 +1120,31 @@ const executeSubagentRun = async (
       });
     }
 
-    await ctx.runMutation(internal.agent.tasks.completeTaskRecord, {
+    const completion = await ctx.runMutation(internal.agent.tasks.completeTaskRecord, {
       taskId: args.taskId,
       status: "error",
       error: errorMessage,
     });
+    if (completion.applied && completion.task?.status === "error") {
+      await appendTaskEvent(ctx, {
+        conversationId: args.conversationId,
+        type: "task_failed",
+        deviceId: args.targetDeviceId,
+        targetDeviceId: args.targetDeviceId,
+        payload: {
+          taskId: args.taskId,
+          error: errorMessage,
+        },
+      });
+    }
 
-    await appendTaskEvent(ctx, {
-      conversationId: args.conversationId,
-      type: "task_failed",
-      deviceId: args.targetDeviceId,
-      targetDeviceId: args.targetDeviceId,
-      payload: {
-        taskId: args.taskId,
-        error: errorMessage,
-      },
-    });
-
+    const finalStatus = completion.task?.status;
+    if (finalStatus === "canceled") {
+      return `Task canceled.\nTask ID: ${args.taskId}`;
+    }
+    if (finalStatus === "completed") {
+      return `Task completed.\nTask ID: ${args.taskId}`;
+    }
     return `Task failed.\nTask ID: ${args.taskId}\n\n--- Error ---\n${errorMessage}`;
   }
 };
@@ -1270,6 +1283,9 @@ export const completeRuntimeTask = mutation({
     }
 
     await requireConversationOwner(ctx, record.conversationId);
+    if (record.status !== "running") {
+      return toTaskClient(record);
+    }
 
     const now = Date.now();
     await ctx.db.patch(args.taskId, {
@@ -1319,7 +1335,6 @@ export const cancelRuntimeTask = mutation({
     await requireConversationOwner(ctx, record.conversationId);
     return await applyTaskCancellation(ctx, {
       taskId: args.taskId,
-      record,
       reason: args.reason,
     });
   },
@@ -1348,6 +1363,20 @@ export const completeTaskRecord = internalMutation({
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!isTaskTerminalStatus(args.status)) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: `Invalid terminal task status: ${args.status}`,
+      });
+    }
+    const current = await ctx.db.get(args.taskId);
+    if (!current) {
+      return { applied: false, task: null as TaskClient | null };
+    }
+    if (current.status !== "running") {
+      return { applied: false, task: toTaskClient(current) };
+    }
+
     const now = Date.now();
     await ctx.db.patch(args.taskId, {
       status: args.status,
@@ -1357,7 +1386,7 @@ export const completeTaskRecord = internalMutation({
       completedAt: now,
     });
     const record = await ctx.db.get(args.taskId);
-    return toTaskClientOrNull(record);
+    return { applied: true, task: toTaskClientOrNull(record) };
   },
 });
 
@@ -1365,6 +1394,7 @@ export const finalizeDeliveredTaskTurn = internalMutation({
   args: {
     taskId: v.id("tasks"),
     conversationId: v.id("conversations"),
+    ownerId: v.string(),
     userMessageId: v.optional(v.id("events")),
     activeThreadId: v.optional(v.id("threads")),
     threadUserMessage: v.string(),
@@ -1393,65 +1423,32 @@ export const finalizeDeliveredTaskTurn = internalMutation({
     const now = Date.now();
 
     if (args.activeThreadId) {
-      const thread = await ctx.db.get(args.activeThreadId);
-      if (thread) {
-        const messagesToSave: Array<{
-          role: string;
-          content: string;
-          toolCallId?: string;
-        }> = [
-          {
-            role: "user",
-            content: args.threadUserMessage,
-          },
-          ...args.responseMessages,
-        ];
+      const messagesToSave: Array<{
+        role: string;
+        content: string;
+        toolCallId?: string;
+      }> = [
+        {
+          role: "user",
+          content: args.threadUserMessage,
+        },
+        ...args.responseMessages,
+      ];
 
-        if (messagesToSave.length > 1) {
-          const lastMessage = await ctx.db
-            .query("thread_messages")
-            .withIndex("by_threadId_and_ordinal", (q) =>
-              q.eq("threadId", args.activeThreadId!),
-            )
-            .order("desc")
-            .first();
-
-          let nextOrdinal = (lastMessage?.ordinal ?? -1) + 1;
-          let addedTokens = 0;
-
-          for (const message of messagesToSave) {
-            const safeContent = truncateThreadMessageContent(message.content);
-            const estimate = Math.ceil(safeContent.length / 4);
-            addedTokens += estimate;
-            await ctx.db.insert("thread_messages", {
-              threadId: args.activeThreadId,
-              ordinal: nextOrdinal++,
-              role: message.role,
-              content: safeContent,
-              toolCallId: message.toolCallId,
-              tokenEstimate: estimate,
-              createdAt: now,
-            });
-          }
-
-          const updatedTotalTokens = thread.totalTokenEstimate + addedTokens;
-          await ctx.db.patch(args.activeThreadId, {
-            messageCount: thread.messageCount + messagesToSave.length,
-            totalTokenEstimate: updatedTotalTokens,
-            lastUsedAt: now,
-            ...(thread.status !== "active"
-              ? {
-                  status: "active",
-                  resurfacedAt: now,
-                }
-              : {}),
+      if (messagesToSave.length > 1) {
+        await ctx.runMutation(internal.data.threads.saveThreadMessages, {
+          ownerId: args.ownerId,
+          threadId: args.activeThreadId,
+          messages: messagesToSave,
+        });
+        const updatedThread = await ctx.db.get(args.activeThreadId);
+        if (
+          updatedThread &&
+          updatedThread.totalTokenEstimate >= ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS
+        ) {
+          await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
+            threadId: args.activeThreadId,
           });
-
-          if (updatedTotalTokens >= ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS) {
-            await ctx.scheduler.runAfter(0, internal.data.threads.compactThread, {
-              threadId: args.activeThreadId,
-            });
-          }
         }
       }
     }
@@ -1553,7 +1550,6 @@ export const cancelTask = internalMutation({
     await requireConversationOwner(ctx, record.conversationId);
     return await applyTaskCancellation(ctx, {
       taskId: args.taskId,
-      record,
       reason: args.reason,
     });
   },
@@ -1569,7 +1565,6 @@ export const cancelTaskInternal = internalMutation({
     if (!record) return null;
     return await applyTaskCancellation(ctx, {
       taskId: args.taskId,
-      record,
       reason: args.reason,
     });
   },
@@ -2087,6 +2082,7 @@ export const deliverTaskResult = internalAction({
       const persistence = await ctx.runMutation(internal.agent.tasks.finalizeDeliveredTaskTurn, {
         taskId: args.taskId,
         conversationId: args.conversationId,
+        ownerId: args.ownerId,
         userMessageId: args.userMessageId,
         activeThreadId: orchestratorTurn.activeThreadId ?? undefined,
         threadUserMessage: orchestratorTurn.threadUserMessage,
@@ -2170,11 +2166,22 @@ export const batchPersistRunChunk = mutation({
     const conversation = await requireConversationOwner(ctx, args.conversationId);
     const ownerId = conversation.ownerId;
 
+    const dedupStatus = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: "persist_chunk_dedup",
+      key: args.chunkKey,
+      limit: 1,
+      windowMs: PERSIST_CHUNK_DEDUP_WINDOW_MS,
+      blockMs: PERSIST_CHUNK_DEDUP_WINDOW_MS,
+    });
+    if (!dedupStatus.allowed) {
+      return { persisted: true, duplicate: true };
+    }
+
     // Check for idempotency — if chunkKey already exists, skip
     const existing = await ctx.db
       .query("persist_chunks")
       .withIndex("by_chunkKey", (q) => q.eq("chunkKey", args.chunkKey))
-      .unique();
+      .first();
 
     if (existing) {
       return { persisted: true, duplicate: true };
@@ -2187,7 +2194,7 @@ export const batchPersistRunChunk = mutation({
     }
 
     // Store the chunk
-    await ctx.db.insert("persist_chunks", {
+    const insertedChunkId = await ctx.db.insert("persist_chunks", {
       runId: args.runId,
       chunkKey: args.chunkKey,
       chunkIndex: args.chunkIndex,
@@ -2204,6 +2211,22 @@ export const batchPersistRunChunk = mutation({
 
     // If this is the final chunk, perform finalization
     if (args.isFinal) {
+      // Canonicalize finalization to a single chunk document per run, even if
+      // duplicate inserts happen under concurrent retries.
+      const finalChunks = await ctx.db
+        .query("persist_chunks")
+        .withIndex("by_runId_and_isFinal", (q) =>
+          q.eq("runId", args.runId).eq("isFinal", true),
+        )
+        .collect();
+      finalChunks.sort(
+        (a, b) => a.chunkIndex - b.chunkIndex || a._creationTime - b._creationTime,
+      );
+      const canonicalFinal = finalChunks[0];
+      if (!canonicalFinal || canonicalFinal._id !== insertedChunkId) {
+        return { persisted: true, duplicate: false };
+      }
+
       const now = Date.now();
 
       // 1. Write assistant_message event if we have text
@@ -2223,28 +2246,11 @@ export const batchPersistRunChunk = mutation({
 
       // 2. Persist thread messages if provided
       if (args.threadMessages && args.threadMessages.length > 0 && args.activeThreadId) {
-        const thread = await ctx.db.get(args.activeThreadId);
-        if (thread) {
-          let ordinal = thread.messageCount;
-          for (const msg of args.threadMessages) {
-            const content = msg.content.length > MAX_THREAD_MESSAGE_CONTENT_LENGTH
-              ? msg.content.slice(0, MAX_THREAD_MESSAGE_CONTENT_LENGTH)
-              : msg.content;
-            await ctx.db.insert("thread_messages", {
-              threadId: args.activeThreadId,
-              ordinal,
-              role: msg.role,
-              content,
-              toolCallId: msg.toolCallId,
-              createdAt: now,
-            });
-            ordinal++;
-          }
-          await ctx.db.patch(args.activeThreadId, {
-            messageCount: ordinal,
-            lastUsedAt: now,
-          });
-        }
+        await ctx.runMutation(internal.data.threads.saveThreadMessages, {
+          ownerId,
+          threadId: args.activeThreadId,
+          messages: args.threadMessages,
+        });
       }
 
       // 3. Log usage

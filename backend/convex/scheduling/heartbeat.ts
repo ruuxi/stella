@@ -1,23 +1,23 @@
-import { internalAction, internalMutation, internalQuery, type QueryCtx, type MutationCtx } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { requireConversationOwner, requireUserId } from "../auth";
+import { requireUserId } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
 import {
   DEFAULT_HEARTBEAT_INTERVAL_MS,
   isHeartbeatContentEffectivelyEmpty,
   resolveHeartbeatPrompt,
 } from "../automation/utils";
-import { runAgentTurn } from "../automation/runner";
+import {
+  buildExecutionCandidates,
+  resolveOwnedConversationId,
+  runAgentTurnWithFallback,
+} from "./execution_policy";
 
 const ACTIVE_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]|24):([0-5]\d)$/;
 const DUPLICATE_SUPPRESSION_MS = 24 * 60 * 60 * 1000;
 const STUCK_RUN_MS = 2 * 60 * 60 * 1000;
-type ExecutionCandidate =
-  | { mode: "local"; targetDeviceId: string; spriteName?: undefined }
-  | { mode: "cloud"; targetDeviceId?: undefined; spriteName?: undefined }
-  | { mode: "remote"; targetDeviceId?: undefined; spriteName: string };
 
 const activeHoursValidator = v.optional(
   v.object({
@@ -144,46 +144,13 @@ function isWithinActiveHours(
   return currentMin >= startMin || currentMin < endMin;
 }
 
-function buildExecutionCandidates(args: {
-  targetDeviceId?: string;
-  spriteName?: string;
-}): ExecutionCandidate[] {
-  const candidates: ExecutionCandidate[] = [];
-  if (args.targetDeviceId) {
-    candidates.push({ mode: "local", targetDeviceId: args.targetDeviceId });
-  }
-
-  // Local-first scheduler policy: local -> cloud -> remote.
-  candidates.push({ mode: "cloud" });
-  if (args.spriteName) {
-    candidates.push({ mode: "remote", spriteName: args.spriteName });
-  }
-  return candidates;
-}
-
-async function resolveConversationId(
-  ctx: QueryCtx | MutationCtx,
-  ownerId: string,
-  conversationId?: Id<"conversations">,
-): Promise<Id<"conversations"> | null> {
-  if (conversationId) {
-    const conversation = await requireConversationOwner(ctx, conversationId);
-    return conversation?._id ?? null;
-  }
-  const conversation = await ctx.db
-    .query("conversations")
-    .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId).eq("isDefault", true))
-    .unique();
-  return conversation?._id ?? null;
-}
-
 export const getConfig = internalQuery({
   args: {
     conversationId: v.optional(v.id("conversations")),
   },
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const conversationId = await resolveConversationId(ctx, ownerId, args.conversationId);
+    const conversationId = await resolveOwnedConversationId(ctx, ownerId, args.conversationId);
     if (!conversationId) {
       return null;
     }
@@ -211,7 +178,7 @@ export const upsertConfig = internalMutation({
   },
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const conversationId = await resolveConversationId(ctx, ownerId, args.conversationId);
+    const conversationId = await resolveOwnedConversationId(ctx, ownerId, args.conversationId);
     if (!conversationId) {
       return null;
     }
@@ -477,30 +444,15 @@ export const run = internalAction({
     let silent = false;
     let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
     try {
-      let result = null as Awaited<ReturnType<typeof runAgentTurn>> | null;
-      let lastExecutionError: Error | null = null;
-      for (const candidate of candidates) {
-        try {
-          result = await runAgentTurn({
-            ctx,
-            conversationId,
-            prompt,
-            agentType,
-            ownerId: config.ownerId,
-            targetDeviceId:
-              candidate.mode === "local" ? candidate.targetDeviceId : undefined,
-            spriteName:
-              candidate.mode === "remote" ? candidate.spriteName : undefined,
-            transient,
-          });
-          break;
-        } catch (error) {
-          lastExecutionError = error as Error;
-        }
-      }
-      if (!result) {
-        throw lastExecutionError ?? new Error("No execution candidate succeeded");
-      }
+      const result = await runAgentTurnWithFallback({
+        ctx,
+        conversationId,
+        prompt,
+        agentType,
+        ownerId: config.ownerId,
+        transient,
+        candidates,
+      });
       text = result.text ?? "";
       silent = result.silent;
       usage = result.usage;
@@ -579,7 +531,7 @@ export const runNow = internalMutation({
   },
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const conversationId = await resolveConversationId(ctx, ownerId, args.conversationId);
+    const conversationId = await resolveOwnedConversationId(ctx, ownerId, args.conversationId);
     if (!conversationId) {
       return null;
     }

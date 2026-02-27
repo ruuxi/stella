@@ -683,6 +683,30 @@ const findConnection = async (args: {
   );
 };
 
+export const ensureOwnerConnection = async (args: {
+  ctx: ActionCtx;
+  ownerId: string;
+  provider: string;
+  externalUserId: string;
+  displayName?: string;
+}): Promise<ChannelConnection | null> => {
+  await args.ctx.runMutation(internal.channels.utils.createConnection, {
+    ownerId: args.ownerId,
+    provider: args.provider,
+    externalUserId: args.externalUserId,
+    ...(args.displayName ? { displayName: args.displayName } : {}),
+  });
+
+  return await args.ctx.runQuery(
+    internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
+    {
+      ownerId: args.ownerId,
+      provider: args.provider,
+      externalUserId: args.externalUserId,
+    },
+  );
+};
+
 const shouldBlockInboundByDmPolicy = (args: {
   policy: { policy: DmPolicy; allowlist: string[]; denylist: string[] };
   externalUserId: string;
@@ -740,20 +764,12 @@ const resolveConnectionForIncomingMessage = async (args: {
     return null;
   }
 
-  await args.ctx.runMutation(internal.channels.utils.createConnection, {
+  connection = await ensureOwnerConnection({
+    ctx: args.ctx,
     ownerId: policyOwnerId,
     provider: args.provider,
     externalUserId: args.externalUserId,
   });
-
-  connection = await args.ctx.runQuery(
-    internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-    {
-      ownerId: policyOwnerId,
-      provider: args.provider,
-      externalUserId: args.externalUserId,
-    },
-  );
   return connection;
 };
 
@@ -781,19 +797,12 @@ const resolveConversationIdForIncomingMessage = async (args: {
   );
 
   if (!groupConnection) {
-    await args.ctx.runMutation(internal.channels.utils.createConnection, {
+    groupConnection = await ensureOwnerConnection({
+      ctx: args.ctx,
       ownerId: args.ownerId,
       provider: args.provider,
       externalUserId: groupKey,
     });
-    groupConnection = await args.ctx.runQuery(
-      internal.channels.utils.getConnectionByOwnerProviderAndExternalId,
-      {
-        ownerId: args.ownerId,
-        provider: args.provider,
-        externalUserId: groupKey,
-      },
-    );
   }
 
   if (groupConnection?.conversationId) {

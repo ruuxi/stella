@@ -225,6 +225,16 @@ const truncateContent = (raw: string): string => {
   return raw;
 };
 
+const activeThreadStatePatch = (thread: { status: string }, now: number) => ({
+  lastUsedAt: now,
+  ...(thread.status !== "active"
+    ? {
+        status: "active" as const,
+        resurfacedAt: now,
+      }
+    : {}),
+});
+
 // ---------------------------------------------------------------------------
 // createThread
 // ---------------------------------------------------------------------------
@@ -383,15 +393,7 @@ export const touchThread = internalMutation({
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) return null;
 
-    await ctx.db.patch(args.threadId, {
-      lastUsedAt: now,
-      ...(thread.status !== "active"
-        ? {
-            status: "active",
-            resurfacedAt: now,
-          }
-        : {}),
-    });
+    await ctx.db.patch(args.threadId, activeThreadStatePatch(thread, now));
     return null;
   },
 });
@@ -408,15 +410,7 @@ export const activateThread = internalMutation({
     }
 
     const now = Date.now();
-    await ctx.db.patch(args.threadId, {
-      lastUsedAt: now,
-      ...(thread.status !== "active"
-        ? {
-            status: "active",
-            resurfacedAt: now,
-          }
-        : {}),
-    });
+    await ctx.db.patch(args.threadId, activeThreadStatePatch(thread, now));
 
     return await ctx.db.get(args.threadId);
   },
@@ -517,13 +511,7 @@ export const saveThreadMessages = internalMutation({
     await ctx.db.patch(args.threadId, {
       messageCount: thread.messageCount + args.messages.length,
       totalTokenEstimate: thread.totalTokenEstimate + addedTokens,
-      lastUsedAt: now,
-      ...(thread.status !== "active"
-        ? {
-            status: "active",
-            resurfacedAt: now,
-          }
-        : {}),
+      ...activeThreadStatePatch(thread, now),
     });
 
     return null;
@@ -587,7 +575,8 @@ export const evictOldestThread = internalMutation({
       .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
         q.eq("conversationId", args.conversationId).eq("status", "active"),
       )
-      .unique();
+      .order("asc")
+      .first();
 
     if (oldest) {
       await ctx.db.patch(oldest._id, {
@@ -882,4 +871,3 @@ export const sweepThreadLifecycle = internalMutation({
     return { idled, archived };
   },
 });
-
