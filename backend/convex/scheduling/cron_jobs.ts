@@ -4,14 +4,20 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { requireUserId } from "../auth";
-import { normalizeOptionalInt } from "../lib/number_utils";
+import {
+  claimAndScheduleDueRuns,
+  claimAndScheduleSingleRun,
+  claimRunIfAvailable,
+  DEFAULT_STUCK_RUN_MS,
+  listDueByNextRunAtMs,
+} from "./claim_flow";
 import {
   buildExecutionCandidates,
   resolveOwnedConversationId,
   runAgentTurnWithFallback,
 } from "./execution_policy";
 
-const STUCK_RUN_MS = 2 * 60 * 60 * 1000;
+const STUCK_RUN_MS = DEFAULT_STUCK_RUN_MS;
 const MAX_PREVIEW_CHARS = 800;
 
 type CronSchedule =
@@ -382,19 +388,29 @@ export const run = internalMutation({
       return null;
     }
     const now = Date.now();
-    const claimed = await ctx.runMutation(internal.scheduling.cron_jobs.markRunning, {
-      id: job._id,
-      runningAtMs: now,
-      expectedRunningAtMs:
-        typeof job.runningAtMs === "number" ? job.runningAtMs : undefined,
+    const claimed = await claimAndScheduleSingleRun({
+      nowMs: now,
+      record: job,
+      markRunning: (markArgs: {
+        id: Id<"cron_jobs">;
+        runningAtMs: number;
+        expectedRunningAtMs?: number;
+      }) =>
+        ctx.runMutation(internal.scheduling.cron_jobs.markRunning, markArgs),
+      buildClaimArgs: (currentJob, claimContext) => ({
+        id: currentJob._id,
+        runningAtMs: claimContext.nowMs,
+        expectedRunningAtMs: claimContext.expectedRunningAtMs,
+      }),
+      schedule: (currentJob) =>
+        ctx.scheduler.runAfter(0, internal.scheduling.cron_jobs.execute, {
+          jobId: currentJob._id,
+          forced: true,
+        }),
     });
     if (!claimed) {
       return sanitizeCronJobForReturn(await ctx.db.get(job._id));
     }
-    await ctx.scheduler.runAfter(0, internal.scheduling.cron_jobs.execute, {
-      jobId: job._id,
-      forced: true,
-    });
     return sanitizeCronJobForReturn(await ctx.db.get(job._id));
   },
 });
@@ -405,16 +421,11 @@ export const listDue = internalQuery({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const limit = normalizeOptionalInt({
-      value: args.limit,
-      defaultValue: 50,
-      min: 1,
-      max: 200,
+    const due = await listDueByNextRunAtMs(ctx, {
+      table: "cron_jobs",
+      nowMs: args.nowMs,
+      limit: args.limit,
     });
-    const due = await ctx.db
-      .query("cron_jobs")
-      .withIndex("by_nextRunAtMs_and_ownerId", (q) => q.lte("nextRunAtMs", args.nowMs))
-      .take(limit);
     return due.map((job) => sanitizeCronJobForReturn(job));
   },
 });
@@ -435,27 +446,17 @@ export const markRunning = internalMutation({
     expectedRunningAtMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const job = await ctx.db.get(args.id);
-    if (!job || !job.enabled) {
-      return false;
-    }
-    const currentRunningAtMs =
-      typeof job.runningAtMs === "number" ? job.runningAtMs : undefined;
-    if (currentRunningAtMs !== args.expectedRunningAtMs) {
-      return false;
-    }
-    if (
-      typeof currentRunningAtMs === "number" &&
-      args.runningAtMs - currentRunningAtMs < STUCK_RUN_MS
-    ) {
-      return false;
-    }
-    await ctx.db.patch(args.id, {
+    return await claimRunIfAvailable({
+      ctx,
+      table: "cron_jobs",
+      id: args.id,
       runningAtMs: args.runningAtMs,
-      lastError: undefined,
-      updatedAt: Date.now(),
+      expectedRunningAtMs: args.expectedRunningAtMs,
+      stuckRunMs: STUCK_RUN_MS,
+      patch: {
+        lastError: undefined,
+      },
     });
-    return true;
   },
 });
 
@@ -492,27 +493,30 @@ export const tick = internalAction({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const due = await ctx.runQuery(internal.scheduling.cron_jobs.listDue, { nowMs: now, limit: 200 });
-    for (const job of due) {
-      if (!job.enabled) {
-        continue;
-      }
-      if (typeof job.runningAtMs === "number" && now - job.runningAtMs < STUCK_RUN_MS) {
-        continue;
-      }
-      const claimed = await ctx.runMutation(internal.scheduling.cron_jobs.markRunning, {
+    await claimAndScheduleDueRuns({
+      nowMs: now,
+      stuckRunMs: STUCK_RUN_MS,
+      listDue: (listArgs) =>
+        ctx.runQuery(internal.scheduling.cron_jobs.listDue, {
+          nowMs: listArgs.nowMs,
+          limit: listArgs.limit,
+        }),
+      markRunning: (markArgs: {
+        id: Id<"cron_jobs">;
+        runningAtMs: number;
+        expectedRunningAtMs?: number;
+      }) =>
+        ctx.runMutation(internal.scheduling.cron_jobs.markRunning, markArgs),
+      buildClaimArgs: (job, claimContext) => ({
         id: job._id,
-        runningAtMs: now,
-        expectedRunningAtMs:
-          typeof job.runningAtMs === "number" ? job.runningAtMs : undefined,
-      });
-      if (!claimed) {
-        continue;
-      }
-      await ctx.scheduler.runAfter(0, internal.scheduling.cron_jobs.execute, {
-        jobId: job._id,
-      });
-    }
+        runningAtMs: claimContext.nowMs,
+        expectedRunningAtMs: claimContext.expectedRunningAtMs,
+      }),
+      schedule: (job) =>
+        ctx.scheduler.runAfter(0, internal.scheduling.cron_jobs.execute, {
+          jobId: job._id,
+        }),
+    });
     return null;
   },
 });

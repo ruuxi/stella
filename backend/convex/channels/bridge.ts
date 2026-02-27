@@ -10,7 +10,12 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { requireSensitiveUserIdAction } from "../auth";
-import { ensureOwnerConnection, processIncomingMessage } from "./utils";
+import { processIncomingMessage } from "./utils";
+import {
+  CONNECTED_MODE_REQUIRED_ERROR,
+  ensureOwnerConnection,
+  isOwnerInConnectedMode,
+} from "./routing_flow";
 import {
   getSpritesTokenForOwner,
   spritesExec,
@@ -473,10 +478,7 @@ export const getBridgeStatus = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
-    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
-      ownerId: identity.subject,
-    });
-    if (accountMode !== "connected") {
+    if (!(await isOwnerInConnectedMode({ ctx, ownerId: identity.subject }))) {
       return null;
     }
     const session = await ctx.db
@@ -708,11 +710,8 @@ export const setupBridge = action({
   returns: setupBridgeResultValidator,
   handler: async (ctx, args): Promise<SetupBridgeResult> => {
     const ownerId = await requireSensitiveUserIdAction(ctx);
-    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
-      ownerId,
-    });
-    if (accountMode !== "connected") {
-      throw new Error("Connectors require Connected mode. Enable Connected mode in Settings.");
+    if (!(await isOwnerInConnectedMode({ ctx, ownerId }))) {
+      throw new Error(CONNECTED_MODE_REQUIRED_ERROR);
     }
     const runtimeMode = await ctx.runQuery(internal.data.preferences.getRuntimeModeForOwner, {
       ownerId,
@@ -837,11 +836,8 @@ export const getBridgeBundle = action({
     args,
   ): Promise<{ code: string; env: Record<string, string>; dependencies: string }> => {
     const ownerId = await requireSensitiveUserIdAction(ctx);
-    const accountMode = await ctx.runQuery(internal.data.preferences.getAccountModeForOwner, {
-      ownerId,
-    });
-    if (accountMode !== "connected") {
-      throw new Error("Connectors require Connected mode. Enable Connected mode in Settings.");
+    if (!(await isOwnerInConnectedMode({ ctx, ownerId }))) {
+      throw new Error(CONNECTED_MODE_REQUIRED_ERROR);
     }
     const session: { webhookSecret: string } | null = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId,
@@ -993,25 +989,17 @@ export const handleBridgeMessage = internalAction({
         : args.channelEnvelope?.text?.trim() ||
           `[${args.channelEnvelope?.kind ?? "message"}]`;
 
-    // Bridge providers receive sender IDs that are not pre-linked via code.
-    // Ensure owner-scoped routing exists for this sender before processing.
-    await ensureOwnerConnection({
-      ctx,
-      ownerId: args.ownerId,
-      provider: args.provider,
-      externalUserId: args.externalUserId,
-      displayName: args.displayName,
-    });
-
     const result = await processIncomingMessage({
       ctx,
       ownerId: args.ownerId,
       provider: args.provider,
       externalUserId: args.externalUserId,
       text: effectiveText,
+      displayName: args.displayName,
       groupId: args.groupId,
       attachments: args.attachments,
       channelEnvelope: args.channelEnvelope,
+      preEnsureOwnerConnection: true,
       respond: args.respond,
     });
 

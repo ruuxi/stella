@@ -3,12 +3,18 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { requireUserId } from "../auth";
-import { normalizeOptionalInt } from "../lib/number_utils";
 import {
   DEFAULT_HEARTBEAT_INTERVAL_MS,
   isHeartbeatContentEffectivelyEmpty,
   resolveHeartbeatPrompt,
 } from "../automation/utils";
+import {
+  claimAndScheduleDueRuns,
+  claimAndScheduleSingleRun,
+  claimRunIfAvailable,
+  DEFAULT_STUCK_RUN_MS,
+  listDueByNextRunAtMs,
+} from "./claim_flow";
 import {
   buildExecutionCandidates,
   resolveOwnedConversationId,
@@ -17,7 +23,7 @@ import {
 
 const ACTIVE_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]|24):([0-5]\d)$/;
 const DUPLICATE_SUPPRESSION_MS = 24 * 60 * 60 * 1000;
-const STUCK_RUN_MS = 2 * 60 * 60 * 1000;
+const STUCK_RUN_MS = DEFAULT_STUCK_RUN_MS;
 
 const activeHoursValidator = v.optional(
   v.object({
@@ -251,17 +257,11 @@ export const listDue = internalQuery({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const limit = normalizeOptionalInt({
-      value: args.limit,
-      defaultValue: 50,
-      min: 1,
-      max: 200,
+    return await listDueByNextRunAtMs(ctx, {
+      table: "heartbeat_configs",
+      nowMs: args.nowMs,
+      limit: args.limit,
     });
-    const due = await ctx.db
-      .query("heartbeat_configs")
-      .withIndex("by_nextRunAtMs_and_ownerId", (q) => q.lte("nextRunAtMs", args.nowMs))
-      .take(limit);
-    return due;
   },
 });
 
@@ -283,28 +283,18 @@ export const markRunning = internalMutation({
     expectedRunningAtMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const config = await ctx.db.get(args.id);
-    if (!config || !config.enabled) {
-      return false;
-    }
-    const currentRunningAtMs =
-      typeof config.runningAtMs === "number" ? config.runningAtMs : undefined;
-    if (currentRunningAtMs !== args.expectedRunningAtMs) {
-      return false;
-    }
-    if (
-      typeof currentRunningAtMs === "number" &&
-      args.runningAtMs - currentRunningAtMs < STUCK_RUN_MS
-    ) {
-      return false;
-    }
-    await ctx.db.patch(args.id, {
+    return await claimRunIfAvailable({
+      ctx,
+      table: "heartbeat_configs",
+      id: args.id,
       runningAtMs: args.runningAtMs,
-      nextRunAtMs: args.nextRunAtMs,
-      lastRunAtMs: args.lastRunAtMs,
-      updatedAt: Date.now(),
+      expectedRunningAtMs: args.expectedRunningAtMs,
+      stuckRunMs: STUCK_RUN_MS,
+      patch: {
+        nextRunAtMs: args.nextRunAtMs,
+        lastRunAtMs: args.lastRunAtMs,
+      },
     });
-    return true;
   },
 });
 
@@ -333,32 +323,38 @@ export const tick = internalAction({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const due = await ctx.runQuery(internal.scheduling.heartbeat.listDue, { nowMs: now, limit: 200 });
-    for (const config of due) {
-      if (!config.enabled) {
-        continue;
-      }
-      if (typeof config.runningAtMs === "number" && now - config.runningAtMs < STUCK_RUN_MS) {
-        continue;
-      }
-      const intervalMs = normalizeIntervalMs(config.intervalMs);
-      const nextRunAtMs = now + intervalMs;
-      const claimed = await ctx.runMutation(internal.scheduling.heartbeat.markRunning, {
-        id: config._id,
-        runningAtMs: now,
-        nextRunAtMs,
-        lastRunAtMs: now,
-        expectedRunningAtMs:
-          typeof config.runningAtMs === "number" ? config.runningAtMs : undefined,
-      });
-      if (!claimed) {
-        continue;
-      }
-      await ctx.scheduler.runAfter(0, internal.scheduling.heartbeat.run, {
-        configId: config._id,
-        reason: "interval",
-      });
-    }
+    await claimAndScheduleDueRuns({
+      nowMs: now,
+      stuckRunMs: STUCK_RUN_MS,
+      listDue: (listArgs) =>
+        ctx.runQuery(internal.scheduling.heartbeat.listDue, {
+          nowMs: listArgs.nowMs,
+          limit: listArgs.limit,
+        }),
+      markRunning: (markArgs: {
+        id: Id<"heartbeat_configs">;
+        runningAtMs: number;
+        nextRunAtMs: number;
+        lastRunAtMs: number;
+        expectedRunningAtMs?: number;
+      }) =>
+        ctx.runMutation(internal.scheduling.heartbeat.markRunning, markArgs),
+      buildClaimArgs: (config, claimContext) => {
+        const intervalMs = normalizeIntervalMs(config.intervalMs);
+        return {
+          id: config._id,
+          runningAtMs: claimContext.nowMs,
+          nextRunAtMs: claimContext.nowMs + intervalMs,
+          lastRunAtMs: claimContext.nowMs,
+          expectedRunningAtMs: claimContext.expectedRunningAtMs,
+        };
+      },
+      schedule: (config) =>
+        ctx.scheduler.runAfter(0, internal.scheduling.heartbeat.run, {
+          configId: config._id,
+          reason: "interval",
+        }),
+    });
     return null;
   },
 });
@@ -545,22 +541,36 @@ export const runNow = internalMutation({
       return null;
     }
     const now = Date.now();
-    const intervalMs = normalizeIntervalMs(config.intervalMs);
-    const claimed = await ctx.runMutation(internal.scheduling.heartbeat.markRunning, {
-      id: config._id,
-      runningAtMs: now,
-      nextRunAtMs: now + intervalMs,
-      lastRunAtMs: now,
-      expectedRunningAtMs:
-        typeof config.runningAtMs === "number" ? config.runningAtMs : undefined,
+    const claimed = await claimAndScheduleSingleRun({
+      nowMs: now,
+      record: config,
+      markRunning: (markArgs: {
+        id: Id<"heartbeat_configs">;
+        runningAtMs: number;
+        nextRunAtMs: number;
+        lastRunAtMs: number;
+        expectedRunningAtMs?: number;
+      }) =>
+        ctx.runMutation(internal.scheduling.heartbeat.markRunning, markArgs),
+      buildClaimArgs: (currentConfig, claimContext) => {
+        const intervalMs = normalizeIntervalMs(currentConfig.intervalMs);
+        return {
+          id: currentConfig._id,
+          runningAtMs: claimContext.nowMs,
+          nextRunAtMs: claimContext.nowMs + intervalMs,
+          lastRunAtMs: claimContext.nowMs,
+          expectedRunningAtMs: claimContext.expectedRunningAtMs,
+        };
+      },
+      schedule: (currentConfig) =>
+        ctx.scheduler.runAfter(0, internal.scheduling.heartbeat.run, {
+          configId: currentConfig._id,
+          reason: "manual",
+        }),
     });
     if (!claimed) {
       return await ctx.db.get(config._id);
     }
-    await ctx.scheduler.runAfter(0, internal.scheduling.heartbeat.run, {
-      configId: config._id,
-      reason: "manual",
-    });
     return config;
   },
 });
