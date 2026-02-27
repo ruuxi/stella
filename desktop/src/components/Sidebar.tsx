@@ -22,8 +22,6 @@ interface SidebarProps {
   onStore?: () => void;
   onHome?: () => void;
   storeActive?: boolean;
-  pages?: SidebarPage[];
-  onPageSelect?: (pageId: string, title: string) => void;
 }
 
 const navItems = [
@@ -124,8 +122,6 @@ export const Sidebar = ({
   onStore,
   onHome,
   storeActive,
-  pages,
-  onPageSelect,
 }: SidebarProps) => {
   const { isAuthenticated } = useConvexAuth();
 
@@ -157,29 +153,6 @@ export const Sidebar = ({
           </button>
         ))}
       </nav>
-      {pages && pages.length > 0 && (
-        <div className="sidebar-pages">
-          <div className="sidebar-section-label">Your Pages</div>
-          {pages.map((page) => {
-            const isGenerating = page.status === "queued" || page.status === "running";
-            const isFailed = page.status === "failed";
-            return (
-              <button
-                key={page.pageId}
-                className={`sidebar-nav-item${isFailed ? " sidebar-nav-item--dimmed" : ""}`}
-                type="button"
-                onClick={() => onPageSelect?.(page.pageId, page.title)}
-                disabled={isGenerating}
-              >
-                <span className="sidebar-nav-icon">
-                  {isGenerating ? <Spinner size="sm" style={{ width: 18, height: 18 }} /> : isFailed ? <ErrorIcon /> : <PageIcon />}
-                </span>
-                <span className="sidebar-nav-label">{page.title}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
       <div className="sidebar-footer">
         <div className="sidebar-footer-item">
           <ThemePicker

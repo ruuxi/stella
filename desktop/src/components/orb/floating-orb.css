@@ -1,0 +1,108 @@
+.orb-container {
+  position: absolute;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.orb-body {
+  pointer-events: auto;
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.orb-body:hover {
+  transform: scale(1.06);
+  box-shadow: 0 2px 12px color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+.orb-body--dragging {
+  cursor: grabbing;
+  transform: scale(1.1);
+}
+.orb-body--streaming {
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.orb-animation-scale {
+  width: 200%;
+  height: 200%;
+  transform: scale(0.5);
+  transform-origin: center center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+}
+
+.orb-bubble {
+  pointer-events: none;
+  max-width: 300px;
+  padding: 10px 14px;
+  border-radius: 12px 12px 4px 12px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+/* Input is absolutely positioned relative to the orb container so it doesn't cause layout shift */
+.orb-input-form {
+  pointer-events: auto;
+  position: absolute;
+  bottom: 0;
+  right: 64px; /* orb width (56) + gap (8) */
+  width: 280px;
+  padding: 8px 14px;
+  border-radius: 24px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: orb-input-slide 0.2s ease-out;
+}
+
+@keyframes orb-input-slide {
+  from {
+    width: 56px;
+    opacity: 0;
+    right: 0;
+  }
+  to {
+    width: 280px;
+    opacity: 1;
+    right: 64px;
+  }
+}
+
+.orb-input {
+  flex: 1;
+  width: 100%;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--foreground);
+}
+.orb-input::placeholder {
+  color: var(--foreground);
+  opacity: 0.35;
+}
