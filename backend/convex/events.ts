@@ -1218,3 +1218,98 @@ export const listDashboardGenRequestsForDevice = query({
   },
 });
 
+
+export const subscribeToolRequestsForDevice = query({
+  args: {
+    deviceId: v.string(),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const maxItems = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 20,
+      min: 1,
+      max: 100,
+    });
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_targetDeviceId_and_timestamp", (q) =>
+        q.eq("targetDeviceId", args.deviceId).gte("timestamp", args.since),
+      )
+      .order("desc")
+      .take(maxItems * 3); // Over-fetch to account for type/ownership filtering
+
+    const ownershipCache = new Map<string, boolean>();
+    const filtered: Infer<typeof eventValidator>[] = [];
+
+    for (const event of events) {
+      if (event.type !== "tool_request") continue;
+
+      const key = String(event.conversationId);
+      let owned = ownershipCache.get(key);
+      if (owned === undefined) {
+        const conversation = await ctx.db.get(event.conversationId);
+        owned = Boolean(conversation && conversation.ownerId === ownerId);
+        ownershipCache.set(key, owned);
+      }
+      if (!owned) continue;
+
+      filtered.push(event);
+      if (filtered.length >= maxItems) break;
+    }
+
+    return filtered;
+  },
+});
+
+export const subscribeDashboardGenRequestsForDevice = query({
+  args: {
+    deviceId: v.string(),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const maxItems = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 10,
+      min: 1,
+      max: 50,
+    });
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_targetDeviceId_and_timestamp", (q) =>
+        q.eq("targetDeviceId", args.deviceId).gte("timestamp", args.since),
+      )
+      .order("desc")
+      .take(maxItems * 3);
+
+    const ownershipCache = new Map<string, boolean>();
+    const filtered: Infer<typeof eventValidator>[] = [];
+
+    for (const event of events) {
+      if (event.type !== "dashboard_generation_request") continue;
+
+      const key = String(event.conversationId);
+      let owned = ownershipCache.get(key);
+      if (owned === undefined) {
+        const conversation = await ctx.db.get(event.conversationId);
+        owned = Boolean(conversation && conversation.ownerId === ownerId);
+        ownershipCache.set(key, owned);
+      }
+      if (!owned) continue;
+
+      filtered.push(event);
+      if (filtered.length >= maxItems) break;
+    }
+
+    return filtered;
+  },
+});
+
