@@ -30,15 +30,6 @@ vi.mock("../components/StellaAnimation", () => ({
 }));
 
 vi.mock("../theme/color", () => ({
-  hexToRgb: (hex: string) => {
-    const h = hex.replace("#", "");
-    const num = parseInt(h, 16);
-    return {
-      r: ((num >> 16) & 255) / 255,
-      g: ((num >> 8) & 255) / 255,
-      b: (num & 255) / 255,
-    };
-  },
   generateGradientTokens: vi.fn(),
 }));
 
@@ -160,11 +151,11 @@ describe("RadialDial IPC handlers", () => {
     const paths = container.querySelectorAll("path.wedge-path");
     // The first wedge (index 0 = capture) should have the interactive fill color
     const captureFill = paths[0].getAttribute("fill");
-    expect(captureFill).toBe("rgba(255, 0, 0, 0.9)");
+    expect(captureFill).toBe("rgba(255, 0, 0, 1)");
 
     // Other wedges should stay at the card color
     for (let i = 1; i < paths.length; i++) {
-      expect(paths[i].getAttribute("fill")).toBe("#111111");
+      expect(paths[i].getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
     }
   });
 
@@ -183,7 +174,7 @@ describe("RadialDial IPC handlers", () => {
     const paths = container.querySelectorAll("path.wedge-path");
     // No wedge should be selected — all should have card color fill
     paths.forEach((path) => {
-      expect(path.getAttribute("fill")).toBe("#111111");
+      expect(path.getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
     });
   });
 
@@ -236,7 +227,7 @@ describe("RadialDial IPC handlers", () => {
     // All wedge fills should be back to card color (dismiss state)
     const paths = container.querySelectorAll("path.wedge-path");
     paths.forEach((path) => {
-      expect(path.getAttribute("fill")).toBe("#111111");
+      expect(path.getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
     });
   });
 
@@ -263,7 +254,7 @@ describe("RadialDial IPC handlers", () => {
 
     const paths = container.querySelectorAll("path.wedge-path");
     // Index 2 = "full" should be selected
-    expect(paths[2].getAttribute("fill")).toBe("rgba(255, 0, 0, 0.9)");
+    expect(paths[2].getAttribute("fill")).toBe("rgba(255, 0, 0, 1)");
 
     // Now move cursor to a different wedge — straight right:
     // dx=+100, dy=0 => atan2=0, adjusted=(0+90)%360=90
@@ -272,9 +263,9 @@ describe("RadialDial IPC handlers", () => {
       cursorCallback(null, { x: 240, y: 140, centerX: 140, centerY: 140 });
     });
 
-    expect(paths[1].getAttribute("fill")).toBe("rgba(255, 0, 0, 0.9)");
+    expect(paths[1].getAttribute("fill")).toBe("rgba(255, 0, 0, 1)");
     // The previously selected wedge should revert
-    expect(paths[2].getAttribute("fill")).toBe("#111111");
+    expect(paths[2].getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
   });
 
   // ----------------------------------------------------------------
@@ -291,7 +282,7 @@ describe("RadialDial IPC handlers", () => {
     const paths = container.querySelectorAll("path.wedge-path");
     // All wedges should remain at card color (dismiss)
     paths.forEach((path) => {
-      expect(path.getAttribute("fill")).toBe("#111111");
+      expect(path.getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
     });
   });
 
@@ -315,7 +306,7 @@ describe("RadialDial IPC handlers", () => {
     // All wedges should have card color (dismiss state)
     const paths = container.querySelectorAll("path.wedge-path");
     paths.forEach((path) => {
-      expect(path.getAttribute("fill")).toBe("#111111");
+      expect(path.getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
     });
   });
 
@@ -351,7 +342,7 @@ describe("RadialDial IPC handlers", () => {
     act(() => {
       cursorCallback(null, { x: CENTER, y: CENTER - 100, centerX: CENTER, centerY: CENTER });
     });
-    expect(paths[0].getAttribute("fill")).toBe("rgba(255, 0, 0, 0.9)");
+    expect(paths[0].getAttribute("fill")).toBe("rgba(255, 0, 0, 1)");
 
     // Test case B: Straight right => chat (index 1)
     // dx=+100, dy=0 => atan2=0 => +90=90 => index floor(90/72)=1
@@ -359,8 +350,8 @@ describe("RadialDial IPC handlers", () => {
     act(() => {
       cursorCallback(null, { x: CENTER + 100, y: CENTER, centerX: CENTER, centerY: CENTER });
     });
-    expect(paths[1].getAttribute("fill")).toBe("rgba(255, 0, 0, 0.9)");
-    expect(paths[0].getAttribute("fill")).toBe("#111111");
+    expect(paths[1].getAttribute("fill")).toBe("rgba(255, 0, 0, 1)");
+    expect(paths[0].getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
 
     // Test case C: Straight down => full (index 2)
     // dx=0, dy=+100 => atan2=90 => +90=180 => index floor(180/72)=2
@@ -368,8 +359,8 @@ describe("RadialDial IPC handlers", () => {
     act(() => {
       cursorCallback(null, { x: CENTER, y: CENTER + 100, centerX: CENTER, centerY: CENTER });
     });
-    expect(paths[2].getAttribute("fill")).toBe("rgba(255, 0, 0, 0.9)");
-    expect(paths[1].getAttribute("fill")).toBe("#111111");
+    expect(paths[2].getAttribute("fill")).toBe("rgba(255, 0, 0, 1)");
+    expect(paths[1].getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
 
     // Test case D: Straight left => voice (index 3)
     // dx=-100, dy=0 => atan2=180 => +90=270 => index floor(270/72)=3
@@ -377,8 +368,8 @@ describe("RadialDial IPC handlers", () => {
     act(() => {
       cursorCallback(null, { x: CENTER - 100, y: CENTER, centerX: CENTER, centerY: CENTER });
     });
-    expect(paths[3].getAttribute("fill")).toBe("rgba(255, 0, 0, 0.9)");
-    expect(paths[2].getAttribute("fill")).toBe("#111111");
+    expect(paths[3].getAttribute("fill")).toBe("rgba(255, 0, 0, 1)");
+    expect(paths[2].getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
 
     // Test case E: Upper-left => auto (index 4)
     // dx=-100, dy=-50 => atan2 ~ -153.43 => +360=206.57 => +90=296.57 => index floor(296.57/72)=4
@@ -386,15 +377,15 @@ describe("RadialDial IPC handlers", () => {
     act(() => {
       cursorCallback(null, { x: CENTER - 100, y: CENTER - 50, centerX: CENTER, centerY: CENTER });
     });
-    expect(paths[4].getAttribute("fill")).toBe("rgba(255, 0, 0, 0.9)");
-    expect(paths[3].getAttribute("fill")).toBe("#111111");
+    expect(paths[4].getAttribute("fill")).toBe("rgba(255, 0, 0, 1)");
+    expect(paths[3].getAttribute("fill")).toBe("rgba(17, 17, 17, 1)");
   });
 });
 
 // ----------------------------------------------------------------
 // toRgba fallback path
 // ----------------------------------------------------------------
-describe("toRgba fallback (non-hex color)", () => {
+describe("toRgba color conversion", () => {
   beforeEach(() => {
     rafCallbacks = [];
     vi.stubGlobal("requestAnimationFrame", vi.fn((cb: Function) => {
@@ -429,13 +420,14 @@ describe("toRgba fallback (non-hex color)", () => {
     delete (window as any).electronAPI;
   });
 
-  it("when color does not start with '#', toRgba returns the color unchanged", async () => {
+  it("toRgba converts non-hex colors through cssToVec3", async () => {
     // Override useTheme to return a non-hex interactive color (e.g. oklch).
-    // toRgba should return it unchanged since it doesn't start with '#'.
+    // toRgba now always converts via cssToVec3. In jsdom (no canvas),
+    // oklch can't be sampled and falls back to black.
     const themeModule = await import("../theme/theme-context");
     const spy = vi.spyOn(themeModule, "useTheme").mockReturnValue({
       colors: {
-        interactive: "oklch(0.7 0.2 30)",  // non-hex — should pass through unchanged
+        interactive: "oklch(0.7 0.2 30)",
         card: "#111111",
         border: "#333333",
         primaryForeground: "#ffffff",
@@ -458,9 +450,8 @@ describe("toRgba fallback (non-hex color)", () => {
     });
 
     const paths = container.querySelectorAll("path.wedge-path");
-    // The selected wedge fill should be the non-hex color returned unchanged
-    // (toRgba fallback: doesn't start with '#', returns color as-is)
-    expect(paths[0].getAttribute("fill")).toBe("oklch(0.7 0.2 30)");
+    // In jsdom (no canvas), oklch falls back to rgb(0, 0, 0) via cssToVec3
+    expect(paths[0].getAttribute("fill")).toBe("rgba(0, 0, 0, 1)");
 
     spy.mockRestore();
   });

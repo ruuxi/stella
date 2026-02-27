@@ -228,24 +228,30 @@ export function RadialDial() {
         clearTimeout(contentTimerRef.current)
         contentTimerRef.current = null
       }
-      setContentVisible(false)
+      setSelectedWedge('dismiss')
+      selectedIdxRef.current = -1
 
       if (blobReady.current && phaseRef.current !== 'hidden') {
         setPhase('closing')
         phaseRef.current = 'closing'
+
+        contentTimerRef.current = setTimeout(() => {
+          contentTimerRef.current = null
+          setContentVisible(false)
+        }, 60)
         startClose(selectedIdxRef, colorsRef, () => {
           visibleRef.current = false
           setPhase('hidden')
           phaseRef.current = 'hidden'
-          setSelectedWedge('dismiss')
+          setContentVisible(false)
           window.electronAPI?.radialAnimDone?.()
         })
       } else {
         cancelAnimation()
+        setContentVisible(false)
         visibleRef.current = false
         setPhase('hidden')
         phaseRef.current = 'hidden'
-        setSelectedWedge('dismiss')
       }
     }
 
@@ -294,7 +300,11 @@ export function RadialDial() {
         className={`radial-dial-frame${contentVisible ? ' radial-dial-frame--visible' : ''}`}
         style={{
           opacity: contentVisible ? 1 : 0,
-          transition: phase === 'opening' ? 'opacity 0.15s ease-out' : 'none',
+          transition: phase === 'opening'
+            ? 'opacity 0.15s ease-out'
+            : phase === 'closing'
+              ? 'opacity 0.1s ease-in'
+              : 'none',
           pointerEvents: phase === 'open' ? 'auto' : 'none',
         }}
       >
