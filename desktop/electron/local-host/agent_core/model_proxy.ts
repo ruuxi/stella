@@ -63,6 +63,23 @@ export function createProxiedModel(
     }
     case "openai":
     case "openrouter":
+    case "azure":
+    case "azure-cognitive-services":
+    case "cloudflare-workers-ai":
+    case "cloudflare-ai-gateway":
+    case "vercel":
+    case "cerebras":
+    case "kilo":
+    case "github-copilot":
+    case "github-copilot-enterprise":
+    case "opencode": {
+      const openai = createOpenAI({
+        baseURL: `${proxyBaseUrl}/api/ai/llm-proxy`,
+        fetch: customFetch,
+        apiKey: "proxy-managed",
+      });
+      return openai(modelName);
+    }
     case "moonshotai":
     case "zai":
     default: {
