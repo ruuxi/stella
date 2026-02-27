@@ -143,15 +143,6 @@ vi.mock("../components/Sidebar", () => ({
       <button data-testid="sidebar-signin" onClick={props.onSignIn}>Sign In</button>
       <button data-testid="sidebar-connect" onClick={props.onConnect}>Connect</button>
       <button data-testid="sidebar-settings" onClick={props.onSettings}>Settings</button>
-      {(props.pages ?? []).map((page: any) => (
-        <button
-          key={page.pageId}
-          data-testid={`sidebar-page-${page.pageId}`}
-          onClick={() => props.onPageSelect?.(page.pageId, page.title)}
-        >
-          {page.title}
-        </button>
-      ))}
       {props.storeActive && <span data-testid="store-active" />}
     </div>
   ),
@@ -163,10 +154,28 @@ vi.mock("../components/workspace/WorkspaceArea", () => ({
   ),
 }));
 
-vi.mock("../components/chat/ChatPanel", () => ({
-  ChatPanel: ({ children }: any) => (
-    <div data-testid="chat-panel">{children}</div>
+vi.mock("../components/header/HeaderTabBar", () => ({
+  HeaderTabBar: (props: any) => (
+    <div data-testid="header-tab-bar" data-view={props.activeView}>
+      {(props.pages ?? []).map((page: any) => (
+        <button
+          key={page.pageId}
+          data-testid={`tab-page-${page.pageId}`}
+          onClick={() => props.onTabSelect?.("app", page)}
+        >
+          {page.title}
+        </button>
+      ))}
+    </div>
   ),
+}));
+
+vi.mock("../components/orb/FloatingOrb", () => ({
+  FloatingOrb: () => <div data-testid="floating-orb" />,
+}));
+
+vi.mock("../hooks/use-orb-message", () => ({
+  useOrbMessage: () => ({ text: null, opacity: 0 }),
 }));
 
 vi.mock("../app/AuthDialog", () => ({
@@ -279,11 +288,11 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   });
 
-  it("renders WorkspaceArea and ChatPanel in home view", () => {
+  it("renders WorkspaceArea and HeaderTabBar in home view", () => {
     render(<FullShell />);
     expect(screen.getByTestId("workspace-area")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-column")).toBeInTheDocument();
+    expect(screen.getByTestId("header-tab-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("floating-orb")).toBeInTheDocument();
   });
 
   it("passes store view to WorkspaceArea", async () => {
@@ -299,7 +308,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     render(<FullShell />);
     const workspace = screen.getByTestId("workspace-area");
     expect(workspace).toHaveAttribute("data-view", "store");
-    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
   });
 
   it("uses local conversation storage when connected mode has sync off", () => {
@@ -416,7 +424,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(shell).toBeInTheDocument();
   });
 
-  it("shows and opens local workspace pages when cloud pages are unavailable", async () => {
+  it("shows and opens local workspace pages via tab bar when cloud pages are unavailable", async () => {
     vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
       if (args === "skip") return undefined;
       if (ref === "preferences:getAccountMode") return "private_local";
@@ -433,7 +441,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     } as any);
 
     render(<FullShell />);
-    const pageButton = await screen.findByTestId("sidebar-page-local_panel:pd_focus");
+    const pageButton = await screen.findByTestId("tab-page-local_panel:pd_focus");
     fireEvent.click(pageButton);
 
     expect(listWorkspacePanels).toHaveBeenCalled();
