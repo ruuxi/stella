@@ -10,6 +10,9 @@ import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction } from "../auth";
 import { jsonSchemaValidator, jsonValueValidator } from "../shared_validators";
 import { normalizeOptionalInt } from "../lib/number_utils";
+import { stableStringify, extractJsonBlock } from "../lib/json";
+import { validateAgainstSchema } from "../lib/validator";
+import { scrubProviderTerms, scrubValue } from "../lib/provider_redaction";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
@@ -20,87 +23,6 @@ const BROWSER_AGENT_SAFARI_DENIED_REASON =
 
 const truncate = (value: string, max = MAX_RAW_TEXT) =>
   value.length <= max ? value : `${value.slice(0, max)}\n\n... (truncated)`;
-
-const scrubProviderTerms = (value: string) =>
-  value
-    .replace(/openai|anthropic|claude|gpt-?\d*|gemini|llama|mistral/gi, "model")
-    .replace(/provider|model\s+id|model\s+name/gi, "model");
-
-const scrubValue = (value: unknown): unknown => {
-  if (typeof value === "string") {
-    return scrubProviderTerms(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => scrubValue(item));
-  }
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).map(([k, v]) => [
-      k,
-      scrubValue(v),
-    ]);
-    return Object.fromEntries(entries);
-  }
-  return value;
-};
-
-const stableStringify = (value: unknown): string => {
-  const seen = new WeakSet<object>();
-  const stringify = (input: unknown): string => {
-    if (input === null || typeof input !== "object") {
-      return JSON.stringify(input);
-    }
-    if (seen.has(input as object)) {
-      return JSON.stringify("[Circular]");
-    }
-    seen.add(input as object);
-    if (Array.isArray(input)) {
-      return `[${input.map((item) => stringify(item)).join(",")}]`;
-    }
-    const record = input as Record<string, unknown>;
-    const keys = Object.keys(record).sort((a, b) => a.localeCompare(b));
-    const body = keys.map((key) => `${JSON.stringify(key)}:${stringify(record[key])}`);
-    return `{${body.join(",")}}`;
-  };
-  return stringify(value);
-};
-
-const extractJsonBlock = (text: string): string | null => {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  try {
-    JSON.parse(trimmed);
-    return trimmed;
-  } catch {
-    // fall through
-  }
-
-  const firstObject = trimmed.indexOf("{");
-  const firstArray = trimmed.indexOf("[");
-  const startCandidates = [firstObject, firstArray].filter((idx) => idx >= 0);
-  if (startCandidates.length === 0) {
-    return null;
-  }
-  const start = Math.min(...startCandidates);
-  const objectEnd = trimmed.lastIndexOf("}");
-  const arrayEnd = trimmed.lastIndexOf("]");
-  const endCandidates = [objectEnd, arrayEnd].filter((idx) => idx >= start);
-  if (endCandidates.length === 0) {
-    return null;
-  }
-  const end = Math.max(...endCandidates);
-  const candidate = trimmed.slice(start, end + 1).trim();
-  try {
-    JSON.parse(candidate);
-    return candidate;
-  } catch {
-    return null;
-  }
-};
-
-type JsonSchema = Record<string, unknown>;
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 const agentInvokeResultValidator = v.union(
   v.object({
@@ -126,101 +48,6 @@ type AgentInvokeResult =
       rawText: string;
       outputJson: string;
     };
-
-const validateAgainstSchema = (
-  schema: JsonSchema | undefined,
-  value: unknown,
-): { ok: true } | { ok: false; reason: string } => {
-  if (!schema) {
-    return { ok: true };
-  }
-  const schemaType = typeof schema.type === "string" ? schema.type : undefined;
-
-  if (schemaType === "object") {
-    if (!isPlainObject(value)) {
-      return { ok: false, reason: "Result must be a JSON object." };
-    }
-    const required = Array.isArray(schema.required)
-      ? schema.required.filter((item): item is string => typeof item === "string")
-      : [];
-    for (const key of required) {
-      if (!(key in value)) {
-        return { ok: false, reason: `Missing required field: ${key}` };
-      }
-    }
-    const properties = isPlainObject(schema.properties) ? schema.properties : {};
-    for (const [key, propSchema] of Object.entries(properties)) {
-      if (!(key in value)) continue;
-      const propType =
-        propSchema && typeof propSchema === "object" && typeof (propSchema as any).type === "string"
-          ? String((propSchema as any).type)
-          : undefined;
-      const propValue = (value as Record<string, unknown>)[key];
-      if (propType === "string" && typeof propValue !== "string") {
-        return { ok: false, reason: `Field ${key} must be a string.` };
-      }
-      if (propType === "number" && typeof propValue !== "number") {
-        return { ok: false, reason: `Field ${key} must be a number.` };
-      }
-      if (propType === "boolean" && typeof propValue !== "boolean") {
-        return { ok: false, reason: `Field ${key} must be a boolean.` };
-      }
-      if (propType === "array" && !Array.isArray(propValue)) {
-        return { ok: false, reason: `Field ${key} must be an array.` };
-      }
-      if (
-        propSchema &&
-        typeof propSchema === "object" &&
-        Array.isArray((propSchema as any).enum) &&
-        !(propSchema as any).enum.includes(propValue)
-      ) {
-        return { ok: false, reason: `Field ${key} must be one of the allowed enum values.` };
-      }
-      if (
-        propSchema &&
-        typeof propSchema === "object" &&
-        typeof (propSchema as any).maxLength === "number" &&
-        typeof propValue === "string" &&
-        propValue.length > (propSchema as any).maxLength
-      ) {
-        return { ok: false, reason: `Field ${key} exceeds maxLength.` };
-      }
-      if (
-        propSchema &&
-        typeof propSchema === "object" &&
-        typeof (propSchema as any).maxItems === "number" &&
-        Array.isArray(propValue) &&
-        propValue.length > (propSchema as any).maxItems
-      ) {
-        return { ok: false, reason: `Field ${key} exceeds maxItems.` };
-      }
-    }
-    return { ok: true };
-  }
-
-  if (schemaType === "array") {
-    if (!Array.isArray(value)) {
-      return { ok: false, reason: "Result must be a JSON array." };
-    }
-    const maxItems = typeof schema.maxItems === "number" ? schema.maxItems : undefined;
-    if (typeof maxItems === "number" && value.length > maxItems) {
-      return { ok: false, reason: `Array exceeds maxItems (${maxItems}).` };
-    }
-    return { ok: true };
-  }
-
-  if (schemaType === "string" && typeof value !== "string") {
-    return { ok: false, reason: "Result must be a string." };
-  }
-  if (schemaType === "number" && typeof value !== "number") {
-    return { ok: false, reason: "Result must be a number." };
-  }
-  if (schemaType === "boolean" && typeof value !== "boolean") {
-    return { ok: false, reason: "Result must be a boolean." };
-  }
-
-  return { ok: true };
-};
 
 const coerceDeviceContext = async (
   ctx: ActionCtx,
@@ -421,4 +248,3 @@ export const invoke = internalAction({
     };
   },
 });
-
