@@ -6,7 +6,7 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { generateText, embed } from "ai";
+import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
 import { DISCOVERY_FACT_EXTRACTION_PROMPT } from "../prompts/discovery_facts";
 
@@ -18,15 +18,13 @@ const RECALL_CANDIDATE_LIMIT = 30;
 const RECALL_MAX_SELECTED = 8;
 const HISTORY_CANDIDATE_LIMIT = 30;
 const HISTORY_MAX_SELECTED = 10;
+const ADJUDICATION_CANDIDATE_LIMIT = 8;
 const RERANK_CANDIDATE_TEXT_MAX_CHARS = 500;
 const RECENT_CONTEXT_MESSAGE_LIMIT = 5;
 const RECENT_CONTEXT_MESSAGE_MAX_CHARS = 400;
 const RECENT_CONTEXT_TOTAL_MAX_CHARS = 2_000;
 const MEMORY_DISCOVERY_FACT_EXTRACTION_MODEL_KEY = "memory_discovery_fact_extraction";
 const MEMORY_RECALL_RERANK_MODEL_KEY = "memory_recall_rerank";
-const MEMORY_RECALL_QUERY_EMBEDDING_MODEL_KEY = "memory_recall_query_embedding";
-const MEMORY_SAVE_EMBEDDING_MODEL_KEY = "memory_save_embedding";
-const MEMORY_INGEST_EMBEDDING_MODEL_KEY = "memory_ingest_embedding";
 
 // ---------------------------------------------------------------------------
 // Validators
@@ -38,7 +36,6 @@ const memoryValidator = v.object({
   ownerId: v.string(),
   conversationId: v.optional(v.id("conversations")),
   content: v.string(),
-  embedding: v.optional(v.array(v.float64())),
   accessedAt: v.number(),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
@@ -62,20 +59,6 @@ async function cheapLLM(
   return text;
 }
 
-// ---------------------------------------------------------------------------
-// Embedding helper
-// ---------------------------------------------------------------------------
-
-async function embedText(modelKey: string, text: string): Promise<number[]> {
-  const config = getModelConfig(modelKey);
-  const { embedding: vector } = await embed({
-    ...config,
-    value: text,
-  });
-  return vector;
-}
-
-// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -103,16 +86,6 @@ type RecallCandidate = {
   content: string;
   timestamp?: number;
   type?: string;
-};
-
-const orderDocsByCandidateIds = <TDoc extends { _id: unknown }>(
-  candidateIds: Array<unknown>,
-  docs: TDoc[],
-): TDoc[] => {
-  const docsById = new Map(docs.map((doc) => [String(doc._id), doc]));
-  return candidateIds
-    .map((id) => docsById.get(String(id)))
-    .filter((doc): doc is TDoc => !!doc);
 };
 
 // ---------------------------------------------------------------------------
@@ -410,7 +383,6 @@ export const insertMemory = internalMutation({
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
     content: v.string(),
-    embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -418,7 +390,6 @@ export const insertMemory = internalMutation({
       ownerId: args.ownerId,
       conversationId: args.conversationId,
       content: args.content,
-      embedding: args.embedding,
       accessCount: 0,
       accessedAt: now,
       createdAt: now,
@@ -435,19 +406,14 @@ export const mergeMemory = internalMutation({
   args: {
     memoryId: v.id("memories"),
     content: v.string(),
-    embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const patch: Record<string, unknown> = {
+    await ctx.db.patch(args.memoryId, {
       content: args.content,
       accessedAt: now,
       updatedAt: now,
-    };
-    if (args.embedding) {
-      patch.embedding = args.embedding;
-    }
-    await ctx.db.patch(args.memoryId, patch);
+    });
     return null;
   },
 });
@@ -513,6 +479,29 @@ export const getMemoriesByIds = internalQuery({
 });
 
 // ---------------------------------------------------------------------------
+// searchMemoriesByContent (internal query)
+// ---------------------------------------------------------------------------
+
+export const searchMemoriesByContent = internalQuery({
+  args: {
+    ownerId: v.string(),
+    query: v.string(),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const normalizedQuery = args.query.trim();
+    if (!normalizedQuery) return [];
+
+    return await ctx.db
+      .query("memories")
+      .withSearchIndex("search_content", (q) =>
+        q.search("content", normalizedQuery).eq("ownerId", args.ownerId),
+      )
+      .take(args.limit);
+  },
+});
+
+// ---------------------------------------------------------------------------
 // deleteMemory (internal mutation)
 // ---------------------------------------------------------------------------
 
@@ -525,7 +514,7 @@ export const deleteMemory = internalMutation({
 });
 
 // ---------------------------------------------------------------------------
-// recallMemories (internal action) — vector search recall
+// recallMemories (internal action) — BM25 recall + LLM rerank
 // ---------------------------------------------------------------------------
 
 export const recallMemories = internalAction({
@@ -578,33 +567,22 @@ export const recallMemories = internalAction({
         }
       }
 
-      const vector = await embedText(MEMORY_RECALL_QUERY_EMBEDDING_MODEL_KEY, query);
-
       if (source === "history") {
-        const candidates = await ctx.vectorSearch("event_embeddings", "by_embedding", {
-          vector,
+        const docs = (await ctx.runQuery(internal.data.event_embeddings.searchByContent, {
+          ownerId: args.ownerId,
+          query,
           limit: HISTORY_CANDIDATE_LIMIT,
-          filter: (q) => q.eq("ownerId", args.ownerId),
-        });
-        if (candidates.length === 0) {
+          conversationId: args.conversationId,
+        })) as EventEmbeddingDoc[];
+        if (docs.length === 0) {
           return "";
         }
 
-        const candidateIds = candidates.map((candidate) => candidate._id);
-        const docs = (await ctx.runQuery(internal.data.event_embeddings.getEmbeddingsByIds, {
-          ids: candidateIds,
-        })) as EventEmbeddingDoc[];
-        const eligibleDocs = docs.filter(
-          (doc: EventEmbeddingDoc) =>
-            doc.ownerId === args.ownerId &&
-            (!args.conversationId || doc.conversationId === args.conversationId),
-        );
-        const orderedDocs = orderDocsByCandidateIds(candidateIds, eligibleDocs);
         const selectedDocs = await selectRecallDocs({
           query,
           source: "history",
           conversationContext: recentConversationContext,
-          docs: orderedDocs,
+          docs,
           maxSelected: HISTORY_MAX_SELECTED,
           toCandidate: (doc: EventEmbeddingDoc) => ({
             id: String(doc._id),
@@ -627,25 +605,20 @@ export const recallMemories = internalAction({
           .join("\n");
       }
 
-      const candidates = await ctx.vectorSearch("memories", "by_embedding", {
-        vector,
+      const docs = (await ctx.runQuery(internal.data.memory.searchMemoriesByContent, {
+        ownerId: args.ownerId,
+        query,
         limit: RECALL_CANDIDATE_LIMIT,
-        filter: (q) => q.eq("ownerId", args.ownerId),
-      });
-      if (candidates.length === 0) {
+      })) as MemoryDoc[];
+      if (docs.length === 0) {
         return "";
       }
 
-      const candidateIds = candidates.map((candidate) => candidate._id);
-      const docs = (await ctx.runQuery(internal.data.memory.getMemoriesByIds, {
-        ids: candidateIds,
-      })) as MemoryDoc[];
-      const orderedDocs = orderDocsByCandidateIds(candidateIds, docs);
       const selectedDocs = await selectRecallDocs({
         query,
         source: "memory",
         conversationContext: recentConversationContext,
-        docs: orderedDocs,
+        docs,
         maxSelected: RECALL_MAX_SELECTED,
         toCandidate: (doc: MemoryDoc) => ({
           id: String(doc._id),
@@ -683,38 +656,30 @@ export const adjudicateAndStoreFact = internalAction({
     ownerId: v.string(),
     content: v.string(),
     conversationId: v.optional(v.id("conversations")),
-    embeddingModelKey: v.string(),
   },
   handler: async (ctx, args): Promise<string> => {
     try {
-      const vector = await embedText(args.embeddingModelKey, args.content);
-      const similar = await ctx.vectorSearch("memories", "by_embedding", {
-        vector,
-        limit: 5,
-        filter: (q) => q.eq("ownerId", args.ownerId),
-      });
+      const docs = (await ctx.runQuery(internal.data.memory.searchMemoriesByContent, {
+        ownerId: args.ownerId,
+        query: args.content,
+        limit: ADJUDICATION_CANDIDATE_LIMIT,
+      })) as MemoryDoc[];
 
-      if (similar.length === 0) {
+      if (docs.length === 0) {
         await ctx.runMutation(internal.data.memory.insertMemory, {
           ownerId: args.ownerId,
           conversationId: args.conversationId,
           content: args.content,
-          embedding: vector,
         });
         return "Memory saved.";
       }
 
       // We have similar items, adjudicate.
-      const candidateIds = similar.map((c) => c._id);
-      const docs = (await ctx.runQuery(internal.data.memory.getMemoriesByIds, {
-        ids: candidateIds,
-      })) as MemoryDoc[];
-      const orderedDocs = orderDocsByCandidateIds(candidateIds, docs);
       const docsById = new Map(
-        orderedDocs.map((doc: MemoryDoc) => [String(doc._id), doc]),
+        docs.map((doc: MemoryDoc) => [String(doc._id), doc]),
       );
       
-      const candidateText = orderedDocs
+      const candidateText = docs
         .map((doc: MemoryDoc, idx: number) => `[${idx + 1}] id=${doc._id} | content=${doc.content}`)
         .join("\\n");
       
@@ -750,11 +715,9 @@ export const adjudicateAndStoreFact = internalAction({
       }
 
       if (decision.action === "update_existing") {
-        const updatedVector = await embedText(args.embeddingModelKey, decision.updatedContent);
         await ctx.runMutation(internal.data.memory.mergeMemory, {
           memoryId: decision.memoryId as Id<"memories">,
           content: decision.updatedContent,
-          embedding: updatedVector,
         });
         return "Memory updated.";
       }
@@ -764,7 +727,6 @@ export const adjudicateAndStoreFact = internalAction({
         ownerId: args.ownerId,
         conversationId: args.conversationId,
         content: args.content,
-        embedding: vector,
       });
       return "Memory saved.";
     } catch (err) {
@@ -775,7 +737,7 @@ export const adjudicateAndStoreFact = internalAction({
 });
 
 // ---------------------------------------------------------------------------
-// saveMemory (internal action) — explicit write with embedding dedup
+// saveMemory (internal action) — explicit write with lexical dedup + adjudication
 // ---------------------------------------------------------------------------
 
 export const saveMemory = internalAction({
@@ -789,7 +751,6 @@ export const saveMemory = internalAction({
       ownerId: args.ownerId,
       content: args.content,
       conversationId: args.conversationId,
-      embeddingModelKey: MEMORY_SAVE_EMBEDDING_MODEL_KEY,
     });
   },
 });
@@ -823,7 +784,6 @@ export const seedFromDiscovery = internalAction({
         await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
           ownerId: args.ownerId,
           content: fact.content,
-          embeddingModelKey: MEMORY_INGEST_EMBEDDING_MODEL_KEY,
         });
       } catch (err) {
         console.error("[memory] seedFromDiscovery: error processing fact", err);

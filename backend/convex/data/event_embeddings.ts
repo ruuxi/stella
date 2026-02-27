@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { embed } from "ai";
 import {
   internalAction,
   internalMutation,
@@ -7,7 +6,6 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { getModelConfig } from "../agent/model";
 
 const eventEmbeddingValidator = v.object({
   _id: v.id("event_embeddings"),
@@ -18,19 +16,9 @@ const eventEmbeddingValidator = v.object({
   type: v.union(v.literal("user_message"), v.literal("assistant_message")),
   content: v.string(),
   timestamp: v.number(),
-  embedding: v.array(v.float64()),
   createdAt: v.number(),
   updatedAt: v.number(),
 });
-
-async function embedText(text: string): Promise<number[]> {
-  const config = getModelConfig("event_semantic_embedding");
-  const { embedding } = await embed({
-    ...config,
-    value: text,
-  });
-  return embedding;
-}
 
 export const getByEventId = internalQuery({
   args: {
@@ -62,7 +50,6 @@ export const upsertEventEmbedding = internalMutation({
     type: v.union(v.literal("user_message"), v.literal("assistant_message")),
     content: v.string(),
     timestamp: v.number(),
-    embedding: v.array(v.float64()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -77,7 +64,6 @@ export const upsertEventEmbedding = internalMutation({
         type: args.type,
         content: args.content,
         timestamp: args.timestamp,
-        embedding: args.embedding,
         updatedAt: now,
       });
       return existing._id;
@@ -89,10 +75,33 @@ export const upsertEventEmbedding = internalMutation({
       type: args.type,
       content: args.content,
       timestamp: args.timestamp,
-      embedding: args.embedding,
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+export const searchByContent = internalQuery({
+  args: {
+    ownerId: v.string(),
+    query: v.string(),
+    limit: v.number(),
+    conversationId: v.optional(v.id("conversations")),
+  },
+  handler: async (ctx, args) => {
+    const normalizedQuery = args.query.trim();
+    if (!normalizedQuery) return [];
+
+    return await ctx.db
+      .query("event_embeddings")
+      .withSearchIndex("search_content", (q) => {
+        const base = q.search("content", normalizedQuery).eq("ownerId", args.ownerId);
+        if (args.conversationId) {
+          return base.eq("conversationId", args.conversationId);
+        }
+        return base;
+      })
+      .take(args.limit);
   },
 });
 
@@ -127,7 +136,6 @@ export const indexEventForSemanticSearch = internalAction({
       return null;
     }
 
-    const vector = await embedText(text);
     await ctx.runMutation(internal.data.event_embeddings.upsertEventEmbedding, {
       ownerId: conversation.ownerId,
       conversationId: event.conversationId,
@@ -135,7 +143,6 @@ export const indexEventForSemanticSearch = internalAction({
       type: event.type,
       content: text,
       timestamp: event.timestamp,
-      embedding: vector,
     });
     return null;
   },
