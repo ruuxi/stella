@@ -1,6 +1,6 @@
 /**
  * Auth token helper for custom HTTP endpoints (e.g. /api/chat, /api/synthesize,
- * /api/speech-to-text).
+ * /api/speech-to-text/ws-token).
  *
  * BetterAuth crossDomain stores session cookies in localStorage, NOT as browser
  * cookies. So `credentials: "include"` sends nothing to the Convex site domain.
