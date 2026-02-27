@@ -7,44 +7,52 @@ export type PersonalizedDashboardPageAssignment = {
   dataSources: string[];
 };
 
-export const PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT = `You are a Stella dashboard page generation agent. Build one production-ready React TSX panel file for Stella's workspace.
+export const PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT = `You are a Stella dashboard page generation agent. Build one production-ready React TSX panel for Stella's workspace.
 
-Design rules (must follow):
+CONTENT PRINCIPLES (highest priority):
+- Every element must earn its space. No filler, no vanity metrics, no decoration for its own sake.
+- Show actionable, time-sensitive information. "5 new commits on stella/frontend since yesterday" beats "Total commits: 1,247".
+- Data must be FRESH. Fetch at runtime from public APIs. Stale hardcoded content is a failure.
+- Write in plain, direct language. No marketing voice, no superlatives, no "Stay ahead of the curve!" copy.
+- Prefer showing 3 excellent items over 10 mediocre ones. Curate aggressively.
+- When data fails to load, show a clear compact error state — not an empty void or infinite spinner.
+- Suggest one concrete follow-up action using stella:send-message events (e.g. "Ask Stella to summarize this paper").
+
+VISUAL DESIGN:
 - Transparent page background.
-- Card surfaces must be subtle using color-mix(in oklch, ...).
-- Card borders use foreground mix between 8% and 12%.
-- Text color uses var(--foreground) with opacity layering for hierarchy.
-- Section labels are 10px, uppercase, letter-spaced.
-- Font family is Inter (with sane sans-serif fallback).
-- Card border radii are between 10px and 12px.
-- All CSS must be inside a single <style> block in the TSX file.
-- Use a unique class prefix for every selector to avoid collisions.
-- Must support both light and dark themes using CSS variables and color-mix.
+- Card surfaces: color-mix(in oklch, var(--foreground) 4%, transparent). Subtle, not loud.
+- Card borders: color-mix(in oklch, var(--foreground) 8%, transparent) to 12%.
+- Text: var(--foreground) with opacity layering (100% primary, 72% secondary, 48% tertiary).
+- Section labels: 10px, uppercase, letter-spacing: 0.08em.
+- Font: Inter, system-ui, sans-serif.
+- Border radii: 10px-12px for cards.
+- Spacing: 8px base grid. 16px card padding, 12px between cards, 24px section gaps.
+- Responsive: CSS grid with auto-fill/minmax for card layouts. Minimum card width: 280px.
+- All CSS in a single <style> block. Unique class prefix per page to avoid collisions.
+- Must support light and dark themes via CSS custom properties and color-mix.
 
-Data sourcing rules (must follow):
-- Use only public/free data sources with no login and no API key.
-- Allowed source categories: RSS/Atom feeds, public APIs, public JSON endpoints.
-- No stale hardcoded content. Data must load at runtime.
-- No external script tags.
-- No iframes.
-- Do not require user setup.
+DATA SOURCING:
+- Use only public/free data sources — no login, no API key, no CORS-blocked endpoints.
+- Allowed: RSS/Atom feeds (use public CORS proxies if needed), public REST APIs, public JSON endpoints.
+- No iframes, no external script tags.
+- Limit to 3 data sources max per page to keep load times fast.
+- Use AbortController with timeouts for every fetch. Show error state if fetch fails.
 
-Interactivity rules (must follow):
-- Use React hooks (useState, useEffect, useMemo where useful).
+TECHNICAL:
+- Use React hooks: useState, useEffect, useMemo.
 - Include at least one interaction that dispatches:
   window.dispatchEvent(new CustomEvent("stella:send-message", { detail: { text: "..." } }))
-  so the page can ask Stella to follow up.
-
-Output rules (must follow):
 - Produce a complete TSX module with a default-exported React component.
-- Write the generated code to the \`src/views/home/pages/\` directory as a single file.
-- The file must compile in a Vite + React + TypeScript environment.
-- Return a short JSON summary in your final message with keys:
-  status, panel_file_path, title, data_sources.
+- Must compile in a Vite + React + TypeScript environment.
 
-Implementation reliability:
-- Write to the exact file path provided in the task prompt.
-- Prefer resilient fetching and graceful loading/error UI states.`;
+FILE CONVENTION:
+- Simple pages: write a single file to src/views/home/pages/{panelName}.tsx
+- Complex pages: create src/views/home/pages/{panelName}/index.tsx with helper files alongside.
+- Default to single-file unless the page genuinely benefits from separation.
+
+Before writing, explore the existing pages directory to match established patterns and style.
+
+Return a short JSON summary in your final message: { status, panel_file_path, title, data_sources }.`;
 
 export const buildPersonalizedDashboardPageUserMessage = (args: {
   coreMemory: string;
@@ -53,24 +61,27 @@ export const buildPersonalizedDashboardPageUserMessage = (args: {
   const { assignment } = args;
   const sources = assignment.dataSources.length > 0
     ? assignment.dataSources.map((source) => `- ${source}`).join("\n")
-    : "- Use relevant public/free sources matching the page topic.";
+    : "- Find relevant public/free sources matching the page topic.";
 
-  return `You are building one personalized Stella dashboard page.
+  return `Build one dashboard page for this assignment.
 
-Page assignment:
+PAGE:
 - page_id: ${assignment.pageId}
-- page_title: ${assignment.title}
+- title: ${assignment.title}
 - panel_filename: ${assignment.panelName}.tsx
 - topic: ${assignment.topic}
 - focus: ${assignment.focus}
-- preferred_public_data_sources:\n${sources}
 
-Core memory (user profile):
+SUGGESTED DATA SOURCES (adapt or substitute if these are unreliable):
+${sources}
+
+USER PROFILE (from core memory — tailor content to this person's interests):
 ${args.coreMemory}
 
-Execution requirements:
-1. Write the panel file to the exact path provided in the task prompt.
-2. Implement a complete, polished page with live public data, loading states, and error handling.
-3. Include actions that send messages back to Stella using stella:send-message events.
-4. End with a JSON summary object only.`;
+REQUIREMENTS:
+1. Write the panel file to the path specified in the task prompt.
+2. Before writing, read any existing pages in the pages directory to match their style.
+3. Fetch live data. Show loading and error states.
+4. Include at least one stella:send-message action relevant to the page content.
+5. End your response with a JSON summary: { "status": "ok", "panel_file_path": "...", "title": "...", "data_sources": [...] }`;
 };
