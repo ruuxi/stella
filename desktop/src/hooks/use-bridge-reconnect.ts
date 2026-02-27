@@ -9,7 +9,7 @@ import {
 const BRIDGE_PROVIDERS: BridgeProvider[] = ["whatsapp", "signal"];
 
 export function useBridgeAutoReconnect() {
-  const getBridgeBundle = useAction(api.channels.bridge.getBridgeBundle);
+  const getBridgeBundle = useAction(api.channels.bridge_actions.getBridgeBundle);
   const reconnectingRef = useRef<Set<string>>(new Set());
 
   const whatsappSession = useQuery(api.channels.bridge.getBridgeStatus, { provider: "whatsapp" });
