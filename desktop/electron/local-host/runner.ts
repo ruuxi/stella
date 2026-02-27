@@ -901,98 +901,56 @@ export const createLocalHostRunner = ({
     const since = Date.now() - 120_000;
     log("Starting tool request subscription for device:", deviceId, { since });
 
-    // Use onUpdate for real-time subscription to tool requests
-    // The subscription will automatically receive updates when new tool requests are created
+    // Use onUpdate for real-time subscription to tool requests.
+    // ConvexClient handles reconnection automatically — on WebSocket drop it
+    // reconnects, re-authenticates via fetchToken, and re-subscribes.
+    // These use non-paginated queries (subscribeToolRequestsForDevice) because
+    // Convex reactive queries only allow a single .paginate() call per function.
     unsubscribe = client.onUpdate(
-      "events:listToolRequestsForDevice" as never,
-      { deviceId, paginationOpts: { cursor: null, numItems: 20 }, since } as never,
-      (response: unknown) => {
-        if (!response || typeof response !== "object" || !("page" in response)) {
-          return;
-        }
-        const result = response as PaginatedResult<ToolRequestEvent>;
-        for (const request of result.page) {
+      "events:subscribeToolRequestsForDevice" as never,
+      { deviceId, since, limit: 20 } as never,
+      (events: unknown) => {
+        if (!Array.isArray(events)) return;
+        for (const request of events as ToolRequestEvent[]) {
           queue = queue.then(() => handleToolRequest(request)).catch((err) => {
             logError("Tool request queue error:", err);
           });
         }
       },
+      (error: Error) => {
+        logError("Tool request subscription error:", error.message);
+      },
     );
 
     // Subscribe to dashboard generation requests
     unsubscribeDashboardGen = client.onUpdate(
-      "events:listDashboardGenRequestsForDevice" as never,
-      { deviceId, paginationOpts: { cursor: null, numItems: 10 }, since } as never,
-      (response: unknown) => {
-        if (!response || typeof response !== "object" || !("page" in response)) {
-          return;
-        }
-        const result = response as PaginatedResult<DashboardGenRequestEvent>;
-        for (const request of result.page) {
+      "events:subscribeDashboardGenRequestsForDevice" as never,
+      { deviceId, since, limit: 10 } as never,
+      (events: unknown) => {
+        if (!Array.isArray(events)) return;
+        for (const request of events as DashboardGenRequestEvent[]) {
           void runDashboardGenConcurrent(() => handleDashboardGenRequest(request)).catch((err) => {
             logError("Dashboard gen queue error:", err);
           });
         }
+      },
+      (error: Error) => {
+        logError("Dashboard gen subscription error:", error.message);
       },
     );
 
     log("Tool request subscription active - receiving only new requests");
   };
 
-  // HTTP polling fallback — the WebSocket subscription may be unreliable
-  // (1006 errors), so poll periodically to catch missed events.
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
-  let pollSince = Date.now() - 120_000;
-
-  const pollForRequests = async () => {
-    if (!authToken || !convexUrl) return;
-    try {
-      const events = await callQuery("events.listRecentDeviceEvents", {
-        deviceId,
-        since: pollSince,
-        limit: 20,
-      }) as Array<ToolRequestEvent | DashboardGenRequestEvent> | null;
-      if (!events || events.length === 0) {
-        // Advance window even with no events to avoid re-scanning old range
-        pollSince = Date.now() - 10_000;
-        return;
-      }
-      for (const event of events) {
-        if (event.type === "tool_request") {
-          queue = queue.then(() => handleToolRequest(event as ToolRequestEvent)).catch((err) => {
-            logError("Tool request queue error (poll):", err);
-          });
-        } else if (event.type === "dashboard_generation_request") {
-          void runDashboardGenConcurrent(() => handleDashboardGenRequest(event as DashboardGenRequestEvent)).catch((err) => {
-            logError("Dashboard gen queue error (poll):", err);
-          });
-        }
-      }
-      // Advance window with 10s lookback for safety overlap
-      pollSince = Date.now() - 10_000;
-    } catch (err) {
-      logError("Poll error:", (err as Error).message);
-    }
-  };
-
-  const startPolling = () => {
-    if (pollTimer) return;
-    // Initial poll after a short delay, then every 10 seconds
-    setTimeout(() => void pollForRequests(), 3_000);
-    pollTimer = setInterval(() => void pollForRequests(), 3_000);
-  };
-
-  const stopPolling = () => {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-  };
 
   let lastSetAuthToken: string | null = null;
 
   const disposeClient = () => {
     stopSubscription();
+    if (unsubscribeConnectionState) {
+      unsubscribeConnectionState();
+      unsubscribeConnectionState = null;
+    }
     if (!client) {
       return;
     }
@@ -1001,6 +959,8 @@ export const createLocalHostRunner = ({
     lastSetAuthToken = null;
   };
 
+  let unsubscribeConnectionState: (() => void) | null = null;
+
   const ensureConnectedClient = () => {
     if (!convexUrl || !authToken) {
       return null;
@@ -1008,15 +968,23 @@ export const createLocalHostRunner = ({
     if (!client) {
       client = new ConvexClient(convexUrl);
       lastSetAuthToken = null; // Force setAuth on new client
+
+      // Log connection state transitions (connects, disconnects, retries)
+      unsubscribeConnectionState = client.subscribeToConnectionState((state: Record<string, unknown>) => {
+        if (state.isWebSocketConnected || state.connectionRetries) {
+          log("ConvexClient:", state.isWebSocketConnected ? "connected" : `reconnecting (attempt ${state.connectionRetries})`);
+        }
+      });
     }
-    // Only call setAuth when the token actually changes to avoid WebSocket churn
+    // Only call setAuth when the token actually changes to avoid WebSocket churn.
+    // The fetchToken callback references the mutable `authToken` variable (not a
+    // frozen copy) so that reconnections after 1006 always get the latest token.
     if (lastSetAuthToken !== authToken) {
-      const token = authToken;
-      lastSetAuthToken = token;
+      lastSetAuthToken = authToken;
       client.setAuth(
-        () => Promise.resolve(token),
-        (isAuthenticated) => {
-          log("ConvexClient auth state:", isAuthenticated);
+        () => Promise.resolve(authToken),
+        (isAuthenticated: boolean) => {
+          log("ConvexClient auth:", isAuthenticated ? "authenticated" : "unauthenticated");
         },
       );
     }
@@ -1024,7 +992,7 @@ export const createLocalHostRunner = ({
   };
 
   const setConvexUrl = (url: string) => {
-    const normalized = url.trim();
+    const normalized = url.trim().replace(/\/+$/, "");
     if (!normalized) {
       return;
     }
@@ -1064,7 +1032,6 @@ export const createLocalHostRunner = ({
     // will re-authenticate as needed via the updated auth callback.
     if (isRunning) {
       startSubscription();
-      startPolling();
       // Send immediate heartbeat when auth becomes available
       void sendHeartbeat();
       void syncManifests();
@@ -1267,7 +1234,6 @@ export const createLocalHostRunner = ({
 
     // Start real-time subscription for tool requests (only if auth is ready)
     startSubscription();
-    startPolling();
 
     // Start device heartbeat (only sends if auth is available)
     startHeartbeat();
@@ -1284,7 +1250,6 @@ export const createLocalHostRunner = ({
       syncDebounceTimer = null;
     }
     stopHeartbeat();
-    stopPolling();
     stopWatchers();
     stopCoreMemoryWatcher();
     stopSubscription();
