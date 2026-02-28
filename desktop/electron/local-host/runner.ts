@@ -406,6 +406,7 @@ export const createLocalHostRunner = ({
         runId,
         threadId,
         platform: process.platform,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }) as LocalTaskManagerAgentContext;
     },
     runSubagent: async ({
@@ -756,6 +757,7 @@ export const createLocalHostRunner = ({
           agentType: "general",
           runId: `local:dash:${crypto.randomUUID()}`,
           platform: process.platform,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
       ) as AgentContext;
 
@@ -1239,6 +1241,7 @@ export const createLocalHostRunner = ({
     log("Fetching agent context", { storageMode, agentType, runId });
     let agentContext: AgentContext;
     try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       agentContext = (storageMode === "local"
         ? await callAction(
             "agent/prompt_builder:fetchLocalAgentContextForRuntime",
@@ -1246,6 +1249,7 @@ export const createLocalHostRunner = ({
               agentType,
               runId,
               platform: process.platform,
+              timezone: tz,
             },
           )
         : await callAction(
@@ -1255,6 +1259,7 @@ export const createLocalHostRunner = ({
               agentType,
               runId,
               platform: process.platform,
+              timezone: tz,
             },
           )) as AgentContext;
       log("Agent context fetched", {

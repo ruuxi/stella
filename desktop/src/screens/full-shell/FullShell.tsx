@@ -32,6 +32,7 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 import { useStreamingChat } from "./use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
+import { useReturnDetection, formatDuration } from "../../hooks/use-return-detection";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
 
 const SettingsDialog = lazy(() => import("./SettingsView"));
@@ -231,6 +232,21 @@ export const FullShell = () => {
   } = useStreamingChat({
     conversationId: activeConversationId,
     storageMode: conversationEventsSource,
+  });
+
+  useReturnDetection({
+    enabled: !!activeConversationId,
+    onReturn: useCallback(
+      (awayMs: number) => {
+        void sendMessage({
+          text: `[System: The user has returned after being away for ${formatDuration(awayMs)}.]`,
+          selectedText: null,
+          chatContext: null,
+          onClear: () => {},
+        });
+      },
+      [sendMessage],
+    ),
   });
 
   const {
