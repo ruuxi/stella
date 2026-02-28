@@ -6,6 +6,7 @@ import {
   subscribeToLocalChatUpdates,
 } from "../services/local-chat-store";
 import type { StepItem } from "../components/steps-container";
+import { useChatStore } from "../app/state/chat-store";
 
 // Base event record from Convex
 export type EventRecord = {
@@ -427,9 +428,9 @@ export type ConversationEventsSource = "cloud" | "local";
 
 export const useConversationEvents = (
   conversationId?: string,
-  options?: { source?: ConversationEventsSource },
 ) => {
-  const source = options?.source ?? "cloud";
+  const { storageMode } = useChatStore();
+  const source = storageMode;
   const { isAuthenticated } = useConvexAuth();
   const cloudResult = useQuery(
     api.events.listEvents,

@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { useConvexAuth, useQuery } from "convex/react"
-import { useConversationEvents, getRunningTasks, type ConversationEventsSource } from "@/hooks/use-conversation-events"
+import { useConversationEvents, getRunningTasks } from "@/hooks/use-conversation-events"
 import { useWelcomeSuggestions } from "@/hooks/use-welcome-suggestions"
 import { api } from "@/convex/api"
 import type { WelcomeSuggestion } from "@/services/synthesis"
@@ -106,11 +106,10 @@ function useScheduleData(): ScheduleItem[] {
 
 type HomeViewProps = {
   conversationId?: string
-  eventsSource?: ConversationEventsSource
 }
 
-export function HomeView({ conversationId, eventsSource }: HomeViewProps) {
-  const events = useConversationEvents(conversationId, { source: eventsSource ?? "cloud" })
+export function HomeView({ conversationId }: HomeViewProps) {
+  const events = useConversationEvents(conversationId)
   const welcomeSuggestions = useWelcomeSuggestions(events)
   const runningTasks = getRunningTasks(events)
   const scheduleItems = useScheduleData()

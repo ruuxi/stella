@@ -6,6 +6,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
+import { useChatStore } from "../../app/state/chat-store";
 import { useWorkspace } from "../../app/state/workspace-state";
 import { useTheme } from "../../theme/theme-context";
 import { useConversationEvents } from "../../hooks/use-conversation-events";
@@ -92,18 +93,7 @@ export const FullShell = () => {
   useBridgeAutoReconnect();
 
   const onboarding = useOnboardingOverlay();
-  const accountMode = useQuery(
-    api.data.preferences.getAccountMode,
-    onboarding.isAuthenticated ? {} : "skip",
-  ) as "private_local" | "connected" | undefined;
-  const syncMode = useQuery(
-    api.data.preferences.getSyncMode,
-    onboarding.isAuthenticated && accountMode === "connected" ? {} : "skip",
-  ) as "on" | "off" | undefined;
-  const cloudFeaturesEnabled =
-    onboarding.isAuthenticated && accountMode === "connected";
-  const cloudStorageEnabled = cloudFeaturesEnabled && (syncMode ?? "on") !== "off";
-  const conversationEventsSource = cloudStorageEnabled ? "cloud" : "local";
+  const { cloudFeaturesEnabled } = useChatStore();
 
   useEffect(() => {
     const electronApi = getElectronApi();
@@ -211,12 +201,9 @@ export const FullShell = () => {
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     isAuthenticated: onboarding.isAuthenticated,
     conversationId: activeConversationId,
-    storageMode: conversationEventsSource,
   });
 
-  const events = useConversationEvents(activeConversationId ?? undefined, {
-    source: conversationEventsSource,
-  });
+  const events = useConversationEvents(activeConversationId ?? undefined);
 
   const {
     streamingText,
@@ -227,7 +214,6 @@ export const FullShell = () => {
     sendMessage,
   } = useStreamingChat({
     conversationId: activeConversationId,
-    storageMode: conversationEventsSource,
     events,
   });
 
@@ -505,7 +491,6 @@ export const FullShell = () => {
                     setMessage(text);
                   }}
                   conversationId={activeConversationId ?? undefined}
-                  eventsSource={conversationEventsSource}
                 />
               )}
 

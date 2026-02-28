@@ -1,0 +1,337 @@
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import type { ReactNode } from "react";
+
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
+
+const mockAppendLocalEvent = vi.fn(() => ({ _id: "local-123" }));
+const mockBuildLocalHistoryMessages = vi.fn(() => [
+  { role: "user" as const, content: "hello" },
+]);
+const mockUploadScreenshotAttachments = vi.fn(() => Promise.resolve([]));
+
+const mockConvexAppendEvent = vi.fn(() => Promise.resolve({ _id: "cloud-456" }));
+const mockWithOptimisticUpdate = vi.fn(() => mockConvexAppendEvent);
+const mockConvexMutation = vi.fn(() =>
+  Object.assign(vi.fn(), { withOptimisticUpdate: mockWithOptimisticUpdate }),
+);
+const mockConvexAction = vi.fn(() => vi.fn());
+
+const mockUseConvexAuth = vi.fn(() => ({
+  isAuthenticated: true,
+  isLoading: false,
+}));
+const mockUseQuery = vi.fn(() => "connected");
+
+vi.mock("convex/react", () => ({
+  useConvexAuth: (...args: unknown[]) => mockUseConvexAuth(...args),
+  useQuery: (...args: unknown[]) => mockUseQuery(...args),
+  useMutation: (...args: unknown[]) => mockConvexMutation(...args),
+  useAction: (...args: unknown[]) => mockConvexAction(...args),
+}));
+
+vi.mock("../../convex/api", () => ({
+  api: {
+    events: { appendEvent: "appendEvent", listEvents: "listEvents" },
+    data: {
+      attachments: { createFromDataUrl: "createFromDataUrl" },
+      preferences: {
+        getAccountMode: "getAccountMode",
+        getSyncMode: "getSyncMode",
+      },
+    },
+  },
+}));
+
+vi.mock("../../services/local-chat-store", () => ({
+  appendLocalEvent: (...args: unknown[]) => mockAppendLocalEvent(...args),
+  buildLocalHistoryMessages: (...args: unknown[]) =>
+    mockBuildLocalHistoryMessages(...args),
+}));
+
+vi.mock("../../hooks/streaming/attachment-upload", () => ({
+  uploadScreenshotAttachments: (...args: unknown[]) =>
+    mockUploadScreenshotAttachments(...args),
+}));
+
+// ---------------------------------------------------------------------------
+// Imports (after mocks)
+// ---------------------------------------------------------------------------
+
+import { ChatStoreProvider, useChatStore } from "./chat-store";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <ChatStoreProvider>{children}</ChatStoreProvider>;
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("ChatStoreProvider", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseConvexAuth.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    // Default: authenticated + connected + sync on → cloud
+    mockUseQuery.mockReturnValue("connected");
+  });
+
+  // ----------------------------------------------------------------
+  // storageMode derivation
+  // ----------------------------------------------------------------
+  describe("storageMode derivation", () => {
+    it("returns cloud when authenticated and connected with sync on", () => {
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      expect(result.current.storageMode).toBe("cloud");
+      expect(result.current.isLocalStorage).toBe(false);
+      expect(result.current.cloudFeaturesEnabled).toBe(true);
+      expect(result.current.streamStrategy).toBe("local-with-http-fallback");
+    });
+
+    it("returns local when not authenticated", () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: false,
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      expect(result.current.storageMode).toBe("local");
+      expect(result.current.isLocalStorage).toBe(true);
+      expect(result.current.cloudFeaturesEnabled).toBe(false);
+      expect(result.current.streamStrategy).toBe("local-only");
+    });
+
+    it("returns local when accountMode is private_local", () => {
+      mockUseQuery.mockReturnValue("private_local");
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      expect(result.current.storageMode).toBe("local");
+      expect(result.current.isLocalStorage).toBe(true);
+    });
+
+    it("returns local when syncMode is off", () => {
+      // First call: accountMode = "connected", second call: syncMode = "off"
+      let callCount = 0;
+      mockUseQuery.mockImplementation(() => {
+        callCount++;
+        // accountMode query returns "connected", syncMode query returns "off"
+        if (callCount % 2 === 1) return "connected";
+        return "off";
+      });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      expect(result.current.storageMode).toBe("local");
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // appendEvent
+  // ----------------------------------------------------------------
+  describe("appendEvent", () => {
+    it("calls appendLocalEvent in local mode", async () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: false,
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      let response: unknown;
+      await act(async () => {
+        response = await result.current.appendEvent({
+          conversationId: "conv-1",
+          type: "user_message",
+          deviceId: "device-1",
+          payload: { text: "hello" },
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "user_message",
+          deviceId: "device-1",
+        }),
+      );
+      expect(response).toEqual({ _id: "local-123" });
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // appendAgentEvent
+  // ----------------------------------------------------------------
+  describe("appendAgentEvent", () => {
+    it("is a no-op in cloud mode", () => {
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      act(() => {
+        result.current.appendAgentEvent({
+          conversationId: "conv-1",
+          type: "assistant_message",
+          finalText: "hello",
+        });
+      });
+
+      expect(mockAppendLocalEvent).not.toHaveBeenCalled();
+    });
+
+    it("calls appendLocalEvent for assistant_message in local mode", () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: false,
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      act(() => {
+        result.current.appendAgentEvent({
+          conversationId: "conv-1",
+          type: "assistant_message",
+          userMessageId: "msg-1",
+          finalText: "response text",
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "assistant_message",
+          requestId: "msg-1",
+          payload: expect.objectContaining({
+            text: "response text",
+            userMessageId: "msg-1",
+          }),
+        }),
+      );
+    });
+
+    it("calls appendLocalEvent for tool_request in local mode", () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: false,
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      act(() => {
+        result.current.appendAgentEvent({
+          conversationId: "conv-1",
+          type: "tool_request",
+          toolCallId: "tc-1",
+          toolName: "bash",
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "tool_request",
+          requestId: "tc-1",
+          payload: { toolName: "bash" },
+        }),
+      );
+    });
+
+    it("calls appendLocalEvent for tool_result in local mode", () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: false,
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      act(() => {
+        result.current.appendAgentEvent({
+          conversationId: "conv-1",
+          type: "tool_result",
+          toolCallId: "tc-1",
+          toolName: "bash",
+          resultPreview: "output",
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "tool_result",
+          requestId: "tc-1",
+          payload: { toolName: "bash", result: "output" },
+        }),
+      );
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // uploadAttachments
+  // ----------------------------------------------------------------
+  describe("uploadAttachments", () => {
+    it("returns empty array in local mode", async () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: false,
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      let attachments: unknown;
+      await act(async () => {
+        attachments = await result.current.uploadAttachments({
+          screenshots: [{ dataUrl: "data:image/png;base64,abc" }],
+          conversationId: "conv-1",
+          deviceId: "device-1",
+        });
+      });
+
+      expect(attachments).toEqual([]);
+      expect(mockUploadScreenshotAttachments).not.toHaveBeenCalled();
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // buildHistory
+  // ----------------------------------------------------------------
+  describe("buildHistory", () => {
+    it("returns undefined in cloud mode", () => {
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      expect(result.current.buildHistory("conv-1")).toBeUndefined();
+      expect(mockBuildLocalHistoryMessages).not.toHaveBeenCalled();
+    });
+
+    it("returns local history in local mode", () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: false,
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      const history = result.current.buildHistory("conv-1", 25);
+
+      expect(mockBuildLocalHistoryMessages).toHaveBeenCalledWith("conv-1", 25);
+      expect(history).toEqual([{ role: "user", content: "hello" }]);
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Error when used outside provider
+  // ----------------------------------------------------------------
+  describe("useChatStore outside provider", () => {
+    it("throws an error", () => {
+      expect(() => {
+        renderHook(() => useChatStore());
+      }).toThrow("useChatStore must be used within ChatStoreProvider");
+    });
+  });
+});
