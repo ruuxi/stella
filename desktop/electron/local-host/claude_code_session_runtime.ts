@@ -198,9 +198,10 @@ class ClaudeCodeSessionRuntime {
     if (modelName) {
       args.push("--model", modelName);
     }
-    args.push("--session-id", session.sessionId);
     if (session.turnCount > 0) {
-      args.push("--continue");
+      args.push("--resume", session.sessionId);
+    } else {
+      args.push("--session-id", session.sessionId);
     }
 
     const child = spawn("claude", args, {
@@ -346,4 +347,3 @@ export const runClaudeCodeTurn = async (request: ClaudeCodeTurnRequest): Promise
 export const shutdownClaudeCodeRuntime = (): void => {
   runtime.dispose();
 };
-
