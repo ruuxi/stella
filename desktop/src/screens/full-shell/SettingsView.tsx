@@ -50,6 +50,13 @@ const GENERAL_LOCAL_RUNTIME_OPTIONS = [
   { id: "claude-code/default", name: "Claude Code (Local CLI)" },
 ];
 
+const GENERAL_AGENT_ENGINE_OPTIONS = [
+  { id: "default", name: "Default Runtime" },
+  { id: "codex_local", name: "Codex App Server (Local)" },
+] as const;
+
+const CODEX_LOCAL_CONCURRENCY_OPTIONS = [1, 2, 3] as const;
+
 const LLM_PROVIDERS = [
   { key: "llm:anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
   { key: "llm:openai", label: "OpenAI", placeholder: "sk-..." },
@@ -251,10 +258,19 @@ function ModelConfigSection() {
   const overridesJson = useQuery(api.data.preferences.getModelOverrides) as string | undefined;
   const setOverride = useMutation(api.data.preferences.setModelOverride);
   const clearOverride = useMutation(api.data.preferences.clearModelOverride);
+  const generalAgentEngine = useQuery(api.data.preferences.getGeneralAgentEngine) as
+    | "default"
+    | "codex_local"
+    | undefined;
+  const setGeneralAgentEngine = useMutation(api.data.preferences.setGeneralAgentEngine);
+  const codexLocalMaxConcurrency = useQuery(api.data.preferences.getCodexLocalMaxConcurrency) as number | undefined;
+  const setCodexLocalMaxConcurrency = useMutation(api.data.preferences.setCodexLocalMaxConcurrency);
   const { groups } = useModelCatalog();
 
   const serverOverrides: Record<string, string> = overridesJson ? JSON.parse(overridesJson) : {};
   const [localOverrides, setLocalOverrides] = useState<Record<string, string | null>>({});
+  const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<"default" | "codex_local" | null>(null);
+  const [localCodexLocalMaxConcurrency, setLocalCodexLocalMaxConcurrency] = useState<number | null>(null);
 
   // Merge: local optimistic values take precedence, null means cleared
   const overrides: Record<string, string> = { ...serverOverrides };
@@ -277,6 +293,22 @@ function ModelConfigSection() {
     });
   }, [overridesJson]);
 
+  useEffect(() => {
+    if (!localGeneralAgentEngine || !generalAgentEngine) return;
+    if (localGeneralAgentEngine === generalAgentEngine) {
+      setLocalGeneralAgentEngine(null);
+    }
+  }, [localGeneralAgentEngine, generalAgentEngine]);
+
+  useEffect(() => {
+    if (localCodexLocalMaxConcurrency === null || codexLocalMaxConcurrency === undefined) return;
+    if (localCodexLocalMaxConcurrency === codexLocalMaxConcurrency) {
+      setLocalCodexLocalMaxConcurrency(null);
+    }
+  }, [localCodexLocalMaxConcurrency, codexLocalMaxConcurrency]);
+
+  const effectiveGeneralAgentEngine = localGeneralAgentEngine ?? generalAgentEngine ?? "default";
+  const effectiveCodexLocalMaxConcurrency = localCodexLocalMaxConcurrency ?? codexLocalMaxConcurrency ?? 3;
   const hasAnyOverride = Object.keys(overrides).length > 0;
 
   const handleChange = useCallback(
@@ -301,71 +333,145 @@ function ModelConfigSection() {
     setLocalOverrides((prev) => ({ ...prev, ...cleared }));
   }, [overrides, clearOverride]);
 
+  const handleGeneralAgentEngineChange = useCallback(
+    (value: string) => {
+      const engine = value === "codex_local" ? "codex_local" : "default";
+      setLocalGeneralAgentEngine(engine);
+      setGeneralAgentEngine({ engine });
+    },
+    [setGeneralAgentEngine],
+  );
+
+  const handleCodexLocalMaxConcurrencyChange = useCallback(
+    (value: string) => {
+      const parsed = Number(value);
+      const normalized = Number.isFinite(parsed)
+        ? Math.max(1, Math.min(3, Math.floor(parsed)))
+        : 3;
+      setLocalCodexLocalMaxConcurrency(normalized);
+      setCodexLocalMaxConcurrency({ value: normalized });
+    },
+    [setCodexLocalMaxConcurrency],
+  );
+
   return (
-    <div className="settings-card">
-      <div className="settings-card-header">
-        <h3 className="settings-card-title">Model Configuration</h3>
-        <button
-          className="settings-btn settings-btn--reset-all"
-          onClick={handleResetAll}
-          style={{ visibility: hasAnyOverride ? "visible" : "hidden" }}
-        >
-          Reset All
-        </button>
-      </div>
-      <p className="settings-card-desc">Override the default model for each agent type.</p>
-      {CONFIGURABLE_AGENTS.map((agent) => {
-        const current = overrides[agent.key] ?? "";
-        const defaultModel = AGENT_DEFAULTS[agent.key];
-        return (
-          <div key={agent.key} className="settings-row">
+    <>
+      <div className="settings-card">
+        <h3 className="settings-card-title">General Agent Runtime</h3>
+        <p className="settings-card-desc">
+          Choose how the general subagent runs on this device.
+        </p>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Engine</div>
+            <div className="settings-row-sublabel">
+              Codex mode requires the local <code>codex</code> CLI.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <select
+              className="settings-runtime-select"
+              value={effectiveGeneralAgentEngine}
+              onChange={(e) => handleGeneralAgentEngineChange(e.target.value)}
+            >
+              {GENERAL_AGENT_ENGINE_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {effectiveGeneralAgentEngine === "codex_local" ? (
+          <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">{agent.label}</div>
-              <div className="settings-row-sublabel">{agent.desc}</div>
+              <div className="settings-row-label">Parallel Codex Sessions</div>
+              <div className="settings-row-sublabel">
+                Number of general-agent Codex tasks to run in parallel.
+              </div>
             </div>
             <div className="settings-row-control">
-              {current && (
-                <button
-                  className="settings-model-reset-icon"
-                  onClick={() => handleChange(agent.key, "")}
-                  title="Reset to default"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 12a9 9 0 1 1 3 6.7" />
-                    <polyline points="3 7 3 13 9 13" />
-                  </svg>
-                </button>
-              )}
               <select
-                className="settings-model-select"
-                value={current}
-                onChange={(e) => handleChange(agent.key, e.target.value)}
+                className="settings-runtime-select"
+                value={String(effectiveCodexLocalMaxConcurrency)}
+                onChange={(e) => handleCodexLocalMaxConcurrencyChange(e.target.value)}
               >
-                <option value="">{defaultModel}</option>
-                {agent.key === "general" && (
-                  <optgroup label="local-runtime">
-                    {GENERAL_LOCAL_RUNTIME_OPTIONS.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {groups.map((group) => (
-                  <optgroup key={group.provider} label={group.provider}>
-                    {group.models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </optgroup>
+                {CODEX_LOCAL_CONCURRENCY_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
                 ))}
               </select>
             </div>
           </div>
-        );
-      })}
-    </div>
+        ) : null}
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-card-header">
+          <h3 className="settings-card-title">Model Configuration</h3>
+          <button
+            className="settings-btn settings-btn--reset-all"
+            onClick={handleResetAll}
+            style={{ visibility: hasAnyOverride ? "visible" : "hidden" }}
+          >
+            Reset All
+          </button>
+        </div>
+        <p className="settings-card-desc">Override the default model for each agent type.</p>
+        {CONFIGURABLE_AGENTS.map((agent) => {
+          const current = overrides[agent.key] ?? "";
+          const defaultModel = AGENT_DEFAULTS[agent.key];
+          return (
+            <div key={agent.key} className="settings-row">
+              <div className="settings-row-info">
+                <div className="settings-row-label">{agent.label}</div>
+                <div className="settings-row-sublabel">{agent.desc}</div>
+              </div>
+              <div className="settings-row-control">
+                {current && (
+                  <button
+                    className="settings-model-reset-icon"
+                    onClick={() => handleChange(agent.key, "")}
+                    title="Reset to default"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 12a9 9 0 1 1 3 6.7" />
+                      <polyline points="3 7 3 13 9 13" />
+                    </svg>
+                  </button>
+                )}
+                <select
+                  className="settings-model-select"
+                  value={current}
+                  onChange={(e) => handleChange(agent.key, e.target.value)}
+                >
+                  <option value="">{defaultModel}</option>
+                  {agent.key === "general" && (
+                    <optgroup label="local-runtime">
+                      {GENERAL_LOCAL_RUNTIME_OPTIONS.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {groups.map((group) => (
+                    <optgroup key={group.provider} label={group.provider}>
+                      {group.models.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

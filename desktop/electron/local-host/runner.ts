@@ -21,6 +21,7 @@ import {
   type RunCallbacks,
 } from "./agent_runtime.js";
 import { shutdownClaudeCodeRuntime } from "./claude_code_session_runtime.js";
+import { shutdownCodexAppServerRuntime } from "./codex_app_server_runtime.js";
 import { RunJournal } from "./run_journal.js";
 import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./local_task_manager.js";
 import { getActiveFeature } from "../self-mod/features.js";
@@ -1204,6 +1205,7 @@ export const createLocalHostRunner = ({
     stopCoreMemoryWatcher();
     stopSubscription();
     shutdownClaudeCodeRuntime();
+    shutdownCodexAppServerRuntime();
     if (client) {
       client.close();
       client = null;
