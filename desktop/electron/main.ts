@@ -27,6 +27,7 @@ import {
   createVoiceWindow,
   showVoiceWindow,
   hideVoiceWindow,
+  getVoiceWindow,
 } from './voice-window.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
@@ -1875,6 +1876,64 @@ app.whenReady().then(async () => {
     }
     broadcastUiState()
   })
+
+  // ─── Wake Word Detection ──────────────────────────────────────────────
+  {
+    const { createWakeWordDetector } = await import('./wake-word/detector.js')
+    const { createAudioCaptureManager } = await import('./wake-word/audio-capture.js')
+
+    const modelsDir = isDev
+      ? path.join(__dirname, '..', 'resources', 'models')
+      : path.join(process.resourcesPath, 'models')
+
+    try {
+      const detector = await createWakeWordDetector(modelsDir)
+      const capture = createAudioCaptureManager(detector, getVoiceWindow)
+
+      capture.onDetection((result) => {
+        if (!appReady) return
+        console.log(`[WakeWord] Detected! score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)}`)
+
+        // Activate voice mode
+        uiState.isVoiceActive = true
+        uiState.mode = 'voice'
+        showVoiceWindow()
+        broadcastUiState()
+
+        // Pause wake word while voice is active
+        capture.stop()
+      })
+
+      // Start wake word listening when app becomes ready
+      const originalSetReady = appReady
+      ipcMain.on('app:setReady', () => {
+        // Start capture after a short delay to let the voice window load
+        setTimeout(() => {
+          if (!capture.isCapturing()) {
+            capture.start()
+            console.log('[WakeWord] Listening started')
+          }
+        }, 2000)
+      })
+
+      // Resume wake word when voice mode deactivates
+      const originalVoiceShortcutHandler = () => {
+        if (!uiState.isVoiceActive && !capture.isCapturing()) {
+          capture.start()
+        }
+      }
+      // Hook into voice state changes
+      setInterval(() => {
+        if (appReady && !uiState.isVoiceActive && !capture.isCapturing()) {
+          capture.start()
+        }
+      }, 1000)
+
+      console.log('[WakeWord] Detector initialized')
+    } catch (err) {
+      console.error('[WakeWord] Failed to initialize:', (err as Error).message)
+    }
+  }
 
   showWindow('full')
 

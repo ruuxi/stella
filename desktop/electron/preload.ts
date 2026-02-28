@@ -177,6 +177,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open URL in user's default browser
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
 
+  // Wake Word
+  sendWakeWordAudio: (buffer: ArrayBuffer) => ipcRenderer.send('wake-word:audio-chunk', buffer),
+  onWakeWordStartCapture: (callback: () => void) => {
+    const handler = () => { callback() }
+    ipcRenderer.on('wake-word:start-capture', handler)
+    return () => { ipcRenderer.removeListener('wake-word:start-capture', handler) }
+  },
+  onWakeWordStopCapture: (callback: () => void) => {
+    const handler = () => { callback() }
+    ipcRenderer.on('wake-word:stop-capture', handler)
+    return () => { ipcRenderer.removeListener('wake-word:stop-capture', handler) }
+  },
+
   // Voice Transcript
   submitVoiceTranscript: (transcript: string) => ipcRenderer.send('voice:transcript', transcript),
   setVoiceShortcut: (shortcut: string) => ipcRenderer.send('voice:setShortcut', shortcut),
