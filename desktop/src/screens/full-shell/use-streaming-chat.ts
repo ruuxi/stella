@@ -706,6 +706,7 @@ export function useStreamingChat({
           });
 
       const platform = window.electronAPI?.platform ?? "unknown";
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const shouldQueue =
         isStreaming && (queueNext || Boolean(followUpMatch));
       const mode = shouldQueue
@@ -727,6 +728,7 @@ export function useStreamingChat({
           text: combinedText,
           attachments,
           platform,
+          timezone,
           ...(mode && { mode }),
         },
       });
