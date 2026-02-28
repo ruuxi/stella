@@ -251,33 +251,6 @@
   display: inline-flex;
 }
 
-/* Queue selector */
-.composer-selector {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-weak);
-  background: transparent;
-  border: none;
-  cursor: default;
-  transition: background 0.15s ease, color 0.15s ease;
-  flex-shrink: 0;
-}
-
-.composer-selector:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-strong);
-}
-
-.composer-selector[data-active="true"] {
-  background: color-mix(in oklch, var(--primary) 15%, transparent);
-  color: var(--text-strong);
-}
-
 /* Submit button - circular */
 .composer-submit {
   display: inline-flex;

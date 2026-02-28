@@ -25,6 +25,7 @@ import {
   buildLocalHistoryMessages,
   type LocalHistoryMessage,
 } from "../../services/local-chat-store";
+import { useResumeAgentRun } from "../../hooks/use-resume-agent-run";
 
 export type AttachmentRef = {
   id?: string;
@@ -93,7 +94,6 @@ export function useStreamingChat({
   const [isStreaming, setIsStreaming] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
-  const [queueNext, setQueueNext] = useState(false);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(null);
   const [selfModMap, setSelfModMap] = useState<Record<string, SelfModAppliedData>>({});
 
@@ -225,7 +225,6 @@ export function useStreamingChat({
       resetStreamingText();
       resetReasoningText();
       setIsStreaming(false);
-      setQueueNext(false);
       requestAnimationFrame(() => {
         if (scheduledForRunId !== streamRunIdRef.current) {
           return;
@@ -234,7 +233,7 @@ export function useStreamingChat({
       });
       streamAbortRef.current = null;
     },
-    [resetStreamingText, resetReasoningText, setQueueNext],
+    [resetStreamingText, resetReasoningText],
   );
 
   const cancelCurrentStream = useCallback(() => {
@@ -313,7 +312,6 @@ export function useStreamingChat({
           }
           streamAbortRef.current = null;
           setIsStreaming(false);
-          setQueueNext(false);
           localRunIdRef.current = null;
           localSeqRef.current = 0;
           if (agentStreamCleanupRef.current) {
@@ -332,7 +330,6 @@ export function useStreamingChat({
       appendStreamingDelta,
       resetStreamingState,
       resetStreamingText,
-      setQueueNext,
       streamingTextRef,
     ],
   );
@@ -394,7 +391,6 @@ export function useStreamingChat({
       resetStreamingState,
       resetStreamingText,
       streamingTextRef,
-      setQueueNext,
     ],
   );
 
@@ -425,7 +421,6 @@ export function useStreamingChat({
             if (runIdCounter !== streamRunIdRef.current) return;
             streamAbortRef.current = null;
             setIsStreaming(false);
-            setQueueNext(false);
             if (streamingTextRef.current.trim().length === 0) {
               resetStreamingText();
               setPendingUserMessageId(null);
@@ -452,7 +447,6 @@ export function useStreamingChat({
       appendStreamingDelta,
       appendReasoningDelta,
       streamingTextRef,
-      setQueueNext,
     ],
   );
 
@@ -527,78 +521,25 @@ export function useStreamingChat({
       resetStreamingText,
       resetReasoningText,
       streamingTextRef,
-      setQueueNext,
       startLocalStream,
       startHttpStream,
     ],
   );
 
-  useEffect(() => {
-    if (isStreaming || !activeConversationId || !window.electronAPI) {
-      return;
-    }
-    if (
-      !window.electronAPI.agentHealthCheck ||
-      !window.electronAPI.getActiveAgentRun ||
-      !window.electronAPI.resumeAgentStream
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    const runIdCounter = streamRunIdRef.current + 1;
-
-    void (async () => {
-      const health = await window.electronAPI!.agentHealthCheck();
-      if (!health?.ready || cancelled) return;
-
-      const activeRun = await window.electronAPI!.getActiveAgentRun();
-      if (!activeRun || cancelled) return;
-      if (activeRun.conversationId !== activeConversationId) return;
-
-      streamRunIdRef.current = runIdCounter;
-      resetStreamingText();
-      resetReasoningText();
-      setIsStreaming(true);
-      setQueueNext(false);
-      setPendingUserMessageId(null);
-      localRunIdRef.current = activeRun.runId;
-      localSeqRef.current = 0;
-
-      if (agentStreamCleanupRef.current) {
-        agentStreamCleanupRef.current();
-      }
-
-      const cleanup = window.electronAPI!.onAgentStream((event) => {
-        handleAgentEvent(event as AgentStreamEvent, runIdCounter);
-      });
-      agentStreamCleanupRef.current = cleanup;
-
-      const replay = await window.electronAPI!.resumeAgentStream({
-        runId: activeRun.runId,
-        lastSeq: 0,
-      });
-      if (cancelled || runIdCounter !== streamRunIdRef.current) return;
-      for (const replayEvent of replay.events) {
-        handleAgentEvent(replayEvent as AgentStreamEvent, runIdCounter);
-      }
-    })().catch((error) => {
-      if (cancelled) return;
-      console.error("Failed to resume active local agent run:", error);
-      resetStreamingState(runIdCounter);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
+  useResumeAgentRun({
     activeConversationId,
-    handleAgentEvent,
     isStreaming,
+    streamRunIdRef,
+    localRunIdRef,
+    localSeqRef,
+    agentStreamCleanupRef,
+    resetStreamingText,
     resetReasoningText,
     resetStreamingState,
-    resetStreamingText,
-  ]);
+    setIsStreaming,
+    setPendingUserMessageId,
+    handleAgentEvent,
+  });
 
   // Auto-clear streaming when assistant reply arrives
   const syncWithEvents = useCallback(
@@ -671,11 +612,7 @@ export function useStreamingChat({
       }
       const deviceId = await getOrCreateDeviceId();
       const rawText = opts.text.trim();
-
-      const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
-      const cleanedText = followUpMatch
-        ? rawText.slice(followUpMatch[0].length).trim()
-        : rawText;
+      const cleanedText = rawText;
 
       const contextParts: string[] = [];
       if (windowSnippet) {
@@ -707,18 +644,7 @@ export function useStreamingChat({
 
       const platform = window.electronAPI?.platform ?? "unknown";
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const shouldQueue =
-        isStreaming && (queueNext || Boolean(followUpMatch));
-      const mode = shouldQueue
-        ? "follow_up"
-        : isStreaming
-          ? "steer"
-          : undefined;
-
-      if (isStreaming && mode === "steer") {
-        cancelCurrentStream();
-        resetStreamingState();
-      }
+      const mode = isStreaming ? "follow_up" : undefined;
 
       const event = await appendConversationEvent({
         conversationId: resolvedConversationId,
@@ -736,10 +662,8 @@ export function useStreamingChat({
       const eventId = toEventId(event);
       if (eventId) {
         if (mode === "follow_up") {
-          setQueueNext(false);
           return;
         }
-        setQueueNext(false);
         opts.onClear();
         const localHistory = isLocalStorage
           ? buildLocalHistoryMessages(resolvedConversationId, 50)
@@ -751,9 +675,6 @@ export function useStreamingChat({
       activeConversationId,
       isLocalStorage,
       isStreaming,
-      queueNext,
-      cancelCurrentStream,
-      resetStreamingState,
       appendConversationEvent,
       createAttachment,
       startStream,
@@ -765,8 +686,6 @@ export function useStreamingChat({
     reasoningText,
     isStreaming,
     pendingUserMessageId,
-    queueNext,
-    setQueueNext,
     selfModMap,
     sendMessage,
     syncWithEvents,

@@ -2624,7 +2624,9 @@ app.whenReady().then(async () => {
       return null
     }
     const result = localHostRunner.agentHealthCheck()
-    console.log('[agent:healthCheck]', result)
+    if (result) {
+      console.log('[agent:healthCheck]', result)
+    }
     return result
   })
 
