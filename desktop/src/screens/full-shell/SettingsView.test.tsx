@@ -19,6 +19,10 @@ vi.mock("@/convex/api", () => ({
         getModelOverrides: "preferences.getModelOverrides",
         setModelOverride: "preferences.setModelOverride",
         clearModelOverride: "preferences.clearModelOverride",
+        getGeneralAgentEngine: "preferences.getGeneralAgentEngine",
+        setGeneralAgentEngine: "preferences.setGeneralAgentEngine",
+        getCodexLocalMaxConcurrency: "preferences.getCodexLocalMaxConcurrency",
+        setCodexLocalMaxConcurrency: "preferences.setCodexLocalMaxConcurrency",
         getAccountMode: "preferences.getAccountMode",
         setAccountMode: "preferences.setAccountMode",
         getSyncMode: "preferences.getSyncMode",
@@ -126,6 +130,8 @@ function setupUseQuery(opts: {
   secrets?: Array<{ _id: string; provider: string; label: string; status: string }>;
   accountMode?: "connected" | "private_local";
   syncMode?: "on" | "off";
+  generalAgentEngine?: "default" | "codex_local";
+  codexLocalMaxConcurrency?: number;
 } = {}) {
   mockUseQuery((queryPath: unknown) => {
     const path = queryPath as string;
@@ -137,6 +143,12 @@ function setupUseQuery(opts: {
     }
     if (path === "preferences.getModelOverrides") {
       return opts.modelOverrides ?? undefined;
+    }
+    if (path === "preferences.getGeneralAgentEngine") {
+      return opts.generalAgentEngine ?? "default";
+    }
+    if (path === "preferences.getCodexLocalMaxConcurrency") {
+      return opts.codexLocalMaxConcurrency ?? 3;
     }
     if (path === "secrets.listSecrets") {
       return opts.secrets ?? undefined;
@@ -377,6 +389,79 @@ describe("BasicTab", () => {
 // ---------------------------------------------------------------------------
 // Tests: ModelConfigSection
 // ---------------------------------------------------------------------------
+
+describe("GeneralAgentRuntimeSection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver;
+  });
+
+  it("renders General Agent Runtime section on Models tab", () => {
+    setupUseQuery();
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    expect(screen.getByText("General Agent Runtime")).toBeTruthy();
+    expect(screen.getByText("Engine")).toBeTruthy();
+  });
+
+  it("hides Codex concurrency control when engine is default", () => {
+    setupUseQuery({ generalAgentEngine: "default" });
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    expect(screen.queryByText("Parallel Codex Sessions")).toBeNull();
+  });
+
+  it("shows Codex concurrency control when engine is codex_local", () => {
+    setupUseQuery({ generalAgentEngine: "codex_local", codexLocalMaxConcurrency: 2 });
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    expect(screen.getByText("Parallel Codex Sessions")).toBeTruthy();
+    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
+    expect(selects.length).toBe(2);
+    expect(selects[1].value).toBe("2");
+  });
+
+  it("calls setGeneralAgentEngine when engine is changed", () => {
+    const mockSetGeneralAgentEngine = vi.fn();
+    mockUseMutation((mutationPath: unknown) => {
+      const path = mutationPath as string;
+      if (path === "preferences.setGeneralAgentEngine") return mockSetGeneralAgentEngine;
+      return vi.fn();
+    });
+    setupUseQuery();
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
+    fireEvent.change(selects[0], { target: { value: "codex_local" } });
+
+    expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({ engine: "codex_local" });
+  });
+
+  it("calls setCodexLocalMaxConcurrency when Codex concurrency changes", () => {
+    const mockSetCodexLocalMaxConcurrency = vi.fn();
+    mockUseMutation((mutationPath: unknown) => {
+      const path = mutationPath as string;
+      if (path === "preferences.setCodexLocalMaxConcurrency") return mockSetCodexLocalMaxConcurrency;
+      return vi.fn();
+    });
+    setupUseQuery({ generalAgentEngine: "codex_local", codexLocalMaxConcurrency: 3 });
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
+    fireEvent.change(selects[1], { target: { value: "1" } });
+
+    expect(mockSetCodexLocalMaxConcurrency).toHaveBeenCalledWith({ value: 1 });
+  });
+});
 
 describe("ModelConfigSection", () => {
   beforeEach(() => {
