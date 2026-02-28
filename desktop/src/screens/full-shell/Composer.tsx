@@ -18,8 +18,6 @@ type ComposerProps = {
   selectedText: string | null;
   setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
   isStreaming: boolean;
-  queueNext: boolean;
-  setQueueNext: (value: boolean) => void;
   canSubmit: boolean;
   conversationId: string | null;
   onSend: () => void;
@@ -33,8 +31,6 @@ export function Composer({
   selectedText,
   setSelectedText,
   isStreaming,
-  queueNext,
-  setQueueNext,
   canSubmit,
   conversationId,
   onSend,
@@ -136,17 +132,6 @@ export function Composer({
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </button>
-            {isStreaming && (
-              <button
-                type="button"
-                className="composer-selector"
-                data-active={queueNext ? "true" : "false"}
-                onClick={() => setQueueNext(!queueNext)}
-                title="Queue the next message to send after the current response"
-              >
-                <span>Queue</span>
-              </button>
-            )}
           </div>
 
           <div className="composer-toolbar-right">
