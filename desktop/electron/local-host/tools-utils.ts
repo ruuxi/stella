@@ -40,6 +40,21 @@ const sanitizeSensitiveData = (
   if (seen.has(value)) return "[CIRCULAR]";
   seen.add(value);
 
+  if (value instanceof Error) {
+    const output: Record<string, unknown> = {
+      message: redactString(value.message),
+      ...(value.stack ? { stack: redactString(value.stack) } : {}),
+    };
+    for (const [key, entry] of Object.entries(value as unknown as Record<string, unknown>)) {
+      if (SENSITIVE_KEY_RE.test(key)) {
+        output[key] = "[REDACTED]";
+        continue;
+      }
+      output[key] = sanitizeSensitiveData(entry, depth + 1, seen);
+    }
+    return output;
+  }
+
   if (Array.isArray(value)) {
     return value.map((entry) => sanitizeSensitiveData(entry, depth + 1, seen));
   }
