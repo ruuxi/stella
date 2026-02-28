@@ -23,6 +23,7 @@ import { combineAbortSignals, isRetryableModelError } from "./agent_core/runtime
 import { extractToolNameFromCallId } from "./agent_core/tool_call_ids.js";
 import { createToolCallIdFactory } from "./agent_core/tool_call_factory.js";
 import { runWithFallbackModel } from "./agent_core/failover.js";
+import { isClaudeCodeModel, runClaudeCodeTurn } from "./claude_code_session_runtime.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -401,6 +402,7 @@ export type RunSubagentOpts = Omit<RunOrchestratorOpts, "callbacks"> & {
   taskDescription: string;
   taskPrompt: string;
   cwd?: string;
+  onProgress?: (chunk: string) => void;
 };
 
 export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
@@ -419,6 +421,7 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     taskDescription,
     taskPrompt,
     cwd,
+    onProgress,
   } = opts;
 
   // Wrap tool executor to inject default working directory when cwd is provided
@@ -464,6 +467,73 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     agentContext.fallbackModel && agentContext.fallbackModel !== primaryModelId
       ? agentContext.fallbackModel
       : undefined;
+
+  if (agentType === "general" && isClaudeCodeModel(primaryModelId)) {
+    const prompt = `${taskDescription}\n\n${taskPrompt}`;
+    let subagentSeq = 0;
+    const nextSubagentSeq = () => ++subagentSeq;
+
+    try {
+      const sessionKey = agentContext.activeThreadId
+        ? `${conversationId}:${agentContext.activeThreadId}`
+        : opts.taskId
+          ? `${conversationId}:task:${opts.taskId}`
+          : `${conversationId}:run:${runId}`;
+
+      const result = await runClaudeCodeTurn({
+        runId,
+        sessionKey,
+        modelId: primaryModelId,
+        prompt,
+        abortSignal: signal,
+        onProgress: (chunk) => {
+          if (!chunk) return;
+          onProgress?.(chunk);
+          journal.recordEvent({
+            runId,
+            seq: nextSubagentSeq(),
+            type: "assistant_chunk",
+            resultText: chunk,
+          });
+        },
+      });
+
+      journal.completeRun(runId);
+
+      if (persistToConvex) {
+        try {
+          await persistRunToConvex({
+            journal,
+            runId,
+            conversationId,
+            agentType,
+            convexUrl,
+            authToken,
+            fullText: result.text,
+            usage: result.usage,
+            activeThreadId: agentContext.activeThreadId,
+          });
+        } catch (persistError) {
+          console.error("[agent-runtime] Persist failed:", persistError);
+        }
+      }
+      clearTimeout(timeoutId);
+      journal.close();
+      return { runId, result: result.text };
+    } catch (error) {
+      const errorMessage = `Claude Code execution failed: ${(error as Error).message ?? "Unknown error"}`;
+      journal.recordEvent({
+        runId,
+        seq: nextSubagentSeq(),
+        type: "status_update",
+        errorText: errorMessage,
+      });
+      journal.markRunCrashed(runId);
+      clearTimeout(timeoutId);
+      journal.close();
+      return { runId, result: "", error: errorMessage };
+    }
+  }
 
   let turnIndex = 0;
   const toolCallCounters = new Map<string, number>();

@@ -33,6 +33,10 @@ const formatTaskSnapshot = (snapshot: TaskToolSnapshot): string => {
     return `${label}\nDuration: ${duration}ms\n\n--- Error ---\n${truncate(snapshot.error ?? "")}`;
   }
   const elapsed = Date.now() - snapshot.startedAt;
+  if (snapshot.recentActivity && snapshot.recentActivity.length > 0) {
+    const activity = snapshot.recentActivity.map((line) => `- ${truncate(line, 300)}`).join("\n");
+    return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms\n\nRecent activity:\n${activity}`;
+  }
   return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms`;
 };
 

@@ -20,6 +20,7 @@ import {
   type AgentContext,
   type RunCallbacks,
 } from "./agent_runtime.js";
+import { shutdownClaudeCodeRuntime } from "./claude_code_session_runtime.js";
 import { RunJournal } from "./run_journal.js";
 import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./local_task_manager.js";
 import { getActiveFeature } from "../self-mod/features.js";
@@ -431,6 +432,7 @@ export const createLocalHostRunner = ({
       persistToConvex,
       enableRemoteTools,
       abortSignal,
+      onProgress,
       toolExecutor,
     }) => {
       if (!authToken || !convexUrl) {
@@ -452,6 +454,7 @@ export const createLocalHostRunner = ({
         persistToConvex,
         enableRemoteTools,
         abortSignal,
+        onProgress,
       });
     },
     toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
@@ -1200,6 +1203,7 @@ export const createLocalHostRunner = ({
     stopWatchers();
     stopCoreMemoryWatcher();
     stopSubscription();
+    shutdownClaudeCodeRuntime();
     if (client) {
       client.close();
       client = null;
