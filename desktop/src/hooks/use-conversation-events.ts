@@ -424,17 +424,14 @@ export function getRunningTasks(events: EventRecord[]): TaskItem[] {
 }
 
 // Main hook to fetch conversation events
-export type ConversationEventsSource = "cloud" | "local";
-
 export const useConversationEvents = (
   conversationId?: string,
 ) => {
   const { storageMode } = useChatStore();
-  const source = storageMode;
   const { isAuthenticated } = useConvexAuth();
   const cloudResult = useQuery(
     api.events.listEvents,
-    source === "cloud" && isAuthenticated && conversationId
+    storageMode === "cloud" && isAuthenticated && conversationId
       ? {
           conversationId,
           paginationOpts: { cursor: null, numItems: 200 },
@@ -444,7 +441,7 @@ export const useConversationEvents = (
   const [localEvents, setLocalEvents] = useState<EventRecord[]>([]);
 
   useEffect(() => {
-    if (source !== "local" || !conversationId) {
+    if (storageMode !== "local" || !conversationId) {
       setLocalEvents([]);
       return;
     }
@@ -455,15 +452,15 @@ export const useConversationEvents = (
 
     refresh();
     return subscribeToLocalChatUpdates(refresh);
-  }, [source, conversationId]);
+  }, [storageMode, conversationId]);
 
   return useMemo(() => {
-    if (source === "local") {
+    if (storageMode === "local") {
       return localEvents;
     }
     const events = cloudResult?.page ?? [];
     return [...events].reverse();
-  }, [source, localEvents, cloudResult?.page]);
+  }, [storageMode, localEvents, cloudResult?.page]);
 };
 
 // Hook to extract steps from events
