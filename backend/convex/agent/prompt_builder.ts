@@ -29,6 +29,7 @@ type FetchAgentContextSharedArgs = {
   runId: string;
   threadId?: Id<"threads">;
   maxHistoryMessages?: number;
+  platform?: string;
 };
 
 const normalizeGeneralAgentEngine = (
@@ -77,10 +78,51 @@ const buildSkillsSection = (
   ].join("\n");
 };
 
+const getPlatformGuidance = (platform: string): string => {
+  if (platform === "win32") {
+    return `
+## Platform: Windows
+
+You are running on Windows. Use Windows-compatible commands:
+- Shell: Git Bash (bash syntax works)
+- Open apps: \`start <app>\` or \`cmd /c start "" <app>\` (NOT \`open -a\`)
+- Open URLs: \`start <url>\`
+- File paths: Use forward slashes in bash, or escape backslashes
+- Common paths: \`$USERPROFILE\` (home), \`$APPDATA\`, \`$LOCALAPPDATA\`
+`.trim();
+  }
+
+  if (platform === "darwin") {
+    return `
+## Platform: macOS
+
+You are running on macOS. Use macOS-compatible commands:
+- Shell: bash/zsh
+- Open apps: \`open -a <app>\`
+- Open URLs: \`open <url>\`
+- Common paths: \`$HOME\`, \`~/Library/Application Support\`
+`.trim();
+  }
+
+  if (platform === "linux") {
+    return `
+## Platform: Linux
+
+You are running on Linux. Use Linux-compatible commands:
+- Shell: bash
+- Open apps: \`xdg-open\` or app-specific launchers
+- Open URLs: \`xdg-open <url>\`
+- Common paths: \`$HOME\`, \`~/.config\`, \`~/.local/share\`
+`.trim();
+  }
+
+  return "";
+};
+
 export const buildSystemPrompt = async (
   ctx: ActionCtx,
   agentType: string,
-  options?: { ownerId?: string; conversationId?: Id<"conversations"> },
+  options?: { ownerId?: string; conversationId?: Id<"conversations">; platform?: string },
 ): Promise<PromptBuildResult> => {
   const agent = await ctx.runQuery(internal.agent.agents.getAgentConfigInternal, {
     agentType,
@@ -109,6 +151,14 @@ export const buildSystemPrompt = async (
   const systemParts = [agent.systemPrompt];
   if (skillsSection) {
     systemParts.push(skillsSection);
+  }
+
+  // Platform guidance — stable per device, belongs in system prompt
+  if (options?.platform) {
+    const guidance = getPlatformGuidance(options.platform);
+    if (guidance) {
+      systemParts.push(guidance);
+    }
   }
 
   // Dynamic context — injected into last user message for prompt caching
@@ -156,13 +206,8 @@ export const buildSystemPrompt = async (
       const subagentThreads = activeThreads.filter((t: { name: string }) => t.name !== "Main");
       if (subagentThreads.length > 0) {
         const visibleThreads = subagentThreads.slice(0, MAX_ACTIVE_THREADS_IN_PROMPT);
-        const lines = visibleThreads.map((t: { _id: string; name: string; messageCount: number; lastUsedAt: number }) => {
-          const ageMs = Date.now() - t.lastUsedAt;
-          const age = ageMs < 60_000 ? "just now"
-            : ageMs < 3_600_000 ? `${Math.floor(ageMs / 60_000)}m ago`
-            : ageMs < 86_400_000 ? `${Math.floor(ageMs / 3_600_000)}h ago`
-            : `${Math.floor(ageMs / 86_400_000)}d ago`;
-          return `- **${t.name}** (id: ${t._id}) — ${t.messageCount} msgs, last used ${age}`;
+        const lines = visibleThreads.map((t: { _id: string; name: string }) => {
+          return `- **${t.name}** (id: ${t._id})`;
         });
         if (subagentThreads.length > visibleThreads.length) {
           lines.push(
@@ -178,7 +223,7 @@ export const buildSystemPrompt = async (
     }
   }
 
-  // Inject expression style preference for orchestrator
+  // Expression style — stable preference, belongs in system prompt
   if (agentType === "orchestrator" && options?.ownerId) {
     try {
       const style = await ctx.runQuery(
@@ -186,9 +231,9 @@ export const buildSystemPrompt = async (
         { ownerId: options.ownerId, key: "expression_style" },
       );
       if (style === "none") {
-        dynamicParts.push("The user prefers responses without emoji.");
+        systemParts.push("The user prefers responses without emoji.");
       } else if (style === "emoji") {
-        dynamicParts.push("The user prefers responses with emoji.");
+        systemParts.push("The user prefers responses with emoji.");
       }
     } catch {
       // Preference query failed — skip
@@ -263,6 +308,7 @@ const fetchAgentContextInternalArgs = {
   runId: v.string(),
   threadId: v.optional(v.id("threads")),
   maxHistoryMessages: v.optional(v.number()),
+  platform: v.optional(v.string()),
 };
 
 const fetchAgentContextRuntimeArgs = {
@@ -271,21 +317,24 @@ const fetchAgentContextRuntimeArgs = {
   runId: v.string(),
   threadId: v.optional(v.id("threads")),
   maxHistoryMessages: v.optional(v.number()),
+  platform: v.optional(v.string()),
 };
 
 const fetchLocalAgentContextRuntimeArgs = {
   agentType: v.string(),
   runId: v.string(),
+  platform: v.optional(v.string()),
 };
 
 const fetchAgentContextForOwner = async (
   ctx: ActionCtx,
   args: FetchAgentContextSharedArgs,
 ): Promise<AgentContextResult> => {
-  // 1. Build system prompt (includes skills, device status, threads, core memory)
+  // 1. Build system prompt (includes skills, device status, threads, core memory, platform)
   const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
     ownerId: args.ownerId,
     conversationId: args.conversationId,
+    platform: args.platform,
   });
 
   // 2. Get core memory separately for the local runtime to use
@@ -425,6 +474,7 @@ export const fetchAgentContextForRuntime = action({
       runId: args.runId,
       threadId: args.threadId,
       maxHistoryMessages: args.maxHistoryMessages,
+      platform: args.platform,
     });
   },
 });
@@ -437,6 +487,7 @@ export const fetchLocalAgentContextForRuntime = action({
 
     const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
       ownerId,
+      platform: args.platform,
     });
     const modelDefaults = getModelConfig(args.agentType);
 
