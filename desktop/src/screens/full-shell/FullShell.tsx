@@ -29,7 +29,7 @@ import { ChatColumn } from "./ChatColumn";
 import { useOnboardingOverlay } from "./OnboardingOverlay";
 import type { OnboardingDemo } from "../../components/onboarding/OnboardingCanvas";
 import { useDiscoveryFlow } from "./DiscoveryFlow";
-import { useStreamingChat } from "./use-streaming-chat";
+import { useStreamingChat } from "../../hooks/use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 import { useReturnDetection, formatDuration } from "../../hooks/use-return-detection";
@@ -225,11 +225,10 @@ export const FullShell = () => {
     pendingUserMessageId,
     selfModMap,
     sendMessage,
-    syncWithEvents,
-    processFollowUpQueue,
   } = useStreamingChat({
     conversationId: activeConversationId,
     storageMode: conversationEventsSource,
+    events,
   });
 
   useReturnDetection({
@@ -347,14 +346,6 @@ export const FullShell = () => {
 
     restoredCanvasConversationRef.current = state.conversationId;
   }, [state.conversationId, savedCanvasState, openCanvas, closeCanvas]);
-
-  useEffect(() => {
-    syncWithEvents(events);
-  }, [events, syncWithEvents]);
-
-  useEffect(() => {
-    processFollowUpQueue(events);
-  }, [events, processFollowUpQueue]);
 
   useEffect(() => {
     if (isNearBottomRef.current) {

@@ -1,4 +1,4 @@
-import type { EventRecord } from "../../../hooks/use-conversation-events";
+import type { EventRecord } from "../use-conversation-events";
 
 export type AppendedEventResponse = {
   _id?: string;

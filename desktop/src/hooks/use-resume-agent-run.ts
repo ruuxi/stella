@@ -1,26 +1,6 @@
 import { useEffect, type MutableRefObject } from "react";
 import { useConvexAuth } from "convex/react";
-
-type SelfModAppliedData = {
-  featureId: string;
-  files: string[];
-  batchIndex: number;
-};
-
-type AgentStreamEvent = {
-  type: "stream" | "tool-start" | "tool-end" | "error" | "end";
-  runId: string;
-  seq: number;
-  chunk?: string;
-  toolCallId?: string;
-  toolName?: string;
-  resultPreview?: string;
-  error?: string;
-  fatal?: boolean;
-  finalText?: string;
-  persisted?: boolean;
-  selfModApplied?: SelfModAppliedData;
-};
+import type { AgentStreamEvent } from "./streaming/streaming-types";
 
 interface UseResumeAgentRunOptions {
   activeConversationId: string | null;

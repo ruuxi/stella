@@ -10,7 +10,7 @@ import { useCommandSuggestions, type CommandSuggestion } from "../../hooks/use-c
 import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
-import type { SelfModAppliedData } from "./use-streaming-chat";
+import type { SelfModAppliedData } from "../../hooks/use-streaming-chat";
 
 type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
 
