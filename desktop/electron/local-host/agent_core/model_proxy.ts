@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGitLab } from "@gitlab/gitlab-ai-provider";
 import { createGateway } from "ai";
 import type { LanguageModel } from "ai";
+import { extractProvider as sharedExtractProvider, extractModelName as sharedExtractModelName, getSdkType } from "@stella/shared";
 
 /**
  * Creates a custom fetch wrapper that injects proxy auth for requests
@@ -42,8 +43,9 @@ export function createProxiedModel(
   proxyToken: string,
   modelId: string,
 ): LanguageModel {
-  const provider = modelId.split("/")[0] ?? "anthropic";
-  const modelName = modelId.includes("/") ? modelId.split("/").slice(1).join("/") : modelId;
+  const provider = sharedExtractProvider(modelId) ?? "anthropic";
+  const modelName = sharedExtractModelName(modelId);
+  const sdkType = getSdkType(provider);
   const customFetch = createProxyFetch(proxyBaseUrl, proxyToken, provider, modelId);
 
   switch (provider) {
