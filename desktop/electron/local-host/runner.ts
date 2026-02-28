@@ -261,9 +261,6 @@ export const createLocalHostRunner = ({
     }
   };
 
-  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  const HEARTBEAT_INTERVAL_MS = 30_000;
-
   const sendHeartbeat = async () => {
     if (!signHeartbeatPayload) {
       logError("Heartbeat signing callback missing; skipping heartbeat.");
@@ -284,19 +281,7 @@ export const createLocalHostRunner = ({
     }
   };
 
-  const startHeartbeat = () => {
-    if (heartbeatInterval) return;
-    void sendHeartbeat();
-    heartbeatInterval = setInterval(() => {
-      void sendHeartbeat();
-    }, HEARTBEAT_INTERVAL_MS);
-  };
-
-  const stopHeartbeat = () => {
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-      heartbeatInterval = null;
-    }
+  const sendGoOffline = () => {
     // Best-effort goOffline — fire and forget
     callMutation("agent/device_resolver.goOffline", {}).catch(() => {});
   };
@@ -1186,8 +1171,8 @@ export const createLocalHostRunner = ({
     // Start real-time subscription for tool requests (only if auth is ready)
     startSubscription();
 
-    // Start device heartbeat (only sends if auth is available)
-    startHeartbeat();
+    // Send one-shot connect heartbeat (only sends if auth is available)
+    void sendHeartbeat();
   };
 
   const stop = () => {
@@ -1200,7 +1185,7 @@ export const createLocalHostRunner = ({
       clearTimeout(syncDebounceTimer);
       syncDebounceTimer = null;
     }
-    stopHeartbeat();
+    sendGoOffline();
     stopWatchers();
     stopCoreMemoryWatcher();
     stopSubscription();
