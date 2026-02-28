@@ -6,7 +6,7 @@ import { useDiscoveryFlow } from "./DiscoveryFlow";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockAppendEvent = vi.fn();
+const mockChatStoreAppendEvent = vi.fn(() => Promise.resolve({ _id: "event-123" }));
 const mockSetCoreMemory = vi.fn(() => Promise.resolve(null));
 const mockGetOrCreateDefaultConversation = vi.fn(() =>
   Promise.resolve({ _id: "conv-cloud-default" }),
@@ -18,9 +18,24 @@ vi.mock("convex/react", () => ({
     if (ref === "setCoreMemory") return mockSetCoreMemory;
     if (ref === "getOrCreateDefaultConversation")
       return mockGetOrCreateDefaultConversation;
-    return mockAppendEvent;
+    return vi.fn();
   }),
   useAction: vi.fn(() => mockStartGeneration),
+}));
+
+const mockUseChatStore = vi.fn(() => ({
+  storageMode: "cloud" as const,
+  isLocalStorage: false,
+  cloudFeaturesEnabled: true,
+  appendEvent: mockChatStoreAppendEvent,
+  appendAgentEvent: vi.fn(),
+  uploadAttachments: vi.fn(),
+  buildHistory: vi.fn(),
+  streamStrategy: "local-with-http-fallback" as const,
+}));
+
+vi.mock("../../app/state/chat-store", () => ({
+  useChatStore: (...args: unknown[]) => mockUseChatStore(...args),
 }));
 
 vi.mock("../../convex/api", () => ({
@@ -58,8 +73,33 @@ function defaultOptions() {
   return {
     isAuthenticated: false,
     conversationId: null as string | null,
-    storageMode: "cloud" as const,
   };
+}
+
+function setCloudMode() {
+  mockUseChatStore.mockReturnValue({
+    storageMode: "cloud",
+    isLocalStorage: false,
+    cloudFeaturesEnabled: true,
+    appendEvent: mockChatStoreAppendEvent,
+    appendAgentEvent: vi.fn(),
+    uploadAttachments: vi.fn(),
+    buildHistory: vi.fn(),
+    streamStrategy: "local-with-http-fallback",
+  });
+}
+
+function setLocalMode() {
+  mockUseChatStore.mockReturnValue({
+    storageMode: "local",
+    isLocalStorage: true,
+    cloudFeaturesEnabled: false,
+    appendEvent: mockChatStoreAppendEvent,
+    appendAgentEvent: vi.fn(),
+    uploadAttachments: vi.fn(),
+    buildHistory: vi.fn(),
+    streamStrategy: "local-only",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +111,7 @@ describe("useDiscoveryFlow", () => {
     vi.clearAllMocks();
     localStorage.clear();
     delete (window as unknown as Record<string, unknown>).electronAPI;
+    setCloudMode();
   });
 
   afterEach(() => {
@@ -104,43 +145,27 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
-        storageMode: "cloud" as const,
       }),
     );
 
-    // The withBrowserDiscoveryCategory is called internally by
-    // handleDiscoveryConfirm. Without a selected browser, categories
-    // are left as-is. We verify the hook can be called without error.
     act(() => {
       result.current.handleDiscoveryConfirm(["dev_environment"]);
     });
-
-    // The function should complete without error; the effect will fire
-    // but since electronAPI is not available, it will silently fail.
   });
 
   it("prepends browsing_bookmarks when browser is selected in localStorage", () => {
     localStorage.setItem(BROWSER_SELECTION_KEY, "chrome");
 
-    // We test this indirectly: when handleDiscoveryConfirm is called with
-    // categories that don't include "browsing_bookmarks", the internal
-    // withBrowserDiscoveryCategory should prepend it. The effect then runs
-    // with the augmented categories. We verify no errors occur.
     const { result } = renderHook(() =>
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
-        storageMode: "cloud" as const,
       }),
     );
 
     act(() => {
       result.current.handleDiscoveryConfirm(["dev_environment"]);
     });
-
-    // The hook accepted the call successfully. The internal state was set
-    // with ["browsing_bookmarks", "dev_environment"] by
-    // withBrowserDiscoveryCategory.
   });
 
   it("does not duplicate browsing_bookmarks if already in categories", () => {
@@ -150,19 +175,15 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
-        storageMode: "cloud" as const,
       }),
     );
 
-    // Calling with browsing_bookmarks already present should not duplicate
     act(() => {
       result.current.handleDiscoveryConfirm([
         "browsing_bookmarks",
         "dev_environment",
       ]);
     });
-
-    // The hook accepted the call without error.
   });
 
   it("stable handleDiscoveryConfirm reference across renders", () => {
@@ -187,7 +208,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: false,
         conversationId: "conv-1",
-        storageMode: "cloud" as const,
       }),
     );
 
@@ -195,9 +215,7 @@ describe("useDiscoveryFlow", () => {
       result.current.handleDiscoveryConfirm(["dev_environment"]);
     });
 
-    // Allow any microtasks to run
     await vi.waitFor(() => {
-      // Since not authenticated, effect should not have called checkCoreMemoryExists
       expect(checkCoreMemoryExists).not.toHaveBeenCalled();
     });
   });
@@ -212,7 +230,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: null,
-        storageMode: "cloud" as const,
       }),
     );
 
@@ -239,7 +256,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
-        storageMode: "cloud" as const,
       }),
     );
 
@@ -271,7 +287,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
-        storageMode: "cloud" as const,
       }),
     );
 
@@ -320,7 +335,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-1",
-        storageMode: "cloud" as const,
       }),
     );
 
@@ -337,16 +351,16 @@ describe("useDiscoveryFlow", () => {
         "User is a developer",
       );
       expect(getOrCreateDeviceId).toHaveBeenCalled();
-      // appendEvent should be called twice: assistant_message + welcome_suggestions
-      expect(mockAppendEvent).toHaveBeenCalledTimes(2);
-      expect(mockAppendEvent).toHaveBeenCalledWith(
+      // chatStore.appendEvent should be called twice: assistant_message + welcome_suggestions
+      expect(mockChatStoreAppendEvent).toHaveBeenCalledTimes(2);
+      expect(mockChatStoreAppendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           conversationId: "conv-1",
           type: "assistant_message",
           payload: { text: "Hello! Welcome to Stella." },
         }),
       );
-      expect(mockAppendEvent).toHaveBeenCalledWith(
+      expect(mockChatStoreAppendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           conversationId: "conv-1",
           type: "welcome_suggestions",
@@ -392,7 +406,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-2",
-        storageMode: "cloud" as const,
       }),
     );
 
@@ -402,8 +415,8 @@ describe("useDiscoveryFlow", () => {
 
     await vi.waitFor(() => {
       // Only assistant_message, no welcome_suggestions (empty array is falsy via .length)
-      expect(mockAppendEvent).toHaveBeenCalledTimes(1);
-      expect(mockAppendEvent).toHaveBeenCalledWith(
+      expect(mockChatStoreAppendEvent).toHaveBeenCalledTimes(1);
+      expect(mockChatStoreAppendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "assistant_message",
         }),
@@ -412,6 +425,8 @@ describe("useDiscoveryFlow", () => {
   });
 
   it("starts generation in local mode when core memory is synthesized", async () => {
+    setLocalMode();
+
     const { synthesizeCoreMemory } = await import(
       "../../services/synthesis"
     );
@@ -433,7 +448,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-local-1",
-        storageMode: "local" as const,
       }),
     );
 
@@ -452,6 +466,8 @@ describe("useDiscoveryFlow", () => {
   });
 
   it("runs discovery synthesis in unauthenticated local mode", async () => {
+    setLocalMode();
+
     const { synthesizeCoreMemory } = await import(
       "../../services/synthesis"
     );
@@ -474,7 +490,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: false,
         conversationId: "conv-local-unauth",
-        storageMode: "local" as const,
       }),
     );
 
@@ -514,7 +529,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-3",
-        storageMode: "cloud" as const,
       }),
     );
 
@@ -523,7 +537,7 @@ describe("useDiscoveryFlow", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mockAppendEvent).not.toHaveBeenCalled();
+      expect(mockChatStoreAppendEvent).not.toHaveBeenCalled();
     });
   });
 
@@ -538,7 +552,6 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow({
         isAuthenticated: true,
         conversationId: "conv-4",
-        storageMode: "cloud" as const,
       }),
     );
 
@@ -548,7 +561,7 @@ describe("useDiscoveryFlow", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mockAppendEvent).not.toHaveBeenCalled();
+      expect(mockChatStoreAppendEvent).not.toHaveBeenCalled();
     });
   });
 
@@ -576,7 +589,6 @@ describe("useDiscoveryFlow", () => {
         initialProps: {
           isAuthenticated: true,
           conversationId: "conv-5",
-          storageMode: "cloud" as const,
         },
       },
     );
@@ -593,7 +605,6 @@ describe("useDiscoveryFlow", () => {
     rerender({
       isAuthenticated: true,
       conversationId: "conv-5",
-      storageMode: "cloud" as const,
     });
 
     // Still only called once

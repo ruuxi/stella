@@ -39,6 +39,10 @@ vi.mock("../app/AppBootstrap", () => ({
   AppBootstrap: () => <div data-testid="app-bootstrap" />,
 }));
 
+vi.mock("../app/state/chat-store", () => ({
+  ChatStoreProvider: ({ children }: any) => <>{children}</>,
+}));
+
 vi.mock("../app/CredentialRequestLayer", () => ({
   CredentialRequestLayer: () => <div data-testid="credential-request-layer" />,
 }));

@@ -8,7 +8,7 @@ import { api } from "../../convex/api";
 import { getOrCreateDeviceId } from "../../services/device";
 import { synthesizeCoreMemory } from "../../services/synthesis";
 import { selectDefaultSkills } from "../../services/skill-selection";
-import { appendLocalEvent } from "../../services/local-chat-store";
+import { useChatStore } from "../../app/state/chat-store";
 
 type DiscoveryCategory =
   | "browsing_bookmarks"
@@ -31,16 +31,15 @@ const withBrowserDiscoveryCategory = (
 type UseDiscoveryFlowOptions = {
   isAuthenticated: boolean;
   conversationId: string | null;
-  storageMode: "cloud" | "local";
 };
 
 export function useDiscoveryFlow({
   isAuthenticated,
   conversationId,
-  storageMode,
 }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
-  const appendEvent = useMutation(api.events.appendEvent);
+  const chatStore = useChatStore();
+  const { storageMode, isLocalStorage } = chatStore;
   const setCoreMemory = useMutation(api.data.preferences.setCoreMemory);
   const getOrCreateDefaultConversation = useMutation(
     api.conversations.getOrCreateDefaultConversation,
@@ -106,39 +105,20 @@ export function useDiscoveryFlow({
         }
 
         if (synthesisResult.welcomeMessage) {
-          if (storageMode === "local") {
-            appendLocalEvent({
-              conversationId: activeConversationId,
-              type: "assistant_message",
-              deviceId,
-              payload: { text: synthesisResult.welcomeMessage },
-            });
-            if (synthesisResult.suggestions?.length) {
-              appendLocalEvent({
-                conversationId: activeConversationId,
-                type: "welcome_suggestions",
-                deviceId,
-                payload: { suggestions: synthesisResult.suggestions },
-              });
-            }
-          } else {
-            const eventPayload = {
-              conversationId: activeConversationId,
-              type: "assistant_message",
-              deviceId,
-              payload: { text: synthesisResult.welcomeMessage },
-            };
-            await appendEvent(eventPayload);
+          await chatStore.appendEvent({
+            conversationId: activeConversationId,
+            type: "assistant_message",
+            deviceId,
+            payload: { text: synthesisResult.welcomeMessage },
+          });
 
-            if (synthesisResult.suggestions?.length) {
-              const suggestionPayload = {
-                conversationId: activeConversationId,
-                type: "welcome_suggestions",
-                deviceId,
-                payload: { suggestions: synthesisResult.suggestions },
-              };
-              await appendEvent(suggestionPayload);
-            }
+          if (synthesisResult.suggestions?.length) {
+            await chatStore.appendEvent({
+              conversationId: activeConversationId,
+              type: "welcome_suggestions",
+              deviceId,
+              payload: { suggestions: synthesisResult.suggestions },
+            });
           }
         }
 
@@ -148,7 +128,7 @@ export function useDiscoveryFlow({
 
           // In local storage mode we still generate dashboard pages in the cloud.
           // Resolve the canonical default conversation ID for reliable ownership checks.
-          if (storageMode === "local") {
+          if (isLocalStorage) {
             try {
               const defaultConversation = await getOrCreateDefaultConversation({});
               if (defaultConversation?._id) {
@@ -164,7 +144,7 @@ export function useDiscoveryFlow({
               conversationId: generationConversationId,
               coreMemory: synthesisResult.coreMemory,
               targetDeviceId: deviceId,
-              force: storageMode === "local",
+              force: isLocalStorage,
             }).catch((error) => {
               console.warn("[DiscoveryFlow] Dashboard generation trigger failed:", error);
             });
@@ -181,7 +161,8 @@ export function useDiscoveryFlow({
     isAuthenticated,
     activeConversationId,
     storageMode,
-    appendEvent,
+    isLocalStorage,
+    chatStore,
     setCoreMemory,
     getOrCreateDefaultConversation,
     startGeneration,

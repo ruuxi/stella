@@ -8,7 +8,6 @@ import { useWorkspace, type CanvasPayload } from '@/app/state/workspace-state'
 import { Spinner } from '@/components/spinner'
 import type { OnboardingDemo } from '@/components/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/types/ui'
-import type { ConversationEventsSource } from '@/hooks/use-conversation-events'
 import { HomeView } from '@/views/home/HomeView'
 
 const PanelRenderer = lazy(() => import('@/components/canvas/renderers/panel'))
@@ -38,7 +37,6 @@ type WorkspaceAreaProps = {
   onStoreBack: () => void
   onComposePrompt: (text: string) => void
   conversationId?: string
-  eventsSource?: ConversationEventsSource
 }
 
 export function WorkspaceArea({
@@ -48,7 +46,6 @@ export function WorkspaceArea({
   onStoreBack,
   onComposePrompt,
   conversationId,
-  eventsSource,
 }: WorkspaceAreaProps) {
   const { state, closeCanvas } = useWorkspace()
   const { canvas } = state
@@ -106,7 +103,7 @@ export function WorkspaceArea({
   return (
     <div className="workspace-area">
       <div className="workspace-content workspace-content--full">
-        <HomeView conversationId={conversationId} eventsSource={eventsSource} />
+        <HomeView conversationId={conversationId} />
       </div>
     </div>
   )

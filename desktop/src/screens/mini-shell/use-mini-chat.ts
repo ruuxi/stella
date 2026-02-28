@@ -1,13 +1,11 @@
 /**
  * Mini-shell chat hook — thin composition layer over the shared
  * useStreamingChat hook. Owns mini-shell-specific UI state (message,
- * expanded) and derives storageMode / events internally.
+ * expanded) and derives events internally.
  */
 
 import { useCallback, useState } from "react";
-import { useConvexAuth, useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
-import { api } from "../../convex/api";
 import { useConversationEvents } from "../../hooks/use-conversation-events";
 import { useStreamingChat } from "../../hooks/use-streaming-chat";
 import type { ChatContext } from "../../types/electron";
@@ -22,27 +20,8 @@ export function useMiniChat(opts: {
   const { state } = useUiState();
   const activeConversationId = state.conversationId;
 
-  // ---- Derive storageMode ----
-  const { isAuthenticated } = useConvexAuth();
-  const accountMode = useQuery(
-    api.data.preferences.getAccountMode,
-    isAuthenticated ? {} : "skip",
-  ) as "private_local" | "connected" | undefined;
-  const syncMode = useQuery(
-    api.data.preferences.getSyncMode,
-    isAuthenticated && accountMode === "connected" ? {} : "skip",
-  ) as "on" | "off" | undefined;
-  const storageMode =
-    isAuthenticated &&
-    accountMode === "connected" &&
-    (syncMode ?? "on") !== "off"
-      ? "cloud"
-      : "local";
-
   // ---- Events subscription ----
-  const events = useConversationEvents(activeConversationId ?? undefined, {
-    source: storageMode,
-  });
+  const events = useConversationEvents(activeConversationId ?? undefined);
 
   // ---- Shared streaming engine ----
   const {
@@ -54,7 +33,6 @@ export function useMiniChat(opts: {
     sendMessage: sendMessageCore,
   } = useStreamingChat({
     conversationId: activeConversationId,
-    storageMode,
     events,
   });
 

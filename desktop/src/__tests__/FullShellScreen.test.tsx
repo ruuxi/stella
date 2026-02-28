@@ -83,8 +83,23 @@ vi.mock("../theme/theme-context", () => ({
 }));
 
 vi.mock("../hooks/use-conversation-events", () => ({
-  useConversationEvents: (conversationId?: string, options?: { source?: "cloud" | "local" }) =>
-    mockUseConversationEvents(conversationId, options),
+  useConversationEvents: (conversationId?: string) =>
+    mockUseConversationEvents(conversationId),
+}));
+
+const mockUseChatStore = vi.fn(() => ({
+  storageMode: "cloud" as const,
+  isLocalStorage: false,
+  cloudFeaturesEnabled: true,
+  appendEvent: vi.fn(),
+  appendAgentEvent: vi.fn(),
+  uploadAttachments: vi.fn(),
+  buildHistory: vi.fn(),
+  streamStrategy: "local-with-http-fallback" as const,
+}));
+
+vi.mock("../app/state/chat-store", () => ({
+  useChatStore: (...args: unknown[]) => mockUseChatStore(...args),
 }));
 
 vi.mock("../hooks/use-canvas-commands", () => ({
@@ -307,40 +322,37 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(workspace).toHaveAttribute("data-view", "store");
   });
 
-  it("uses local conversation storage when connected mode has sync off", () => {
-    vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
-      if (args === "skip") return undefined;
-      if (ref === "preferences:getAccountMode") return "connected";
-      if (ref === "preferences:getSyncMode") return "off";
-      return undefined;
-    });
-
+  it("passes conversationId to useConversationEvents without source option", () => {
     render(<FullShell />);
-    expect(mockUseConversationEvents).toHaveBeenCalledWith("conv-123", { source: "local" });
-    expect(mockUseStreamingChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: "conv-123",
-        storageMode: "local",
-      }),
-    );
+    expect(mockUseConversationEvents).toHaveBeenCalledWith("conv-123");
   });
 
-  it("uses local conversation storage when account mode is private_local", () => {
-    vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
-      if (args === "skip") return undefined;
-      if (ref === "preferences:getAccountMode") return "private_local";
-      if (ref === "preferences:getSyncMode") return "on";
-      return undefined;
-    });
-
+  it("passes conversationId to useStreamingChat without storageMode", () => {
     render(<FullShell />);
-    expect(mockUseConversationEvents).toHaveBeenCalledWith("conv-123", { source: "local" });
     expect(mockUseStreamingChat).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: "conv-123",
-        storageMode: "local",
       }),
     );
+    // storageMode is no longer passed — it comes from ChatStoreProvider
+    const args = mockUseStreamingChat.mock.calls[0][0] as Record<string, unknown>;
+    expect(args).not.toHaveProperty("storageMode");
+  });
+
+  it("reads cloudFeaturesEnabled from useChatStore", () => {
+    mockUseChatStore.mockReturnValue({
+      storageMode: "local",
+      isLocalStorage: true,
+      cloudFeaturesEnabled: false,
+      appendEvent: vi.fn(),
+      appendAgentEvent: vi.fn(),
+      uploadAttachments: vi.fn(),
+      buildHistory: vi.fn(),
+      streamStrategy: "local-only",
+    });
+
+    render(<FullShell />);
+    expect(mockUseChatStore).toHaveBeenCalled();
   });
 
   it("toggles store view via sidebar onStore", () => {
