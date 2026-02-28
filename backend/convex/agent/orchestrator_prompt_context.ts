@@ -1,16 +1,17 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { hashString } from "../lib/string_hash";
 
 export type PromptSummaryPair = Array<{ role: "user" | "assistant"; content: string }>;
 
 export type OrchestratorPromptContext = {
   summaryPair: PromptSummaryPair;
   reminderText: string;
-  reminderHash: string;
   shouldInjectDynamicReminder: boolean;
 };
+
+/** Inject the dynamic reminder every N tokens of conversation output. */
+const REMINDER_TOKEN_INTERVAL = 25_000;
 
 type BuildOrchestratorPromptContextArgs = {
   conversation: Doc<"conversations">;
@@ -51,21 +52,22 @@ export const buildOrchestratorPromptContext = async (
     return {
       summaryPair,
       reminderText: "",
-      reminderHash: "",
       shouldInjectDynamicReminder: false,
     };
   }
 
-  const reminderHash = hashString(reminderText);
+  const tokensSince = args.conversation.reminderTokensSinceLastInjection;
+  const forced = args.conversation.forceReminderOnNextTurn === true;
+  const neverInjected = tokensSince === undefined || tokensSince === null;
+
   const shouldInjectDynamicReminder =
-    !args.activeThreadId ||
-    args.conversation.orchestratorReminderHash !== reminderHash ||
-    args.conversation.orchestratorReminderThreadId !== args.activeThreadId;
+    forced ||
+    neverInjected ||
+    tokensSince >= REMINDER_TOKEN_INTERVAL;
 
   return {
     summaryPair,
     reminderText,
-    reminderHash,
     shouldInjectDynamicReminder,
   };
 };

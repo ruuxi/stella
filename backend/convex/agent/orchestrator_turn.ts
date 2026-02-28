@@ -85,7 +85,6 @@ type OrchestratorModelMessage = {
 
 type ReminderState = {
   shouldInjectDynamicReminder: boolean;
-  reminderHash: string;
 };
 
 export type PreparedOrchestratorTurn = {
@@ -265,7 +264,6 @@ export const prepareOrchestratorTurn = async (
     threadUserMessage: args.userPayload.text,
     reminderState: {
       shouldInjectDynamicReminder: orchestratorContext.shouldInjectDynamicReminder,
-      reminderHash: orchestratorContext.reminderHash,
     },
   };
 };
@@ -374,15 +372,19 @@ export const finalizeOrchestratorTurn = async (
     await persistThreadMessages();
   }
 
-  if (
-    args.reminderState.shouldInjectDynamicReminder &&
-    args.reminderState.reminderHash &&
-    args.activeThreadId
-  ) {
-    await ctx.runMutation(internal.conversations.markOrchestratorReminderSeen, {
+  // Update the reminder token counter:
+  // - If we injected the reminder this turn, reset to 0
+  // - Otherwise, accumulate the turn's output tokens
+  const turnOutputTokens = args.usage?.outputTokens ?? 0;
+  if (args.reminderState.shouldInjectDynamicReminder) {
+    await ctx.runMutation(internal.conversations.updateReminderTokenCounter, {
       conversationId: args.conversationId,
-      threadId: args.activeThreadId,
-      reminderHash: args.reminderState.reminderHash,
+      resetTo: 0,
+    });
+  } else if (turnOutputTokens > 0) {
+    await ctx.runMutation(internal.conversations.updateReminderTokenCounter, {
+      conversationId: args.conversationId,
+      incrementBy: turnOutputTokens,
     });
   }
 

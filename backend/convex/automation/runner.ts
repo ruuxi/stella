@@ -180,7 +180,7 @@ export async function runAgentTurn({
   if (agentType === "orchestrator" && orchestratorTurn) {
     const response = await result.response;
     const reminderState = transient
-      ? { shouldInjectDynamicReminder: false, reminderHash: "" }
+      ? { shouldInjectDynamicReminder: false }
       : orchestratorTurn.reminderState;
     await finalizeOrchestratorTurn(ctx, {
       conversationId,

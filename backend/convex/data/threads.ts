@@ -239,11 +239,13 @@ export const createThread = internalMutation({
       )
       .collect();
 
+    let evictedThreadName: string | null = null;
     if (activeThreads.length >= MAX_THREADS_PER_CONVERSATION) {
       // Evict the oldest (least recently used)
       const sorted = activeThreads.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
       const oldest = sorted[0];
       if (oldest) {
+        evictedThreadName = oldest.name;
         await ctx.db.patch(oldest._id, {
           status: "archived",
           closedAt: Date.now(),
@@ -262,7 +264,7 @@ export const createThread = internalMutation({
       lastUsedAt: now,
     });
 
-    return threadId;
+    return { threadId, evictedThreadName };
   },
 });
 
@@ -717,6 +719,7 @@ export const finalizeThreadCompaction = internalMutation({
 
     await ctx.db.patch(thread.conversationId, {
       activeThreadId: rolloverThreadId,
+      forceReminderOnNextTurn: true,
       updatedAt: now,
     });
 
