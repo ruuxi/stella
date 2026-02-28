@@ -4,8 +4,7 @@
  * Manages the full lifecycle of a voice-to-voice session:
  * - WebRTC peer connection + audio I/O
  * - Data channel for sending/receiving JSON events
- * - Tool execution bridging (local IPC + backend HTTP)
- * - Task polling for subagent result delivery
+ * - Single-tool delegation to the orchestrator via Electron IPC
  * - Conversation transcript logging
  */
 
@@ -33,36 +32,6 @@ export type VoiceSessionEvent =
 
 type VoiceSessionListener = (event: VoiceSessionEvent) => void;
 
-/** Tools that execute locally via Electron IPC (toolHost). */
-const LOCAL_TOOLS = new Set([
-  "Read",
-  "Write",
-  "Edit",
-  "Bash",
-  "Glob",
-  "Grep",
-  "TaskCreate",
-  "TaskOutput",
-  "TaskCancel",
-]);
-
-/** Tools that need backend execution via Convex HTTP (/api/voice/tool). */
-const BACKEND_TOOLS = new Set([
-  "RecallMemories",
-  "SaveMemory",
-  "OpenCanvas",
-  "CloseCanvas",
-  "HeartbeatGet",
-  "HeartbeatUpsert",
-  "HeartbeatRun",
-  "CronList",
-  "CronAdd",
-  "CronUpdate",
-  "CronRemove",
-  "CronRun",
-  "SpawnRemoteMachine",
-]);
-
 // ---------------------------------------------------------------------------
 // Session
 // ---------------------------------------------------------------------------
@@ -79,10 +48,6 @@ export class RealtimeVoiceSession {
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
   private conversationId: string | null = null;
-
-  // Active subagent tasks being polled
-  private activeTasks = new Map<string, number>(); // taskId -> startedAt
-  private taskPollTimer: ReturnType<typeof setInterval> | null = null;
 
   // Accumulated transcript fragments
   private assistantTranscriptBuffer = "";
@@ -226,9 +191,6 @@ export class RealtimeVoiceSession {
       this.setupAudioAnalyser();
 
       this.setState("connected");
-
-      // Start task polling
-      this.startTaskPolling();
     } catch (err) {
       if (this.destroyed) return;
       console.error("[RealtimeVoice] connect failed:", err);
@@ -292,7 +254,6 @@ export class RealtimeVoiceSession {
     this.audioElement = new Audio();
     this.audioElement.srcObject = stream;
     this.audioElement.autoplay = true;
-    // Ensure playback starts
     this.audioElement.play().catch((err) => {
       console.error("[RealtimeVoice] audio play failed:", err);
     });
@@ -327,11 +288,9 @@ export class RealtimeVoiceSession {
     switch (type) {
       case "session.created":
       case "session.updated":
-        // Session lifecycle — no action needed
         break;
 
       case "response.output_item.done": {
-        // Check for function calls
         const item = event.item as Record<string, unknown> | undefined;
         if (item?.type === "function_call") {
           void this.handleFunctionCall(item);
@@ -360,7 +319,6 @@ export class RealtimeVoiceSession {
             text: transcript,
             isFinal: true,
           });
-          // Log assistant message to Convex
           void this.logTranscript("assistant_message", transcript);
           this.assistantTranscriptBuffer = "";
         }
@@ -375,7 +333,6 @@ export class RealtimeVoiceSession {
             text: transcript,
             isFinal: true,
           });
-          // Log user message to Convex
           void this.logTranscript("user_message", transcript);
         }
         break;
@@ -408,13 +365,12 @@ export class RealtimeVoiceSession {
       }
 
       default:
-        // Ignore unhandled event types
         break;
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Function call execution
+  // Function call execution — single orchestrator_chat tool
   // ---------------------------------------------------------------------------
 
   private async handleFunctionCall(item: Record<string, unknown>) {
@@ -433,14 +389,27 @@ export class RealtimeVoiceSession {
 
     let result: string;
     try {
-      result = await this.executeTool(name, args);
+      if (name === "orchestrator_chat") {
+        const message = (args.message as string) ?? "";
+        const api = window.electronAPI;
+        if (!api?.voiceOrchestratorChat) {
+          result = "Error: Electron API not available";
+        } else {
+          result = await api.voiceOrchestratorChat({
+            conversationId: this.conversationId ?? "voice-rtc",
+            message,
+          });
+        }
+      } else {
+        result = `Unknown tool: ${name}`;
+      }
     } catch (err) {
       result = `Error: ${(err as Error).message}`;
     }
 
     this.emit({ type: "tool-end", name, callId, result });
 
-    // Send function call output back
+    // Send function call output back to the Realtime API
     this.sendEvent({
       type: "conversation.item.create",
       item: {
@@ -450,137 +419,7 @@ export class RealtimeVoiceSession {
       },
     });
 
-    // Trigger model to continue
-    this.sendEvent({ type: "response.create" });
-  }
-
-  private async executeTool(
-    name: string,
-    args: Record<string, unknown>
-  ): Promise<string> {
-    // NoResponse — just return silently
-    if (name === "NoResponse") {
-      return "OK";
-    }
-
-    // Local tools — execute via Electron IPC
-    if (LOCAL_TOOLS.has(name)) {
-      const api = window.electronAPI;
-      if (!api?.voiceRtcExecuteTool) {
-        return `Error: Electron API not available for tool ${name}`;
-      }
-      const result = await api.voiceRtcExecuteTool(name, args);
-      const resultStr = typeof result === "string"
-        ? result
-        : JSON.stringify(result ?? "OK");
-
-      // Track subagent tasks for polling
-      if (name === "TaskCreate") {
-        const taskIdMatch = resultStr.match(/Task ID:\s*(\S+)/);
-        if (taskIdMatch?.[1]) {
-          this.activeTasks.set(taskIdMatch[1], Date.now());
-        }
-      }
-
-      return resultStr;
-    }
-
-    // Backend tools — execute via Convex HTTP
-    if (BACKEND_TOOLS.has(name)) {
-      return await this.executeBackendTool(name, args);
-    }
-
-    return `Error: Unknown tool ${name}`;
-  }
-
-  private async executeBackendTool(
-    name: string,
-    args: Record<string, unknown>
-  ): Promise<string> {
-    return await this.callBackendToolAction(name, args);
-  }
-
-  private async callBackendToolAction(
-    name: string,
-    args: Record<string, unknown>
-  ): Promise<string> {
-    const { endpoint, headers } = await createServiceRequest("/api/voice/tool");
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        conversationId: this.conversationId,
-        toolName: name,
-        toolArgs: args,
-      }),
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      return `Error executing ${name}: ${errorText}`;
-    }
-
-    const data = (await res.json()) as { result?: string; error?: string };
-    return data.result ?? data.error ?? "OK";
-  }
-
-  // ---------------------------------------------------------------------------
-  // Task polling (for subagent results)
-  // ---------------------------------------------------------------------------
-
-  private startTaskPolling() {
-    if (this.taskPollTimer) return;
-    this.taskPollTimer = setInterval(() => {
-      void this.checkActiveTasks();
-    }, 3000);
-  }
-
-  private stopTaskPolling() {
-    if (this.taskPollTimer) {
-      clearInterval(this.taskPollTimer);
-      this.taskPollTimer = null;
-    }
-  }
-
-  private async checkActiveTasks() {
-    if (this.activeTasks.size === 0) return;
-
-    for (const [taskId] of this.activeTasks) {
-      try {
-        const result = await this.callBackendToolAction("TaskOutput", {
-          task_id: taskId,
-        });
-        if (result.startsWith("Task completed.") || result.startsWith("Task failed.")) {
-          this.activeTasks.delete(taskId);
-          this.injectTaskResult(taskId, result);
-        }
-        // If still running, continue polling
-      } catch (err) {
-        console.error(
-          `[RealtimeVoice] task poll error for ${taskId}:`,
-          err
-        );
-      }
-    }
-  }
-
-  private injectTaskResult(taskId: string, result: string) {
-    // Inject result as a user-role message so the model responds to it
-    this.sendEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: `[System: Subagent task completed]\nTask ID: ${taskId}\n${result}`,
-          },
-        ],
-      },
-    });
-
-    // Trigger the model to respond with the result
+    // Trigger model to continue (speak the result)
     this.sendEvent({ type: "response.create" });
   }
 
@@ -614,9 +453,6 @@ export class RealtimeVoiceSession {
   // ---------------------------------------------------------------------------
 
   private cleanup() {
-    this.stopTaskPolling();
-    this.activeTasks.clear();
-
     if (this.dc) {
       this.dc.close();
       this.dc = null;

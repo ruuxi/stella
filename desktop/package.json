@@ -25,11 +25,13 @@
     "emotes:optimize": "node scripts/optimize-emotes.mjs"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^3.0.82",
+    "@ai-sdk/openai": "^3.0.36",
+    "@ai-sdk/provider-utils": "^4.0.15",
     "@convex-dev/better-auth": "^0.10.0",
+    "@gitlab/gitlab-ai-provider": "^3.6.0",
     "@google/genai": "^1.43.0",
     "@hookform/resolvers": "^5.2.2",
-    "@ai-sdk/amazon-bedrock": "^3.0.82",
-    "@gitlab/gitlab-ai-provider": "^3.6.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
