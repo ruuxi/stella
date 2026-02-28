@@ -230,7 +230,7 @@ vi.mock("../screens/full-shell/DiscoveryFlow", () => ({
   })),
 }));
 
-vi.mock("../screens/full-shell/use-streaming-chat", () => ({
+vi.mock("../hooks/use-streaming-chat", () => ({
   useStreamingChat: (options: unknown) => mockUseStreamingChat(options),
 }));
 

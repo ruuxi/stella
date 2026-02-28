@@ -12,7 +12,7 @@ import {
 } from "./MessageTurn";
 import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import { useTurnViewModels } from "./use-turn-view-models";
-import type { SelfModAppliedData } from "../full-shell/use-streaming-chat";
+import type { SelfModAppliedData } from "../../hooks/use-streaming-chat";
 
 type Props = {
   events: EventRecord[];

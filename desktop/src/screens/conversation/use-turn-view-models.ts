@@ -16,7 +16,7 @@ import {
   getAttachments,
   getChannelEnvelope,
 } from "./MessageTurn";
-import type { SelfModAppliedData } from "../full-shell/use-streaming-chat";
+import type { SelfModAppliedData } from "../../hooks/use-streaming-chat";
 
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   if (!event?.payload || typeof event.payload !== "object") {

@@ -13,15 +13,15 @@ vi.mock("convex/react", () => ({
   useAction: vi.fn(() => vi.fn()),
 }));
 
-vi.mock("../../services/model-gateway", () => ({
+vi.mock("../services/model-gateway", () => ({
   streamChat: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock("../../services/device", () => ({
+vi.mock("../services/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
-vi.mock("../../hooks/use-raf-state", async () => {
+vi.mock("./use-raf-state", async () => {
   const { useState, useRef, useCallback } = await import("react");
   return {
     useRafStringAccumulator: () => {
@@ -44,9 +44,9 @@ vi.mock("../../hooks/use-raf-state", async () => {
 });
 
 import { useStreamingChat } from "./use-streaming-chat";
-import { streamChat } from "../../services/model-gateway";
-import { getOrCreateDeviceId } from "../../services/device";
-import type { EventRecord } from "../../hooks/use-conversation-events";
+import { streamChat } from "../services/model-gateway";
+import { getOrCreateDeviceId } from "../services/device";
+import type { EventRecord } from "./use-conversation-events";
 
 // ----------------------------------------------------------------
 // Helper: build an EventRecord
@@ -83,7 +83,7 @@ describe("useStreamingChat", () => {
   describe("initial state", () => {
     it("returns correct initial values", () => {
       const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
 
       expect(result.current.streamingText).toBe("");
@@ -94,14 +94,10 @@ describe("useStreamingChat", () => {
   });
 
   // ----------------------------------------------------------------
-  // findQueuedFollowUp (pure logic)
+  // Follow-up queue (via internal effect)
   // ----------------------------------------------------------------
-  describe("findQueuedFollowUp (via processFollowUpQueue behavior)", () => {
-    it("returns null via processFollowUpQueue when no follow_up events exist", () => {
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
-      );
-
+  describe("follow-up queue processing", () => {
+    it("does not start stream when no follow_up events exist", () => {
       const events: EventRecord[] = [
         makeEvent({
           _id: "msg-1",
@@ -110,20 +106,14 @@ describe("useStreamingChat", () => {
         }),
       ];
 
-      // processFollowUpQueue won't start a stream because there is no queued follow-up
-      act(() => {
-        result.current.processFollowUpQueue(events);
-      });
+      renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events }),
+      );
 
-      // streamChat should NOT have been called
       expect(streamChat).not.toHaveBeenCalled();
     });
 
-    it("detects an unresponded follow_up user_message and starts stream", () => {
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
-      );
-
+    it("auto-starts stream for unresponded follow_up", async () => {
       const events: EventRecord[] = [
         makeEvent({
           _id: "msg-1",
@@ -132,18 +122,19 @@ describe("useStreamingChat", () => {
         }),
       ];
 
-      act(() => {
-        result.current.processFollowUpQueue(events);
+      renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events }),
+      );
+
+      // The follow-up effect uses a microtask, so we need to flush it
+      await act(async () => {
+        await Promise.resolve();
       });
 
       expect(streamChat).toHaveBeenCalledTimes(1);
     });
 
-    it("skips follow_up that already has an assistant response", () => {
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
-      );
-
+    it("skips follow_up that already has an assistant response", async () => {
       const events: EventRecord[] = [
         makeEvent({
           _id: "msg-1",
@@ -157,18 +148,18 @@ describe("useStreamingChat", () => {
         }),
       ];
 
-      act(() => {
-        result.current.processFollowUpQueue(events);
+      renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
       });
 
       expect(streamChat).not.toHaveBeenCalled();
     });
 
-    it("picks the first unresponded follow_up", () => {
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
-      );
-
+    it("picks the first unresponded follow_up", async () => {
       const events: EventRecord[] = [
         makeEvent({
           _id: "msg-1",
@@ -191,8 +182,12 @@ describe("useStreamingChat", () => {
         }),
       ];
 
-      act(() => {
-        result.current.processFollowUpQueue(events);
+      renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
       });
 
       // Should stream for msg-2 (msg-1 is already responded)
@@ -203,6 +198,26 @@ describe("useStreamingChat", () => {
         expect.any(Object),
       );
     });
+
+    it("does nothing when conversationId is null", async () => {
+      const events: EventRecord[] = [
+        makeEvent({
+          _id: "msg-1",
+          type: "user_message",
+          payload: { text: "follow up", mode: "follow_up" },
+        }),
+      ];
+
+      renderHook(() =>
+        useStreamingChat({ conversationId: null, events }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(streamChat).not.toHaveBeenCalled();
+    });
   });
 
   // ----------------------------------------------------------------
@@ -211,7 +226,7 @@ describe("useStreamingChat", () => {
   describe("cancelCurrentStream", () => {
     it("is callable and does not throw when nothing is streaming", () => {
       const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
 
       expect(() => {
@@ -228,38 +243,11 @@ describe("useStreamingChat", () => {
   describe("resetStreamingState", () => {
     it("resets isStreaming", () => {
       const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
 
       act(() => {
         result.current.resetStreamingState();
-      });
-
-      expect(result.current.isStreaming).toBe(false);
-    });
-  });
-
-  // ----------------------------------------------------------------
-  // syncWithEvents
-  // ----------------------------------------------------------------
-  describe("syncWithEvents", () => {
-    it("does nothing when pendingUserMessageId is null", () => {
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
-      );
-
-      // pendingUserMessageId is null by default
-      const events: EventRecord[] = [
-        makeEvent({
-          _id: "reply-1",
-          type: "assistant_message",
-          payload: { userMessageId: "msg-1", text: "hello" },
-        }),
-      ];
-
-      // Should not throw, and state should remain unchanged
-      act(() => {
-        result.current.syncWithEvents(events);
       });
 
       expect(result.current.isStreaming).toBe(false);
@@ -272,7 +260,7 @@ describe("useStreamingChat", () => {
   describe("sendMessage", () => {
     it("does nothing when conversationId is null", async () => {
       const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: null }),
+        useStreamingChat({ conversationId: null, events: [] }),
       );
 
       const onClear = vi.fn();
@@ -291,7 +279,7 @@ describe("useStreamingChat", () => {
 
     it("does nothing when text is empty and no context", async () => {
       const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
 
       const onClear = vi.fn();
@@ -310,7 +298,7 @@ describe("useStreamingChat", () => {
 
     it("proceeds when text is empty but selectedText is present", async () => {
       const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
 
       const onClear = vi.fn();
@@ -323,13 +311,12 @@ describe("useStreamingChat", () => {
         });
       });
 
-      // getOrCreateDeviceId should have been called, meaning the guard passed
       expect(getOrCreateDeviceId).toHaveBeenCalled();
     });
 
     it("proceeds when text is empty but window context is present", async () => {
       const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
 
       const onClear = vi.fn();
@@ -349,31 +336,6 @@ describe("useStreamingChat", () => {
       });
 
       expect(getOrCreateDeviceId).toHaveBeenCalled();
-    });
-  });
-
-  // ----------------------------------------------------------------
-  // processFollowUpQueue guards
-  // ----------------------------------------------------------------
-  describe("processFollowUpQueue guards", () => {
-    it("does nothing when conversationId is null", () => {
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: null }),
-      );
-
-      const events: EventRecord[] = [
-        makeEvent({
-          _id: "msg-1",
-          type: "user_message",
-          payload: { text: "follow up", mode: "follow_up" },
-        }),
-      ];
-
-      act(() => {
-        result.current.processFollowUpQueue(events);
-      });
-
-      expect(streamChat).not.toHaveBeenCalled();
     });
   });
 });
