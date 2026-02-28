@@ -42,6 +42,8 @@ type RuntimeTaskRecord = {
   threadName?: string;
   commandId?: string;
   systemPromptOverride?: string;
+  recentActivity: string[];
+  progressBuffer: string;
 };
 
 type FsLock = {
@@ -69,6 +71,7 @@ type LocalTaskManagerOpts = {
     persistToConvex: boolean;
     enableRemoteTools: boolean;
     abortSignal: AbortSignal;
+    onProgress?: (chunk: string) => void;
     toolExecutor: (
       toolName: string,
       args: Record<string, unknown>,
@@ -237,6 +240,17 @@ export class LocalTaskManager implements TaskToolApi {
         persistToConvex: task.storageMode === "cloud",
         enableRemoteTools: true,
         abortSignal: task.controller.signal,
+        onProgress: (chunk) => {
+          if (task.controller.signal.aborted || task.status === "canceled") return;
+          if (typeof chunk !== "string" || !chunk) return;
+          task.progressBuffer += chunk;
+          if (task.progressBuffer.length > 4_000) {
+            task.progressBuffer = task.progressBuffer.slice(task.progressBuffer.length - 4_000);
+          }
+          const compact = task.progressBuffer.replace(/\s+/g, " ").trim();
+          if (!compact) return;
+          task.recentActivity = [truncate(compact, 500)];
+        },
         toolExecutor: async (toolName, toolArgs, toolContext) => {
           const lockKey = getFsLockKey(toolName, toolArgs);
           if (!lockKey) {
@@ -252,7 +266,10 @@ export class LocalTaskManager implements TaskToolApi {
       });
 
       task.completedAt = Date.now();
-      if (result.error) {
+      if (task.controller.signal.aborted || task.status === "canceled") {
+        task.status = "canceled";
+        task.error = task.error ?? "Canceled";
+      } else if (result.error) {
         task.status = "error";
         task.error = result.error;
       } else {
@@ -306,6 +323,8 @@ export class LocalTaskManager implements TaskToolApi {
       threadName: request.threadName,
       commandId: request.commandId,
       systemPromptOverride: request.systemPromptOverride,
+      recentActivity: [],
+      progressBuffer: "",
     };
 
     if (request.storageMode === "cloud") {
@@ -342,6 +361,7 @@ export class LocalTaskManager implements TaskToolApi {
         completedAt: local.completedAt,
         result: local.result,
         error: local.error,
+        recentActivity: local.status === "running" ? local.recentActivity : undefined,
       };
     }
     if (!taskId.startsWith("local:task:")) {
