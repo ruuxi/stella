@@ -6,19 +6,25 @@ import { useQuery } from "convex/react";
 // --- Mocks ---
 
 const mockSendMessage = vi.fn();
-const mockUseConversationEvents = vi.fn((..._args: unknown[]) => []);
-const mockUseStreamingChat = vi.fn((_options?: unknown) => ({
-  streamingText: "",
-  reasoningText: "",
-  isStreaming: false,
-  pendingUserMessageId: null,
-  queueNext: null,
-  setQueueNext: vi.fn(),
-  selfModMap: {},
-  sendMessage: mockSendMessage,
-  syncWithEvents: vi.fn(),
-  processFollowUpQueue: vi.fn(),
-}));
+const mockUseConversationEvents = vi.fn((conversationId?: string) => {
+  void conversationId;
+  return [];
+});
+const mockUseStreamingChat = vi.fn((options?: unknown) => {
+  void options;
+  return {
+    streamingText: "",
+    reasoningText: "",
+    isStreaming: false,
+    pendingUserMessageId: null,
+    queueNext: null,
+    setQueueNext: vi.fn(),
+    selfModMap: {},
+    sendMessage: mockSendMessage,
+    syncWithEvents: vi.fn(),
+    processFollowUpQueue: vi.fn(),
+  };
+});
 
 vi.mock("convex/react", () => ({
   useConvexAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
@@ -88,18 +94,18 @@ vi.mock("../hooks/use-conversation-events", () => ({
 }));
 
 const mockUseChatStore = vi.fn(() => ({
-  storageMode: "cloud" as const,
+  storageMode: "cloud",
   isLocalStorage: false,
   cloudFeaturesEnabled: true,
   appendEvent: vi.fn(),
   appendAgentEvent: vi.fn(),
   uploadAttachments: vi.fn(),
   buildHistory: vi.fn(),
-  streamStrategy: "local-with-http-fallback" as const,
+  streamStrategy: "local-with-http-fallback",
 }));
 
 vi.mock("../app/state/chat-store", () => ({
-  useChatStore: (...args: unknown[]) => mockUseChatStore(...args),
+  useChatStore: () => mockUseChatStore(),
 }));
 
 vi.mock("../hooks/use-canvas-commands", () => ({

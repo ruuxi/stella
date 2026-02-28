@@ -30,17 +30,16 @@ describe("CanvasErrorBoundary", () => {
         <ThrowingChild />
       </CanvasErrorBoundary>
     );
-    expect(screen.getByText("Component Error")).toBeTruthy();
-    expect(screen.getByText("Test render error")).toBeTruthy();
+    expect(screen.getByText("This component ran into a problem")).toBeTruthy();
   });
 
-  it("shows stack trace in details", () => {
+  it("does not expose internal error details", () => {
     render(
       <CanvasErrorBoundary>
         <ThrowingChild />
       </CanvasErrorBoundary>
     );
-    expect(screen.getByText("Stack trace")).toBeTruthy();
+    expect(screen.queryByText("Test render error")).toBeNull();
   });
 
   it("shows retry button", () => {
@@ -60,7 +59,7 @@ describe("CanvasErrorBoundary", () => {
       </CanvasErrorBoundary>
     );
 
-    expect(screen.getByText("Component Error")).toBeTruthy();
+    expect(screen.getByText("This component ran into a problem")).toBeTruthy();
 
     // Click retry
     fireEvent.click(screen.getByText("Retry"));

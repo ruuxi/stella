@@ -7,18 +7,20 @@ const mockUseConvexAuth = vi.fn(() => ({
   isAuthenticated: true,
   isLoading: false,
 }));
-const mockUseQuery = vi.fn(() => undefined);
-const mockListLocalEvents = vi.fn(() => [] as EventRecord[]);
+const mockUseQuery = vi.fn<(ref: unknown, args?: unknown) => unknown>(() => undefined);
+const mockListLocalEvents = vi.fn<(conversationId: string, maxItems: number) => EventRecord[]>(() => []);
 const mockUnsubscribe = vi.fn();
 let localUpdateListener: (() => void) | null = null;
-const mockSubscribeToLocalChatUpdates = vi.fn((listener: () => void) => {
-  localUpdateListener = listener;
-  return mockUnsubscribe;
-});
+const mockSubscribeToLocalChatUpdates = vi.fn<(listener: () => void) => () => void>(
+  (listener: () => void) => {
+    localUpdateListener = listener;
+    return mockUnsubscribe;
+  },
+);
 
 vi.mock("convex/react", () => ({
-  useConvexAuth: (...args: unknown[]) => mockUseConvexAuth(...args),
-  useQuery: (...args: unknown[]) => mockUseQuery(...args),
+  useConvexAuth: () => mockUseConvexAuth(),
+  useQuery: (ref: unknown, args?: unknown) => mockUseQuery(ref, args),
 }));
 
 vi.mock("../app/state/chat-store", () => ({
@@ -28,9 +30,10 @@ vi.mock("../app/state/chat-store", () => ({
 }));
 
 vi.mock("../services/local-chat-store", () => ({
-  listLocalEvents: (...args: unknown[]) => mockListLocalEvents(...args),
-  subscribeToLocalChatUpdates: (...args: unknown[]) =>
-    mockSubscribeToLocalChatUpdates(...args),
+  listLocalEvents: (conversationId: string, maxItems: number) =>
+    mockListLocalEvents(conversationId, maxItems),
+  subscribeToLocalChatUpdates: (listener: () => void) =>
+    mockSubscribeToLocalChatUpdates(listener),
 }));
 
 vi.mock("../convex/api", () => ({
@@ -157,4 +160,3 @@ describe("useConversationEvents hook behavior", () => {
     expect(result.current.map((event) => event._id)).toEqual(["cloud-1"]);
   });
 });
-

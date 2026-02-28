@@ -24,18 +24,18 @@ vi.mock("convex/react", () => ({
 }));
 
 const mockUseChatStore = vi.fn(() => ({
-  storageMode: "cloud" as const,
+  storageMode: "cloud",
   isLocalStorage: false,
   cloudFeaturesEnabled: true,
   appendEvent: mockChatStoreAppendEvent,
   appendAgentEvent: vi.fn(),
   uploadAttachments: vi.fn(),
   buildHistory: vi.fn(),
-  streamStrategy: "local-with-http-fallback" as const,
+  streamStrategy: "local-with-http-fallback",
 }));
 
 vi.mock("../../app/state/chat-store", () => ({
-  useChatStore: (...args: unknown[]) => mockUseChatStore(...args),
+  useChatStore: () => mockUseChatStore(),
 }));
 
 vi.mock("../../convex/api", () => ({
