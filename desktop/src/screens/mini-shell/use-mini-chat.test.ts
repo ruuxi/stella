@@ -685,81 +685,16 @@ describe("useMiniChat", () => {
   });
 
   // ----------------------------------------------------------------
-  // 5. sendMessage /followup and /queue prefix stripping
+  // 5. sendMessage follow_up mode
   // ----------------------------------------------------------------
-  describe("sendMessage prefix stripping", () => {
-    it("strips /followup prefix from message text", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
-      const opts = makeOpts();
-      const { result } = renderHook(() => useMiniChat(opts));
-
-      act(() => {
-        result.current.setMessage("/followup some text");
-      });
-      await act(async () => {
-        await result.current.sendMessage();
-      });
-
-      expect(mockAppendEvent).toHaveBeenCalledTimes(1);
-      const callArgs = mockAppendEvent.mock.calls[0][0];
-      expect(callArgs.payload.text).toBe("some text");
-    });
-
-    it("strips /queue prefix from message text", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
-      const opts = makeOpts();
-      const { result } = renderHook(() => useMiniChat(opts));
-
-      act(() => {
-        result.current.setMessage("/queue my queued message");
-      });
-      await act(async () => {
-        await result.current.sendMessage();
-      });
-
-      const callArgs = mockAppendEvent.mock.calls[0][0];
-      expect(callArgs.payload.text).toBe("my queued message");
-    });
-
-    it("strips /FOLLOWUP prefix case-insensitively", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
-      const opts = makeOpts();
-      const { result } = renderHook(() => useMiniChat(opts));
-
-      act(() => {
-        result.current.setMessage("/FOLLOWUP uppercase test");
-      });
-      await act(async () => {
-        await result.current.sendMessage();
-      });
-
-      const callArgs = mockAppendEvent.mock.calls[0][0];
-      expect(callArgs.payload.text).toBe("uppercase test");
-    });
-
-    it("does not strip prefix from middle of text", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
-      const opts = makeOpts();
-      const { result } = renderHook(() => useMiniChat(opts));
-
-      act(() => {
-        result.current.setMessage("hello /followup world");
-      });
-      await act(async () => {
-        await result.current.sendMessage();
-      });
-
-      const callArgs = mockAppendEvent.mock.calls[0][0];
-      expect(callArgs.payload.text).toBe("hello /followup world");
-    });
-
-    it("sets mode to follow_up when /followup prefix is used while streaming", async () => {
+  describe("sendMessage follow_up mode", () => {
+    it("sets mode to follow_up when isStreaming", async () => {
       mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
       const opts = makeOpts({ isStreaming: true });
       const { result } = renderHook(() => useMiniChat(opts));
 
       act(() => {
-        result.current.setMessage("/followup additional question");
+        result.current.setMessage("additional question");
       });
       await act(async () => {
         await result.current.sendMessage();
@@ -775,7 +710,7 @@ describe("useMiniChat", () => {
       const { result } = renderHook(() => useMiniChat(opts));
 
       act(() => {
-        result.current.setMessage("/followup additional question");
+        result.current.setMessage("additional question");
       });
       await act(async () => {
         await result.current.sendMessage();
@@ -784,47 +719,8 @@ describe("useMiniChat", () => {
       // streamChat should NOT be called because follow_up mode returns early
       expect(streamChat).not.toHaveBeenCalled();
     });
-  });
 
-  // ----------------------------------------------------------------
-  // 6. sendMessage in steer mode
-  // ----------------------------------------------------------------
-  describe("sendMessage in steer mode", () => {
-    it("sets mode to steer when isStreaming and no /followup prefix", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
-      const setIsStreaming = vi.fn();
-      const opts = makeOpts({ isStreaming: true, setIsStreaming });
-      const { result } = renderHook(() => useMiniChat(opts));
-
-      act(() => {
-        result.current.setMessage("redirect to this topic");
-      });
-      await act(async () => {
-        await result.current.sendMessage();
-      });
-
-      const callArgs = mockAppendEvent.mock.calls[0][0];
-      expect(callArgs.payload.mode).toBe("steer");
-    });
-
-    it("calls cancelCurrentStream and resetStreamingState in steer mode", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
-      const setIsStreaming = vi.fn();
-      const opts = makeOpts({ isStreaming: true, setIsStreaming });
-      const { result } = renderHook(() => useMiniChat(opts));
-
-      act(() => {
-        result.current.setMessage("steer message");
-      });
-      await act(async () => {
-        await result.current.sendMessage();
-      });
-
-      // resetStreamingState calls setIsStreaming(false)
-      expect(setIsStreaming).toHaveBeenCalledWith(false);
-    });
-
-    it("does not set mode when not streaming and no prefix", async () => {
+    it("does not set mode when not streaming", async () => {
       mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
       const opts = makeOpts({ isStreaming: false });
       const { result } = renderHook(() => useMiniChat(opts));
@@ -837,13 +733,12 @@ describe("useMiniChat", () => {
       });
 
       const callArgs = mockAppendEvent.mock.calls[0][0];
-      // mode should not be in payload
       expect(callArgs.payload.mode).toBeUndefined();
     });
   });
 
   // ----------------------------------------------------------------
-  // 7. sendMessage successful flow
+  // 6. sendMessage successful flow
   // ----------------------------------------------------------------
   describe("sendMessage successful flow", () => {
     it("clears message, context, and selectedText on successful send", async () => {
@@ -1004,24 +899,25 @@ describe("useMiniChat", () => {
   });
 
   // ----------------------------------------------------------------
-  // 9. resetStreamingState
+  // 9. auto follow_up while streaming
   // ----------------------------------------------------------------
-  describe("resetStreamingState", () => {
-    it("resets streaming state when called via steer mode", async () => {
+  describe("auto follow_up while streaming", () => {
+    it("sends message as follow_up when streaming, does not start new stream", async () => {
       mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
-      const setIsStreaming = vi.fn();
-      const opts = makeOpts({ isStreaming: true, setIsStreaming });
+      const opts = makeOpts({ isStreaming: true });
       const { result } = renderHook(() => useMiniChat(opts));
 
       act(() => {
-        result.current.setMessage("steer");
+        result.current.setMessage("another question");
       });
       await act(async () => {
         await result.current.sendMessage();
       });
 
-      // In steer mode, resetStreamingState is called which calls setIsStreaming(false)
-      expect(setIsStreaming).toHaveBeenCalledWith(false);
+      const callArgs = mockAppendEvent.mock.calls[0][0];
+      expect(callArgs.payload.mode).toBe("follow_up");
+      // follow_up returns early — no new stream started
+      expect(streamChat).not.toHaveBeenCalled();
     });
   });
 
@@ -1302,25 +1198,28 @@ describe("useMiniChat", () => {
         await result.current.sendMessage();
       });
 
-      expect(mockAppendEvent).toHaveBeenCalledWith({
-        conversationId: "conv-123",
-        type: "user_message",
-        deviceId: "device-123",
-        payload: {
-          text: "hello world",
-          attachments: [],
-          platform: "unknown",
-        },
-      });
+      expect(mockAppendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-123",
+          type: "user_message",
+          deviceId: "device-123",
+          payload: expect.objectContaining({
+            text: "hello world",
+            attachments: [],
+            platform: "unknown",
+            timezone: expect.any(String),
+          }),
+        }),
+      );
     });
 
-    it("includes mode in payload when streaming with /followup", async () => {
+    it("includes mode follow_up in payload when streaming", async () => {
       mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
       const opts = makeOpts({ isStreaming: true });
       const { result } = renderHook(() => useMiniChat(opts));
 
       act(() => {
-        result.current.setMessage("/followup more details");
+        result.current.setMessage("more details");
       });
       await act(async () => {
         await result.current.sendMessage();
@@ -1331,27 +1230,6 @@ describe("useMiniChat", () => {
           payload: expect.objectContaining({
             mode: "follow_up",
             text: "more details",
-          }),
-        }),
-      );
-    });
-
-    it("includes mode steer in payload when streaming without prefix", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "evt-1" });
-      const opts = makeOpts({ isStreaming: true });
-      const { result } = renderHook(() => useMiniChat(opts));
-
-      act(() => {
-        result.current.setMessage("change topic");
-      });
-      await act(async () => {
-        await result.current.sendMessage();
-      });
-
-      expect(mockAppendEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          payload: expect.objectContaining({
-            mode: "steer",
           }),
         }),
       );

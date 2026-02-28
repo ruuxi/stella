@@ -3,7 +3,7 @@ import { renderHook, act } from "@testing-library/react";
 
 // Mock external deps before importing the hook
 vi.mock("convex/react", () => ({
-  useConvexAuth: vi.fn(),
+  useConvexAuth: vi.fn(() => ({ isAuthenticated: false, isLoading: false })),
   useQuery: vi.fn(),
   useMutation: vi.fn(() =>
     Object.assign(vi.fn(), {
@@ -77,12 +77,6 @@ describe("useStreamingChat", () => {
     vi.restoreAllMocks();
   });
 
-  const flushRaf = () => {
-    const callbacks = [...rafCallbacks];
-    rafCallbacks = [];
-    for (const cb of callbacks) cb(performance.now());
-  };
-
   // ----------------------------------------------------------------
   // Initial state
   // ----------------------------------------------------------------
@@ -96,7 +90,6 @@ describe("useStreamingChat", () => {
       expect(result.current.reasoningText).toBe("");
       expect(result.current.isStreaming).toBe(false);
       expect(result.current.pendingUserMessageId).toBeNull();
-      expect(result.current.queueNext).toBe(false);
     });
   });
 
@@ -233,22 +226,16 @@ describe("useStreamingChat", () => {
   // resetStreamingState
   // ----------------------------------------------------------------
   describe("resetStreamingState", () => {
-    it("resets isStreaming and queueNext", () => {
+    it("resets isStreaming", () => {
       const { result } = renderHook(() =>
         useStreamingChat({ conversationId: "conv-1" }),
       );
 
       act(() => {
-        result.current.setQueueNext(true);
-      });
-      expect(result.current.queueNext).toBe(true);
-
-      act(() => {
         result.current.resetStreamingState();
       });
-      flushRaf();
 
-      expect(result.current.queueNext).toBe(false);
+      expect(result.current.isStreaming).toBe(false);
     });
   });
 
@@ -362,69 +349,6 @@ describe("useStreamingChat", () => {
       });
 
       expect(getOrCreateDeviceId).toHaveBeenCalled();
-    });
-
-    it("strips /followup prefix from message text", async () => {
-      // We can test that the regex logic works by verifying the function
-      // does not reject the message when the prefix is removed to leave content
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
-      );
-
-      const onClear = vi.fn();
-      await act(async () => {
-        await result.current.sendMessage({
-          text: "/followup some text",
-          selectedText: null,
-          chatContext: null,
-          onClear,
-        });
-      });
-
-      expect(getOrCreateDeviceId).toHaveBeenCalled();
-    });
-
-    it("strips /queue prefix from message text", async () => {
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
-      );
-
-      const onClear = vi.fn();
-      await act(async () => {
-        await result.current.sendMessage({
-          text: "/queue my queued message",
-          selectedText: null,
-          chatContext: null,
-          onClear,
-        });
-      });
-
-      expect(getOrCreateDeviceId).toHaveBeenCalled();
-    });
-  });
-
-  // ----------------------------------------------------------------
-  // setQueueNext
-  // ----------------------------------------------------------------
-  describe("setQueueNext", () => {
-    it("toggles the queueNext state", () => {
-      const { result } = renderHook(() =>
-        useStreamingChat({ conversationId: "conv-1" }),
-      );
-
-      expect(result.current.queueNext).toBe(false);
-
-      act(() => {
-        result.current.setQueueNext(true);
-      });
-
-      expect(result.current.queueNext).toBe(true);
-
-      act(() => {
-        result.current.setQueueNext(false);
-      });
-
-      expect(result.current.queueNext).toBe(false);
     });
   });
 

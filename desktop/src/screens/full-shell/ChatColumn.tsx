@@ -29,8 +29,6 @@ type ChatColumnProps = {
   setChatContext: React.Dispatch<React.SetStateAction<ChatContext | null>>;
   selectedText: string | null;
   setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
-  queueNext: boolean;
-  setQueueNext: (value: boolean) => void;
 
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   handleScroll: () => void;
@@ -73,8 +71,6 @@ export function ChatColumn({
   setChatContext,
   selectedText,
   setSelectedText,
-  queueNext,
-  setQueueNext,
   scrollContainerRef,
   handleScroll,
   showScrollButton,
@@ -179,8 +175,6 @@ export function ChatColumn({
             selectedText={selectedText}
             setSelectedText={setSelectedText}
             isStreaming={isStreaming}
-            queueNext={queueNext}
-            setQueueNext={setQueueNext}
             canSubmit={canSubmit}
             conversationId={conversationId}
             onSend={onSend}

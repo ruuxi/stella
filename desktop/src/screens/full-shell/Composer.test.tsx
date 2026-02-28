@@ -12,8 +12,6 @@ function defaultProps(overrides: Partial<Parameters<typeof Composer>[0]> = {}) {
     selectedText: null as string | null,
     setSelectedText: vi.fn(),
     isStreaming: false,
-    queueNext: false,
-    setQueueNext: vi.fn(),
     canSubmit: true,
     conversationId: "conv-1",
     onSend: vi.fn(),
@@ -227,62 +225,6 @@ describe("Composer", () => {
     render(<Composer {...defaultProps({ conversationId: "conv-1" })} />);
     const textarea = screen.getByPlaceholderText("Ask anything");
     expect((textarea as HTMLTextAreaElement).disabled).toBe(false);
-  });
-
-  // ---- Queue toggle ----
-
-  it("shows Queue button when isStreaming is true", () => {
-    render(<Composer {...defaultProps({ isStreaming: true })} />);
-    expect(screen.getByText("Queue")).toBeTruthy();
-  });
-
-  it("hides Queue button when isStreaming is false", () => {
-    render(<Composer {...defaultProps({ isStreaming: false })} />);
-    expect(screen.queryByText("Queue")).toBeNull();
-  });
-
-  it("calls setQueueNext when Queue button clicked", () => {
-    const setQueueNext = vi.fn();
-    render(
-      <Composer
-        {...defaultProps({ isStreaming: true, queueNext: false, setQueueNext })}
-      />,
-    );
-
-    fireEvent.click(screen.getByText("Queue"));
-    expect(setQueueNext).toHaveBeenCalledWith(true);
-  });
-
-  it("toggles queueNext off when Queue button clicked while active", () => {
-    const setQueueNext = vi.fn();
-    render(
-      <Composer
-        {...defaultProps({ isStreaming: true, queueNext: true, setQueueNext })}
-      />,
-    );
-
-    fireEvent.click(screen.getByText("Queue"));
-    expect(setQueueNext).toHaveBeenCalledWith(false);
-  });
-
-  it("Queue button has data-active='true' when queueNext is true", () => {
-    const { container } = render(
-      <Composer
-        {...defaultProps({ isStreaming: true, queueNext: true })}
-      />,
-    );
-    const queueBtn = container.querySelector(".composer-selector");
-    expect(queueBtn?.getAttribute("data-active")).toBe("true");
-  });
-
-  it("Queue button has data-active='false' when queueNext is false", () => {
-    const { container } = render(
-      <Composer
-        {...defaultProps({ isStreaming: true, queueNext: false })}
-      />,
-    );
-    const queueBtn = container.querySelector(".composer-selector");
-    expect(queueBtn?.getAttribute("data-active")).toBe("false");
   });
 
   // ---- Removing context ----

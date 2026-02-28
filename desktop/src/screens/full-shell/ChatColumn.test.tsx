@@ -38,8 +38,6 @@ function makeProps(overrides: Partial<Parameters<typeof ChatColumn>[0]> = {}) {
     setChatContext: vi.fn(),
     selectedText: null,
     setSelectedText: vi.fn(),
-    queueNext: false,
-    setQueueNext: vi.fn(),
     scrollContainerRef: React.createRef<HTMLDivElement>(),
     handleScroll: vi.fn(),
     showScrollButton: false,

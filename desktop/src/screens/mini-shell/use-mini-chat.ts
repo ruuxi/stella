@@ -15,6 +15,8 @@ import {
   buildLocalHistoryMessages,
   type LocalHistoryMessage,
 } from "../../services/local-chat-store";
+import { useResumeAgentRun } from "../../hooks/use-resume-agent-run";
+import { showToast } from "../../components/toast";
 
 export type AttachmentRef = { id?: string; url?: string; mimeType?: string };
 
@@ -37,6 +39,12 @@ type AttachmentResponse = {
   size?: number;
 };
 
+export type SelfModAppliedData = {
+  featureId: string;
+  files: string[];
+  batchIndex: number;
+};
+
 type AgentStreamEvent = {
   type: "stream" | "tool-start" | "tool-end" | "error" | "end";
   runId: string;
@@ -49,6 +57,7 @@ type AgentStreamEvent = {
   fatal?: boolean;
   finalText?: string;
   persisted?: boolean;
+  selfModApplied?: SelfModAppliedData;
 };
 
 const isOrchestratorBusyError = (error: unknown): boolean => {
@@ -92,6 +101,7 @@ export function useMiniChat(opts: {
     string | null
   >(null);
   const [expanded, setExpanded] = useState(false);
+  const [selfModMap, setSelfModMap] = useState<Record<string, SelfModAppliedData>>({});
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
 
@@ -305,6 +315,7 @@ export function useMiniChat(opts: {
         case "error":
           if (event.fatal) {
             console.error("Local agent error:", event.error);
+            showToast({ title: "Something went wrong", description: event.error || undefined, variant: "error" });
             resetStreamingState(runIdCounter);
           }
           break;
@@ -314,6 +325,12 @@ export function useMiniChat(opts: {
             userMessageId: options?.userMessageId,
             finalText: event.finalText ?? streamingTextRef.current,
           });
+          if (event.selfModApplied && options?.userMessageId) {
+            setSelfModMap((prev) => ({
+              ...prev,
+              [options.userMessageId!]: event.selfModApplied!,
+            }));
+          }
           streamAbortRef.current = null;
           setIsStreaming(false);
           localRunIdRef.current = null;
@@ -420,6 +437,10 @@ export function useMiniChat(opts: {
             if (runIdCounter !== streamRunIdRef.current) return;
             streamAbortRef.current = null;
             setIsStreaming(false);
+            if (streamingTextRef.current.trim().length === 0) {
+              resetStreamingText();
+              setPendingUserMessageId(null);
+            }
           },
           onAbort: () => resetStreamingState(runIdCounter),
           onError: (error) => {
@@ -440,6 +461,8 @@ export function useMiniChat(opts: {
       appendStreamingDelta,
       appendReasoningDelta,
       resetStreamingState,
+      resetStreamingText,
+      streamingTextRef,
     ],
   );
 
@@ -464,18 +487,24 @@ export function useMiniChat(opts: {
 
       if (isLocalStorage) {
         if (!window.electronAPI?.agentHealthCheck) {
+          console.error("[chat] Local agent not available (no electronAPI)");
+          showToast({ title: "Stella agent is not running", variant: "error" });
           resetStreamingState(runId);
           return;
         }
         void window.electronAPI.agentHealthCheck().then((health) => {
           if (runId !== streamRunIdRef.current) return;
           if (!health?.ready) {
+            console.error("[chat] Local agent health check failed:", health);
+            showToast({ title: "Stella agent is starting up — try again in a moment", variant: "error" });
             resetStreamingState(runId);
             return;
           }
           startLocalStream(args, runId, false);
-        }).catch(() => {
+        }).catch((err) => {
           if (runId !== streamRunIdRef.current) return;
+          console.error("[chat] Local agent health check error:", err);
+          showToast({ title: "Stella agent is not responding", variant: "error" });
           resetStreamingState(runId);
         });
         return;
@@ -509,72 +538,20 @@ export function useMiniChat(opts: {
     ],
   );
 
-  useEffect(() => {
-    if (isStreaming || !activeConversationId || !window.electronAPI) {
-      return;
-    }
-    if (
-      !window.electronAPI.agentHealthCheck ||
-      !window.electronAPI.getActiveAgentRun ||
-      !window.electronAPI.resumeAgentStream
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    const runIdCounter = streamRunIdRef.current + 1;
-
-    void (async () => {
-      const health = await window.electronAPI!.agentHealthCheck();
-      if (!health?.ready || cancelled) return;
-
-      const activeRun = await window.electronAPI!.getActiveAgentRun();
-      if (!activeRun || cancelled) return;
-      if (activeRun.conversationId !== activeConversationId) return;
-
-      streamRunIdRef.current = runIdCounter;
-      resetStreamingText();
-      resetReasoningText();
-      setIsStreaming(true);
-      setPendingUserMessageId(null);
-      localRunIdRef.current = activeRun.runId;
-      localSeqRef.current = 0;
-
-      if (agentStreamCleanupRef.current) {
-        agentStreamCleanupRef.current();
-      }
-
-      const cleanup = window.electronAPI!.onAgentStream((event) => {
-        handleAgentEvent(event as AgentStreamEvent, runIdCounter);
-      });
-      agentStreamCleanupRef.current = cleanup;
-
-      const replay = await window.electronAPI!.resumeAgentStream({
-        runId: activeRun.runId,
-        lastSeq: 0,
-      });
-      if (cancelled || runIdCounter !== streamRunIdRef.current) return;
-      for (const replayEvent of replay.events) {
-        handleAgentEvent(replayEvent as AgentStreamEvent, runIdCounter);
-      }
-    })().catch((error) => {
-      if (cancelled) return;
-      console.error("Failed to resume active local agent run:", error);
-      resetStreamingState(runIdCounter);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
+  useResumeAgentRun({
     activeConversationId,
-    handleAgentEvent,
     isStreaming,
+    streamRunIdRef,
+    localRunIdRef,
+    localSeqRef,
+    agentStreamCleanupRef,
+    resetStreamingText,
     resetReasoningText,
     resetStreamingState,
-    resetStreamingText,
     setIsStreaming,
-  ]);
+    setPendingUserMessageId,
+    handleAgentEvent,
+  });
 
   const findQueuedFollowUp = useCallback((source: EventRecord[]) => {
     const responded = new Set<string>();
@@ -668,10 +645,7 @@ export function useMiniChat(opts: {
     const deviceId = await getOrCreateDeviceId();
     setMessage("");
 
-    const followUpMatch = rawText.match(/^\/(followup|queue)\s+/i);
-    const cleanedText = followUpMatch
-      ? rawText.slice(followUpMatch[0].length).trim()
-      : rawText;
+    const cleanedText = rawText;
     const contextParts: string[] = [];
     if (windowSnippet) contextParts.push(`<active-window context="The user's currently focused window. May or may not be relevant to their request.">${windowSnippet}</active-window>`);
     if (selectedSnippet) contextParts.push(`"${selectedSnippet}"`);
@@ -680,7 +654,7 @@ export function useMiniChat(opts: {
     }
     if (cleanedText) contextParts.push(cleanedText);
     const combinedText = contextParts.join("\n\n");
-    if (!combinedText) return;
+    if (!combinedText && !hasScreenshotContext) return;
 
     const attachments: AttachmentRef[] = [];
 
@@ -716,17 +690,8 @@ export function useMiniChat(opts: {
     }
 
     const platform = window.electronAPI?.platform ?? "unknown";
-    const mode =
-      isStreaming && followUpMatch
-        ? "follow_up"
-        : isStreaming
-          ? "steer"
-          : undefined;
-
-    if (isStreaming && mode === "steer") {
-      cancelCurrentStream();
-      resetStreamingState();
-    }
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const mode = isStreaming ? "follow_up" : undefined;
 
     const event = await appendConversationEvent({
       conversationId,
@@ -736,6 +701,7 @@ export function useMiniChat(opts: {
         text: combinedText,
         attachments,
         platform,
+        timezone,
         ...(mode && { mode }),
       },
     });
@@ -759,6 +725,7 @@ export function useMiniChat(opts: {
     streamingText,
     reasoningText,
     pendingUserMessageId,
+    selfModMap,
     expanded,
     setExpanded,
     events,
