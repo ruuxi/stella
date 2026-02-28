@@ -1,21 +1,17 @@
+import {
+  isAbortError,
+  isContextOverflowError,
+  matchesRetryablePattern,
+} from "@stella/shared";
+
+/**
+ * Allowlist strategy: only specific known patterns are retryable.
+ * Abort and context overflow errors are explicitly excluded.
+ */
 export function isRetryableModelError(error: unknown): boolean {
-  const message = (error as Error)?.message?.toLowerCase() ?? "";
-  if (message.length === 0) return false;
-  if (message.includes("aborted") || message.includes("context length")) {
-    return false;
-  }
-  return (
-    message.includes("rate limit") ||
-    message.includes("too many requests") ||
-    message.includes("429") ||
-    message.includes("unauthorized") ||
-    message.includes("forbidden") ||
-    message.includes("invalid api key") ||
-    message.includes("authentication") ||
-    message.includes("model not found") ||
-    message.includes("temporarily unavailable") ||
-    message.includes("upstream")
-  );
+  if (isAbortError(error)) return false;
+  if (isContextOverflowError(error)) return false;
+  return matchesRetryablePattern(error);
 }
 
 export function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {

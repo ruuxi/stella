@@ -3,11 +3,18 @@
  *
  * Wraps existing tool handlers (from tools.ts) as AI SDK tool() instances
  * with deterministic toolCallIds and lifecycle callbacks.
+ *
+ * Schemas are imported from @stella/shared (canonical source of truth)
+ * and extended with .passthrough() + alias fields for local flexibility.
  */
 
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import type { ToolContext, ToolResult } from "./tools-types.js";
+import {
+  TOOL_SCHEMAS,
+  TOOL_DESCRIPTIONS,
+} from "@stella/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,71 +40,42 @@ export type CreateAgentToolsOpts = {
 };
 
 // ─── Tool Schemas ────────────────────────────────────────────────────────────
-// Minimal schemas that match what the device tools expect.
-// The AI model provides arguments; we pass them through to the existing handlers.
+// Shared canonical schemas from @stella/shared, cast through `any` at the
+// boundary to handle zod v3 (shared/backend) vs v4 (frontend) type mismatch.
+// Runtime behavior is identical — this is purely a TypeScript type boundary.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const asLoose = (schema: any) => schema.passthrough() as z.ZodType<Record<string, unknown>>;
 
 const looseObject = <T extends z.ZodRawShape>(shape: T) =>
-  z.object(shape).passthrough();
+  z.object(shape).passthrough() as z.ZodType<Record<string, unknown>>;
 
 const toolSchemas: Record<string, z.ZodType<Record<string, unknown>>> = {
-  Read: looseObject({
-    file_path: z.string().describe("Absolute path to the file"),
-    offset: z.number().optional().describe("Line number to start reading from"),
-    limit: z.number().optional().describe("Number of lines to read"),
-  }) as z.ZodType<Record<string, unknown>>,
+  // File & search tools — shared schemas (passthrough allows extra fields)
+  Read: asLoose(TOOL_SCHEMAS.Read),
+  Write: asLoose(TOOL_SCHEMAS.Write),
+  Edit: asLoose(TOOL_SCHEMAS.Edit),
+  Glob: asLoose(TOOL_SCHEMAS.Glob),
+  Grep: asLoose(TOOL_SCHEMAS.Grep),
 
-  Write: looseObject({
-    file_path: z.string().describe("Absolute path to write to"),
-    content: z.string().describe("File content"),
-  }) as z.ZodType<Record<string, unknown>>,
-
-  Edit: looseObject({
-    file_path: z.string().describe("Absolute path to edit"),
-    old_string: z.string().describe("Text to replace"),
-    new_string: z.string().describe("Replacement text"),
-    replace_all: z.boolean().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
-
-  Glob: looseObject({
-    pattern: z.string().describe("Glob pattern"),
-    path: z.string().optional().describe("Search directory"),
-  }) as z.ZodType<Record<string, unknown>>,
-
-  Grep: looseObject({
-    pattern: z.string().describe("Regex pattern"),
-    path: z.string().optional(),
-    include: z.string().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
-
-  Bash: looseObject({
-    command: z.string().describe("Shell command to run"),
-    timeout: z.number().optional().describe("Timeout in ms"),
-    run_in_background: z.boolean().optional(),
-    background: z.boolean().optional(),
-    working_directory: z.string().optional(),
-    cwd: z.string().optional(),
-    description: z.string().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
-
+  // Shell tools — shared schemas with passthrough (aliases handled by normalizeArgs)
+  Bash: asLoose(TOOL_SCHEMAS.Bash),
+  // OpenApp: override app to optional since LLM might use `name` alias instead
   OpenApp: looseObject({
-    app: z.string().optional().describe("Application name or executable path"),
+    app: z.string().optional().describe("Application name or executable path to launch"),
     name: z.string().optional().describe("Application name or path"),
-    args: z.array(z.string()).optional(),
-    working_directory: z.string().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
-
+    args: z.array(z.string()).optional().describe("Optional arguments passed to the app"),
+    working_directory: z.string().optional().describe("Working directory for the launch context"),
+  }),
+  // KillShell: override shell_id to optional since LLM might use `id` alias
   KillShell: looseObject({
-    shell_id: z.string().optional().describe("Shell ID to kill"),
+    shell_id: z.string().optional().describe("Shell ID returned by Bash with run_in_background=true"),
     id: z.string().optional().describe("Shell ID to kill"),
-  }) as z.ZodType<Record<string, unknown>>,
+  }),
+  ShellStatus: asLoose(TOOL_SCHEMAS.ShellStatus),
 
-  ShellStatus: looseObject({
-    shell_id: z.string().optional(),
-    id: z.string().optional(),
-    tail_lines: z.number().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
-
-  TaskCreate: looseObject({
+  // Task tools — local-only schemas
+  TaskCreate: z.object({
     description: z.string(),
     prompt: z.string().optional(),
     command: z.string().optional(),
@@ -115,9 +93,9 @@ const toolSchemas: Record<string, z.ZodType<Record<string, unknown>>> = {
     parent_task_id: z.string().optional(),
     parentTaskId: z.string().optional(),
     args: z.record(z.string(), z.unknown()).optional(),
-  }) as z.ZodType<Record<string, unknown>>,
+  }).passthrough() as z.ZodType<Record<string, unknown>>,
 
-  Task: looseObject({
+  Task: z.object({
     description: z.string(),
     prompt: z.string().optional(),
     command: z.string().optional(),
@@ -138,69 +116,55 @@ const toolSchemas: Record<string, z.ZodType<Record<string, unknown>>> = {
     action: z.string().optional(),
     reason: z.string().optional(),
     args: z.record(z.string(), z.unknown()).optional(),
-  }) as z.ZodType<Record<string, unknown>>,
+  }).passthrough() as z.ZodType<Record<string, unknown>>,
 
-  TaskOutput: looseObject({
+  TaskOutput: z.object({
     id: z.string().optional().describe("Task ID"),
     task_id: z.string().optional().describe("Task ID"),
     timeout: z.number().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
+  }).passthrough() as z.ZodType<Record<string, unknown>>,
 
-  TaskCancel: looseObject({
+  TaskCancel: z.object({
     task_id: z.string().optional().describe("Task ID"),
     id: z.string().optional().describe("Task ID"),
     reason: z.string().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
+  }).passthrough() as z.ZodType<Record<string, unknown>>,
 
-  AskUserQuestion: looseObject({
-    question: z.string(),
-    options: z.array(z.string()).optional(),
-  }) as z.ZodType<Record<string, unknown>>,
+  // User interaction — use shared canonical schema
+  AskUserQuestion: asLoose(TOOL_SCHEMAS.AskUserQuestion),
 
-  SelfModStart: looseObject({
+  // Self-mod tools — local-only schemas (SelfModStart, SelfModApply, SelfModStatus
+  // are local-only and not in the shared package)
+  SelfModStart: z.object({
     featureId: z.string().optional(),
     name: z.string(),
     description: z.string().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
+  }).passthrough() as z.ZodType<Record<string, unknown>>,
 
-  SelfModApply: looseObject({
+  SelfModApply: z.object({
     featureId: z.string(),
-  }) as z.ZodType<Record<string, unknown>>,
+  }).passthrough() as z.ZodType<Record<string, unknown>>,
 
-  SelfModRevert: looseObject({
-    featureId: z.string(),
-  }) as z.ZodType<Record<string, unknown>>,
+  // SelfModRevert/SelfModPackage — shared schemas (passthrough allows featureId alias)
+  SelfModRevert: asLoose(TOOL_SCHEMAS.SelfModRevert),
 
-  SelfModStatus: looseObject({
+  SelfModStatus: z.object({
     featureId: z.string().optional(),
-  }) as z.ZodType<Record<string, unknown>>,
+  }).passthrough() as z.ZodType<Record<string, unknown>>,
 
-  SelfModPackage: looseObject({
-    featureId: z.string(),
-  }) as z.ZodType<Record<string, unknown>>,
+  SelfModPackage: asLoose(TOOL_SCHEMAS.SelfModPackage),
 };
 
-// Tool descriptions for the AI model
+// Tool descriptions — shared canonical descriptions with local-only additions
 const toolDescriptions: Record<string, string> = {
-  Read: "Read a file from the filesystem",
-  Write: "Write content to a file",
-  Edit: "Replace text in a file",
-  Glob: "Find files matching a glob pattern",
-  Grep: "Search file contents with regex",
-  Bash: "Execute a shell command",
-  OpenApp: "Open an application",
-  KillShell: "Kill a running shell process",
-  ShellStatus: "Check status of shell processes",
+  ...TOOL_DESCRIPTIONS,
   TaskCreate: "Create and run a background subagent task",
   Task: "Create or manage a background task",
   TaskOutput: "Get output from a background task",
   TaskCancel: "Cancel a running background task",
-  AskUserQuestion: "Ask the user a question",
   SelfModStart: "Start a self-modification feature",
   SelfModApply: "Apply a self-modification feature",
-  SelfModRevert: "Revert a self-modification feature",
   SelfModStatus: "Check self-modification status",
-  SelfModPackage: "Package a self-modification feature",
 };
 
 // ─── Create Tools ────────────────────────────────────────────────────────────
@@ -259,6 +223,12 @@ export function createAgentTools(opts: CreateAgentToolsOpts): Record<string, Too
     }
     if (toolName === "TaskCreate") {
       normalized.action = "create";
+    }
+    // SelfMod: normalize camelCase featureId -> snake_case feature_id
+    if (toolName === "SelfModRevert" || toolName === "SelfModPackage") {
+      if (normalized.feature_id === undefined && normalized.featureId !== undefined) {
+        normalized.feature_id = normalized.featureId;
+      }
     }
     return normalized;
   };
@@ -319,4 +289,3 @@ export function createAgentTools(opts: CreateAgentToolsOpts): Record<string, Too
 
   return tools;
 }
-
