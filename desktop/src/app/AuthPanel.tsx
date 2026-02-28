@@ -37,7 +37,7 @@ export const AuthPanel = () => {
       setStatus("sent");
     } catch (err) {
       setStatus("error");
-      setError((err as Error)?.message ?? "Failed to send magic link.");
+      setError(err instanceof Error ? err.message : "Failed to send magic link.");
     }
   };
 

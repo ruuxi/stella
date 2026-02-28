@@ -126,7 +126,7 @@ export async function generateMusicPrompt(
   mood: MusicMood,
   previousLabel: string | null,
   userHint: string | null,
-  lyrics: boolean = false,
+  lyrics: boolean,
 ): Promise<PromptSet> {
   const moodContext = MOOD_GUIDANCE[mood]
 

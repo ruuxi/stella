@@ -845,7 +845,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                         setExpressionStyle(style);
                         const backendStyle = style === "none" ? "none" as const : "emoji" as const;
                         if (isAuthenticated) {
-                          saveExpressionStyle({ style: backendStyle }).catch(() => {});
+                          saveExpressionStyle({ style: backendStyle }).catch(() => {
+                            // Expression style sync is best-effort only.
+                          });
                         }
                       }}
                     >

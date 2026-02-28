@@ -22,7 +22,8 @@ export class ErrorBoundary extends Component<Props, State> {
         await window.electronAPI?.selfModRevert(featureId);
       }
       window.location.reload();
-    } catch {
+    } catch (err) {
+      console.error("ErrorBoundary revert failed:", err);
       window.location.reload();
     }
   };

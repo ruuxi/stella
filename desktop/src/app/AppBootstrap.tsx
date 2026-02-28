@@ -112,7 +112,7 @@ export const AppBootstrap = () => {
         }
         const savedShortcut = localStorage.getItem("stella-voice-shortcut");
         if (savedShortcut) {
-          window.electronAPI?.setVoiceShortcut?.(savedShortcut);
+          window.electronAPI?.setVoiceShortcut(savedShortcut);
         }
       } catch (err) {
         console.error("[AppBootstrap] Cloud conversation setup failed:", err);

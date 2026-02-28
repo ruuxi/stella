@@ -55,7 +55,8 @@ async function loadReplacements(): Promise<Replacement[]> {
         replacement: real,
       }));
       return cachedReplacements;
-    } catch {
+    } catch (err) {
+      console.warn("Failed to load identity map for depseudonymization:", err);
       cachedReplacements = [];
       return [];
     }

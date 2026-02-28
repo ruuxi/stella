@@ -104,10 +104,6 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
     )
   }
 
-  if (!Component) {
-    return <div className="canvas-renderer-empty">No component loaded</div>
-  }
-
   return (
     <div className="canvas-vite-wrap">
       <CanvasErrorBoundary key={retryKeyRef.current} onRetry={handleRetry}>

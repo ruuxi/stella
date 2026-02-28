@@ -197,7 +197,7 @@ export function useStreamingChat({
           type: "tool_request",
           requestId: event.toolCallId,
           payload: {
-            toolName: event.toolName ?? "Tool",
+            toolName: event.toolName,
           },
         });
         return;
@@ -208,8 +208,8 @@ export function useStreamingChat({
         type: "tool_result",
         requestId: event.toolCallId,
         payload: {
-          toolName: event.toolName ?? "Tool",
-          result: event.resultPreview ?? "",
+          toolName: event.toolName,
+          result: event.resultPreview,
         },
       });
     },
@@ -295,7 +295,7 @@ export function useStreamingChat({
         case "error":
           if (event.fatal) {
             console.error("Local agent error:", event.error);
-            showToast({ title: "Something went wrong", variant: "error" });
+            showToast({ title: "Something went wrong", description: event.error || undefined, variant: "error" });
             resetStreamingState(runIdCounter);
           }
           break;

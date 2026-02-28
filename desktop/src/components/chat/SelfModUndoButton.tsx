@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { showToast } from "@/components/toast";
 
 export type SelfModApplied = {
   featureId: string;
@@ -19,7 +20,9 @@ export function SelfModUndoButton({
     try {
       await window.electronAPI?.selfModRevert(selfModApplied.featureId, 1);
       setState("reverted");
-    } catch {
+    } catch (err) {
+      console.error("Self-mod revert failed:", err);
+      showToast({ title: "Failed to undo changes", variant: "error" });
       setState("idle");
     }
   }, [selfModApplied.featureId, state]);

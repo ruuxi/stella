@@ -56,7 +56,7 @@ export const RuntimeModeDialog = ({ open, onOpenChange }: RuntimeModeDialogProps
     try {
       await set247Enabled({ enabled: !runtimeStatus.enabled });
     } catch (toggleError) {
-      setError((toggleError as Error).message ?? "Failed to update 24/7 mode.");
+      setError(toggleError instanceof Error ? toggleError.message : "Failed to update 24/7 mode.");
     } finally {
       setIsSaving(false);
     }
