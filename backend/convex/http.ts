@@ -57,46 +57,6 @@ type ChatRequest = {
   agent?: "orchestrator" | "general";
 };
 
-const getPlatformGuidance = (platform: string): string => {
-  if (platform === "win32") {
-    return `
-## Platform: Windows
-
-You are running on Windows. Use Windows-compatible commands:
-- Shell: Git Bash (bash syntax works)
-- Open apps: \`start <app>\` or \`cmd /c start "" <app>\` (NOT \`open -a\`)
-- Open URLs: \`start <url>\`
-- File paths: Use forward slashes in bash, or escape backslashes
-- Common paths: \`$USERPROFILE\` (home), \`$APPDATA\`, \`$LOCALAPPDATA\`
-`.trim();
-  }
-
-  if (platform === "darwin") {
-    return `
-## Platform: macOS
-
-You are running on macOS. Use macOS-compatible commands:
-- Shell: bash/zsh
-- Open apps: \`open -a <app>\`
-- Open URLs: \`open <url>\`
-- Common paths: \`$HOME\`, \`~/Library/Application Support\`
-`.trim();
-  }
-
-  if (platform === "linux") {
-    return `
-## Platform: Linux
-
-You are running on Linux. Use Linux-compatible commands:
-- Shell: bash
-- Open apps: \`xdg-open\` or app-specific launchers
-- Open URLs: \`xdg-open <url>\`
-- Common paths: \`$HOME\`, \`~/.config\`, \`~/.local/share\`
-`.trim();
-  }
-
-  return "";
-};
 
 const http = httpRouter();
 
@@ -231,7 +191,6 @@ http.route({
 
     // Fallback to active thread if orchestrator or if no message ID provided
     const targetThreadId = activeThreadId;
-    const platformGuidance = getPlatformGuidance(userPlatform);
     let promptBuild: Awaited<ReturnType<typeof buildSystemPrompt>>;
     let requestMessages: any[];
     let orchestratorTurn:
@@ -243,12 +202,12 @@ http.route({
         conversation,
         conversationId,
         ownerId: conversation.ownerId,
+        platform: userPlatform,
         activeThreadId,
         userPayload: {
           kind: "chat",
           text: userText,
           images: resolvedImages,
-          platformGuidance,
         },
         history: {
           enabled: true,
@@ -267,6 +226,7 @@ http.route({
       promptBuild = await buildSystemPrompt(ctx, agentType, {
         ownerId: conversation.ownerId,
         conversationId,
+        platform: userPlatform,
       });
       const historyEvents = await ctx.runQuery(
         internal.events.listRecentContextEventsByTokens,
@@ -322,13 +282,10 @@ http.route({
         contentParts.push({ type: "text", text: " " });
       }
 
-      const contextParts: string[] = [];
-      if (promptBuild.dynamicContext) contextParts.push(promptBuild.dynamicContext);
-      if (platformGuidance) contextParts.push(platformGuidance);
-      if (contextParts.length > 0) {
+      if (promptBuild.dynamicContext) {
         contentParts.push({
           type: "text",
-          text: `\n\n<system-context>\n${contextParts.join("\n\n")}\n</system-context>`,
+          text: `\n\n<system-context>\n${promptBuild.dynamicContext}\n</system-context>`,
         });
       }
 

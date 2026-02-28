@@ -34,7 +34,6 @@ type ChatUserPayload = {
   kind: "chat";
   text: string;
   images?: OrchestratorImageAttachment[];
-  platformGuidance?: string;
 };
 
 type TaskDeliveryPayload = {
@@ -62,6 +61,7 @@ export type PrepareOrchestratorTurnArgs = {
   conversation: Doc<"conversations">;
   conversationId: Id<"conversations">;
   ownerId: string;
+  platform?: string;
   activeThreadId?: Id<"threads"> | null;
   userPayload: OrchestratorUserPayload;
   history?: HistoryBuildConfig;
@@ -215,6 +215,7 @@ export const prepareOrchestratorTurn = async (
   const promptBuild = await buildSystemPrompt(ctx, "orchestrator", {
     ownerId: args.ownerId,
     conversationId: args.conversationId,
+    platform: args.platform,
   });
   const activeThreadId =
     args.activeThreadId !== undefined
@@ -228,9 +229,9 @@ export const prepareOrchestratorTurn = async (
   });
 
   const extraReminderText =
-    args.userPayload.kind === "chat"
-      ? args.userPayload.platformGuidance
-      : args.userPayload.extraReminderText;
+    args.userPayload.kind === "task_delivery"
+      ? args.userPayload.extraReminderText
+      : undefined;
   const orchestratorContext = await buildOrchestratorPromptContext(ctx, {
     conversation: args.conversation,
     activeThreadId,
