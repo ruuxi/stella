@@ -18,6 +18,11 @@ import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getModelConfig } from "./model";
+import {
+  extractProvider,
+  extractModelName,
+  getProviderSecretKey,
+} from "@stella/shared";
 
 export type ResolvedModelConfig = {
   model: string | LanguageModel;
@@ -25,20 +30,6 @@ export type ResolvedModelConfig = {
   maxOutputTokens?: number;
   providerOptions?: ProviderOptions;
 };
-
-/** Extract provider prefix from a model string like "anthropic/claude-opus-4.6" */
-function extractProvider(modelString: string): string | null {
-  const slash = modelString.indexOf("/");
-  if (slash <= 0) return null;
-  return modelString.slice(0, slash);
-}
-
-/** Extract model name after provider prefix */
-function extractModelName(modelString: string): string {
-  const slash = modelString.indexOf("/");
-  if (slash <= 0) return modelString;
-  return modelString.slice(slash + 1);
-}
 
 function parseJsonObject(value: string): Record<string, unknown> | null {
   try {
@@ -199,51 +190,8 @@ function filterGatewayOptions(
   return Object.keys(rest).length > 0 ? (rest as ProviderOptions) : undefined;
 }
 
-/** Map provider prefix to secrets provider key */
-function providerToSecretKey(provider: string): string | null {
-  switch (provider) {
-    case "anthropic":
-      return "llm:anthropic";
-    case "openai":
-      return "llm:openai";
-    case "google":
-      return "llm:google";
-    case "azure":
-      return "llm:azure";
-    case "azure-cognitive-services":
-      return "llm:azure-cognitive-services";
-    case "cloudflare-workers-ai":
-      return "llm:cloudflare-workers-ai";
-    case "vercel":
-      return "llm:vercel";
-    case "zenmux":
-      return "llm:zenmux";
-    case "cerebras":
-      return "llm:cerebras";
-    case "kilo":
-      return "llm:kilo";
-    case "amazon-bedrock":
-      return "llm:amazon-bedrock";
-    case "google-vertex":
-      return "llm:google-vertex";
-    case "google-vertex-anthropic":
-      return "llm:google-vertex-anthropic";
-    case "cloudflare-ai-gateway":
-      return "llm:cloudflare-ai-gateway";
-    case "gitlab":
-      return "llm:gitlab";
-    case "github-copilot":
-      return "llm:github-copilot";
-    case "github-copilot-enterprise":
-      return "llm:github-copilot-enterprise";
-    case "sap-ai-core":
-      return "llm:sap-ai-core";
-    case "opencode":
-      return "llm:opencode";
-    default:
-      return null;
-  }
-}
+/** Map provider prefix to secrets provider key (uses shared registry) */
+const providerToSecretKey = getProviderSecretKey;
 
 /** Helper to look up a user's decrypted key for a given provider */
 async function getUserKey(

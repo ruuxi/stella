@@ -19,6 +19,7 @@
     "@convex-dev/resend": "^0.1.0",
     "@gitlab/gitlab-ai-provider": "^3.6.0",
     "@jerome-benoit/sap-ai-provider-v2": "^4.4.18",
+    "@stella/shared": "file:../shared",
     "ai": "^6.0.49",
     "better-auth": "1.4.9",
     "convex": "^1.32.0",
