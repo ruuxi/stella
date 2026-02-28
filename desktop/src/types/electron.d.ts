@@ -205,6 +205,10 @@ export type ElectronApi = {
   setVoiceShortcut: (shortcut: string) => void
   onVoiceTranscript: (callback: (transcript: string) => void) => () => void
 
+  // Voice-to-Voice (Realtime API)
+  voiceRtcExecuteTool: (toolName: string, toolArgs: Record<string, unknown>) => Promise<unknown>
+  setVoiceRtcShortcut: (shortcut: string) => void
+
   // Store package management
   storeInstallSkill: (payload: {
     packageId: string

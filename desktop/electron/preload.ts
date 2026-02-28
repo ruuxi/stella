@@ -180,6 +180,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Voice Transcript
   submitVoiceTranscript: (transcript: string) => ipcRenderer.send('voice:transcript', transcript),
   setVoiceShortcut: (shortcut: string) => ipcRenderer.send('voice:setShortcut', shortcut),
+
+  // Voice-to-Voice (Realtime API)
+  voiceRtcExecuteTool: (toolName: string, toolArgs: Record<string, unknown>) =>
+    ipcRenderer.invoke('voice-rtc:executeTool', toolName, toolArgs),
+  setVoiceRtcShortcut: (shortcut: string) => ipcRenderer.send('voice-rtc:setShortcut', shortcut),
   onVoiceTranscript: (callback: (transcript: string) => void) => {
     const handler = (_event: IpcRendererEvent, transcript: string) => {
       callback(transcript)

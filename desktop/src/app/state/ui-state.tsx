@@ -18,6 +18,7 @@ const defaultState: UiState = {
   view: 'home',
   conversationId: null,
   isVoiceActive: false,
+  isVoiceRtcActive: false,
 }
 
 const UiStateContext = createContext<UiStateContextValue | null>(null)
