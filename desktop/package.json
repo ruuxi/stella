@@ -13,9 +13,9 @@
     "test:electron": "vitest run --config vitest.electron.config.ts",
     "preview": "vite preview",
     "native:build": "cd native && npm install && npm run build",
-    "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && wait-on file:.vite-dev-url && cross-env NODE_ENV=development electron .\"",
-    "electron:build": "npm run native:build && tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron-builder",
-    "electron:preview": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron .",
+    "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"cd ../shared && npx tsc && cd ../frontend && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && wait-on file:.vite-dev-url && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "npm run native:build && cd ../shared && npx tsc && cd ../frontend && tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron-builder",
+    "electron:preview": "cd ../shared && npx tsc && cd ../frontend && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron .",
     "emotes:sync": "node scripts/fetch-emotes.mjs",
     "emotes:sync:clean": "node scripts/fetch-emotes.mjs --clean",
     "emotes:label": "node scripts/label-emotes.mjs",
@@ -25,7 +25,9 @@
     "emotes:optimize": "node scripts/optimize-emotes.mjs"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^3.0.82",
+    "@ai-sdk/amazon-bedrock": "^4.0.69",
+    "@ai-sdk/anthropic": "^3.0.50",
+    "@ai-sdk/openai": "^3.0.37",
     "@convex-dev/better-auth": "^0.10.0",
     "@gitlab/gitlab-ai-provider": "^3.6.0",
     "@google/genai": "^1.43.0",
