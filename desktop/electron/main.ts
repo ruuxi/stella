@@ -1907,15 +1907,39 @@ app.whenReady().then(async () => {
     }
   })
 
-  // Execute a local tool on behalf of the voice-to-voice session
-  ipcMain.handle('voice-rtc:executeTool', async (_event, toolName: string, toolArgs: Record<string, unknown>) => {
+  // Voice-to-voice: delegate to the orchestrator via the local agent runtime
+  ipcMain.handle('voice:orchestratorChat', async (_event, payload: { conversationId: string; message: string }) => {
     if (!localHostRunner) {
-      return { error: 'Local host runner not initialized' }
+      return 'Error: Local host runner not initialized'
     }
-    return localHostRunner.executeTool(toolName, toolArgs, {
-      conversationId: uiState.conversationId ?? 'voice-rtc',
-      deviceId: deviceId ?? 'unknown',
-      requestId: `voice-rtc-${Date.now()}`,
+
+    return new Promise<string>((resolve) => {
+      let fullText = ''
+
+      localHostRunner!.handleLocalChat(
+        {
+          conversationId: payload.conversationId,
+          userMessageId: `voice-${Date.now()}`,
+          agentType: 'orchestrator',
+          storageMode: 'local',
+          localHistory: [{ role: 'user', content: payload.message }],
+        },
+        {
+          onStream: (ev) => {
+            if (ev.chunk) fullText += ev.chunk
+          },
+          onToolStart: () => {},
+          onToolEnd: () => {},
+          onEnd: (ev) => {
+            resolve(ev.finalText ?? fullText || 'Done.')
+          },
+          onError: (ev) => {
+            resolve(`Error: ${ev.error ?? 'Unknown error'}`)
+          },
+        },
+      ).catch((err) => {
+        resolve(`Error: ${(err as Error).message}`)
+      })
     })
   })
 
