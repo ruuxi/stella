@@ -16,6 +16,7 @@
         "@convex-dev/resend": "^0.1.0",
         "@gitlab/gitlab-ai-provider": "^3.6.0",
         "@jerome-benoit/sap-ai-provider-v2": "^4.4.18",
+        "@stella/shared": "file:../shared",
         "ai": "^6.0.49",
         "better-auth": "1.4.9",
         "convex": "^1.32.0",
@@ -349,6 +350,8 @@
     "@stablelib/base64": ["@stablelib/base64@1.0.1", "", {}, "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
+
+    "@stella/shared": ["@stella/shared@file:../shared", { "peerDependencies": { "zod": "^3.0.0" } }],
 
     "@types/node": ["@types/node@24.10.10", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-+0/4J266CBGPUq/ELg7QUHhN25WYjE0wYTPSQJn1xeu8DOlIOPxXxrNGiLmfAWl7HMMgWFWXpt9IDjMWrF5Iow=="],
 

@@ -2,19 +2,9 @@ import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
 import { getSpritesTokenForOwner, spritesExec } from "../agent/cloud_devices";
+import { getDangerousCommandReason } from "@stella/shared";
 
 const MAX_OUTPUT = 30_000;
-const DANGEROUS_COMMAND_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
-  { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
-  { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
-  { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
-  { pattern: /\bdd\s+if=/i, reason: "dd if= (raw disk write)" },
-  { pattern: /\bmkfs\b/i, reason: "mkfs (format filesystem)" },
-  { pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/i, reason: "fork bomb" },
-  { pattern: /\bshutdown\b/i, reason: "shutdown" },
-  { pattern: /\breboot\b/i, reason: "reboot" },
-];
 
 const truncate = (value: string, max = MAX_OUTPUT) => {
   if (value.length <= max) {
@@ -48,14 +38,6 @@ const formatExecResult = (result: { stdout: string; stderr: string; exit_code: n
   return renderTruncated(parts.join("\n") || "(no output)");
 };
 
-const getDangerousCommandReason = (command: string): string | null => {
-  for (const { pattern, reason } of DANGEROUS_COMMAND_PATTERNS) {
-    if (pattern.test(command)) {
-      return reason;
-    }
-  }
-  return null;
-};
 
 /**
  * Creates tool definitions that execute on a Sprites.dev cloud sandbox.

@@ -10,38 +10,20 @@
  *   );
  */
 
-/**
- * Check if an error is an abort/cancellation error that should NOT trigger failover.
- * These represent intentional cancellations (user navigated away, task canceled, etc.).
- */
-function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === "AbortError") return true;
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    if (msg.includes("abort") || msg.includes("cancel")) return true;
-    if (error.name === "AbortError") return true;
-  }
-  return false;
-}
+import {
+  isAbortError,
+  isContextOverflowError,
+  isConvexInternalError,
+} from "@stella/shared";
 
 /**
  * Check if an error is a model/API error that should trigger failover.
- * We fail over on: network errors, auth errors, rate limits, server errors,
- * model not found, etc. We do NOT fail over on abort errors or context overflow
- * (which are better handled by the caller's own retry logic).
+ * Blocklist strategy: everything triggers failover unless explicitly excluded.
  */
 function shouldFailover(error: unknown): boolean {
   if (isAbortError(error)) return false;
-
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    // Context overflow should be handled by caller (e.g. halving history budget)
-    if (msg.includes("context") && (msg.includes("overflow") || msg.includes("too long") || msg.includes("too large"))) {
-      return false;
-    }
-    // Convex-specific errors that aren't model failures
-    if (msg.includes("convex") && msg.includes("function")) return false;
-  }
+  if (isContextOverflowError(error)) return false;
+  if (isConvexInternalError(error)) return false;
 
   // Everything else (rate limit, auth, network, 500, model not found, etc.) → failover
   return true;
