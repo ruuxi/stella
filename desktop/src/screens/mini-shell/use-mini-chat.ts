@@ -216,7 +216,7 @@ export function useMiniChat(opts: {
           type: "tool_request",
           requestId: event.toolCallId,
           payload: {
-            toolName: event.toolName ?? "Tool",
+            toolName: event.toolName,
           },
         });
         return;
@@ -227,8 +227,8 @@ export function useMiniChat(opts: {
         type: "tool_result",
         requestId: event.toolCallId,
         payload: {
-          toolName: event.toolName ?? "Tool",
-          result: event.resultPreview ?? "",
+          toolName: event.toolName,
+          result: event.resultPreview,
         },
       });
     },

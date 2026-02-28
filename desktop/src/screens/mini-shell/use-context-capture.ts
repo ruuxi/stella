@@ -12,17 +12,17 @@ export function useContextCapture() {
     const electronApi = getElectronApi();
     if (!electronApi) return;
 
-    const unsubscribeVisibility = electronApi.onMiniVisibility?.((visible) => {
+    const unsubscribeVisibility = electronApi.onMiniVisibility((visible) => {
       setShellVisible(visible);
     });
 
-    const unsubscribeDismissPreview = electronApi.onDismissPreview?.(() => {
+    const unsubscribeDismissPreview = electronApi.onDismissPreview(() => {
       setPreviewIndex(null);
     });
 
     // Fetch initial context
     electronApi
-      .getChatContext?.()
+      .getChatContext()
       .then((context) => {
         if (!context) return;
         setChatContext(context);

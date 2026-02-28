@@ -1,4 +1,5 @@
 import { useState, useMemo, type FormEvent } from "react";
+import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 
 const getCallbackUrl = () => {
@@ -36,7 +37,7 @@ export function InlineAuth({ className, onSkip }: InlineAuthProps) {
   };
 
   return (
-    <div className={`onboarding-inline-auth ${className ?? ""}`}>
+    <div className={cn("onboarding-inline-auth", className)}>
       {status === "sent" ? (
         <>
           <div className="onboarding-inline-auth-sent">

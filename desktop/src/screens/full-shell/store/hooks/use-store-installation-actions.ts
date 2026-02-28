@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useUiState } from "@/app/state/ui-state";
+import { showToast } from "@/components/toast";
 import { registerTheme, unregisterTheme } from "@/theme/themes";
 import type { ThemeColors } from "@/theme/themes/types";
 import type { StorePackage } from "../constants";
@@ -266,6 +267,7 @@ export function useStoreInstallationActions({
         await installMutation({ packageId: pkg.packageId, version: pkg.version });
       } catch (err) {
         console.error("Install failed:", err);
+        showToast({ title: "Failed to install", variant: "error" });
       } finally {
         setInstallingIds((prev) => {
           const next = new Set(prev);
@@ -304,6 +306,7 @@ export function useStoreInstallationActions({
         await uninstallMutation({ packageId: pkg.packageId });
       } catch (err) {
         console.error("Uninstall failed:", err);
+        showToast({ title: "Failed to uninstall", variant: "error" });
       } finally {
         setInstallingIds((prev) => {
           const next = new Set(prev);

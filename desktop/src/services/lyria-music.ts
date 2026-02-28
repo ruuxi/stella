@@ -603,8 +603,12 @@ export async function pause(): Promise<void> {
     setState({ status: "paused" })
     stopElapsedTimer()
     clearPreemptTimer()
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error("lyria pause failed:", err);
+    setState({
+      status: "error",
+      error: err instanceof Error ? err.message : "Failed to pause music",
+    })
   }
 }
 
@@ -618,8 +622,12 @@ export async function resume(): Promise<void> {
     setState({ status: "playing" })
     startElapsedTimer()
     schedulePreemptiveReconnect()
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error("lyria resume failed:", err);
+    setState({
+      status: "error",
+      error: err instanceof Error ? err.message : "Failed to resume music",
+    })
   }
 }
 
