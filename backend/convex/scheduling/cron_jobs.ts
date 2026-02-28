@@ -16,6 +16,10 @@ import {
   resolveOwnedConversationId,
   runAgentTurnWithFallback,
 } from "./execution_policy";
+import {
+  cronScheduleValidator,
+  cronPayloadValidator,
+} from "../schema/scheduling";
 
 const STUCK_RUN_MS = DEFAULT_STUCK_RUN_MS;
 const MAX_PREVIEW_CHARS = 800;
@@ -33,38 +37,6 @@ type CronPayload =
       agentType?: string;
       deliver?: boolean;
     };
-
-const cronScheduleValidator = v.union(
-  v.object({
-    kind: v.literal("at"),
-    atMs: v.number(),
-  }),
-  v.object({
-    kind: v.literal("every"),
-    everyMs: v.number(),
-    anchorMs: v.optional(v.number()),
-  }),
-  v.object({
-    kind: v.literal("cron"),
-    expr: v.string(),
-    tz: v.optional(v.string()),
-  }),
-);
-
-const cronPayloadValidator = v.union(
-  v.object({
-    kind: v.literal("systemEvent"),
-    text: v.string(),
-    agentType: v.optional(v.string()),
-    deliver: v.optional(v.boolean()),
-  }),
-  v.object({
-    kind: v.literal("agentTurn"),
-    message: v.string(),
-    agentType: v.optional(v.string()),
-    deliver: v.optional(v.boolean()),
-  }),
-);
 
 const cronPatchValidator = v.object({
   name: v.optional(v.string()),
@@ -664,10 +636,7 @@ export const execute = internalAction({
       await ctx.runMutation(internal.scheduling.cron_jobs.deleteJob, { jobId: job._id });
     }
 
-    const deliver =
-      payloadResolved.kind === "systemEvent"
-        ? payloadResolved.deliver !== false
-        : payloadResolved.deliver !== false;
+    const deliver = payloadResolved.deliver !== false;
     if (deliver && outputText && syncMode !== "off") {
       await ctx.runMutation(internal.events.appendInternalEvent, {
         conversationId,

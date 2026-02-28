@@ -10,42 +10,11 @@ const packageTypeValidator = v.union(
   v.literal("mod"),
 );
 
-const packageValidator = v.object({
-  _id: v.id("store_packages"),
-  _creationTime: v.number(),
-  packageId: v.string(),
-  name: v.string(),
-  author: v.string(),
-  description: v.string(),
-  implementation: v.optional(v.string()),
-  type: packageTypeValidator,
-  version: v.string(),
-  tags: v.array(v.string()),
-  downloads: v.number(),
-  rating: v.optional(v.number()),
-  icon: v.optional(v.string()),
-  sourceUrl: v.optional(v.string()),
-  readme: v.optional(v.string()),
-  modPayload: v.optional(jsonValueValidator),
-  searchText: v.optional(v.string()),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-});
-
 const buildSearchText = (
   name: string,
   description: string,
   tags: string[],
 ): string => `${name} ${description} ${tags.join(" ")}`;
-
-const installValidator = v.object({
-  _id: v.id("store_installs"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  packageId: v.string(),
-  installedVersion: v.string(),
-  installedAt: v.number(),
-});
 
 /**
  * List packages, optionally filtered by type.
@@ -245,48 +214,6 @@ export const getInstalled = query({
       .order("desc")
       .take(200);
     return results;
-  },
-});
-
-/**
- * Seed built-in packages (idempotent).
- */
-export const seed = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const seedPackages: Array<{
-      packageId: string;
-      name: string;
-      type: "skill" | "canvas" | "theme";
-      author: string;
-      description: string;
-      tags: string[];
-      version: string;
-    }> = [];
-
-    if (seedPackages.length === 0) {
-      return null;
-    }
-
-    for (const pkg of seedPackages) {
-      const existing = await ctx.db
-        .query("store_packages")
-        .withIndex("by_packageId", (q) => q.eq("packageId", pkg.packageId))
-        .first();
-
-      if (!existing) {
-        const now = Date.now();
-        await ctx.db.insert("store_packages", {
-          ...pkg,
-          downloads: 0,
-          searchText: buildSearchText(pkg.name, pkg.description, pkg.tags),
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-    }
-
-    return null;
   },
 });
 

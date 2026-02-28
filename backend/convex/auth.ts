@@ -118,34 +118,18 @@ const getSessionVersionForOwner = async (
   ctx: QueryCtx | MutationCtx,
   ownerId: string,
 ): Promise<number> => {
-  try {
-    const policy = await getSessionPolicyFromDb(ctx, ownerId);
-    return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
-  } catch (error) {
-    console.warn(
-      `[auth] Failed to resolve session version for owner ${ownerId}:`,
-      error,
-    );
-    return DEFAULT_SESSION_VERSION;
-  }
+  const policy = await getSessionPolicyFromDb(ctx, ownerId);
+  return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
 };
 
 const getSessionVersionForOwnerAction = async (
   ctx: ActionCtx,
   ownerId: string,
 ): Promise<number> => {
-  try {
-    const policy = await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
-      ownerId,
-    });
-    return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
-  } catch (error) {
-    console.warn(
-      `[auth] Failed to resolve session version for owner ${ownerId}:`,
-      error,
-    );
-    return DEFAULT_SESSION_VERSION;
-  }
+  const policy = await ctx.runQuery(internal.auth.getSessionPolicyByOwnerInternal, {
+    ownerId,
+  });
+  return policy?.sessionVersion ?? DEFAULT_SESSION_VERSION;
 };
 
 export const assertSensitiveSessionPolicy = async (

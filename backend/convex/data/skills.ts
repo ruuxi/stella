@@ -22,27 +22,6 @@ type SecretMountBinding = string | SecretMountSpec;
 type SecretMountMap = Record<string, SecretMountBinding>;
 type SecretMounts = SecretMountMap | { env?: SecretMountMap; files?: SecretMountMap };
 
-const skillValidator = v.object({
-  _id: v.id("skills"),
-  _creationTime: v.number(),
-  ownerId: v.optional(v.string()),
-  id: v.string(),
-  name: v.string(),
-  description: v.string(),
-  markdown: v.string(),
-  agentTypes: v.array(v.string()),
-  toolsAllowlist: v.optional(v.array(v.string())),
-  tags: v.optional(v.array(v.string())),
-  execution: v.optional(v.string()),
-  requiresSecrets: v.optional(v.array(v.string())),
-  publicIntegration: v.optional(v.boolean()),
-  secretMounts: secretMountsValidator,
-  version: v.number(),
-  source: v.string(),
-  enabled: v.boolean(),
-  updatedAt: v.number(),
-});
-
 const skillImportValidator = v.object({
   id: v.string(),
   name: v.optional(v.string()),
@@ -156,7 +135,7 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
   const description =
     typeof record.description === "string" && record.description.trim()
       ? record.description.trim()
-      : "Skill instructions.";
+      : id;
   const markdown =
     typeof record.markdown === "string" && record.markdown.trim()
       ? record.markdown
@@ -168,7 +147,7 @@ const normalizeSkill = (value: unknown): SkillRecord | null => {
   const requiresSecrets = coerceStringArray(record.requiresSecrets);
   const secretMounts = normalizeSecretMounts(record.secretMounts);
 
-  const versionNumber = Number(record.version ?? 1);
+  const versionNumber = Number(record.version);
   const version = Number.isFinite(versionNumber) && versionNumber > 0 ? Math.floor(versionNumber) : 1;
 
   const enabled = record.enabled === false ? false : true;
@@ -397,13 +376,6 @@ export const listSkills = internalQuery({
 // ---------------------------------------------------------------------------
 // Skill Selection (onboarding)
 // ---------------------------------------------------------------------------
-
-const skillSelectionValidator = v.object({
-  id: v.string(),
-  name: v.string(),
-  description: v.string(),
-  tags: v.optional(v.array(v.string())),
-});
 
 export const listAllSkillsForSelection = internalQuery({
   args: {

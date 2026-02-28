@@ -141,12 +141,6 @@ export async function afterChat(
     fallbackUsed: params.fallbackUsed,
   });
 
-  // Patch conversation token count (inline — needs to complete before
-  // memory extraction threshold check in the caller).
-  const totalTokens = params.usage?.totalTokens ?? 0;
-  if (totalTokens > 0) {
-    // Session token limits removed, this now just falls through or logs
-  }
 }
 
 // ---------------------------------------------------------------------------

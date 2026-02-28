@@ -69,9 +69,8 @@ export function withModelFailover<T>(
     // Only fail over on model/API errors
     if (!shouldFailover(error)) throw error;
 
-    const primaryModel = (error as any)?.modelId ?? "unknown";
     console.warn(
-      `[model-failover] Primary model failed (${primaryModel}), attempting fallback. Error: ${
+      `[model-failover] Primary model failed, attempting fallback. Error: ${
         (error as Error)?.message ?? String(error)
       }`,
     );
@@ -99,9 +98,8 @@ export async function withModelFailoverAsync<T>(
     // Only fail over on model/API errors
     if (!shouldFailover(error)) throw error;
 
-    const primaryModel = (error as any)?.modelId ?? "unknown";
     console.warn(
-      `[model-failover] Primary model failed (${primaryModel}), attempting fallback. Error: ${
+      `[model-failover] Primary model failed, attempting fallback. Error: ${
         (error as Error)?.message ?? String(error)
       }`,
     );

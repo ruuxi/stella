@@ -27,21 +27,6 @@ const MEMORY_DISCOVERY_FACT_EXTRACTION_MODEL_KEY = "memory_discovery_fact_extrac
 const MEMORY_RECALL_RERANK_MODEL_KEY = "memory_recall_rerank";
 
 // ---------------------------------------------------------------------------
-// Validators
-// ---------------------------------------------------------------------------
-
-const memoryValidator = v.object({
-  _id: v.id("memories"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  conversationId: v.optional(v.id("conversations")),
-  content: v.string(),
-  accessedAt: v.number(),
-  createdAt: v.number(),
-  updatedAt: v.optional(v.number()),
-});
-
-// ---------------------------------------------------------------------------
 // Cheap LLM helper
 // ---------------------------------------------------------------------------
 
@@ -311,10 +296,7 @@ const selectRecallDocs = async <TDoc extends { _id: unknown }>(args: {
     maxSelected: args.maxSelected,
   });
 
-  const selectedCandidateIds =
-    selectedIds.length > 0
-      ? selectedIds
-      : rerankCandidates.slice(0, args.fallbackCount ?? 5).map((candidate) => candidate.id);
+  const selectedCandidateIds = selectedIds;
 
   return selectedCandidateIds
     .map((id) => docsByCandidateId.get(id))

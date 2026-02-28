@@ -153,20 +153,7 @@ function getBridgeDependencies(provider: string): string {
 }
 
 function generateBridgeWebhookSecret(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `${crypto.randomUUID()}-${crypto.randomUUID()}`;
-  }
-
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    const randomHex = (byteLength: number) => {
-      const bytes = new Uint8Array(byteLength);
-      crypto.getRandomValues(bytes);
-      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-    };
-    return `${randomHex(16)}-${randomHex(16)}-${randomHex(16)}-${randomHex(16)}`;
-  }
-
-  throw new Error("Secure random generator unavailable for bridge webhook secret");
+  return `${crypto.randomUUID()}-${crypto.randomUUID()}`;
 }
 
 const shellSingleQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;

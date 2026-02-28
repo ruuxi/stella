@@ -393,7 +393,7 @@ export const finalizeOrchestratorTurn = async (
       modelString: args.afterChat.modelString,
       usage: args.usage,
       durationMs: args.afterChat.durationMs,
-      success: args.afterChat.success ?? true,
+      success: args.afterChat.success ?? false,
     });
   }
 

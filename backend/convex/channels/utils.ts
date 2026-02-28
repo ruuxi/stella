@@ -133,12 +133,9 @@ const upsertUserPreference = async (
 const webhookRateLimiter = new RateLimiter(components.rateLimiter);
 
 const generateSecureLinkCode = (length = 6): string => {
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    const bytes = new Uint8Array(length);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length]).join("");
-  }
-  throw new Error("Secure random generator unavailable for link code generation");
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length]).join("");
 };
 
 const hashSha256Hex = async (value: string): Promise<string> => {
