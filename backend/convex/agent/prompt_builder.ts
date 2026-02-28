@@ -164,38 +164,6 @@ export const buildSystemPrompt = async (
   // Dynamic context — injected into last user message for prompt caching
   const dynamicParts: string[] = [];
 
-  // Inject device status for orchestrator
-  if (agentType === "orchestrator" && options?.ownerId) {
-    try {
-      const deviceStatus = await ctx.runQuery(
-        internal.agent.device_resolver.getDeviceStatus,
-        { ownerId: options.ownerId },
-      );
-      const lines = ["# Device Status"];
-      lines.push(
-        `- Local device (desktop app): ${deviceStatus.localOnline ? "online" : "offline"}`,
-      );
-      if (deviceStatus.cloudAvailable) {
-        lines.push(`- Remote machine: ${deviceStatus.cloudStatus}`);
-      } else {
-        lines.push("- Remote machine: not provisioned");
-      }
-      if (!deviceStatus.localOnline) {
-        lines.push(
-          "\nThe user's desktop is offline. You cannot access their local files, apps, or shell.",
-        );
-        if (!deviceStatus.cloudAvailable) {
-          lines.push(
-            "No remote machine is available. Use SpawnRemoteMachine if the user needs tool execution.",
-          );
-        }
-      }
-      dynamicParts.push(lines.join("\n"));
-    } catch {
-      // Device status query failed — skip
-    }
-  }
-
   // Inject active threads for orchestrator
   if (agentType === "orchestrator" && options?.conversationId && options.ownerId) {
     try {

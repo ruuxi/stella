@@ -1409,8 +1409,8 @@ export const finalizeDeliveredTaskTurn = internalMutation({
     assistantText: v.string(),
     usage: v.optional(usageSummaryValidator),
     saveAssistantMessage: v.boolean(),
-    shouldMarkReminderSeen: v.boolean(),
-    reminderHash: v.optional(v.string()),
+    shouldResetReminderCounter: v.boolean(),
+    turnOutputTokens: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
@@ -1478,16 +1478,21 @@ export const finalizeDeliveredTaskTurn = internalMutation({
       assistantSaved = true;
     }
 
-    if (
-      args.shouldMarkReminderSeen &&
-      args.reminderHash &&
-      args.activeThreadId
-    ) {
+    if (args.shouldResetReminderCounter) {
       await ctx.db.patch(args.conversationId, {
-        orchestratorReminderHash: args.reminderHash,
-        orchestratorReminderThreadId: args.activeThreadId,
+        reminderTokensSinceLastInjection: 0,
+        forceReminderOnNextTurn: false,
         updatedAt: now,
       });
+    } else if (args.turnOutputTokens && args.turnOutputTokens > 0) {
+      const conversation = await ctx.db.get(args.conversationId);
+      if (conversation) {
+        const current = conversation.reminderTokensSinceLastInjection ?? 0;
+        await ctx.db.patch(args.conversationId, {
+          reminderTokensSinceLastInjection: current + args.turnOutputTokens,
+          updatedAt: now,
+        });
+      }
     }
 
     await ctx.db.patch(args.taskId, {
@@ -1752,6 +1757,7 @@ export const runSubagent = internalAction({
     // Resolve thread: threadId takes priority, then threadName lookup/create
     const threadSupported = args.subagentType === "general";
     let resolvedThreadId: Id<"threads"> | undefined;
+    let evictedThreadName: string | null = null;
 
     if (threadSupported) {
       if (args.threadId) {
@@ -1789,11 +1795,15 @@ export const runSubagent = internalAction({
           });
           resolvedThreadId = activated?._id;
         } else {
-          resolvedThreadId = await ctx.runMutation(internal.data.threads.createThread, {
+          const threadResult = await ctx.runMutation(internal.data.threads.createThread, {
             ownerId: conversation.ownerId,
             conversationId: args.conversationId,
             name: args.threadName,
           });
+          resolvedThreadId = threadResult.threadId;
+          if (threadResult.evictedThreadName) {
+            evictedThreadName = threadResult.evictedThreadName;
+          }
         }
       }
     }
@@ -1853,7 +1863,11 @@ export const runSubagent = internalAction({
       suppressDelivery: args.suppressDelivery,
     });
 
-    return `Task running.\nTask ID: ${taskId}\nElapsed: 0ms`;
+    const parts = [`Task running.\nTask ID: ${taskId}\nElapsed: 0ms`];
+    if (evictedThreadName) {
+      parts.push(`\nNote: Thread "${evictedThreadName}" was archived to make room for the new thread.`);
+    }
+    return parts.join("");
   },
 });
 
@@ -2102,8 +2116,8 @@ export const deliverTaskResult = internalAction({
         assistantText: genResult.text ?? "",
         usage: toUsageSummary(genResult.usage),
         saveAssistantMessage: !noResponseCalled,
-        shouldMarkReminderSeen: orchestratorTurn.reminderState.shouldInjectDynamicReminder,
-        reminderHash: orchestratorTurn.reminderState.reminderHash || undefined,
+        shouldResetReminderCounter: orchestratorTurn.reminderState.shouldInjectDynamicReminder,
+        turnOutputTokens: genResult.usage?.outputTokens ?? 0,
       });
 
       if (persistence.assistantSaved) {
