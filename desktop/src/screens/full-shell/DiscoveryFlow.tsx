@@ -38,8 +38,7 @@ export function useDiscoveryFlow({
   conversationId,
 }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
-  const chatStore = useChatStore();
-  const { storageMode, isLocalStorage } = chatStore;
+  const { storageMode, isLocalStorage, appendEvent: chatStoreAppendEvent } = useChatStore();
   const setCoreMemory = useMutation(api.data.preferences.setCoreMemory);
   const getOrCreateDefaultConversation = useMutation(
     api.conversations.getOrCreateDefaultConversation,
@@ -105,7 +104,7 @@ export function useDiscoveryFlow({
         }
 
         if (synthesisResult.welcomeMessage) {
-          await chatStore.appendEvent({
+          await chatStoreAppendEvent({
             conversationId: activeConversationId,
             type: "assistant_message",
             deviceId,
@@ -113,7 +112,7 @@ export function useDiscoveryFlow({
           });
 
           if (synthesisResult.suggestions?.length) {
-            await chatStore.appendEvent({
+            await chatStoreAppendEvent({
               conversationId: activeConversationId,
               type: "welcome_suggestions",
               deviceId,
@@ -162,7 +161,7 @@ export function useDiscoveryFlow({
     activeConversationId,
     storageMode,
     isLocalStorage,
-    chatStore,
+    chatStoreAppendEvent,
     setCoreMemory,
     getOrCreateDefaultConversation,
     startGeneration,
