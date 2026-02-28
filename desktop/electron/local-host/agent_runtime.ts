@@ -24,6 +24,7 @@ import { extractToolNameFromCallId } from "./agent_core/tool_call_ids.js";
 import { createToolCallIdFactory } from "./agent_core/tool_call_factory.js";
 import { runWithFallbackModel } from "./agent_core/failover.js";
 import { isClaudeCodeModel, runClaudeCodeTurn } from "./claude_code_session_runtime.js";
+import { runCodexAppServerTurn } from "./codex_app_server_runtime.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,8 @@ export type AgentContext = {
   coreMemory?: string;
   threadHistory?: Array<{ role: string; content: string; toolCallId?: string }>;
   activeThreadId?: string;
+  generalAgentEngine?: "default" | "codex_local";
+  codexLocalMaxConcurrency?: number;
   proxyToken: {
     token: string;
     expiresAt: number;
@@ -467,6 +470,74 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     agentContext.fallbackModel && agentContext.fallbackModel !== primaryModelId
       ? agentContext.fallbackModel
       : undefined;
+
+  if (agentType === "general" && agentContext.generalAgentEngine === "codex_local") {
+    const prompt = `${taskDescription}\n\n${taskPrompt}`;
+    let subagentSeq = 0;
+    const nextSubagentSeq = () => ++subagentSeq;
+
+    try {
+      const sessionKey = agentContext.activeThreadId
+        ? `${conversationId}:${agentContext.activeThreadId}`
+        : opts.taskId
+          ? `${conversationId}:task:${opts.taskId}`
+          : `${conversationId}:run:${runId}`;
+
+      const result = await runCodexAppServerTurn({
+        runId,
+        sessionKey,
+        prompt,
+        cwd,
+        abortSignal: signal,
+        maxConcurrency: agentContext.codexLocalMaxConcurrency,
+        onProgress: (chunk) => {
+          if (!chunk) return;
+          onProgress?.(chunk);
+          journal.recordEvent({
+            runId,
+            seq: nextSubagentSeq(),
+            type: "assistant_chunk",
+            resultText: chunk,
+          });
+        },
+      });
+
+      journal.completeRun(runId);
+
+      if (persistToConvex) {
+        try {
+          await persistRunToConvex({
+            journal,
+            runId,
+            conversationId,
+            agentType,
+            convexUrl,
+            authToken,
+            fullText: result.text,
+            usage: result.usage,
+            activeThreadId: agentContext.activeThreadId,
+          });
+        } catch (persistError) {
+          console.error("[agent-runtime] Persist failed:", persistError);
+        }
+      }
+      clearTimeout(timeoutId);
+      journal.close();
+      return { runId, result: result.text };
+    } catch (error) {
+      const errorMessage = `Codex App Server execution failed: ${(error as Error).message ?? "Unknown error"}`;
+      journal.recordEvent({
+        runId,
+        seq: nextSubagentSeq(),
+        type: "status_update",
+        errorText: errorMessage,
+      });
+      journal.markRunCrashed(runId);
+      clearTimeout(timeoutId);
+      journal.close();
+      return { runId, result: "", error: errorMessage };
+    }
+  }
 
   if (agentType === "general" && isClaudeCodeModel(primaryModelId)) {
     const prompt = `${taskDescription}\n\n${taskPrompt}`;

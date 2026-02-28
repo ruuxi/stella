@@ -163,7 +163,8 @@
 
 /* ---- Model Select ---- */
 
-.settings-model-select {
+.settings-model-select,
+.settings-runtime-select {
   width: 220px;
   height: 30px;
   padding: 0 10px;
@@ -184,7 +185,8 @@
   padding-right: 28px;
 }
 
-.settings-model-select:focus {
+.settings-model-select:focus,
+.settings-runtime-select:focus {
   border-color: var(--interactive);
 }
 
