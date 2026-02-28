@@ -98,7 +98,6 @@ export const heartbeat = mutation({
         devicePublicKey: args.publicKey,
         lastSignedAtMs: args.signedAtMs,
         online: true,
-        lastSeenAt: now,
         ...(args.platform !== undefined ? { platform: args.platform } : {}),
       });
     } else {
@@ -108,7 +107,6 @@ export const heartbeat = mutation({
         devicePublicKey: args.publicKey,
         lastSignedAtMs: args.signedAtMs,
         online: true,
-        lastSeenAt: now,
         platform: args.platform,
       });
     }
@@ -130,33 +128,6 @@ export const goOffline = mutation({
       .unique();
 
     if (device) {
-      await ctx.db.patch(device._id, { online: false });
-    }
-    return null;
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Internal Mutations
-// ---------------------------------------------------------------------------
-
-const STALE_THRESHOLD_MS = 90_000; // 90 seconds
-
-/**
- * Sweep: mark devices as offline if their heartbeat is stale.
- * Handles crashes, power loss, network drops where goOffline never fires.
- */
-export const markStaleOffline = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const cutoff = Date.now() - STALE_THRESHOLD_MS;
-    const staleDevices = await ctx.db
-      .query("devices")
-      .withIndex("by_online_and_lastSeenAt", (q) =>
-        q.eq("online", true).lt("lastSeenAt", cutoff),
-      )
-      .collect();
-    for (const device of staleDevices) {
       await ctx.db.patch(device._id, { online: false });
     }
     return null;

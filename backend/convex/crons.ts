@@ -6,7 +6,6 @@ const crons = cronJobs();
 crons.interval("heartbeat tick", { minutes: 1 }, internal.scheduling.heartbeat.tick);
 crons.interval("cron jobs tick", { minutes: 1 }, internal.scheduling.cron_jobs.tick);
 crons.interval("bridge wake tick", { minutes: 1 }, internal.channels.bridge.bridgeWakeTick);
-crons.interval("device presence sweep", { minutes: 2 }, internal.agent.device_resolver.markStaleOffline);
 crons.interval(
   "transient connector cleanup",
   { minutes: 5 },

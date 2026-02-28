@@ -19,12 +19,10 @@ export const devicesSchema = {
     devicePublicKey: v.optional(v.string()),
     lastSignedAtMs: v.optional(v.number()),
     online: v.boolean(),
-    lastSeenAt: v.number(),
     platform: v.optional(v.string()),
   })
     .index("by_ownerId", ["ownerId"])
-    .index("by_deviceId", ["deviceId"])
-    .index("by_online_and_lastSeenAt", ["online", "lastSeenAt"]),
+    .index("by_deviceId", ["deviceId"]),
 
   cloud_devices: defineTable({
     ownerId: v.string(),
