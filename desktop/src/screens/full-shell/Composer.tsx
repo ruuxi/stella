@@ -48,6 +48,7 @@ export function Composer({
     <div className="composer">
       <form
         className={`composer-form${composerExpanded || hasComposerContext ? " expanded" : ""}`}
+        aria-busy={isStreaming}
         onSubmit={(event) => {
           event.preventDefault();
           onSend();

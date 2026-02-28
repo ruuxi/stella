@@ -6,18 +6,30 @@ import type { ReactNode } from "react";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockAppendLocalEvent = vi.fn(() => ({ _id: "local-123" }));
-const mockBuildLocalHistoryMessages = vi.fn(() => [
-  { role: "user" as const, content: "hello" },
-]);
-const mockUploadScreenshotAttachments = vi.fn(() => Promise.resolve([]));
+const mockAppendLocalEvent = vi.fn((args?: unknown) => {
+  void args;
+  return { _id: "local-123" };
+});
+const mockBuildLocalHistoryMessages = vi.fn((conversationId?: string, max?: number) => {
+  void conversationId;
+  void max;
+  return [{ role: "user" as const, content: "hello" }];
+});
+const mockUploadScreenshotAttachments = vi.fn((args?: unknown) => {
+  void args;
+  return Promise.resolve([]);
+});
 
 const mockConvexAppendEvent = vi.fn(() => Promise.resolve({ _id: "cloud-456" }));
 const mockWithOptimisticUpdate = vi.fn(() => mockConvexAppendEvent);
-const mockConvexMutation = vi.fn(() =>
-  Object.assign(vi.fn(), { withOptimisticUpdate: mockWithOptimisticUpdate }),
-);
-const mockConvexAction = vi.fn(() => vi.fn());
+const mockConvexMutation = vi.fn((ref?: unknown) => {
+  void ref;
+  return Object.assign(vi.fn(), { withOptimisticUpdate: mockWithOptimisticUpdate });
+});
+const mockConvexAction = vi.fn((ref?: unknown) => {
+  void ref;
+  return vi.fn();
+});
 
 const mockUseConvexAuth = vi.fn(() => ({
   isAuthenticated: true,
@@ -26,10 +38,10 @@ const mockUseConvexAuth = vi.fn(() => ({
 const mockUseQuery = vi.fn(() => "connected");
 
 vi.mock("convex/react", () => ({
-  useConvexAuth: (...args: unknown[]) => mockUseConvexAuth(...args),
-  useQuery: (...args: unknown[]) => mockUseQuery(...args),
-  useMutation: (...args: unknown[]) => mockConvexMutation(...args),
-  useAction: (...args: unknown[]) => mockConvexAction(...args),
+  useConvexAuth: () => mockUseConvexAuth(),
+  useQuery: () => mockUseQuery(),
+  useMutation: (ref: unknown) => mockConvexMutation(ref),
+  useAction: (ref: unknown) => mockConvexAction(ref),
 }));
 
 vi.mock("../../convex/api", () => ({
@@ -46,14 +58,14 @@ vi.mock("../../convex/api", () => ({
 }));
 
 vi.mock("../../services/local-chat-store", () => ({
-  appendLocalEvent: (...args: unknown[]) => mockAppendLocalEvent(...args),
-  buildLocalHistoryMessages: (...args: unknown[]) =>
-    mockBuildLocalHistoryMessages(...args),
+  appendLocalEvent: (args: unknown) => mockAppendLocalEvent(args),
+  buildLocalHistoryMessages: (conversationId: string, max?: number) =>
+    mockBuildLocalHistoryMessages(conversationId, max),
 }));
 
 vi.mock("../../hooks/streaming/attachment-upload", () => ({
-  uploadScreenshotAttachments: (...args: unknown[]) =>
-    mockUploadScreenshotAttachments(...args),
+  uploadScreenshotAttachments: (args: unknown) =>
+    mockUploadScreenshotAttachments(args),
 }));
 
 // ---------------------------------------------------------------------------

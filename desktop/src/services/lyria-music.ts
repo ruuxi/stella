@@ -2,7 +2,6 @@ import { GoogleGenAI } from "@google/genai"
 import { createServiceRequest } from "@/services/http/service-request"
 import {
   generateMusicPrompt,
-  getFallbackPrompt,
   type MusicMood,
   type PromptSet,
 } from "@/services/lyria-prompts"
