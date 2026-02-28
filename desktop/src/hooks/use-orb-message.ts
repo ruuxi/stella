@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import type { EventRecord } from "./use-conversation-events";
 
+const STORAGE_KEY = "stella:orb-last-seen-message";
+
 /**
  * Extracts the latest assistant message from events and manages
  * a show/fade/hide lifecycle for the floating orb bubble.
@@ -11,7 +13,10 @@ export function useOrbMessage(
 ): { text: string | null; opacity: number } {
   const [text, setText] = useState<string | null>(null);
   const [opacity, setOpacity] = useState(0);
-  const lastSeenIdRef = useRef<string | null>(null);
+  const [storedId] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
+  });
+  const lastSeenIdRef = useRef<string | null>(storedId);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -33,6 +38,7 @@ export function useOrbMessage(
 
     if (!latest || latest._id === lastSeenIdRef.current) return;
     lastSeenIdRef.current = latest._id;
+    try { localStorage.setItem(STORAGE_KEY, latest._id); } catch { /* noop */ }
 
     const rawText = (latest.payload as { text?: string })?.text ?? "";
     if (!rawText.trim()) return;
