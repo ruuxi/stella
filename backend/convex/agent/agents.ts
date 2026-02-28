@@ -212,11 +212,11 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
   const description =
     typeof record.description === "string" && record.description.trim()
       ? record.description.trim()
-      : "Agent instructions.";
+      : id;
   const systemPrompt =
     typeof record.systemPrompt === "string" && record.systemPrompt.trim()
       ? record.systemPrompt
-      : "You are an agent.";
+      : `You are the ${id} agent.`;
 
   const agentTypes = coerceStringArray(record.agentTypes);
   const toolsAllowlist = coerceStringArray(record.toolsAllowlist);
@@ -357,19 +357,7 @@ const getAgentConfigHandler = async (
     });
   }
 
-  return toAgentConfig({
-    id: args.agentType,
-    name: args.agentType,
-    description: "Agent instructions.",
-    systemPrompt: GENERAL_AGENT_SYSTEM_PROMPT,
-    agentTypes: [args.agentType],
-    toolsAllowlist: undefined,
-    defaultSkills: [],
-    maxTaskDepth: 2,
-    version: 1,
-    source: "fallback",
-    updatedAt: Date.now(),
-  });
+  throw new Error(`Unknown agent type: "${args.agentType}"`);
 };
 
 export const getAgentConfig = internalQuery({

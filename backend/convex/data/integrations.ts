@@ -49,9 +49,6 @@ const SLACK_OAUTH_SCOPE = "chat:write,im:history,im:read,im:write";
 const SLACK_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 const generateSecureState = (bytesLength = 24) => {
-  if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
-    throw new Error("Secure random generator unavailable for Slack OAuth state");
-  }
   const bytes = new Uint8Array(bytesLength);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -221,16 +218,6 @@ const publicIntegrationReturnValidator = v.union(
 );
 
 export const getPublicIntegrationById = internalQuery({
-  args: {
-    id: v.string(),
-  },
-  returns: publicIntegrationReturnValidator,
-  handler: async (ctx, args) => {
-    return await getPublicIntegrationByIdHandler(ctx, args);
-  },
-});
-
-export const getPublicIntegrationByIdInternal = internalQuery({
   args: {
     id: v.string(),
   },

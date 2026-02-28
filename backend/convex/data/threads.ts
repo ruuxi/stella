@@ -187,33 +187,6 @@ const generateCompactionTextWithRetry = async (
   throw lastError ?? new Error("Compaction summary generation failed");
 };
 
-const threadValidator = v.object({
-  _id: v.id("threads"),
-  _creationTime: v.number(),
-  conversationId: v.id("conversations"),
-  name: v.string(),
-  status: v.string(),
-  summary: v.optional(v.string()),
-  messageCount: v.number(),
-  totalTokenEstimate: v.number(),
-  createdAt: v.number(),
-  lastUsedAt: v.number(),
-  resurfacedAt: v.optional(v.number()),
-  closedAt: v.optional(v.number()),
-});
-
-const threadMessageValidator = v.object({
-  _id: v.id("thread_messages"),
-  _creationTime: v.number(),
-  threadId: v.id("threads"),
-  ordinal: v.number(),
-  role: v.string(),
-  content: v.string(),
-  toolCallId: v.optional(v.string()),
-  tokenEstimate: v.optional(v.number()),
-  createdAt: v.number(),
-});
-
 // ---------------------------------------------------------------------------
 // Truncate large content to prevent DB bloat
 // ---------------------------------------------------------------------------
@@ -331,7 +304,7 @@ export const getThreadByName = internalQuery({
         String(a._id).localeCompare(String(b._id)),
     );
 
-    return matches[0] ?? null;
+    return matches[0];
   },
 });
 

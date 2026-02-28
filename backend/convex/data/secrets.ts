@@ -294,7 +294,7 @@ export const getSecretValueForProvider = query({
       )
       .order("desc")
       .first();
-    if (!record || record.ownerId !== ownerId) {
+    if (!record) {
       return null;
     }
     const plaintext = await decryptSecret(record.encryptedValue);

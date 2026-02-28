@@ -21,9 +21,6 @@ export function isHeartbeatContentEffectivelyEmpty(
   if (content === undefined || content === null) {
     return false;
   }
-  if (typeof content !== "string") {
-    return false;
-  }
 
   const lines = content.split("\n");
   for (const line of lines) {

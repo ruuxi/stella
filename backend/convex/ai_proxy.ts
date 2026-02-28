@@ -751,8 +751,8 @@ export const llmProxy = httpAction(async (ctx, request) => {
       if (userKey) {
         apiKey = userKey;
       }
-    } catch {
-      // No user key — fall through
+    } catch (err) {
+      console.warn("[ai-proxy] Failed to look up user key:", err);
     }
   }
 
@@ -769,8 +769,8 @@ export const llmProxy = httpAction(async (ctx, request) => {
         const upstreamUrl = `${STATIC_PROVIDER_UPSTREAMS.openrouter}${sanitizedPath}`;
         return await forwardRequest(ctx, request, upstreamUrl, "openrouter", openrouterKey, ownerId, agentType, modelId);
       }
-    } catch {
-      // No OpenRouter key
+    } catch (err) {
+      console.warn("[ai-proxy] Failed to look up OpenRouter key:", err);
     }
   }
 

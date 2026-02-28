@@ -5,7 +5,6 @@ import { buildSystemPrompt } from "../agent/prompt_builder";
 import {
   AUTOMATION_HISTORY_MAX_TOKENS,
 } from "../agent/context_budget";
-import { normalizeOptionalInt } from "../lib/number_utils";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
 import {
@@ -112,12 +111,7 @@ export async function runAgentTurn({
       },
       history: {
         enabled: !transient,
-        maxTokens: normalizeOptionalInt({
-          value: AUTOMATION_HISTORY_MAX_TOKENS,
-          defaultValue: AUTOMATION_HISTORY_MAX_TOKENS,
-          min: 1,
-          max: 120_000,
-        }),
+        maxTokens: AUTOMATION_HISTORY_MAX_TOKENS,
         beforeTimestamp: historyBeforeTimestamp,
         excludeEventId: historyExcludeEventId,
         microcompact: {

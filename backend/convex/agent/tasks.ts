@@ -245,7 +245,8 @@ const isContextOverflowError = (message: string): boolean =>
 const parseJson = (raw: string): unknown => {
   try {
     return JSON.parse(raw);
-  } catch {
+  } catch (e) {
+    console.warn("[tasks] Failed to parse JSON in thread message:", e);
     return raw;
   }
 };
@@ -988,7 +989,7 @@ const executeSubagentRun = async (
       });
     }
 
-    const text: string = result.text ?? "";
+    const text = result.text;
     finished = true;
     await cancelWatcher;
 

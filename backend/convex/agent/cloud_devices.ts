@@ -121,7 +121,7 @@ const pickPrimaryCloudDevice = (
   records: Doc<"cloud_devices">[],
 ): Doc<"cloud_devices"> | null => {
   if (records.length === 0) return null;
-  return [...records].sort(compareCloudDevices)[0] ?? null;
+  return [...records].sort(compareCloudDevices)[0];
 };
 
 const ownerStableHash = (ownerId: string): string => {

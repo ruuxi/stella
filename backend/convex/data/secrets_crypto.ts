@@ -41,8 +41,8 @@ const getMasterKeyBytes = () => {
 };
 
 const getKeyVersion = () => {
-  const raw = process.env.STELLA_SECRETS_MASTER_KEY_VERSION ?? "1";
-  const parsed = Number(raw);
+  const raw = process.env.STELLA_SECRETS_MASTER_KEY_VERSION;
+  const parsed = raw != null ? Number(raw) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
 };
 
@@ -135,7 +135,7 @@ export const decryptSecret = async (serialized: string): Promise<string> => {
 };
 
 export const isEncryptedSecretSerialized = (serialized: string): boolean => {
-  if (typeof serialized !== "string" || serialized.trim().length === 0) {
+  if (serialized.trim().length === 0) {
     return false;
   }
   try {

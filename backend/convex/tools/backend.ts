@@ -677,7 +677,7 @@ export const createBackendTools = (
             let policy = publicPoliciesFromEnv[providerKey] ?? null;
             if (!policy) {
               const publicIntegration = await ctx.runQuery(
-                internal.data.integrations.getPublicIntegrationByIdInternal,
+                internal.data.integrations.getPublicIntegrationById,
                 { id: provider },
               );
               if (publicIntegration?.usagePolicy) {

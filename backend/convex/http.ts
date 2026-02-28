@@ -746,6 +746,10 @@ http.route({
         // Suggestions are non-critical — fallback to empty array
       }
 
+      if (!welcomeResult.text?.trim()) {
+        console.warn("[http] Welcome message LLM returned empty text, using default");
+      }
+
       const response: SynthesizeResponse = {
         coreMemory,
         welcomeMessage: welcomeResult.text?.trim() || DEFAULT_WELCOME_MESSAGE,

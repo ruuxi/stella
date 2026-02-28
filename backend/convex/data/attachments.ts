@@ -4,18 +4,6 @@ import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { requireConversationOwnerAction } from "../auth";
 
-const attachmentValidator = v.object({
-  _id: v.id("attachments"),
-  _creationTime: v.number(),
-  conversationId: v.id("conversations"),
-  deviceId: v.string(),
-  storageKey: v.string(),
-  url: v.optional(v.string()),
-  mimeType: v.string(),
-  size: v.number(),
-  createdAt: v.number(),
-});
-
 const parseDataUrl = (dataUrl: string) => {
   const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
   if (!match) {

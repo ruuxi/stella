@@ -2,18 +2,6 @@ import { query, internalMutation, internalQuery } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { requireUserId } from "../auth";
 
-const canvasStateValidator = v.object({
-  _id: v.id("canvas_states"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  conversationId: v.id("conversations"),
-  name: v.string(),
-  title: v.optional(v.string()),
-  url: v.optional(v.string()),
-  width: v.optional(v.number()),
-  updatedAt: v.number(),
-});
-
 /**
  * Get the saved canvas state for a conversation.
  * Returns the most recent canvas state or null.

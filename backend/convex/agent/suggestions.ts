@@ -87,7 +87,7 @@ export const generateSuggestions = internalAction({
         messages: [{ role: "user", content: prompt }],
       });
 
-      const text = result.text?.trim() ?? "";
+      const text = result.text.trim();
       if (!text || text === "[]") return null;
 
       // Parse JSON response

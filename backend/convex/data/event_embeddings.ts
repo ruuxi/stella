@@ -7,19 +7,6 @@ import {
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 
-const eventEmbeddingValidator = v.object({
-  _id: v.id("event_embeddings"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  conversationId: v.id("conversations"),
-  eventId: v.id("events"),
-  type: v.union(v.literal("user_message"), v.literal("assistant_message")),
-  content: v.string(),
-  timestamp: v.number(),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-});
-
 export const getByEventId = internalQuery({
   args: {
     eventId: v.id("events"),
