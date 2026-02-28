@@ -22,12 +22,22 @@ vi.mock("../../hooks/use-streaming-chat", () => ({
   })),
 }));
 
-const mockUseConvexAuth = vi.fn(() => ({ isAuthenticated: true, isLoading: false }));
-const mockUseQuery = vi.fn(() => "connected");
+vi.mock("../../app/state/chat-store", () => ({
+  useChatStore: vi.fn(() => ({
+    storageMode: "cloud",
+    isLocalStorage: false,
+    cloudFeaturesEnabled: true,
+    appendEvent: vi.fn(),
+    appendAgentEvent: vi.fn(),
+    uploadAttachments: vi.fn(),
+    buildHistory: vi.fn(),
+    streamStrategy: "local-with-http-fallback",
+  })),
+}));
 
 vi.mock("convex/react", () => ({
-  useConvexAuth: vi.fn(() => mockUseConvexAuth()),
-  useQuery: vi.fn(() => mockUseQuery()),
+  useConvexAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
+  useQuery: vi.fn(() => "connected"),
 }));
 
 let mockConversationId: string | null = "conv-123";
@@ -88,8 +98,6 @@ describe("useMiniChat", () => {
   beforeEach(() => {
     mockConversationId = "conv-123";
     mockEvents = [];
-    mockUseConvexAuth.mockReturnValue({ isAuthenticated: true, isLoading: false });
-    mockUseQuery.mockReturnValue("connected");
     vi.clearAllMocks();
   });
 
@@ -138,44 +146,7 @@ describe("useMiniChat", () => {
   });
 
   // ----------------------------------------------------------------
-  // 2. Storage mode derivation
-  // ----------------------------------------------------------------
-  describe("storageMode derivation", () => {
-    it("passes cloud storageMode when authenticated and connected with sync on", () => {
-      mockUseConvexAuth.mockReturnValue({ isAuthenticated: true, isLoading: false });
-      mockUseQuery.mockReturnValue("connected"); // accountMode
-
-      renderHook(() => useMiniChat(makeOpts()));
-
-      expect(vi.mocked(useStreamingChat)).toHaveBeenCalledWith(
-        expect.objectContaining({ storageMode: "cloud" }),
-      );
-    });
-
-    it("passes local storageMode when not authenticated", () => {
-      mockUseConvexAuth.mockReturnValue({ isAuthenticated: false, isLoading: false });
-
-      renderHook(() => useMiniChat(makeOpts()));
-
-      expect(vi.mocked(useStreamingChat)).toHaveBeenCalledWith(
-        expect.objectContaining({ storageMode: "local" }),
-      );
-    });
-
-    it("passes local storageMode when accountMode is private_local", () => {
-      mockUseConvexAuth.mockReturnValue({ isAuthenticated: true, isLoading: false });
-      mockUseQuery.mockReturnValue("private_local");
-
-      renderHook(() => useMiniChat(makeOpts()));
-
-      expect(vi.mocked(useStreamingChat)).toHaveBeenCalledWith(
-        expect.objectContaining({ storageMode: "local" }),
-      );
-    });
-  });
-
-  // ----------------------------------------------------------------
-  // 3. Events passthrough
+  // 2. Events passthrough
   // ----------------------------------------------------------------
   describe("events passthrough", () => {
     it("returns events from useConversationEvents", () => {
@@ -189,18 +160,17 @@ describe("useMiniChat", () => {
       expect(result.current.events).toHaveLength(2);
     });
 
-    it("passes conversationId and storageMode to useConversationEvents", () => {
+    it("passes conversationId to useConversationEvents", () => {
       renderHook(() => useMiniChat(makeOpts()));
 
       expect(vi.mocked(useConversationEvents)).toHaveBeenCalledWith(
         "conv-123",
-        expect.objectContaining({ source: "cloud" }),
       );
     });
   });
 
   // ----------------------------------------------------------------
-  // 4. Passes events and conversationId to shared hook
+  // 3. Passes events and conversationId to shared hook
   // ----------------------------------------------------------------
   describe("shared hook wiring", () => {
     it("passes conversationId and events to useStreamingChat", () => {
@@ -228,7 +198,7 @@ describe("useMiniChat", () => {
   });
 
   // ----------------------------------------------------------------
-  // 5. sendMessage wrapper
+  // 4. sendMessage wrapper
   // ----------------------------------------------------------------
   describe("sendMessage wrapper", () => {
     it("calls shared sendMessage with current message, context, and onClear", async () => {
@@ -284,7 +254,7 @@ describe("useMiniChat", () => {
   });
 
   // ----------------------------------------------------------------
-  // 6. Surfaces shared hook values
+  // 5. Surfaces shared hook values
   // ----------------------------------------------------------------
   describe("surfaces shared hook values", () => {
     it("returns isStreaming from shared hook", () => {

@@ -6,6 +6,7 @@ import { AuthTokenBridge } from './app/AuthTokenBridge'
 import { AutoAnonAuth } from './app/AutoAnonAuth'
 import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
+import { ChatStoreProvider } from './app/state/chat-store'
 
 type WindowType = 'full' | 'mini' | 'radial' | 'region' | 'voice'
 const CredentialRequestLayer = lazy(() =>
@@ -78,9 +79,11 @@ function App() {
       </div>
     ) : (
       <div className={`app window-${windowType}`}>
-        <AppBootstrap />
-        <CredentialRequestLayer />
-        {windowType === 'mini' ? <MiniShell /> : <FullShell />}
+        <ChatStoreProvider>
+          <AppBootstrap />
+          <CredentialRequestLayer />
+          {windowType === 'mini' ? <MiniShell /> : <FullShell />}
+        </ChatStoreProvider>
       </div>
     )
 

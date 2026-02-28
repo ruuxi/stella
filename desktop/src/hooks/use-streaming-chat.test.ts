@@ -21,6 +21,24 @@ vi.mock("../services/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
+const mockAppendEvent = vi.fn(() => Promise.resolve(null));
+const mockAppendAgentEvent = vi.fn();
+const mockUploadAttachments = vi.fn(() => Promise.resolve([]));
+const mockBuildHistory = vi.fn(() => undefined);
+
+vi.mock("../app/state/chat-store", () => ({
+  useChatStore: vi.fn(() => ({
+    storageMode: "cloud",
+    isLocalStorage: false,
+    cloudFeaturesEnabled: true,
+    appendEvent: mockAppendEvent,
+    appendAgentEvent: mockAppendAgentEvent,
+    uploadAttachments: mockUploadAttachments,
+    buildHistory: mockBuildHistory,
+    streamStrategy: "local-with-http-fallback",
+  })),
+}));
+
 vi.mock("./use-raf-state", async () => {
   const { useState, useRef, useCallback } = await import("react");
   return {

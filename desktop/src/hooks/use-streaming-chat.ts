@@ -8,8 +8,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRafStringAccumulator } from "./use-raf-state";
-import { useMutation, useAction } from "convex/react";
-import { api } from "../convex/api";
 import { streamChat } from "../services/model-gateway";
 import { getOrCreateDeviceId } from "../services/device";
 import type { EventRecord } from "./use-conversation-events";
@@ -17,20 +15,12 @@ import type { ChatContext } from "../types/electron";
 import {
   findQueuedFollowUp,
   toEventId,
-  type AppendedEventResponse,
 } from "./streaming/streaming-event-utils";
-import {
-  uploadScreenshotAttachments,
-  type AttachmentUploadResponse,
-} from "./streaming/attachment-upload";
+import type { AttachmentUploadResponse } from "./streaming/attachment-upload";
 import { showToast } from "../components/toast";
-import {
-  appendLocalEvent,
-  buildLocalHistoryMessages,
-  type LocalHistoryMessage,
-} from "../services/local-chat-store";
 import { useResumeAgentRun } from "./use-resume-agent-run";
 import type { AgentStreamEvent, SelfModAppliedData } from "./streaming/streaming-types";
+import { useChatStore } from "../app/state/chat-store";
 
 export type { AgentStreamEvent, SelfModAppliedData } from "./streaming/streaming-types";
 
@@ -39,8 +29,6 @@ export type AttachmentRef = {
   url?: string;
   mimeType?: string;
 };
-
-export type ChatStorageMode = "cloud" | "local";
 
 export type SendMessageArgs = {
   text: string;
@@ -51,17 +39,7 @@ export type SendMessageArgs = {
 
 type UseStreamingChatOptions = {
   conversationId: string | null;
-  storageMode?: ChatStorageMode;
   events: EventRecord[];
-};
-
-type AppendEventArgs = {
-  conversationId: string;
-  type: string;
-  deviceId?: string;
-  requestId?: string;
-  targetDeviceId?: string;
-  payload?: unknown;
 };
 
 const isOrchestratorBusyError = (error: unknown): boolean => {
@@ -79,11 +57,12 @@ const isOrchestratorBusyError = (error: unknown): boolean => {
 
 export function useStreamingChat({
   conversationId,
-  storageMode = "cloud",
   events,
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId;
-  const isLocalStorage = storageMode === "local";
+  const chatStore = useChatStore();
+  const { isLocalStorage, storageMode, streamStrategy } = chatStore;
+
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
@@ -91,76 +70,6 @@ export function useStreamingChat({
   const streamRunIdRef = useRef(0);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(null);
   const [selfModMap, setSelfModMap] = useState<Record<string, SelfModAppliedData>>({});
-
-  const appendEvent = useMutation(api.events.appendEvent).withOptimisticUpdate(
-    (localStore, args) => {
-      if (args.type !== "user_message") return;
-
-      const queryArgs = {
-        conversationId: args.conversationId,
-        paginationOpts: { cursor: null, numItems: 200 },
-      };
-      const current = localStore.getQuery(api.events.listEvents, queryArgs);
-      if (!current?.page) return;
-
-      const optimisticEvent = {
-        _id: `optimistic-${crypto.randomUUID()}`,
-        timestamp: (current.page[0]?.timestamp ?? 0) + 1,
-        type: args.type,
-        deviceId: args.deviceId,
-        payload: args.payload,
-      };
-
-      localStore.setQuery(api.events.listEvents, queryArgs, {
-        ...current,
-        page: [optimisticEvent, ...current.page],
-      });
-    },
-  );
-  const createAttachmentAction = useAction(api.data.attachments.createFromDataUrl);
-
-  const appendConversationEvent = useCallback(
-    async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
-      if (isLocalStorage) {
-        const localEvent = appendLocalEvent({
-          conversationId: args.conversationId,
-          type: args.type,
-          deviceId: args.deviceId,
-          requestId: args.requestId,
-          targetDeviceId: args.targetDeviceId,
-          payload: args.payload,
-        });
-        return { _id: localEvent._id };
-      }
-
-      const event = await appendEvent({
-        conversationId: args.conversationId as never,
-        type: args.type,
-        deviceId: args.deviceId,
-        requestId: args.requestId,
-        targetDeviceId: args.targetDeviceId,
-        payload: args.payload,
-      });
-      return event as AppendedEventResponse | null;
-    },
-    [appendEvent, isLocalStorage],
-  );
-
-  const createAttachment = useCallback(
-    async (args: {
-      conversationId: string;
-      deviceId: string;
-      dataUrl: string;
-    }): Promise<AttachmentUploadResponse | null> => {
-      const attachment = await createAttachmentAction({
-        conversationId: args.conversationId as never,
-        deviceId: args.deviceId,
-        dataUrl: args.dataUrl,
-      });
-      return attachment as AttachmentUploadResponse | null;
-    },
-    [createAttachmentAction],
-  );
 
   const appendLocalAgentEvent = useCallback(
     (event: {
@@ -171,44 +80,14 @@ export function useStreamingChat({
       resultPreview?: string;
       finalText?: string;
     }) => {
-      if (!isLocalStorage || !activeConversationId) return;
+      if (!activeConversationId) return;
 
-      if (event.type === "assistant_message") {
-        appendLocalEvent({
-          conversationId: activeConversationId,
-          type: "assistant_message",
-          requestId: event.userMessageId,
-          payload: {
-            text: event.finalText ?? "",
-            ...(event.userMessageId ? { userMessageId: event.userMessageId } : {}),
-          },
-        });
-        return;
-      }
-
-      if (event.type === "tool_request") {
-        appendLocalEvent({
-          conversationId: activeConversationId,
-          type: "tool_request",
-          requestId: event.toolCallId,
-          payload: {
-            toolName: event.toolName,
-          },
-        });
-        return;
-      }
-
-      appendLocalEvent({
+      chatStore.appendAgentEvent({
         conversationId: activeConversationId,
-        type: "tool_result",
-        requestId: event.toolCallId,
-        payload: {
-          toolName: event.toolName,
-          result: event.resultPreview,
-        },
+        ...event,
       });
     },
-    [activeConversationId, isLocalStorage],
+    [activeConversationId, chatStore],
   );
 
   const resetStreamingState = useCallback(
@@ -335,7 +214,7 @@ export function useStreamingChat({
       args: {
         userMessageId: string;
         attachments?: AttachmentRef[];
-        localHistory?: LocalHistoryMessage[];
+        localHistory?: import("../services/local-chat-store").LocalHistoryMessage[];
       },
       runIdCounter: number,
       fallbackToHttp: boolean,
@@ -448,7 +327,7 @@ export function useStreamingChat({
     (args: {
       userMessageId: string;
       attachments?: AttachmentRef[];
-      localHistory?: LocalHistoryMessage[];
+      localHistory?: import("../services/local-chat-store").LocalHistoryMessage[];
     }) => {
       if (!activeConversationId) {
         return;
@@ -467,7 +346,7 @@ export function useStreamingChat({
       }
 
       // Dual-path: try local agent runtime first, fall back to HTTP
-      if (isLocalStorage) {
+      if (streamStrategy === "local-only") {
         if (!window.electronAPI?.agentHealthCheck) {
           console.error("[chat] Local agent not available (no electronAPI)");
           showToast({ title: "Stella agent is not running", variant: "error" });
@@ -511,7 +390,7 @@ export function useStreamingChat({
     [
       resetStreamingState,
       activeConversationId,
-      isLocalStorage,
+      streamStrategy,
       resetStreamingText,
       resetReasoningText,
       streamingTextRef,
@@ -565,9 +444,7 @@ export function useStreamingChat({
     // Use microtask to avoid double-fire edge case
     void Promise.resolve().then(() => {
       if (cancelled) return;
-      const localHistory = isLocalStorage
-        ? buildLocalHistoryMessages(activeConversationId, 50)
-        : undefined;
+      const localHistory = chatStore.buildHistory(activeConversationId, 50);
       startStream({
         userMessageId: queued.event._id,
         attachments: queued.attachments,
@@ -584,7 +461,7 @@ export function useStreamingChat({
     pendingUserMessageId,
     startStream,
     activeConversationId,
-    isLocalStorage,
+    chatStore,
   ]);
 
   const sendMessage = useCallback(
@@ -629,20 +506,19 @@ export function useStreamingChat({
         return;
       }
 
-      const attachments: AttachmentRef[] = isLocalStorage
-        ? []
-        : await uploadScreenshotAttachments({
-            screenshots: opts.chatContext?.regionScreenshots,
-            conversationId: resolvedConversationId,
-            deviceId,
-            createAttachment,
-          });
+      const attachments: AttachmentRef[] = await chatStore.uploadAttachments({
+        screenshots: opts.chatContext?.regionScreenshots,
+        conversationId: resolvedConversationId,
+        deviceId,
+      }).then((uploaded) =>
+        uploaded.map((a) => ({ id: a.id, url: a.url, mimeType: a.mimeType })),
+      );
 
       const platform = window.electronAPI?.platform ?? "unknown";
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const mode = isStreaming ? "follow_up" : undefined;
 
-      const event = await appendConversationEvent({
+      const event = await chatStore.appendEvent({
         conversationId: resolvedConversationId,
         type: "user_message",
         deviceId,
@@ -661,9 +537,7 @@ export function useStreamingChat({
           return;
         }
         opts.onClear();
-        const localHistory = isLocalStorage
-          ? buildLocalHistoryMessages(resolvedConversationId, 50)
-          : undefined;
+        const localHistory = chatStore.buildHistory(resolvedConversationId, 50);
         startStream({ userMessageId: eventId, attachments, localHistory });
       }
     },
@@ -671,8 +545,7 @@ export function useStreamingChat({
       activeConversationId,
       isLocalStorage,
       isStreaming,
-      appendConversationEvent,
-      createAttachment,
+      chatStore,
       startStream,
     ],
   );
