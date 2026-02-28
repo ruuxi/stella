@@ -27,6 +27,7 @@ import {
   createVoiceWindow,
   showVoiceWindow,
   hideVoiceWindow,
+  resizeVoiceWindow,
 } from './voice-window.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
@@ -64,6 +65,7 @@ type UiState = {
   view: 'chat' | 'store'
   conversationId: string | null
   isVoiceActive: boolean
+  isVoiceRtcActive: boolean
 }
 
 type ScreenshotCapture = {
@@ -115,6 +117,7 @@ const uiState: UiState = {
   view: 'chat',
   conversationId: null,
   isVoiceActive: false,
+  isVoiceRtcActive: false,
 }
 
 let fullWindow: BrowserWindow | null = null
@@ -1874,6 +1877,46 @@ app.whenReady().then(async () => {
       if (!isMiniShowing()) showWindow('mini')
     }
     broadcastUiState()
+  })
+
+  // ─── Voice-to-Voice (Realtime API) ──────────────────────────────────────────
+  let currentVoiceRtcShortcut = 'CommandOrControl+Shift+D'
+
+  const toggleVoiceRtc = () => {
+    if (!appReady) return
+    uiState.isVoiceRtcActive = !uiState.isVoiceRtcActive
+    if (uiState.isVoiceRtcActive) {
+      // Deactivate STT voice if it was on
+      uiState.isVoiceActive = false
+      resizeVoiceWindow('realtime')
+      showVoiceWindow()
+    } else {
+      hideVoiceWindow()
+      resizeVoiceWindow('stt') // Reset size for next STT usage
+    }
+    broadcastUiState()
+  }
+
+  globalShortcut.register(currentVoiceRtcShortcut, toggleVoiceRtc)
+
+  ipcMain.on('voice-rtc:setShortcut', (_event, shortcut: string) => {
+    globalShortcut.unregister(currentVoiceRtcShortcut)
+    currentVoiceRtcShortcut = shortcut
+    if (shortcut) {
+      globalShortcut.register(shortcut, toggleVoiceRtc)
+    }
+  })
+
+  // Execute a local tool on behalf of the voice-to-voice session
+  ipcMain.handle('voice-rtc:executeTool', async (_event, toolName: string, toolArgs: Record<string, unknown>) => {
+    if (!localHostRunner) {
+      return { error: 'Local host runner not initialized' }
+    }
+    return localHostRunner.executeTool(toolName, toolArgs, {
+      conversationId: uiState.conversationId ?? 'voice-rtc',
+      deviceId: deviceId ?? 'unknown',
+      requestId: `voice-rtc-${Date.now()}`,
+    })
   })
 
   showWindow('full')
