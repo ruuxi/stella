@@ -22,7 +22,8 @@
     "emotes:label:dry": "node scripts/label-emotes.mjs --dry-run",
     "emotes:emoji-index": "node scripts/build-emote-emoji-index.mjs",
     "emotes:prune-family": "node scripts/prune-emotes-by-emoji-family.mjs",
-    "emotes:optimize": "node scripts/optimize-emotes.mjs"
+    "emotes:optimize": "node scripts/optimize-emotes.mjs",
+    "postinstall": "electron-rebuild --build-from-source -o better-sqlite3"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.69",
@@ -107,6 +108,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^40.0.0",
+    "@electron/rebuild": "^4.0.0",
     "electron-builder": "^26.4.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
