@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useUiState } from "../../app/state/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
@@ -7,7 +7,6 @@ import { MiniOutput } from "./MiniOutput";
 
 export const MiniShell = () => {
   const { setWindow } = useUiState();
-  const [isStreaming, setIsStreaming] = useState(false);
 
   const {
     chatContext,
@@ -24,6 +23,7 @@ export const MiniShell = () => {
     setMessage,
     streamingText,
     reasoningText,
+    isStreaming,
     pendingUserMessageId,
     events,
     sendMessage,
@@ -32,8 +32,6 @@ export const MiniShell = () => {
     selectedText,
     setChatContext,
     setSelectedText,
-    isStreaming,
-    setIsStreaming,
   });
 
   const hasConversation = events.length > 0 || Boolean(streamingText);

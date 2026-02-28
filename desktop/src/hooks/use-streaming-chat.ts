@@ -1,15 +1,19 @@
 /**
- * Custom hook: streaming state machine, SSE connection, tool/task tracking, abort.
+ * Shared streaming chat hook: streaming state machine, SSE connection,
+ * tool/task tracking, abort, follow-up queue, event sync.
+ *
+ * Used by both full-shell and mini-shell — UI state (message, expanded,
+ * chatContext, selectedText) belongs to the consumer, not this hook.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRafStringAccumulator } from "../../hooks/use-raf-state";
+import { useRafStringAccumulator } from "./use-raf-state";
 import { useMutation, useAction } from "convex/react";
-import { api } from "../../convex/api";
-import { streamChat } from "../../services/model-gateway";
-import { getOrCreateDeviceId } from "../../services/device";
-import type { EventRecord } from "../../hooks/use-conversation-events";
-import type { ChatContext } from "../../types/electron";
+import { api } from "../convex/api";
+import { streamChat } from "../services/model-gateway";
+import { getOrCreateDeviceId } from "../services/device";
+import type { EventRecord } from "./use-conversation-events";
+import type { ChatContext } from "../types/electron";
 import {
   findQueuedFollowUp,
   toEventId,
@@ -19,13 +23,16 @@ import {
   uploadScreenshotAttachments,
   type AttachmentUploadResponse,
 } from "./streaming/attachment-upload";
-import { showToast } from "../../components/toast";
+import { showToast } from "../components/toast";
 import {
   appendLocalEvent,
   buildLocalHistoryMessages,
   type LocalHistoryMessage,
-} from "../../services/local-chat-store";
-import { useResumeAgentRun } from "../../hooks/use-resume-agent-run";
+} from "../services/local-chat-store";
+import { useResumeAgentRun } from "./use-resume-agent-run";
+import type { AgentStreamEvent, SelfModAppliedData } from "./streaming/streaming-types";
+
+export type { AgentStreamEvent, SelfModAppliedData } from "./streaming/streaming-types";
 
 export type AttachmentRef = {
   id?: string;
@@ -33,11 +40,19 @@ export type AttachmentRef = {
   mimeType?: string;
 };
 
-type ChatStorageMode = "cloud" | "local";
+export type ChatStorageMode = "cloud" | "local";
+
+export type SendMessageArgs = {
+  text: string;
+  selectedText: string | null;
+  chatContext: ChatContext | null;
+  onClear: () => void;
+};
 
 type UseStreamingChatOptions = {
   conversationId: string | null;
   storageMode?: ChatStorageMode;
+  events: EventRecord[];
 };
 
 type AppendEventArgs = {
@@ -47,27 +62,6 @@ type AppendEventArgs = {
   requestId?: string;
   targetDeviceId?: string;
   payload?: unknown;
-};
-
-export type SelfModAppliedData = {
-  featureId: string;
-  files: string[];
-  batchIndex: number;
-};
-
-type AgentStreamEvent = {
-  type: "stream" | "tool-start" | "tool-end" | "error" | "end";
-  runId: string;
-  seq: number;
-  chunk?: string;
-  toolCallId?: string;
-  toolName?: string;
-  resultPreview?: string;
-  error?: string;
-  fatal?: boolean;
-  finalText?: string;
-  persisted?: boolean;
-  selfModApplied?: SelfModAppliedData;
 };
 
 const isOrchestratorBusyError = (error: unknown): boolean => {
@@ -86,6 +80,7 @@ const isOrchestratorBusyError = (error: unknown): boolean => {
 export function useStreamingChat({
   conversationId,
   storageMode = "cloud",
+  events,
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId;
   const isLocalStorage = storageMode === "local";
@@ -371,7 +366,6 @@ export function useStreamingChat({
           if (runIdCounter !== streamRunIdRef.current) return;
           console.error("Failed to start local agent chat:", error);
           if (isOrchestratorBusyError(error)) {
-            // Do not fall back to cloud chat; only one orchestrator run is allowed.
             resetStreamingState(runIdCounter);
             return;
           }
@@ -541,33 +535,36 @@ export function useStreamingChat({
     handleAgentEvent,
   });
 
-  // Auto-clear streaming when assistant reply arrives
-  const syncWithEvents = useCallback(
-    (events: EventRecord[]) => {
-      if (!pendingUserMessageId) return;
-      const hasAssistantReply = events.some((event) => {
-        if (event.type !== "assistant_message") return false;
-        if (event.payload && typeof event.payload === "object") {
-          return (
-            (event.payload as { userMessageId?: string }).userMessageId ===
-            pendingUserMessageId
-          );
-        }
-        return false;
-      });
-      if (hasAssistantReply) {
-        resetStreamingState();
-      }
-    },
-    [pendingUserMessageId, resetStreamingState],
-  );
+  // ---- Internal effects: sync and follow-up queue ----
 
-  // Auto-start queued follow-ups
-  const processFollowUpQueue = useCallback(
-    (events: EventRecord[]) => {
-      if (isStreaming || pendingUserMessageId || !activeConversationId) return;
-      const queued = findQueuedFollowUp<AttachmentRef>(events);
-      if (!queued) return;
+  // Auto-clear streaming when assistant reply arrives in events
+  useEffect(() => {
+    if (!pendingUserMessageId) return;
+    const hasAssistantReply = events.some((event) => {
+      if (event.type !== "assistant_message") return false;
+      if (event.payload && typeof event.payload === "object") {
+        return (
+          (event.payload as { userMessageId?: string }).userMessageId ===
+          pendingUserMessageId
+        );
+      }
+      return false;
+    });
+    if (hasAssistantReply) {
+      resetStreamingState();
+    }
+  }, [events, pendingUserMessageId, resetStreamingState]);
+
+  // Auto-start queued follow-ups when idle
+  useEffect(() => {
+    if (isStreaming || pendingUserMessageId || !activeConversationId) return;
+    const queued = findQueuedFollowUp<AttachmentRef>(events);
+    if (!queued) return;
+
+    let cancelled = false;
+    // Use microtask to avoid double-fire edge case
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
       const localHistory = isLocalStorage
         ? buildLocalHistoryMessages(activeConversationId, 50)
         : undefined;
@@ -576,23 +573,22 @@ export function useStreamingChat({
         attachments: queued.attachments,
         localHistory,
       });
-    },
-    [
-      isStreaming,
-      pendingUserMessageId,
-      startStream,
-      activeConversationId,
-      isLocalStorage,
-    ],
-  );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    events,
+    isStreaming,
+    pendingUserMessageId,
+    startStream,
+    activeConversationId,
+    isLocalStorage,
+  ]);
 
   const sendMessage = useCallback(
-    async (opts: {
-      text: string;
-      selectedText: string | null;
-      chatContext: ChatContext | null;
-      onClear: () => void;
-    }) => {
+    async (opts: SendMessageArgs) => {
       const resolvedConversationId = activeConversationId;
       const selectedSnippet = opts.selectedText?.trim() ?? "";
       const windowSnippet = opts.chatContext?.window
@@ -688,8 +684,6 @@ export function useStreamingChat({
     pendingUserMessageId,
     selfModMap,
     sendMessage,
-    syncWithEvents,
-    processFollowUpQueue,
     cancelCurrentStream,
     resetStreamingState,
   };
