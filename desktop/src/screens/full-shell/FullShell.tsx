@@ -153,17 +153,6 @@ export const FullShell = () => {
     }));
   }, [localWorkspacePanels]);
 
-  const handlePageSelect = useCallback(
-    (pageId: string) => {
-      const page = personalPages.find((entry) => entry.pageId === pageId);
-      if (page) {
-        openCanvas({ name: page.panelName, title: page.title });
-        setView("app");
-      }
-    },
-    [personalPages, openCanvas, setView],
-  );
-
   const handleTabSelect = useCallback(
     (view: "home" | "store" | "app" | "chat", page?: PersonalPage) => {
       if (view === "app" && page) {

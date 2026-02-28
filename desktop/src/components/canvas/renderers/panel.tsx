@@ -104,6 +104,18 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
     )
   }
 
+  if (!Component) {
+    return (
+      <div className="canvas-error">
+        <div className="canvas-error-title">Panel Error</div>
+        <div className="canvas-error-message">Panel component is unavailable.</div>
+        <button className="canvas-error-retry" onClick={handleRetry}>
+          Retry
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="canvas-vite-wrap">
       <CanvasErrorBoundary key={retryKeyRef.current} onRetry={handleRetry}>
