@@ -25,14 +25,7 @@ import type { AppendedEventResponse } from '../../hooks/streaming/streaming-even
 
 export type ChatStorageMode = 'cloud' | 'local'
 
-type AppendEventArgs = {
-  conversationId: string
-  type: string
-  deviceId?: string
-  requestId?: string
-  targetDeviceId?: string
-  payload?: unknown
-}
+type AppendEventArgs = Omit<LocalAppendEventArgs, 'timestamp' | 'eventId'>
 
 type AppendAgentEventArgs = {
   conversationId: string
@@ -87,30 +80,34 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const isLocalStorage = storageMode === 'local'
 
   // Convex hooks called unconditionally (Rules of Hooks)
-  const convexAppendEvent = useMutation(api.events.appendEvent).withOptimisticUpdate(
-    (localStore, args) => {
-      if (args.type !== 'user_message') return
+  const baseMutation = useMutation(api.events.appendEvent)
+  const convexAppendEvent = useMemo(
+    () => baseMutation.withOptimisticUpdate(
+      (localStore, args) => {
+        if (args.type !== 'user_message') return
 
-      const queryArgs = {
-        conversationId: args.conversationId,
-        paginationOpts: { cursor: null, numItems: 200 },
-      }
-      const current = localStore.getQuery(api.events.listEvents, queryArgs)
-      if (!current?.page) return
+        const queryArgs = {
+          conversationId: args.conversationId,
+          paginationOpts: { cursor: null, numItems: 200 },
+        }
+        const current = localStore.getQuery(api.events.listEvents, queryArgs)
+        if (!current?.page) return
 
-      const optimisticEvent = {
-        _id: `optimistic-${crypto.randomUUID()}`,
-        timestamp: (current.page[0]?.timestamp ?? 0) + 1,
-        type: args.type,
-        deviceId: args.deviceId,
-        payload: args.payload,
-      }
+        const optimisticEvent = {
+          _id: `optimistic-${crypto.randomUUID()}`,
+          timestamp: (current.page[0]?.timestamp ?? 0) + 1,
+          type: args.type,
+          deviceId: args.deviceId,
+          payload: args.payload,
+        }
 
-      localStore.setQuery(api.events.listEvents, queryArgs, {
-        ...current,
-        page: [optimisticEvent, ...current.page],
-      })
-    },
+        localStore.setQuery(api.events.listEvents, queryArgs, {
+          ...current,
+          page: [optimisticEvent, ...current.page],
+        })
+      },
+    ),
+    [baseMutation],
   )
 
   const createAttachmentAction = useAction(api.data.attachments.createFromDataUrl)
@@ -120,14 +117,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const appendEvent = useCallback(
     async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
       if (isLocalStorage) {
-        const localEvent = appendLocalEvent({
-          conversationId: args.conversationId,
-          type: args.type,
-          deviceId: args.deviceId,
-          requestId: args.requestId,
-          targetDeviceId: args.targetDeviceId,
-          payload: args.payload,
-        } as LocalAppendEventArgs)
+        const localEvent = appendLocalEvent(args)
         return { _id: localEvent._id }
       }
 
@@ -215,7 +205,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
     [isLocalStorage],
   )
 
-  const streamStrategy = isLocalStorage ? 'local-only' : 'local-with-http-fallback' as const
+  const streamStrategy: ChatStoreContextValue['streamStrategy'] = isLocalStorage ? 'local-only' : 'local-with-http-fallback'
 
   const value = useMemo<ChatStoreContextValue>(
     () => ({

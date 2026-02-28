@@ -16,7 +16,6 @@ import {
   findQueuedFollowUp,
   toEventId,
 } from "./streaming/streaming-event-utils";
-import type { AttachmentUploadResponse } from "./streaming/attachment-upload";
 import { showToast } from "../components/toast";
 import { useResumeAgentRun } from "./use-resume-agent-run";
 import type { AgentStreamEvent, SelfModAppliedData } from "./streaming/streaming-types";
@@ -60,8 +59,15 @@ export function useStreamingChat({
   events,
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId;
-  const chatStore = useChatStore();
-  const { isLocalStorage, storageMode, streamStrategy } = chatStore;
+  const {
+    isLocalStorage,
+    storageMode,
+    streamStrategy,
+    appendAgentEvent: chatStoreAppendAgentEvent,
+    appendEvent: chatStoreAppendEvent,
+    uploadAttachments: chatStoreUploadAttachments,
+    buildHistory: chatStoreBuildHistory,
+  } = useChatStore();
 
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
   const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
@@ -82,12 +88,12 @@ export function useStreamingChat({
     }) => {
       if (!activeConversationId) return;
 
-      chatStore.appendAgentEvent({
+      chatStoreAppendAgentEvent({
         conversationId: activeConversationId,
         ...event,
       });
     },
-    [activeConversationId, chatStore],
+    [activeConversationId, chatStoreAppendAgentEvent],
   );
 
   const resetStreamingState = useCallback(
@@ -257,13 +263,9 @@ export function useStreamingChat({
     },
     [
       activeConversationId,
-      appendStreamingDelta,
-      appendLocalAgentEvent,
       handleAgentEvent,
       storageMode,
       resetStreamingState,
-      resetStreamingText,
-      streamingTextRef,
     ],
   );
 
@@ -393,7 +395,6 @@ export function useStreamingChat({
       streamStrategy,
       resetStreamingText,
       resetReasoningText,
-      streamingTextRef,
       startLocalStream,
       startHttpStream,
     ],
@@ -444,7 +445,7 @@ export function useStreamingChat({
     // Use microtask to avoid double-fire edge case
     void Promise.resolve().then(() => {
       if (cancelled) return;
-      const localHistory = chatStore.buildHistory(activeConversationId, 50);
+      const localHistory = chatStoreBuildHistory(activeConversationId, 50);
       startStream({
         userMessageId: queued.event._id,
         attachments: queued.attachments,
@@ -461,7 +462,7 @@ export function useStreamingChat({
     pendingUserMessageId,
     startStream,
     activeConversationId,
-    chatStore,
+    chatStoreBuildHistory,
   ]);
 
   const sendMessage = useCallback(
@@ -506,7 +507,7 @@ export function useStreamingChat({
         return;
       }
 
-      const attachments: AttachmentRef[] = await chatStore.uploadAttachments({
+      const attachments: AttachmentRef[] = await chatStoreUploadAttachments({
         screenshots: opts.chatContext?.regionScreenshots,
         conversationId: resolvedConversationId,
         deviceId,
@@ -518,7 +519,7 @@ export function useStreamingChat({
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const mode = isStreaming ? "follow_up" : undefined;
 
-      const event = await chatStore.appendEvent({
+      const event = await chatStoreAppendEvent({
         conversationId: resolvedConversationId,
         type: "user_message",
         deviceId,
@@ -537,7 +538,7 @@ export function useStreamingChat({
           return;
         }
         opts.onClear();
-        const localHistory = chatStore.buildHistory(resolvedConversationId, 50);
+        const localHistory = chatStoreBuildHistory(resolvedConversationId, 50);
         startStream({ userMessageId: eventId, attachments, localHistory });
       }
     },
@@ -545,7 +546,9 @@ export function useStreamingChat({
       activeConversationId,
       isLocalStorage,
       isStreaming,
-      chatStore,
+      chatStoreAppendEvent,
+      chatStoreUploadAttachments,
+      chatStoreBuildHistory,
       startStream,
     ],
   );
