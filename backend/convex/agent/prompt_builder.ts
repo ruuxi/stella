@@ -13,6 +13,7 @@ export type PromptBuildResult = {
   maxTaskDepth: number;
   defaultSkills: string[];
   skillIds: string[];
+  timezone: string;
 };
 
 const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
@@ -30,6 +31,7 @@ type FetchAgentContextSharedArgs = {
   threadId?: Id<"threads">;
   maxHistoryMessages?: number;
   platform?: string;
+  timezone?: string;
 };
 
 const normalizeGeneralAgentEngine = (
@@ -122,7 +124,7 @@ You are running on Linux. Use Linux-compatible commands:
 export const buildSystemPrompt = async (
   ctx: ActionCtx,
   agentType: string,
-  options?: { ownerId?: string; conversationId?: Id<"conversations">; platform?: string },
+  options?: { ownerId?: string; conversationId?: Id<"conversations">; platform?: string; timezone?: string },
 ): Promise<PromptBuildResult> => {
   const agent = await ctx.runQuery(internal.agent.agents.getAgentConfigInternal, {
     agentType,
@@ -163,6 +165,20 @@ export const buildSystemPrompt = async (
 
   // Dynamic context — injected into last user message for prompt caching
   const dynamicParts: string[] = [];
+
+  // Current date — included in dynamic context so the model knows the date
+  if (agentType === "orchestrator") {
+    const tz = options?.timezone ?? "UTC";
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: tz,
+    });
+    dynamicParts.push(`Today is ${dateStr}.`);
+  }
 
   // Inject active threads for orchestrator
   if (agentType === "orchestrator" && options?.conversationId && options.ownerId) {
@@ -235,6 +251,7 @@ export const buildSystemPrompt = async (
     maxTaskDepth,
     defaultSkills: agent.defaultSkills ?? [],
     skillIds: skills.map((skill: { id: string }) => skill.id),
+    timezone: options?.timezone ?? "UTC",
   };
 };
 
@@ -277,6 +294,7 @@ const fetchAgentContextInternalArgs = {
   threadId: v.optional(v.id("threads")),
   maxHistoryMessages: v.optional(v.number()),
   platform: v.optional(v.string()),
+  timezone: v.optional(v.string()),
 };
 
 const fetchAgentContextRuntimeArgs = {
@@ -286,23 +304,26 @@ const fetchAgentContextRuntimeArgs = {
   threadId: v.optional(v.id("threads")),
   maxHistoryMessages: v.optional(v.number()),
   platform: v.optional(v.string()),
+  timezone: v.optional(v.string()),
 };
 
 const fetchLocalAgentContextRuntimeArgs = {
   agentType: v.string(),
   runId: v.string(),
   platform: v.optional(v.string()),
+  timezone: v.optional(v.string()),
 };
 
 const fetchAgentContextForOwner = async (
   ctx: ActionCtx,
   args: FetchAgentContextSharedArgs,
 ): Promise<AgentContextResult> => {
-  // 1. Build system prompt (includes skills, device status, threads, core memory, platform)
+  // 1. Build system prompt (includes skills, threads, core memory, platform, timezone)
   const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
     ownerId: args.ownerId,
     conversationId: args.conversationId,
     platform: args.platform,
+    timezone: args.timezone,
   });
 
   // 2. Get core memory separately for the local runtime to use
@@ -443,6 +464,7 @@ export const fetchAgentContextForRuntime = action({
       threadId: args.threadId,
       maxHistoryMessages: args.maxHistoryMessages,
       platform: args.platform,
+      timezone: args.timezone,
     });
   },
 });
@@ -456,6 +478,7 @@ export const fetchLocalAgentContextForRuntime = action({
     const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
       ownerId,
       platform: args.platform,
+      timezone: args.timezone,
     });
     const modelDefaults = getModelConfig(args.agentType);
 

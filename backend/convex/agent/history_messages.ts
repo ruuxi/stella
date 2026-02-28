@@ -26,6 +26,7 @@ export type HistoryBuildOptions = {
     warningThresholdTokens?: number;
     isAboveWarningThreshold?: boolean;
   };
+  timezone?: string;
 };
 
 export type HistoryBuildResult = {
@@ -203,13 +204,45 @@ const flushPendingToolCalls = (
   pendingWithoutId.length = 0;
 };
 
-const formatTextEvent = (event: Doc<"events">): HistoryMessage | null => {
+/** Format a timestamp for message tagging. Includes date only if it differs from prevDate. */
+export const formatMessageTimestamp = (
+  timestamp: number,
+  prevDate?: string,
+  timezone?: string,
+): { tag: string; dateStr: string } => {
+  const tz = timezone ?? "UTC";
+  const d = new Date(timestamp);
+  const timeStr = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: tz,
+  });
+  const dateStr = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: tz,
+  });
+  const tag = prevDate && dateStr === prevDate
+    ? `[${timeStr}]`
+    : `[${timeStr}, ${dateStr}]`;
+  return { tag, dateStr };
+};
+
+type TimestampState = { prevDate?: string; timezone?: string };
+
+const formatTextEvent = (
+  event: Doc<"events">,
+  tsState: TimestampState,
+): HistoryMessage | null => {
   const payload = asObject(event.payload);
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   if (!text) return null;
+  const { tag, dateStr } = formatMessageTimestamp(event.timestamp, tsState.prevDate, tsState.timezone);
+  tsState.prevDate = dateStr;
   return {
     role: event.type === "assistant_message" ? "assistant" : "user",
-    content: ellipsize(text, MAX_TEXT_CHARS),
+    content: `${ellipsize(text, MAX_TEXT_CHARS)}\n\n${tag}`,
   };
 };
 
@@ -521,6 +554,7 @@ export const eventsToHistoryMessages = (
   const pendingById = new Map<string, PendingToolCall>();
   const pendingWithoutId: PendingToolCall[] = [];
   const microcompactPlan = buildMicrocompactPlan(events, options.microcompact);
+  const tsState: TimestampState = { timezone: options.timezone };
 
   for (const event of events) {
     if (
@@ -566,7 +600,7 @@ export const eventsToHistoryMessages = (
     }
 
     if (event.type === "user_message" || event.type === "assistant_message") {
-      const textMessage = formatTextEvent(event);
+      const textMessage = formatTextEvent(event, tsState);
       if (textMessage) out.push(textMessage);
       continue;
     }

@@ -7,6 +7,7 @@ import {
 } from "./context_budget";
 import {
   eventsToHistoryMessages,
+  formatMessageTimestamp,
   type HistoryBuildOptions,
   type HistoryMessage,
   type MicrocompactTrigger,
@@ -62,6 +63,7 @@ export type PrepareOrchestratorTurnArgs = {
   conversationId: Id<"conversations">;
   ownerId: string;
   platform?: string;
+  timezone?: string;
   activeThreadId?: Id<"threads"> | null;
   userPayload: OrchestratorUserPayload;
   history?: HistoryBuildConfig;
@@ -122,16 +124,28 @@ const toUsageSummary = (usage: unknown): UsageSummary | undefined => {
   return { inputTokens, outputTokens, totalTokens };
 };
 
+const formatCurrentTimestamp = (timezone?: string): string => {
+  const d = new Date();
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: timezone ?? "UTC",
+  });
+};
+
 const buildChatContentParts = (args: {
   text: string;
   images?: OrchestratorImageAttachment[];
   reminderText: string;
   shouldInjectReminder: boolean;
+  timezone?: string;
 }): ChatContentPart[] => {
   const contentParts: ChatContentPart[] = [];
   const trimmedText = args.text.trim();
   if (trimmedText.length > 0) {
-    contentParts.push({ type: "text", text: trimmedText });
+    const time = formatCurrentTimestamp(args.timezone);
+    contentParts.push({ type: "text", text: `${trimmedText}\n\n[${time}]` });
   }
   for (const image of args.images ?? []) {
     try {
@@ -161,6 +175,7 @@ const buildHistoryMessages = async (
   args: {
     conversationId: Id<"conversations">;
     history?: HistoryBuildConfig;
+    timezone?: string;
   },
 ): Promise<HistoryMessage[]> => {
   if (!args.history?.enabled) {
@@ -177,17 +192,19 @@ const buildHistoryMessages = async (
   });
 
   const microcompactConfig = args.history.microcompact;
-  const historyBuildOptions: HistoryBuildOptions =
-    microcompactConfig?.enabled === false
-      ? {}
-      : {
+  const historyBuildOptions: HistoryBuildOptions = {
+    ...(microcompactConfig?.enabled !== false
+      ? {
           microcompact: {
             trigger: microcompactConfig?.trigger ?? "auto",
             warningThresholdTokens: computeAutoCompactionThresholdTokens(
               microcompactConfig?.modelForWarningThreshold,
             ),
           },
-        };
+        }
+      : {}),
+    timezone: args.timezone,
+  };
 
   const historyBuild = eventsToHistoryMessages(historyEvents, historyBuildOptions);
   if (historyBuild.microcompactBoundary) {
@@ -215,6 +232,7 @@ export const prepareOrchestratorTurn = async (
     ownerId: args.ownerId,
     conversationId: args.conversationId,
     platform: args.platform,
+    timezone: args.timezone,
   });
   const activeThreadId =
     args.activeThreadId !== undefined
@@ -225,6 +243,7 @@ export const prepareOrchestratorTurn = async (
   const historyMessages = await buildHistoryMessages(ctx, {
     conversationId: args.conversationId,
     history: args.history,
+    timezone: args.timezone,
   });
 
   const extraReminderText =
@@ -245,6 +264,7 @@ export const prepareOrchestratorTurn = async (
           images: args.userPayload.images,
           reminderText: orchestratorContext.reminderText,
           shouldInjectReminder: orchestratorContext.shouldInjectDynamicReminder,
+          timezone: args.timezone,
         })
       : orchestratorContext.shouldInjectDynamicReminder &&
           orchestratorContext.reminderText.length > 0
