@@ -145,10 +145,11 @@ http.route({
 
     const userPayload =
       userEvent.payload && typeof userEvent.payload === "object"
-        ? (userEvent.payload as { text?: string; platform?: string })
+        ? (userEvent.payload as { text?: string; platform?: string; timezone?: string })
         : {};
     const userText = userPayload.text ?? "";
     const userPlatform = userPayload.platform ?? "unknown";
+    const userTimezone = userPayload.timezone ?? "UTC";
     const agentType =
       body.agent === "general"
         ? "general"
@@ -203,6 +204,7 @@ http.route({
         conversationId,
         ownerId: conversation.ownerId,
         platform: userPlatform,
+        timezone: userTimezone,
         activeThreadId,
         userPayload: {
           kind: "chat",
@@ -227,6 +229,7 @@ http.route({
         ownerId: conversation.ownerId,
         conversationId,
         platform: userPlatform,
+        timezone: userTimezone,
       });
       const historyEvents = await ctx.runQuery(
         internal.events.listRecentContextEventsByTokens,
@@ -244,6 +247,7 @@ http.route({
             typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
           ),
         },
+        timezone: userTimezone,
       });
       if (historyBuild.microcompactBoundary) {
         try {
@@ -265,7 +269,13 @@ http.route({
       > = [];
       const trimmedText = userText.trim();
       if (trimmedText.length > 0) {
-        contentParts.push({ type: "text", text: trimmedText });
+        const time = new Date().toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: userTimezone,
+        });
+        contentParts.push({ type: "text", text: `${trimmedText}\n\n[${time}]` });
       }
       for (const image of resolvedImages) {
         try {
