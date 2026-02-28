@@ -46,6 +46,10 @@ const AGENT_DEFAULTS: Record<string, string> = {
   memory: "zai/glm-4.7",
 };
 
+const GENERAL_LOCAL_RUNTIME_OPTIONS = [
+  { id: "claude-code/default", name: "Claude Code (Local CLI)" },
+];
+
 const LLM_PROVIDERS = [
   { key: "llm:anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
   { key: "llm:openai", label: "OpenAI", placeholder: "sk-..." },
@@ -338,6 +342,15 @@ function ModelConfigSection() {
                 onChange={(e) => handleChange(agent.key, e.target.value)}
               >
                 <option value="">{defaultModel}</option>
+                {agent.key === "general" && (
+                  <optgroup label="local-runtime">
+                    {GENERAL_LOCAL_RUNTIME_OPTIONS.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
                 {groups.map((group) => (
                   <optgroup key={group.provider} label={group.provider}>
                     {group.models.map((model) => (

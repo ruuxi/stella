@@ -77,6 +77,7 @@ export type TaskToolSnapshot = {
   completedAt: number | null;
   result?: string;
   error?: string;
+  recentActivity?: string[];
 };
 
 export type TaskToolApi = {

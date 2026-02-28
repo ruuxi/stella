@@ -451,6 +451,20 @@ describe("ModelConfigSection", () => {
     expect(labels).toContain("openai");
   });
 
+  it("shows Claude Code local option only for the general agent", () => {
+    setupUseQuery();
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
+    expect(selects.length).toBe(6);
+
+    const claudeOption = 'option[value="claude-code/default"]';
+    expect(selects[1]?.querySelector(claudeOption)).toBeTruthy(); // general
+    expect(selects[0]?.querySelector(claudeOption)).toBeNull(); // orchestrator
+    expect(selects[2]?.querySelector(claudeOption)).toBeNull(); // self_mod
+  });
+
   it("selects have current value from overrides", () => {
     setupUseQuery({
       modelOverrides: JSON.stringify({ orchestrator: "openai/gpt-4o" }),
@@ -527,6 +541,29 @@ describe("ModelConfigSection", () => {
     expect(mockSetOverride).toHaveBeenCalledWith({
       agentType: "orchestrator",
       model: "openai/gpt-4o",
+    });
+  });
+
+  it("calls setModelOverride mutation when Claude Code is selected for general", () => {
+    const mockSetOverride = vi.fn();
+    const mockClearOverride = vi.fn();
+    mockUseMutation((mutationPath: unknown) => {
+      const path = mutationPath as string;
+      if (path === "preferences.setModelOverride") return mockSetOverride;
+      if (path === "preferences.clearModelOverride") return mockClearOverride;
+      return vi.fn();
+    });
+
+    setupUseQuery();
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
+    fireEvent.change(selects[1], { target: { value: "claude-code/default" } });
+
+    expect(mockSetOverride).toHaveBeenCalledWith({
+      agentType: "general",
+      model: "claude-code/default",
     });
   });
 
