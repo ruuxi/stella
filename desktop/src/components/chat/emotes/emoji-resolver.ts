@@ -17,7 +17,7 @@ const EMOJI_RE =
   /(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?)*)/u;
 
 const extractSingleEmoji = (value: string): string | null => {
-  const match = String(value ?? "").match(EMOJI_RE);
+  const match = value.match(EMOJI_RE);
   return match?.[0] ?? null;
 };
 
@@ -36,7 +36,7 @@ const stableHash = (value: string) => {
 
 const sortedCandidates = (emoji: string, entries: EmojiLabelEntry[]) =>
   entries
-    .filter((entry) => extractSingleEmoji(entry.emoji ?? "") === emoji)
+    .filter((entry) => extractSingleEmoji(entry.emoji) === emoji)
     .sort(
       (a, b) =>
         confidenceValue(b) - confidenceValue(a) || a.code.localeCompare(b.code),

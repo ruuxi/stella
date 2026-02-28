@@ -55,7 +55,7 @@ export const useIntegrationRequest = () => {
       }
       return { error: message }
     } finally {
-      setInFlightCount((prev) => Math.max(0, prev - 1))
+      setInFlightCount((prev) => prev - 1)
     }
   }, [proxyAction])
 

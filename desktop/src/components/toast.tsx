@@ -84,7 +84,7 @@ interface ToastItemProps {
 
 function ToastItem({ toast, onClose }: ToastItemProps) {
   return (
-    <li data-component="toast" data-variant={toast.variant || "default"}>
+    <li data-component="toast" data-variant={toast.variant}>
       <div data-slot="toast-content">
         {toast.title && <div data-slot="toast-title">{toast.title}</div>}
         {toast.description && <div data-slot="toast-description">{toast.description}</div>}

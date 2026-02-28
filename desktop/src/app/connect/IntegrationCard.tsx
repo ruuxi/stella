@@ -41,7 +41,7 @@ function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
         }
         if (!cancelled) setError(null);
       } catch (err) {
-        if (!cancelled) setError((err as Error).message ?? "Failed to start bridge");
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to start bridge");
       }
     })();
 
@@ -127,7 +127,7 @@ function BotSetupView({
       .catch((err) => {
         if (cancelled) return;
         setCode(null);
-        setError((err as Error).message ?? "Failed to generate code");
+        setError(err instanceof Error ? err.message : "Failed to generate code");
       });
 
     return () => {
@@ -157,7 +157,7 @@ function BotSetupView({
       .catch((err) => {
         if (cancelled) return;
         setBotLink(null);
-        setError((err as Error).message ?? "Failed to prepare Slack install URL");
+        setError(err instanceof Error ? err.message : "Failed to prepare Slack install URL");
       });
 
     return () => {

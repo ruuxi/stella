@@ -27,7 +27,7 @@ export function WelcomeSuggestions({ suggestions, onSelect }: WelcomeSuggestions
             <div className="welcome-suggestion-header">
               <span className="welcome-suggestion-title">{s.title}</span>
               <span className="welcome-suggestion-badge" data-category={s.category}>
-                {CATEGORY_LABELS[s.category] ?? "Suggestion"}
+                {CATEGORY_LABELS[s.category]}
               </span>
             </div>
             <span className="welcome-suggestion-desc">{s.description}</span>

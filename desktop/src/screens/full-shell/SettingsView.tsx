@@ -123,7 +123,7 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
     try {
       await setAccountMode({ mode: nextMode });
     } catch (error) {
-      setAccountModeError((error as Error).message ?? "Failed to update account mode.");
+      setAccountModeError(error instanceof Error ? error.message : "Failed to update account mode.");
     } finally {
       setIsUpdatingAccountMode(false);
     }
@@ -139,7 +139,7 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
     try {
       await setSyncMode({ mode: nextMode });
     } catch (error) {
-      setSyncModeError((error as Error).message ?? "Failed to update sync mode.");
+      setSyncModeError(error instanceof Error ? error.message : "Failed to update sync mode.");
     } finally {
       setIsUpdatingSyncMode(false);
     }
@@ -312,7 +312,7 @@ function ModelConfigSection() {
       <p className="settings-card-desc">Override the default model for each agent type.</p>
       {CONFIGURABLE_AGENTS.map((agent) => {
         const current = overrides[agent.key] ?? "";
-        const defaultModel = AGENT_DEFAULTS[agent.key] ?? "";
+        const defaultModel = AGENT_DEFAULTS[agent.key];
         return (
           <div key={agent.key} className="settings-row">
             <div className="settings-row-info">
@@ -337,7 +337,7 @@ function ModelConfigSection() {
                 value={current}
                 onChange={(e) => handleChange(agent.key, e.target.value)}
               >
-                <option value="">{defaultModel || "Default"}</option>
+                <option value="">{defaultModel}</option>
                 {groups.map((group) => (
                   <optgroup key={group.provider} label={group.provider}>
                     {group.models.map((model) => (

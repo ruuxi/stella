@@ -32,18 +32,7 @@ export class CanvasErrorBoundary extends Component<Props, State> {
     if (error) {
       return (
         <div className="canvas-error">
-          <div className="canvas-error-title">Component Error</div>
-          <div className="canvas-error-message">{error.message}</div>
-          {error.stack && (
-            <details>
-              <summary style={{ fontSize: 11, color: 'var(--text-weak)', cursor: 'pointer' }}>
-                Stack trace
-              </summary>
-              <div className="canvas-error-message" style={{ marginTop: 6, fontSize: 11 }}>
-                {error.stack}
-              </div>
-            </details>
-          )}
+          <div className="canvas-error-title">This component ran into a problem</div>
           <button className="canvas-error-retry" onClick={this.handleRetry}>
             Retry
           </button>
