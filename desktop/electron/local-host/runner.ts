@@ -405,6 +405,7 @@ export const createLocalHostRunner = ({
         agentType,
         runId,
         threadId,
+        platform: process.platform,
       }) as LocalTaskManagerAgentContext;
     },
     runSubagent: async ({
@@ -754,6 +755,7 @@ export const createLocalHostRunner = ({
           conversationId: request.conversationId,
           agentType: "general",
           runId: `local:dash:${crypto.randomUUID()}`,
+          platform: process.platform,
         },
       ) as AgentContext;
 
@@ -1243,6 +1245,7 @@ export const createLocalHostRunner = ({
             {
               agentType,
               runId,
+              platform: process.platform,
             },
           )
         : await callAction(
@@ -1251,6 +1254,7 @@ export const createLocalHostRunner = ({
               conversationId: payload.conversationId,
               agentType,
               runId,
+              platform: process.platform,
             },
           )) as AgentContext;
       log("Agent context fetched", {
