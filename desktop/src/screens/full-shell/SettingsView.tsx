@@ -20,7 +20,6 @@ type SettingsTab = "basic" | "models";
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onOpenRuntimeMode?: () => void;
   onSignOut?: () => void;
 }
 
@@ -90,8 +89,7 @@ const TABS: { key: SettingsTab; label: string }[] = [
 // Basic Tab
 // ---------------------------------------------------------------------------
 
-function BasicTab({ onOpenRuntimeMode, onSignOut }: {
-  onOpenRuntimeMode?: () => void;
+function BasicTab({ onSignOut }: {
   onSignOut?: () => void;
 }) {
   const accountMode = useQuery(api.data.preferences.getAccountMode) as
@@ -176,17 +174,6 @@ function BasicTab({ onOpenRuntimeMode, onSignOut }: {
                 : effectiveAccountMode === "connected"
                   ? "Switch to Private Local"
                   : "Switch to Connected"}
-            </button>
-          </div>
-        </div>
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">Runtime Mode</div>
-            <div className="settings-row-sublabel">Configure local or 24/7 cloud execution</div>
-          </div>
-          <div className="settings-row-control">
-            <button className="settings-btn" onClick={onOpenRuntimeMode}>
-              Configure
             </button>
           </div>
         </div>
@@ -656,7 +643,7 @@ function SettingsPanel({ children }: { children: React.ReactNode }) {
 // SettingsDialog
 // ---------------------------------------------------------------------------
 
-export const SettingsDialog = ({ open, onOpenChange, onOpenRuntimeMode, onSignOut }: SettingsDialogProps) => {
+export const SettingsDialog = ({ open, onOpenChange, onSignOut }: SettingsDialogProps) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>("basic");
 
   return (
@@ -682,7 +669,7 @@ export const SettingsDialog = ({ open, onOpenChange, onOpenRuntimeMode, onSignOu
             </nav>
             <SettingsPanel>
               {activeTab === "basic" ? (
-                <BasicTab onOpenRuntimeMode={onOpenRuntimeMode} onSignOut={onSignOut} />
+                <BasicTab onSignOut={onSignOut} />
               ) : (
                 <ModelsTab />
               )}

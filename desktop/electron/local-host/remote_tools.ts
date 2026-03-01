@@ -619,12 +619,6 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
         endpoints: z.array(z.record(z.string(), z.unknown())).optional(),
       }) as z.ZodType<Record<string, unknown>>,
     ),
-
-    SpawnRemoteMachine: passthroughTool(
-      "SpawnRemoteMachine",
-      "Provision or enable the remote machine for always-on execution.",
-      looseObject({}) as z.ZodType<Record<string, unknown>>,
-    ),
     ListResources: passthroughTool(
       "ListResources",
       "List available resources (local/cloud/connectors).",
