@@ -1565,6 +1565,8 @@ export const createLocalHostRunner = ({
     getConvexUrl: () => convexUrl,
     killAllShells: () => toolHost.killAllShells(),
     killShellsByPort: (port: number) => toolHost.killShellsByPort(port),
+    executeTool: (toolName: string, toolArgs: Record<string, unknown>, context: import("./tools-types.js").ToolContext) =>
+      toolHost.executeTool(toolName, toolArgs, context),
     // Local agent execution
     agentHealthCheck,
     handleLocalChat,
