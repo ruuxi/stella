@@ -2,6 +2,7 @@
  * ChatColumn: .session-content + .session-messages, scroll management, message rendering.
  */
 
+import { memo } from "react";
 import { ConversationEvents } from "../ConversationEvents";
 import { OnboardingView } from "./OnboardingOverlay";
 import { Composer } from "./Composer";
@@ -58,7 +59,7 @@ type ChatColumnProps = {
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
 };
 
-export function ChatColumn({
+export const ChatColumn = memo(function ChatColumn({
   events,
   streamingText,
   reasoningText,
@@ -183,4 +184,4 @@ export function ChatColumn({
       )}
     </div>
   );
-}
+});

@@ -292,6 +292,47 @@ const listWorkspacePanels = async () => {
     .map(({ name, title }) => ({ name, title }))
 }
 
+// File watcher for workspace panels directory — replaces 3s polling in the renderer
+let panelWatcher: import('fs').FSWatcher | null = null
+
+function startWorkspacePanelWatcher(mainWindow: import('electron').BrowserWindow) {
+  stopWorkspacePanelWatcher()
+  const pagesDir = path.resolve(__dirname, '..', 'src', 'views', 'home', 'pages')
+
+  // Ensure dir exists before watching
+  import('fs').then((fsSync) => {
+    try {
+      if (!fsSync.existsSync(pagesDir)) {
+        fsSync.mkdirSync(pagesDir, { recursive: true })
+      }
+    } catch { /* ignore */ }
+
+    try {
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null
+      panelWatcher = fsSync.watch(pagesDir, { persistent: false }, () => {
+        // Debounce rapid changes (e.g. multiple files written at once)
+        if (debounceTimer) clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(async () => {
+          debounceTimer = null
+          try {
+            const panels = await listWorkspacePanels()
+            mainWindow.webContents.send('workspace:panelsChanged', panels)
+          } catch { /* ignore */ }
+        }, 300)
+      })
+    } catch (err) {
+      console.warn('[workspace] Failed to start panel watcher:', err)
+    }
+  })
+}
+
+function stopWorkspacePanelWatcher() {
+  if (panelWatcher) {
+    panelWatcher.close()
+    panelWatcher = null
+  }
+}
+
 const hideMiniWindow = (animate = true) => {
   if (!miniWindow) return
   const hideEpoch = ++miniVisibilityEpoch
@@ -915,8 +956,11 @@ const createFullWindow = () => {
   })
 
   fullWindow.on('closed', () => {
+    stopWorkspacePanelWatcher()
     fullWindow = null
   })
+
+  startWorkspacePanelWatcher(fullWindow)
 }
 
 const positionMiniWindow = () => {

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import "../../styles/store.css";
 import { FeaturedHero } from "./store/components/FeaturedHero";
 import { InstalledList } from "./store/components/InstalledList";
 import { PackageCard } from "./store/components/PackageCard";

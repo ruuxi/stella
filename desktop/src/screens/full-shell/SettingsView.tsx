@@ -11,6 +11,7 @@ import {
   DialogCloseButton,
   DialogBody,
 } from "@/components/dialog";
+import "../../styles/settings.css";
 
 // ---------------------------------------------------------------------------
 // Types

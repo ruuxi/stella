@@ -3,6 +3,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   useCallback,
   type ReactNode,
@@ -300,30 +301,56 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setPreviewGradientColorState(null);
   }, []);
 
+  const effectiveGradientMode = previewGradientModeState ?? gradientMode;
+  const effectiveGradientColor = previewGradientColorState ?? gradientColor;
+
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      theme,
+      themeId,
+      setTheme,
+      colorMode,
+      setColorMode,
+      resolvedColorMode,
+      gradientMode: effectiveGradientMode,
+      setGradientMode,
+      gradientColor: effectiveGradientColor,
+      setGradientColor,
+      colors,
+      themes,
+      previewTheme,
+      cancelThemePreview,
+      previewGradientMode,
+      cancelGradientModePreview,
+      previewGradientColor,
+      cancelGradientColorPreview,
+      cancelPreview,
+    }),
+    [
+      theme,
+      themeId,
+      setTheme,
+      colorMode,
+      setColorMode,
+      resolvedColorMode,
+      effectiveGradientMode,
+      setGradientMode,
+      effectiveGradientColor,
+      setGradientColor,
+      colors,
+      themes,
+      previewTheme,
+      cancelThemePreview,
+      previewGradientMode,
+      cancelGradientModePreview,
+      previewGradientColor,
+      cancelGradientColorPreview,
+      cancelPreview,
+    ],
+  );
+
   return (
-    <ThemeContext.Provider
-      value={{
-        theme,
-        themeId,
-        setTheme,
-        colorMode,
-        setColorMode,
-        resolvedColorMode,
-        gradientMode: previewGradientModeState ?? gradientMode,
-        setGradientMode,
-        gradientColor: previewGradientColorState ?? gradientColor,
-        setGradientColor,
-        colors,
-        themes,
-        previewTheme,
-        cancelThemePreview,
-        previewGradientMode,
-        cancelGradientModePreview,
-        previewGradientColor,
-        cancelGradientColorPreview,
-        cancelPreview,
-      }}
-    >
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );
