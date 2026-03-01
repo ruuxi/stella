@@ -495,9 +495,6 @@ export function useStreamingChat({
       if (selectedSnippet) {
         contextParts.push(`"${selectedSnippet}"`);
       }
-      if (hasScreenshotContext && isLocalStorage) {
-        contextParts.push(`[User included ${opts.chatContext?.regionScreenshots?.length ?? 0} screenshot(s).]`);
-      }
       if (cleanedText) {
         contextParts.push(cleanedText);
       }
@@ -507,13 +504,24 @@ export function useStreamingChat({
         return;
       }
 
-      const attachments: AttachmentRef[] = await chatStoreUploadAttachments({
-        screenshots: opts.chatContext?.regionScreenshots,
-        conversationId: resolvedConversationId,
-        deviceId,
-      }).then((uploaded) =>
-        uploaded.map((a) => ({ id: a.id, url: a.url, mimeType: a.mimeType })),
-      );
+      let attachments: AttachmentRef[] = [];
+      if (isLocalStorage && hasScreenshotContext) {
+        attachments = (opts.chatContext?.regionScreenshots ?? []).map((s) => {
+          const match = s.dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
+          return {
+            url: s.dataUrl,
+            mimeType: match ? match[1] : "image/png",
+          };
+        });
+      } else {
+        attachments = await chatStoreUploadAttachments({
+          screenshots: opts.chatContext?.regionScreenshots,
+          conversationId: resolvedConversationId,
+          deviceId,
+        }).then((uploaded) =>
+          uploaded.map((a) => ({ id: a.id, url: a.url, mimeType: a.mimeType })),
+        );
+      }
 
       const platform = window.electronAPI?.platform ?? "unknown";
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
