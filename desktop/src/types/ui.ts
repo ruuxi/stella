@@ -10,4 +10,5 @@ export type UiState = {
   view: ViewType
   conversationId: string | null
   isVoiceActive: boolean
+  isVoiceRtcActive: boolean
 }

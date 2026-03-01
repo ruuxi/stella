@@ -25,6 +25,10 @@ import {
 } from './modifier-overlay.js'
 import {
   getVoiceWindow,
+  createVoiceWindow,
+  showVoiceWindow,
+  hideVoiceWindow,
+  resizeVoiceWindow,
 } from './voice-window.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
 import { createLocalHostRunner } from './local-host/runner.js'
@@ -62,6 +66,7 @@ type UiState = {
   view: 'chat' | 'store'
   conversationId: string | null
   isVoiceActive: boolean
+  isVoiceRtcActive: boolean
 }
 
 type ScreenshotCapture = {
@@ -113,6 +118,7 @@ const uiState: UiState = {
   view: 'chat',
   conversationId: null,
   isVoiceActive: false,
+  isVoiceRtcActive: false,
 }
 
 let fullWindow: BrowserWindow | null = null
@@ -1879,9 +1885,15 @@ app.whenReady().then(async () => {
         if (!appReady) return
         console.log(`[WakeWord] Detected! score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)}`)
 
-        // Activate voice mode
-        uiState.isVoiceActive = true
+        // Activate realtime voice-to-voice mode
+        uiState.isVoiceRtcActive = true
         uiState.mode = 'voice'
+        // Focus the appropriate window so VoiceOverlay picks up the state
+        if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
+          fullWindow.focus()
+        } else {
+          showWindow('mini')
+        }
         broadcastUiState()
 
         // Pause wake word while voice is active
@@ -1900,7 +1912,7 @@ app.whenReady().then(async () => {
 
       // Resume wake word when voice mode deactivates
       setInterval(() => {
-        if (appReady && !uiState.isVoiceActive && !capture.isCapturing()) {
+        if (appReady && !uiState.isVoiceActive && !uiState.isVoiceRtcActive && !capture.isCapturing()) {
           capture.start()
         }
       }, 1000)
@@ -1910,6 +1922,71 @@ app.whenReady().then(async () => {
       console.error('[WakeWord] Failed to initialize:', (err as Error).message)
     }
   }
+
+  // ─── Voice-to-Voice (Realtime API) ──────────────────────────────────────────
+  let currentVoiceRtcShortcut = 'CommandOrControl+Shift+D'
+
+  const toggleVoiceRtc = () => {
+    if (!appReady) return
+    uiState.isVoiceRtcActive = !uiState.isVoiceRtcActive
+    if (uiState.isVoiceRtcActive) {
+      // Deactivate STT voice if it was on
+      uiState.isVoiceActive = false
+      // Focus the appropriate window so VoiceOverlay picks up the state
+      if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
+        fullWindow.focus()
+      } else {
+        showWindow('mini')
+      }
+    }
+    broadcastUiState()
+  }
+
+  globalShortcut.register(currentVoiceRtcShortcut, toggleVoiceRtc)
+
+  ipcMain.on('voice-rtc:setShortcut', (_event, shortcut: string) => {
+    globalShortcut.unregister(currentVoiceRtcShortcut)
+    currentVoiceRtcShortcut = shortcut
+    if (shortcut) {
+      globalShortcut.register(shortcut, toggleVoiceRtc)
+    }
+  })
+
+  // Voice-to-voice: delegate to the orchestrator via the local agent runtime
+  ipcMain.handle('voice:orchestratorChat', async (_event, payload: { conversationId: string; message: string }) => {
+    if (!localHostRunner) {
+      return 'Error: Local host runner not initialized'
+    }
+
+    return new Promise<string>((resolve) => {
+      let fullText = ''
+
+      localHostRunner!.handleLocalChat(
+        {
+          conversationId: payload.conversationId,
+          userMessageId: `voice-${Date.now()}`,
+          agentType: 'orchestrator',
+          storageMode: 'local',
+          localHistory: [{ role: 'user', content: payload.message }],
+        },
+        {
+          onStream: (ev) => {
+            if (ev.chunk) fullText += ev.chunk
+          },
+          onToolStart: () => {},
+          onToolEnd: () => {},
+          onEnd: (ev) => {
+            resolve(ev.finalText ?? fullText || 'Done.')
+          },
+          onError: (ev) => {
+            resolve(`Error: ${ev.error ?? 'Unknown error'}`)
+          },
+        },
+      ).catch((err) => {
+        resolve(`Error: ${(err as Error).message}`)
+      })
+    })
+  })
 
   showWindow('full')
 
@@ -2066,17 +2143,20 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('ui:getState', () => uiState)
   ipcMain.handle('ui:setState', (_event, partial: Partial<UiState>) => {
-    const { window: nextWindow, isVoiceActive, ...rest } = partial
+    const { window: nextWindow, isVoiceActive, isVoiceRtcActive, ...rest } = partial
     if (nextWindow) {
       showWindow(nextWindow)
     }
     if (isVoiceActive !== undefined) {
       uiState.isVoiceActive = isVoiceActive
     }
+    if (isVoiceRtcActive !== undefined) {
+      uiState.isVoiceRtcActive = isVoiceRtcActive
+    }
     if (Object.keys(rest).length > 0) {
       updateUiState(rest)
     }
-    if (isVoiceActive !== undefined) {
+    if (isVoiceActive !== undefined || isVoiceRtcActive !== undefined) {
       broadcastUiState()
     }
     return uiState
