@@ -988,8 +988,13 @@ export const handleBridgeMessage = internalAction({
       channelEnvelope: args.channelEnvelope,
       preEnsureOwnerConnection: true,
       respond: args.respond,
+      deliveryMeta: {
+        ownerId: args.ownerId,
+        externalUserId: args.externalUserId,
+      },
     });
 
+    if (result?.deferred) return null;
     if (!result) return null;
 
     // Look up the bridge session

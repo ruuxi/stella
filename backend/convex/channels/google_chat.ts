@@ -273,7 +273,10 @@ export const handleIncomingMessage = internalAction({
         attachments: args.attachments,
         channelEnvelope: args.channelEnvelope,
         respond: args.respond,
+        deliveryMeta: { spaceName: args.spaceName },
       });
+
+      if (result?.deferred) return null;
 
       if (!result) {
         if (!shouldRespond) return null;

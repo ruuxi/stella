@@ -1077,6 +1077,83 @@ export const subscribeToolRequestsForDevice = query({
   },
 });
 
+export const subscribeRemoteTurnRequestsForDevice = query({
+  args: {
+    deviceId: v.string(),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(eventValidator),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    const maxItems = normalizeOptionalInt({
+      value: args.limit,
+      defaultValue: 10,
+      min: 1,
+      max: 50,
+    });
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_targetDeviceId_and_timestamp", (q) =>
+        q.eq("targetDeviceId", args.deviceId).gte("timestamp", args.since),
+      )
+      .order("desc")
+      .take(maxItems * 3);
+
+    const ownershipCache = new Map<string, boolean>();
+    const filtered: Infer<typeof eventValidator>[] = [];
+
+    for (const event of events) {
+      if (event.type !== "remote_turn_request") continue;
+
+      const key = String(event.conversationId);
+      let owned = ownershipCache.get(key);
+      if (owned === undefined) {
+        const conversation = await ctx.db.get(event.conversationId);
+        owned = Boolean(conversation && conversation.ownerId === ownerId);
+        ownershipCache.set(key, owned);
+      }
+      if (!owned) continue;
+
+      filtered.push(event);
+      if (filtered.length >= maxItems) break;
+    }
+
+    return filtered;
+  },
+});
+
+/** Public query — used by the local device runner for cross-restart dedup. */
+export const isRemoteTurnClaimed = query({
+  args: {
+    requestId: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) => q.eq("requestId", `claimed:${args.requestId}`))
+      .first();
+    return event !== null;
+  },
+});
+
+export const getRemoteTurnFulfilled = internalQuery({
+  args: {
+    requestId: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) => q.eq("requestId", `fulfilled:${args.requestId}`))
+      .first();
+    return event !== null;
+  },
+});
+
 export const subscribeDashboardGenRequestsForDevice = query({
   args: {
     deviceId: v.string(),

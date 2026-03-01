@@ -1,0 +1,858 @@
+/**
+ * Connector Delivery: Handles async delivery of responses back to connectors
+ * when using inverted execution (local device runs the AI turn).
+ *
+ * Flow:
+ * 1. Local device finishes a remote turn request
+ * 2. Local device calls `completeRemoteTurn` (public mutation)
+ * 3. Mutation inserts a fulfilled marker and schedules `deliverToConnector`
+ * 4. `deliverToConnector` sends the response to the appropriate connector
+ */
+import { internalAction, internalQuery, mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
+import { v } from "convex/values";
+import { jsonValueValidator } from "../shared_validators";
+import { retryFetch } from "../lib/retry_fetch";
+import { requireUserId } from "../auth";
+import { runAgentTurn } from "../automation/runner";
+import type { Id } from "../_generated/dataModel";
+
+// ─── Public Mutation (called by local device via HTTP) ──────────────────────
+export const completeRemoteTurn = mutation({
+  args: {
+    requestId: v.string(),
+    text: v.string(),
+    conversationId: v.id("conversations"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+
+    // Verify conversation ownership
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation || conversation.ownerId !== userId) {
+      throw new Error("Not authorized");
+    }
+
+    // Idempotency: skip if already claimed
+    const existing = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) =>
+        q.eq("requestId", `claimed:${args.requestId}`),
+      )
+      .first();
+    if (existing) return null;
+
+    // Read routing metadata from the original remote_turn_request event
+    // (never trust caller-provided routing data)
+    const request = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
+      .first();
+    if (!request || request.type !== "remote_turn_request") {
+      throw new Error("Invalid or missing remote_turn_request");
+    }
+    const reqPayload = request.payload as Record<string, unknown>;
+    const provider = reqPayload.provider as string;
+    const deliveryMeta = reqPayload.deliveryMeta as Record<string, unknown>;
+
+    // Insert claimed marker (for local device dedup)
+    await ctx.db.insert("events", {
+      conversationId: args.conversationId,
+      timestamp: Date.now(),
+      type: "remote_turn_claimed",
+      requestId: `claimed:${args.requestId}`,
+      payload: { requestId: args.requestId },
+    });
+
+    // Schedule async delivery — fulfilled marker is inserted by
+    // deliverToConnector AFTER successful delivery
+    await ctx.scheduler.runAfter(
+      0,
+      internal.channels.connector_delivery.deliverToConnector,
+      {
+        requestId: args.requestId,
+        conversationId: args.conversationId,
+        provider,
+        deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta ?? {})),
+        text: args.text,
+      },
+    );
+
+    return null;
+  },
+});
+
+// ─── Internal Action (delivers message to connector) ────────────────────────
+export const deliverToConnector = internalAction({
+  args: {
+    requestId: v.string(),
+    conversationId: v.id("conversations"),
+    provider: v.string(),
+    deliveryMeta: jsonValueValidator,
+    text: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const meta = args.deliveryMeta as Record<string, unknown>;
+
+    try {
+      switch (args.provider) {
+        case "slack":
+          await deliverSlack(ctx, meta, args.text);
+          break;
+        case "telegram":
+          await deliverTelegram(meta, args.text);
+          break;
+        case "discord":
+          await deliverDiscord(meta, args.text);
+          break;
+        case "google_chat":
+          await deliverGoogleChat(meta, args.text);
+          break;
+        case "teams":
+          await deliverTeams(meta, args.text);
+          break;
+        case "linq":
+          await deliverLinq(meta, args.text);
+          break;
+        case "whatsapp":
+        case "signal":
+          await deliverBridge(ctx, meta, args.text, args.provider);
+          break;
+        default:
+          console.error(
+            `[connector_delivery] Unknown provider: ${args.provider}`,
+          );
+      }
+
+      // Mark fulfilled AFTER successful delivery
+      await ctx.runMutation(internal.events.appendInternalEvent, {
+        conversationId: args.conversationId,
+        type: "remote_turn_fulfilled",
+        requestId: `fulfilled:${args.requestId}`,
+        payload: { requestId: args.requestId },
+      });
+    } catch (error) {
+      // NOT marking fulfilled — watchdog will retry delivery
+      console.error(
+        `[connector_delivery] Delivery failed for ${args.provider}:`,
+        error,
+      );
+    }
+
+    return null;
+  },
+});
+async function deliverSlack(
+  ctx: { runQuery: (ref: never, args: never) => Promise<unknown> },
+  meta: Record<string, unknown>,
+  text: string,
+) {
+  const channelId = meta.channelId as string;
+  const teamId = meta.teamId as string | undefined;
+  if (!channelId) {
+    console.error("[connector_delivery] Slack delivery missing channelId");
+    return;
+  }
+
+  // Resolve bot token (per-workspace installation or global fallback)
+  let token: string | null = null;
+  if (teamId) {
+    const installation = (await ctx.runQuery(
+      internal.channels.slack_installations.getByTeamId as never,
+      { teamId } as never,
+    )) as { botToken: string } | null;
+    if (installation) token = installation.botToken;
+  }
+  if (!token) {
+    token = process.env.SLACK_BOT_TOKEN ?? null;
+  }
+  if (!token) {
+    console.error("[connector_delivery] No Slack bot token available");
+    return;
+  }
+
+  const maxLen = 40000;
+  const truncated =
+    text.length > maxLen
+      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
+      : text;
+
+  const res = await retryFetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ channel: channelId, text: truncated }),
+  });
+
+  if (!res.ok) {
+    console.error(
+      "[connector_delivery] Slack send failed:",
+      res.status,
+      await res.text(),
+    );
+  }
+}
+async function deliverTelegram(
+  meta: Record<string, unknown>,
+  text: string,
+) {
+  const chatId = meta.chatId as string;
+  if (!chatId) {
+    console.error("[connector_delivery] Telegram delivery missing chatId");
+    return;
+  }
+
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.error("[connector_delivery] Missing TELEGRAM_BOT_TOKEN");
+    return;
+  }
+
+  const maxLen = 4096;
+  const truncated =
+    text.length > maxLen
+      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
+      : text;
+
+  // Try MarkdownV2 first, fall back to plain text
+  const mdRes = await retryFetch(
+    `https://api.telegram.org/bot${token}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: truncated,
+        parse_mode: "MarkdownV2",
+      }),
+    },
+  );
+
+  if (!mdRes.ok) {
+    await retryFetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: truncated }),
+    });
+  }
+}
+async function deliverDiscord(
+  meta: Record<string, unknown>,
+  text: string,
+) {
+  const applicationId = meta.applicationId as string;
+  const interactionToken = meta.interactionToken as string;
+  if (!applicationId || !interactionToken) {
+    console.error(
+      "[connector_delivery] Discord delivery missing applicationId or interactionToken",
+    );
+    return;
+  }
+
+  const maxLen = 2000;
+  const truncated =
+    text.length > maxLen
+      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
+      : text;
+
+  // Edit the deferred interaction response
+  const res = await fetch(
+    `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: truncated }),
+    },
+  );
+
+  if (!res.ok) {
+    // Interaction token may have expired (15-minute limit).
+    // Try sending as a follow-up message instead.
+    const followUpRes = await fetch(
+      `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: truncated }),
+      },
+    );
+    if (!followUpRes.ok) {
+      console.error(
+        "[connector_delivery] Discord delivery failed (both edit and follow-up):",
+        res.status,
+        followUpRes.status,
+      );
+    }
+  }
+}
+async function deliverGoogleChat(
+  meta: Record<string, unknown>,
+  text: string,
+) {
+  const spaceName = meta.spaceName as string;
+  if (!spaceName) {
+    console.error(
+      "[connector_delivery] Google Chat delivery missing spaceName",
+    );
+    return;
+  }
+
+  const accessToken = await getGoogleAccessToken();
+
+  const maxLen = 4096;
+  const truncated =
+    text.length > maxLen
+      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
+      : text;
+
+  const res = await retryFetch(
+    `https://chat.googleapis.com/v1/${spaceName}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text: truncated }),
+    },
+  );
+
+  if (!res.ok) {
+    console.error(
+      "[connector_delivery] Google Chat send failed:",
+      res.status,
+      await res.text(),
+    );
+  }
+}
+async function deliverTeams(meta: Record<string, unknown>, text: string) {
+  const serviceUrl = meta.serviceUrl as string;
+  const conversationId = meta.conversationIdTeams as string;
+  if (!serviceUrl || !conversationId) {
+    console.error(
+      "[connector_delivery] Teams delivery missing serviceUrl or conversationIdTeams",
+    );
+    return;
+  }
+
+  const token = await getTeamsBotToken();
+
+  const maxLen = 28000;
+  const truncated =
+    text.length > maxLen
+      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
+      : text;
+
+  const baseUrl = serviceUrl.endsWith("/")
+    ? serviceUrl.slice(0, -1)
+    : serviceUrl;
+
+  const res = await retryFetch(
+    `${baseUrl}/v3/conversations/${encodeURIComponent(conversationId)}/activities`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ type: "message", text: truncated }),
+    },
+  );
+
+  if (!res.ok) {
+    console.error(
+      "[connector_delivery] Teams send failed:",
+      res.status,
+      await res.text(),
+    );
+  }
+}
+async function deliverLinq(meta: Record<string, unknown>, text: string) {
+  const incomingChatId = meta.incomingChatId as string | undefined;
+  const senderPhone = meta.senderPhone as string;
+  if (!senderPhone) {
+    console.error(
+      "[connector_delivery] Linq delivery missing senderPhone",
+    );
+    return;
+  }
+
+  const apiToken = process.env.LINQ_API_TOKEN;
+  const fromNumber = process.env.LINQ_FROM_NUMBER;
+  if (!apiToken || !fromNumber) {
+    console.error(
+      "[connector_delivery] Missing LINQ_API_TOKEN or LINQ_FROM_NUMBER",
+    );
+    return;
+  }
+
+  const headers = {
+    Authorization: `Bearer ${apiToken}`,
+    "Content-Type": "application/json",
+  };
+
+  // Try incoming chat ID first
+  if (incomingChatId) {
+    const res = await retryFetch(
+      `https://api.linqapp.com/api/partner/v3/chats/${incomingChatId}/messages`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          message: { parts: [{ type: "text", value: text }] },
+        }),
+      },
+    );
+    if (res.ok) return;
+    console.error(
+      "[connector_delivery] Linq incomingChatId send failed, trying new chat",
+    );
+  }
+
+  // Create new chat
+  const res = await retryFetch(
+    "https://api.linqapp.com/api/partner/v3/chats",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        from: fromNumber,
+        to: [senderPhone],
+        message: { parts: [{ type: "text", value: text }] },
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    console.error(
+      "[connector_delivery] Linq createChat failed:",
+      res.status,
+      await res.text(),
+    );
+  }
+}
+async function deliverBridge(
+  ctx: {
+    runQuery: (ref: never, args: never) => Promise<unknown>;
+    runMutation: (ref: never, args: never) => Promise<unknown>;
+  },
+  meta: Record<string, unknown>,
+  text: string,
+  provider: string,
+) {
+  const ownerId = meta.ownerId as string;
+  const externalUserId = meta.externalUserId as string;
+  if (!ownerId || !externalUserId) {
+    console.error(
+      "[connector_delivery] Bridge delivery missing ownerId or externalUserId",
+    );
+    return;
+  }
+
+  // Look up the bridge session by ownerId and provider
+  const session = (await ctx.runQuery(
+    internal.channels.bridge.getBridgeSession as never,
+    { ownerId, provider } as never,
+  )) as { _id: string } | null;
+
+  if (!session) {
+    console.error(
+      `[connector_delivery] No bridge session found for ${provider}/${ownerId}`,
+    );
+    return;
+  }
+
+  await ctx.runMutation(internal.channels.bridge_outbound.enqueue as never, {
+    sessionId: session._id,
+    ownerId,
+    provider,
+    externalUserId,
+    text,
+  } as never);
+}
+// ─── Shared Auth Helpers ────────────────────────────────────────────────────
+
+// Google Chat service account JWT auth
+let cachedGoogleToken: { token: string; expiresAt: number } | null = null;
+
+function base64UrlDecode(str: string): Uint8Array {
+  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function getGoogleAccessToken(): Promise<string> {
+  if (
+    cachedGoogleToken &&
+    cachedGoogleToken.expiresAt > Date.now() + 60_000
+  ) {
+    return cachedGoogleToken.token;
+  }
+
+  const keyJson = process.env.GOOGLE_CHAT_SERVICE_ACCOUNT_KEY;
+  if (!keyJson) throw new Error("Missing GOOGLE_CHAT_SERVICE_ACCOUNT_KEY");
+
+  const key = JSON.parse(keyJson);
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = { alg: "RS256", typ: "JWT" };
+  const claims = {
+    iss: key.client_email,
+    scope: "https://www.googleapis.com/auth/chat.bot",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  };
+
+  const encode = (obj: unknown) => {
+    const json = JSON.stringify(obj);
+    const bytes = new TextEncoder().encode(json);
+    return btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  };
+
+  const headerB64 = encode(header);
+  const claimsB64 = encode(claims);
+  const unsigned = `${headerB64}.${claimsB64}`;
+
+  const pemContents = key.private_key
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\n/g, "");
+  const keyData = base64UrlDecode(
+    pemContents.replace(/\+/g, "-").replace(/\//g, "_"),
+  );
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    keyData.buffer as ArrayBuffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(unsigned),
+  );
+
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const jwt = `${unsigned}.${sigB64}`;
+
+  const tokenRes = await retryFetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  });
+
+  if (!tokenRes.ok) {
+    throw new Error(
+      `Google token exchange failed: ${tokenRes.status} ${await tokenRes.text()}`,
+    );
+  }
+
+  const tokenData = await tokenRes.json();
+  const expiresIn = Number(tokenData.expires_in);
+  cachedGoogleToken = {
+    token: tokenData.access_token,
+    expiresAt:
+      Date.now() +
+      ((Number.isFinite(expiresIn) ? expiresIn : 3600) - 60) * 1000,
+  };
+  return tokenData.access_token;
+}
+
+// Teams Bot Framework token auth
+let cachedBotToken: { token: string; expiresAt: number } | null = null;
+
+async function getTeamsBotToken(): Promise<string> {
+  if (cachedBotToken && cachedBotToken.expiresAt > Date.now() + 60000) {
+    return cachedBotToken.token;
+  }
+
+  const appId = process.env.TEAMS_APP_ID;
+  const appPassword = process.env.TEAMS_APP_PASSWORD;
+  if (!appId || !appPassword)
+    throw new Error("Missing TEAMS_APP_ID or TEAMS_APP_PASSWORD");
+
+  const res = await fetch(
+    "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: appId,
+        client_secret: appPassword,
+        scope: "https://api.botframework.com/.default",
+      }).toString(),
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Teams token request failed: ${res.status} ${await res.text()}`,
+    );
+  }
+
+  const data = await res.json();
+  cachedBotToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+  };
+  return data.access_token;
+}
+
+/** Fetch the most recent assistant_message text for a conversation. */
+async function getLatestAssistantText(
+  ctx: { runQuery: (ref: never, args: never) => Promise<unknown> },
+  conversationId: Id<"conversations">,
+): Promise<string> {
+  const events = (await ctx.runQuery(
+    internal.events.listEventsSince as never,
+    {
+      conversationId,
+      limit: 20,
+    } as never,
+  )) as Array<{ type: string; payload: Record<string, unknown> }> | null;
+
+  if (!events) return "(Stella had nothing to say.)";
+
+  // listEventsSince returns asc order — walk backwards to find the latest
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].type === "assistant_message") {
+      return (events[i].payload?.text as string) ?? "(Stella had nothing to say.)";
+    }
+  }
+  return "(Stella had nothing to say.)";
+}
+
+const ORPHAN_MIN_AGE_MS = 90_000; // must be at least 90s old
+const ORPHAN_MAX_AGE_MS = 10 * 60_000; // ignore anything older than 10 min
+
+export const findOrphanedTurnRequests = internalQuery({
+  args: {},
+  returns: v.array(
+    v.object({
+      eventId: v.id("events"),
+      requestId: v.string(),
+      conversationId: v.id("conversations"),
+      targetDeviceId: v.string(),
+      payload: jsonValueValidator,
+      claimed: v.boolean(),
+    }),
+  ),
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    // Find devices that recently went offline (within the orphan window).
+    const offlineDevices = await ctx.db
+      .query("devices")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("online"), false),
+          q.gte(q.field("lastSignedAtMs"), now - ORPHAN_MAX_AGE_MS),
+        ),
+      )
+      .collect();
+
+    if (offlineDevices.length === 0) return [];
+
+    type OrphanResult = {
+      eventId: Id<"events">;
+      requestId: string;
+      conversationId: Id<"conversations">;
+      targetDeviceId: string;
+      payload: Record<string, string | undefined>;
+      claimed: boolean;
+    };
+    const orphans: OrphanResult[] = [];
+
+    for (const device of offlineDevices) {
+      const events = await ctx.db
+        .query("events")
+        .withIndex("by_targetDeviceId_and_timestamp", (q) =>
+          q
+            .eq("targetDeviceId", device.deviceId)
+            .gte("timestamp", now - ORPHAN_MAX_AGE_MS),
+        )
+        .filter((q) => q.lte(q.field("timestamp"), now - ORPHAN_MIN_AGE_MS))
+        .take(20);
+
+      for (const event of events) {
+        if (event.type !== "remote_turn_request") continue;
+        if (!event.requestId) continue;
+
+        // Check for fulfilled marker
+        const fulfilled = await ctx.db
+          .query("events")
+          .withIndex("by_requestId", (q) =>
+            q.eq("requestId", `fulfilled:${event.requestId}`),
+          )
+          .first();
+        if (fulfilled) continue;
+
+        // Check for claimed marker (local device started but delivery may have failed)
+        const claimed = await ctx.db
+          .query("events")
+          .withIndex("by_requestId", (q) =>
+            q.eq("requestId", `claimed:${event.requestId}`),
+          )
+          .first();
+
+        const p = event.payload as Record<string, unknown>;
+        orphans.push({
+          eventId: event._id,
+          requestId: event.requestId,
+          conversationId: event.conversationId,
+          targetDeviceId: event.targetDeviceId!,
+          payload: JSON.parse(JSON.stringify(p)),
+          claimed: claimed !== null,
+        });
+      }
+    }
+
+    return orphans;
+  },
+});
+
+export const rescueOrphanedTurns = internalAction({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const orphans = await ctx.runQuery(
+      internal.channels.connector_delivery.findOrphanedTurnRequests,
+      {},
+    );
+
+    if (orphans.length === 0) return null;
+
+    console.log(
+      `[watchdog] Found ${orphans.length} orphaned remote turn request(s)`,
+    );
+
+    for (const orphan of orphans) {
+      const payload = orphan.payload as Record<string, unknown>;
+      const conversationId = payload.conversationId as string;
+      const userMessageId = payload.userMessageId as string | undefined;
+      const prompt = (payload.text as string) ?? "";
+      const provider = (payload.provider as string) ?? "";
+      const deliveryMeta =
+        (payload.deliveryMeta as Record<string, unknown>) ?? {};
+
+      try {
+        if (orphan.claimed) {
+          // Case 1: Claimed but not fulfilled — the local device ran the turn
+          // but delivery failed. Retry delivery only (no re-execution).
+          console.log(
+            `[watchdog] Retrying delivery for claimed turn ${orphan.requestId}`,
+          );
+          await ctx.runAction(
+            internal.channels.connector_delivery.deliverToConnector,
+            {
+              requestId: orphan.requestId,
+              conversationId: orphan.conversationId,
+              provider,
+              deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
+              // We don't have the original text — fetch the latest assistant
+              // message from the conversation as the response.
+              text: await getLatestAssistantText(ctx, orphan.conversationId),
+            },
+          );
+        } else {
+          // Case 2: Not claimed — device went offline before picking up the
+          // request. Run the full turn through cloud + deliver.
+          const conversation = await ctx.runQuery(
+            internal.conversations.getById,
+            { id: conversationId as Id<"conversations"> },
+          );
+          if (!conversation) {
+            console.error(
+              `[watchdog] Conversation ${conversationId} not found, skipping`,
+            );
+            continue;
+          }
+
+          const result = await runAgentTurn({
+            ctx,
+            conversationId: conversationId as Id<"conversations">,
+            prompt,
+            agentType: "orchestrator",
+            ownerId: conversation.ownerId,
+            userMessageId: userMessageId as Id<"events"> | undefined,
+          });
+
+          // Persist assistant message
+          if (result.text.trim() && !result.silent) {
+            await ctx.runMutation(internal.events.appendInternalEvent, {
+              conversationId: conversationId as Id<"conversations">,
+              type: "assistant_message",
+              payload: {
+                text: result.text,
+                source: `channel:${provider}`,
+                ...(result.usage ? { usage: result.usage } : {}),
+              },
+            });
+          }
+
+          const responseText =
+            result.text.trim() || "(Stella had nothing to say.)";
+          await ctx.runAction(
+            internal.channels.connector_delivery.deliverToConnector,
+            {
+              requestId: orphan.requestId,
+              conversationId: conversationId as Id<"conversations">,
+              provider,
+              deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
+              text: responseText,
+            },
+          );
+        }
+
+        console.log(
+          `[watchdog] Rescued orphan ${orphan.requestId} (${orphan.claimed ? "delivery retry" : "full rescue"}) → ${provider}`,
+        );
+      } catch (error) {
+        console.error(
+          `[watchdog] Failed to rescue orphan ${orphan.requestId}:`,
+          error,
+        );
+
+        // Mark as fulfilled to prevent infinite retries
+        try {
+          await ctx.runMutation(internal.events.appendInternalEvent, {
+            conversationId: conversationId as Id<"conversations">,
+            type: "remote_turn_fulfilled",
+            requestId: `fulfilled:${orphan.requestId}`,
+            payload: {
+              requestId: orphan.requestId,
+              rescuedByWatchdog: true,
+              error: String(error),
+            },
+          });
+        } catch {
+          // Best effort — if this fails too, the orphan will age out after 10 min
+        }
+      }
+    }
+
+    return null;
+  },
+});
+
