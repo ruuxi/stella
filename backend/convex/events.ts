@@ -1,7 +1,8 @@
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { v, ConvexError, Infer, type Value } from "convex/values";
-import { internal } from "./_generated/api";
+import { internal, components } from "./_generated/api";
+import { RateLimiter } from "@convex-dev/rate-limiter";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireConversationOwner, requireUserId } from "./auth";
@@ -17,6 +18,8 @@ import {
   estimateContextEventTokens,
   selectRecentByTokenBudget,
 } from "./agent/context_window";
+
+const rateLimiter = new RateLimiter(components.rateLimiter);
 
 const eventValidator = v.object({
   _id: v.id("events"),
@@ -798,6 +801,22 @@ const resolveAppendEventPayload = (args: AppendEventArgs) => {
     });
   }
 
+  if (args.type === "user_message") {
+    const text = (args.payload as any)?.text;
+    if (typeof text !== "string" || text.trim().length === 0) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "user_message requires non-empty text",
+      });
+    }
+    if (text.length > 100_000) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "user_message text exceeds maximum allowed length of 100,000 characters",
+      });
+    }
+  }
+
   return {
     sanitizedPayload,
     resolvedTargetDeviceId,
@@ -882,6 +901,19 @@ export const appendEvent = mutation({
     expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+
+    const status = await rateLimiter.limit(ctx, "appendEvent", {
+      key: ownerId,
+      config: { kind: "fixed window", rate: 100, period: 10000 },
+    });
+    if (!status.ok) {
+      throw new ConvexError({
+        code: "RATE_LIMITED",
+        message: "Too many events. Please try again later.",
+      });
+    }
+
     await requireConversationOwner(ctx, args.conversationId);
     return await appendEventCore(ctx, args);
   },
@@ -893,16 +925,32 @@ export const importLocalMessagesChunk = mutation({
     messages: v.array(localSyncMessageValidator),
   },
   handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+
+    const status = await rateLimiter.limit(ctx, "importLocalMessagesChunk", {
+      key: ownerId,
+      config: { kind: "fixed window", rate: 30, period: 10000 },
+    });
+    if (!status.ok) {
+      throw new ConvexError({
+        code: "RATE_LIMITED",
+        message: "Too many import requests. Please try again later.",
+      });
+    }
+
     await requireConversationOwner(ctx, args.conversationId);
 
     let imported = 0;
     let skipped = 0;
 
     for (const message of args.messages) {
-      const text = message.text.trim();
+      let text = message.text.trim();
       if (!text) {
         skipped += 1;
         continue;
+      }
+      if (text.length > 100_000) {
+        text = text.slice(0, 100_000);
       }
 
       const requestId = `local_sync:${args.conversationId}:${message.localMessageId}`;
@@ -915,7 +963,10 @@ export const importLocalMessagesChunk = mutation({
         continue;
       }
 
-      const timestamp = Number.isFinite(message.timestamp) ? message.timestamp : Date.now();
+      let timestamp = Number.isFinite(message.timestamp) ? message.timestamp : Date.now();
+      if (timestamp > Date.now() + 60_000) {
+        timestamp = Date.now();
+      }
       const type = message.role === "assistant" ? "assistant_message" : "user_message";
 
       await appendEventCore(ctx, {
