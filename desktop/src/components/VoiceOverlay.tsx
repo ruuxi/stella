@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUiState } from "../app/state/ui-state";
 import { useVoiceRecording } from "../hooks/use-voice-recording";
+import { useRealtimeVoice } from "../hooks/use-realtime-voice";
 
 interface VoiceOverlayProps {
   onTranscript: (text: string) => void;
@@ -107,14 +108,24 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
   const brightestRef = useRef<HTMLSpanElement>(null);
   const swatchRefs = [darkRef, mediumDarkRef, mediumRef, brightRef, brightestRef];
 
-  const { analyserRef, isRecording } = useVoiceRecording({
+  // STT mode
+  const { analyserRef: sttAnalyserRef, isRecording } = useVoiceRecording({
     isActive: state.isVoiceActive,
     onTranscript,
   });
 
+  // RTC mode
+  const { analyserRef: rtcAnalyserRef, isConnected } = useRealtimeVoice();
+
+  const isAnyVoiceActive = state.isVoiceActive || state.isVoiceRtcActive;
+  const isAudioReady = isRecording || isConnected;
+
+  // Unified analyser — whichever mode is active
+  const analyserRef = state.isVoiceRtcActive ? rtcAnalyserRef : sttAnalyserRef;
+
   // Show/hide with exit animation
   useEffect(() => {
-    if (state.isVoiceActive) {
+    if (isAnyVoiceActive) {
       setExiting(false);
       setShowOverlay(true);
     } else if (showOverlay) {
@@ -125,7 +136,7 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
       }, 250);
       return () => clearTimeout(timer);
     }
-  }, [state.isVoiceActive, showOverlay]);
+  }, [isAnyVoiceActive, showOverlay]);
 
   // Read colors on mount + watch for theme changes
   useEffect(() => {
@@ -144,7 +155,7 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
 
   // Canvas animation loop
   useEffect(() => {
-    if (!showOverlay || !isRecording) return;
+    if (!showOverlay || !isAudioReady) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -227,11 +238,15 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
         rafRef.current = null;
       }
     };
-  }, [showOverlay, isRecording, analyserRef]);
+  }, [showOverlay, isAudioReady, analyserRef]);
 
   const handleClick = useCallback(() => {
-    updateState({ isVoiceActive: false });
-  }, [updateState]);
+    if (state.isVoiceRtcActive) {
+      updateState({ isVoiceRtcActive: false });
+    } else {
+      updateState({ isVoiceActive: false });
+    }
+  }, [state.isVoiceRtcActive, updateState]);
 
   if (!showOverlay) return null;
 

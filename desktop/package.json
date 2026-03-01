@@ -29,6 +29,7 @@
     "@ai-sdk/amazon-bedrock": "^4.0.69",
     "@ai-sdk/anthropic": "^3.0.50",
     "@ai-sdk/openai": "^3.0.37",
+    "@ai-sdk/provider-utils": "^4.0.15",
     "@convex-dev/better-auth": "^0.10.0",
     "@gitlab/gitlab-ai-provider": "^3.6.0",
     "@google/genai": "^1.43.0",

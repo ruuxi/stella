@@ -11,6 +11,10 @@ const isDev = process.env.NODE_ENV === 'development'
 const VOICE_WIDTH = 240
 const VOICE_HEIGHT = 80
 
+// Larger dimensions for realtime voice-to-voice mode (bubble transcript + waveform + status)
+const VOICE_RTC_WIDTH = 320
+const VOICE_RTC_HEIGHT = 240
+
 let voiceWindow: BrowserWindow | null = null
 
 const getDevUrl = () => {
@@ -92,6 +96,24 @@ export const hideVoiceWindow = () => {
   if (voiceWindow) {
     voiceWindow.hide()
   }
+}
+
+export const resizeVoiceWindow = (mode: 'stt' | 'realtime') => {
+  if (!voiceWindow) return
+  const w = mode === 'realtime' ? VOICE_RTC_WIDTH : VOICE_WIDTH
+  const h = mode === 'realtime' ? VOICE_RTC_HEIGHT : VOICE_HEIGHT
+
+  const cursorPoint = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(cursorPoint)
+  const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
+
+  const width = Math.round(w / scaleFactor)
+  const height = Math.round(h / scaleFactor)
+
+  const x = display.bounds.x + Math.round((display.bounds.width - width) / 2)
+  const y = display.bounds.y + display.bounds.height - height - Math.round(40 / scaleFactor)
+
+  voiceWindow.setBounds({ x, y, width, height })
 }
 
 export const getVoiceWindow = () => voiceWindow
