@@ -20,6 +20,7 @@ describe("UiStateProvider + useUiState", () => {
       view: "home",
       conversationId: null,
       isVoiceActive: false,
+      isVoiceRtcActive: false,
     });
   });
 
