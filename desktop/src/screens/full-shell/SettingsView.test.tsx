@@ -10,6 +10,7 @@ import SettingsDialog from "./SettingsView";
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(() => undefined),
   useMutation: vi.fn(() => vi.fn()),
+  useConvexAuth: vi.fn(() => ({ isAuthenticated: true })),
 }));
 
 vi.mock("@/convex/api", () => ({
@@ -129,7 +130,7 @@ function setupUseQuery(opts: {
   secrets?: Array<{ _id: string; provider: string; label: string; status: string }>;
   accountMode?: "connected" | "private_local";
   syncMode?: "on" | "off";
-  generalAgentEngine?: "default" | "codex_local";
+  generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
   codexLocalMaxConcurrency?: number;
 } = {}) {
   mockUseQuery((queryPath: unknown) => {
@@ -422,6 +423,34 @@ describe("GeneralAgentRuntimeSection", () => {
     expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({ engine: "codex_local" });
   });
 
+  it("shows Claude Code option in General Agent Runtime engine select", () => {
+    setupUseQuery();
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
+    expect(selects.length).toBeGreaterThanOrEqual(1);
+    const options = Array.from(selects[0].querySelectorAll("option")).map((opt) => opt.value);
+    expect(options).toContain("claude_code_local");
+  });
+
+  it("calls setGeneralAgentEngine when engine is changed to claude_code_local", () => {
+    const mockSetGeneralAgentEngine = vi.fn();
+    mockUseMutation((mutationPath: unknown) => {
+      const path = mutationPath as string;
+      if (path === "preferences.setGeneralAgentEngine") return mockSetGeneralAgentEngine;
+      return vi.fn();
+    });
+    setupUseQuery();
+    render(<SettingsDialog {...defaultProps()} />);
+    fireEvent.click(screen.getByText("Models"));
+
+    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
+    fireEvent.change(selects[0], { target: { value: "claude_code_local" } });
+
+    expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({ engine: "claude_code_local" });
+  });
+
   it("calls setCodexLocalMaxConcurrency when Codex concurrency changes", () => {
     const mockSetCodexLocalMaxConcurrency = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
@@ -513,19 +542,6 @@ describe("ModelConfigSection", () => {
     expect(labels).toContain("openai");
   });
 
-  it("shows Claude Code local option only for the general agent", () => {
-    setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
-
-    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
-    expect(selects.length).toBe(6);
-
-    const claudeOption = 'option[value="claude-code/default"]';
-    expect(selects[1]?.querySelector(claudeOption)).toBeTruthy(); // general
-    expect(selects[0]?.querySelector(claudeOption)).toBeNull(); // orchestrator
-    expect(selects[2]?.querySelector(claudeOption)).toBeNull(); // self_mod
-  });
 
   it("selects have current value from overrides", () => {
     setupUseQuery({
@@ -603,29 +619,6 @@ describe("ModelConfigSection", () => {
     expect(mockSetOverride).toHaveBeenCalledWith({
       agentType: "orchestrator",
       model: "openai/gpt-4o",
-    });
-  });
-
-  it("calls setModelOverride mutation when Claude Code is selected for general", () => {
-    const mockSetOverride = vi.fn();
-    const mockClearOverride = vi.fn();
-    mockUseMutation((mutationPath: unknown) => {
-      const path = mutationPath as string;
-      if (path === "preferences.setModelOverride") return mockSetOverride;
-      if (path === "preferences.clearModelOverride") return mockClearOverride;
-      return vi.fn();
-    });
-
-    setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
-
-    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
-    fireEvent.change(selects[1], { target: { value: "claude-code/default" } });
-
-    expect(mockSetOverride).toHaveBeenCalledWith({
-      agentType: "general",
-      model: "claude-code/default",
     });
   });
 
