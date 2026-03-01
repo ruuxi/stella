@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai"
 import { createServiceRequest } from "@/services/http/service-request"
 import {
   generateMusicPrompt,
@@ -245,6 +244,7 @@ async function createSession(
 ): Promise<LyriaSession> {
   const apiKey = await resolveApiKey()
 
+  const { GoogleGenAI } = await import("@google/genai")
   const client = new GoogleGenAI({ apiKey, apiVersion: "v1alpha" })
 
   const { ctx } = ensureAudioGraph()

@@ -37,24 +37,29 @@ function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
-// Parse any color string to RGB using canvas
+// Reusable canvas for color parsing (avoids creating DOM elements per call)
+let _colorCanvas: HTMLCanvasElement | null = null;
+let _colorCtx: CanvasRenderingContext2D | null = null;
+
 function parseColor(color: string): RGB | null {
   if (!color || color === "transparent") return null;
 
-  // Try to use a canvas to parse the color
   if (typeof document !== "undefined") {
     try {
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = 1;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.fillStyle = color;
-        ctx.fillRect(0, 0, 1, 1);
-        const data = ctx.getImageData(0, 0, 1, 1).data;
+      if (!_colorCanvas) {
+        _colorCanvas = document.createElement("canvas");
+        _colorCanvas.width = _colorCanvas.height = 1;
+        _colorCtx = _colorCanvas.getContext("2d", { willReadFrequently: true });
+      }
+      if (_colorCtx) {
+        _colorCtx.clearRect(0, 0, 1, 1);
+        _colorCtx.fillStyle = color;
+        _colorCtx.fillRect(0, 0, 1, 1);
+        const data = _colorCtx.getImageData(0, 0, 1, 1).data;
         return { r: data[0], g: data[1], b: data[2] };
       }
     } catch {
-      // Fall through to computed style method
+      // Fall through
     }
   }
 

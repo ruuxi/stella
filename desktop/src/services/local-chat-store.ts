@@ -53,6 +53,10 @@ const createEmptyStore = (): LocalStore => ({
 const canUseStorage = () =>
   typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 
+// In-memory cache to avoid re-parsing the entire JSON blob on every operation
+let _cachedStore: LocalStore | null = null;
+let _cacheRaw: string | null = null;
+
 const encodeBase32 = (value: number, length: number): string => {
   let remaining = Math.floor(value);
   let output = "";
@@ -86,15 +90,20 @@ const readStore = (): LocalStore => {
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
     if (!raw) return createEmptyStore();
+    // Return cached store if the raw string hasn't changed
+    if (raw === _cacheRaw && _cachedStore) return _cachedStore;
     const parsed = JSON.parse(raw) as Partial<LocalStore> | null;
     if (!parsed || typeof parsed !== "object") return createEmptyStore();
     if (!parsed.conversations || typeof parsed.conversations !== "object") {
       return createEmptyStore();
     }
-    return {
+    const store: LocalStore = {
       version: STORE_VERSION,
       conversations: parsed.conversations as Record<string, LocalConversation>,
     };
+    _cachedStore = store;
+    _cacheRaw = raw;
+    return store;
   } catch {
     return createEmptyStore();
   }
@@ -102,7 +111,10 @@ const readStore = (): LocalStore => {
 
 const writeStore = (store: LocalStore) => {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  const raw = JSON.stringify(store);
+  window.localStorage.setItem(STORE_KEY, raw);
+  _cachedStore = store;
+  _cacheRaw = raw;
   window.dispatchEvent(new CustomEvent(UPDATE_EVENT_NAME));
 };
 
