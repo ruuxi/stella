@@ -3,9 +3,12 @@ import {
   internalQuery,
   internalMutation,
 } from "./_generated/server";
-import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { components, internal } from "./_generated/api";
+import { v, ConvexError } from "convex/values";
 import { requireUserId } from "./auth";
+import { RateLimiter } from "@convex-dev/rate-limiter";
+
+const rateLimiter = new RateLimiter(components.rateLimiter);
 
 const conversationValidator = v.object({
   _id: v.id("conversations"),
@@ -32,7 +35,26 @@ export const getOrCreateDefaultConversation = mutation({
     title: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.title && args.title.length > 200) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "Conversation title exceeds maximum allowed length of 200 characters",
+      });
+    }
+
     const ownerId = await requireUserId(ctx);
+
+    const status = await rateLimiter.limit(ctx, "createConversation", {
+      key: ownerId,
+      config: { kind: "fixed window", rate: 20, period: 10000 },
+    });
+    if (!status.ok) {
+      throw new ConvexError({
+        code: "RATE_LIMITED",
+        message: "Too many conversation requests. Please try again later.",
+      });
+    }
+
     const existing = await ctx.db
       .query("conversations")
       .withIndex("by_ownerId_and_isDefault", (q) =>
@@ -80,7 +102,26 @@ export const createConversation = mutation({
     title: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.title && args.title.length > 200) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "Conversation title exceeds maximum allowed length of 200 characters",
+      });
+    }
+
     const ownerId = await requireUserId(ctx);
+
+    const status = await rateLimiter.limit(ctx, "createConversation", {
+      key: ownerId,
+      config: { kind: "fixed window", rate: 20, period: 10000 },
+    });
+    if (!status.ok) {
+      throw new ConvexError({
+        code: "RATE_LIMITED",
+        message: "Too many conversation requests. Please try again later.",
+      });
+    }
+
     const now = Date.now();
     const id = await ctx.db.insert("conversations", {
       ownerId,

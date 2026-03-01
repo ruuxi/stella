@@ -1,5 +1,5 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
 
 const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"));
@@ -334,6 +334,12 @@ export const setModelOverride = mutation({
     model: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.model.length > 200) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "Model override exceeds maximum allowed length of 200 characters",
+      });
+    }
     const ownerId = await requireUserId(ctx);
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
     await upsertPreferenceRecord(ctx, ownerId, key, args.model);
@@ -367,6 +373,12 @@ export const setCoreMemory = mutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.content.length > 500_000) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "Core memory content exceeds maximum allowed length of 500,000 characters",
+      });
+    }
     const ownerId = await requireUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, CORE_MEMORY_KEY, args.content);
     return null;
