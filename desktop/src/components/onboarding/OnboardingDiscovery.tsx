@@ -1,5 +1,6 @@
 import React from "react";
 import { type DiscoveryCategory, DISCOVERY_CATEGORIES } from "./use-onboarding-state";
+import { getPlatform } from "@/utils/platform";
 
 interface OnboardingDiscoveryProps {
   categoryStates: Record<DiscoveryCategory, boolean>;
@@ -10,7 +11,7 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
   categoryStates,
   onToggleCategory,
 }) => {
-  const platform = window.electronAPI?.platform ?? "unknown";
+  const platform = getPlatform();
   const hasFDACategories = DISCOVERY_CATEGORIES.some(
     (cat) => cat.requiresFDA && categoryStates[cat.id]
   );

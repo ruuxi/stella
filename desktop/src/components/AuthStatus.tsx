@@ -1,13 +1,8 @@
-import { useConvexAuth, useQuery } from "convex/react";
-import { api } from "@/convex/api";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { secureSignOut } from "@/services/auth";
 
 export const AuthStatus = () => {
-  const { isAuthenticated } = useConvexAuth();
-  const user = useQuery(api.auth.getCurrentUser, isAuthenticated ? {} : "skip") as
-    | { email?: string; name?: string }
-    | null
-    | undefined;
+  const { user, isAuthenticated } = useCurrentUser();
 
   if (!isAuthenticated) {
     return null;

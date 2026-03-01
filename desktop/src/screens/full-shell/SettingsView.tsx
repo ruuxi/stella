@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
+import { useAccountMode } from "@/hooks/use-account-mode";
 import { useModelCatalog } from "../../hooks/use-model-catalog";
 import {
   Dialog,
@@ -92,10 +93,7 @@ const TABS: { key: SettingsTab; label: string }[] = [
 function BasicTab({ onSignOut }: {
   onSignOut?: () => void;
 }) {
-  const accountMode = useQuery(api.data.preferences.getAccountMode) as
-    | "private_local"
-    | "connected"
-    | undefined;
+  const accountMode = useAccountMode();
   const syncMode = useQuery(
     api.data.preferences.getSyncMode,
     accountMode === "connected" ? {} : "skip",

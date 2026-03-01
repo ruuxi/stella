@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
 import { useUiState } from "./state/ui-state";
 import { api } from "../convex/api";
+import { useAccountMode } from "../hooks/use-account-mode";
 import { configureLocalHost, getOrCreateDeviceId } from "../services/device";
 import {
   buildLocalSyncMessages,
@@ -38,10 +39,7 @@ const chunkMessages = (
 export const AppBootstrap = () => {
   const { setConversationId } = useUiState();
   const { isAuthenticated } = useConvexAuth();
-  const accountMode = useQuery(
-    api.data.preferences.getAccountMode,
-    isAuthenticated ? {} : "skip",
-  ) as "private_local" | "connected" | undefined;
+  const accountMode = useAccountMode();
   const getOrCreateDefaultConversation = useMutation(
     api.conversations.getOrCreateDefaultConversation,
   );

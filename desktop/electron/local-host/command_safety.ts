@@ -7,6 +7,7 @@
 
 import path from "path";
 import os from "os";
+import { getDangerousCommandReason } from "@stella/shared";
 
 // ---------------------------------------------------------------------------
 // 1. Dangerous Command Blocklist
@@ -17,38 +18,12 @@ import os from "os";
 // rm/rmdir/unlink/del/erase and moves files to ~/.stella/state/deferred-delete/trash/
 // with 24h retention. The blocklist here only catches things the trash CAN'T protect
 // against: filesystem-level destruction, fork bombs, and system power commands.
-const DANGEROUS_COMMAND_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  // Root / home directory wipe — trash intercepts rm but these are catastrophic scope
-  { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
-  { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
-  { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
-  { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
-
-  // Drive-level destruction (not caught by trash)
-  { pattern: /\bformat\s+[a-zA-Z]:\s*/i, reason: "format drive" },
-  { pattern: /\bdd\s+if=/i, reason: "dd if= (raw disk write)" },
-  { pattern: /\bmkfs\b/i, reason: "mkfs (format filesystem)" },
-
-  // Fork bomb — process-level, trash can't help
-  { pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/i, reason: "fork bomb" },
-
-  // System power — not a file operation, trash irrelevant
-  { pattern: /\bshutdown\b/i, reason: "shutdown" },
-  { pattern: /\breboot\b/i, reason: "reboot" },
-];
 
 /**
  * Check if a command string contains dangerous/destructive patterns.
  * Returns `null` if safe, or a reason string if blocked.
  */
-export const isDangerousCommand = (command: string): string | null => {
-  for (const { pattern, reason } of DANGEROUS_COMMAND_PATTERNS) {
-    if (pattern.test(command)) {
-      return reason;
-    }
-  }
-  return null;
-};
+export const isDangerousCommand = getDangerousCommandReason;
 
 // ---------------------------------------------------------------------------
 // 2. Workspace Path Guards
