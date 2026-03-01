@@ -6,6 +6,7 @@ import type { ActionCtx } from "../_generated/server";
 import type { ToolOptions } from "./types";
 import { getUnsafeIntegrationHostError } from "./network_safety";
 import { executeIntegrationRequestService } from "./integration_request_service";
+import { SKILLS_DISABLED_AGENT_TYPES } from "../lib/agent_constants";
 
 const integrationAuthSchema = z
   .object({
@@ -167,8 +168,6 @@ const deriveIntegrationRedactionSecrets = (
   }
   return [...secrets].filter((entry) => entry.length > 0);
 };
-
-const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
 
 const supportsSkillAgentType = (
   agentTypes: string[] | undefined,

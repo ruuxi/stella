@@ -3,18 +3,18 @@ import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
 
 const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"));
-const RUNTIME_MODE_KEY = "runtime_mode";
+export const RUNTIME_MODE_KEY = "runtime_mode";
 const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
 const ACCOUNT_MODE_KEY = "account_mode";
 const syncModeValidator = v.union(v.literal("on"), v.literal("off"));
 const SYNC_MODE_KEY = "sync_mode";
 const generalAgentEngineValidator = v.union(v.literal("default"), v.literal("codex_local"));
-const GENERAL_AGENT_ENGINE_KEY = "general_agent_engine";
-const CODEX_LOCAL_MAX_CONCURRENCY_KEY = "codex_local_max_concurrency";
-const DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY = 3;
-const MIN_CODEX_LOCAL_MAX_CONCURRENCY = 1;
-const MAX_CODEX_LOCAL_MAX_CONCURRENCY = 3;
-const PREFERRED_BROWSER_KEY = "preferred_browser";
+export const GENERAL_AGENT_ENGINE_KEY = "general_agent_engine";
+export const CODEX_LOCAL_MAX_CONCURRENCY_KEY = "codex_local_max_concurrency";
+export const DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY = 3;
+export const MIN_CODEX_LOCAL_MAX_CONCURRENCY = 1;
+export const MAX_CODEX_LOCAL_MAX_CONCURRENCY = 3;
+export const PREFERRED_BROWSER_KEY = "preferred_browser";
 const preferredBrowserValidator = v.union(
   v.literal("arc"),
   v.literal("brave"),
@@ -27,7 +27,7 @@ const preferredBrowserValidator = v.union(
   v.literal("none"),
 );
 
-const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
+export const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
   value === "cloud_247" ? "cloud_247" : "local";
 
 const normalizeAccountMode = (
@@ -37,11 +37,11 @@ const normalizeAccountMode = (
 const normalizeSyncMode = (value: string | null | undefined): "on" | "off" =>
   value === "off" ? "off" : "on";
 
-const normalizeGeneralAgentEngine = (
+export const normalizeGeneralAgentEngine = (
   value: string | null | undefined,
 ): "default" | "codex_local" => (value === "codex_local" ? "codex_local" : "default");
 
-const normalizeCodexLocalMaxConcurrency = (value: string | null | undefined): number => {
+export const normalizeCodexLocalMaxConcurrency = (value: string | null | undefined): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY;
   const rounded = Math.floor(parsed);

@@ -3,8 +3,8 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import { getSpritesTokenForOwner, spritesApi } from "./cloud_devices";
+import { RUNTIME_MODE_KEY } from "../data/preferences";
 
-const RUNTIME_MODE_KEY = "runtime_mode";
 const INACTIVITY_RETENTION_MS = 45 * 24 * 60 * 60 * 1000;
 const DEFAULT_INACTIVE_CLEANUP_LIMIT = 200;
 

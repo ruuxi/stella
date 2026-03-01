@@ -6,7 +6,7 @@ import type { ActionCtx } from "../_generated/server";
 import type { DeviceToolContext } from "../agent/device_tools";
 import { type ToolOptions } from "./types";
 
-const SUBAGENT_TYPES = ["general", "explore", "browser"] as const;
+import { SUBAGENT_TYPES } from "../lib/agent_constants";
 const subagentTypeSchema = z.enum(SUBAGENT_TYPES);
 
 const formatTaskResult = (task: {
