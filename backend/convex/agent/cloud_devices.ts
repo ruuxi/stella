@@ -10,6 +10,7 @@ import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import { requireUserId } from "../auth";
+import { RUNTIME_MODE_KEY, normalizeRuntimeMode } from "../data/preferences";
 
 // ---------------------------------------------------------------------------
 // Sprites REST API Helpers
@@ -72,10 +73,6 @@ const ensureSingleRecordResultValidator = v.object({
   cloudDevice: cloudDeviceValidator,
   created: v.boolean(),
 });
-
-const RUNTIME_MODE_KEY = "runtime_mode";
-const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
-  value === "cloud_247" ? "cloud_247" : "local";
 
 type RuntimeStatus = {
   mode: "local" | "cloud_247";

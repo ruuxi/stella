@@ -5,6 +5,14 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireUserId } from "../auth";
 import { getModelConfig } from "./model";
+import {
+  GENERAL_AGENT_ENGINE_KEY,
+  CODEX_LOCAL_MAX_CONCURRENCY_KEY,
+  DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY,
+  normalizeGeneralAgentEngine,
+  normalizeCodexLocalMaxConcurrency,
+} from "../data/preferences";
+import { SKILLS_DISABLED_AGENT_TYPES } from "../lib/agent_constants";
 
 export type PromptBuildResult = {
   systemPrompt: string;
@@ -16,13 +24,7 @@ export type PromptBuildResult = {
   timezone: string;
 };
 
-const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
 const MAX_ACTIVE_THREADS_IN_PROMPT = 12;
-const GENERAL_AGENT_ENGINE_KEY = "general_agent_engine";
-const CODEX_LOCAL_MAX_CONCURRENCY_KEY = "codex_local_max_concurrency";
-const DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY = 3;
-const MIN_CODEX_LOCAL_MAX_CONCURRENCY = 1;
-const MAX_CODEX_LOCAL_MAX_CONCURRENCY = 3;
 type FetchAgentContextSharedArgs = {
   ownerId: string;
   conversationId: Id<"conversations">;
@@ -32,20 +34,6 @@ type FetchAgentContextSharedArgs = {
   maxHistoryMessages?: number;
   platform?: string;
   timezone?: string;
-};
-
-const normalizeGeneralAgentEngine = (
-  value: string | null | undefined,
-): "default" | "codex_local" => (value === "codex_local" ? "codex_local" : "default");
-
-const normalizeCodexLocalMaxConcurrency = (value: string | null | undefined): number => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY;
-  const rounded = Math.floor(parsed);
-  return Math.max(
-    MIN_CODEX_LOCAL_MAX_CONCURRENCY,
-    Math.min(MAX_CODEX_LOCAL_MAX_CONCURRENCY, rounded),
-  );
 };
 
 const buildSkillsSection = (

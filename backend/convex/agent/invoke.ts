@@ -12,13 +12,12 @@ import { validateAgainstSchema } from "../lib/validator";
 import { scrubProviderTerms, scrubValue } from "../lib/provider_redaction";
 import { coerceDeviceContext } from "./execution_context";
 import { executeStream } from "./execution";
+import { PREFERRED_BROWSER_KEY } from "../data/preferences";
+import { BROWSER_AGENT_SAFARI_DENIED_REASON } from "../lib/agent_constants";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
 const MAX_INPUT_CHARS = 40_000;
-const PREFERRED_BROWSER_KEY = "preferred_browser";
-const BROWSER_AGENT_SAFARI_DENIED_REASON =
-  "Browser Agent is unavailable when the selected browser is Safari. Use a Chromium-based browser for browser automation.";
 
 const truncate = (value: string, max = MAX_RAW_TEXT) =>
   value.length <= max ? value : `${value.slice(0, max)}\n\n... (truncated)`;

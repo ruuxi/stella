@@ -10,6 +10,7 @@ import { secretMountsValidator } from "../shared_validators";
 import { BUILTIN_SKILLS } from "../prompts/index";
 import { requireUserId } from "../auth";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
+import { coerceStringArray } from "../lib/coerce";
 
 type SecretMountSpec = {
   provider: string;
@@ -56,23 +57,6 @@ type SkillRecord = {
   source: string;
   enabled: boolean;
   updatedAt: number;
-};
-
-const coerceStringArray = (value: unknown) => {
-  if (!value) return [] as string[];
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => (typeof item === "string" ? item : String(item)))
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-  }
-  if (typeof value === "string") {
-    return value
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-  }
-  return [String(value)];
 };
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>

@@ -14,6 +14,7 @@ import {
 } from "../prompts/index";
 import { requireUserId } from "../auth";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
+import { coerceStringArray } from "../lib/coerce";
 
 // Sanitized agent (without model field) for client responses
 const agentClientValidator = v.object({
@@ -181,23 +182,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     updatedAt: 0,
   },
 ];
-
-const coerceStringArray = (value: unknown) => {
-  if (!value) return [] as string[];
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => (typeof item === "string" ? item : String(item)))
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-  }
-  if (typeof value === "string") {
-    return value
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-  }
-  return [String(value)];
-};
 
 const normalizeAgent = (value: unknown): AgentRecord | null => {
   if (!value || typeof value !== "object") return null;
