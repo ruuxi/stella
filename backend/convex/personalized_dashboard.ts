@@ -10,6 +10,9 @@ import {
 
 const CORE_MEMORY_KEY = "core_memory";
 
+/** Max dashboard pages to generate (0 = disabled). */
+const MAX_DASHBOARD_PAGES_TO_GENERATE = 0;
+
 // --- Types ---
 
 type PlannedPage = {
@@ -399,7 +402,8 @@ export const startGeneration = action({
     }
 
     // Dispatch each page as a dashboard_generation_request event to the local runner
-    for (const page of planned) {
+    const toDispatch = planned.slice(0, MAX_DASHBOARD_PAGES_TO_GENERATE);
+    for (const page of toDispatch) {
       const assignment = toAssignment(page);
       const userPrompt = buildPersonalizedDashboardPageUserMessage({
         coreMemory: normalizedCoreMemory,
@@ -426,7 +430,7 @@ export const startGeneration = action({
 
     return {
       started: true,
-      pageIds: planned.map((page) => page.pageId),
+      pageIds: toDispatch.map((page) => page.pageId),
     };
   },
 });
