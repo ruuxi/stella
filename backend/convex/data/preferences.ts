@@ -8,7 +8,11 @@ const accountModeValidator = v.union(v.literal("private_local"), v.literal("conn
 const ACCOUNT_MODE_KEY = "account_mode";
 const syncModeValidator = v.union(v.literal("on"), v.literal("off"));
 const SYNC_MODE_KEY = "sync_mode";
-const generalAgentEngineValidator = v.union(v.literal("default"), v.literal("codex_local"));
+const generalAgentEngineValidator = v.union(
+  v.literal("default"),
+  v.literal("codex_local"),
+  v.literal("claude_code_local"),
+);
 export const GENERAL_AGENT_ENGINE_KEY = "general_agent_engine";
 export const CODEX_LOCAL_MAX_CONCURRENCY_KEY = "codex_local_max_concurrency";
 export const DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY = 3;
@@ -39,7 +43,11 @@ const normalizeSyncMode = (value: string | null | undefined): "on" | "off" =>
 
 export const normalizeGeneralAgentEngine = (
   value: string | null | undefined,
-): "default" | "codex_local" => (value === "codex_local" ? "codex_local" : "default");
+): "default" | "codex_local" | "claude_code_local" => {
+  if (value === "codex_local") return "codex_local";
+  if (value === "claude_code_local") return "claude_code_local";
+  return "default";
+};
 
 export const normalizeCodexLocalMaxConcurrency = (value: string | null | undefined): number => {
   const parsed = Number(value);
