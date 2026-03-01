@@ -29,16 +29,14 @@ const withBrowserDiscoveryCategory = (
   return ["browsing_bookmarks", ...categories];
 };
 type UseDiscoveryFlowOptions = {
-  isAuthenticated: boolean;
   conversationId: string | null;
 };
 
 export function useDiscoveryFlow({
-  isAuthenticated,
   conversationId,
 }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
-  const { storageMode, isLocalStorage, appendEvent: chatStoreAppendEvent } = useChatStore();
+  const { storageMode, isLocalStorage, isAuthenticated, appendEvent: chatStoreAppendEvent } = useChatStore();
   const setCoreMemory = useMutation(api.data.preferences.setCoreMemory);
   const getOrCreateDefaultConversation = useMutation(
     api.conversations.getOrCreateDefaultConversation,

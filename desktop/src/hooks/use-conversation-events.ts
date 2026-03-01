@@ -1,4 +1,4 @@
-import { useConvexAuth, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../convex/api";
 import {
@@ -428,10 +428,9 @@ export const useConversationEvents = (
   conversationId?: string,
 ) => {
   const { storageMode } = useChatStore();
-  const { isAuthenticated } = useConvexAuth();
   const cloudResult = useQuery(
     api.events.listEvents,
-    storageMode === "cloud" && isAuthenticated && conversationId
+    storageMode === "cloud" && conversationId
       ? {
           conversationId,
           paginationOpts: { cursor: null, numItems: 200 },

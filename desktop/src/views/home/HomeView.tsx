@@ -1,7 +1,8 @@
 import { useMemo } from "react"
-import { useConvexAuth, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
 import { useConversationEvents, getRunningTasks } from "@/hooks/use-conversation-events"
 import { useWelcomeSuggestions } from "@/hooks/use-welcome-suggestions"
+import { useChatStore } from "@/app/state/chat-store"
 import { api } from "@/convex/api"
 import type { WelcomeSuggestion } from "@/services/synthesis"
 import { NewsFeed } from "./NewsFeed"
@@ -26,11 +27,11 @@ type ScheduleItem = {
 }
 
 function useScheduleData(): ScheduleItem[] {
-  const { isAuthenticated } = useConvexAuth()
+  const { cloudFeaturesEnabled } = useChatStore()
 
   const cronJobs = useQuery(
     api.scheduling.dashboard_queries.listCronJobs,
-    isAuthenticated ? {} : "skip",
+    cloudFeaturesEnabled ? {} : "skip",
   ) as
     | {
         _id: string
@@ -46,7 +47,7 @@ function useScheduleData(): ScheduleItem[] {
 
   const heartbeats = useQuery(
     api.scheduling.dashboard_queries.listHeartbeats,
-    isAuthenticated ? {} : "skip",
+    cloudFeaturesEnabled ? {} : "skip",
   ) as
     | {
         _id: string

@@ -129,17 +129,6 @@ describe("useConversationEvents hook behavior", () => {
     expect(result.current.map((event) => event._id)).toEqual(["e-1", "e-2"]);
   });
 
-  it("skips cloud query when unauthenticated", () => {
-    mockStorageMode = "cloud";
-    mockUseConvexAuth.mockReturnValue({
-      isAuthenticated: false,
-      isLoading: false,
-    });
-
-    renderHook(() => useConversationEvents("conv-1"));
-
-    expect(mockUseQuery).toHaveBeenCalledWith("events:listEvents", "skip");
-  });
 
   it("cleans up local subscription when storage mode changes away from local", () => {
     mockStorageMode = "local";
