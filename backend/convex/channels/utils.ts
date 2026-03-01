@@ -71,6 +71,8 @@ type ProcessIncomingMessageArgs = {
   displayName?: string;
   preEnsureOwnerConnection?: boolean;
   respond?: boolean;
+  /** Provider-specific delivery metadata for async connector delivery. */
+  deliveryMeta?: Record<string, unknown>;
 };
 
 const getDmPolicyKey = (provider: string) => `${provider}_dm_policy`;
@@ -804,7 +806,7 @@ const persistInboundAssistantMessage = async (args: {
  */
 export async function processIncomingMessage(
   args: ProcessIncomingMessageArgs,
-): Promise<{ text: string } | null> {
+): Promise<{ text: string; deferred?: boolean } | null> {
   if (args.ownerId && !(await isOwnerInConnectedMode({ ctx: args.ctx, ownerId: args.ownerId }))) {
     if (args.respond === false) {
       return { text: "" };
@@ -996,6 +998,40 @@ export async function processIncomingMessage(
       targetDeviceId: executionTarget.targetDeviceId,
       spriteName: executionTarget.spriteName,
     });
+
+    // ─── Inverted Execution: defer to local device ──────────────────────
+    // When the local device is online and delivery metadata is provided,
+    // insert a remote_turn_request event and return immediately. The local
+    // device runs the AI SDK natively (0ms tool latency) and delivers the
+    // response back to the connector asynchronously.
+    const firstCandidate = candidates[0];
+    if (
+      firstCandidate?.mode === "local" &&
+      args.deliveryMeta &&
+      userMessageId &&
+      !transient
+    ) {
+      const requestId = crypto.randomUUID();
+
+      await args.ctx.runMutation(internal.events.appendInternalEvent, {
+        conversationId,
+        type: "remote_turn_request",
+        targetDeviceId: firstCandidate.targetDeviceId,
+        requestId,
+        payload: {
+          conversationId: String(conversationId),
+          userMessageId: String(userMessageId),
+          text: args.text,
+          provider: args.provider,
+          deliveryMeta: JSON.parse(JSON.stringify(args.deliveryMeta)),
+        },
+      });
+
+      console.log(
+        `[channels] Deferred to local device (inverted execution): ${requestId}`,
+      );
+      return { text: "", deferred: true };
+    }
 
     let result: RunAgentTurnResult | null = null;
     let selectedMode: ExecutionCandidate["mode"] | null = null;

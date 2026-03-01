@@ -294,9 +294,15 @@ export const handleIncomingMessage = internalAction({
         attachments: args.attachments,
         channelEnvelope: args.channelEnvelope,
         respond: args.respond,
+        deliveryMeta: {
+          senderPhone: args.senderPhone,
+          incomingChatId: args.incomingChatId,
+        },
       });
 
-      console.log("[linq] processIncomingMessage result:", result ? "got response" : "null (not linked)");
+      console.log("[linq] processIncomingMessage result:", result ? (result.deferred ? "deferred" : "got response") : "null (not linked)");
+
+      if (result?.deferred) return null;
 
       if (!result) {
         if (!shouldRespond) return null;
