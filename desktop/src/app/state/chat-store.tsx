@@ -47,6 +47,7 @@ type ChatStoreContextValue = {
   storageMode: ChatStorageMode
   isLocalStorage: boolean
   cloudFeaturesEnabled: boolean
+  isAuthenticated: boolean
 
   appendEvent: (args: AppendEventArgs) => Promise<AppendedEventResponse | null>
   appendAgentEvent: (args: AppendAgentEventArgs) => void
@@ -212,6 +213,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       storageMode,
       isLocalStorage,
       cloudFeaturesEnabled,
+      isAuthenticated,
       appendEvent,
       appendAgentEvent,
       uploadAttachments,
@@ -222,6 +224,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       storageMode,
       isLocalStorage,
       cloudFeaturesEnabled,
+      isAuthenticated,
       appendEvent,
       appendAgentEvent,
       uploadAttachments,
