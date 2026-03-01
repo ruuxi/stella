@@ -56,7 +56,6 @@ import type * as channels_whatsapp from "../channels/whatsapp.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as data_attachments from "../data/attachments.js";
-import type * as data_canvas_states from "../data/canvas_states.js";
 import type * as data_commands from "../data/commands.js";
 import type * as data_event_embeddings from "../data/event_embeddings.js";
 import type * as data_integrations from "../data/integrations.js";
@@ -174,7 +173,6 @@ declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
   crons: typeof crons;
   "data/attachments": typeof data_attachments;
-  "data/canvas_states": typeof data_canvas_states;
   "data/commands": typeof data_commands;
   "data/event_embeddings": typeof data_event_embeddings;
   "data/integrations": typeof data_integrations;

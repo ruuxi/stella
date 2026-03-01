@@ -5,11 +5,9 @@ import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { requireUserId } from "../auth";
 import {
-  claimAndScheduleDueRuns,
   claimAndScheduleSingleRun,
   claimRunIfAvailable,
   DEFAULT_STUCK_RUN_MS,
-  listDueByNextRunAtMs,
 } from "./claim_flow";
 import {
   buildExecutionCandidates,
@@ -62,6 +60,7 @@ const cronJobValidator = v.object({
   payload: cronPayloadValidator,
   deleteAfterRun: v.optional(v.boolean()),
   nextRunAtMs: v.number(),
+  scheduledRunId: v.optional(v.id("_scheduled_functions")),
   runningAtMs: v.optional(v.number()),
   lastRunAtMs: v.optional(v.number()),
   lastStatus: v.optional(v.string()),
@@ -178,6 +177,18 @@ function computeNextRunAtMs(schedule: CronSchedule, nowMs: number): number | und
   return next ? next.getTime() : undefined;
 }
 
+async function cancelScheduledRun(
+  ctx: { scheduler: { cancel: (id: Id<"_scheduled_functions">) => Promise<void> } },
+  scheduledRunId: Id<"_scheduled_functions"> | undefined,
+) {
+  if (!scheduledRunId) return;
+  try {
+    await ctx.scheduler.cancel(scheduledRunId);
+  } catch {
+    // Already completed or cancelled
+  }
+}
+
 export const list = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -240,6 +251,7 @@ export const add = internalMutation({
       payload,
       deleteAfterRun: args.deleteAfterRun,
       nextRunAtMs,
+      scheduledRunId: undefined,
       runningAtMs: undefined,
       lastRunAtMs: undefined,
       lastStatus: undefined,
@@ -249,6 +261,17 @@ export const add = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Schedule first run if enabled
+    if (enabled) {
+      const delayMs = Math.max(0, nextRunAtMs - now);
+      const scheduledRunId = await ctx.scheduler.runAfter(
+        delayMs,
+        internal.scheduling.cron_jobs.execute,
+        { jobId: id },
+      );
+      await ctx.db.patch(id, { scheduledRunId });
+    }
 
     return sanitizeCronJobForReturn(await ctx.db.get(id));
   },
@@ -305,6 +328,9 @@ export const update = internalMutation({
       throw new Error("Unable to compute next run for schedule.");
     }
 
+    // Cancel old scheduled run
+    await cancelScheduledRun(ctx, job.scheduledRunId);
+
     await ctx.db.patch(job._id, {
       name: typeof patch.name === "string" ? patch.name.trim() || job.name : job.name,
       description:
@@ -317,8 +343,20 @@ export const update = internalMutation({
       deleteAfterRun:
         typeof patch.deleteAfterRun === "boolean" ? patch.deleteAfterRun : job.deleteAfterRun,
       nextRunAtMs,
+      scheduledRunId: undefined,
       updatedAt: now,
     });
+
+    // Schedule new run if enabled
+    if (enabled) {
+      const delayMs = Math.max(0, nextRunAtMs - now);
+      const scheduledRunId = await ctx.scheduler.runAfter(
+        delayMs,
+        internal.scheduling.cron_jobs.execute,
+        { jobId: job._id },
+      );
+      await ctx.db.patch(job._id, { scheduledRunId });
+    }
 
     return sanitizeCronJobForReturn(await ctx.db.get(job._id));
   },
@@ -334,6 +372,7 @@ export const remove = internalMutation({
     if (!job || job.ownerId !== ownerId) {
       return null;
     }
+    await cancelScheduledRun(ctx, job.scheduledRunId);
     await ctx.db.delete(job._id);
     return null;
   },
@@ -344,6 +383,10 @@ export const deleteJob = internalMutation({
     jobId: v.id("cron_jobs"),
   },
   handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (job) {
+      await cancelScheduledRun(ctx, job.scheduledRunId);
+    }
     await ctx.db.delete(args.jobId);
     return null;
   },
@@ -359,6 +402,11 @@ export const run = internalMutation({
     if (!job || job.ownerId !== ownerId) {
       return null;
     }
+
+    // Cancel existing scheduled run before manual trigger
+    await cancelScheduledRun(ctx, job.scheduledRunId);
+    await ctx.db.patch(job._id, { scheduledRunId: undefined });
+
     const now = Date.now();
     const claimed = await claimAndScheduleSingleRun({
       nowMs: now,
@@ -384,21 +432,6 @@ export const run = internalMutation({
       return sanitizeCronJobForReturn(await ctx.db.get(job._id));
     }
     return sanitizeCronJobForReturn(await ctx.db.get(job._id));
-  },
-});
-
-export const listDue = internalQuery({
-  args: {
-    nowMs: v.number(),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const due = await listDueByNextRunAtMs(ctx, {
-      table: "cron_jobs",
-      nowMs: args.nowMs,
-      limit: args.limit,
-    });
-    return due.map((job) => sanitizeCronJobForReturn(job));
   },
 });
 
@@ -445,8 +478,17 @@ export const finishRun = internalMutation({
     enabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.id);
+    if (!job) {
+      return null;
+    }
+
+    // Cancel any existing scheduled run
+    await cancelScheduledRun(ctx, job.scheduledRunId);
+
     const patch: Record<string, unknown> = {
       updatedAt: Date.now(),
+      scheduledRunId: undefined,
     };
     if (args.nextRunAtMs !== undefined) patch.nextRunAtMs = args.nextRunAtMs;
     if (args.runningAtMs !== undefined) patch.runningAtMs = args.runningAtMs;
@@ -457,38 +499,20 @@ export const finishRun = internalMutation({
     if (args.lastOutputPreview !== undefined) patch.lastOutputPreview = args.lastOutputPreview;
     if (args.enabled !== undefined) patch.enabled = args.enabled;
     await ctx.db.patch(args.id, patch);
-    return null;
-  },
-});
 
-export const tick = internalAction({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    await claimAndScheduleDueRuns({
-      nowMs: now,
-      stuckRunMs: STUCK_RUN_MS,
-      listDue: (listArgs) =>
-        ctx.runQuery(internal.scheduling.cron_jobs.listDue, {
-          nowMs: listArgs.nowMs,
-          limit: listArgs.limit,
-        }),
-      markRunning: (markArgs: {
-        id: Id<"cron_jobs">;
-        runningAtMs: number;
-        expectedRunningAtMs?: number;
-      }) =>
-        ctx.runMutation(internal.scheduling.cron_jobs.markRunning, markArgs),
-      buildClaimArgs: (job, claimContext) => ({
-        id: job._id,
-        runningAtMs: claimContext.nowMs,
-        expectedRunningAtMs: claimContext.expectedRunningAtMs,
-      }),
-      schedule: (job) =>
-        ctx.scheduler.runAfter(0, internal.scheduling.cron_jobs.execute, {
-          jobId: job._id,
-        }),
-    });
+    // Schedule next run if job still exists, is enabled, and has a next run time
+    const resolvedEnabled = args.enabled !== undefined ? args.enabled : job.enabled;
+    const resolvedNextRunAtMs = args.nextRunAtMs !== undefined ? args.nextRunAtMs : job.nextRunAtMs;
+    if (resolvedEnabled && resolvedNextRunAtMs) {
+      const delayMs = Math.max(0, resolvedNextRunAtMs - Date.now());
+      const scheduledRunId = await ctx.scheduler.runAfter(
+        delayMs,
+        internal.scheduling.cron_jobs.execute,
+        { jobId: args.id },
+      );
+      await ctx.db.patch(args.id, { scheduledRunId });
+    }
+
     return null;
   },
 });
@@ -504,7 +528,17 @@ export const execute = internalAction({
       return null;
     }
 
+    // Claim the run
     const now = Date.now();
+    const claimed = await ctx.runMutation(internal.scheduling.cron_jobs.markRunning, {
+      id: job._id,
+      runningAtMs: now,
+      expectedRunningAtMs: job.runningAtMs,
+    });
+    if (!claimed && !args.forced) {
+      return null;
+    }
+
     if (!args.forced && job.nextRunAtMs > now) {
       await ctx.runMutation(internal.scheduling.cron_jobs.finishRun, {
         id: job._id,
