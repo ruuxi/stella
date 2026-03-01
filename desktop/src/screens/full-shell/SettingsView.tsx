@@ -47,13 +47,10 @@ const AGENT_DEFAULTS: Record<string, string> = {
   memory: "zai/glm-4.7",
 };
 
-const GENERAL_LOCAL_RUNTIME_OPTIONS = [
-  { id: "claude-code/default", name: "Claude Code (Local CLI)" },
-];
-
 const GENERAL_AGENT_ENGINE_OPTIONS = [
-  { id: "default", name: "Default Runtime" },
-  { id: "codex_local", name: "Codex App Server (Local)" },
+  { id: "default", name: "Stella" },
+  { id: "codex_local", name: "Codex" },
+  { id: "claude_code_local", name: "Claude Code" },
 ] as const;
 
 const CODEX_LOCAL_CONCURRENCY_OPTIONS = [1, 2, 3] as const;
@@ -247,6 +244,7 @@ function ModelConfigSection() {
   const generalAgentEngine = useQuery(api.data.preferences.getGeneralAgentEngine) as
     | "default"
     | "codex_local"
+    | "claude_code_local"
     | undefined;
   const setGeneralAgentEngine = useMutation(api.data.preferences.setGeneralAgentEngine);
   const codexLocalMaxConcurrency = useQuery(api.data.preferences.getCodexLocalMaxConcurrency) as number | undefined;
@@ -255,7 +253,9 @@ function ModelConfigSection() {
 
   const serverOverrides: Record<string, string> = overridesJson ? JSON.parse(overridesJson) : {};
   const [localOverrides, setLocalOverrides] = useState<Record<string, string | null>>({});
-  const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<"default" | "codex_local" | null>(null);
+  const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
+    "default" | "codex_local" | "claude_code_local" | null
+  >(null);
   const [localCodexLocalMaxConcurrency, setLocalCodexLocalMaxConcurrency] = useState<number | null>(null);
 
   // Merge: local optimistic values take precedence, null means cleared
@@ -321,7 +321,12 @@ function ModelConfigSection() {
 
   const handleGeneralAgentEngineChange = useCallback(
     (value: string) => {
-      const engine = value === "codex_local" ? "codex_local" : "default";
+      const engine =
+        value === "codex_local"
+          ? "codex_local"
+          : value === "claude_code_local"
+            ? "claude_code_local"
+            : "default";
       setLocalGeneralAgentEngine(engine);
       setGeneralAgentEngine({ engine });
     },
@@ -351,7 +356,7 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Engine</div>
             <div className="settings-row-sublabel">
-              Codex mode requires the local <code>codex</code> CLI.
+              Local engine modes require the corresponding CLI (<code>codex</code> or <code>claude</code>).
             </div>
           </div>
           <div className="settings-row-control">
@@ -427,24 +432,15 @@ function ModelConfigSection() {
                     </svg>
                   </button>
                 )}
-                <select
-                  className="settings-model-select"
-                  value={current}
-                  onChange={(e) => handleChange(agent.key, e.target.value)}
-                >
-                  <option value="">{defaultModel}</option>
-                  {agent.key === "general" && (
-                    <optgroup label="local-runtime">
-                      {GENERAL_LOCAL_RUNTIME_OPTIONS.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {groups.map((group) => (
-                    <optgroup key={group.provider} label={group.provider}>
-                      {group.models.map((model) => (
+              <select
+                className="settings-model-select"
+                value={current}
+                onChange={(e) => handleChange(agent.key, e.target.value)}
+              >
+                <option value="">{defaultModel}</option>
+                {groups.map((group) => (
+                  <optgroup key={group.provider} label={group.provider}>
+                    {group.models.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name}
                         </option>
