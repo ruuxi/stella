@@ -180,6 +180,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Wake Word
   sendWakeWordAudio: (buffer: ArrayBuffer) => ipcRenderer.send('wake-word:audio-chunk', buffer),
+  signalWakeWordReady: () => ipcRenderer.send('wake-word:renderer-ready'),
   onWakeWordStartCapture: (callback: () => void) => {
     const handler = () => { callback() }
     ipcRenderer.on('wake-word:start-capture', handler)

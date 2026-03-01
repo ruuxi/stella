@@ -204,6 +204,7 @@ export type ElectronApi = {
   // Voice Transcript
   // Wake Word
   sendWakeWordAudio: (buffer: ArrayBuffer) => void
+  signalWakeWordReady: () => void
   onWakeWordStartCapture: (callback: () => void) => () => void
   onWakeWordStopCapture: (callback: () => void) => () => void
 

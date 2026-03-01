@@ -34,18 +34,29 @@ export function createAudioCaptureManager(
   let processing = false; // prevent overlapping predict calls
 
   let chunkCount = 0;
+  let droppedCount = 0;
 
   // Handle audio chunks from renderer
   const handleAudioChunk = async (_event: Electron.IpcMainEvent, buffer: ArrayBuffer) => {
-    if (!capturing || processing) return;
+    if (!capturing) return;
+    if (processing) {
+      droppedCount++;
+      return;
+    }
 
     chunkCount++;
 
     processing = true;
+    const predictStart = performance.now();
     try {
       const pcm = new Int16Array(buffer);
       const result = await detector.predict(pcm);
 
+      // Log periodically for diagnostics
+      if (chunkCount % 50 === 1) {
+        const elapsed = performance.now() - predictStart;
+        console.log(`[WakeWord] chunk=${chunkCount} dropped=${droppedCount} score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)} predict=${elapsed.toFixed(0)}ms`);
+      }
 
       if (result.detected && detectionCallback) {
         detectionCallback(result);
@@ -61,6 +72,18 @@ export function createAudioCaptureManager(
 
   // Register IPC handler
   ipcMain.on("wake-word:audio-chunk", handleAudioChunk);
+
+  // When the renderer signals it's mounted, re-send start if we're supposed to be capturing.
+  // This fixes the race where start-capture was sent before the component mounted.
+  ipcMain.on("wake-word:renderer-ready", () => {
+    if (capturing) {
+      const win = getVoiceWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("wake-word:start-capture");
+        console.log("[WakeWord] Renderer ready — re-sent start-capture");
+      }
+    }
+  });
 
   return {
     start() {
