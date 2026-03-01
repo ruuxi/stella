@@ -1,11 +1,11 @@
 /**
  * Audio capture manager for wake word detection.
  *
- * Captures microphone audio from a renderer window (voice window) via IPC
+ * Captures microphone audio from the hidden capture window via IPC
  * and feeds it to the wake word detector in the main process.
  *
  * Flow:
- *   Renderer (voice window) → ScriptProcessorNode captures audio
+ *   Renderer (capture window) → ScriptProcessorNode captures audio
  *   → Resamples to 16kHz mono → Converts to Int16 PCM
  *   → IPC send 'wake-word:audio-chunk' to main process
  *   → Main process feeds to WakeWordDetector.predict()
@@ -33,19 +33,27 @@ export function createAudioCaptureManager(
   let detectionCallback: ((result: WakeWordResult) => void) | null = null;
   let processing = false; // prevent overlapping predict calls
 
+  let chunkCount = 0;
+
   // Handle audio chunks from renderer
   const handleAudioChunk = async (_event: Electron.IpcMainEvent, buffer: ArrayBuffer) => {
     if (!capturing || processing) return;
+
+    chunkCount++;
 
     processing = true;
     try {
       const pcm = new Int16Array(buffer);
       const result = await detector.predict(pcm);
+
+
       if (result.detected && detectionCallback) {
         detectionCallback(result);
       }
     } catch (err) {
-      // Silently ignore prediction errors to avoid flooding logs
+      if (chunkCount <= 5) {
+        console.error("[WakeWord] Predict error:", (err as Error).message);
+      }
     } finally {
       processing = false;
     }

@@ -1872,6 +1872,10 @@ app.whenReady().then(async () => {
   {
     const { createWakeWordDetector } = await import('./wake-word/detector.js')
     const { createAudioCaptureManager } = await import('./wake-word/audio-capture.js')
+    const { createCaptureWindow, getCaptureWindow } = await import('./wake-word/capture-window.js')
+
+    // Create the hidden capture window (always on, no UI)
+    createCaptureWindow()
 
     const modelsDir = isDev
       ? path.join(__dirname, '..', 'resources', 'models')
@@ -1879,16 +1883,15 @@ app.whenReady().then(async () => {
 
     try {
       const detector = await createWakeWordDetector(modelsDir)
-      const capture = createAudioCaptureManager(detector, getVoiceWindow)
+      const capture = createAudioCaptureManager(detector, getCaptureWindow)
 
       capture.onDetection((result) => {
         if (!appReady) return
         console.log(`[WakeWord] Detected! score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)}`)
 
-        // Activate realtime voice-to-voice mode
+        // Activate realtime voice-to-voice mode (same as toggleVoiceRtc)
         uiState.isVoiceRtcActive = true
-        uiState.mode = 'voice'
-        // Focus the appropriate window so VoiceOverlay picks up the state
+        uiState.isVoiceActive = false
         if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
           fullWindow.focus()
         } else {
@@ -1901,21 +1904,39 @@ app.whenReady().then(async () => {
       })
 
       // Start wake word listening when app becomes ready
-      ipcMain.on('app:setReady', () => {
-        setTimeout(() => {
-          if (!capture.isCapturing()) {
-            capture.start()
-            console.log('[WakeWord] Listening started')
+      // (app:setReady may have already fired, so also check appReady directly)
+      const tryStartCapture = () => {
+        if (!capture.isCapturing()) {
+          const win = getCaptureWindow()
+          if (win && !win.isDestroyed()) {
+            if (win.webContents.isLoading()) {
+              win.webContents.once('did-finish-load', () => {
+                setTimeout(() => {
+                  capture.start()
+                  console.log('[WakeWord] Listening started (after capture window load)')
+                }, 500)
+              })
+            } else {
+              capture.start()
+              console.log('[WakeWord] Listening started')
+            }
           }
-        }, 2000)
+        }
+      }
+
+      if (appReady) {
+        setTimeout(tryStartCapture, 2000)
+      }
+      ipcMain.on('app:setReady', () => {
+        setTimeout(tryStartCapture, 2000)
       })
 
       // Resume wake word when voice mode deactivates
       setInterval(() => {
         if (appReady && !uiState.isVoiceActive && !uiState.isVoiceRtcActive && !capture.isCapturing()) {
-          capture.start()
+          tryStartCapture()
         }
-      }, 1000)
+      }, 2000)
 
       console.log('[WakeWord] Detector initialized')
     } catch (err) {
