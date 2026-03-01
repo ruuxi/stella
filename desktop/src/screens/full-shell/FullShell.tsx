@@ -517,25 +517,31 @@ export const FullShell = () => {
         )}
       </div>
 
-      <Suspense fallback={null}>
-        <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
-      </Suspense>
-      <Suspense fallback={null}>
-        <ConnectDialog
-          open={connectDialogOpen}
-          onOpenChange={setConnectDialogOpen}
-        />
-      </Suspense>
-      <Suspense fallback={null}>
-        <SettingsDialog
-          open={settingsDialogOpen}
-          onOpenChange={setSettingsDialogOpen}
-          onSignOut={() => {
-            setSettingsDialogOpen(false);
-            void secureSignOut();
-          }}
-        />
-      </Suspense>
+      {authDialogOpen && (
+        <Suspense fallback={null}>
+          <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
+        </Suspense>
+      )}
+      {connectDialogOpen && (
+        <Suspense fallback={null}>
+          <ConnectDialog
+            open={connectDialogOpen}
+            onOpenChange={setConnectDialogOpen}
+          />
+        </Suspense>
+      )}
+      {settingsDialogOpen && (
+        <Suspense fallback={null}>
+          <SettingsDialog
+            open={settingsDialogOpen}
+            onOpenChange={setSettingsDialogOpen}
+            onSignOut={() => {
+              setSettingsDialogOpen(false);
+              void secureSignOut();
+            }}
+          />
+        </Suspense>
+      )}
 
       {isDev && (
         <button
