@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useUiState } from "../../app/state/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
+import { VoiceOverlay } from "../../components/VoiceOverlay";
 
 export const MiniShell = () => {
   const { setWindow } = useUiState();
@@ -35,6 +36,13 @@ export const MiniShell = () => {
   });
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
+
+  const handleVoiceTranscript = useCallback(
+    (text: string) => {
+      setMessage((prev) => (prev ? prev + " " + text : text));
+    },
+    [setMessage],
+  );
 
   useEffect(() => {
     return window.electronAPI?.onVoiceTranscript?.((transcript) => {
@@ -127,6 +135,8 @@ export const MiniShell = () => {
           onSend={() => void sendMessage()}
         />
       </div>
+
+      <VoiceOverlay onTranscript={handleVoiceTranscript} />
 
       {previewIndex !== null &&
         chatContext?.regionScreenshots?.[previewIndex] && (

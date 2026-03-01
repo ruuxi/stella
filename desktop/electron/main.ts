@@ -1833,8 +1833,11 @@ app.whenReady().then(async () => {
         uiState.isVoiceActive = !uiState.isVoiceActive
         if (uiState.isVoiceActive) {
           uiState.mode = 'voice'
-        } else {
-          if (!isMiniShowing()) showWindow('mini')
+          if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
+            fullWindow.focus()
+          } else {
+            showWindow('mini')
+          }
         }
         broadcastUiState()
       })
@@ -1849,9 +1852,12 @@ app.whenReady().then(async () => {
     uiState.isVoiceActive = !uiState.isVoiceActive
     if (uiState.isVoiceActive) {
       uiState.mode = 'voice'
-    } else {
-      // Once voice stops, ensure the mini window shows up to receive transcript
-      if (!isMiniShowing()) showWindow('mini')
+      // Focus the appropriate visible window so VoiceOverlay picks up the state
+      if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
+        fullWindow.focus()
+      } else {
+        showWindow('mini')
+      }
     }
     broadcastUiState()
   })

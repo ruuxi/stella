@@ -16,7 +16,8 @@ import { TitleBar } from "../../components/TitleBar";
 import { Sidebar } from "../../components/Sidebar";
 import { WorkspaceArea } from "../../components/workspace/WorkspaceArea";
 import { HeaderTabBar } from "../../components/header/HeaderTabBar";
-import { FloatingOrb } from "../../components/orb/FloatingOrb";
+import { FloatingOrb, type FloatingOrbHandle } from "../../components/orb/FloatingOrb";
+import { VoiceOverlay } from "../../components/VoiceOverlay";
 import { useOrbMessage } from "../../hooks/use-orb-message";
 import { AuthDialog } from "../../app/AuthDialog";
 import { ConnectDialog } from "../../app/ConnectDialog";
@@ -225,8 +226,21 @@ export const FullShell = () => {
     isNearBottomRef.current = isNearBottom;
   }, [isNearBottom]);
 
+  const orbRef = useRef<FloatingOrbHandle>(null);
+
   const isOrbVisible = state.view !== "chat" && onboarding.onboardingDone && !onboarding.isAuthLoading;
   const orbMessage = useOrbMessage(events, isOrbVisible);
+
+  const handleVoiceTranscript = useCallback(
+    (text: string) => {
+      if (state.view === "chat") {
+        setMessage(text);
+      } else {
+        orbRef.current?.openWithText(text);
+      }
+    },
+    [state.view],
+  );
 
   useEffect(() => {
     const ready = onboarding.onboardingDone && !onboarding.isAuthLoading;
@@ -430,12 +444,15 @@ export const FullShell = () => {
               )}
 
               <FloatingOrb
+                ref={orbRef}
                 visible={isOrbVisible}
                 bubbleText={orbMessage.text}
                 bubbleOpacity={orbMessage.opacity}
                 isStreaming={isStreaming}
                 onSend={handleOrbSend}
               />
+
+              <VoiceOverlay onTranscript={handleVoiceTranscript} />
             </div>
           </>
         ) : (
