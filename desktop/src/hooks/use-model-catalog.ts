@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { extractProvider as sharedExtractProvider } from "@stella/shared";
 
 export type CatalogModel = {
   id: string;
@@ -25,8 +26,7 @@ const FALLBACK_MODELS: CatalogModel[] = [
 ];
 
 function extractProvider(id: string): string {
-  const slash = id.indexOf("/");
-  return slash > 0 ? id.slice(0, slash) : "unknown";
+  return sharedExtractProvider(id) ?? "unknown";
 }
 
 function groupByProvider(models: CatalogModel[]): ProviderGroup[] {

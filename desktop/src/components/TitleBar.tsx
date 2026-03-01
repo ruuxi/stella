@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useWorkspace } from '@/app/state/workspace-state';
+import { getPlatform } from '@/utils/platform';
 
 export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const { state: workspaceState } = useWorkspace();
-  const platform = window.electronAPI?.platform ?? 'unknown';
+  const platform = getPlatform();
   const isMac = platform === 'darwin';
   const canvas = workspaceState.canvas;
   const canvasTitle = canvas && canvas.name !== 'dashboard'

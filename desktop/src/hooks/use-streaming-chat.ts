@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRafStringAccumulator } from "./use-raf-state";
 import { streamChat } from "../services/model-gateway";
+import { getPlatform } from "../utils/platform";
 import { getOrCreateDeviceId } from "../services/device";
 import type { EventRecord } from "./use-conversation-events";
 import type { ChatContext } from "../types/electron";
@@ -523,7 +524,7 @@ export function useStreamingChat({
         );
       }
 
-      const platform = window.electronAPI?.platform ?? "unknown";
+      const platform = getPlatform();
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const mode = isStreaming ? "follow_up" : undefined;
 

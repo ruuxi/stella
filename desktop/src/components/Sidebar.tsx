@@ -1,5 +1,4 @@
-import { useConvexAuth, useQuery } from "convex/react";
-import { api } from "@/convex/api";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { secureSignOut } from "@/services/auth";
 import { ThemePicker } from "./ThemePicker";
 
@@ -40,16 +39,11 @@ const navItems = [
 ];
 
 const AuthButton = ({
-  isAuthenticated,
   onSignIn,
 }: {
-  isAuthenticated: boolean;
   onSignIn?: () => void;
 }) => {
-  const user = useQuery(api.auth.getCurrentUser, isAuthenticated ? {} : "skip") as
-    | { email?: string; name?: string }
-    | null
-    | undefined;
+  const { user, isAuthenticated } = useCurrentUser();
 
   const label = isAuthenticated
     ? user?.name ?? user?.email ?? "Account"
@@ -100,8 +94,6 @@ export const Sidebar = ({
   onHome,
   storeActive,
 }: SidebarProps) => {
-  const { isAuthenticated } = useConvexAuth();
-
   const getClickHandler = (label: string) => {
     if (label === "App Store") return onStore;
     if (label === "Connect") return onConnect;
@@ -148,7 +140,7 @@ export const Sidebar = ({
           </span>
           <span className="sidebar-nav-label">Settings</span>
         </button>
-        <AuthButton isAuthenticated={isAuthenticated} onSignIn={onSignIn} />
+        <AuthButton onSignIn={onSignIn} />
       </div>
     </aside>
   );

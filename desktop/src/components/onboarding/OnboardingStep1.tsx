@@ -18,6 +18,7 @@ import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 import { InlineAuth } from "../InlineAuth";
 import { useTheme } from "../../theme/theme-context";
+import { getPlatform } from "@/utils/platform";
 import "../Onboarding.css";
 
 const FADE_OUT_MS = 400;
@@ -435,7 +436,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const isComplete = phase === "complete";
 
   const sortedThemes = [...themes].sort((a, b) => a.name.localeCompare(b.name));
-  const platform = window.electronAPI?.platform ?? "unknown";
+  const platform = getPlatform();
   const renderThemeOptionRow = <T extends string>(
     label: string,
     options: readonly T[],
