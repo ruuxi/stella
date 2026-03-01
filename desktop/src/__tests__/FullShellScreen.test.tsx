@@ -324,16 +324,16 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(mockSetView).toHaveBeenCalledWith("home");
   });
 
-  it("opens auth dialog when sidebar sign-in is clicked", () => {
+  it("opens auth dialog when sidebar sign-in is clicked", async () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-signin"));
-    expect(screen.getByTestId("auth-dialog")).toBeInTheDocument();
+    expect(await screen.findByTestId("auth-dialog")).toBeInTheDocument();
   });
 
-  it("opens connect dialog when sidebar connect is clicked", () => {
+  it("opens connect dialog when sidebar connect is clicked", async () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-connect"));
-    expect(screen.getByTestId("connect-dialog")).toBeInTheDocument();
+    expect(await screen.findByTestId("connect-dialog")).toBeInTheDocument();
   });
 
   it("opens settings dialog when sidebar settings is clicked", async () => {

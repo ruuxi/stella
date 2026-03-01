@@ -110,8 +110,7 @@ describe("AppBootstrap", () => {
     await waitFor(() => {
       expect(mockGetOrCreateDefaultConversation).toHaveBeenCalled();
     });
-    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
-    expect(mockSetConversationId).toHaveBeenCalledWith(null);
+    expect(mockSetConversationId).not.toHaveBeenCalled();
   });
 
   it("does not set conversation ID when conversation is null", async () => {
@@ -120,8 +119,7 @@ describe("AppBootstrap", () => {
     await waitFor(() => {
       expect(mockGetOrCreateDefaultConversation).toHaveBeenCalled();
     });
-    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
-    expect(mockSetConversationId).toHaveBeenCalledWith(null);
+    expect(mockSetConversationId).not.toHaveBeenCalled();
   });
 
   it("does not set conversation ID after unmount (cancelled)", async () => {
@@ -140,8 +138,7 @@ describe("AppBootstrap", () => {
     await waitFor(() => {
       expect(mockGetOrCreateDefaultConversation).toHaveBeenCalled();
     });
-    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
-    expect(mockSetConversationId).toHaveBeenCalledWith(null);
+    expect(mockSetConversationId).not.toHaveBeenCalled();
   });
 
   it("handles configureLocalHost failure gracefully", async () => {
@@ -173,8 +170,8 @@ describe("AppBootstrap", () => {
     });
     expect(mockGetOrCreateDefaultConversation).not.toHaveBeenCalled();
     expect(mockGetOrCreateLocalConversationId).toHaveBeenCalledTimes(1);
-    expect(mockSetConversationId).toHaveBeenNthCalledWith(1, null);
-    expect(mockSetConversationId).toHaveBeenNthCalledWith(2, "01KHVRH3ZAPQN48JWYNJNYDCVC");
+    expect(mockSetConversationId).toHaveBeenCalledTimes(1);
+    expect(mockSetConversationId).toHaveBeenCalledWith("01KHVRH3ZAPQN48JWYNJNYDCVC");
   });
 
   it("uses local conversation id when account mode is private_local", async () => {

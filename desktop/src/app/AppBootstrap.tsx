@@ -52,7 +52,6 @@ export const AppBootstrap = () => {
     const run = async () => {
       const hostPromise = configureLocalHost();
       const devicePromise = getOrCreateDeviceId();
-      setConversationId(null);
 
       if (!isAuthenticated) {
         if (!cancelled) {
@@ -114,9 +113,6 @@ export const AppBootstrap = () => {
         }
       } catch (err) {
         console.error("[AppBootstrap] Cloud conversation setup failed:", err);
-        if (!cancelled) {
-          setConversationId(null);
-        }
       }
 
       await Promise.allSettled([hostPromise, devicePromise]);

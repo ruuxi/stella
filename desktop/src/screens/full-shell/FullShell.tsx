@@ -245,7 +245,7 @@ export const FullShell = () => {
 
   const orbRef = useRef<FloatingOrbHandle>(null);
 
-  const isOrbVisible = state.view !== "chat" && onboarding.onboardingDone && !onboarding.isAuthLoading;
+  const isOrbVisible = state.view !== "chat" && onboarding.onboardingDone;
   const orbMessage = useOrbMessage(events, isOrbVisible);
 
   const handleVoiceTranscript = useCallback(
@@ -260,9 +260,8 @@ export const FullShell = () => {
   );
 
   useEffect(() => {
-    const ready = onboarding.onboardingDone && !onboarding.isAuthLoading;
-    window.electronAPI?.setAppReady?.(ready);
-  }, [onboarding.onboardingDone, onboarding.isAuthLoading]);
+    window.electronAPI?.setAppReady?.(onboarding.onboardingDone);
+  }, [onboarding.onboardingDone]);
 
   useEffect(() => {
     const electronApi = getElectronApi();
@@ -371,7 +370,7 @@ export const FullShell = () => {
     activeConversationId && (message.trim() || hasComposerContext),
   );
 
-  const appReady = onboarding.onboardingDone && !onboarding.isAuthLoading;
+  const appReady = onboarding.onboardingDone;
 
   const chatColumnProps = useMemo(() => ({
     events,
@@ -394,7 +393,6 @@ export const FullShell = () => {
     onboardingDone: onboarding.onboardingDone,
     onboardingExiting: onboarding.onboardingExiting,
     isAuthenticated: onboarding.isAuthenticated,
-    isAuthLoading: onboarding.isAuthLoading,
     canSubmit,
     onSend: handleSend,
     hasExpanded: onboarding.hasExpanded,
@@ -428,7 +426,6 @@ export const FullShell = () => {
     onboarding.onboardingDone,
     onboarding.onboardingExiting,
     onboarding.isAuthenticated,
-    onboarding.isAuthLoading,
     canSubmit,
     handleSend,
     onboarding.hasExpanded,
