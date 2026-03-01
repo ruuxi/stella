@@ -269,7 +269,11 @@ const agentContextResultValidator = v.object({
     expiresAt: v.number(),
   }),
   gatewayApiKey: v.optional(v.string()),
-  generalAgentEngine: v.optional(v.union(v.literal("default"), v.literal("codex_local"))),
+  generalAgentEngine: v.optional(v.union(
+    v.literal("default"),
+    v.literal("codex_local"),
+    v.literal("claude_code_local"),
+  )),
   codexLocalMaxConcurrency: v.optional(v.number()),
 });
 type AgentContextResult = Infer<typeof agentContextResultValidator>;
@@ -340,7 +344,7 @@ const fetchAgentContextForOwner = async (
     // Ignore model override lookup errors; defaults remain valid.
   }
 
-  let generalAgentEngine: "default" | "codex_local" | undefined;
+  let generalAgentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
   let codexLocalMaxConcurrency: number | undefined;
   if (args.agentType === "general") {
     generalAgentEngine = "default";
@@ -483,7 +487,7 @@ export const fetchLocalAgentContextForRuntime = action({
       // Ignore model override lookup errors for local bootstrap.
     }
 
-    let generalAgentEngine: "default" | "codex_local" | undefined;
+    let generalAgentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
     let codexLocalMaxConcurrency: number | undefined;
     if (args.agentType === "general") {
       generalAgentEngine = "default";
