@@ -11,18 +11,6 @@ export const usersSchema = {
     .index("by_ownerId_and_key", ["ownerId", "key"])
     .index("by_key", ["key"]),
 
-  canvas_states: defineTable({
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    name: v.string(),
-    title: v.optional(v.string()),
-    url: v.optional(v.string()),
-    width: v.optional(v.number()),
-    updatedAt: v.number(),
-  })
-    .index("by_ownerId_and_conversationId", ["ownerId", "conversationId"])
-    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
-
   self_mod_features: defineTable({
     featureId: v.string(),
     ownerId: v.string(),
