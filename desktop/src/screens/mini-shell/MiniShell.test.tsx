@@ -52,6 +52,10 @@ vi.mock("../../components/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
+vi.mock("../../components/VoiceOverlay", () => ({
+  VoiceOverlay: () => null,
+}));
+
 describe("MiniShell", () => {
   beforeEach(() => {
     contextCaptureOverrides = {};
