@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   RealtimeVoiceSession,
+  claimPreWarmedSession,
   type VoiceSessionEvent,
   type VoiceSessionState,
 } from "../services/realtime-voice";
@@ -29,7 +30,11 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     }
 
     let aborted = false;
-    const session = new RealtimeVoiceSession();
+    const conversationId = state.conversationId ?? "voice-rtc";
+
+    // Try to claim a pre-warmed session (started from IPC before React rendered)
+    const preWarmed = claimPreWarmedSession(conversationId);
+    const session = preWarmed ?? new RealtimeVoiceSession();
     sessionRef.current = session;
 
     const unsubscribe = session.on((event: VoiceSessionEvent) => {
@@ -40,12 +45,20 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
       }
     });
 
-    const conversationId = state.conversationId ?? "voice-rtc";
-    session.connect(conversationId).catch((err) => {
-      if (aborted) return;
-      console.error("[useRealtimeVoice] Failed to connect:", err);
-      setSessionState("error");
-    });
+    if (preWarmed) {
+      // Session is already connecting/connected — sync current state
+      setSessionState(session.state);
+      if (session.state === "connected") {
+        analyserRef.current = session.getAnalyser();
+      }
+    } else {
+      // No pre-warm — connect normally
+      session.connect(conversationId).catch((err) => {
+        if (aborted) return;
+        console.error("[useRealtimeVoice] Failed to connect:", err);
+        setSessionState("error");
+      });
+    }
 
     return () => {
       aborted = true;

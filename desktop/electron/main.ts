@@ -1889,6 +1889,14 @@ app.whenReady().then(async () => {
         if (!appReady) return
         console.log(`[WakeWord] Detected! score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)}`)
 
+        // Pre-warm: tell renderer to start the Realtime API connection IMMEDIATELY,
+        // before React processes the state change. This lets token fetch, mic
+        // acquisition, and SDP offer creation begin ~20-50ms earlier.
+        const convId = uiState.conversationId ?? 'voice-rtc'
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send('voice-rtc:pre-warm', convId)
+        }
+
         // Activate realtime voice-to-voice mode (same as toggleVoiceRtc)
         uiState.isVoiceRtcActive = true
         uiState.isVoiceActive = false
