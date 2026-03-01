@@ -61,7 +61,6 @@ import './styles/welcome-suggestions.css'
 import './views/home/home-view.css'
 import './views/home/home-dashboard.css'
 import './styles/error-boundary.css'
-import './styles/voice-widget.css'
 
 import './utils/vite-error-recovery'
 import App from './App.tsx'
@@ -73,7 +72,7 @@ import { convexClient } from './services/convex-client'
 import { authClient } from './lib/auth-client'
 const authClientForProvider = authClient as unknown as AuthClient
 
-type BootWindowType = 'full' | 'mini' | 'radial' | 'region' | 'voice'
+type BootWindowType = 'full' | 'mini' | 'radial' | 'region'
 
 const getBootWindowType = (): BootWindowType => {
   const windowParam = new URLSearchParams(window.location.search).get('window')
@@ -81,7 +80,6 @@ const getBootWindowType = (): BootWindowType => {
     case 'mini':
     case 'radial':
     case 'region':
-    case 'voice':
       return windowParam
     default:
       return 'full'

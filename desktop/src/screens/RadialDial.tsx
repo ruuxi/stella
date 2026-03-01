@@ -3,7 +3,6 @@ import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
-import { useUiState } from '../app/state/ui-state'
 import { StellaAnimation } from '../components/StellaAnimation'
 import {
   initBlob,
@@ -37,14 +36,6 @@ const CONTENT_FADE_DELAY = 180 // ms
 const toRgba = (color: string, alpha: number): string => {
   const [r, g, b] = cssToVec3(color)
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`
-}
-
-/** Blend two colors (opaque), t=0 → colorA, t=1 → colorB */
-const blendOpaque = (colorA: string, colorB: string, t: number): string => {
-  const [ar, ag, ab] = cssToVec3(colorA)
-  const [br, bg, bb] = cssToVec3(colorB)
-  const mix = (a: number, b: number) => Math.round((a + (b - a) * t) * 255)
-  return `rgb(${mix(ar, br)}, ${mix(ag, bg)}, ${mix(ab, bb)})`
 }
 
 const createWedgePath = (startAngle: number, endAngle: number): string => {
@@ -99,7 +90,6 @@ export function RadialDial() {
   })
   const api = getElectronApi()
   const { colors } = useTheme()
-  const { state } = useUiState()
 
   // Keep phaseRef in sync
   useEffect(() => {
@@ -322,22 +312,18 @@ export function RadialDial() {
             const startAngle = index * WEDGE_ANGLE
             const endAngle = (index + 1) * WEDGE_ANGLE
             const isSelected = selectedWedge === wedge.id
-            const isVoiceToggleActive = wedge.id === 'voice' && state.isVoiceActive
-            const isActiveOrSelected = isSelected || isVoiceToggleActive
             const contentPos = getContentPosition(index)
             const Icon = wedge.icon
 
             const fillColor = isSelected
               ? toRgba(colors.interactive, 1)
-              : isVoiceToggleActive
-              ? blendOpaque(colors.card, colors.interactive, 0.5)
               : toRgba(colors.card, 1)
 
-            const strokeColor = isActiveOrSelected
+            const strokeColor = isSelected
               ? toRgba(colors.interactive, 0.9)
               : toRgba(colors.border, 0.5)
 
-            const iconColor = isActiveOrSelected
+            const iconColor = isSelected
               ? colors.primaryForeground
               : colors.mutedForeground
 
