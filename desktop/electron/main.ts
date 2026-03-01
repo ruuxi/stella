@@ -2040,6 +2040,10 @@ app.whenReady().then(async () => {
     setHostAuthState(Boolean(payload?.authenticated), payload?.token)
     return { ok: true }
   })
+  ipcMain.handle('host:setCloudSyncEnabled', (_event, payload: { enabled: boolean }) => {
+    localHostRunner?.setCloudSyncEnabled(Boolean(payload?.enabled))
+    return { ok: true }
+  })
   ipcMain.handle('app:hardResetLocalState', async (event) => {
     if (!assertPrivilegedSender(event, 'app:hardResetLocalState')) {
       throw new Error('Blocked untrusted local reset request.')
