@@ -209,7 +209,6 @@ type SubagentExecutionArgs = {
   conversationId: Id<"conversations">;
   userMessageId: Id<"events">;
   targetDeviceId?: string;
-  spriteName?: string;
   prompt: string;
   subagentType: string;
   taskId: Id<"tasks">;
@@ -941,7 +940,6 @@ const executeSubagentRun = async (
           conversationId: args.conversationId,
           userMessageId: args.userMessageId,
           targetDeviceId: args.targetDeviceId,
-          spriteName: args.spriteName,
         },
       ),
       messages: messages as any[],
@@ -1750,9 +1748,6 @@ export const runSubagent = internalAction({
       { ownerId: conversation.ownerId },
     );
     const resolvedTargetDeviceId = executionTarget.targetDeviceId ?? args.targetDeviceId;
-    const resolvedSpriteName = resolvedTargetDeviceId
-      ? undefined
-      : executionTarget.spriteName ?? undefined;
 
     // Resolve thread: threadId takes priority, then threadName lookup/create
     const threadSupported = args.subagentType === "general";
@@ -1850,7 +1845,6 @@ export const runSubagent = internalAction({
       conversationId: args.conversationId,
       userMessageId: args.userMessageId,
       targetDeviceId: resolvedTargetDeviceId,
-      spriteName: resolvedSpriteName,
       description: args.description,
       prompt: args.prompt,
       subagentType: args.subagentType,
@@ -1876,7 +1870,6 @@ export const executeSubagent = internalAction({
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
     targetDeviceId: v.optional(v.string()),
-    spriteName: v.optional(v.string()),
     description: v.string(),
     prompt: v.string(),
     subagentType: v.string(),
@@ -1899,7 +1892,6 @@ export const executeSubagent = internalAction({
       ownerId: args.ownerId,
       threadId: args.threadId,
       commandId: args.commandId,
-      spriteName: args.spriteName,
       systemPromptOverride: args.systemPromptOverride,
     });
 
@@ -1919,7 +1911,6 @@ export const executeSubagent = internalAction({
         conversationId: args.conversationId,
         userMessageId: args.userMessageId,
         targetDeviceId: args.targetDeviceId,
-        spriteName: args.spriteName,
         taskId: args.taskId,
         description: args.description,
         agentType: args.subagentType,
@@ -1981,7 +1972,6 @@ export const deliverTaskResult = internalAction({
     conversationId: v.id("conversations"),
     userMessageId: v.id("events"),
     targetDeviceId: v.optional(v.string()),
-    spriteName: v.optional(v.string()),
     taskId: v.id("tasks"),
     description: v.string(),
     agentType: v.string(),
@@ -2073,7 +2063,6 @@ export const deliverTaskResult = internalAction({
           conversationId: args.conversationId,
           userMessageId: args.userMessageId,
           targetDeviceId: args.targetDeviceId,
-          spriteName: args.spriteName,
         }),
         messages: orchestratorTurn.messages as any[],
       };

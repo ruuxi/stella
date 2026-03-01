@@ -6,7 +6,6 @@ import {
   type DeviceToolContext,
 } from "../agent/device_tools";
 import { createBackendTools } from "./backend";
-import { createCloudTools } from "./cloud";
 import { createOrchestrationTools, createOrchestrationToolsWithoutDevice } from "./orchestration";
 import { type ToolOptions } from "./types";
 
@@ -43,11 +42,6 @@ export const createTools = (
   // Tier 2: Local device tools (if Electron app running)
   const coreTools = context ? createCoreDeviceTools(ctx, context) : {};
 
-  // Tier 1: Cloud tools (if 24/7 mode enabled and no local device)
-  const cloudTools = !context && options.spriteName && options.ownerId
-    ? createCloudTools(ctx, options.ownerId, options.spriteName)
-    : {};
-
   // Tier 0: Backend tools (always available)
   const backendTools = createBackendTools(ctx, options);
 
@@ -58,7 +52,6 @@ export const createTools = (
 
   const allTools: ToolSet = {
     ...coreTools,
-    ...cloudTools,
     ...backendTools,
     ...orchestrationTools,
   };

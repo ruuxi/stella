@@ -4,24 +4,19 @@ import { runAgentTurn } from "../automation/runner";
 import { requireConversationOwner } from "../auth";
 
 export type ExecutionCandidate =
-  | { mode: "local"; targetDeviceId: string; spriteName?: undefined }
-  | { mode: "cloud"; targetDeviceId?: undefined; spriteName?: undefined }
-  | { mode: "remote"; targetDeviceId?: undefined; spriteName: string };
+  | { mode: "local"; targetDeviceId: string }
+  | { mode: "cloud" };
 
 export const buildExecutionCandidates = (args: {
   targetDeviceId?: string | null;
-  spriteName?: string | null;
 }): ExecutionCandidate[] => {
   const candidates: ExecutionCandidate[] = [];
   if (args.targetDeviceId) {
     candidates.push({ mode: "local", targetDeviceId: args.targetDeviceId });
   }
 
-  // Local-first scheduler policy: local -> cloud -> remote.
+  // Local-first scheduler policy: local -> cloud.
   candidates.push({ mode: "cloud" });
-  if (args.spriteName) {
-    candidates.push({ mode: "remote", spriteName: args.spriteName });
-  }
   return candidates;
 };
 
@@ -62,7 +57,6 @@ export const runAgentTurnWithFallback = async (args: {
         agentType: args.agentType,
         ownerId: args.ownerId,
         targetDeviceId: candidate.mode === "local" ? candidate.targetDeviceId : undefined,
-        spriteName: candidate.mode === "remote" ? candidate.spriteName : undefined,
         transient: args.transient,
       });
       break;

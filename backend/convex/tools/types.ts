@@ -9,7 +9,6 @@ export type ToolOptions = {
   conversationId?: Id<"conversations">;
   userMessageId?: Id<"events">;
   targetDeviceId?: string;
-  spriteName?: string;
   transient?: boolean;
 };
 
@@ -56,7 +55,6 @@ export const BASE_TOOL_NAMES = [
   "GenerateApiSkill",
   "SelfModInstallBlueprint",
   "ListResources",
-  "SpawnRemoteMachine",
   "NoResponse",
   // Orchestration tools
   "TaskCreate",

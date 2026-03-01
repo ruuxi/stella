@@ -95,7 +95,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "RecallMemories", "SaveMemory",
       "HeartbeatGet", "HeartbeatUpsert", "HeartbeatRun",
       "CronList", "CronAdd", "CronUpdate", "CronRemove", "CronRun",
-      "SpawnRemoteMachine",
       "NoResponse",
     ],
     defaultSkills: [],

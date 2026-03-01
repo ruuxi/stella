@@ -700,10 +700,7 @@ export const setupBridge = action({
     if (!(await isOwnerInConnectedMode({ ctx, ownerId }))) {
       throw new Error(CONNECTED_MODE_REQUIRED_ERROR);
     }
-    const runtimeMode = await ctx.runQuery(internal.data.preferences.getRuntimeModeForOwner, {
-      ownerId,
-    });
-    const bridgeMode = runtimeMode === "cloud_247" ? "cloud" : "local";
+    const bridgeMode = "local";
 
     // Check existing session
     const existing = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
@@ -711,7 +708,7 @@ export const setupBridge = action({
       provider: args.provider,
     });
     if (existing) {
-      const existingMode = existing.mode ?? "cloud";
+      const existingMode = existing.mode ?? "local";
       const shouldReuseExisting =
         existing.status !== "error" &&
         existing.status !== "stopped" &&
@@ -725,37 +722,6 @@ export const setupBridge = action({
     // Clean up old session if it exists
     if (existing) {
       await ctx.runMutation(internal.channels.bridge.deleteBridgeSession, { id: existing._id });
-    }
-
-    if (bridgeMode === "cloud") {
-      // Cloud path: provision sprite and deploy remotely
-      let spriteName: string | null = await ctx.runQuery(
-        internal.agent.cloud_devices.resolveForOwner,
-        { ownerId },
-      );
-      if (!spriteName) {
-        const result = await ctx.runAction(internal.agent.cloud_devices.enable247, {});
-        spriteName = result.spriteName;
-      }
-
-      const sessionId: Id<"bridge_sessions"> = await ctx.runMutation(
-        internal.channels.bridge.createBridgeSession,
-        {
-          ownerId,
-          provider: args.provider,
-          spriteName,
-          mode: "cloud",
-        },
-      );
-
-      await ctx.scheduler.runAfter(0, internal.channels.bridge.deployBridge, {
-        sessionId,
-        spriteName,
-        provider: args.provider,
-        ownerId,
-      });
-
-      return { status: "initializing", sessionId };
     }
 
     // Local path: create session, no sprite, frontend will deploy via IPC
@@ -783,22 +749,9 @@ export const stopBridge = action({
     });
     if (!session) return { status: "not_running" };
 
-    const sessionMode = session.mode ?? "cloud";
+    const sessionMode = session.mode ?? "local";
 
-    if (sessionMode === "cloud" && session.spriteName) {
-      // Kill the bridge process on the sprite
-      try {
-        const spritesToken = await getSpritesTokenForOwner(ctx, ownerId);
-        await spritesExecChecked(
-          spritesToken,
-          session.spriteName,
-          `pkill -f 'node.*bridge.js' || true`,
-          "Bridge process stop",
-        );
-      } catch {
-        // May already be stopped
-      }
-    }
+    
     // Local mode: just update status — Electron detects and kills process
 
     await ctx.runMutation(internal.channels.bridge.updateBridgeSession, {
