@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { createRef } from "react";
-import { useQuery } from "convex/react";
 
 // --- Mocks ---
 
@@ -28,7 +27,6 @@ const mockUseStreamingChat = vi.fn((options?: unknown) => {
 
 vi.mock("convex/react", () => ({
   useConvexAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
-  useQuery: vi.fn(() => undefined),
   useMutation: vi.fn(() => vi.fn()),
   useAction: vi.fn(() => vi.fn()),
   Authenticated: ({ children }: any) => <>{children}</>,
@@ -93,21 +91,6 @@ vi.mock("../hooks/use-conversation-events", () => ({
     mockUseConversationEvents(conversationId),
 }));
 
-const mockUseChatStore = vi.fn(() => ({
-  storageMode: "cloud",
-  isLocalStorage: false,
-  cloudFeaturesEnabled: true,
-  appendEvent: vi.fn(),
-  appendAgentEvent: vi.fn(),
-  uploadAttachments: vi.fn(),
-  buildHistory: vi.fn(),
-  streamStrategy: "local-with-http-fallback",
-}));
-
-vi.mock("../app/state/chat-store", () => ({
-  useChatStore: () => mockUseChatStore(),
-}));
-
 vi.mock("../hooks/use-canvas-commands", () => ({
   useCanvasCommands: vi.fn(),
 }));
@@ -122,20 +105,6 @@ vi.mock("../services/auth", () => ({
 
 vi.mock("../services/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
-}));
-
-vi.mock("@/convex/api", () => ({
-  api: {
-    data: {
-      preferences: {
-        getAccountMode: "preferences:getAccountMode",
-        getSyncMode: "preferences:getSyncMode",
-      },
-      canvas_states: {
-        getForConversation: "canvas_states:getForConversation",
-      },
-    },
-  },
 }));
 
 vi.mock("../hooks/use-bridge-reconnect", () => ({
@@ -274,12 +243,6 @@ import { getElectronApi } from "../services/electron";
 describe("FullShell (full-shell/FullShell.tsx)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
-      if (args === "skip") return undefined;
-      if (ref === "preferences:getAccountMode") return "connected";
-      if (ref === "preferences:getSyncMode") return "on";
-      return undefined;
-    });
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
       setMode: vi.fn(),
@@ -343,22 +306,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     // storageMode is no longer passed — it comes from ChatStoreProvider
     const args = mockUseStreamingChat.mock.calls[0][0] as Record<string, unknown>;
     expect(args).not.toHaveProperty("storageMode");
-  });
-
-  it("reads cloudFeaturesEnabled from useChatStore", () => {
-    mockUseChatStore.mockReturnValue({
-      storageMode: "local",
-      isLocalStorage: true,
-      cloudFeaturesEnabled: false,
-      appendEvent: vi.fn(),
-      appendAgentEvent: vi.fn(),
-      uploadAttachments: vi.fn(),
-      buildHistory: vi.fn(),
-      streamStrategy: "local-only",
-    });
-
-    render(<FullShell />);
-    expect(mockUseChatStore).toHaveBeenCalled();
   });
 
   it("toggles store view via sidebar onStore", () => {
@@ -440,13 +387,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
   });
 
   it("shows and opens local workspace pages via tab bar when cloud pages are unavailable", async () => {
-    vi.mocked(useQuery).mockImplementation((ref: unknown, args?: unknown) => {
-      if (args === "skip") return undefined;
-      if (ref === "preferences:getAccountMode") return "private_local";
-      if (ref === "preferences:getSyncMode") return "off";
-      return undefined;
-    });
-
     const listWorkspacePanels = vi.fn(() =>
       Promise.resolve([{ name: "pd_focus", title: "Focus" }]),
     );

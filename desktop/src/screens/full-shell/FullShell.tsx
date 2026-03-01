@@ -4,16 +4,13 @@
  */
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "convex/react";
 import { useUiState } from "../../app/state/ui-state";
-import { useChatStore } from "../../app/state/chat-store";
 import { useWorkspace } from "../../app/state/workspace-state";
 import { useTheme } from "../../theme/theme-context";
 import { useConversationEvents } from "../../hooks/use-conversation-events";
 import { useCanvasCommands } from "../../hooks/use-canvas-commands";
 import { getElectronApi } from "../../services/electron";
 import { secureSignOut } from "../../services/auth";
-import { api } from "@/convex/api";
 import { ShiftingGradient } from "../../components/background/ShiftingGradient";
 import { TitleBar } from "../../components/TitleBar";
 import { Sidebar } from "../../components/Sidebar";
@@ -76,7 +73,6 @@ export const FullShell = () => {
   const canvas = workspaceState.canvas;
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
-  const restoredCanvasConversationRef = useRef<string | null>(null);
   const isNearBottomRef = useRef(true);
 
   const [message, setMessage] = useState("");
@@ -93,7 +89,6 @@ export const FullShell = () => {
   useBridgeAutoReconnect();
 
   const onboarding = useOnboardingOverlay();
-  const { cloudFeaturesEnabled } = useChatStore();
 
   useEffect(() => {
     const electronApi = getElectronApi();
@@ -275,52 +270,6 @@ export const FullShell = () => {
   }, []);
 
   useCanvasCommands(events);
-
-  // Restore saved canvas state when switching conversations
-  const savedCanvasCloudState = useQuery(
-    api.data.canvas_states.getForConversation,
-    activeConversationId && cloudFeaturesEnabled
-      ? { conversationId: activeConversationId }
-      : "skip",
-  ) as
-    | {
-        name: string;
-        title?: string;
-        url?: string;
-        width?: number;
-      }
-    | null
-    | undefined;
-  const savedCanvasState = savedCanvasCloudState;
-
-  useEffect(() => {
-    if (!state.conversationId) {
-      restoredCanvasConversationRef.current = null;
-      return;
-    }
-
-    if (savedCanvasState === undefined) {
-      return;
-    }
-
-    if (restoredCanvasConversationRef.current === state.conversationId) {
-      return;
-    }
-
-    if (!savedCanvasState) {
-      closeCanvas();
-      restoredCanvasConversationRef.current = state.conversationId;
-      return;
-    }
-
-    openCanvas({
-      name: savedCanvasState.name,
-      title: savedCanvasState.title,
-      url: savedCanvasState.url,
-    });
-
-    restoredCanvasConversationRef.current = state.conversationId;
-  }, [state.conversationId, savedCanvasState, openCanvas, closeCanvas]);
 
   useEffect(() => {
     if (isNearBottomRef.current) {
