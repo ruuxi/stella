@@ -192,7 +192,13 @@ export const handleAskCommand = internalAction({
         attachments: args.attachments,
         channelEnvelope: args.channelEnvelope,
         respond: args.respond,
+        deliveryMeta: {
+          applicationId: args.applicationId,
+          interactionToken: args.interactionToken,
+        },
       });
+
+      if (result?.deferred) return null;
 
       if (!result) {
         if (!shouldRespond) return null;

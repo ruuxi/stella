@@ -31,4 +31,11 @@ crons.cron(
   {},
 );
 
+crons.interval(
+  "rescue orphaned remote turns",
+  { seconds: 60 },
+  internal.channels.connector_delivery.rescueOrphanedTurns,
+  {},
+);
+
 export default crons;
