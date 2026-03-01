@@ -89,6 +89,21 @@ type DashboardGenRequestEvent = {
 };
 
 
+type RemoteTurnRequestEvent = {
+  _id: string;
+  conversationId: string;
+  type: string;
+  requestId?: string;
+  targetDeviceId?: string;
+  payload?: {
+    conversationId?: string;
+    userMessageId?: string;
+    text?: string;
+    provider?: string;
+    deliveryMeta?: Record<string, unknown>;
+  };
+};
+
 const SYNC_DEBOUNCE_MS = 500;
 const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
 const MESSAGES_NOTES_CATEGORY = "messages_notes";
@@ -165,6 +180,7 @@ export const createLocalHostRunner = ({
   let authToken: string | null = null;
   let unsubscribe: (() => void) | null = null;
   let unsubscribeDashboardGen: (() => void) | null = null;
+  let unsubscribeRemoteTurn: (() => void) | null = null;
   let isRunning = false;
   const processed = new Set<string>();
   const inFlight = new Set<string>();
@@ -725,6 +741,11 @@ export const createLocalHostRunner = ({
       unsubscribeDashboardGen = null;
       log("Dashboard gen subscription stopped");
     }
+    if (unsubscribeRemoteTurn) {
+      unsubscribeRemoteTurn();
+      unsubscribeRemoteTurn = null;
+      log("Remote turn subscription stopped");
+    }
   };
 
   // Track processed dashboard gen requests to avoid duplicates
@@ -832,6 +853,107 @@ export const createLocalHostRunner = ({
     }
   };
 
+  // ─── Inverted Execution: Handle Remote Turn Requests ──────────────────────
+  // When a connector message arrives and the local device is online, the cloud
+  // inserts a "remote_turn_request" event instead of running the AI SDK.
+  // The local device picks it up, runs the AI SDK natively (0ms tool latency),
+  // and delivers the response back to the connector asynchronously.
+
+  const pendingRemoteTurns: RemoteTurnRequestEvent[] = [];
+
+  // Drain pending remote turns when the orchestrator is free
+  const remoteTurnDrainInterval = setInterval(() => {
+    if (activeOrchestratorRunId || pendingRemoteTurns.length === 0) return;
+    const next = pendingRemoteTurns.shift();
+    if (next) void handleRemoteTurnRequest(next);
+  }, 3000);
+
+  const handleRemoteTurnRequest = async (request: RemoteTurnRequestEvent) => {
+    if (!client || request.type !== "remote_turn_request" || !request.requestId) {
+      return;
+    }
+    if (processed.has(request.requestId) || inFlight.has(request.requestId)) {
+      return;
+    }
+
+    // Queue if orchestrator is busy — drain interval will retry
+    if (activeOrchestratorRunId) {
+      if (!pendingRemoteTurns.some((r) => r.requestId === request.requestId)) {
+        pendingRemoteTurns.push(request);
+      }
+      return;
+    }
+
+    const payload = request.payload;
+    if (!payload?.conversationId || !payload?.userMessageId) {
+      log(`Remote turn request ${request.requestId} missing conversationId or userMessageId, skipping`);
+      processed.add(request.requestId);
+      return;
+    }
+
+    log(`Received remote turn request: ${request.requestId}`, {
+      conversationId: payload.conversationId,
+      provider: payload.provider,
+    });
+
+    inFlight.add(request.requestId);
+
+    try {
+      // Server-side dedup: check if this request was already claimed
+      const claimed = await callQuery("events.isRemoteTurnClaimed", {
+        requestId: request.requestId,
+      });
+      if (claimed) {
+        log(`Remote turn ${request.requestId} already claimed, skipping`);
+        processed.add(request.requestId);
+        inFlight.delete(request.requestId);
+        return;
+      }
+
+      // Run the local agent turn. handleLocalChat is fire-and-forget;
+      // the orchestrator runs asynchronously and onEnd fires on completion.
+      await handleLocalChat(
+        {
+          conversationId: payload.conversationId,
+          userMessageId: payload.userMessageId,
+        },
+        {
+          onStream: () => {},
+          onToolStart: () => {},
+          onToolEnd: () => {},
+          onError: (event) => {
+            logError("Remote turn error:", event.error);
+            if (event.fatal) {
+              processed.add(request.requestId!);
+              inFlight.delete(request.requestId!);
+            }
+          },
+          onEnd: async (event) => {
+            try {
+              await callMutation(
+                "channels/connector_delivery:completeRemoteTurn",
+                {
+                  requestId: request.requestId,
+                  text: event.finalText,
+                  conversationId: payload.conversationId,
+                },
+              );
+              log(`Remote turn ${request.requestId} delivered to ${payload.provider}`);
+            } catch (err) {
+              logError("Failed to deliver remote turn response:", err);
+            }
+            processed.add(request.requestId!);
+            inFlight.delete(request.requestId!);
+          },
+        },
+      );
+    } catch (error) {
+      logError("Remote turn request failed:", error);
+      processed.add(request.requestId);
+      inFlight.delete(request.requestId);
+    }
+  };
+
   const startSubscription = () => {
     // Only start subscription if we have client, auth, and not already subscribed
     if (!client || !authToken || unsubscribe) return;
@@ -876,6 +998,22 @@ export const createLocalHostRunner = ({
       },
       (error: Error) => {
         logError("Dashboard gen subscription error:", error.message);
+      },
+    );
+
+    // Subscribe to remote turn requests (inverted execution from connectors)
+    unsubscribeRemoteTurn = client.onUpdate(
+      "events:subscribeRemoteTurnRequestsForDevice" as never,
+      { deviceId, since, limit: 10 } as never,
+      (events: unknown) => {
+        if (!Array.isArray(events)) return;
+        for (const request of events as RemoteTurnRequestEvent[]) {
+          // Don't use the sequential queue — remote turns run independently
+          void handleRemoteTurnRequest(request);
+        }
+      },
+      (error: Error) => {
+        logError("Remote turn subscription error:", error.message);
       },
     );
 
@@ -1193,6 +1331,8 @@ export const createLocalHostRunner = ({
     stopWatchers();
     stopCoreMemoryWatcher();
     stopSubscription();
+    clearInterval(remoteTurnDrainInterval);
+    pendingRemoteTurns.length = 0;
     shutdownClaudeCodeRuntime();
     shutdownCodexAppServerRuntime();
     if (client) {
