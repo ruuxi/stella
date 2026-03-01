@@ -223,7 +223,7 @@ const normalizeLanguageCodes = (language: string[] | undefined): string[] | unde
   return normalized.length > 0 ? normalized : undefined;
 };
 
-const resolveSpeechToTextWsConfig = async () => {
+const resolveSpeechToTextWsConfig = async (durationSecs?: number) => {
   const { endpoint, headers } = await createServiceRequest("/api/speech-to-text/ws-token", {
     "Content-Type": "application/json",
   });
@@ -231,7 +231,7 @@ const resolveSpeechToTextWsConfig = async () => {
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
-    body: JSON.stringify({}),
+    body: JSON.stringify(durationSecs != null ? { durationSecs } : {}),
   });
 
   if (!response.ok) {
@@ -485,4 +485,262 @@ export async function transcribeAudio(
       fail(new Error("Speech websocket closed before receiving transcription text"));
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Streaming API — sends audio chunks in real-time while recording
+// ---------------------------------------------------------------------------
+
+export interface StreamingTranscribeSession {
+  /** Send a chunk of raw mono float32 samples at the source sample rate. */
+  sendChunk(samples: Float32Array, sampleRate: number): void;
+  /** Stop streaming, send commit, and return the final transcript. */
+  commit(): Promise<SpeechToTextResult>;
+  /** Cancel the session without waiting for a result. */
+  abort(): void;
+}
+
+export function createStreamingSession(options?: {
+  language?: string[];
+  context?: SpeechToTextContext;
+}): StreamingTranscribeSession {
+  let phase: "connecting" | "ready" | "committed" | "done" | "error" =
+    "connecting";
+  let ws: WebSocket | null = null;
+  let packetPos = 0;
+  let settled = false;
+  let lastText: string | null = null;
+  let detectedLanguage: string | null = null;
+  const buffer: Array<{ b64: string; vol: number; dur: number }> = [];
+
+  // Commit promise hooks
+  let onResult: ((r: SpeechToTextResult) => void) | null = null;
+  let onError: ((e: Error) => void) | null = null;
+
+  // Ready-state promise
+  let readyResolve: (() => void) | null = null;
+  let readyReject: ((e: Error) => void) | null = null;
+  const readyPromise = new Promise<void>((res, rej) => {
+    readyResolve = res;
+    readyReject = rej;
+  });
+
+  const makeResult = (text: string): SpeechToTextResult => ({
+    id: null,
+    text,
+    detectedLanguage,
+    totalTime: null,
+    generatedTokens: null,
+  });
+
+  const settle = (result: SpeechToTextResult) => {
+    if (settled) return;
+    settled = true;
+    phase = "done";
+    ws?.close();
+    onResult?.(result);
+  };
+
+  const fail = (err: Error) => {
+    if (settled) return;
+    settled = true;
+    phase = "error";
+    ws?.close();
+    onError?.(err);
+  };
+
+  const sendAppend = (b64: string, vol: number, dur: number) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(
+      JSON.stringify({
+        type: "append",
+        position: packetPos,
+        audio_packets: {
+          packets: [b64],
+          volumes: [vol],
+          packet_duration: dur,
+          audio_encoding: "wav",
+          byte_encoding: "base64",
+        },
+      }),
+    );
+    packetPos++;
+  };
+
+  const flushBuffer = () => {
+    for (const chunk of buffer) sendAppend(chunk.b64, chunk.vol, chunk.dur);
+    buffer.length = 0;
+  };
+
+  const becomeReady = () => {
+    if (phase !== "connecting") return;
+    phase = "ready";
+    flushBuffer();
+    readyResolve?.();
+  };
+
+  // Async setup: fetch token → open WS → authenticate
+  void (async () => {
+    try {
+      const wsConfig = await resolveSpeechToTextWsConfig(360);
+      if (phase === "done" || phase === "error") return;
+
+      const socketUrl = buildSpeechToTextSocketUrl(
+        wsConfig.websocketUrl,
+        wsConfig.clientKey,
+      );
+      ws = new WebSocket(socketUrl);
+
+      const connectTimeout = window.setTimeout(() => {
+        const err = new Error("Speech websocket connection timed out");
+        readyReject?.(err);
+        fail(err);
+      }, WS_CONNECT_TIMEOUT_MS);
+
+      ws.onopen = () => {
+        clearTimeout(connectTimeout);
+        const authPayload: Record<string, unknown> = {
+          type: "auth",
+          access_token: wsConfig.clientKey,
+        };
+        if (options?.language) authPayload.language = options.language;
+        if (options?.context) authPayload.context = options.context;
+        ws!.send(JSON.stringify(authPayload));
+
+        // Fallback if server never acks auth
+        window.setTimeout(becomeReady, WS_AUTH_ACK_FALLBACK_MS);
+      };
+
+      ws.onmessage = (event) => {
+        if (settled || typeof event.data !== "string") return;
+
+        let msg: SpeechToTextWsResponse;
+        try {
+          msg = JSON.parse(event.data) as SpeechToTextWsResponse;
+        } catch {
+          return;
+        }
+
+        const status =
+          typeof msg.status === "string" ? msg.status : null;
+
+        if (status === "error") {
+          const detail =
+            typeof msg.error === "string"
+              ? msg.error
+              : msg.body && typeof msg.body === "object"
+                ? JSON.stringify(msg.body)
+                : "Unknown websocket error";
+          fail(new Error(`Speech websocket error: ${detail}`));
+          return;
+        }
+
+        if (status === "auth") {
+          becomeReady();
+          return;
+        }
+
+        if (status === "info") {
+          const info = msg.message as SpeechToTextWsInfoBody | null | undefined;
+          const eventName = typeof info?.event === "string" ? info.event : "";
+          if (eventName === "session_started") becomeReady();
+          if (eventName === "commit_received" && lastText?.trim()) {
+            window.setTimeout(() => {
+              if (lastText?.trim()) settle(makeResult(lastText));
+            }, WS_FINALIZATION_GRACE_MS);
+          }
+          return;
+        }
+
+        if (status !== "text") return;
+
+        const body = msg.body as SpeechToTextWsTextBody | null | undefined;
+        if (!body || typeof body.text !== "string") return;
+
+        lastText = body.text;
+        if (typeof body.detected_language === "string") {
+          detectedLanguage = body.detected_language;
+        }
+        if (msg.final === true) {
+          settle(makeResult(body.text));
+        }
+      };
+
+      ws.onerror = () => {
+        const err = new Error("Speech websocket connection failed");
+        readyReject?.(err);
+        fail(err);
+      };
+
+      ws.onclose = () => {
+        clearTimeout(connectTimeout);
+        if (phase === "connecting") {
+          const err = new Error("Speech websocket closed before ready");
+          readyReject?.(err);
+          fail(err);
+        } else if (!settled) {
+          if (lastText?.trim()) {
+            settle(makeResult(lastText));
+          } else {
+            fail(new Error("Speech websocket closed before transcription"));
+          }
+        }
+      };
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      readyReject?.(error);
+      fail(error);
+    }
+  })();
+
+  return {
+    sendChunk(samples: Float32Array, sampleRate: number) {
+      if (settled || phase === "committed" || phase === "done" || phase === "error") return;
+
+      const resampled = resampleLinear(samples, sampleRate, TARGET_WAV_SAMPLE_RATE);
+      const pcm = floatToInt16Pcm(resampled);
+      const b64 = encodeInt16PacketToBase64(pcm);
+      const vol = calculatePacketVolume(resampled);
+      const dur = resampled.length / TARGET_WAV_SAMPLE_RATE;
+
+      if (phase === "ready") {
+        sendAppend(b64, vol, dur);
+      } else {
+        buffer.push({ b64, vol, dur });
+      }
+    },
+
+    async commit(): Promise<SpeechToTextResult> {
+      if (phase === "error") throw new Error("Session failed");
+      if (settled) throw new Error("Session already settled");
+
+      if (phase === "connecting") await readyPromise;
+
+      return new Promise<SpeechToTextResult>((resolve, reject) => {
+        onResult = resolve;
+        onError = reject;
+        phase = "committed";
+
+        ws?.send(JSON.stringify({ type: "commit", total_packets: packetPos }));
+
+        // Safety timeout
+        window.setTimeout(() => {
+          if (lastText?.trim()) {
+            settle(makeResult(lastText));
+          } else {
+            fail(new Error("Transcription timed out"));
+          }
+        }, WS_RESPONSE_TIMEOUT_MS);
+      });
+    },
+
+    abort() {
+      if (settled) return;
+      settled = true;
+      phase = "done";
+      buffer.length = 0;
+      ws?.close();
+      readyReject?.(new Error("Aborted"));
+    },
+  };
 }

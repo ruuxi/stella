@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
 import { StellaAnimation, type StellaAnimationHandle } from "@/components/StellaAnimation";
 
 const ORB_POSITION_KEY = "stella:orb-position";
@@ -19,6 +19,10 @@ function savePosition(pos: { right: number; bottom: number }) {
   } catch { /* ignore */ }
 }
 
+export interface FloatingOrbHandle {
+  openWithText(text: string): void;
+}
+
 interface FloatingOrbProps {
   visible: boolean;
   bubbleText: string | null;
@@ -27,7 +31,7 @@ interface FloatingOrbProps {
   onSend: (text: string) => void;
 }
 
-export function FloatingOrb({ visible, bubbleText, bubbleOpacity, isStreaming, onSend }: FloatingOrbProps) {
+export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(function FloatingOrb({ visible, bubbleText, bubbleOpacity, isStreaming, onSend }, ref) {
   const [position, setPosition] = useState(loadPosition);
   const [isDragging, setIsDragging] = useState(false);
   const [isInputOpen, setIsInputOpen] = useState(false);
@@ -38,6 +42,13 @@ export function FloatingOrb({ visible, bubbleText, bubbleOpacity, isStreaming, o
   const stellaRef = useRef<StellaAnimationHandle>(null);
   const dragStartRef = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
   const hasDraggedRef = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    openWithText(text: string) {
+      setInputText(text);
+      setIsInputOpen(true);
+    },
+  }));
 
   // Focus input when opened
   useEffect(() => {
@@ -176,4 +187,4 @@ export function FloatingOrb({ visible, bubbleText, bubbleOpacity, isStreaming, o
       </div>
     </div>
   );
-}
+});
