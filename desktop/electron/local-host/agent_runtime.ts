@@ -40,7 +40,7 @@ export type AgentContext = {
   coreMemory?: string;
   threadHistory?: Array<{ role: string; content: string; toolCallId?: string }>;
   activeThreadId?: string;
-  generalAgentEngine?: "default" | "codex_local";
+  generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
   codexLocalMaxConcurrency?: number;
   proxyToken: {
     token: string;
@@ -539,7 +539,10 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     }
   }
 
-  if (agentType === "general" && isClaudeCodeModel(primaryModelId)) {
+  if (
+    agentType === "general" &&
+    (agentContext.generalAgentEngine === "claude_code_local" || isClaudeCodeModel(primaryModelId))
+  ) {
     const prompt = `${taskDescription}\n\n${taskPrompt}`;
     let subagentSeq = 0;
     const nextSubagentSeq = () => ++subagentSeq;

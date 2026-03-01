@@ -15,7 +15,7 @@ export type LocalTaskManagerAgentContext = {
   coreMemory?: string;
   threadHistory?: Array<{ role: string; content: string; toolCallId?: string }>;
   activeThreadId?: string;
-  generalAgentEngine?: "default" | "codex_local";
+  generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
   codexLocalMaxConcurrency?: number;
   proxyToken: {
     token: string;
