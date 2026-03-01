@@ -1,5 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
-import { useConvexAuth } from "convex/react";
+import { useChatStore } from "../app/state/chat-store";
 import type { AgentStreamEvent } from "./streaming/streaming-types";
 
 interface UseResumeAgentRunOptions {
@@ -35,7 +35,7 @@ export function useResumeAgentRun({
   setPendingUserMessageId,
   handleAgentEvent,
 }: UseResumeAgentRunOptions) {
-  const { isAuthenticated } = useConvexAuth();
+  const { isAuthenticated } = useChatStore();
 
   useEffect(() => {
     if (!isAuthenticated || isStreaming || !activeConversationId || !window.electronAPI) {

@@ -27,6 +27,7 @@ const mockUseChatStore = vi.fn(() => ({
   storageMode: "cloud",
   isLocalStorage: false,
   cloudFeaturesEnabled: true,
+  isAuthenticated: true,
   appendEvent: mockChatStoreAppendEvent,
   appendAgentEvent: vi.fn(),
   uploadAttachments: vi.fn(),
@@ -71,16 +72,16 @@ const BROWSER_SELECTION_KEY = "stella-selected-browser";
 
 function defaultOptions() {
   return {
-    isAuthenticated: false,
     conversationId: null as string | null,
   };
 }
 
-function setCloudMode() {
+function setCloudMode(isAuthenticated = true) {
   mockUseChatStore.mockReturnValue({
     storageMode: "cloud",
     isLocalStorage: false,
-    cloudFeaturesEnabled: true,
+    cloudFeaturesEnabled: isAuthenticated,
+    isAuthenticated,
     appendEvent: mockChatStoreAppendEvent,
     appendAgentEvent: vi.fn(),
     uploadAttachments: vi.fn(),
@@ -89,11 +90,12 @@ function setCloudMode() {
   });
 }
 
-function setLocalMode() {
+function setLocalMode(isAuthenticated = false) {
   mockUseChatStore.mockReturnValue({
     storageMode: "local",
     isLocalStorage: true,
     cloudFeaturesEnabled: false,
+    isAuthenticated,
     appendEvent: mockChatStoreAppendEvent,
     appendAgentEvent: vi.fn(),
     uploadAttachments: vi.fn(),
@@ -140,10 +142,10 @@ describe("useDiscoveryFlow", () => {
   it("does not prepend browsing_bookmarks when no browser is selected in localStorage", () => {
     // Ensure no browser selected
     localStorage.removeItem(BROWSER_SELECTION_KEY);
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-1",
       }),
     );
@@ -155,10 +157,10 @@ describe("useDiscoveryFlow", () => {
 
   it("prepends browsing_bookmarks when browser is selected in localStorage", () => {
     localStorage.setItem(BROWSER_SELECTION_KEY, "chrome");
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-1",
       }),
     );
@@ -170,10 +172,10 @@ describe("useDiscoveryFlow", () => {
 
   it("does not duplicate browsing_bookmarks if already in categories", () => {
     localStorage.setItem(BROWSER_SELECTION_KEY, "chrome");
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-1",
       }),
     );
@@ -203,10 +205,10 @@ describe("useDiscoveryFlow", () => {
     (window as unknown as Record<string, unknown>).electronAPI = {
       checkCoreMemoryExists,
     };
+    setCloudMode(false);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: false,
         conversationId: "conv-1",
       }),
     );
@@ -225,10 +227,10 @@ describe("useDiscoveryFlow", () => {
     (window as unknown as Record<string, unknown>).electronAPI = {
       checkCoreMemoryExists,
     };
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: null,
       }),
     );
@@ -251,10 +253,10 @@ describe("useDiscoveryFlow", () => {
       checkCoreMemoryExists: vi.fn(() => Promise.resolve(true)),
       collectAllSignals: vi.fn(),
     };
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-1",
       }),
     );
@@ -282,10 +284,10 @@ describe("useDiscoveryFlow", () => {
         Promise.resolve({ error: "some error", formatted: null }),
       ),
     };
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-1",
       }),
     );
@@ -330,10 +332,10 @@ describe("useDiscoveryFlow", () => {
       ),
       writeCoreMemory,
     };
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-1",
       }),
     );
@@ -401,10 +403,10 @@ describe("useDiscoveryFlow", () => {
       ),
       writeCoreMemory: vi.fn(() => Promise.resolve()),
     };
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-2",
       }),
     );
@@ -425,7 +427,7 @@ describe("useDiscoveryFlow", () => {
   });
 
   it("starts generation in local mode when core memory is synthesized", async () => {
-    setLocalMode();
+    setLocalMode(true);
 
     const { synthesizeCoreMemory } = await import(
       "../../services/synthesis"
@@ -446,7 +448,6 @@ describe("useDiscoveryFlow", () => {
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-local-1",
       }),
     );
@@ -466,7 +467,7 @@ describe("useDiscoveryFlow", () => {
   });
 
   it("runs discovery synthesis in unauthenticated local mode", async () => {
-    setLocalMode();
+    setLocalMode(false);
 
     const { synthesizeCoreMemory } = await import(
       "../../services/synthesis"
@@ -488,7 +489,6 @@ describe("useDiscoveryFlow", () => {
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: false,
         conversationId: "conv-local-unauth",
       }),
     );
@@ -524,10 +524,10 @@ describe("useDiscoveryFlow", () => {
       ),
       writeCoreMemory: vi.fn(() => Promise.resolve()),
     };
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-3",
       }),
     );
@@ -547,10 +547,10 @@ describe("useDiscoveryFlow", () => {
         Promise.reject(new Error("some error")),
       ),
     };
+    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
-        isAuthenticated: true,
         conversationId: "conv-4",
       }),
     );
@@ -587,7 +587,6 @@ describe("useDiscoveryFlow", () => {
       (props) => useDiscoveryFlow(props),
       {
         initialProps: {
-          isAuthenticated: true,
           conversationId: "conv-5",
         },
       },
@@ -603,7 +602,6 @@ describe("useDiscoveryFlow", () => {
 
     // Force a rerender — the ref guard should prevent a second run
     rerender({
-      isAuthenticated: true,
       conversationId: "conv-5",
     });
 
