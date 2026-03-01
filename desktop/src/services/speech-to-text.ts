@@ -500,12 +500,13 @@ export interface StreamingTranscribeSession {
   abort(): void;
 }
 
+type StreamingPhase = "connecting" | "ready" | "committed" | "done" | "error";
+
 export function createStreamingSession(options?: {
   language?: string[];
   context?: SpeechToTextContext;
 }): StreamingTranscribeSession {
-  let phase: "connecting" | "ready" | "committed" | "done" | "error" =
-    "connecting";
+  let phase: StreamingPhase = "connecting";
   let ws: WebSocket | null = null;
   let packetPos = 0;
   let settled = false;
@@ -583,7 +584,9 @@ export function createStreamingSession(options?: {
   void (async () => {
     try {
       const wsConfig = await resolveSpeechToTextWsConfig(360);
-      if (phase === "done" || phase === "error") return;
+      // Phase may have changed during await (e.g. via fail() from another callback)
+      const p = phase as StreamingPhase;
+      if (p === "done" || p === "error") return;
 
       const socketUrl = buildSpeechToTextSocketUrl(
         wsConfig.websocketUrl,
@@ -688,7 +691,7 @@ export function createStreamingSession(options?: {
       };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      readyReject?.(error);
+      (readyReject as ((e: Error) => void) | null)?.(error);
       fail(error);
     }
   })();
