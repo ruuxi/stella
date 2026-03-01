@@ -175,11 +175,6 @@ vi.mock("../app/ConnectDialog", () => ({
     open ? <div data-testid="connect-dialog" /> : null,
 }));
 
-vi.mock("../app/RuntimeModeDialog", () => ({
-  RuntimeModeDialog: ({ open }: any) =>
-    open ? <div data-testid="runtime-mode-dialog" /> : null,
-}));
-
 vi.mock("../screens/full-shell/SettingsView", () => ({
   default: ({ open, onOpenChange, onSignOut }: any) =>
     open ? (

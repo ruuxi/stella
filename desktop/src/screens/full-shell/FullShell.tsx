@@ -20,7 +20,6 @@ import { FloatingOrb } from "../../components/orb/FloatingOrb";
 import { useOrbMessage } from "../../hooks/use-orb-message";
 import { AuthDialog } from "../../app/AuthDialog";
 import { ConnectDialog } from "../../app/ConnectDialog";
-import { RuntimeModeDialog } from "../../app/RuntimeModeDialog";
 import type { ChatContext, ChatContextUpdate } from "../../types/electron";
 
 import { ChatColumn } from "./ChatColumn";
@@ -80,7 +79,6 @@ export const FullShell = () => {
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
-  const [runtimeModeDialogOpen, setRuntimeModeDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [localWorkspacePanels, setLocalWorkspacePanels] = useState<
     LocalWorkspacePanel[]
@@ -450,18 +448,10 @@ export const FullShell = () => {
         open={connectDialogOpen}
         onOpenChange={setConnectDialogOpen}
       />
-      <RuntimeModeDialog
-        open={runtimeModeDialogOpen}
-        onOpenChange={setRuntimeModeDialogOpen}
-      />
       <Suspense fallback={null}>
         <SettingsDialog
           open={settingsDialogOpen}
           onOpenChange={setSettingsDialogOpen}
-          onOpenRuntimeMode={() => {
-            setSettingsDialogOpen(false);
-            setRuntimeModeDialogOpen(true);
-          }}
           onSignOut={() => {
             setSettingsDialogOpen(false);
             void secureSignOut();

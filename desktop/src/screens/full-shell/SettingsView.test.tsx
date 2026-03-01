@@ -104,7 +104,6 @@ function defaultProps(
   return {
     open: true,
     onOpenChange: vi.fn(),
-    onOpenRuntimeMode: vi.fn(),
     onSignOut: vi.fn(),
     ...overrides,
   };
@@ -229,9 +228,9 @@ describe("Tab switching", () => {
     expect(modelsTab.className).not.toContain("settings-sidebar-tab--active");
   });
 
-  it("shows BasicTab content by default (Runtime Mode, Sign Out, etc)", () => {
+  it("shows BasicTab content by default (Account Mode, Sign Out, etc)", () => {
     render(<SettingsDialog {...defaultProps()} />);
-    expect(screen.getByText("Runtime Mode")).toBeTruthy();
+    expect(screen.getByText("Account Mode")).toBeTruthy();
     // "Sign Out" appears as both label and button
     const signOutElements = screen.getAllByText("Sign Out");
     expect(signOutElements.length).toBeGreaterThanOrEqual(2);
@@ -251,17 +250,17 @@ describe("Tab switching", () => {
     expect(screen.getByText("API Keys")).toBeTruthy();
 
     // Basic tab content should be hidden
-    expect(screen.queryByText("Runtime Mode")).toBeNull();
+    expect(screen.queryByText("Account Mode")).toBeNull();
   });
 
   it("switches back to Basic tab from Models", () => {
     render(<SettingsDialog {...defaultProps()} />);
 
     fireEvent.click(screen.getByText("Models"));
-    expect(screen.queryByText("Runtime Mode")).toBeNull();
+    expect(screen.queryByText("Account Mode")).toBeNull();
 
     fireEvent.click(screen.getByText("Basic"));
-    expect(screen.getByText("Runtime Mode")).toBeTruthy();
+    expect(screen.getByText("Account Mode")).toBeTruthy();
     expect(screen.queryByText("Model Configuration")).toBeNull();
   });
 });
@@ -309,28 +308,6 @@ describe("BasicTab", () => {
       unobserve() {}
       disconnect() {}
     } as unknown as typeof globalThis.ResizeObserver;
-  });
-
-  it("renders Runtime Mode row with Configure button", () => {
-    render(<SettingsDialog {...defaultProps()} />);
-    expect(screen.getByText("Runtime Mode")).toBeTruthy();
-    expect(screen.getByText("Configure local or 24/7 cloud execution")).toBeTruthy();
-
-    const configureBtn = screen.getAllByRole("button").find(
-      (btn) => btn.textContent === "Configure",
-    );
-    expect(configureBtn).toBeTruthy();
-  });
-
-  it("calls onOpenRuntimeMode when Configure button is clicked", () => {
-    const onOpenRuntimeMode = vi.fn();
-    render(<SettingsDialog {...defaultProps({ onOpenRuntimeMode })} />);
-
-    const configureBtn = screen.getAllByRole("button").find(
-      (btn) => btn.textContent === "Configure",
-    );
-    fireEvent.click(configureBtn!);
-    expect(onOpenRuntimeMode).toHaveBeenCalledTimes(1);
   });
 
   it("renders Sign Out row with Sign Out button", () => {
@@ -382,7 +359,7 @@ describe("BasicTab", () => {
   it("renders all five BasicTab rows", () => {
     render(<SettingsDialog {...defaultProps()} />);
     const rows = document.querySelectorAll(".settings-row");
-    expect(rows.length).toBe(5);
+    expect(rows.length).toBe(4);
   });
 });
 

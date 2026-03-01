@@ -192,7 +192,6 @@ describe("IntegrationCard", () => {
       if (args && typeof args === "object" && "provider" in (args as Record<string, unknown>)) {
         return null; // getConnection
       }
-      if (args === undefined) return "local"; // runtimeMode
       if (args && typeof args === "object" && Object.keys(args as Record<string, unknown>).length === 0) {
         return "data:image/png;base64,abc"; // WhatsApp QR code
       }
@@ -232,7 +231,6 @@ describe("IntegrationCard", () => {
       if (args && typeof args === "object" && "provider" in (args as Record<string, unknown>)) {
         return null;
       }
-      if (args === undefined) return "local";
       if (args && typeof args === "object" && Object.keys(args as Record<string, unknown>).length === 0) {
         return "sgnl://link-device";
       }
@@ -269,7 +267,6 @@ describe("IntegrationCard", () => {
       if (args && typeof args === "object" && "provider" in (args as Record<string, unknown>)) {
         return null;
       }
-      if (args === undefined) return "local";
       if (args && typeof args === "object" && Object.keys(args as Record<string, unknown>).length === 0) {
         return null;
       }

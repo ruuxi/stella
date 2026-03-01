@@ -13,7 +13,6 @@ import { sanitizeExternalLinkUrl } from "@/lib/url-safety";
 function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
   const setupBridge = useAction(api.channels.bridge_actions.setupBridge);
   const getBridgeBundle = useAction(api.channels.bridge_actions.getBridgeBundle);
-  const runtimeMode = useQuery(api.data.preferences.getRuntimeMode);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,18 +25,16 @@ function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
         const result = await setupBridge({ provider });
         if (cancelled) return;
 
-        if (runtimeMode !== "cloud_247") {
-          const electronApi = window.electronAPI;
-          const bridgeStatus = electronApi
-            ? await electronApi.bridgeStatus({ provider }).catch(() => null)
-            : null;
-          if (cancelled) return;
+        const electronApi = window.electronAPI;
+        const bridgeStatus = electronApi
+          ? await electronApi.bridgeStatus({ provider }).catch(() => null)
+          : null;
+        if (cancelled) return;
 
-          const shouldStartLocal =
-            result.status === "initializing" || !bridgeStatus?.running;
-          if (shouldStartLocal) {
-            await deployAndStartLocalBridge(provider, getBridgeBundle);
-          }
+        const shouldStartLocal =
+          result.status === "initializing" || !bridgeStatus?.running;
+        if (shouldStartLocal) {
+          await deployAndStartLocalBridge(provider, getBridgeBundle);
         }
         if (!cancelled) setError(null);
       } catch (err) {
@@ -48,7 +45,7 @@ function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [provider, isExpanded, runtimeMode, setupBridge, getBridgeBundle]);
+  }, [provider, isExpanded, setupBridge, getBridgeBundle]);
 
   return error;
 }
