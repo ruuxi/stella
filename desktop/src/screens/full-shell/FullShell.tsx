@@ -17,10 +17,7 @@ import { Sidebar } from "../../components/Sidebar";
 import { WorkspaceArea } from "../../components/workspace/WorkspaceArea";
 import { HeaderTabBar } from "../../components/header/HeaderTabBar";
 import { FloatingOrb, type FloatingOrbHandle } from "../../components/orb/FloatingOrb";
-import { VoiceOverlay } from "../../components/VoiceOverlay";
 import { useOrbMessage } from "../../hooks/use-orb-message";
-import { AuthDialog } from "../../app/AuthDialog";
-import { ConnectDialog } from "../../app/ConnectDialog";
 import type { ChatContext, ChatContextUpdate } from "../../types/electron";
 
 import { ChatColumn } from "./ChatColumn";
@@ -34,6 +31,9 @@ import { useReturnDetection, formatDuration } from "../../hooks/use-return-detec
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
 
 const SettingsDialog = lazy(() => import("./SettingsView"));
+const AuthDialog = lazy(() => import("../../app/AuthDialog").then(m => ({ default: m.AuthDialog })));
+const ConnectDialog = lazy(() => import("../../app/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
+const VoiceOverlay = lazy(() => import("../../components/VoiceOverlay").then(m => ({ default: m.VoiceOverlay })));
 
 type PersonalPage = {
   pageId: string;
@@ -96,29 +96,36 @@ export const FullShell = () => {
     }
 
     let cancelled = false;
+    const normalizePanels = (result: unknown) => {
+      return (Array.isArray(result) ? result : [])
+        .filter(
+          (panel): panel is LocalWorkspacePanel =>
+            Boolean(
+              panel &&
+                typeof panel.name === "string" &&
+                typeof panel.title === "string",
+            ),
+        )
+        .map((panel) => ({
+          name: panel.name.trim(),
+          title: panel.title.trim() || panel.name.trim(),
+        }))
+        .filter((panel) => panel.name.length > 0);
+    };
+
+    const applyPanels = (normalized: LocalWorkspacePanel[]) => {
+      if (!cancelled) {
+        setLocalWorkspacePanels((previous) =>
+          arePanelListsEqual(previous, normalized) ? previous : normalized,
+        );
+      }
+    };
+
     const loadPanels = async () => {
       try {
         const result = await electronApi.listWorkspacePanels();
         if (cancelled) return;
-
-        const normalized = (Array.isArray(result) ? result : [])
-          .filter(
-            (panel): panel is LocalWorkspacePanel =>
-              Boolean(
-                panel &&
-                  typeof panel.name === "string" &&
-                  typeof panel.title === "string",
-              ),
-          )
-          .map((panel) => ({
-            name: panel.name.trim(),
-            title: panel.title.trim() || panel.name.trim(),
-          }))
-          .filter((panel) => panel.name.length > 0);
-
-        setLocalWorkspacePanels((previous) =>
-          arePanelListsEqual(previous, normalized) ? previous : normalized,
-        );
+        applyPanels(normalizePanels(result));
       } catch (error) {
         if (!cancelled) {
           console.warn("[FullShell] Failed to load local workspace pages", error);
@@ -127,13 +134,24 @@ export const FullShell = () => {
     };
 
     void loadPanels();
-    const intervalId = window.setInterval(() => {
-      void loadPanels();
-    }, LOCAL_PANELS_POLL_INTERVAL_MS);
+
+    // Prefer file watcher over polling when available
+    const unsubscribe = electronApi.onWorkspacePanelsChanged?.((panels) => {
+      applyPanels(normalizePanels(panels));
+    });
+
+    // Fallback to polling only if watcher is unavailable
+    let intervalId: number | undefined;
+    if (!unsubscribe) {
+      intervalId = window.setInterval(() => {
+        void loadPanels();
+      }, LOCAL_PANELS_POLL_INTERVAL_MS);
+    }
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      unsubscribe?.();
+      if (intervalId !== undefined) window.clearInterval(intervalId);
     };
   }, []);
 
@@ -355,7 +373,7 @@ export const FullShell = () => {
 
   const appReady = onboarding.onboardingDone && !onboarding.isAuthLoading;
 
-  const chatColumnProps = {
+  const chatColumnProps = useMemo(() => ({
     events,
     streamingText,
     reasoningText,
@@ -392,7 +410,48 @@ export const FullShell = () => {
     onSelectionChange: onboarding.setHasDiscoverySelections,
     onDemoChange: handleDemoChange,
     onCommandSelect: handleCommandSelect,
-  };
+  }), [
+    events,
+    streamingText,
+    reasoningText,
+    isStreaming,
+    pendingUserMessageId,
+    selfModMap,
+    message,
+    chatContext,
+    selectedText,
+    scrollContainerRef,
+    handleScroll,
+    showScrollButton,
+    scrollToBottom,
+    activeConversationId,
+    onboarding.onboardingDone,
+    onboarding.onboardingExiting,
+    onboarding.isAuthenticated,
+    onboarding.isAuthLoading,
+    canSubmit,
+    handleSend,
+    onboarding.hasExpanded,
+    onboarding.splitMode,
+    onboarding.hasDiscoverySelections,
+    onboarding.onboardingKey,
+    onboarding.stellaAnimationRef,
+    onboarding.triggerFlash,
+    onboarding.startBirthAnimation,
+    onboarding.completeOnboarding,
+    onboarding.handleEnterSplit,
+    handleDiscoveryConfirm,
+    onboarding.setHasDiscoverySelections,
+    handleDemoChange,
+    handleCommandSelect,
+  ]);
+
+  const handleStoreBack = useCallback(() => setView('home'), [setView]);
+
+  const handleComposePrompt = useCallback((text: string) => {
+    setView("home");
+    setMessage(text);
+  }, [setView]);
 
   const handleOrbSend = useCallback(
     (text: string) => {
@@ -433,11 +492,8 @@ export const FullShell = () => {
                   view={state.view}
                   activeDemo={activeDemo}
                   demoClosing={demoClosing}
-                  onStoreBack={() => setView('home')}
-                  onComposePrompt={(text) => {
-                    setView("home");
-                    setMessage(text);
-                  }}
+                  onStoreBack={handleStoreBack}
+                  onComposePrompt={handleComposePrompt}
                   conversationId={activeConversationId ?? undefined}
                 />
               )}
@@ -451,7 +507,9 @@ export const FullShell = () => {
                 onSend={handleOrbSend}
               />
 
-              <VoiceOverlay onTranscript={handleVoiceTranscript} />
+              <Suspense fallback={null}>
+                <VoiceOverlay onTranscript={handleVoiceTranscript} />
+              </Suspense>
             </div>
           </>
         ) : (
@@ -459,11 +517,15 @@ export const FullShell = () => {
         )}
       </div>
 
-      <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
-      <ConnectDialog
-        open={connectDialogOpen}
-        onOpenChange={setConnectDialogOpen}
-      />
+      <Suspense fallback={null}>
+        <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ConnectDialog
+          open={connectDialogOpen}
+          onOpenChange={setConnectDialogOpen}
+        />
+      </Suspense>
       <Suspense fallback={null}>
         <SettingsDialog
           open={settingsDialogOpen}

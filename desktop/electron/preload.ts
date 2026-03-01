@@ -163,6 +163,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeCoreMemory: (content: string) => ipcRenderer.invoke('browserData:writeCoreMemory', content),
   listWorkspacePanels: () =>
     ipcRenderer.invoke('workspace:listPanels') as Promise<Array<{ name: string; title: string }>>,
+  onWorkspacePanelsChanged: (callback: (panels: Array<{ name: string; title: string }>) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, panels: Array<{ name: string; title: string }>) => callback(panels)
+    ipcRenderer.on('workspace:panelsChanged', handler)
+    return () => { ipcRenderer.removeListener('workspace:panelsChanged', handler) }
+  },
 
   // Comprehensive user signal collection (browser + dev projects + shell + apps)
   collectAllSignals: (options?: { categories?: string[] }) =>

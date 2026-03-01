@@ -20,6 +20,7 @@ import { InlineAuth } from "../InlineAuth";
 import { useTheme } from "../../theme/theme-context";
 import { getPlatform } from "@/utils/platform";
 import "../Onboarding.css";
+import "../../styles/selfmod-demo.css";
 
 const FADE_OUT_MS = 400;
 const FADE_GAP_MS = 200;
