@@ -9,7 +9,7 @@ import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
 import { ChatStoreProvider } from './app/state/chat-store'
 
-type WindowType = 'full' | 'mini' | 'radial' | 'region'
+type WindowType = 'full' | 'mini' | 'radial' | 'region' | 'wake-word-capture'
 const CredentialRequestLayer = lazy(() =>
   import('./app/CredentialRequestLayer').then((module) => ({
     default: module.CredentialRequestLayer,
@@ -27,6 +27,9 @@ const RadialShell = lazy(() =>
 const RegionCapture = lazy(() =>
   import('./screens/RegionCapture').then((module) => ({ default: module.RegionCapture })),
 )
+const WakeWordCapture = lazy(() =>
+  import('./screens/WakeWordCapture').then((module) => ({ default: module.WakeWordCapture })),
+)
 function getWindowType(isElectron: boolean, windowParam: string | null, fallback: string): WindowType {
   if (!isElectron) {
     return fallback as WindowType
@@ -35,6 +38,7 @@ function getWindowType(isElectron: boolean, windowParam: string | null, fallback
     case 'radial':
     case 'region':
     case 'mini':
+    case 'wake-word-capture':
       return windowParam
     default:
       return 'full'
@@ -59,7 +63,9 @@ function App() {
     )
 
   const shell =
-    windowType === 'radial' ? (
+    windowType === 'wake-word-capture' ? (
+      <WakeWordCapture />
+    ) : windowType === 'radial' ? (
       <div className="app window-radial">
         <RadialShell />
       </div>

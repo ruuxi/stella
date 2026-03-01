@@ -22,6 +22,12 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   useEffect(() => {
     if (!state.isVoiceRtcActive) return;
 
+    // Disconnect any zombie session from a previous StrictMode mount
+    if (sessionRef.current) {
+      void sessionRef.current.disconnect();
+      sessionRef.current = null;
+    }
+
     let aborted = false;
     const session = new RealtimeVoiceSession();
     sessionRef.current = session;
@@ -30,7 +36,6 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
       if (aborted) return;
       if (event.type === "state-change") {
         setSessionState(event.state);
-        // Update analyser ref once connected
         analyserRef.current = session.getAnalyser();
       }
     });
@@ -42,18 +47,8 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
       setSessionState("error");
     });
 
-    // Poll analyser until available (it's created during connect)
-    const pollInterval = setInterval(() => {
-      const a = session.getAnalyser();
-      if (a) {
-        analyserRef.current = a;
-        clearInterval(pollInterval);
-      }
-    }, 100);
-
     return () => {
       aborted = true;
-      clearInterval(pollInterval);
       unsubscribe();
       analyserRef.current = null;
       void session.disconnect();

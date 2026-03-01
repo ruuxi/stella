@@ -67,8 +67,8 @@ vi.mock("../screens/RegionCapture", () => ({
   RegionCapture: () => <div data-testid="region-capture" />,
 }));
 
-vi.mock("../screens/VoiceWidget", () => ({
-  VoiceWidget: () => <div data-testid="voice-widget" />,
+vi.mock("../screens/WakeWordCapture", () => ({
+  WakeWordCapture: () => <div data-testid="wake-word-capture" />,
 }));
 
 import App from "../App";
@@ -125,20 +125,6 @@ describe("App", () => {
     expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
   });
 
-  it("renders VoiceWidget when ui state window is voice and not Electron", async () => {
-    vi.mocked(useUiState).mockReturnValue({
-      state: { mode: "chat", window: "voice", view: "chat", conversationId: null },
-      setMode: vi.fn(),
-      setView: vi.fn(),
-      setConversationId: vi.fn(),
-      setWindow: vi.fn(),
-      updateState: vi.fn(),
-    } as any);
-
-    render(<App />);
-    expect(await screen.findByTestId("voice-widget")).toBeInTheDocument();
-    expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
-  });
 
   it("renders RadialShell when Electron and window param is radial", async () => {
     mockGetElectronApi.mockReturnValue({} as any);
@@ -198,17 +184,6 @@ describe("App", () => {
     expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
   });
 
-  it("renders VoiceWidget when Electron and window param is voice", async () => {
-    mockGetElectronApi.mockReturnValue({} as any);
-    Object.defineProperty(window, "location", {
-      value: { search: "?window=voice", href: "http://localhost/?window=voice" },
-      writable: true,
-    });
-
-    render(<App />);
-    expect(await screen.findByTestId("voice-widget")).toBeInTheDocument();
-    expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
-  });
 
   it("does not render auth bridges for utility windows", async () => {
     mockGetElectronApi.mockReturnValue({} as any);

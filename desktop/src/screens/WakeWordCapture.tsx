@@ -1,33 +1,37 @@
+/**
+ * Headless component for wake word audio capture.
+ *
+ * Rendered in a hidden BrowserWindow. Captures microphone audio via
+ * Web Audio API, resamples to 16kHz mono, and streams Int16 PCM chunks
+ * to the main process via IPC for wake word detection.
+ */
+
 import { useEffect, useRef } from 'react'
 
-// ---------------------------------------------------------------------------
-// Wake word background audio capture
-// Runs in the voice window renderer, streams 16kHz PCM to main process
-// ---------------------------------------------------------------------------
-
-const useWakeWordCapture = () => {
+export const WakeWordCapture = () => {
   const streamRef = useRef<MediaStream | null>(null)
   const contextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
+  const activeRef = useRef(false)
 
   useEffect(() => {
     const api = window.electronAPI
     if (!api?.sendWakeWordAudio || !api?.onWakeWordStartCapture) return
 
-    let active = false
-
     const startCapture = async () => {
-      if (active) return
+      if (activeRef.current) return
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         streamRef.current = stream
 
-        const ctx = new AudioContext({ sampleRate: 16000 })
+        // Use native sample rate — forcing 16kHz can cause silent/broken capture
+        const ctx = new AudioContext()
         contextRef.current = ctx
 
         const source = ctx.createMediaStreamSource(stream)
+        const actualRate = ctx.sampleRate
 
-        // ScriptProcessorNode with 4096 buffer; we chunk it into 1280 samples (80ms at 16kHz)
+        // ScriptProcessorNode — bufferSize must be power of 2
         const bufferSize = 4096
         const processor = ctx.createScriptProcessor(bufferSize, 1, 1)
         processorRef.current = processor
@@ -35,19 +39,34 @@ const useWakeWordCapture = () => {
         let remainder = new Float32Array(0)
 
         processor.onaudioprocess = (e) => {
-          if (!active) return
-          const input = e.inputBuffer.getChannelData(0)
+          if (!activeRef.current) return
 
-          // Combine with remainder
+          let input = e.inputBuffer.getChannelData(0)
+
+          // Resample if browser gave us a different rate than 16kHz
+          if (actualRate !== 16000) {
+            const ratio = 16000 / actualRate
+            const newLen = Math.round(input.length * ratio)
+            const resampled = new Float32Array(newLen)
+            for (let i = 0; i < newLen; i++) {
+              const srcIdx = i / ratio
+              const lo = Math.floor(srcIdx)
+              const hi = Math.min(lo + 1, input.length - 1)
+              const frac = srcIdx - lo
+              resampled[i] = input[lo] * (1 - frac) + input[hi] * frac
+            }
+            input = resampled
+          }
+
+          // Combine with remainder from previous buffer
           const combined = new Float32Array(remainder.length + input.length)
           combined.set(remainder)
           combined.set(input, remainder.length)
 
-          // Send in 1280-sample chunks
+          // Send in 1280-sample (80ms) chunks
           let offset = 0
           while (offset + 1280 <= combined.length) {
-            const chunk = combined.slice(offset, offset + 1280)
-            // Convert float32 [-1, 1] to int16
+            const chunk = combined.subarray(offset, offset + 1280)
             const int16 = new Int16Array(1280)
             for (let i = 0; i < 1280; i++) {
               int16[i] = Math.max(-32768, Math.min(32767, Math.round(chunk[i] * 32767)))
@@ -61,14 +80,14 @@ const useWakeWordCapture = () => {
 
         source.connect(processor)
         processor.connect(ctx.destination)
-        active = true
+        activeRef.current = true
       } catch (err) {
-        console.error('[WakeWord] Failed to start capture:', err)
+        console.error('[WakeWordCapture] Failed to start:', err)
       }
     }
 
     const stopCapture = () => {
-      active = false
+      activeRef.current = false
       if (processorRef.current) {
         processorRef.current.disconnect()
         processorRef.current = null
@@ -92,14 +111,7 @@ const useWakeWordCapture = () => {
       unsub2()
     }
   }, [])
-}
 
-// ---------------------------------------------------------------------------
-// VoiceWidget — wake word capture only (no UI)
-// Rendered in the hidden voice window for background audio access.
-// ---------------------------------------------------------------------------
-
-export const VoiceWidget = () => {
-  useWakeWordCapture()
+  // No UI — this is a headless capture component
   return null
 }

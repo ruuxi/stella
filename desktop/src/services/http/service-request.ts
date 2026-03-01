@@ -41,20 +41,16 @@ export const createServiceRequest = async (
   const includeAuth = options.includeAuth ?? true;
   const includeDeviceId = options.includeDeviceId ?? true;
 
-  const requestHeaders = includeAuth ? await getAuthHeaders(headers) : { ...headers };
+  // Run auth + device ID fetch in parallel
+  const [requestHeaders, deviceId] = await Promise.all([
+    includeAuth ? getAuthHeaders(headers) : Promise.resolve({ ...headers }),
+    includeDeviceId
+      ? getOrCreateDeviceId().catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
-  if (
-    includeDeviceId &&
-    !requestHeaders["X-Device-ID"]
-  ) {
-    try {
-      const deviceId = await getOrCreateDeviceId();
-      if (deviceId) {
-        requestHeaders["X-Device-ID"] = deviceId;
-      }
-    } catch {
-      // Device ID is best-effort for anonymous endpoint access.
-    }
+  if (deviceId && !requestHeaders["X-Device-ID"]) {
+    requestHeaders["X-Device-ID"] = deviceId;
   }
 
   return {

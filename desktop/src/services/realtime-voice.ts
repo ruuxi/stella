@@ -92,50 +92,50 @@ export class RealtimeVoiceSession {
     this.setState("connecting");
 
     try {
-      // 1. Get ephemeral key from backend
-      const { endpoint, headers } = await createServiceRequest("/api/voice/session");
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId }),
-      });
-      if (this.destroyed) return;
-      if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`Failed to create voice session: ${res.status} ${detail}`);
-      }
-      const { clientSecret, model } = (await res.json()) as {
-        clientSecret: string;
-        expiresAt?: number;
-        model: string;
-        voice: string;
-      };
+      // 1. Fetch ephemeral key and acquire microphone IN PARALLEL
+      const keyPromise = (async () => {
+        const { endpoint, headers } = await createServiceRequest("/api/voice/session");
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId }),
+        });
+        if (!res.ok) {
+          const detail = await res.text();
+          throw new Error(`Failed to create voice session: ${res.status} ${detail}`);
+        }
+        return (await res.json()) as {
+          clientSecret: string;
+          expiresAt?: number;
+          model: string;
+          voice: string;
+        };
+      })();
 
-      if (this.destroyed) return;
+      const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // 2. Get microphone
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
+      const [keyResult, micStream] = await Promise.all([keyPromise, micPromise]);
 
       if (this.destroyed) {
-        this.localStream.getTracks().forEach((t) => t.stop());
-        this.localStream = null;
+        micStream.getTracks().forEach((t) => t.stop());
         return;
       }
 
-      // 3. Create peer connection
-      this.pc = new RTCPeerConnection();
+      const { clientSecret, model } = keyResult;
+      this.localStream = micStream;
 
-      // Add mic track
+      // 2. Create peer connection + SDP offer (no network, just local)
+      this.pc = new RTCPeerConnection();
+      if (this.destroyed) { this.cleanup(); return; }
+
       const audioTrack = this.localStream.getTracks()[0];
       this.pc.addTrack(audioTrack, this.localStream);
 
-      // 4. Create data channel
+      // 3. Create data channel
       this.dc = this.pc.createDataChannel("oai-events");
       this.setupDataChannel();
 
-      // 5. Handle remote audio (model's voice)
+      // 4. Handle remote audio (model's voice)
       this.pc.ontrack = (event) => {
         if (this.destroyed) return;
         const remoteStream = event.streams[0];
@@ -144,14 +144,11 @@ export class RealtimeVoiceSession {
         }
       };
 
-      // 6. SDP negotiation with OpenAI using ephemeral key
+      // 5. SDP negotiation with OpenAI using ephemeral key
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
 
-      if (this.destroyed) {
-        this.cleanup();
-        return;
-      }
+      if (this.destroyed) { this.cleanup(); return; }
 
       const sdpResponse = await fetch(
         `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
@@ -165,10 +162,7 @@ export class RealtimeVoiceSession {
         }
       );
 
-      if (this.destroyed) {
-        this.cleanup();
-        return;
-      }
+      if (this.destroyed) { this.cleanup(); return; }
 
       if (!sdpResponse.ok) {
         throw new Error(
@@ -182,10 +176,7 @@ export class RealtimeVoiceSession {
         sdp: answerSdp,
       });
 
-      if (this.destroyed) {
-        this.cleanup();
-        return;
-      }
+      if (this.destroyed) { this.cleanup(); return; }
 
       // Setup audio analyser for visualization
       this.setupAudioAnalyser();
@@ -247,6 +238,7 @@ export class RealtimeVoiceSession {
   }
 
   private setupAudioPlayback(stream: MediaStream) {
+    if (this.destroyed) return;
     if (this.audioElement) {
       this.audioElement.pause();
       this.audioElement.srcObject = null;
@@ -255,6 +247,7 @@ export class RealtimeVoiceSession {
     this.audioElement.srcObject = stream;
     this.audioElement.autoplay = true;
     this.audioElement.play().catch((err) => {
+      if (this.destroyed) return;
       console.error("[RealtimeVoice] audio play failed:", err);
     });
   }
