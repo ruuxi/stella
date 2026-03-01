@@ -105,6 +105,10 @@ export const WakeWordCapture = () => {
     const unsub1 = api.onWakeWordStartCapture(startCapture)
     const unsub2 = api.onWakeWordStopCapture(stopCapture)
 
+    // Tell main process we're mounted and ready to receive start/stop commands.
+    // This fixes a race where start-capture arrives before the component mounts.
+    api.signalWakeWordReady?.()
+
     return () => {
       stopCapture()
       unsub1()
