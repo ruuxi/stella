@@ -3,7 +3,7 @@ import { v, ConvexError } from "convex/values";
 import { decryptSecret, encryptSecret } from "./secrets_crypto";
 import type { QueryCtx } from "../_generated/server";
 import { requireSensitiveUserId } from "../auth";
-import { optionalJsonValueValidator } from "../shared_validators";
+import { optionalJsonValueValidator, requireBoundedString } from "../shared_validators";
 
 const secretPublicFields = {
   provider: v.string(),
@@ -79,6 +79,10 @@ export const createSecret = mutation({
     metadata: optionalJsonValueValidator,
   },
   handler: async (ctx, args) => {
+    requireBoundedString(args.provider, "provider", 100);
+    requireBoundedString(args.label, "label", 100);
+    requireBoundedString(args.plaintext, "plaintext", 2000);
+
     const ownerId = await requireSensitiveUserId(ctx);
     const now = Date.now();
     const encryptedPayload = await encryptSecret(args.plaintext);
@@ -208,6 +212,11 @@ export const updateSecret = internalMutation({
     metadata: optionalJsonValueValidator,
   },
   handler: async (ctx, args) => {
+    requireBoundedString(args.plaintext, "plaintext", 2000);
+    if (args.label !== undefined) {
+      requireBoundedString(args.label, "label", 100);
+    }
+
     const ownerId = await requireSensitiveUserId(ctx);
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== ownerId) {

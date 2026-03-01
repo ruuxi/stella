@@ -1,4 +1,22 @@
 import { type Validator, type Value, v } from "convex/values";
+import { ConvexError } from "convex/values";
+
+/**
+ * Runtime bounded-string check. Convex has no v.custom(), so we validate
+ * inside handlers and throw a structured ConvexError on violation.
+ */
+export const requireBoundedString = (
+  value: string,
+  fieldName: string,
+  maxLength: number,
+): void => {
+  if (value.length > maxLength) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `${fieldName} exceeds maximum allowed length of ${maxLength} characters`,
+    });
+  }
+};
 
 type JsonValidator = Validator<Value, "required", string>;
 
