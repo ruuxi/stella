@@ -212,6 +212,10 @@ export const createLocalHostRunner = ({
   const watchers: fs.FSWatcher[] = [];
   let deferredDeleteSweepInterval: ReturnType<typeof setInterval> | null = null;
 
+  // Cloud sync gate — disabled for anonymous users and private/local mode.
+  // The renderer sends this flag once it knows the user's auth + account state.
+  let cloudSyncEnabled = false;
+
   let coreMemoryHash: string | null = null;
   let coreMemoryWatcher: fs.FSWatcher | null = null;
   let coreMemoryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -219,7 +223,7 @@ export const createLocalHostRunner = ({
   const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
 
   const syncCoreMemory = async () => {
-    if (!client || !authToken) return;
+    if (!client || !authToken || !cloudSyncEnabled) return;
     try {
       const content = await fs.promises.readFile(coreMemoryPath, "utf-8");
       if (!content.trim()) return;
@@ -573,7 +577,7 @@ export const createLocalHostRunner = ({
   };
 
   const syncManifests = async () => {
-    const canSyncCloud = Boolean(client && authToken);
+    const canSyncCloud = Boolean(client && authToken && cloudSyncEnabled);
     if (syncPromise) return syncPromise;
 
     syncPromise = (async () => {
@@ -1088,6 +1092,16 @@ export const createLocalHostRunner = ({
     }
   };
 
+  const setCloudSyncEnabled = (enabled: boolean) => {
+    if (enabled === cloudSyncEnabled) return;
+    cloudSyncEnabled = enabled;
+    log("Cloud sync", enabled ? "enabled" : "disabled");
+    if (isRunning && enabled && client && authToken) {
+      // Sync now that cloud sync has been turned on
+      void syncManifests();
+    }
+  };
+
   const setAuthToken = (token: string | null) => {
     const normalizedToken =
       typeof token === "string" && token.trim().length > 0 ? token.trim() : null;
@@ -1559,6 +1573,7 @@ export const createLocalHostRunner = ({
     deviceId,
     setConvexUrl,
     setAuthToken,
+    setCloudSyncEnabled,
     start,
     stop,
     subscribeQuery,

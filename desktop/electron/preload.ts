@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
   configureHost: (config: { convexUrl?: string; convexSiteUrl?: string }) => ipcRenderer.invoke('host:configure', config),
   setAuthState: (payload: { authenticated: boolean; token?: string }) => ipcRenderer.invoke('auth:setState', payload),
+  setCloudSyncEnabled: (payload: { enabled: boolean }) => ipcRenderer.invoke('host:setCloudSyncEnabled', payload),
   onAuthCallback: (callback: (data: { url: string }) => void) => {
     const handler = (_event: IpcRendererEvent, data: { url: string }) => {
       callback(data)

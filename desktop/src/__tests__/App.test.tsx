@@ -31,6 +31,10 @@ vi.mock("../app/AuthTokenBridge", () => ({
   AuthTokenBridge: () => <div data-testid="auth-token-bridge" />,
 }));
 
+vi.mock("../app/CloudSyncBridge", () => ({
+  CloudSyncBridge: () => <div data-testid="cloud-sync-bridge" />,
+}));
+
 vi.mock("../app/AuthDeepLinkHandler", () => ({
   AuthDeepLinkHandler: () => <div data-testid="auth-deep-link-handler" />,
 }));
