@@ -1290,7 +1290,310 @@ http.route({
   }),
 });
 
+// --- Voice-to-Voice (Realtime API) ---
+
+const VOICE_SESSION_RATE_LIMIT = 10; // per minute
+const VOICE_SESSION_RATE_WINDOW_MS = 60_000;
+const VOICE_LOG_RATE_LIMIT = 120; // per minute
+const VOICE_LOG_RATE_WINDOW_MS = 60_000;
+
+http.route({
+  path: "/api/voice/session",
+  method: "OPTIONS",
+  handler: corsPreflightHandler,
+});
+
+http.route({
+  path: "/api/voice/session",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: "voice_session",
+      key: identity.subject,
+      limit: VOICE_SESSION_RATE_LIMIT,
+      windowMs: VOICE_SESSION_RATE_WINDOW_MS,
+      blockMs: VOICE_SESSION_RATE_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+    }
+
+    type VoiceSessionBody = { conversationId?: string; voice?: string; model?: string };
+    let body: VoiceSessionBody | null = null;
+    try {
+      body = (await request.json()) as VoiceSessionBody;
+    } catch {
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
+    }
+
+    // Resolve owner ID from identity
+    const ownerId = identity.subject;
+
+    // Conversation ID is optional — local-mode conversations use locally-generated
+    // ULIDs (uppercase, digit-prefixed) that aren't valid Convex document IDs.
+    // Only attempt ownership verification for IDs that look like Convex IDs
+    // (lowercase, no leading digits) to avoid noisy validation errors in logs.
+    let convexConversationId: Id<"conversations"> | undefined;
+    const rawConvId = body?.conversationId;
+    const looksLikeConvexId = rawConvId && /^[a-z]/.test(rawConvId);
+    if (looksLikeConvexId) {
+      try {
+        await requireConversationOwnerAction(ctx, rawConvId as Id<"conversations">);
+        convexConversationId = rawConvId as Id<"conversations">;
+      } catch {
+        // Conversation not found — skip context enrichment
+      }
+    }
+
+    // Resolve OpenAI API key: BYOK first, then platform key
+    let openaiApiKey: string | null = null;
+    try {
+      openaiApiKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
+        ownerId,
+        provider: "llm:openai",
+      });
+    } catch {
+      // BYOK lookup failed — fall through to platform key
+    }
+    if (!openaiApiKey) {
+      openaiApiKey = process.env.OPENAI_API_KEY ?? null;
+    }
+    if (!openaiApiKey) {
+      return withCors(
+        new Response(
+          JSON.stringify({ error: "No OpenAI API key configured. Add one in Settings or set OPENAI_API_KEY." }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        ),
+        origin,
+      );
+    }
+
+    // Build voice session instructions with dynamic context
+    const { buildVoiceSessionInstructions } = await import("./prompts/voice_orchestrator");
+    const { getVoiceToolSchemas } = await import("./tools/voice_schemas");
+
+    // Fetch dynamic context for the instructions
+    let deviceStatus: string | undefined;
+    let activeThreads: string | undefined;
+    let coreMemory: string | undefined;
+    let userName: string | undefined;
+
+    try {
+      const deviceResult = await ctx.runQuery(
+        internal.agent.device_resolver.getDeviceStatus,
+        { ownerId },
+      );
+      const lines = ["# Device Status"];
+      lines.push(`- Local device: ${deviceResult.localOnline ? "online" : "offline"}`);
+      if (deviceResult.cloudAvailable) {
+        lines.push(`- Remote machine: ${deviceResult.cloudStatus}`);
+      }
+      deviceStatus = lines.join("\n");
+    } catch {
+      // Skip device status
+    }
+
+    try {
+      if (!convexConversationId) throw new Error("skip");
+      const threads = await ctx.runQuery(internal.data.threads.listActiveThreads, {
+        ownerId,
+        conversationId: convexConversationId,
+      });
+      const subagentThreads = (threads as Array<{ _id: string; name: string; messageCount: number }>)
+        .filter((t) => t.name !== "Main");
+      if (subagentThreads.length > 0) {
+        const lines = ["# Active Threads"];
+        for (const t of subagentThreads.slice(0, 10)) {
+          lines.push(`- ${t.name} (id: ${t._id}, ${t.messageCount} messages)`);
+        }
+        activeThreads = lines.join("\n");
+      }
+    } catch {
+      // Skip threads
+    }
+
+    // Get user profile name if available
+    try {
+      userName = identity.name ?? identity.nickname ?? undefined;
+    } catch {
+      // Skip
+    }
+
+    const instructions = buildVoiceSessionInstructions({
+      userName,
+      platform: "desktop",
+      deviceStatus,
+      activeThreads,
+      coreMemory,
+    });
+
+    const tools = getVoiceToolSchemas();
+    const model = body.model ?? "gpt-realtime-1.5";
+    const voice = body.voice ?? "marin";
+
+    // Request ephemeral client secret from OpenAI
+    const sessionConfig = {
+      model,
+      voice,
+      instructions,
+      tools,
+      input_audio_transcription: {
+        model: "gpt-4o-transcribe",
+      },
+      turn_detection: {
+        type: "semantic_vad",
+        eagerness: "medium",
+        create_response: true,
+        interrupt_response: true,
+      },
+    };
+
+    try {
+      const openaiResponse = await fetch("https://api.openai.com/v1/realtime/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openaiApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(sessionConfig),
+      });
+
+      const responseText = await openaiResponse.text();
+      if (!openaiResponse.ok) {
+        console.error("[voice/session] OpenAI sessions failed:", openaiResponse.status, responseText);
+        return withCors(
+          new Response(
+            JSON.stringify({ error: "Failed to create voice session", detail: responseText }),
+            { status: openaiResponse.status, headers: { "Content-Type": "application/json" } },
+          ),
+          origin,
+        );
+      }
+
+      const openaiData = JSON.parse(responseText);
+      return withCors(
+        new Response(
+          JSON.stringify({
+            clientSecret: openaiData.client_secret?.value ?? openaiData.client_secret,
+            expiresAt: openaiData.client_secret?.expires_at,
+            model,
+            voice,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+        origin,
+      );
+    } catch (error) {
+      console.error("[voice/session] Failed to contact OpenAI:", (error as Error).message);
+      return withCors(
+        new Response(
+          JSON.stringify({ error: "Failed to create voice session" }),
+          { status: 502, headers: { "Content-Type": "application/json" } },
+        ),
+        origin,
+      );
+    }
+  }),
+});
+
+// Voice transcript logging endpoint
+http.route({
+  path: "/api/voice/log",
+  method: "OPTIONS",
+  handler: corsPreflightHandler,
+});
+
+http.route({
+  path: "/api/voice/log",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const rejection = rejectDisallowedCorsOrigin(request);
+    if (rejection) return rejection;
+    const origin = request.headers.get("origin");
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return withCors(new Response("Unauthorized", { status: 401 }), origin);
+    }
+
+    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      scope: "voice_log",
+      key: identity.subject,
+      limit: VOICE_LOG_RATE_LIMIT,
+      windowMs: VOICE_LOG_RATE_WINDOW_MS,
+      blockMs: VOICE_LOG_RATE_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+    }
+
+    type VoiceLogBody = {
+      conversationId: string;
+      type: "user_message" | "assistant_message" | "tool_request" | "tool_result";
+      content: string;
+      metadata?: Record<string, unknown>;
+    };
+    let body: VoiceLogBody | null = null;
+    try {
+      body = (await request.json()) as VoiceLogBody;
+    } catch {
+      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
+    }
+
+    if (!body?.conversationId || !body?.type || !body?.content) {
+      return withCors(new Response("conversationId, type, and content are required", { status: 400 }), origin);
+    }
+
+    const allowedTypes = ["user_message", "assistant_message", "tool_request", "tool_result"];
+    if (!allowedTypes.includes(body.type)) {
+      return withCors(new Response(`type must be one of: ${allowedTypes.join(", ")}`, { status: 400 }), origin);
+    }
+
+    try {
+      await requireConversationOwnerAction(ctx, body.conversationId as Id<"conversations">);
+    } catch {
+      return withCors(new Response("Conversation not found or access denied", { status: 403 }), origin);
+    }
+
+    try {
+      await ctx.runMutation(internal.events.appendInternalEvent, {
+        conversationId: body.conversationId as Id<"conversations">,
+        type: body.type,
+        payload: {
+          text: body.content,
+          source: "voice",
+          ...body.metadata,
+        },
+      });
+
+      return withCors(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    } catch (error) {
+      console.error("[voice/log] Failed to append event:", (error as Error).message);
+      return withCors(
+        new Response(JSON.stringify({ error: "Failed to log voice event" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+        origin,
+      );
+    }
+  }),
+});
+
 export default http;
-
-
 
