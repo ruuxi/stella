@@ -34,29 +34,17 @@ export function createAudioCaptureManager(
   let processing = false; // prevent overlapping predict calls
 
   let chunkCount = 0;
-  let droppedCount = 0;
 
   // Handle audio chunks from renderer
   const handleAudioChunk = async (_event: Electron.IpcMainEvent, buffer: ArrayBuffer) => {
-    if (!capturing) return;
-    if (processing) {
-      droppedCount++;
-      return;
-    }
+    if (!capturing || processing) return;
 
     chunkCount++;
 
     processing = true;
-    const predictStart = performance.now();
     try {
       const pcm = new Int16Array(buffer);
       const result = await detector.predict(pcm);
-
-      // Log periodically for diagnostics
-      if (chunkCount % 50 === 1) {
-        const elapsed = performance.now() - predictStart;
-        console.log(`[WakeWord] chunk=${chunkCount} dropped=${droppedCount} score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)} predict=${elapsed.toFixed(0)}ms`);
-      }
 
       if (result.detected && detectionCallback) {
         detectionCallback(result);
