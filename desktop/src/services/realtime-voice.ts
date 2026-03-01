@@ -33,6 +33,57 @@ export type VoiceSessionEvent =
 type VoiceSessionListener = (event: VoiceSessionEvent) => void;
 
 // ---------------------------------------------------------------------------
+// Pre-warm: start connection from IPC before React lifecycle kicks in
+// ---------------------------------------------------------------------------
+
+let preWarmedSession: RealtimeVoiceSession | null = null;
+let preWarmConvId: string | null = null;
+
+/**
+ * Immediately create a session and start connecting. Called from an IPC
+ * handler so the token fetch + mic + SDP pipeline begins before React renders.
+ */
+export function preWarmVoiceSession(conversationId: string): void {
+  if (preWarmedSession) return;
+  console.log("[RealtimeVoice] pre-warming session");
+  const session = new RealtimeVoiceSession();
+  preWarmedSession = session;
+  preWarmConvId = conversationId;
+  session.connect(conversationId).catch((err) => {
+    console.error("[RealtimeVoice] pre-warm failed:", err);
+    if (preWarmedSession === session) {
+      preWarmedSession = null;
+      preWarmConvId = null;
+    }
+  });
+}
+
+/**
+ * Claim a pre-warmed session. Returns null if none exists or if the
+ * conversationId doesn't match.
+ */
+export function claimPreWarmedSession(
+  conversationId: string
+): RealtimeVoiceSession | null {
+  if (!preWarmedSession || preWarmConvId !== conversationId) return null;
+  const session = preWarmedSession;
+  preWarmedSession = null;
+  preWarmConvId = null;
+  console.log("[RealtimeVoice] claimed pre-warmed session");
+  return session;
+}
+
+// Register IPC listener so the main process can trigger pre-warm on wake word
+if (typeof window !== "undefined") {
+  const api = (window as { electronAPI?: { onVoiceRtcPreWarm?: (cb: (id: string) => void) => () => void } }).electronAPI;
+  if (api?.onVoiceRtcPreWarm) {
+    api.onVoiceRtcPreWarm((conversationId: string) => {
+      preWarmVoiceSession(conversationId);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Session
 // ---------------------------------------------------------------------------
 
@@ -92,7 +143,9 @@ export class RealtimeVoiceSession {
     this.setState("connecting");
 
     try {
-      // 1. Fetch ephemeral key and acquire microphone IN PARALLEL
+      // ── Phase 1: Start ALL work in parallel ────────────────────────
+
+      // A) Fetch ephemeral token from backend
       const keyPromise = (async () => {
         const { endpoint, headers } = await createServiceRequest("/api/voice/session");
         const res = await fetch(endpoint, {
@@ -112,30 +165,18 @@ export class RealtimeVoiceSession {
         };
       })();
 
+      // B) Acquire microphone (runs in parallel, awaited later)
       const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
+      // Prevent unhandled-rejection warning — error is caught when we await below
+      micPromise.catch(() => {});
 
-      const [keyResult, micStream] = await Promise.all([keyPromise, micPromise]);
-
-      if (this.destroyed) {
-        micStream.getTracks().forEach((t) => t.stop());
-        return;
-      }
-
-      const { clientSecret, model } = keyResult;
-      this.localStream = micStream;
-
-      // 2. Create peer connection + SDP offer (no network, just local)
+      // C) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
       this.pc = new RTCPeerConnection();
-      if (this.destroyed) { this.cleanup(); return; }
+      const transceiver = this.pc.addTransceiver("audio", { direction: "sendrecv" });
 
-      const audioTrack = this.localStream.getTracks()[0];
-      this.pc.addTrack(audioTrack, this.localStream);
-
-      // 3. Create data channel
       this.dc = this.pc.createDataChannel("oai-events");
       this.setupDataChannel();
 
-      // 4. Handle remote audio (model's voice)
       this.pc.ontrack = (event) => {
         if (this.destroyed) return;
         const remoteStream = event.streams[0];
@@ -144,11 +185,15 @@ export class RealtimeVoiceSession {
         }
       };
 
-      // 5. SDP negotiation with OpenAI using ephemeral key
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
-
       if (this.destroyed) { this.cleanup(); return; }
+
+      // ── Phase 2: SDP exchange — needs token, NOT mic ───────────────
+      const keyResult = await keyPromise;
+      if (this.destroyed) { this.cleanup(); return; }
+
+      const { clientSecret, model } = keyResult;
 
       const sdpResponse = await fetch(
         `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
@@ -161,7 +206,6 @@ export class RealtimeVoiceSession {
           body: offer.sdp,
         }
       );
-
       if (this.destroyed) { this.cleanup(); return; }
 
       if (!sdpResponse.ok) {
@@ -175,8 +219,17 @@ export class RealtimeVoiceSession {
         type: "answer",
         sdp: answerSdp,
       });
-
       if (this.destroyed) { this.cleanup(); return; }
+
+      // ── Phase 3: Attach mic track (likely already resolved) ────────
+      const micStream = await micPromise;
+      if (this.destroyed) {
+        micStream.getTracks().forEach((t) => t.stop());
+        this.cleanup();
+        return;
+      }
+      this.localStream = micStream;
+      await transceiver.sender.replaceTrack(micStream.getTracks()[0]);
 
       // Setup audio analyser for visualization
       this.setupAudioAnalyser();

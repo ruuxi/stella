@@ -199,6 +199,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   voiceOrchestratorChat: (payload: { conversationId: string; message: string }) =>
     ipcRenderer.invoke('voice:orchestratorChat', payload) as Promise<string>,
   setVoiceRtcShortcut: (shortcut: string) => ipcRenderer.send('voice-rtc:setShortcut', shortcut),
+  onVoiceRtcPreWarm: (callback: (conversationId: string) => void) => {
+    const handler = (_event: IpcRendererEvent, conversationId: string) => { callback(conversationId) }
+    ipcRenderer.on('voice-rtc:pre-warm', handler)
+    return () => { ipcRenderer.removeListener('voice-rtc:pre-warm', handler) }
+  },
   onVoiceTranscript: (callback: (transcript: string) => void) => {
     const handler = (_event: IpcRendererEvent, transcript: string) => {
       callback(transcript)
