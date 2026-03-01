@@ -34,6 +34,15 @@ export const createFromDataUrl = action({
   }> => {
     await requireConversationOwnerAction(ctx, args.conversationId);
     const { mimeType, bytes } = parseDataUrl(args.dataUrl);
+
+    const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: `Attachment exceeds maximum allowed size of ${MAX_ATTACHMENT_BYTES / (1024 * 1024)}MB`,
+      });
+    }
+
     const blob = new Blob([bytes], { type: mimeType });
     const storageId = await ctx.storage.store(blob);
     const url = await ctx.storage.getUrl(storageId);

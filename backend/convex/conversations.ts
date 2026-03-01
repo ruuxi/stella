@@ -97,6 +97,8 @@ export const getOrCreateDefaultConversation = mutation({
   },
 });
 
+const MAX_CONVERSATIONS_PER_USER = 1000;
+
 export const createConversation = mutation({
   args: {
     title: v.optional(v.string()),
@@ -119,6 +121,17 @@ export const createConversation = mutation({
       throw new ConvexError({
         code: "RATE_LIMITED",
         message: "Too many conversation requests. Please try again later.",
+      });
+    }
+
+    const existingCount = await ctx.db
+      .query("conversations")
+      .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId))
+      .collect();
+    if (existingCount.length >= MAX_CONVERSATIONS_PER_USER) {
+      throw new ConvexError({
+        code: "LIMIT_EXCEEDED",
+        message: `You have reached the maximum of ${MAX_CONVERSATIONS_PER_USER} conversations. Please delete some before creating new ones.`,
       });
     }
 
