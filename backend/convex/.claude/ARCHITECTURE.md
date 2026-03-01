@@ -73,13 +73,13 @@ convex/
 
 ## Protected Files (avoid renaming/moving)
 
-These files are referenced by `crons.ts` via `internal.*` paths:
+These files are referenced via `internal.*` paths:
 
-- `heartbeat.ts` — Referenced as `internal.heartbeat.tick`
-- `cron_jobs.ts` — Referenced as `internal.cron_jobs.tick`
+- `heartbeat.ts` — Self-schedules via `ctx.scheduler.runAfter`
+- `cron_jobs.ts` — Self-schedules via `ctx.scheduler.runAfter`
 - `memory.ts` — Referenced as `internal.memory.decayMemories`
 
-Moving/renaming these would break cron registration.
+Moving/renaming these would break scheduling.
 
 ## Module Responsibilities
 

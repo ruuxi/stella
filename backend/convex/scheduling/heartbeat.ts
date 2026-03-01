@@ -9,11 +9,9 @@ import {
   resolveHeartbeatPrompt,
 } from "../automation/utils";
 import {
-  claimAndScheduleDueRuns,
   claimAndScheduleSingleRun,
   claimRunIfAvailable,
   DEFAULT_STUCK_RUN_MS,
-  listDueByNextRunAtMs,
 } from "./claim_flow";
 import {
   buildExecutionCandidates,
@@ -50,6 +48,7 @@ const heartbeatConfigValidator = v.object({
   runningAtMs: v.optional(v.number()),
   lastRunAtMs: v.optional(v.number()),
   nextRunAtMs: v.number(),
+  scheduledRunId: v.optional(v.id("_scheduled_functions")),
   lastStatus: v.optional(v.string()),
   lastError: v.optional(v.string()),
   lastSentText: v.optional(v.string()),
@@ -206,6 +205,17 @@ export const upsertConfig = internalMutation({
 
     const nextRunAtMs = now + intervalMs;
 
+    // Cancel any existing scheduled run
+    if (existing?.scheduledRunId) {
+      try {
+        await ctx.scheduler.cancel(existing.scheduledRunId);
+      } catch {
+        // Already completed or cancelled
+      }
+    }
+
+    let configId: Id<"heartbeat_configs">;
+
     if (existing) {
       await ctx.db.patch(existing._id, {
         enabled,
@@ -219,49 +229,48 @@ export const upsertConfig = internalMutation({
         targetDeviceId: args.targetDeviceId ?? existing.targetDeviceId,
         nextRunAtMs,
         runningAtMs: undefined,
+        scheduledRunId: undefined,
         updatedAt: now,
       });
-      return await ctx.db.get(existing._id);
+      configId = existing._id;
+    } else {
+      configId = await ctx.db.insert("heartbeat_configs", {
+        ownerId,
+        conversationId,
+        enabled,
+        intervalMs,
+        prompt: args.prompt,
+        checklist: args.checklist,
+        ackMaxChars,
+        deliver: args.deliver,
+        agentType: args.agentType,
+        activeHours: args.activeHours,
+        targetDeviceId: args.targetDeviceId,
+        runningAtMs: undefined,
+        lastRunAtMs: undefined,
+        nextRunAtMs,
+        scheduledRunId: undefined,
+        lastStatus: undefined,
+        lastError: undefined,
+        lastSentText: undefined,
+        lastSentAtMs: undefined,
+        createdAt: now,
+        updatedAt: now,
+      });
     }
 
-    const id = await ctx.db.insert("heartbeat_configs", {
-      ownerId,
-      conversationId,
-      enabled,
-      intervalMs,
-      prompt: args.prompt,
-      checklist: args.checklist,
-      ackMaxChars,
-      deliver: args.deliver,
-      agentType: args.agentType,
-      activeHours: args.activeHours,
-      targetDeviceId: args.targetDeviceId,
-      runningAtMs: undefined,
-      lastRunAtMs: undefined,
-      nextRunAtMs,
-      lastStatus: undefined,
-      lastError: undefined,
-      lastSentText: undefined,
-      lastSentAtMs: undefined,
-      createdAt: now,
-      updatedAt: now,
-    });
+    // Schedule next run if enabled
+    if (enabled) {
+      const delayMs = Math.max(0, nextRunAtMs - now);
+      const scheduledRunId = await ctx.scheduler.runAfter(
+        delayMs,
+        internal.scheduling.heartbeat.run,
+        { configId, reason: "interval" },
+      );
+      await ctx.db.patch(configId, { scheduledRunId });
+    }
 
-    return await ctx.db.get(id);
-  },
-});
-
-export const listDue = internalQuery({
-  args: {
-    nowMs: v.number(),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    return await listDueByNextRunAtMs(ctx, {
-      table: "heartbeat_configs",
-      nowMs: args.nowMs,
-      limit: args.limit,
-    });
+    return await ctx.db.get(configId);
   },
 });
 
@@ -278,11 +287,15 @@ export const markRunning = internalMutation({
   args: {
     id: v.id("heartbeat_configs"),
     runningAtMs: v.number(),
-    nextRunAtMs: v.number(),
-    lastRunAtMs: v.number(),
+    nextRunAtMs: v.optional(v.number()),
+    lastRunAtMs: v.optional(v.number()),
     expectedRunningAtMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const patch: Record<string, unknown> = {};
+    if (args.nextRunAtMs !== undefined) patch.nextRunAtMs = args.nextRunAtMs;
+    if (args.lastRunAtMs !== undefined) patch.lastRunAtMs = args.lastRunAtMs;
+
     return await claimRunIfAvailable({
       ctx,
       table: "heartbeat_configs",
@@ -290,10 +303,7 @@ export const markRunning = internalMutation({
       runningAtMs: args.runningAtMs,
       expectedRunningAtMs: args.expectedRunningAtMs,
       stuckRunMs: STUCK_RUN_MS,
-      patch: {
-        nextRunAtMs: args.nextRunAtMs,
-        lastRunAtMs: args.lastRunAtMs,
-      },
+      patch,
     });
   },
 });
@@ -307,53 +317,45 @@ export const recordRun = internalMutation({
     lastSentAtMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const config = await ctx.db.get(args.id);
+    if (!config) {
+      return null;
+    }
+
+    const now = Date.now();
+    const intervalMs = normalizeIntervalMs(config.intervalMs);
+    const nextRunAtMs = now + intervalMs;
+
+    // Cancel any existing scheduled run
+    if (config.scheduledRunId) {
+      try {
+        await ctx.scheduler.cancel(config.scheduledRunId);
+      } catch {
+        // Already completed or cancelled
+      }
+    }
+
+    let scheduledRunId: Id<"_scheduled_functions"> | undefined;
+
+    // Schedule next run if still enabled
+    if (config.enabled) {
+      const delayMs = Math.max(0, nextRunAtMs - now);
+      scheduledRunId = await ctx.scheduler.runAfter(
+        delayMs,
+        internal.scheduling.heartbeat.run,
+        { configId: config._id, reason: "interval" },
+      );
+    }
+
     await ctx.db.patch(args.id, {
       lastStatus: args.status,
       lastError: args.error,
       lastSentText: args.lastSentText,
       lastSentAtMs: args.lastSentAtMs,
       runningAtMs: undefined,
-      updatedAt: Date.now(),
-    });
-    return null;
-  },
-});
-
-export const tick = internalAction({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    await claimAndScheduleDueRuns({
-      nowMs: now,
-      stuckRunMs: STUCK_RUN_MS,
-      listDue: (listArgs) =>
-        ctx.runQuery(internal.scheduling.heartbeat.listDue, {
-          nowMs: listArgs.nowMs,
-          limit: listArgs.limit,
-        }),
-      markRunning: (markArgs: {
-        id: Id<"heartbeat_configs">;
-        runningAtMs: number;
-        nextRunAtMs: number;
-        lastRunAtMs: number;
-        expectedRunningAtMs?: number;
-      }) =>
-        ctx.runMutation(internal.scheduling.heartbeat.markRunning, markArgs),
-      buildClaimArgs: (config, claimContext) => {
-        const intervalMs = normalizeIntervalMs(config.intervalMs);
-        return {
-          id: config._id,
-          runningAtMs: claimContext.nowMs,
-          nextRunAtMs: claimContext.nowMs + intervalMs,
-          lastRunAtMs: claimContext.nowMs,
-          expectedRunningAtMs: claimContext.expectedRunningAtMs,
-        };
-      },
-      schedule: (config) =>
-        ctx.scheduler.runAfter(0, internal.scheduling.heartbeat.run, {
-          configId: config._id,
-          reason: "interval",
-        }),
+      nextRunAtMs,
+      scheduledRunId,
+      updatedAt: now,
     });
     return null;
   },
@@ -379,7 +381,17 @@ export const run = internalAction({
       return null;
     }
 
+    // Claim the run
     const now = Date.now();
+    const claimed = await ctx.runMutation(internal.scheduling.heartbeat.markRunning, {
+      id: config._id,
+      runningAtMs: now,
+      expectedRunningAtMs: config.runningAtMs,
+    });
+    if (!claimed) {
+      return null;
+    }
+
     const accountMode = await ctx.runQuery(
       internal.data.preferences.getAccountModeForOwner,
       { ownerId: config.ownerId },
@@ -540,6 +552,17 @@ export const runNow = internalMutation({
     if (!config) {
       return null;
     }
+
+    // Cancel existing scheduled run before manual trigger
+    if (config.scheduledRunId) {
+      try {
+        await ctx.scheduler.cancel(config.scheduledRunId);
+      } catch {
+        // Already completed or cancelled
+      }
+      await ctx.db.patch(config._id, { scheduledRunId: undefined });
+    }
+
     const now = Date.now();
     const claimed = await claimAndScheduleSingleRun({
       nowMs: now,
@@ -547,21 +570,14 @@ export const runNow = internalMutation({
       markRunning: (markArgs: {
         id: Id<"heartbeat_configs">;
         runningAtMs: number;
-        nextRunAtMs: number;
-        lastRunAtMs: number;
         expectedRunningAtMs?: number;
       }) =>
         ctx.runMutation(internal.scheduling.heartbeat.markRunning, markArgs),
-      buildClaimArgs: (currentConfig, claimContext) => {
-        const intervalMs = normalizeIntervalMs(currentConfig.intervalMs);
-        return {
-          id: currentConfig._id,
-          runningAtMs: claimContext.nowMs,
-          nextRunAtMs: claimContext.nowMs + intervalMs,
-          lastRunAtMs: claimContext.nowMs,
-          expectedRunningAtMs: claimContext.expectedRunningAtMs,
-        };
-      },
+      buildClaimArgs: (currentConfig, claimContext) => ({
+        id: currentConfig._id,
+        runningAtMs: claimContext.nowMs,
+        expectedRunningAtMs: claimContext.expectedRunningAtMs,
+      }),
       schedule: (currentConfig) =>
         ctx.scheduler.runAfter(0, internal.scheduling.heartbeat.run, {
           configId: currentConfig._id,
