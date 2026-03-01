@@ -1,7 +1,7 @@
 import { Play, Pause, Square, Mic, MicOff } from "lucide-react"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { DashboardCard } from "./DashboardCard"
-import { useLyriaMusic } from "@/services/use-lyria-music"
+import { preloadLyriaMusic, useLyriaMusic } from "@/services/use-lyria-music"
 import type { MusicMood } from "@/services/lyria-music"
 
 const MOODS: MusicMood[] = ["Auto", "Focus", "Calm", "Energy", "Sleep", "Lo-fi"]
@@ -19,6 +19,10 @@ function formatTime(seconds: number): string {
 function Waveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode | null> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number>(0)
+  const frameCountRef = useRef(0)
+  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
+  const colorRef = useRef("rgba(255,255,255,0.5)")
+  const dimensionsRef = useRef({ width: 0, height: 0, dpr: 1 })
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -27,48 +31,72 @@ function Waveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode |
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
+    const updateDimensions = () => {
+      const dpr = window.devicePixelRatio || 1
+      const rect = canvas.getBoundingClientRect()
+      const width = Math.max(1, Math.round(rect.width * dpr))
+      const height = Math.max(1, Math.round(rect.height * dpr))
+
+      dimensionsRef.current = { width, height, dpr }
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width
+        canvas.height = height
+      }
+    }
+
+    updateDimensions()
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            updateDimensions()
+          })
+
+    resizeObserver?.observe(canvas)
+
     const draw = () => {
       rafRef.current = requestAnimationFrame(draw)
 
       const analyser = analyserRef.current
+      const { width, height, dpr } = dimensionsRef.current
       if (!analyser) {
-        const w = canvas.width
-        const h = canvas.height
-        ctx.clearRect(0, 0, w, h)
+        ctx.clearRect(0, 0, width, height)
         return
       }
 
       const bufferLength = analyser.frequencyBinCount
-      const dataArray = new Uint8Array(bufferLength)
+      let dataArray = dataArrayRef.current
+      if (!dataArray || dataArray.length !== bufferLength) {
+        dataArray = new Uint8Array(new ArrayBuffer(bufferLength))
+        dataArrayRef.current = dataArray
+      }
       analyser.getByteFrequencyData(dataArray)
 
-      const dpr = window.devicePixelRatio || 1
-      const rect = canvas.getBoundingClientRect()
-      const w = rect.width * dpr
-      const h = rect.height * dpr
-
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w
-        canvas.height = h
+      // Refresh computed styles occasionally to avoid per-frame style recalc.
+      if (frameCountRef.current % 30 === 0) {
+        colorRef.current = getComputedStyle(canvas).color || "rgba(255,255,255,0.5)"
       }
+      frameCountRef.current += 1
 
-      ctx.clearRect(0, 0, w, h)
-
-      const style = getComputedStyle(canvas)
-      const fg = style.color || "rgba(255,255,255,0.5)"
+      ctx.clearRect(0, 0, width, height)
 
       const barCount = Math.min(bufferLength, 64)
-      const barWidth = w / barCount
+      if (barCount === 0) {
+        return
+      }
+
+      const barWidth = width / barCount
       const gap = Math.max(1, barWidth * 0.2)
+      ctx.fillStyle = colorRef.current
 
       for (let i = 0; i < barCount; i++) {
         const value = dataArray[i] / 255
-        const barHeight = Math.max(2 * dpr, value * h * 0.85)
+        const barHeight = Math.max(2 * dpr, value * height * 0.85)
 
         const x = i * barWidth + gap / 2
-        const y = (h - barHeight) / 2
+        const y = (height - barHeight) / 2
 
-        ctx.fillStyle = fg
         ctx.globalAlpha = 0.15 + value * 0.45
         ctx.beginPath()
         ctx.roundRect(x, y, barWidth - gap, barHeight, 1.5 * dpr)
@@ -78,7 +106,10 @@ function Waveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode |
     }
 
     draw()
-    return () => cancelAnimationFrame(rafRef.current)
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      resizeObserver?.disconnect()
+    }
   }, [analyserRef])
 
   return (
@@ -115,6 +146,9 @@ export function MusicPlayer() {
   const [localHint, setLocalHint] = useState(userHint)
 
   const isActive = status === "playing" || status === "paused" || status === "loading"
+  const preloadMusic = useCallback(() => {
+    void preloadLyriaMusic()
+  }, [])
 
   const handlePlay = useCallback(() => {
     // Sync the local hint to state before playing
@@ -141,6 +175,8 @@ export function MusicPlayer() {
         <button
           className={`music-play-btn${isActive ? " music-play-btn--active" : ""}`}
           onClick={togglePlayPause}
+          onMouseEnter={preloadMusic}
+          onFocus={preloadMusic}
           disabled={status === "loading"}
           aria-label={status === "playing" ? "Pause" : "Play"}
         >

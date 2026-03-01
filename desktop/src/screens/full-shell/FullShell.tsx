@@ -69,7 +69,7 @@ const arePanelListsEqual = (
 export const FullShell = () => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
-  const { state: workspaceState, openCanvas, closeCanvas } = useWorkspace();
+  const { state: workspaceState, openCanvas } = useWorkspace();
   const canvas = workspaceState.canvas;
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
@@ -92,7 +92,6 @@ export const FullShell = () => {
   useEffect(() => {
     const electronApi = getElectronApi();
     if (!electronApi?.listWorkspacePanels) {
-      setLocalWorkspacePanels([]);
       return;
     }
 

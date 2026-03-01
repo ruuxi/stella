@@ -1,18 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import {
-  subscribe,
-  play,
-  pause,
-  resume,
-  stop,
-  setMood,
-  setVolume,
-  setUserHint,
-  setLyrics,
-  getAnalyser,
-  type MusicServiceState,
-  type MusicMood,
-} from "@/services/lyria-music"
+import type { MusicServiceState, MusicMood } from "@/services/lyria-music"
+
+type LyriaMusicModule = typeof import("@/services/lyria-music")
 
 const INITIAL_STATE: MusicServiceState = {
   status: "idle",
@@ -24,55 +13,125 @@ const INITIAL_STATE: MusicServiceState = {
   lyrics: false,
 }
 
+let lyriaMusicModulePromise: Promise<LyriaMusicModule> | null = null
+
+function loadLyriaMusicModule(): Promise<LyriaMusicModule> {
+  if (!lyriaMusicModulePromise) {
+    lyriaMusicModulePromise = import("@/services/lyria-music")
+  }
+  return lyriaMusicModulePromise
+}
+
+export function preloadLyriaMusic() {
+  return loadLyriaMusicModule()
+}
+
 export function useLyriaMusic() {
   const [state, setState] = useState<MusicServiceState>(INITIAL_STATE)
   const analyserRef = useRef<AnalyserNode | null>(null)
+  const serviceRef = useRef<LyriaMusicModule | null>(null)
+  const unsubscribeRef = useRef<(() => void) | null>(null)
 
-  useEffect(() => subscribe(setState), [])
+  const ensureService = useCallback(async (): Promise<LyriaMusicModule> => {
+    if (serviceRef.current) {
+      return serviceRef.current
+    }
+
+    const service = await loadLyriaMusicModule()
+    serviceRef.current = service
+    if (!unsubscribeRef.current) {
+      unsubscribeRef.current = service.subscribe(setState)
+    }
+    return service
+  }, [])
+
+  useEffect(
+    () => () => {
+      unsubscribeRef.current?.()
+      unsubscribeRef.current = null
+    },
+    [],
+  )
 
   // Keep analyser ref in sync
   useEffect(() => {
     if (state.status === "playing" || state.status === "paused") {
-      analyserRef.current = getAnalyser()
+      analyserRef.current = serviceRef.current?.getAnalyser() ?? null
     } else {
       analyserRef.current = null
     }
   }, [state.status])
 
+  const runWithService = useCallback(
+    (runner: (service: LyriaMusicModule) => void) => {
+      void ensureService()
+        .then((service) => {
+          runner(service)
+        })
+        .catch((error) => {
+          console.error("[useLyriaMusic] Failed to load music service:", error)
+        })
+    },
+    [ensureService],
+  )
+
   const togglePlayPause = useCallback(() => {
-    if (state.status === "playing") {
-      pause()
-    } else if (state.status === "paused") {
-      resume()
-    } else {
-      play()
-    }
-  }, [state.status])
+    runWithService((service) => {
+      if (state.status === "playing") {
+        service.pause()
+      } else if (state.status === "paused") {
+        service.resume()
+      } else {
+        service.play()
+      }
+    })
+  }, [runWithService, state.status])
 
   // Play always starts/cross-fades with current settings
   const handlePlay = useCallback(() => {
-    play()
-  }, [])
+    runWithService((service) => {
+      service.play()
+    })
+  }, [runWithService])
 
-  const selectMood = useCallback((mood: MusicMood) => {
-    setMood(mood)
-  }, [])
+  const selectMood = useCallback(
+    (mood: MusicMood) => {
+      runWithService((service) => {
+        service.setMood(mood)
+      })
+    },
+    [runWithService],
+  )
 
   const handleStop = useCallback(() => {
-    stop()
-  }, [])
+    runWithService((service) => {
+      service.stop()
+    })
+  }, [runWithService])
 
-  const handleVolume = useCallback((v: number) => {
-    setVolume(v)
-  }, [])
+  const handleVolume = useCallback(
+    (v: number) => {
+      runWithService((service) => {
+        service.setVolume(v)
+      })
+    },
+    [runWithService],
+  )
 
-  const handleSetHint = useCallback((hint: string) => {
-    setUserHint(hint)
-  }, [])
+  const handleSetHint = useCallback(
+    (hint: string) => {
+      runWithService((service) => {
+        service.setUserHint(hint)
+      })
+    },
+    [runWithService],
+  )
 
   const toggleLyrics = useCallback(() => {
-    setLyrics(!state.lyrics)
-  }, [state.lyrics])
+    runWithService((service) => {
+      service.setLyrics(!state.lyrics)
+    })
+  }, [runWithService, state.lyrics])
 
   return {
     ...state,
