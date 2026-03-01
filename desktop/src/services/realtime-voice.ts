@@ -292,10 +292,10 @@ export class RealtimeVoiceSession {
 
   private setupAudioPlayback(stream: MediaStream) {
     if (this.destroyed) return;
-    if (this.audioElement) {
-      this.audioElement.pause();
-      this.audioElement.srcObject = null;
-    }
+
+    // Guard against duplicate ontrack — only set up playback once
+    if (this.audioElement) return;
+
     this.audioElement = new Audio();
     this.audioElement.srcObject = stream;
     this.audioElement.autoplay = true;

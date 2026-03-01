@@ -46,8 +46,10 @@ const FEATURE_BUFFER_MAX = 120;
 const MODEL_INPUT_FRAMES = 16;
 const RAW_BUFFER_MAX = SAMPLE_RATE * 10; // 10 seconds
 
-// VAD
-const VAD_FRAME_SIZE = 480; // 30ms
+// VAD (Silero v6: 512-sample frames, combined state [2,1,128], 64-sample context window)
+const VAD_FRAME_SIZE = 512; // 32ms
+const VAD_CONTEXT_SIZE = 64; // context window prepended to each frame
+const VAD_STATE_DIM = 128;
 const VAD_THRESHOLD = 0.5;
 
 // Confidence stacking
@@ -57,6 +59,15 @@ const COOLDOWN_MS = 3000;
 
 const DEFAULT_THRESHOLD = 0.5;
 const MIN_THRESHOLD = 0.3;
+
+// RMS gate — skip all inference when audio is near-silent
+const RMS_THRESHOLD = 200; // int16 scale; ~0.006 normalized
+
+function computeRms(pcm: Int16Array): number {
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
+  return Math.sqrt(sum / pcm.length);
+}
 
 // ---------------------------------------------------------------------------
 // Implementation
@@ -107,28 +118,34 @@ export async function createWakeWordDetector(
   // Confidence stacking
   const recentScores: number[] = [];
 
-  // VAD LSTM state
-  let vadH = new Float32Array(2 * 1 * 64);
-  let vadC = new Float32Array(2 * 1 * 64);
+  // VAD state (Silero v6: combined state + context window)
+  let vadState = new Float32Array(2 * 1 * VAD_STATE_DIM);
+  let vadContext = new Float32Array(VAD_CONTEXT_SIZE);
 
-  // ---- VAD ----
+  // ---- VAD (Silero v6) ----
   async function runVad(pcm: Int16Array): Promise<number> {
     const scores: number[] = [];
     for (let i = 0; i <= pcm.length - VAD_FRAME_SIZE; i += VAD_FRAME_SIZE) {
-      const chunk = new Float32Array(VAD_FRAME_SIZE);
+      const frame = new Float32Array(VAD_FRAME_SIZE);
       for (let j = 0; j < VAD_FRAME_SIZE; j++) {
-        chunk[j] = pcm[i + j] / 32767;
+        frame[j] = pcm[i + j] / 32767;
       }
+
+      // Prepend context window to frame (576 = 64 + 512)
+      const input = new Float32Array(VAD_CONTEXT_SIZE + VAD_FRAME_SIZE);
+      input.set(vadContext, 0);
+      input.set(frame, VAD_CONTEXT_SIZE);
+
       const results = await vadSession.run({
-        input: new ort.Tensor("float32", chunk, [1, VAD_FRAME_SIZE]),
-        h: new ort.Tensor("float32", new Float32Array(vadH), [2, 1, 64]),
-        c: new ort.Tensor("float32", new Float32Array(vadC), [2, 1, 64]),
+        input: new ort.Tensor("float32", input, [1, input.length]),
+        state: new ort.Tensor("float32", new Float32Array(vadState), [2, 1, VAD_STATE_DIM]),
         sr: new ort.Tensor("int64", BigInt64Array.from([BigInt(SAMPLE_RATE)]), []),
       });
-      const keys = Object.keys(results);
-      scores.push((results[keys[0]] as ort.Tensor).data[0] as number);
-      vadH = new Float32Array((results[keys[1]] as ort.Tensor).data as Float32Array);
-      vadC = new Float32Array((results[keys[2]] as ort.Tensor).data as Float32Array);
+      scores.push((results.output as ort.Tensor).data[0] as number);
+      vadState = new Float32Array((results.stateN as ort.Tensor).data as Float32Array);
+
+      // Slide context: last 64 samples of combined input
+      vadContext = input.slice(input.length - VAD_CONTEXT_SIZE);
     }
     return scores.length > 0 ? scores.reduce((a, b) => a + b) / scores.length : 0;
   }
@@ -213,7 +230,15 @@ export async function createWakeWordDetector(
     const none: WakeWordResult = { detected: false, score: 0, vadScore: 0 };
     if (!listening) return none;
 
-    // VAD
+    // ── Gate 1: RMS ── Skip all inference when audio is near-silent (~0 CPU)
+    const rms = computeRms(pcm);
+    if (rms < RMS_THRESHOLD) {
+      // Still buffer the audio so context overlap works when speech starts
+      bufferRawData(pcm);
+      return none;
+    }
+
+    // ── Gate 2: VAD ── Only run mel/embedding/classifier on speech
     const vadScore = await runVad(pcm);
 
     // Prepend remainder from previous call
@@ -227,7 +252,7 @@ export async function createWakeWordDetector(
       x = pcm;
     }
 
-    // Accumulate until we have full 1280-sample chunks
+    // Always buffer raw audio (needed for mel context overlap)
     if (accumulatedSamples + x.length >= CHUNK_SAMPLES) {
       const totalSamples = accumulatedSamples + x.length;
       const remainder = totalSamples % CHUNK_SAMPLES;
@@ -245,16 +270,21 @@ export async function createWakeWordDetector(
       return none;
     }
 
-    // Process when we have full chunks
+    // VAD gate: buffer audio but skip expensive mel/embedding/classifier
+    if (vadScore < VAD_THRESHOLD) {
+      // Still consume accumulated samples so we don't re-process stale audio
+      accumulatedSamples = 0;
+      return { detected: false, score: 0, vadScore };
+    }
+
+    // ── Mel + Embedding + Classifier (only runs on speech) ──
     if (accumulatedSamples >= CHUNK_SAMPLES && accumulatedSamples % CHUNK_SAMPLES === 0) {
       // Streaming mel with context overlap
       await streamingMelspec(accumulatedSamples);
 
       // Compute embeddings (matching Python loop)
-      // Python: for i in np.arange(accumulated//1280-1, -1, -1)
       const nChunks = accumulatedSamples / CHUNK_SAMPLES;
       for (let i = nChunks - 1; i >= 0; i--) {
-        // Python: ndx = -8*i; ndx = ndx if ndx != 0 else len(mel_buffer)
         const offset = 8 * i;
         const endMel = melRows - offset;
         const startMel = endMel - EMBEDDING_WINDOW;
@@ -267,7 +297,6 @@ export async function createWakeWordDetector(
         melWindow.set(melBuffer.subarray(startMel * MEL_BINS, endMel * MEL_BINS));
         const embedding = await computeEmbedding(melWindow);
 
-        // Append to feature buffer (shift if full)
         if (featureRows >= FEATURE_BUFFER_MAX) {
           featureBuffer.copyWithin(0, EMBEDDING_DIM, featureRows * EMBEDDING_DIM);
           featureRows = FEATURE_BUFFER_MAX - 1;
@@ -286,8 +315,7 @@ export async function createWakeWordDetector(
     }
 
     // Get last MODEL_INPUT_FRAMES embeddings, zero-pad if fewer available
-    // (matching Python: feature_buffer[-16:] returns what's available)
-    const features = new Float32Array(MODEL_INPUT_FRAMES * EMBEDDING_DIM); // zero-initialized
+    const features = new Float32Array(MODEL_INPUT_FRAMES * EMBEDDING_DIM);
     const available = Math.min(featureRows, MODEL_INPUT_FRAMES);
     if (available > 0) {
       const srcStart = (featureRows - available) * EMBEDDING_DIM;
@@ -296,11 +324,6 @@ export async function createWakeWordDetector(
         featureBuffer.subarray(srcStart, srcStart + available * EMBEDDING_DIM),
         dstStart,
       );
-    }
-
-    // VAD gate (matching Python: zero prediction if below threshold)
-    if (vadScore < VAD_THRESHOLD) {
-      return { detected: false, score: 0, vadScore };
     }
 
     const score = await runClassifier(features);
@@ -337,8 +360,8 @@ export async function createWakeWordDetector(
     featureBuffer.fill(0);
     featureRows = 0;
     recentScores.length = 0;
-    vadH.fill(0);
-    vadC.fill(0);
+    vadState.fill(0);
+    vadContext.fill(0);
     warmupFrames = 5;
   }
 
