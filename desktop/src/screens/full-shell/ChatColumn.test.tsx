@@ -130,20 +130,6 @@ describe("ChatColumn", () => {
     expect(screen.getByLabelText("Scroll to bottom")).toBeTruthy();
   });
 
-  it("shows nothing when auth is loading and onboarding done", () => {
-    render(
-      <ChatColumn
-        {...makeProps({
-          isAuthenticated: false,
-          isAuthLoading: true,
-          onboardingDone: true,
-        })}
-      />,
-    );
-    expect(screen.queryByTestId("onboarding-view")).toBeNull();
-    expect(screen.queryByTestId("conversation-events")).toBeNull();
-  });
-
   it('calls scrollToBottom("smooth") when scroll button clicked', () => {
     const scrollToBottom = vi.fn();
     const events = [{ id: "1", type: "user", body: "hi" }] as any;

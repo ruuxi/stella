@@ -40,7 +40,6 @@ type ChatColumnProps = {
   onboardingDone: boolean;
   onboardingExiting: boolean;
   isAuthenticated: boolean;
-  isAuthLoading?: boolean;
   canSubmit: boolean;
   onSend: () => void;
 
@@ -80,7 +79,6 @@ export const ChatColumn = memo(function ChatColumn({
   onboardingDone,
   onboardingExiting,
   isAuthenticated,
-  isAuthLoading,
   canSubmit,
   onSend,
   hasExpanded,
@@ -98,8 +96,7 @@ export const ChatColumn = memo(function ChatColumn({
   onCommandSelect,
 }: ChatColumnProps) {
   const suggestions = useCommandSuggestions(events, isStreaming);
-  const showLoading = onboardingDone && (isAuthLoading ?? false);
-  const showConversation = onboardingDone && !showLoading;
+  const showConversation = onboardingDone;
 
   return (
     <div className="full-body-main">
@@ -108,7 +105,7 @@ export const ChatColumn = memo(function ChatColumn({
         ref={scrollContainerRef}
         onScroll={handleScroll}
       >
-        {showLoading ? null : showConversation ? (
+        {showConversation ? (
           <div className="session-messages">
             <ConversationEvents
               events={events}
