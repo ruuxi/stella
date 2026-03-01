@@ -1976,7 +1976,7 @@ app.whenReady().then(async () => {
           onToolStart: () => {},
           onToolEnd: () => {},
           onEnd: (ev) => {
-            resolve(ev.finalText ?? fullText || 'Done.')
+            resolve((ev.finalText ?? fullText) || 'Done.')
           },
           onError: (ev) => {
             resolve(`Error: ${ev.error ?? 'Unknown error'}`)
