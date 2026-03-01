@@ -56,7 +56,7 @@ export function useDiscoveryFlow({
     [],
   );
 
-  // Collect signals → synthesize → post welcome as soon as collection finishes
+  // Collect signals -> synthesize -> post welcome as soon as collection finishes
   useEffect(() => {
     if (!discoveryCategories || !activeConversationId) return;
     if (storageMode === "cloud" && !isAuthenticated) return;
@@ -81,17 +81,22 @@ export function useDiscoveryFlow({
         });
         if (!synthesisResult.coreMemory) return;
 
-        await window.electronAPI?.writeCoreMemory?.(synthesisResult.coreMemory);
+        const writeCoreMemoryPromise =
+          window.electronAPI?.writeCoreMemory?.(synthesisResult.coreMemory) ??
+          Promise.resolve();
 
-        // Sync core memory to Convex when authenticated.
-        if (isAuthenticated) {
-          try {
-            await setCoreMemory({ content: synthesisResult.coreMemory });
-          } catch {
-            // Non-critical — local file is the source of truth
-          }
-        }
-        const deviceId = await getOrCreateDeviceId();
+        const syncCoreMemoryPromise = isAuthenticated
+          ? setCoreMemory({ content: synthesisResult.coreMemory }).catch(() => {
+              // Non-critical - local file is the source of truth
+            })
+          : Promise.resolve();
+
+        // Resolve independent work in parallel to avoid an async waterfall.
+        const [deviceId] = await Promise.all([
+          getOrCreateDeviceId(),
+          writeCoreMemoryPromise,
+          syncCoreMemoryPromise,
+        ]);
 
         // Select default skills based on user profile (fire-and-forget).
         // Requires auth because endpoint is owner-scoped.

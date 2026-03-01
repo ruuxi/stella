@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { Suspense, lazy, useCallback, useMemo } from "react"
 import { useQuery } from "convex/react"
 import { useConversationEvents, getRunningTasks } from "@/hooks/use-conversation-events"
 import { useWelcomeSuggestions } from "@/hooks/use-welcome-suggestions"
@@ -7,7 +7,6 @@ import { api } from "@/convex/api"
 import type { WelcomeSuggestion } from "@/services/synthesis"
 import { NewsFeed } from "./NewsFeed"
 import { ImageGallery } from "./ImageGallery"
-import { MusicPlayer } from "./MusicPlayer"
 import { GenerativeCanvas } from "./GenerativeCanvas"
 import { SuggestionsPanel } from "./SuggestionsPanel"
 import { ActiveTasks } from "./ActiveTasks"
@@ -25,6 +24,10 @@ type ScheduleItem = {
   lastStatus?: string
   outputPreview?: string
 }
+
+const MusicPlayer = lazy(() =>
+  import("./MusicPlayer").then((module) => ({ default: module.MusicPlayer })),
+)
 
 function useScheduleData(): ScheduleItem[] {
   const { cloudFeaturesEnabled } = useChatStore()
@@ -119,13 +122,13 @@ export function HomeView({ conversationId }: HomeViewProps) {
   const hasTasks = runningTasks.length > 0
   const hasSchedule = scheduleItems.length > 0
 
-  const handleSuggestionClick = (suggestion: WelcomeSuggestion) => {
+  const handleSuggestionClick = useCallback((suggestion: WelcomeSuggestion) => {
     window.dispatchEvent(
       new CustomEvent("stella:send-message", {
         detail: { text: suggestion.prompt },
       }),
     )
-  }
+  }, [])
 
   return (
     <div className="home-root">
@@ -140,7 +143,15 @@ export function HomeView({ conversationId }: HomeViewProps) {
           <GenerativeCanvas />
         </div>
         <div className="home-zone-sidebar">
-          <MusicPlayer />
+          <Suspense
+            fallback={
+              <DashboardCard label="Ambient">
+                <span className="home-sidebar-empty">Loading ambient controls...</span>
+              </DashboardCard>
+            }
+          >
+            <MusicPlayer />
+          </Suspense>
           {hasSuggestions && (
             <SuggestionsPanel
               suggestions={welcomeSuggestions}
