@@ -1394,9 +1394,6 @@ http.route({
       );
       const lines = ["# Device Status"];
       lines.push(`- Local device: ${deviceResult.localOnline ? "online" : "offline"}`);
-      if (deviceResult.cloudAvailable) {
-        lines.push(`- Remote machine: ${deviceResult.cloudStatus}`);
-      }
       deviceStatus = lines.join("\n");
     } catch {
       // Skip device status
