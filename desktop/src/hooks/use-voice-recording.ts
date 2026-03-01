@@ -89,6 +89,15 @@ export function useVoiceRecording({
 
         const ctx = new AudioContext();
         audioContextRef.current = ctx;
+
+        // Ensure context is running (browsers may start it suspended)
+        if (ctx.state === "suspended") await ctx.resume();
+        if (stopped) {
+          ctx.close();
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
         const source = ctx.createMediaStreamSource(stream);
 
         // Analyser for waveform visualization
