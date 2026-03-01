@@ -609,7 +609,6 @@ export const execute = internalAction({
         );
         const candidates = buildExecutionCandidates({
           targetDeviceId: target.targetDeviceId,
-          spriteName: target.spriteName,
         });
         const agentType = payloadResolved.agentType ?? "orchestrator";
         const result = await runAgentTurnWithFallback({

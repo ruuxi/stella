@@ -237,7 +237,7 @@ describe("security regressions", () => {
     expect(routingFlowSource).toContain("isOwnerInConnectedMode");
     expect(routingFlowSource).toContain("resolveConnectionForIncomingMessage");
     expect(utilsSource).toContain("const candidates = buildExecutionCandidates({");
-    expect(utilsSource).toContain("runtimeMode === \"cloud_247\"");
+    expect(utilsSource).not.toContain("runtimeMode === \"cloud_247\"");
     expect(utilsSource).toContain("const usedCloudFallback =");
   });
 

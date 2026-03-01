@@ -134,14 +134,8 @@ http.route({
       internal.agent.device_resolver.resolveExecutionTarget,
       { ownerId: conversation.ownerId },
     );
-    // Prefer live device/cloud resolution; fall back to message deviceId for startup race windows.
+    // Prefer live device resolution; fall back to message deviceId for startup race windows.
     const targetDeviceId = executionTarget.targetDeviceId ?? userEvent.deviceId ?? undefined;
-    const spriteName = targetDeviceId ? undefined : executionTarget.spriteName ?? undefined;
-    if (spriteName) {
-      await ctx.runMutation(internal.agent.cloud_devices.touchActivity, {
-        ownerId: conversation.ownerId,
-      });
-    }
 
     const userPayload =
       userEvent.payload && typeof userEvent.payload === "object"
@@ -342,7 +336,6 @@ http.route({
           conversationId,
           userMessageId,
           targetDeviceId,
-          spriteName,
         },
       ),
       messages: requestMessages,

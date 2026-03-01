@@ -1,5 +1,4 @@
-import { mutation, internalMutation, internalQuery } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { mutation, internalQuery } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { requireSensitiveUserId } from "../auth";
 
@@ -43,12 +42,11 @@ const verifyHeartbeatSignature = async (args: {
 };
 
 // ---------------------------------------------------------------------------
-// Public Mutations — called from Electron app
+// Public Mutations - called from Electron app
 // ---------------------------------------------------------------------------
 
 /**
  * Heartbeat: upsert the local device record with online = true.
- * Called every 30s from the Electron runner.
  */
 export const heartbeat = mutation({
   args: {
@@ -116,7 +114,6 @@ export const heartbeat = mutation({
 
 /**
  * Go offline: mark the local device as offline.
- * Called from Electron app on before-quit / runner stop.
  */
 export const goOffline = mutation({
   args: {},
@@ -135,49 +132,34 @@ export const goOffline = mutation({
 });
 
 // ---------------------------------------------------------------------------
-// Internal Queries — used by channels, heartbeats, crons
+// Internal Queries - used by channels, schedulers, and agent execution
 // ---------------------------------------------------------------------------
 
 /**
  * Resolve the best execution target for an owner.
- * 1. Local device online → return its deviceId
- * 2. Cloud device running → return its spriteName
- * 3. Neither → null/null (backend-only tools)
+ * Local device online -> return its deviceId.
+ * Otherwise return null.
  */
 export const resolveExecutionTarget = internalQuery({
   args: { ownerId: v.string() },
   handler: async (ctx, args): Promise<{
     targetDeviceId: string | null;
-    spriteName: string | null;
   }> => {
-    // Step 1: Check local device
     const device = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .unique();
 
     if (device?.online) {
-      return { targetDeviceId: device.deviceId, spriteName: null };
+      return { targetDeviceId: device.deviceId };
     }
 
-    // Step 2: Check cloud device (ungated — if it exists and is usable, use it)
-    const spriteName: string | null = await ctx.runQuery(
-      internal.agent.cloud_devices.resolveForOwnerUngated,
-      { ownerId: args.ownerId },
-    );
-
-    if (spriteName) {
-      return { targetDeviceId: null, spriteName };
-    }
-
-    // Step 3: No execution target
-    return { targetDeviceId: null, spriteName: null };
+    return { targetDeviceId: null };
   },
 });
 
 /**
  * Get device status for system prompt injection.
- * Returns a summary the orchestrator can reason about.
  */
 export const getDeviceStatus = internalQuery({
   args: { ownerId: v.string() },
@@ -187,27 +169,8 @@ export const getDeviceStatus = internalQuery({
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .unique();
 
-    const cloudRecords = await ctx.db
-      .query("cloud_devices")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
-      .collect();
-
-    // Find best cloud device status
-    let cloudStatus: string | null = null;
-    let cloudAvailable = false;
-    for (const record of cloudRecords) {
-      if (record.status !== "error") {
-        cloudAvailable = true;
-        cloudStatus = record.status;
-        break;
-      }
-      cloudStatus = record.status;
-    }
-
     return {
       localOnline: device?.online ?? false,
-      cloudAvailable,
-      cloudStatus,
     };
   },
 });

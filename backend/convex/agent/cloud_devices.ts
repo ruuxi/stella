@@ -985,7 +985,6 @@ export const set247Enabled = action({
 
 /**
  * Internal action to spawn a cloud device for a given owner.
- * Used by the SpawnRemoteMachine backend tool.
  */
 export const spawnForOwner = internalAction({
   args: { ownerId: v.string() },

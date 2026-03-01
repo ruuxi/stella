@@ -23,7 +23,6 @@ const ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS = new Set([
   "CloseCanvas",
   "StoreSearch",
   "GenerateApiSkill",
-  "SpawnRemoteMachine",
   "ListResources",
   "NoResponse",
 ]);

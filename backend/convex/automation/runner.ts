@@ -34,7 +34,6 @@ type RunAgentTurnArgs = {
   ownerId?: string;
   userMessageId?: Id<"events">;
   targetDeviceId?: string;
-  spriteName?: string;
   transient?: boolean;
 };
 
@@ -67,7 +66,6 @@ export async function runAgentTurn({
   ownerId,
   userMessageId,
   targetDeviceId,
-  spriteName,
   transient,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
   await ensureBuiltins(ctx);
@@ -153,7 +151,6 @@ export async function runAgentTurn({
       maxTaskDepth: promptBuild.maxTaskDepth,
       ownerId: resolvedOwnerId,
       conversationId,
-      spriteName,
       transient: Boolean(transient),
     },
   );
