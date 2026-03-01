@@ -32,6 +32,9 @@ import {
 } from "./model_execution";
 import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
+import { isContextOverflowError } from "@stella/shared";
+import { PREFERRED_BROWSER_KEY } from "../data/preferences";
+import { BROWSER_AGENT_SAFARI_DENIED_REASON, SUBAGENT_TYPES } from "../lib/agent_constants";
 
 // Task without model field for client responses
 const taskClientValidator = v.object({
@@ -63,10 +66,7 @@ const DEFAULT_MAX_TASK_DEPTH = 2;
 const TASK_CANCEL_POLL_INTERVAL_MS = 2000;
 const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
 const PERSIST_CHUNK_DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-const PREFERRED_BROWSER_KEY = "preferred_browser";
-const BROWSER_AGENT_SAFARI_DENIED_REASON =
-  "Browser Agent is unavailable when the selected browser is Safari. Use a Chromium-based browser for browser automation.";
-const ALLOWED_SUBAGENT_TYPES = new Set(["general", "explore", "browser"]);
+const ALLOWED_SUBAGENT_TYPES: Set<string> = new Set(SUBAGENT_TYPES);
 
 const usageSummaryValidator = v.object({
   inputTokens: v.optional(v.number()),
@@ -234,12 +234,6 @@ const classifyBashCommand = (cmd: string): string => {
   if (/\b(start|dev|serve|run dev|up)\b/.test(lower)) return "server";
   return "other";
 };
-
-const CONTEXT_OVERFLOW_RE =
-  /(context length|context window|too many tokens|max(?:imum)? context|prompt(?:\s+is)? too long|token limit|context_length_exceeded)/i;
-
-const isContextOverflowError = (message: string): boolean =>
-  CONTEXT_OVERFLOW_RE.test(message);
 
 const parseJson = (raw: string): unknown => {
   try {
@@ -1092,7 +1086,7 @@ const executeSubagentRun = async (
     const errorMessage = (error as Error).message || "Unknown task error";
 
     const overflowRecoveryAttempt = args.overflowRecoveryAttempt ?? 0;
-    if (isContextOverflowError(errorMessage) && overflowRecoveryAttempt < 1) {
+    if (isContextOverflowError(error) && overflowRecoveryAttempt < 1) {
       try {
         await ctx.runMutation(internal.agent.tasks.pushStatusUpdate, {
           taskId: args.taskId,
