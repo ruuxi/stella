@@ -73,6 +73,8 @@ import type * as http from "../http.js";
 import type * as http_routes_connectors from "../http_routes/connectors.js";
 import type * as http_shared_cors from "../http_shared/cors.js";
 import type * as http_shared_webhook_controls from "../http_shared/webhook_controls.js";
+import type * as lib_agent_constants from "../lib/agent_constants.js";
+import type * as lib_coerce from "../lib/coerce.js";
 import type * as lib_json from "../lib/json.js";
 import type * as lib_number_utils from "../lib/number_utils.js";
 import type * as lib_object_utils from "../lib/object_utils.js";
@@ -193,6 +195,8 @@ declare const fullApi: ApiFromModules<{
   "http_routes/connectors": typeof http_routes_connectors;
   "http_shared/cors": typeof http_shared_cors;
   "http_shared/webhook_controls": typeof http_shared_webhook_controls;
+  "lib/agent_constants": typeof lib_agent_constants;
+  "lib/coerce": typeof lib_coerce;
   "lib/json": typeof lib_json;
   "lib/number_utils": typeof lib_number_utils;
   "lib/object_utils": typeof lib_object_utils;

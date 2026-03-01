@@ -43,6 +43,7 @@ const getEmailLogoSrc = (siteUrl: string) => {
 
 const extraTrustedOrigins = [
   "http://localhost:5714",
+  "http://localhost:5715",
   "https://fromyou.ai",
 ];
 
