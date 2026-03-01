@@ -186,6 +186,9 @@ export const mintProxyToken = internalMutation({
     const token = generateTokenString();
     const expiresAt = now + PROXY_TOKEN_TTL_MS;
 
+    const identity = await ctx.auth.getUserIdentity();
+    const isAnonymous = identity ? (identity as Record<string, unknown>).isAnonymous === true : false;
+
     await ctx.db.insert("proxy_tokens", {
       ownerId: args.ownerId,
       token,
@@ -195,6 +198,7 @@ export const mintProxyToken = internalMutation({
       expiresAt,
       revoked: false,
       createdAt: now,
+      isAnonymous,
     });
 
     return { token, expiresAt };
@@ -232,6 +236,7 @@ export const validateProxyToken = internalQuery({
       ownerId: row.ownerId,
       agentType: row.agentType,
       runId: row.runId,
+      isAnonymous: row.isAnonymous ?? false,
     };
   },
 });

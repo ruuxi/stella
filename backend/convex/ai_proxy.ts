@@ -119,11 +119,11 @@ async function consumeDeviceRateLimit(
     }
     if (!didLogMissingAnonDeviceSaltForProxy) {
       didLogMissingAnonDeviceSaltForProxy = true;
-      console.warn(
-        "[ai-proxy] Missing ANON_DEVICE_ID_HASH_SALT; anonymous rate limiting is disabled until configured.",
+      console.error(
+        "[ai-proxy] Missing ANON_DEVICE_ID_HASH_SALT; failing closed to prevent rate limit bypass.",
       );
     }
-    return true;
+    return false;
   }
 }
 
@@ -682,7 +682,7 @@ export const llmProxy = httpAction(async (ctx, request) => {
     );
   }
 
-  const { ownerId, agentType } = tokenResult;
+  const { ownerId, agentType, isAnonymous } = tokenResult;
 
   // 2. Parse provider and path from headers.
   // Unknown providers are routed through OpenRouter using the model string.
@@ -716,21 +716,35 @@ export const llmProxy = httpAction(async (ctx, request) => {
   }
 
   // 3. Rate limit check
-  const rateCheck = await ctx.runMutation(internal.ai_proxy_data.checkProxyRateLimit, {
-    ownerId,
-  });
-
-  if (!rateCheck.allowed) {
-    return new Response(
-      JSON.stringify({ error: "Rate limit exceeded" }),
-      {
-        status: 429,
-        headers: {
-          "Content-Type": "application/json",
-          "Retry-After": String(Math.ceil((rateCheck.retryAfterMs ?? 60000) / 1000)),
-        },
-      },
+  if (isAnonymous) {
+    const allowed = await consumeDeviceRateLimit(
+      ctx,
+      `anon-jwt:${ownerId}`,
+      getClientAddressKey(request),
     );
+    if (!allowed) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  } else {
+    const rateCheck = await ctx.runMutation(internal.ai_proxy_data.checkProxyRateLimit, {
+      ownerId,
+    });
+
+    if (!rateCheck.allowed) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded" }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": String(Math.ceil((rateCheck.retryAfterMs ?? 60000) / 1000)),
+          },
+        },
+      );
+    }
   }
 
   // 4. Resolve API key via BYOK chain

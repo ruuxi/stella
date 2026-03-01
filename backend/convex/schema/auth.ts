@@ -46,6 +46,7 @@ export const authSchema = {
     expiresAt: v.number(),
     revoked: v.boolean(),
     createdAt: v.number(),
+    isAnonymous: v.optional(v.boolean()),
   })
     .index("by_token", ["token"])
     .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
