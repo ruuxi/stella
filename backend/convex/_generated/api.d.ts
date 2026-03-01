@@ -95,6 +95,7 @@ import type * as prompts_personalized_dashboard from "../prompts/personalized_da
 import type * as prompts_skill_metadata from "../prompts/skill_metadata.js";
 import type * as prompts_skill_selection from "../prompts/skill_selection.js";
 import type * as prompts_synthesis from "../prompts/synthesis.js";
+import type * as prompts_voice_orchestrator from "../prompts/voice_orchestrator.js";
 import type * as reset from "../reset.js";
 import type * as scheduling_claim_flow from "../scheduling/claim_flow.js";
 import type * as scheduling_cron_jobs from "../scheduling/cron_jobs.js";
@@ -118,6 +119,7 @@ import type * as tools_integration_request_service from "../tools/integration_re
 import type * as tools_network_safety from "../tools/network_safety.js";
 import type * as tools_orchestration from "../tools/orchestration.js";
 import type * as tools_types from "../tools/types.js";
+import type * as tools_voice_schemas from "../tools/voice_schemas.js";
 
 import type {
   ApiFromModules,
@@ -213,6 +215,7 @@ declare const fullApi: ApiFromModules<{
   "prompts/skill_metadata": typeof prompts_skill_metadata;
   "prompts/skill_selection": typeof prompts_skill_selection;
   "prompts/synthesis": typeof prompts_synthesis;
+  "prompts/voice_orchestrator": typeof prompts_voice_orchestrator;
   reset: typeof reset;
   "scheduling/claim_flow": typeof scheduling_claim_flow;
   "scheduling/cron_jobs": typeof scheduling_cron_jobs;
@@ -236,6 +239,7 @@ declare const fullApi: ApiFromModules<{
   "tools/network_safety": typeof tools_network_safety;
   "tools/orchestration": typeof tools_orchestration;
   "tools/types": typeof tools_types;
+  "tools/voice_schemas": typeof tools_voice_schemas;
 }>;
 
 /**
