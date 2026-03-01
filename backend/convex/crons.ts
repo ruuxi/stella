@@ -3,8 +3,6 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-crons.interval("heartbeat tick", { minutes: 1 }, internal.scheduling.heartbeat.tick);
-crons.interval("cron jobs tick", { minutes: 1 }, internal.scheduling.cron_jobs.tick);
 crons.interval("bridge wake tick", { minutes: 1 }, internal.channels.bridge.bridgeWakeTick);
 crons.interval(
   "transient connector cleanup",

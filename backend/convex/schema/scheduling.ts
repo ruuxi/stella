@@ -55,6 +55,7 @@ export const schedulingSchema = {
     runningAtMs: v.optional(v.number()),
     lastRunAtMs: v.optional(v.number()),
     nextRunAtMs: v.number(),
+    scheduledRunId: v.optional(v.id("_scheduled_functions")),
     lastStatus: v.optional(v.string()),
     lastError: v.optional(v.string()),
     lastSentText: v.optional(v.string()),
@@ -63,7 +64,6 @@ export const schedulingSchema = {
     updatedAt: v.number(),
   })
     .index("by_ownerId_and_conversationId", ["ownerId", "conversationId"])
-    .index("by_nextRunAtMs_and_ownerId", ["nextRunAtMs", "ownerId"])
     .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
 
   cron_jobs: defineTable({
@@ -77,6 +77,7 @@ export const schedulingSchema = {
     payload: cronPayloadValidator,
     deleteAfterRun: v.optional(v.boolean()),
     nextRunAtMs: v.number(),
+    scheduledRunId: v.optional(v.id("_scheduled_functions")),
     runningAtMs: v.optional(v.number()),
     lastRunAtMs: v.optional(v.number()),
     lastStatus: v.optional(v.string()),
@@ -86,6 +87,5 @@ export const schedulingSchema = {
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
-    .index("by_nextRunAtMs_and_ownerId", ["nextRunAtMs", "ownerId"]),
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
 };
