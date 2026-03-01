@@ -24,9 +24,6 @@ import {
   destroyModifierOverlay,
 } from './modifier-overlay.js'
 import {
-  createVoiceWindow,
-  showVoiceWindow,
-  hideVoiceWindow,
   getVoiceWindow,
 } from './voice-window.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
@@ -1469,20 +1466,7 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
       break
     }
     case 'voice':
-      radialContextShouldCommit = true
-      commitStagedRadialContext()
-      updateUiState({
-        mode: 'voice',
-        isVoiceActive: !uiState.isVoiceActive,
-      })
-      if (!uiState.isVoiceActive) {
-        // Just stopped voice, hide the voice overlay and ensure mini window is visible for transcript
-        hideVoiceWindow()
-        if (!isMiniShowing()) showWindow('mini')
-      } else {
-        // Started voice, show the voice pill overlay
-        showVoiceWindow()
-      }
+      // No-op for now — voice UI will be rebuilt
       break
     case 'full':
       cancelRadialContextCapture()
@@ -1837,7 +1821,6 @@ app.whenReady().then(async () => {
   createRadialWindow() // Pre-create radial window for faster display
   createRegionCaptureWindow() // Pre-create region capture window for faster display
   createModifierOverlay() // Overlay to capture right-clicks when Ctrl is held
-  createVoiceWindow() // Pre-create voice overlay window
 
   let currentVoiceShortcut = 'CommandOrControl+Shift+V'
 
@@ -1850,9 +1833,7 @@ app.whenReady().then(async () => {
         uiState.isVoiceActive = !uiState.isVoiceActive
         if (uiState.isVoiceActive) {
           uiState.mode = 'voice'
-          showVoiceWindow()
         } else {
-          hideVoiceWindow()
           if (!isMiniShowing()) showWindow('mini')
         }
         broadcastUiState()
@@ -1863,14 +1844,12 @@ app.whenReady().then(async () => {
   // Register Voice shortcut initially
   globalShortcut.register(currentVoiceShortcut, () => {
     if (!appReady) return
-    
+
     // Toggle voice state
     uiState.isVoiceActive = !uiState.isVoiceActive
     if (uiState.isVoiceActive) {
       uiState.mode = 'voice'
-      showVoiceWindow()
     } else {
-      hideVoiceWindow()
       // Once voice stops, ensure the mini window shows up to receive transcript
       if (!isMiniShowing()) showWindow('mini')
     }
@@ -1897,7 +1876,6 @@ app.whenReady().then(async () => {
         // Activate voice mode
         uiState.isVoiceActive = true
         uiState.mode = 'voice'
-        showVoiceWindow()
         broadcastUiState()
 
         // Pause wake word while voice is active
@@ -1905,9 +1883,7 @@ app.whenReady().then(async () => {
       })
 
       // Start wake word listening when app becomes ready
-      const originalSetReady = appReady
       ipcMain.on('app:setReady', () => {
-        // Start capture after a short delay to let the voice window load
         setTimeout(() => {
           if (!capture.isCapturing()) {
             capture.start()
@@ -1917,12 +1893,6 @@ app.whenReady().then(async () => {
       })
 
       // Resume wake word when voice mode deactivates
-      const originalVoiceShortcutHandler = () => {
-        if (!uiState.isVoiceActive && !capture.isCapturing()) {
-          capture.start()
-        }
-      }
-      // Hook into voice state changes
       setInterval(() => {
         if (appReady && !uiState.isVoiceActive && !capture.isCapturing()) {
           capture.start()
@@ -2002,7 +1972,6 @@ app.whenReady().then(async () => {
     setHostAuthState(false)
     appReady = false
     pendingAuthCallback = null
-    hideVoiceWindow()
     uiState.isVoiceActive = false
 
     if (pendingMiniChatContextAck) {
@@ -2097,11 +2066,6 @@ app.whenReady().then(async () => {
     }
     if (isVoiceActive !== undefined) {
       uiState.isVoiceActive = isVoiceActive
-      if (isVoiceActive) {
-        showVoiceWindow()
-      } else {
-        hideVoiceWindow()
-      }
     }
     if (Object.keys(rest).length > 0) {
       updateUiState(rest)
