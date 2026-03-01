@@ -971,20 +971,6 @@ export const createBackendTools = (
             ...(args.url ? { url: args.url } : {}),
           },
         });
-        // Persist canvas state for restore-on-conversation-switch
-        if (options.ownerId) {
-          try {
-            await ctx.runMutation(internal.data.canvas_states.save, {
-              ownerId: options.ownerId,
-              conversationId: conversationId as Id<"conversations">,
-              name: normalizedName,
-              title: args.title ?? normalizedName,
-              ...(args.url ? { url: args.url } : {}),
-            });
-          } catch {
-            // Best-effort: canvas state persistence should not fail tool execution.
-          }
-        }
         return `Canvas opened: ${normalizedName}`;
       },
     }),
@@ -1001,14 +987,6 @@ export const createBackendTools = (
           type: "canvas_command",
           payload: { action: "close" },
         });
-        // Clear persisted canvas state
-        try {
-          await ctx.runMutation(internal.data.canvas_states.remove, {
-            conversationId: conversationId as Id<"conversations">,
-          });
-        } catch {
-          // Best-effort
-        }
         return "Canvas closed.";
       },
     }),
