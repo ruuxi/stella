@@ -1354,19 +1354,41 @@ http.route({
       }
     }
 
-    // Resolve OpenAI API key: BYOK first, then platform key
-    let openaiApiKey: string | null = null;
-    try {
-      openaiApiKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
+    // Run independent queries + imports in parallel
+    const [
+      byokKeyResult,
+      voiceOrchestratorMod,
+      voiceSchemasMod,
+      deviceStatusResult,
+      activeThreadsResult,
+    ] = await Promise.all([
+      // BYOK key lookup
+      ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
         ownerId,
         provider: "llm:openai",
-      });
-    } catch {
-      // BYOK lookup failed — fall through to platform key
-    }
-    if (!openaiApiKey) {
-      openaiApiKey = process.env.OPENAI_API_KEY ?? null;
-    }
+      }).catch(() => null as string | null),
+
+      // Dynamic imports
+      import("./prompts/voice_orchestrator"),
+      import("./tools/voice_schemas"),
+
+      // Device status
+      ctx.runQuery(
+        internal.agent.device_resolver.getDeviceStatus,
+        { ownerId },
+      ).catch(() => null),
+
+      // Active threads
+      convexConversationId
+        ? ctx.runQuery(internal.data.threads.listActiveThreads, {
+            ownerId,
+            conversationId: convexConversationId,
+          }).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    // Resolve OpenAI API key: BYOK first, then platform key
+    const openaiApiKey = byokKeyResult || process.env.OPENAI_API_KEY || null;
     if (!openaiApiKey) {
       return withCors(
         new Response(
@@ -1377,35 +1399,18 @@ http.route({
       );
     }
 
-    // Build voice session instructions with dynamic context
-    const { buildVoiceSessionInstructions } = await import("./prompts/voice_orchestrator");
-    const { getVoiceToolSchemas } = await import("./tools/voice_schemas");
+    const { buildVoiceSessionInstructions } = voiceOrchestratorMod;
+    const { getVoiceToolSchemas } = voiceSchemasMod;
 
-    // Fetch dynamic context for the instructions
+    // Build dynamic context
     let deviceStatus: string | undefined;
-    let activeThreads: string | undefined;
-    let coreMemory: string | undefined;
-    let userName: string | undefined;
-
-    try {
-      const deviceResult = await ctx.runQuery(
-        internal.agent.device_resolver.getDeviceStatus,
-        { ownerId },
-      );
-      const lines = ["# Device Status"];
-      lines.push(`- Local device: ${deviceResult.localOnline ? "online" : "offline"}`);
-      deviceStatus = lines.join("\n");
-    } catch {
-      // Skip device status
+    if (deviceStatusResult) {
+      deviceStatus = `# Device Status\n- Local device: ${deviceStatusResult.localOnline ? "online" : "offline"}`;
     }
 
-    try {
-      if (!convexConversationId) throw new Error("skip");
-      const threads = await ctx.runQuery(internal.data.threads.listActiveThreads, {
-        ownerId,
-        conversationId: convexConversationId,
-      });
-      const subagentThreads = (threads as Array<{ _id: string; name: string; messageCount: number }>)
+    let activeThreads: string | undefined;
+    if (activeThreadsResult) {
+      const subagentThreads = (activeThreadsResult as Array<{ _id: string; name: string; messageCount: number }>)
         .filter((t) => t.name !== "Main");
       if (subagentThreads.length > 0) {
         const lines = ["# Active Threads"];
@@ -1414,23 +1419,16 @@ http.route({
         }
         activeThreads = lines.join("\n");
       }
-    } catch {
-      // Skip threads
     }
 
-    // Get user profile name if available
-    try {
-      userName = identity.name ?? identity.nickname ?? undefined;
-    } catch {
-      // Skip
-    }
+    const userName = identity.name ?? identity.nickname ?? undefined;
 
     const instructions = buildVoiceSessionInstructions({
       userName,
       platform: "desktop",
       deviceStatus,
       activeThreads,
-      coreMemory,
+      coreMemory: undefined,
     });
 
     const tools = getVoiceToolSchemas();
