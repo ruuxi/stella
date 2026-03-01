@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { useConvexAuth, useQuery } from "convex/react";
-import { api } from "@/convex/api";
+import { useCurrentUser } from "@/hooks/use-current-user";
+import { useAccountMode } from "@/hooks/use-account-mode";
 
 /**
  * Tells the Electron main process whether cloud sync should be active.
@@ -8,17 +8,8 @@ import { api } from "@/convex/api";
  * for logged-in users in private/local mode.
  */
 export const CloudSyncBridge = () => {
-  const { isAuthenticated } = useConvexAuth();
-
-  const user = useQuery(
-    api.auth.getCurrentUser,
-    isAuthenticated ? {} : "skip",
-  ) as { isAnonymous?: boolean } | null | undefined;
-
-  const accountMode = useQuery(
-    api.data.preferences.getAccountMode,
-    isAuthenticated ? {} : "skip",
-  ) as "private_local" | "connected" | undefined;
+  const { user, isAuthenticated } = useCurrentUser();
+  const accountMode = useAccountMode();
 
   useEffect(() => {
     const electronApi = window.electronAPI;

@@ -1,3 +1,4 @@
+import { isAbortError } from "@stella/shared";
 import { createServiceRequest } from "./http/service-request";
 
 type ChatRequest = {
@@ -66,10 +67,6 @@ const handleUiEvent = (
   }
 };
 
-const isAbortError = (error: unknown, signal?: AbortSignal) => {
-  if (signal?.aborted) return true;
-  return error instanceof Error && error.name === "AbortError";
-};
 
 export const streamChat = async (
   payload: ChatRequest,
@@ -95,7 +92,7 @@ export const streamChat = async (
       signal: options.signal,
     });
   } catch (error) {
-    if (isAbortError(error, options.signal)) {
+    if (options.signal?.aborted || isAbortError(error)) {
       handlers.onAbort?.();
       return;
     }
@@ -157,7 +154,7 @@ export const streamChat = async (
       }
     }
   } catch (error) {
-    if (isAbortError(error, options.signal)) {
+    if (options.signal?.aborted || isAbortError(error)) {
       handlers.onAbort?.();
       return;
     }
