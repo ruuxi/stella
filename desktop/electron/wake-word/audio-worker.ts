@@ -37,7 +37,6 @@ function initStream() {
       (d: { defaultSampleRate: number; maxInputChannels: number }) => d.maxInputChannels > 0,
     );
     const captureRate = defaultInput?.defaultSampleRate ?? 48000;
-    console.log(`[AudioWorker] Default input device rate: ${captureRate}Hz`);
 
     audioStream = new portAudio.AudioIO({
       inOptions: {
@@ -97,16 +96,12 @@ function initStream() {
     });
 
     audioStream.on("error", (err: Error) => {
-      console.error("[AudioWorker] Stream error:", err.message);
       postMessage("stream-error", { error: err.message });
     });
 
     audioStream.start();
-    console.log(`[AudioWorker] Stream initialized at ${captureRate}Hz, resampling to ${TARGET_RATE}Hz`);
   } catch (err) {
-    const message = (err as Error).message;
-    console.error("[AudioWorker] Failed to init stream:", message);
-    postMessage("start-failed", { error: message });
+    postMessage("start-failed", { error: (err as Error).message });
     audioStream = null;
   }
 }
@@ -115,15 +110,12 @@ if (port) {
   port.on("message", (e: { data: { type: string } }) => {
     const msg = e.data;
     if (msg.type === "start") {
-      remainder = new Int16Array(0); // clear any stale audio from previous cycles
-      // Initialize the stream once, then just toggle the gate
+      remainder = new Int16Array(0);
       if (!audioStream) initStream();
       streaming = true;
       postMessage("started");
-      console.log("[AudioWorker] Streaming resumed");
     } else if (msg.type === "stop") {
       streaming = false;
-      console.log("[AudioWorker] Streaming paused");
     } else if (msg.type === "exit") {
       streaming = false;
       if (audioStream) {
