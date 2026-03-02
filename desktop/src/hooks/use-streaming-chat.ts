@@ -8,7 +8,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRafStringAccumulator } from "./use-raf-state";
-import { streamChat } from "../services/model-gateway";
 import { getPlatform } from "../utils/platform";
 import { getOrCreateDeviceId } from "../services/device";
 import type { EventRecord } from "./use-conversation-events";
@@ -63,7 +62,6 @@ export function useStreamingChat({
   const {
     isLocalStorage,
     storageMode,
-    streamStrategy,
     appendAgentEvent: chatStoreAppendAgentEvent,
     appendEvent: chatStoreAppendEvent,
     uploadAttachments: chatStoreUploadAttachments,
@@ -224,7 +222,6 @@ export function useStreamingChat({
         localHistory?: import("../services/local-chat-store").LocalHistoryMessage[];
       },
       runIdCounter: number,
-      fallbackToHttp: boolean,
     ) => {
       if (!activeConversationId || !window.electronAPI) return;
 
@@ -255,11 +252,7 @@ export function useStreamingChat({
             resetStreamingState(runIdCounter);
             return;
           }
-          if (fallbackToHttp) {
-            startHttpStream(args, runIdCounter);
-          } else {
-            resetStreamingState(runIdCounter);
-          }
+          resetStreamingState(runIdCounter);
         });
     },
     [
@@ -267,62 +260,6 @@ export function useStreamingChat({
       handleAgentEvent,
       storageMode,
       resetStreamingState,
-    ],
-  );
-
-  /** Start streaming via HTTP (server-side agent loop) */
-  const startHttpStream = useCallback(
-    (args: { userMessageId: string; attachments?: AttachmentRef[] }, runIdCounter: number) => {
-      if (!activeConversationId) return;
-
-      const controller = new AbortController();
-      streamAbortRef.current = controller;
-
-      void streamChat(
-        {
-          conversationId: activeConversationId,
-          userMessageId: args.userMessageId,
-          attachments: args.attachments ?? [],
-        },
-        {
-          onTextDelta: (delta) => {
-            if (runIdCounter !== streamRunIdRef.current) return;
-            appendStreamingDelta(delta);
-          },
-          onReasoningDelta: (delta) => {
-            if (runIdCounter !== streamRunIdRef.current) return;
-            appendReasoningDelta(delta);
-          },
-          onDone: () => {
-            if (runIdCounter !== streamRunIdRef.current) return;
-            streamAbortRef.current = null;
-            setIsStreaming(false);
-            if (streamingTextRef.current.trim().length === 0) {
-              resetStreamingText();
-              setPendingUserMessageId(null);
-            }
-          },
-          onAbort: () => resetStreamingState(runIdCounter),
-          onError: (error) => {
-            if (runIdCounter !== streamRunIdRef.current) return;
-            console.error("Model gateway error", error);
-            resetStreamingState(runIdCounter);
-          },
-        },
-        { signal: controller.signal },
-      ).catch((error) => {
-        if (runIdCounter !== streamRunIdRef.current) return;
-        console.error("Model gateway error", error);
-        resetStreamingState(runIdCounter);
-      });
-    },
-    [
-      activeConversationId,
-      resetStreamingState,
-      resetStreamingText,
-      appendStreamingDelta,
-      appendReasoningDelta,
-      streamingTextRef,
     ],
   );
 
@@ -348,56 +285,35 @@ export function useStreamingChat({
         agentStreamCleanupRef.current = null;
       }
 
-      // Dual-path: try local agent runtime first, fall back to HTTP
-      if (streamStrategy === "local-only") {
-        if (!window.electronAPI?.agentHealthCheck) {
-          console.error("[chat] Local agent not available (no electronAPI)");
-          showToast({ title: "Stella agent is not running", variant: "error" });
+      // Desktop is always the orchestrator — no HTTP fallback
+      if (!window.electronAPI?.agentHealthCheck) {
+        console.error("[chat] Local agent not available (no electronAPI)");
+        showToast({ title: "Stella agent is not running", variant: "error" });
+        resetStreamingState(runId);
+        return;
+      }
+      void window.electronAPI.agentHealthCheck().then((health) => {
+        if (runId !== streamRunIdRef.current) return;
+        if (!health?.ready) {
+          console.error("[chat] Local agent health check failed:", health);
+          showToast({ title: "Stella agent is starting up — try again in a moment", variant: "error" });
           resetStreamingState(runId);
           return;
         }
-        void window.electronAPI.agentHealthCheck().then((health) => {
-          if (runId !== streamRunIdRef.current) return;
-          if (!health?.ready) {
-            console.error("[chat] Local agent health check failed:", health);
-            showToast({ title: "Stella agent is starting up — try again in a moment", variant: "error" });
-            resetStreamingState(runId);
-            return;
-          }
-          startLocalStream(args, runId, false);
-        }).catch((err) => {
-          if (runId !== streamRunIdRef.current) return;
-          console.error("[chat] Local agent health check error:", err);
-          showToast({ title: "Stella agent is not responding", variant: "error" });
-          resetStreamingState(runId);
-        });
-        return;
-      }
-
-      if (window.electronAPI?.agentHealthCheck) {
-        void window.electronAPI.agentHealthCheck().then((health) => {
-          if (runId !== streamRunIdRef.current) return;
-          if (health?.ready) {
-            startLocalStream(args, runId, true);
-          } else {
-            startHttpStream(args, runId);
-          }
-        }).catch(() => {
-          if (runId !== streamRunIdRef.current) return;
-          startHttpStream(args, runId);
-        });
-      } else {
-        startHttpStream(args, runId);
-      }
+        startLocalStream(args, runId);
+      }).catch((err) => {
+        if (runId !== streamRunIdRef.current) return;
+        console.error("[chat] Local agent health check error:", err);
+        showToast({ title: "Stella agent is not responding", variant: "error" });
+        resetStreamingState(runId);
+      });
     },
     [
       resetStreamingState,
       activeConversationId,
-      streamStrategy,
       resetStreamingText,
       resetReasoningText,
       startLocalStream,
-      startHttpStream,
     ],
   );
 

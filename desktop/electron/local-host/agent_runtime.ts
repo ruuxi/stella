@@ -25,6 +25,8 @@ import { createToolCallIdFactory } from "./agent_core/tool_call_factory.js";
 import { runWithFallbackModel } from "./agent_core/failover.js";
 import { isClaudeCodeModel, runClaudeCodeTurn } from "./claude_code_session_runtime.js";
 import { runCodexAppServerTurn } from "./codex_app_server_runtime.js";
+import { generateSuggestionsLocally } from "./local_suggestions.js";
+import { compactThreadLocally } from "./local_compaction.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,7 @@ export type RunOrchestratorOpts = {
   authToken: string;
   deviceId: string;
   stellaHome: string;
+  bundledCommandsPath?: string;
   abortSignal?: AbortSignal;
 };
 
@@ -385,6 +388,10 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
         fullText,
         usage,
         activeThreadId: agentContext.activeThreadId,
+        reminderTokenCounter: {
+          reset: false,
+          outputTokens: usage?.outputTokens,
+        },
       });
       persisted = true;
     } catch (err) {
@@ -394,6 +401,86 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
 
   const s = nextSeq();
   callbacks.onEnd({ runId, seq: s, finalText: fullText, persisted });
+
+  // ── Local post-run tasks (fire-and-forget) ──
+  // These run after the user sees the response, so latency doesn't matter.
+  const gatewayKey = (agentContext as Record<string, unknown>).gatewayApiKey as string | undefined;
+  const postRunModel = gatewayKey
+    ? createGatewayModel(gatewayKey, "zai/glm-4.7")
+    : createProxiedModel(proxyBaseUrl, agentContext.proxyToken.token, "zai/glm-4.7");
+
+  // Suggestions
+  if (fullText.trim().length > 0 && opts.bundledCommandsPath) {
+    void generateSuggestionsLocally({
+      model: postRunModel,
+      bundledCommandsPath: opts.bundledCommandsPath,
+      assistantText: fullText,
+      recentMessages: (localHistory ?? []).slice(-6) as Array<{ role: "user" | "assistant"; content: string }>,
+    }).then((suggestions) => {
+      if (!suggestions || suggestions.length === 0 || !persistToConvex) return;
+      // Persist suggestion event to Convex
+      const baseUrl = convexUrl.replace(/\/+$/, "");
+      return fetch(`${baseUrl}/api/mutation`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          path: "events:appendEvent",
+          args: {
+            conversationId,
+            type: "command_suggestions",
+            payload: { suggestions },
+          },
+        }),
+      }).catch(() => {});
+    }).catch((err) => {
+      console.error("[agent-runtime] Suggestion generation failed:", err);
+    });
+  }
+
+  // Thread compaction
+  if (persisted && agentContext.activeThreadId) {
+    void compactThreadLocally({
+      model: postRunModel,
+      threadId: agentContext.activeThreadId,
+      agentType,
+      fetchThreadData: async () => {
+        const baseUrl = convexUrl.replace(/\/+$/, "");
+        const resp = await fetch(`${baseUrl}/api/query`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            path: "data/threads:loadThreadMessagesForRuntime",
+            args: { threadId: agentContext.activeThreadId },
+          }),
+        });
+        if (!resp.ok) return null;
+        const result = await resp.json();
+        return result?.value ?? null;
+      },
+      applyCompaction: async (args) => {
+        const baseUrl = convexUrl.replace(/\/+$/, "");
+        await fetch(`${baseUrl}/api/mutation`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            path: "data/threads:applyCompactionForRuntime",
+            args,
+          }),
+        });
+      },
+    }).catch((err) => {
+      console.error("[agent-runtime] Thread compaction failed:", err);
+    });
+  }
   journal.close();
   return runId;
 }
@@ -756,6 +843,8 @@ type PersistOpts = {
   fullText: string;
   usage?: { inputTokens?: number; outputTokens?: number };
   activeThreadId?: string;
+  // Finalization flags — trigger server-side side effects on final chunk
+  reminderTokenCounter?: { reset: boolean; outputTokens?: number };
 };
 
 async function persistRunToConvex(opts: PersistOpts): Promise<void> {
@@ -853,6 +942,10 @@ async function persistRunToConvex(opts: PersistOpts): Promise<void> {
       conversationId,
       agentType,
       activeThreadId: opts.activeThreadId,
+      // Include finalization data on the final chunk only
+      ...(chunk.isFinal && opts.reminderTokenCounter
+        ? { reminderTokenCounter: opts.reminderTokenCounter }
+        : {}),
     });
 
     let assistantText = chunk.assistantText;

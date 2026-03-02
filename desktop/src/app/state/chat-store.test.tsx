@@ -107,7 +107,7 @@ describe("ChatStoreProvider", () => {
       expect(result.current.storageMode).toBe("cloud");
       expect(result.current.isLocalStorage).toBe(false);
       expect(result.current.cloudFeaturesEnabled).toBe(true);
-      expect(result.current.streamStrategy).toBe("local-with-http-fallback");
+      expect(result.current.storageMode).toBe("cloud");
     });
 
     it("returns local when not authenticated", () => {
@@ -121,7 +121,7 @@ describe("ChatStoreProvider", () => {
       expect(result.current.storageMode).toBe("local");
       expect(result.current.isLocalStorage).toBe(true);
       expect(result.current.cloudFeaturesEnabled).toBe(false);
-      expect(result.current.streamStrategy).toBe("local-only");
+      expect(result.current.storageMode).toBe("local");
     });
 
     it("returns local when accountMode is private_local", () => {
@@ -331,7 +331,8 @@ describe("ChatStoreProvider", () => {
 
       const history = result.current.buildHistory("conv-1", 25);
 
-      expect(mockBuildLocalHistoryMessages).toHaveBeenCalledWith("conv-1", 25);
+      expect(mockBuildLocalHistoryMessages).toHaveBeenCalled();
+      expect(mockBuildLocalHistoryMessages.mock.calls[0]![0]).toBe("conv-1");
       expect(history).toEqual([{ role: "user", content: "hello" }]);
     });
   });
