@@ -1,4 +1,5 @@
-import { RefreshCw, Image as ImageIcon } from "lucide-react"
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw"
+import ImageIcon from "lucide-react/dist/esm/icons/image"
 import { DashboardCard } from "./DashboardCard"
 
 export function ImageGallery() {

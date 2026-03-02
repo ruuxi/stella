@@ -17,19 +17,16 @@ export const useCommandSuggestions = (
 ): CommandSuggestion[] => {
   if (isStreaming) return []
 
-  // Find the last command_suggestions event
+  let hasNewerMessage = false
+
+  // Scan once from newest to oldest to avoid repeated array slicing.
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i]
+    if (event.type === 'user_message' || event.type === 'assistant_message') {
+      hasNewerMessage = true
+      continue
+    }
     if (event.type !== 'command_suggestions') continue
-
-    // If there's a user_message or assistant_message after this suggestion,
-    // it's stale — a new turn happened
-    const hasNewerMessage = events
-      .slice(i + 1)
-      .some(
-        (e) =>
-          e.type === 'user_message' || e.type === 'assistant_message',
-      )
     if (hasNewerMessage) return []
 
     const payload = event.payload as

@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  createStreamingSession,
-  type StreamingTranscribeSession,
-} from "../services/speech-to-text";
+import type { StreamingTranscribeSession } from "../services/speech-to-text";
 
 interface UseVoiceRecordingOptions {
   isActive: boolean;
@@ -16,6 +13,15 @@ interface UseVoiceRecordingResult {
 }
 
 const MAX_RECORDING_MS = 5 * 60 * 1000;
+let speechToTextModulePromise: Promise<typeof import("../services/speech-to-text")> | null =
+  null;
+
+const loadSpeechToTextModule = () => {
+  if (!speechToTextModulePromise) {
+    speechToTextModulePromise = import("../services/speech-to-text");
+  }
+  return speechToTextModulePromise;
+};
 
 export function useVoiceRecording({
   isActive,
@@ -78,20 +84,30 @@ export function useVoiceRecording({
 
     void (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const sttModulePromise = loadSpeechToTextModule();
+        const streamPromise = navigator.mediaDevices.getUserMedia({
           audio: true,
         });
-        if (stopped) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
 
         const ctx = new AudioContext();
         audioContextRef.current = ctx;
+        const resumePromise =
+          ctx.state === "suspended" ? ctx.resume() : Promise.resolve();
+        const workletModulePromise = ctx.audioWorklet.addModule("/audio-capture-processor.js");
 
-        // Ensure context is running (browsers may start it suspended)
-        if (ctx.state === "suspended") await ctx.resume();
+        const [{ createStreamingSession }, stream] = await Promise.all([
+          sttModulePromise,
+          streamPromise,
+        ]);
+
+        if (stopped) {
+          ctx.close();
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        await Promise.all([resumePromise, workletModulePromise]);
         if (stopped) {
           ctx.close();
           stream.getTracks().forEach((t) => t.stop());
@@ -111,7 +127,6 @@ export function useVoiceRecording({
         sessionRef.current = session;
 
         // AudioWorklet streams raw PCM chunks to the session
-        await ctx.audioWorklet.addModule("/audio-capture-processor.js");
         const workletNode = new AudioWorkletNode(ctx, "audio-capture-processor");
         workletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
           if (stopped) return;
@@ -124,6 +139,9 @@ export function useVoiceRecording({
 
         maxTimeoutRef.current = setTimeout(commitAndFinish, MAX_RECORDING_MS);
       } catch (err) {
+        cleanupAudio();
+        sessionRef.current = null;
+        setIsRecording(false);
         console.error("Failed to start recording:", err);
       }
     })();
