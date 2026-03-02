@@ -104,6 +104,11 @@ export async function createWakeWordDetector(
   let wakewordSession: ort.InferenceSession;
   let vadSession: ort.InferenceSession;
 
+  // Pre-compute silence embedding to fill buffers during VAD pauses.
+  // This prevents the neural network from seeing out-of-distribution zero-padding
+  // and smoothly bridges the context without breaking the chronological timeline.
+  let silenceEmbedding = new Float32Array(EMBEDDING_DIM);
+
   async function createAllSessions() {
     [melspecSession, embeddingSession, wakewordSession, vadSession] =
       await Promise.all([
@@ -112,6 +117,14 @@ export async function createWakeWordDetector(
         ort.InferenceSession.create(modelPaths.wakeword, opts),
         ort.InferenceSession.create(modelPaths.vad, opts),
       ]);
+
+    // Compute the embedding of pure silence (1.0 mel bins)
+    const silenceMelWindow = new Float32Array(EMBEDDING_WINDOW * MEL_BINS).fill(1.0);
+    const results = await embeddingSession.run({
+      input_1: new ort.Tensor("float32", silenceMelWindow, [1, EMBEDDING_WINDOW, MEL_BINS, 1]),
+    });
+    const output = results[Object.keys(results)[0]] as ort.Tensor;
+    silenceEmbedding.set(new Float32Array(output.data as Float32Array).subarray(0, EMBEDDING_DIM));
   }
 
   function releaseAllSessions() {
@@ -298,18 +311,13 @@ export async function createWakeWordDetector(
       }
     }
 
-    // We are in a prolonged silence. Clear the feature state so we don't stitch 
-    // discontinuous audio chunks together when speech resumes.
+    // We are in a prolonged silence. Check if we need to reset the state.
+    // If featureRows > MODEL_INPUT_FRAMES, it means speech recently happened and finished.
+    // We seamlessly switch to "silence embeddings" without a discontinuous timeline drop.
     if (!isLoud && vadHangover === 0) {
       bufferRawData(pcm);
-      if (accumulatedSamples > 0 || featureRows > 0) {
-        melBuffer.fill(1.0);
-        melRows = EMBEDDING_WINDOW;
-        featureBuffer.fill(0); // Clear old embeddings
-        featureRows = 0;
-        accumulatedSamples = 0;
-        rawRemainder = new Int16Array(0);
-        recentScores.length = 0; // Clear confidence stack
+      if (featureRows > MODEL_INPUT_FRAMES || accumulatedSamples > 0) {
+        resetToSilence();
       }
       return { detected: false, score: 0, vadScore };
     }
@@ -404,9 +412,8 @@ export async function createWakeWordDetector(
           continue;
         }
 
-        const melWindow = new Float32Array(EMBEDDING_WINDOW * MEL_BINS);
-        // Copy the specific window from the full mel buffer
-        melWindow.set(melBuffer.subarray(startMel * MEL_BINS, endMel * MEL_BINS));
+        // Copy the specific window from the full mel buffer using slice() for native speed
+        const melWindow = melBuffer.slice(startMel * MEL_BINS, endMel * MEL_BINS);
         
         // Ensure shape is strictly [1, 76, 32, 1] for the DML provider
         const embedding = await computeEmbedding(melWindow);
@@ -475,29 +482,32 @@ export async function createWakeWordDetector(
   }
 
   // ---- Reset ----
-  function resetState() {
-    // We intentionally DO NOT reallocate typed arrays on reset. 
-    // They are preserved to avoid GC thrashing, which is especially important
-    // when pausing/resuming detection quickly. 
-    // We only reset the indices/lengths, which guarantees stale data is overwritten.
-    
-    rawBufferLen = 0;
-    rawRemainder = new Int16Array(0); 
-    
-    accumulatedSamples = 0;
-    
+  function resetToSilence() {
     melBuffer.fill(1.0);
     melRows = EMBEDDING_WINDOW; 
     
-    featureBuffer.fill(0); // explicitly clear features
-    featureRows = 0;
+    // Fill the first 16 frames with the pre-computed silence embedding
+    // This allows the neural network to seamlessly bridge background silence into speech
+    // exactly like the python openWakeWord library does
+    for (let i = 0; i < MODEL_INPUT_FRAMES; i++) {
+      featureBuffer.set(silenceEmbedding, i * EMBEDDING_DIM);
+    }
+    featureRows = MODEL_INPUT_FRAMES;
+    
+    accumulatedSamples = 0;
+    rawRemainder = new Int16Array(0);
     recentScores.length = 0;
     
     vadState.fill(0);
     vadContext.fill(0);
     vadHangover = 0;
-    
+  }
+
+  function resetState() {
+    rawBufferLen = 0;
     rawBuffer.fill(0);
+    
+    resetToSilence();
     
     warmupFrames = WARMUP_FRAMES;
     chunkDbg = 0; // Keep logging neat
