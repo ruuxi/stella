@@ -38,4 +38,14 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "secret encryption key rotation sweep",
+  { hours: 6 },
+  internal.data.secrets_rotation.rotateEncryptedMaterial,
+  {
+    batchSize: 100,
+    maxBatches: 5,
+  },
+);
+
 export default crons;
