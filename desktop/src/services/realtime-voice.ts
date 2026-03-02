@@ -90,11 +90,13 @@ let preWarmConvId: string | null = null;
  */
 export function preWarmVoiceSession(conversationId: string): void {
   if (preWarmedSession) return;
-  console.log("[RealtimeVoice] pre-warming session");
+  const t0 = performance.now();
+  console.log("[VoiceRTC:renderer] t+0ms pre-warm IPC received");
   const session = new RealtimeVoiceSession();
   preWarmedSession = session;
   preWarmConvId = conversationId;
   const token = consumeCachedToken() ?? undefined;
+  console.log(`[VoiceRTC:renderer] t+${(performance.now() - t0).toFixed(0)}ms token=${token ? 'cached' : 'will-fetch'}, connecting...`);
   session.connect(conversationId, token).catch((err) => {
     console.error("[RealtimeVoice] pre-warm failed:", err);
     if (preWarmedSession === session) {
@@ -149,6 +151,12 @@ export class RealtimeVoiceSession {
   private analyser: AnalyserNode | null = null;
   private audioContext: AudioContext | null = null;
   private destroyed = false;
+
+  // Pre-connection audio buffer — captures mic audio while SDP negotiation is in progress
+  private preConnectBuffer: string[] = []; // base64-encoded PCM chunks
+  private preConnectRecorder: ScriptProcessorNode | null = null;
+  private preConnectCtx: AudioContext | null = null;
+  private isBufferingPreConnect = false;
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
@@ -223,14 +231,18 @@ export class RealtimeVoiceSession {
     }
     this.conversationId = conversationId;
     this.setState("connecting");
+    const ct0 = performance.now();
+    const ct = (label: string) => console.log(`[VoiceRTC:connect] +${(performance.now() - ct0).toFixed(0)}ms ${label}`);
 
     try {
       // ── Phase 1: Start ALL work in parallel ────────────────────────
+      ct("phase1: starting parallel work");
 
       // A) Use pre-fetched token if available, otherwise fetch inline
       const keyPromise = prefetchedToken
-        ? Promise.resolve(prefetchedToken)
+        ? (ct("token: using prefetched"), Promise.resolve(prefetchedToken))
         : (async () => {
+        ct("token: fetching inline...");
         const { endpoint, headers } = await createServiceRequest("/api/voice/session");
         const res = await fetch(endpoint, {
           method: "POST",
@@ -245,8 +257,16 @@ export class RealtimeVoiceSession {
       })();
 
       // B) Acquire microphone (runs in parallel, awaited later)
-      const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prevent unhandled-rejection warning — error is caught when we await below
+      // Start pre-connect buffering as soon as mic is available so user speech
+      // during SDP negotiation is captured and flushed when the channel opens.
+      ct("mic: requesting getUserMedia");
+      const micPromise = navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        if (!this.destroyed) {
+          ct("mic: acquired — starting pre-connect buffer");
+          this.startPreConnectBuffering(stream);
+        }
+        return stream;
+      });
       micPromise.catch(() => {});
 
       // C) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
@@ -260,20 +280,24 @@ export class RealtimeVoiceSession {
         if (this.destroyed) return;
         const remoteStream = event.streams[0];
         if (remoteStream) {
+          ct("ontrack: remote audio stream received");
           this.setupAudioPlayback(remoteStream);
         }
       };
 
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
+      ct("sdp: local offer created");
       if (this.destroyed) { this.cleanup(); return; }
 
       // ── Phase 2: SDP exchange — needs token, NOT mic ───────────────
       const keyResult = await keyPromise;
+      ct("token: resolved");
       if (this.destroyed) { this.cleanup(); return; }
 
       const { clientSecret, model } = keyResult;
 
+      ct("sdp: sending to OpenAI");
       const sdpResponse = await fetch(
         `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
         {
@@ -285,6 +309,7 @@ export class RealtimeVoiceSession {
           body: offer.sdp,
         }
       );
+      ct("sdp: OpenAI responded");
       if (this.destroyed) { this.cleanup(); return; }
 
       if (!sdpResponse.ok) {
@@ -298,10 +323,12 @@ export class RealtimeVoiceSession {
         type: "answer",
         sdp: answerSdp,
       });
+      ct("sdp: remote description set");
       if (this.destroyed) { this.cleanup(); return; }
 
       // ── Phase 3: Attach mic track (likely already resolved) ────────
       const micStream = await micPromise;
+      ct("mic: acquired");
       if (this.destroyed) {
         micStream.getTracks().forEach((t) => t.stop());
         this.cleanup();
@@ -309,10 +336,12 @@ export class RealtimeVoiceSession {
       }
       this.localStream = micStream;
       await transceiver.sender.replaceTrack(micStream.getTracks()[0]);
+      ct("mic: track attached to peer connection");
 
       // Setup audio analyser for visualization
       this.setupAudioAnalyser();
 
+      ct("DONE — session connected");
       this.trace("CONNECTED", `conv=${conversationId} prefetched=${!!prefetchedToken}`);
       this.setState("connected");
     } catch (err) {
@@ -343,11 +372,81 @@ export class RealtimeVoiceSession {
   // WebRTC internals
   // ---------------------------------------------------------------------------
 
+  /** Start capturing mic audio into a buffer while we wait for the data channel. */
+  private startPreConnectBuffering(micStream: MediaStream) {
+    if (this.isBufferingPreConnect) return;
+    this.isBufferingPreConnect = true;
+    this.preConnectBuffer = [];
+
+    try {
+      const ctx = new AudioContext({ sampleRate: 24000 }); // OpenAI Realtime expects 24kHz
+      this.preConnectCtx = ctx;
+      const source = ctx.createMediaStreamSource(micStream);
+
+      // ScriptProcessorNode to capture raw PCM (deprecated but universally supported)
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      this.preConnectRecorder = processor;
+
+      processor.onaudioprocess = (e) => {
+        if (!this.isBufferingPreConnect) return;
+        const float32 = e.inputBuffer.getChannelData(0);
+        // Convert to 16-bit PCM then base64 (matching OpenAI's input_audio_buffer.append format)
+        const int16 = new Int16Array(float32.length);
+        for (let i = 0; i < float32.length; i++) {
+          int16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32767)));
+        }
+        const bytes = new Uint8Array(int16.buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        this.preConnectBuffer.push(btoa(binary));
+      };
+
+      source.connect(processor);
+      processor.connect(ctx.destination); // required for ScriptProcessorNode to fire
+      console.log(`[VoiceRTC:connect] pre-connect buffering started`);
+    } catch (err) {
+      console.error("[VoiceRTC:connect] pre-connect buffering failed:", err);
+      this.isBufferingPreConnect = false;
+    }
+  }
+
+  /** Stop pre-connect buffering and clean up the capture nodes. */
+  private stopPreConnectBuffering() {
+    this.isBufferingPreConnect = false;
+    if (this.preConnectRecorder) {
+      this.preConnectRecorder.disconnect();
+      this.preConnectRecorder = null;
+    }
+    if (this.preConnectCtx) {
+      this.preConnectCtx.close().catch(() => {});
+      this.preConnectCtx = null;
+    }
+  }
+
+  /** Flush buffered pre-connect audio into the Realtime API via the data channel. */
+  private flushPreConnectBuffer() {
+    if (this.preConnectBuffer.length === 0) return;
+    const chunks = this.preConnectBuffer;
+    this.preConnectBuffer = [];
+    console.log(`[VoiceRTC:connect] flushing ${chunks.length} pre-connect audio chunks`);
+    for (const chunk of chunks) {
+      this.sendEvent({
+        type: "input_audio_buffer.append",
+        audio: chunk,
+      });
+    }
+  }
+
   private setupDataChannel() {
     if (!this.dc) return;
 
     this.dc.onopen = () => {
       console.log("[RealtimeVoice] data channel open");
+      // Flush any audio captured while waiting for the connection
+      this.stopPreConnectBuffering();
+      this.flushPreConnectBuffer();
     };
 
     this.dc.onmessage = (event) => {
@@ -618,5 +717,7 @@ export class RealtimeVoiceSession {
     }
 
     this.assistantTranscriptBuffer = "";
+    this.stopPreConnectBuffering();
+    this.preConnectBuffer = [];
   }
 }
