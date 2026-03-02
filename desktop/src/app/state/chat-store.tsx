@@ -195,9 +195,9 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const buildHistory = useCallback(
-    (conversationId: string, max?: number): LocalHistoryMessage[] | undefined => {
+    (conversationId: string, _max?: number): LocalHistoryMessage[] | undefined => {
       if (!isLocalStorage) return undefined
-      return buildLocalHistoryMessages(conversationId, max ?? 50)
+      return buildLocalHistoryMessages(conversationId)
     },
     [isLocalStorage],
   )
