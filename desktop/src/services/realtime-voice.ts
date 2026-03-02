@@ -56,7 +56,7 @@ async function prefetchToken(): Promise<void> {
     if (!res.ok) return;
     const data = await res.json();
     // Only cache if token has >10s of remaining validity
-    if (data.expiresAt && (data.expiresAt * 1000 - Date.now()) < 10_000) return;
+    if (!data.expiresAt || (data.expiresAt * 1000 - Date.now()) < 10_000) return;
     cachedToken = data;
     console.log("[RealtimeVoice] token pre-fetched");
   } catch {
@@ -64,12 +64,15 @@ async function prefetchToken(): Promise<void> {
   }
 }
 
+const TOKEN_MIN_REMAINING_MS = 5_000;
+
 function consumeCachedToken(): CachedToken | null {
   const t = cachedToken;
   cachedToken = null;
   if (!t) return null;
-  // Discard if <5s remaining (not enough for SDP exchange)
-  if (t.expiresAt && (t.expiresAt * 1000 - Date.now()) < 5_000) return null;
+  // Discard if no expiry info or <5s remaining (not enough for SDP exchange)
+  if (!t.expiresAt) return null;
+  if (t.expiresAt * 1000 - Date.now() < TOKEN_MIN_REMAINING_MS) return null;
   console.log("[RealtimeVoice] using cached token");
   return t;
 }
@@ -153,6 +156,31 @@ export class RealtimeVoiceSession {
 
   // Accumulated transcript fragments
   private assistantTranscriptBuffer = "";
+
+  // Conversation trace log — sequential record of every event for debugging
+  private static readonly MAX_TRACE_ENTRIES = 500;
+  private traceLog: Array<{ seq: number; time: number; event: string; detail: string }> = [];
+  private traceSeq = 0;
+
+  private trace(event: string, detail: string) {
+    this.traceSeq++;
+    if (this.traceLog.length >= RealtimeVoiceSession.MAX_TRACE_ENTRIES) {
+      this.traceLog.shift();
+    }
+    this.traceLog.push({ seq: this.traceSeq, time: Date.now(), event, detail });
+    console.log(`[VoiceTrace] #${this.traceSeq} ${event}: ${detail}`);
+  }
+
+  /** Dump the full conversation trace to console for debugging. */
+  dumpTrace() {
+    console.log("\n[VoiceTrace] ═══ FULL CONVERSATION TRACE ═══");
+    const startTime = this.traceLog[0]?.time ?? 0;
+    for (const entry of this.traceLog) {
+      const elapsed = ((entry.time - startTime) / 1000).toFixed(1).padStart(6);
+      console.log(`  #${String(entry.seq).padStart(3)}  +${elapsed}s  [${entry.event}]  ${entry.detail}`);
+    }
+    console.log("[VoiceTrace] ═══ END TRACE ═══\n");
+  }
 
   get state(): VoiceSessionState {
     return this._state;
@@ -285,6 +313,7 @@ export class RealtimeVoiceSession {
       // Setup audio analyser for visualization
       this.setupAudioAnalyser();
 
+      this.trace("CONNECTED", `conv=${conversationId} prefetched=${!!prefetchedToken}`);
       this.setState("connected");
     } catch (err) {
       if (this.destroyed) return;
@@ -297,6 +326,8 @@ export class RealtimeVoiceSession {
 
   async disconnect(): Promise<void> {
     if (this._state === "idle" || this._state === "disconnecting") return;
+    this.trace("DISCONNECT", "session ending");
+    this.dumpTrace();
     this.destroyed = true;
     this.setState("disconnecting");
     this.cleanup();
@@ -384,17 +415,22 @@ export class RealtimeVoiceSession {
 
     switch (type) {
       case "session.created":
+        this.trace("SESSION", "created");
+        break;
       case "session.updated":
+        this.trace("SESSION", "updated");
         break;
 
       case "response.output_item.done": {
         const item = event.item as Record<string, unknown> | undefined;
         if (item?.type === "function_call") {
+          this.trace("TOOL_CALL", `${item.name}(${(item.arguments as string ?? "").slice(0, 200)})`);
           void this.handleFunctionCall(item);
         }
         break;
       }
 
+      case "response.audio_transcript.delta":
       case "response.output_audio_transcript.delta": {
         const delta = (event as { delta?: string }).delta;
         if (delta) {
@@ -408,9 +444,11 @@ export class RealtimeVoiceSession {
         break;
       }
 
+      case "response.audio_transcript.done":
       case "response.output_audio_transcript.done": {
         const transcript = (event as { transcript?: string }).transcript;
         if (transcript) {
+          this.trace("ASSISTANT_MSG", transcript);
           this.emit({
             type: "assistant-transcript",
             text: transcript,
@@ -425,6 +463,7 @@ export class RealtimeVoiceSession {
       case "conversation.item.input_audio_transcription.completed": {
         const transcript = (event as { transcript?: string }).transcript;
         if (transcript) {
+          this.trace("USER_MSG", transcript);
           this.emit({
             type: "user-transcript",
             text: transcript,
@@ -504,6 +543,7 @@ export class RealtimeVoiceSession {
       result = `Error: ${(err as Error).message}`;
     }
 
+    this.trace("TOOL_RESULT", `${name} → ${result.slice(0, 300)}`);
     this.emit({ type: "tool-end", name, callId, result });
 
     // Send function call output back to the Realtime API
