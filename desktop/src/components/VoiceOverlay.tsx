@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUiState } from "../app/state/ui-state";
 import { useVoiceRecording } from "../hooks/use-voice-recording";
 import { useRealtimeVoice } from "../hooks/use-realtime-voice";
@@ -100,6 +100,14 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
   const smoothedRef = useRef<Float32Array | null>(null);
   const rafRef = useRef<number | null>(null);
 
+  // Only run voice logic in the active window — both full and mini mount VoiceOverlay,
+  // but state.window tells us which one is currently visible.
+  const windowType = useMemo(
+    () => new URLSearchParams(window.location.search).get("window") === "mini" ? "mini" : "full",
+    [],
+  );
+  const isActiveWindow = state.window === windowType;
+
   // Swatch refs for 5 theme colors
   const darkRef = useRef<HTMLSpanElement>(null);
   const mediumDarkRef = useRef<HTMLSpanElement>(null);
@@ -110,14 +118,14 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
 
   // STT mode
   const { analyserRef: sttAnalyserRef, isRecording } = useVoiceRecording({
-    isActive: state.isVoiceActive,
+    isActive: isActiveWindow && state.isVoiceActive,
     onTranscript,
   });
 
   // RTC mode
   const { analyserRef: rtcAnalyserRef, isConnected } = useRealtimeVoice();
 
-  const isAnyVoiceActive = state.isVoiceActive || state.isVoiceRtcActive;
+  const isAnyVoiceActive = isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
   const isAudioReady = isRecording || isConnected;
 
   // Unified analyser — whichever mode is active
