@@ -24,6 +24,8 @@ import { shutdownClaudeCodeRuntime } from "./claude_code_session_runtime.js";
 import { shutdownCodexAppServerRuntime } from "./codex_app_server_runtime.js";
 import { RunJournal } from "./run_journal.js";
 import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./local_task_manager.js";
+import { getLocalThreadStore } from "./local_thread_store.js";
+import { getGeneralAgentEngine, getCodexLocalMaxConcurrency } from "./local_preferences.js";
 import { getActiveFeature } from "../self-mod/features.js";
 import { listStagedFiles } from "../self-mod/staging.js";
 import { applyBatch } from "../self-mod/apply.js";
@@ -358,6 +360,23 @@ export const createLocalHostRunner = ({
     return null;
   })();
 
+  // Bundled command catalog (shipped with the app)
+  // Dev: frontendRoot/resources/bundled-commands
+  // Prod: extraResources copied to process.resourcesPath/bundled-commands
+  const bundledCommandsPath = (() => {
+    if (frontendRoot) {
+      const devPath = path.join(frontendRoot, "resources", "bundled-commands");
+      if (fs.existsSync(devPath)) return devPath;
+    }
+    try {
+      const prodPath = path.join(process.resourcesPath, "bundled-commands");
+      if (fs.existsSync(prodPath)) return prodPath;
+    } catch {
+      // process.resourcesPath may not exist outside Electron
+    }
+    return null;
+  })();
+
 
   const toConvexName = (name: string) => {
     // Convex expects "module:function" identifiers, not dot-separated paths.
@@ -426,14 +445,43 @@ export const createLocalHostRunner = ({
       if (!client || !authToken || !convexUrl) {
         throw new Error("Runner not connected");
       }
-      return await callAction("agent/prompt_builder:fetchAgentContextForRuntime", {
-        conversationId,
+
+      // Read thread history from local thread store
+      const threadStore = getLocalThreadStore(StellaHome);
+      let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
+      let activeThreadId: string | undefined;
+      if (threadId) {
+        activeThreadId = threadId;
+        threadHistory = threadStore.loadMessagesForContext(threadId, 50);
+      }
+
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const serverResult = await callAction("agent/mint_proxy_token:mintProxyToken", {
         agentType,
         runId,
-        threadId,
+        conversationId,
         platform: process.platform,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      }) as LocalTaskManagerAgentContext;
+        timezone: tz,
+      }) as {
+        systemPrompt: string;
+        dynamicContext: string;
+        toolsAllowlist?: string[];
+        model: string;
+        fallbackModel?: string;
+        maxTaskDepth: number;
+        defaultSkills: string[];
+        skillIds: string[];
+        proxyToken: { token: string; expiresAt: number };
+        gatewayApiKey?: string;
+      };
+
+      return {
+        ...serverResult,
+        threadHistory: threadHistory && threadHistory.length > 0 ? threadHistory : undefined,
+        activeThreadId,
+        generalAgentEngine: agentType === "general" ? getGeneralAgentEngine(StellaHome) : undefined,
+        codexLocalMaxConcurrency: agentType === "general" ? getCodexLocalMaxConcurrency(StellaHome) : undefined,
+      } as LocalTaskManagerAgentContext;
     },
     runSubagent: async ({
       conversationId,
@@ -676,6 +724,7 @@ export const createLocalHostRunner = ({
 
         // Sync core memory (independent of skill/agent manifests)
         await syncCoreMemory();
+
       } catch (error) {
         logError("Manifest sync failed:", error);
         // Best-effort sync; ignore failures and retry later.
@@ -780,17 +829,17 @@ export const createLocalHostRunner = ({
     });
 
     try {
-      // Fetch agent context for the "general" agent type
-      const agentContext = await callAction(
-        "agent/prompt_builder:fetchAgentContextForRuntime",
-        {
-          conversationId: request.conversationId,
-          agentType: "general",
-          runId: `local:dash:${crypto.randomUUID()}`,
-          platform: process.platform,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
-      ) as AgentContext;
+      // Build agent context locally + mint proxy token in parallel
+      const dashRunId = `local:dash:${crypto.randomUUID()}`;
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const serverResult = await callAction("agent/mint_proxy_token:mintProxyToken", {
+        agentType: "general",
+        runId: dashRunId,
+        conversationId: request.conversationId,
+        platform: process.platform,
+        timezone: tz,
+      }) as AgentContext;
+      const agentContext = { ...serverResult } as AgentContext;
 
       // Override the system prompt with the dashboard-specific one
       if (payload.systemPrompt) {
@@ -1412,38 +1461,66 @@ export const createLocalHostRunner = ({
     const storageMode = payload.storageMode ?? "cloud";
     const runId = `local:${crypto.randomUUID()}`;
 
-    // Fetch agent context from Convex
-    log("Fetching agent context", { storageMode, agentType, runId });
+    // Server returns prompt + model + token; local provides thread history + core memory
+    log("Fetching server context + reading local thread state", { storageMode, agentType, runId });
     let agentContext: AgentContext;
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      agentContext = (storageMode === "local"
-        ? await callAction(
-            "agent/prompt_builder:fetchLocalAgentContextForRuntime",
-            {
-              agentType,
-              runId,
-              platform: process.platform,
-              timezone: tz,
-            },
-          )
-        : await callAction(
-            "agent/prompt_builder:fetchAgentContextForRuntime",
-            {
-              conversationId: payload.conversationId,
-              agentType,
-              runId,
-              platform: process.platform,
-              timezone: tz,
-            },
-          )) as AgentContext;
-      log("Agent context fetched", {
+
+      // Read thread history from local thread store (no Convex round-trip)
+      const threadStore = getLocalThreadStore(StellaHome);
+      const localThread = threadStore.getOrCreateThread(payload.conversationId, "Main");
+      const activeThreadId = localThread.id;
+      const threadHistory = threadStore.loadMessagesForContext(activeThreadId, 50);
+
+      // Read core memory from disk
+      const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
+      let coreMemory: string | undefined;
+      try {
+        const content = fs.readFileSync(coreMemoryPath, "utf-8").trim();
+        if (content) coreMemory = content;
+      } catch {
+        // No core memory file
+      }
+
+      // Server call: prompt + model + skills + token (no thread history)
+      const serverResult = await callAction("agent/mint_proxy_token:mintProxyToken", {
+        agentType,
+        runId,
+        conversationId: storageMode === "cloud" ? payload.conversationId : undefined,
+        platform: process.platform,
+        timezone: tz,
+      }) as {
+        systemPrompt: string;
+        dynamicContext: string;
+        toolsAllowlist?: string[];
+        model: string;
+        fallbackModel?: string;
+        maxTaskDepth: number;
+        defaultSkills: string[];
+        skillIds: string[];
+        proxyToken: { token: string; expiresAt: number };
+        gatewayApiKey?: string;
+      };
+
+      agentContext = {
+        ...serverResult,
+        coreMemory,
+        threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
+        activeThreadId,
+        // Codex engine settings are local — they control which runtime runs on this machine
+        generalAgentEngine: agentType === "general" ? getGeneralAgentEngine(StellaHome) : undefined,
+        codexLocalMaxConcurrency: agentType === "general" ? getCodexLocalMaxConcurrency(StellaHome) : undefined,
+      } as AgentContext;
+
+      log("Agent context assembled", {
         hasSystemPrompt: !!agentContext?.systemPrompt,
         model: agentContext?.model,
         hasProxyToken: !!agentContext?.proxyToken,
+        threadMessages: threadHistory.length,
       });
     } catch (err) {
-      logError("Failed to fetch agent context:", err);
+      logError("Failed to build agent context:", err);
       throw err;
     }
 
@@ -1511,6 +1588,7 @@ export const createLocalHostRunner = ({
       localHistory: payload.localHistory,
       persistToConvex: storageMode !== "local",
       enableRemoteTools: true,
+      bundledCommandsPath: bundledCommandsPath ?? undefined,
       abortSignal: abortController.signal,
     });
 

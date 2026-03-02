@@ -15,6 +15,11 @@ import {
   type LocalMemoryCandidate,
   type LocalMemorySource,
 } from "./local_memory_store.js";
+import {
+  localWebFetch,
+  localActivateSkill,
+  localNoResponse,
+} from "./local_tool_overrides.js";
 
 const LOCAL_RECALL_CANDIDATE_LIMIT = 30;
 const LOCAL_RECALL_MAX_SELECTED = 8;
@@ -51,6 +56,8 @@ export type RemoteToolsOpts = {
   agentType: string;
   mode?: "cloud" | "local";
   localMemory?: LocalMemoryConfig;
+  /** Required for local tool overrides (ActivateSkill reads from disk) */
+  stellaHome?: string;
 };
 
 type RecallCandidate = {
@@ -377,11 +384,13 @@ const createLocalRecallTools = (opts: RemoteToolsOpts): Record<string, Tool<any,
 };
 
 export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<any, any>> {
+  // Local mode: only memory tools needed (all execution is local)
   if ((opts.mode ?? "cloud") === "local") {
     return createLocalRecallTools(opts);
   }
 
-  const memoryRecallCache = new Map<string, string>();
+  // Cloud mode: use local implementations for tools that don't need the server,
+  // keep server passthroughs for tools that require secrets/server resources.
 
   const passthroughTool = (
     toolName: string,
@@ -400,57 +409,14 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
       },
     });
 
-  return {
-    RecallMemories: tool({
-      description: "Search memory for relevant past interactions and knowledge",
-      inputSchema: z.object({
-        query: z.string().describe("Search query for memory recall"),
-        source: z.enum(["memory", "history"]).optional(),
-        limit: z.number().optional().describe("Max results to return"),
-      }),
-      execute: async (args: { query: string; source?: "memory" | "history"; limit?: number }) => {
-        const cacheKey = `${args.source ?? "memory"}::${args.query}::${args.limit ?? "default"}`;
-        const cached = memoryRecallCache.get(cacheKey);
-        if (cached) {
-          return cached;
-        }
-        try {
-          const result = await callConvexAction(opts, "agent/local_runtime:recallMemories", {
-            query: args.query,
-            source: args.source ?? "memory",
-            conversationId: opts.conversationId,
-          });
-          if (!result || (Array.isArray(result) && result.length === 0)) {
-            const text = "No relevant memories found.";
-            memoryRecallCache.set(cacheKey, text);
-            return text;
-          }
-          const text = JSON.stringify(result);
-          memoryRecallCache.set(cacheKey, text);
-          return text;
-        } catch (error) {
-          return `Memory recall failed: ${(error as Error).message}`;
-        }
-      },
-    }),
+  // Always use local memory — desktop is online when these tools are called
+  const localRecallTools = createLocalRecallTools(opts);
 
-    SaveMemory: tool({
-      description: "Save an important fact or insight to long-term memory",
-      inputSchema: z.object({
-        content: z.string().describe("The memory content to save"),
-      }),
-      execute: async (args: { content: string }) => {
-        try {
-          await callConvexAction(opts, "agent/local_runtime:saveMemory", {
-            content: args.content,
-            conversationId: opts.conversationId,
-          });
-          return "Memory saved.";
-        } catch (error) {
-          return `Failed to save memory: ${(error as Error).message}`;
-        }
-      },
-    }),
+  return {
+    // ── Local tools (no server round-trip) ──
+
+    RecallMemories: localRecallTools.RecallMemories,
+    SaveMemory: localRecallTools.SaveMemory,
 
     WebFetch: tool({
       description: "Fetch content from a URL",
@@ -459,18 +425,43 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
         prompt: z.string().optional().describe("What to extract from the page"),
       }),
       execute: async (args: { url: string; prompt?: string }) => {
+        return await localWebFetch(args);
+      },
+    }),
+
+    ActivateSkill: tool({
+      description: "Load a skill's full instructions by ID",
+      inputSchema: z.object({
+        skillId: z.string().describe("The skill ID to activate"),
+      }),
+      execute: async (args: { skillId: string }) => {
+        if (opts.stellaHome) {
+          return await localActivateSkill({ skillId: args.skillId, stellaHome: opts.stellaHome });
+        }
+        // Fallback to server if stellaHome not provided
         try {
-          const result = await callConvexAction(opts, "agent/local_runtime:webFetch", {
-            url: args.url,
-            prompt: args.prompt,
-            conversationId: opts.conversationId,
+          const result = await callConvexAction(opts, "agent/local_runtime:activateSkill", {
+            skillId: args.skillId,
           });
-          return typeof result === "string" ? result : JSON.stringify(result);
+          if (!result || typeof result !== "string") {
+            return `Skill '${args.skillId}' not found or has no content.`;
+          }
+          return result;
         } catch (error) {
-          return `WebFetch failed: ${(error as Error).message}`;
+          return `Failed to activate skill: ${(error as Error).message}`;
         }
       },
     }),
+
+    NoResponse: tool({
+      description: "Suppress user-facing response for this turn.",
+      inputSchema: looseObject({}) as z.ZodType<Record<string, unknown>>,
+      execute: async () => {
+        return await localNoResponse();
+      },
+    }),
+
+    // ── Server passthroughs (require secrets/server resources) ──
 
     WebSearch: tool({
       description: "Search the web for information",
@@ -488,26 +479,6 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
           return typeof result === "string" ? result : JSON.stringify(result);
         } catch (error) {
           return `WebSearch failed: ${(error as Error).message}`;
-        }
-      },
-    }),
-
-    ActivateSkill: tool({
-      description: "Load a skill's full instructions by ID",
-      inputSchema: z.object({
-        skillId: z.string().describe("The skill ID to activate"),
-      }),
-      execute: async (args: { skillId: string }) => {
-        try {
-          const result = await callConvexAction(opts, "agent/local_runtime:activateSkill", {
-            skillId: args.skillId,
-          });
-          if (!result || typeof result !== "string") {
-            return `Skill '${args.skillId}' not found or has no content.`;
-          }
-          return result;
-        } catch (error) {
-          return `Failed to activate skill: ${(error as Error).message}`;
         }
       },
     }),
@@ -588,21 +559,6 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
       }) as z.ZodType<Record<string, unknown>>,
     ),
 
-    OpenCanvas: passthroughTool(
-      "OpenCanvas",
-      "Open a workspace canvas panel.",
-      looseObject({
-        name: z.string().optional(),
-        title: z.string().optional(),
-        url: z.string().optional(),
-      }) as z.ZodType<Record<string, unknown>>,
-    ),
-    CloseCanvas: passthroughTool(
-      "CloseCanvas",
-      "Close the workspace canvas panel.",
-      looseObject({}) as z.ZodType<Record<string, unknown>>,
-    ),
-
     StoreSearch: passthroughTool(
       "StoreSearch",
       "Search the Stella store for packages.",
@@ -622,11 +578,6 @@ export function createRemoteTools(opts: RemoteToolsOpts): Record<string, Tool<an
     ListResources: passthroughTool(
       "ListResources",
       "List available resources (local/cloud/connectors).",
-      looseObject({}) as z.ZodType<Record<string, unknown>>,
-    ),
-    NoResponse: passthroughTool(
-      "NoResponse",
-      "Suppress user-facing response for this turn.",
       looseObject({}) as z.ZodType<Record<string, unknown>>,
     ),
   };

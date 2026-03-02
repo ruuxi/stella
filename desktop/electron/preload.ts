@@ -315,4 +315,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App reload (used by recovery page)
   appReload: () => ipcRenderer.send('app:reload'),
   hardResetLocalState: () => ipcRenderer.invoke('app:hardResetLocalState') as Promise<{ ok: boolean }>,
+
+  // Local event store
+  eventStoreAppend: (args: unknown) => ipcRenderer.invoke('eventStore:append', args),
+  eventStoreList: (conversationId: string, limit?: number) =>
+    ipcRenderer.invoke('eventStore:list', conversationId, limit),
+  getLocalSyncMode: () => ipcRenderer.invoke('preferences:getSyncMode') as Promise<string>,
+  setLocalSyncMode: (mode: string) => ipcRenderer.invoke('preferences:setSyncMode', mode),
 })
