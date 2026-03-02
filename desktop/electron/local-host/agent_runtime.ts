@@ -794,9 +794,18 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
     : {};
 
   const systemPrompt = agentContext.systemPrompt;
-  const messages: ModelMessage[] = [
-    { role: "user", content: `${taskDescription}\n\n${taskPrompt}` },
-  ];
+  const messages: ModelMessage[] = [];
+
+  // Prepend thread history for multi-turn subagents
+  const threadHistory = agentContext.threadHistory ?? [];
+  for (const msg of threadHistory) {
+    if (msg.role === "user" || msg.role === "assistant") {
+      messages.push({ role: msg.role, content: msg.content });
+    }
+  }
+
+  // Add current task as the user message
+  messages.push({ role: "user", content: `${taskDescription}\n\n${taskPrompt}` });
 
   const runGenerateWithModel = async (modelId: string) => {
     const gatewayKey = (agentContext as Record<string, unknown>).gatewayApiKey as string | undefined;
@@ -838,6 +847,82 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
 
     journal.completeRun(runId);
     clearTimeout(timeoutId);
+
+    // Save subagent messages to local thread store + run compaction
+    if (agentContext.activeThreadId && result.text.trim()) {
+      const threadId = agentContext.activeThreadId;
+      try {
+        const threadStore = getLocalThreadStore(stellaHome);
+        const thread = threadStore.getThread(threadId);
+        if (!thread) {
+          threadStore.getOrCreateThread(conversationId, agentType);
+        }
+        const newMessages: Array<{ role: string; content: string }> = [
+          { role: "user", content: `${taskDescription}\n\n${taskPrompt}` },
+          { role: "assistant", content: result.text },
+        ];
+        threadStore.saveMessages(threadId, newMessages);
+
+        // Run compaction (fire-and-forget, same as orchestrator path)
+        const proxyBaseUrl = convexUrl.replace(/\/+$/, "").replace(".convex.cloud", ".convex.site");
+        const gatewayKey = (agentContext as Record<string, unknown>).gatewayApiKey as string | undefined;
+        const compactionModel = gatewayKey
+          ? createGatewayModel(gatewayKey, "zai/glm-4.7")
+          : createProxiedModel(proxyBaseUrl, agentContext.proxyToken.token, "zai/glm-4.7");
+
+        void compactThreadLocally({
+          model: compactionModel,
+          threadId,
+          agentType,
+          fetchThreadData: async () => {
+            const t = threadStore.getThread(threadId);
+            if (!t) return null;
+            const msgs = threadStore.loadMessages(threadId);
+            return {
+              thread: {
+                _id: t.id,
+                name: t.name,
+                status: t.status,
+                summary: t.summary,
+                totalTokenEstimate: t.totalTokenEstimate,
+                messageCount: t.messageCount,
+              },
+              messages: msgs.map((m) => ({
+                role: m.role,
+                content: m.content,
+                ordinal: m.ordinal,
+                tokenEstimate: m.tokenEstimate,
+              })),
+            };
+          },
+          applyCompaction: async (args) => {
+            threadStore.applyCompaction(args.threadId, {
+              cutOrdinal: args.keepFromOrdinal - 1,
+              summary: args.summary,
+              newTokenEstimate: 0,
+            });
+            if (persistToConvex) {
+              const baseUrl = convexUrl.replace(/\/+$/, "");
+              fetch(`${baseUrl}/api/mutation`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${authToken}`,
+                },
+                body: JSON.stringify({
+                  path: "data/threads:applyCompactionForRuntime",
+                  args,
+                }),
+              }).catch(() => {});
+            }
+          },
+        }).catch((err) => {
+          console.error("[agent-runtime] Subagent thread compaction failed:", err);
+        });
+      } catch (err) {
+        console.error("[agent-runtime] Failed to save subagent thread messages:", err);
+      }
+    }
 
     if (persistToConvex) {
       await persistRunToConvex({
