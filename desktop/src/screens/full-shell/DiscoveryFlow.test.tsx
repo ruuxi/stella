@@ -32,7 +32,6 @@ const mockUseChatStore = vi.fn(() => ({
   appendAgentEvent: vi.fn(),
   uploadAttachments: vi.fn(),
   buildHistory: vi.fn(),
-  streamStrategy: "local-with-http-fallback",
 }));
 
 vi.mock("../../app/state/chat-store", () => ({
@@ -86,8 +85,7 @@ function setCloudMode(isAuthenticated = true) {
     appendAgentEvent: vi.fn(),
     uploadAttachments: vi.fn(),
     buildHistory: vi.fn(),
-    streamStrategy: "local-with-http-fallback",
-  });
+    });
 }
 
 function setLocalMode(isAuthenticated = false) {
@@ -100,7 +98,6 @@ function setLocalMode(isAuthenticated = false) {
     appendAgentEvent: vi.fn(),
     uploadAttachments: vi.fn(),
     buildHistory: vi.fn(),
-    streamStrategy: "local-only",
   });
 }
 
