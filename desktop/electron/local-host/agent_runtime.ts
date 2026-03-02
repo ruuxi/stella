@@ -41,6 +41,9 @@ export type AgentContext = {
   defaultSkills: string[];
   skillIds: string[];
   coreMemory?: string;
+  /** Compaction summary from the thread — injected as a summary pair before history. */
+  threadSummary?: string;
+  /** Per-message thread history — used by subagents only. */
   threadHistory?: Array<{ role: string; content: string; toolCallId?: string }>;
   activeThreadId?: string;
   generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
@@ -246,17 +249,27 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
 
   const allTools = { ...tools, ...remoteTools };
 
-  // Build messages
+  // Build messages — mirrors backend orchestrator_turn.ts:
+  // [summaryPair] + [event-based history] + [current user message (already in history)]
   const messages: ModelMessage[] = [];
 
-  const historyMessages = localHistory ?? agentContext.threadHistory ?? [];
+  // 1. Thread compaction summary (if exists) — injected as user/assistant pair
+  if (agentContext.threadSummary) {
+    messages.push({
+      role: "user",
+      content: `[Thread context - prior work summary]\n${agentContext.threadSummary}`,
+    });
+    messages.push({
+      role: "assistant",
+      content: "Understood. I have the context from previous work.",
+    });
+  }
 
-  // Add thread history if available
-  if (historyMessages) {
-    for (const msg of historyMessages) {
-      if (msg.role === "user" || msg.role === "assistant") {
-        messages.push({ role: msg.role, content: msg.content });
-      }
+  // 2. Event-based history (includes current user message)
+  const historyMessages = localHistory ?? agentContext.threadHistory ?? [];
+  for (const msg of historyMessages) {
+    if (msg.role === "user" || msg.role === "assistant") {
+      messages.push({ role: msg.role, content: msg.content });
     }
   }
 
@@ -440,50 +453,50 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
     });
   }
 
-  // Thread compaction — read/write from local thread store
-  if (agentContext.activeThreadId) {
+  // Save turn to thread store (for compaction) and run compaction if needed.
+  // The orchestrator's LLM history comes from events (localHistory), NOT from
+  // the thread store. Thread messages exist only so compaction can generate
+  // a summary that gets prepended as summaryPair on the next turn.
+  if (agentContext.activeThreadId && fullText.trim()) {
     void (async () => {
       try {
         const threadStore = getLocalThreadStore(stellaHome);
         const threadId = agentContext.activeThreadId!;
 
-        // Save only the new assistant response to local thread store
-        // (existing history is already stored; we only append the new turn)
-        if (fullText.trim()) {
-          const thread = threadStore.getThread(threadId);
-          if (!thread) {
-            threadStore.getOrCreateThread(conversationId, "Main");
-          }
-          // Find the user message from this turn (last user message in history)
-          const history = localHistory ?? agentContext.threadHistory ?? [];
-          const lastUserMsg = [...history].reverse().find((m) => m.role === "user");
-          const newMessages: Array<{ role: string; content: string }> = [];
-          if (lastUserMsg) {
-            newMessages.push({ role: "user", content: lastUserMsg.content });
-          }
-          newMessages.push({ role: "assistant", content: fullText });
-          threadStore.saveMessages(threadId, newMessages);
+        const thread = threadStore.getThread(threadId);
+        if (!thread) {
+          threadStore.getOrCreateThread(conversationId, "Main");
         }
 
-        // Run compaction from local store
+        // Save user + assistant messages for compaction
+        const history = localHistory ?? agentContext.threadHistory ?? [];
+        const lastUserMsg = [...history].reverse().find((m) => m.role === "user");
+        const newMessages: Array<{ role: string; content: string }> = [];
+        if (lastUserMsg) {
+          newMessages.push({ role: "user", content: lastUserMsg.content });
+        }
+        newMessages.push({ role: "assistant", content: fullText });
+        threadStore.saveMessages(threadId, newMessages);
+
+        // Run compaction — produces a summary stored on the thread record
         await compactThreadLocally({
           model: postRunModel,
           threadId,
           agentType,
           fetchThreadData: async () => {
-            const thread = threadStore.getThread(threadId);
-            if (!thread) return null;
-            const messages = threadStore.loadMessages(threadId);
+            const t = threadStore.getThread(threadId);
+            if (!t) return null;
+            const msgs = threadStore.loadMessages(threadId);
             return {
               thread: {
-                _id: thread.id,
-                name: thread.name,
-                status: thread.status,
-                summary: thread.summary,
-                totalTokenEstimate: thread.totalTokenEstimate,
-                messageCount: thread.messageCount,
+                _id: t.id,
+                name: t.name,
+                status: t.status,
+                summary: t.summary,
+                totalTokenEstimate: t.totalTokenEstimate,
+                messageCount: t.messageCount,
               },
-              messages: messages.map((m) => ({
+              messages: msgs.map((m) => ({
                 role: m.role,
                 content: m.content,
                 ordinal: m.ordinal,
@@ -492,13 +505,11 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
             };
           },
           applyCompaction: async (args) => {
-            // Apply locally
             threadStore.applyCompaction(args.threadId, {
               cutOrdinal: args.keepFromOrdinal - 1,
               summary: args.summary,
-              newTokenEstimate: 0, // Will be recalculated from remaining messages
+              newTokenEstimate: 0,
             });
-            // Also sync to Convex in background
             if (persistToConvex) {
               const baseUrl = convexUrl.replace(/\/+$/, "");
               fetch(`${baseUrl}/api/mutation`, {
