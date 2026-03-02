@@ -33,9 +33,8 @@ function start() {
 
     audioStream.on("data", (buf: Buffer) => {
       if (!port) return;
-      // Transfer the ArrayBuffer zero-copy (no base64 overhead)
       const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
-      port.postMessage({ type: "audio", buffer: ab }, [ab]);
+      port.postMessage({ type: "audio", buffer: ab });
     });
 
     audioStream.on("error", (err: Error) => {
