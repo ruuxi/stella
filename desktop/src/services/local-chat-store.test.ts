@@ -107,43 +107,53 @@ describe("local-chat-store", () => {
       conversationId,
       type: "user_message",
       eventId: "u-1",
-      timestamp: 1,
+      timestamp: 1000,
       payload: { text: "hello" },
     });
     appendLocalEvent({
       conversationId,
       type: "assistant_message",
       eventId: "a-1",
-      timestamp: 2,
-      payload: { content: "hi" },
+      timestamp: 2000,
+      payload: { text: "hi there" },
     });
     appendLocalEvent({
       conversationId,
       type: "tool_request",
       eventId: "tool-1",
-      timestamp: 3,
-      payload: { toolName: "read" },
+      timestamp: 3000,
+      requestId: "req-1",
+      payload: { toolName: "Read", args: { path: "/tmp/test" } },
+    });
+    appendLocalEvent({
+      conversationId,
+      type: "tool_result",
+      eventId: "tool-1-result",
+      timestamp: 4000,
+      requestId: "req-1",
+      payload: { toolName: "Read", result: "file contents" },
     });
     appendLocalEvent({
       conversationId,
       type: "assistant_message",
       eventId: "a-2",
-      timestamp: 4,
-      payload: { message: "follow-up" },
-    });
-    appendLocalEvent({
-      conversationId,
-      type: "assistant_message",
-      eventId: "a-empty",
-      timestamp: 5,
-      payload: { text: "   " },
+      timestamp: 5000,
+      payload: { text: "done" },
     });
 
-    const history = buildLocalHistoryMessages(conversationId, 2);
-    expect(history).toEqual([
-      { role: "assistant", content: "hi" },
-      { role: "assistant", content: "follow-up" },
-    ]);
+    const history = buildLocalHistoryMessages(conversationId);
+    // Now includes tool calls and results, with timestamps
+    expect(history.length).toBe(5); // user + assistant + tool_request + tool_result + assistant
+    expect(history[0]!.role).toBe("user");
+    expect(history[0]!.content).toContain("hello");
+    expect(history[1]!.role).toBe("assistant");
+    expect(history[1]!.content).toContain("hi there");
+    expect(history[2]!.role).toBe("assistant"); // tool call -> assistant role
+    expect(history[2]!.content).toContain("[Tool call] Read");
+    expect(history[3]!.role).toBe("user"); // tool result -> user role
+    expect(history[3]!.content).toContain("[Tool result] Read");
+    expect(history[4]!.role).toBe("assistant");
+    expect(history[4]!.content).toContain("done");
   });
 
   it("builds sync messages and only carries deviceId for user messages", () => {

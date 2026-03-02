@@ -101,6 +101,12 @@ type RemoteTurnRequestEvent = {
     text?: string;
     provider?: string;
     deliveryMeta?: Record<string, unknown>;
+    // Cron inverted execution fields
+    source?: string;
+    cronJobId?: string;
+    cronJobName?: string;
+    deliver?: boolean;
+    sessionTarget?: string;
   };
 };
 
@@ -934,15 +940,30 @@ export const createLocalHostRunner = ({
           },
           onEnd: async (event) => {
             try {
-              await callMutation(
-                "channels/connector_delivery:completeRemoteTurn",
-                {
-                  requestId: request.requestId,
-                  text: event.finalText,
-                  conversationId: payload.conversationId,
-                },
-              );
-              log(`Remote turn ${request.requestId} delivered to ${payload.provider}`);
+              if (payload.source === "cron") {
+                // Cron job inverted execution — complete via cron-specific mutation.
+                // Cron metadata is read from the original request event server-side.
+                await callMutation(
+                  "scheduling/cron_jobs:completeCronTurnResult",
+                  {
+                    requestId: request.requestId,
+                    text: event.finalText,
+                    conversationId: payload.conversationId,
+                  },
+                );
+                log(`Remote turn ${request.requestId} completed (cron)`);
+              } else {
+                // Channel inverted execution — deliver via connector
+                await callMutation(
+                  "channels/connector_delivery:completeRemoteTurn",
+                  {
+                    requestId: request.requestId,
+                    text: event.finalText,
+                    conversationId: payload.conversationId,
+                  },
+                );
+                log(`Remote turn ${request.requestId} delivered to ${payload.provider}`);
+              }
             } catch (err) {
               logError("Failed to deliver remote turn response:", err);
             }

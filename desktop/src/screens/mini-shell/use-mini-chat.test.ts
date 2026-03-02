@@ -31,7 +31,6 @@ vi.mock("../../app/state/chat-store", () => ({
     appendAgentEvent: vi.fn(),
     uploadAttachments: vi.fn(),
     buildHistory: vi.fn(),
-    streamStrategy: "local-with-http-fallback",
   })),
 }));
 

@@ -44,6 +44,7 @@ type UploadAttachmentsArgs = {
 }
 
 type ChatStoreContextValue = {
+  /** Controls event persistence: 'cloud' syncs to Convex, 'local' uses localStorage only. Orchestration is always local. */
   storageMode: ChatStorageMode
   isLocalStorage: boolean
   cloudFeaturesEnabled: boolean
@@ -53,7 +54,6 @@ type ChatStoreContextValue = {
   appendAgentEvent: (args: AppendAgentEventArgs) => void
   uploadAttachments: (args: UploadAttachmentsArgs) => Promise<UploadedAttachment[]>
   buildHistory: (conversationId: string, max?: number) => LocalHistoryMessage[] | undefined
-  streamStrategy: 'local-only' | 'local-with-http-fallback'
 }
 
 // --- Context ---
@@ -202,8 +202,6 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
     [isLocalStorage],
   )
 
-  const streamStrategy: ChatStoreContextValue['streamStrategy'] = isLocalStorage ? 'local-only' : 'local-with-http-fallback'
-
   const value = useMemo<ChatStoreContextValue>(
     () => ({
       storageMode,
@@ -214,7 +212,6 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       appendAgentEvent,
       uploadAttachments,
       buildHistory,
-      streamStrategy,
     }),
     [
       storageMode,
@@ -225,7 +222,6 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       appendAgentEvent,
       uploadAttachments,
       buildHistory,
-      streamStrategy,
     ],
   )
 
