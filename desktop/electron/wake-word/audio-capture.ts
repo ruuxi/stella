@@ -29,42 +29,96 @@ export interface AudioCaptureManager {
 export function createAudioCaptureManager(
   detector: WakeWordDetector,
 ): AudioCaptureManager {
+  const CHUNK_SAMPLES = 1280; // 80ms at 16kHz - must match detector input
+  const WORKER_EXIT_TIMEOUT_MS = 2000;
+  const RESTART_DELAY_MS = 800;
+
   let capturing = false;
   let detectionCallback: ((result: WakeWordResult) => void) | null = null;
   let processing = false;
   let worker: UtilityProcess | null = null;
   let chunkCount = 0;
-  let killTimer: ReturnType<typeof setTimeout> | null = null;
+  let remainder = new Int16Array(0);
+  const pendingAudio: Int16Array[] = [];
+  let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
-  return {
-    start() {
-      if (capturing) return;
-      // Cancel any pending kill timer from a previous stop()
-      if (killTimer) { clearTimeout(killTimer); killTimer = null; }
-      capturing = true;
-      chunkCount = 0;
-      detector.start();
+  const clearRestartTimer = () => {
+    if (restartTimer) {
+      clearTimeout(restartTimer);
+      restartTimer = null;
+    }
+  };
 
+  const shutdownWorker = (target: UtilityProcess) => {
+    let exited = false;
+    const forceKillTimer = setTimeout(() => {
+      if (exited) return;
       try {
-        const workerPath = path.join(__dirname, "audio-worker.js");
-        worker = utilityProcess.fork(workerPath, [], {
-          stdio: "pipe",
-        });
+        target.kill();
+      } catch {
+        // Ignore cleanup errors
+      }
+    }, WORKER_EXIT_TIMEOUT_MS);
 
-        worker.on("message", async (msg: { type: string; buffer?: ArrayBuffer }) => {
-          if (msg.type === "ready") {
-            if (worker) worker.postMessage({ type: "start" });
-            console.log("[WakeWord] Audio capture worker started");
-            return;
-          }
+    target.once("exit", () => {
+      exited = true;
+      clearTimeout(forceKillTimer);
+    });
 
-          if (msg.type !== "audio" || !msg.buffer || !capturing || processing) return;
+    try {
+      target.postMessage({ type: "exit" });
+    } catch {
+      clearTimeout(forceKillTimer);
+      try {
+        target.kill();
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  };
 
-          chunkCount++;
-          processing = true;
+  const scheduleRestart = (reason: string) => {
+    if (!capturing || restartTimer) return;
+    console.warn(`[WakeWord] Restarting audio capture: ${reason}`);
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      if (!capturing) return;
+      launchWorker();
+    }, RESTART_DELAY_MS);
+  };
+
+  const processAudioQueue = async () => {
+    if (processing || !capturing) return;
+    processing = true;
+
+    try {
+      while (capturing && pendingAudio.length > 0) {
+        const incoming = pendingAudio.shift();
+        if (!incoming) continue;
+
+        chunkCount++;
+
+        // Combine with leftover from previous message.
+        let samples: Int16Array;
+        if (remainder.length > 0) {
+          samples = new Int16Array(remainder.length + incoming.length);
+          samples.set(remainder);
+          samples.set(incoming, remainder.length);
+          remainder = new Int16Array(0);
+        } else {
+          samples = incoming;
+        }
+
+        // Feed detector in fixed-size chunks.
+        let offset = 0;
+        while (offset + CHUNK_SAMPLES <= samples.length) {
+          if (!capturing) break;
+
+          const chunk = samples.slice(offset, offset + CHUNK_SAMPLES);
+          offset += CHUNK_SAMPLES;
+
           try {
-            const pcm = new Int16Array(msg.buffer);
-            const result = await detector.predict(pcm);
+            const result = await detector.predict(chunk);
             if (result.detected && detectionCallback) {
               detectionCallback(result);
             }
@@ -72,56 +126,137 @@ export function createAudioCaptureManager(
             if (chunkCount <= 5) {
               console.error("[WakeWord] Predict error:", (err as Error).message);
             }
-          } finally {
-            processing = false;
           }
-        });
-
-        if (worker.stdout) {
-          worker.stdout.on("data", (data: Buffer) => {
-            process.stdout.write(`[AudioWorker] ${data}`);
-          });
-        }
-        if (worker.stderr) {
-          worker.stderr.on("data", (data: Buffer) => {
-            process.stderr.write(`[AudioWorker] ${data}`);
-          });
         }
 
-        worker.on("exit", (code) => {
-          if (capturing) {
-            console.warn(`[WakeWord] Worker exited unexpectedly (code ${code})`);
-          }
-          worker = null;
-        });
-      } catch (err) {
-        console.error("[WakeWord] Failed to start audio worker:", (err as Error).message);
-        capturing = false;
+        // Save leftover for the next message.
+        if (offset < samples.length) {
+          remainder = samples.slice(offset);
+        }
       }
+    } finally {
+      processing = false;
+      if (capturing && pendingAudio.length > 0) {
+        void processAudioQueue();
+      }
+    }
+  };
+
+  const launchWorker = () => {
+    if (!capturing) return;
+
+    // Defensive cleanup: if a stale worker survived a previous stop/restart,
+    // terminate it before replacing the reference.
+    if (worker) {
+      const staleWorker = worker;
+      worker = null;
+      shutdownWorker(staleWorker);
+    }
+
+    try {
+      const workerPath = path.join(__dirname, "audio-worker.js");
+      const nextWorker = utilityProcess.fork(workerPath, [], {
+        stdio: "pipe",
+      });
+      worker = nextWorker;
+
+      nextWorker.on(
+        "message",
+        (msg: { type: string; buffer?: string; error?: string }) => {
+          // Ignore events from stale workers that have already been replaced.
+          if (worker !== nextWorker) return;
+
+          if (msg.type === "ready") {
+            nextWorker.postMessage({ type: "start" });
+            return;
+          }
+
+          if (msg.type === "started") {
+            console.log("[WakeWord] Audio capture worker started");
+            return;
+          }
+
+          if (msg.type === "start-failed" || msg.type === "stream-error") {
+            const reason = msg.error ?? "unknown error";
+            console.warn(`[WakeWord] Audio worker ${msg.type}: ${reason}`);
+            if (worker === nextWorker) {
+              worker = null;
+            }
+            shutdownWorker(nextWorker);
+            scheduleRestart(reason);
+            return;
+          }
+
+          if (msg.type !== "audio" || !msg.buffer || !capturing) return;
+
+          const buf = Buffer.from(msg.buffer, "base64");
+          const incoming = new Int16Array(
+            buf.buffer,
+            buf.byteOffset,
+            Math.floor(buf.length / 2),
+          );
+          pendingAudio.push(incoming);
+          void processAudioQueue();
+        },
+      );
+
+      if (nextWorker.stdout) {
+        nextWorker.stdout.on("data", (data: Buffer) => {
+          process.stdout.write(`[AudioWorker] ${data}`);
+        });
+      }
+      if (nextWorker.stderr) {
+        nextWorker.stderr.on("data", (data: Buffer) => {
+          process.stderr.write(`[AudioWorker] ${data}`);
+        });
+      }
+
+      nextWorker.on("exit", (code) => {
+        if (worker === nextWorker) {
+          worker = null;
+        }
+        if (!capturing) return;
+        console.warn(`[WakeWord] Worker exited unexpectedly (code ${code})`);
+        scheduleRestart(`worker exited (${code ?? "unknown"})`);
+      });
+    } catch (err) {
+      const message = (err as Error).message;
+      console.error("[WakeWord] Failed to start audio worker:", message);
+      scheduleRestart(message);
+    }
+  };
+
+  return {
+    start() {
+      if (capturing) return;
+
+      capturing = true;
+      chunkCount = 0;
+      processing = false;
+      remainder = new Int16Array(0);
+      pendingAudio.length = 0;
+      clearRestartTimer();
+
+      detector.start();
+      launchWorker();
     },
 
     stop() {
-      if (!capturing) return;
-      capturing = false;
-      detector.stop();
+      if (!capturing && !worker) return;
 
-      if (worker) {
-        try {
-          // Send "exit" for clean shutdown (stops audio + exits process)
-          worker.postMessage({ type: "exit" });
-          // Force-kill if it doesn't exit within 2s
-          killTimer = setTimeout(() => {
-            killTimer = null;
-            if (worker) {
-              worker.kill();
-              worker = null;
-            }
-          }, 2000);
-        } catch {
-          worker.kill();
-          worker = null;
-        }
+      capturing = false;
+      processing = false;
+      detector.stop();
+      clearRestartTimer();
+      pendingAudio.length = 0;
+      remainder = new Int16Array(0);
+
+      const activeWorker = worker;
+      worker = null;
+      if (activeWorker) {
+        shutdownWorker(activeWorker);
       }
+
       console.log("[WakeWord] Audio capture stopped");
     },
 
@@ -134,3 +269,4 @@ export function createAudioCaptureManager(
     },
   };
 }
+
