@@ -3,9 +3,18 @@ import { Type } from "@sinclair/typebox";
 import { Agent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
 import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS } from "@stella/shared";
-import type { LocalTaskManagerAgentContext } from "../local-host/local_task_manager.js";
-import { localActivateSkill, localNoResponse, localWebFetch } from "../local-host/local_tool_overrides.js";
-import type { ToolContext, ToolResult } from "../local-host/tools-types.js";
+import {
+  isClaudeCodeModel,
+  runClaudeCodeTurn,
+  shutdownClaudeCodeRuntime,
+} from "./extensions/stella/claude_code_session_runtime.js";
+import {
+  runCodexAppServerTurn,
+  shutdownCodexAppServerRuntime,
+} from "./extensions/stella/codex_app_server_runtime.js";
+import type { LocalTaskManagerAgentContext } from "./extensions/stella/local_task_manager.js";
+import { localActivateSkill, localNoResponse, localWebFetch } from "./extensions/stella/local_tool_overrides.js";
+import type { ToolContext, ToolResult } from "./extensions/stella/tools-types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 
 const DEFAULT_MODEL = "openai/gpt-4.1-mini";
@@ -539,6 +548,60 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
   error?: string;
 }> {
   const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
+  const prompt = opts.userPrompt.trim();
+
+  if (opts.abortSignal?.aborted) {
+    return { runId, result: "", error: "Aborted" };
+  }
+
+  const primaryModelId = opts.agentContext.model ?? DEFAULT_MODEL;
+  const isGeneralAgent = opts.agentType === "general";
+  const sessionKey = opts.agentContext.activeThreadId
+    ? `${opts.conversationId}:${opts.agentContext.activeThreadId}`
+    : `${opts.conversationId}:run:${runId}`;
+
+  if (isGeneralAgent && opts.agentContext.generalAgentEngine === "codex_local") {
+    try {
+      const result = await runCodexAppServerTurn({
+        runId,
+        sessionKey,
+        prompt,
+        abortSignal: opts.abortSignal,
+        onProgress: opts.onProgress,
+        maxConcurrency: opts.agentContext.codexLocalMaxConcurrency,
+      });
+      return { runId, result: result.text };
+    } catch (error) {
+      return {
+        runId,
+        result: "",
+        error: `Codex App Server execution failed: ${(error as Error).message || "Unknown error"}`,
+      };
+    }
+  }
+
+  if (
+    isGeneralAgent &&
+    (opts.agentContext.generalAgentEngine === "claude_code_local" || isClaudeCodeModel(primaryModelId))
+  ) {
+    try {
+      const result = await runClaudeCodeTurn({
+        runId,
+        sessionKey,
+        modelId: primaryModelId,
+        prompt,
+        abortSignal: opts.abortSignal,
+        onProgress: opts.onProgress,
+      });
+      return { runId, result: result.text };
+    } catch (error) {
+      return {
+        runId,
+        result: "",
+        error: `Claude Code execution failed: ${(error as Error).message || "Unknown error"}`,
+      };
+    }
+  }
 
   const model = createProxyModel(opts.agentContext.model, opts.proxyBaseUrl, opts.proxyToken);
   const tools = createPiTools({
@@ -552,7 +615,6 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
     toolExecutor: opts.toolExecutor,
   });
 
-  const prompt = opts.userPrompt.trim();
   const contextHistory =
     opts.agentContext.threadHistory
       ?.filter((entry): entry is { role: "user" | "assistant"; content: string } =>
@@ -572,10 +634,6 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
     getApiKey: () => opts.proxyToken,
   });
-
-  if (opts.abortSignal?.aborted) {
-    return { runId, result: "", error: "Aborted" };
-  }
 
   const abortHandler = () => agent.abort();
   opts.abortSignal?.addEventListener("abort", abortHandler);
@@ -616,5 +674,10 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
     opts.abortSignal?.removeEventListener("abort", abortHandler);
   }
 }
+
+export const shutdownPiSubagentRuntimes = (): void => {
+  shutdownCodexAppServerRuntime();
+  shutdownClaudeCodeRuntime();
+};
 
 export const PI_RUNTIME_MAX_TURNS = DEFAULT_MAX_TURNS;
