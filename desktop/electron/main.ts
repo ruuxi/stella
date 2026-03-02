@@ -2807,8 +2807,15 @@ app.whenReady().then(async () => {
       console.log('[agent:healthCheck] no runner')
       return null
     }
-    const result = piHostRunner.agentHealthCheck()
-    if (result) {
+    const rawResult = piHostRunner.agentHealthCheck()
+    const result =
+      rawResult?.ready === false &&
+      rawResult.reason === 'Missing proxy token' &&
+      !hostAuthAuthenticated
+        ? { ...rawResult, reason: 'Awaiting auth token' }
+        : rawResult
+
+    if (result && (result.ready || result.reason !== 'Awaiting auth token')) {
       console.log('[agent:healthCheck]', result)
     }
     return result

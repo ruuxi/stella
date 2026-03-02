@@ -52,13 +52,10 @@ const VAD_CONTEXT_SIZE = 64; // context window prepended to each frame
 const VAD_STATE_DIM = 128;
 const VAD_THRESHOLD = 0.5;
 
-  // Confidence stacking
-  // We explicitly match the exact openWakeWord python buffering behavior
-  // Python has debounce_time, patience, etc.
-  const STACK_WINDOW = 5;
-  const STACK_REQUIRED = 3;
-  const COOLDOWN_MS = 1000;
-  const WARMUP_FRAMES = 0;
+const STACK_WINDOW = 5;
+const STACK_REQUIRED = 3;
+const COOLDOWN_MS = 1000;
+const WARMUP_FRAMES = 0;
 
 const DEFAULT_THRESHOLD = 0.5;
 const MIN_THRESHOLD = 0.3;
@@ -96,17 +93,11 @@ export async function createWakeWordDetector(
     vad: path.join(modelDir, "silero_vad.onnx"),
   };
 
-  // Sessions are created once during initialization.
-  // The DML execution provider bug was resolved by enforcing strictly static tensor shapes
-  // (always passing exactly [1, 1760] to the melspectrogram).
   let melspecSession: ort.InferenceSession;
   let embeddingSession: ort.InferenceSession;
   let wakewordSession: ort.InferenceSession;
   let vadSession: ort.InferenceSession;
 
-  // Pre-compute silence embedding to fill buffers during VAD pauses.
-  // This prevents the neural network from seeing out-of-distribution zero-padding
-  // and smoothly bridges the context without breaking the chronological timeline.
   let silenceEmbedding = new Float32Array(EMBEDDING_DIM);
 
   async function createAllSessions() {
@@ -118,7 +109,6 @@ export async function createWakeWordDetector(
         ort.InferenceSession.create(modelPaths.vad, opts),
       ]);
 
-    // Compute the embedding of pure silence (1.0 mel bins)
     const silenceMelWindow = new Float32Array(EMBEDDING_WINDOW * MEL_BINS).fill(1.0);
     const results = await embeddingSession.run({
       input_1: new ort.Tensor("float32", silenceMelWindow, [1, EMBEDDING_WINDOW, MEL_BINS, 1]),
@@ -137,40 +127,31 @@ export async function createWakeWordDetector(
   // Initial creation
   await createAllSessions();
 
-  // State
   let listening = false;
   let threshold = DEFAULT_THRESHOLD;
   let lastActivationTime = 0;
   let warmupFrames = WARMUP_FRAMES;
 
-  // Raw audio buffer (circular, matching Python deque(maxlen=sr*10))
   let rawBuffer = new Int16Array(RAW_BUFFER_MAX);
   let rawBufferLen = 0;
 
-  // Remainder from incomplete chunks
   let rawRemainder = new Int16Array(0);
   let accumulatedSamples = 0;
 
-  // Mel buffer: initialized with ONES (matching Python np.ones((76,32)))
   let melBuffer = new Float32Array(MEL_BUFFER_MAX * MEL_BINS).fill(1.0);
-  let melRows = EMBEDDING_WINDOW; // start at 76
+  let melRows = EMBEDDING_WINDOW;
 
-  // Feature buffer
   let featureBuffer = new Float32Array(FEATURE_BUFFER_MAX * EMBEDDING_DIM);
   let featureRows = 0;
 
-  // Confidence stacking
   const recentScores: number[] = [];
 
-  // VAD state (Silero v6: combined state + context window)
   let vadState = new Float32Array(2 * 1 * VAD_STATE_DIM);
   let vadContext = new Float32Array(VAD_CONTEXT_SIZE);
 
-  // VAD Hangover: keep processing heavy models for a while after speech stops
-  const VAD_HANGOVER_FRAMES = 15; // 15 * 80ms = 1.2 seconds
+  const VAD_HANGOVER_FRAMES = 15;
   let vadHangover = 0;
 
-  // ---- VAD (Silero v6) ----
   async function runVad(pcm: Int16Array): Promise<number> {
     const scores: number[] = [];
     for (let i = 0; i <= pcm.length - VAD_FRAME_SIZE; i += VAD_FRAME_SIZE) {
@@ -179,7 +160,6 @@ export async function createWakeWordDetector(
         frame[j] = pcm[i + j] / 32767;
       }
 
-      // Prepend context window to frame (576 = 64 + 512)
       const input = new Float32Array(VAD_CONTEXT_SIZE + VAD_FRAME_SIZE);
       input.set(vadContext, 0);
       input.set(frame, VAD_CONTEXT_SIZE);
@@ -191,22 +171,17 @@ export async function createWakeWordDetector(
       });
       scores.push((results.output as ort.Tensor).data[0] as number);
       vadState = new Float32Array((results.stateN as ort.Tensor).data as Float32Array);
-
-      // Slide context: last 64 samples of combined input
       vadContext = input.slice(input.length - VAD_CONTEXT_SIZE);
     }
     return scores.length > 0 ? scores.reduce((a, b) => a + b) / scores.length : 0;
   }
 
-  // ---- Melspectrogram ----
   async function computeMelspec(audioFloat: Float32Array): Promise<{ data: Float32Array; rows: number }> {
     const results = await melspecSession.run({
       input: new ort.Tensor("float32", audioFloat, [1, audioFloat.length]),
     });
     const output = results[Object.keys(results)[0]] as ort.Tensor;
     const rawData = new Float32Array(output.data as Float32Array);
-
-    // Post-process: output / 10.0 + 2.0 (matching Python default)
     for (let i = 0; i < rawData.length; i++) {
       rawData[i] = rawData[i] / 10.0 + 2.0;
     }
@@ -214,15 +189,9 @@ export async function createWakeWordDetector(
     return { data: rawData, rows: rawData.length / MEL_BINS };
   }
 
-  // ---- Streaming melspectrogram (matching Python _streaming_melspectrogram) ----
   async function streamingMelspec(nSamples: number): Promise<void> {
-    // ALWAYS pass exactly (nSamples + MEL_CONTEXT_SAMPLES) to avoid dynamic shapes.
-    // Dynamic shapes on Windows DirectML cause pipeline recompilation and silent 
-    // memory corruption/zero-tensor outputs across detection cycles.
     const contextSamples = nSamples + MEL_CONTEXT_SAMPLES;
     const audioFloat = new Float32Array(contextSamples);
-    
-    // Copy available samples to the END of the array (implicitly zero-padding the start)
     const available = Math.min(rawBufferLen, contextSamples);
     const startIdx = rawBufferLen - available;
     
@@ -232,7 +201,6 @@ export async function createWakeWordDetector(
 
     const mel = await computeMelspec(audioFloat);
 
-    // Append to mel buffer (shift if full)
     if (melRows + mel.rows > MEL_BUFFER_MAX) {
       const keep = MEL_BUFFER_MAX - mel.rows;
       if (keep > 0) {
@@ -242,13 +210,10 @@ export async function createWakeWordDetector(
         melRows = 0;
       }
     }
-    
-    // NOTE: melRows starts at 76, so if we just append, the first melspec goes to row 76
     melBuffer.set(mel.data, melRows * MEL_BINS);
     melRows += mel.rows;
   }
 
-  // ---- Embedding ----
   async function computeEmbedding(melWindow: Float32Array): Promise<Float32Array> {
     const results = await embeddingSession.run({
       input_1: new ort.Tensor("float32", melWindow, [1, EMBEDDING_WINDOW, MEL_BINS, 1]),
@@ -257,16 +222,7 @@ export async function createWakeWordDetector(
     return new Float32Array(output.data as Float32Array);
   }
 
-  // ---- Classifier ----
   async function runClassifier(features: Float32Array): Promise<number> {
-    // Debug: check if features are all-zero (would produce score=0)
-    let nonZero = 0;
-    for (let i = 0; i < features.length; i++) {
-      if (features[i] !== 0) { nonZero++; break; }
-    }
-    if (nonZero === 0 && featureRows > 0) {
-      console.warn(`[WakeWord:dbg] classifier input is ALL ZEROS despite featureRows=${featureRows}`);
-    }
     const results = await wakewordSession.run({
       x: new ort.Tensor("float32", features, [1, MODEL_INPUT_FRAMES, EMBEDDING_DIM]),
     });
@@ -274,7 +230,6 @@ export async function createWakeWordDetector(
     return output.data[0] as number;
   }
 
-  // ---- Buffer raw audio (matching Python _buffer_raw_data) ----
   function bufferRawData(data: Int16Array) {
     if (rawBufferLen + data.length > RAW_BUFFER_MAX) {
       const keep = RAW_BUFFER_MAX - data.length;
@@ -285,22 +240,13 @@ export async function createWakeWordDetector(
     rawBufferLen += data.length;
   }
 
-  let chunkDbg = 0;
-
-  // ---- Main predict (matching Python _streaming_features + predict) ----
   async function predict(pcm: Int16Array): Promise<WakeWordResult> {
     const none: WakeWordResult = { detected: false, score: 0, vadScore: 0 };
     if (!listening) return none;
 
-    // ── Gate 1: RMS ──
     const rms = computeRms(pcm);
     const isLoud = rms >= RMS_THRESHOLD;
 
-    if (isLoud && chunkDbg % 10 === 0) {
-      console.log(`[WakeWord] RMS=${Math.round(rms)} (threshold=${RMS_THRESHOLD}) — audio active`);
-    }
-
-    // Always run VAD when audio is loud, OR when we are in a hangover period
     let vadScore = 0;
     if (isLoud || vadHangover > 0) {
       vadScore = await runVad(pcm);
@@ -311,9 +257,6 @@ export async function createWakeWordDetector(
       }
     }
 
-    // We are in a prolonged silence. Check if we need to reset the state.
-    // If featureRows > MODEL_INPUT_FRAMES, it means speech recently happened and finished.
-    // We seamlessly switch to "silence embeddings" without a discontinuous timeline drop.
     if (!isLoud && vadHangover === 0) {
       bufferRawData(pcm);
       if (featureRows > MODEL_INPUT_FRAMES || accumulatedSamples > 0) {
@@ -322,9 +265,6 @@ export async function createWakeWordDetector(
       return { detected: false, score: 0, vadScore };
     }
 
-    // Always buffer raw audio (needed for mel context overlap)
-    // We do this BEFORE the vadHangover check so that if we DO process the audio,
-    // we have it buffered properly.
     if (rawRemainder.length > 0) {
       const combined = new Int16Array(rawRemainder.length + pcm.length);
       combined.set(rawRemainder);
@@ -367,52 +307,21 @@ export async function createWakeWordDetector(
       }
     }
 
-    // VAD gate: skip expensive mel/embedding/classifier if not speech/hangover
-    // We rely on vadHangover to bridge short pauses in speech.
-    if (vadHangover === 0) {
-      // Return 0 for score since we didn't run the classifier
-      return { detected: false, score: 0, vadScore };
-    }
+    if (vadHangover === 0) return { detected: false, score: 0, vadScore };
 
-    // ── Mel + Embedding + Classifier (only runs on speech) ──
-    if (chunkDbg++ < 40) {
-      console.log(`[WakeWord:dbg] pcm=${pcm.length} accum=${accumulatedSamples} melRows=${melRows} featRows=${featureRows} rawBufLen=${rawBufferLen}`);
-    }
-
-    // ── Mel + Embedding + Classifier (only runs on speech) ──
-    // Wait for accumulated samples to reach the threshold before calculating
     if (accumulatedSamples >= CHUNK_SAMPLES) {
-      // Because we check >= CHUNK_SAMPLES, we need to ensure we process only integer chunks.
-      // E.g., if accumulatedSamples is 2560, we process 2560.
-      // If accumulatedSamples is 1280, we process 1280.
       const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
       const samplesToProcess = nChunks * CHUNK_SAMPLES;
-
-      // Streaming mel with context overlap
       await streamingMelspec(samplesToProcess);
 
-      // Compute embeddings (matching Python loop)
-      // Process chunks in chronological order (i=nChunks-1 is the oldest chunk, i=0 is the newest)
       for (let i = nChunks - 1; i >= 0; i--) {
         const offset = 8 * i;
-        
-        // This is perfectly matching the Python logic.
-        // E.g., if accumulatedSamples=1280 (1 chunk), nChunks=1. i=0, offset=0.
-        // If accumulatedSamples=2560 (2 chunks), nChunks=2.
-        // i=1 (offset=8), i=0 (offset=0).
-        // Since we update melRows *after* getting mel specs but *before* this loop,
-        // melRows is the current end. 
         const endMel = melRows - offset;
         const startMel = endMel - EMBEDDING_WINDOW;
 
-        if (startMel < 0 || endMel > melRows) {
-          continue;
-        }
+        if (startMel < 0 || endMel > melRows) continue;
 
-        // Copy the specific window from the full mel buffer using slice() for native speed
         const melWindow = melBuffer.slice(startMel * MEL_BINS, endMel * MEL_BINS);
-        
-        // Ensure shape is strictly [1, 76, 32, 1] for the DML provider
         const embedding = await computeEmbedding(melWindow);
 
         if (featureRows >= FEATURE_BUFFER_MAX) {
@@ -420,7 +329,6 @@ export async function createWakeWordDetector(
           featureRows = FEATURE_BUFFER_MAX - 1;
         }
         
-        // Only set the FIRST 96 dimensions (the output of the embedding is shape [1, 1, 96])
         featureBuffer.set(embedding.subarray(0, EMBEDDING_DIM), featureRows * EMBEDDING_DIM);
         featureRows++;
       }
@@ -428,13 +336,11 @@ export async function createWakeWordDetector(
       accumulatedSamples = accumulatedSamples - samplesToProcess;
     }
 
-    // Warm-up skip
     if (warmupFrames > 0) {
       warmupFrames--;
       return { detected: false, score: 0, vadScore };
     }
 
-    // Get last MODEL_INPUT_FRAMES embeddings, zero-pad if fewer available
     const features = new Float32Array(MODEL_INPUT_FRAMES * EMBEDDING_DIM);
     const available = Math.min(featureRows, MODEL_INPUT_FRAMES);
     if (available > 0) {
@@ -447,16 +353,7 @@ export async function createWakeWordDetector(
     }
 
     const score = await runClassifier(features);
-    // Confidence stacking
-    // OpenWakeWord zero-pads predictions for first 5 frames to prevent early misfires
     const finalScore = featureRows < 5 ? 0.0 : score;
-
-    if (chunkDbg < 25 && finalScore < 0.01 && featureRows >= 5) {
-      // Check if features are populated
-      let sum = 0;
-      for (let j = 0; j < features.length; j++) sum += Math.abs(features[j]);
-      console.log(`[WakeWord:dbg] score=${finalScore.toFixed(4)} featSum=${sum.toFixed(2)} available=${available} srcStart=${(featureRows - available) * EMBEDDING_DIM} dstStart=${(MODEL_INPUT_FRAMES - available) * EMBEDDING_DIM}`);
-    }
 
     recentScores.push(finalScore);
     if (recentScores.length > STACK_WINDOW) recentScores.shift();
@@ -478,14 +375,9 @@ export async function createWakeWordDetector(
     return { detected, score: finalScore, vadScore };
   }
 
-  // ---- Reset ----
   function resetToSilence() {
     melBuffer.fill(1.0);
-    melRows = EMBEDDING_WINDOW; 
-    
-    // Fill the first 16 frames with the pre-computed silence embedding
-    // This allows the neural network to seamlessly bridge background silence into speech
-    // exactly like the python openWakeWord library does
+    melRows = EMBEDDING_WINDOW;
     for (let i = 0; i < MODEL_INPUT_FRAMES; i++) {
       featureBuffer.set(silenceEmbedding, i * EMBEDDING_DIM);
     }
@@ -507,14 +399,12 @@ export async function createWakeWordDetector(
     resetToSilence();
     
     warmupFrames = WARMUP_FRAMES;
-    chunkDbg = 0; // Keep logging neat
   }
 
   return {
     async start() {
       listening = true;
       lastActivationTime = 0;
-      chunkDbg = 0;
       resetState();
     },
     stop() {
@@ -526,7 +416,6 @@ export async function createWakeWordDetector(
       if (scores.length === 0) return;
       const minScore = Math.min(...scores);
       threshold = Math.max(MIN_THRESHOLD, minScore - 0.1);
-      console.log(`[WakeWord] Calibrated: threshold=${threshold.toFixed(3)} (min=${minScore.toFixed(3)}, n=${scores.length})`);
     },
     setThreshold(t: number) {
       threshold = Math.max(MIN_THRESHOLD, t);
