@@ -41,6 +41,7 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     // Try to claim a pre-warmed session (started from IPC before React rendered)
     const preWarmed = claimPreWarmedSession(conversationId);
     const session = preWarmed ?? new RealtimeVoiceSession();
+    console.log(`[VoiceRTC:hook] effect fired — preWarmed=${!!preWarmed} window=${windowType}`);
     sessionRef.current = session;
 
     const unsubscribe = session.on((event: VoiceSessionEvent) => {

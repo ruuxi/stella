@@ -29,7 +29,6 @@ export interface AudioCaptureManager {
 export function createAudioCaptureManager(
   detector: WakeWordDetector,
 ): AudioCaptureManager {
-  const CHUNK_SAMPLES = 1280; // 80ms at 16kHz - must match detector input
   const WORKER_EXIT_TIMEOUT_MS = 2000;
   const RESTART_DELAY_MS = 800;
 
@@ -38,7 +37,6 @@ export function createAudioCaptureManager(
   let processing = false;
   let worker: UtilityProcess | null = null;
   let chunkCount = 0;
-  let remainder = new Int16Array(0);
   const pendingAudio: Int16Array[] = [];
   let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -98,40 +96,21 @@ export function createAudioCaptureManager(
 
         chunkCount++;
 
-        // Combine with leftover from previous message.
-        let samples: Int16Array;
-        if (remainder.length > 0) {
-          samples = new Int16Array(remainder.length + incoming.length);
-          samples.set(remainder);
-          samples.set(incoming, remainder.length);
-          remainder = new Int16Array(0);
-        } else {
-          samples = incoming;
-        }
-
-        // Feed detector in fixed-size chunks.
-        let offset = 0;
-        while (offset + CHUNK_SAMPLES <= samples.length) {
-          if (!capturing) break;
-
-          const chunk = samples.slice(offset, offset + CHUNK_SAMPLES);
-          offset += CHUNK_SAMPLES;
-
-          try {
-            const result = await detector.predict(chunk);
-            if (result.detected && detectionCallback) {
-              detectionCallback(result);
-            }
-          } catch (err) {
-            if (chunkCount <= 5) {
-              console.error("[WakeWord] Predict error:", (err as Error).message);
-            }
+        // Feed the entire buffer to the detector at once.
+        // The detector has its own internal 1280-sample chunking and buffer management.
+        // Splitting externally corrupts its sliding window state.
+        try {
+          const result = await detector.predict(incoming);
+          if (result.vadScore > 0.3 || result.score > 0.1) {
+            console.log(`[WakeWord] vad=${result.vadScore.toFixed(2)} score=${result.score.toFixed(3)} thresh=${detector.getThreshold().toFixed(3)} detected=${result.detected}`);
           }
-        }
-
-        // Save leftover for the next message.
-        if (offset < samples.length) {
-          remainder = samples.slice(offset);
+          if (result.detected && detectionCallback) {
+            detectionCallback(result);
+          }
+        } catch (err) {
+          if (chunkCount <= 5) {
+            console.error("[WakeWord] Predict error:", (err as Error).message);
+          }
         }
       }
     } finally {
@@ -233,31 +212,37 @@ export function createAudioCaptureManager(
       capturing = true;
       chunkCount = 0;
       processing = false;
-      remainder = new Int16Array(0);
       pendingAudio.length = 0;
       clearRestartTimer();
 
-      detector.start();
-      launchWorker();
+      // Reset detector state, then start or resume the worker
+      void detector.start().then(() => {
+        if (!capturing) return;
+        if (worker) {
+          // Worker already alive — just resume streaming
+          worker.postMessage({ type: "start" });
+          console.log("[WakeWord] Audio capture resumed");
+        } else {
+          launchWorker();
+        }
+      });
     },
 
     stop() {
-      if (!capturing && !worker) return;
+      if (!capturing) return;
 
       capturing = false;
       processing = false;
       detector.stop();
       clearRestartTimer();
       pendingAudio.length = 0;
-      remainder = new Int16Array(0);
 
-      const activeWorker = worker;
-      worker = null;
-      if (activeWorker) {
-        shutdownWorker(activeWorker);
+      // Pause streaming but keep worker alive
+      if (worker) {
+        try { worker.postMessage({ type: "stop" }); } catch { /* ignore */ }
       }
 
-      console.log("[WakeWord] Audio capture stopped");
+      console.log("[WakeWord] Audio capture paused");
     },
 
     onDetection(callback: (result: WakeWordResult) => void) {
