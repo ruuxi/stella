@@ -1,4 +1,10 @@
 import type { EventRecord } from "../hooks/use-conversation-events";
+import {
+  eventsToHistoryMessages,
+  selectRecentByTokenBudget,
+  estimateContextEventTokens,
+  type ContextEvent,
+} from "@stella/shared";
 
 const STORE_KEY = "stella.localChat.v1";
 const DEFAULT_CONVERSATION_KEY = "stella.localChat.defaultConversationId";
@@ -225,25 +231,66 @@ export const appendLocalEvent = (args: LocalAppendEventArgs): EventRecord => {
   return event;
 };
 
+const CONTEXT_EVENT_TYPES = new Set([
+  "user_message",
+  "assistant_message",
+  "tool_request",
+  "tool_result",
+  "task_started",
+  "task_completed",
+  "task_failed",
+  "microcompact_boundary",
+]);
+
+const DEFAULT_HISTORY_MAX_TOKENS = 24_000;
+const DEFAULT_WARNING_THRESHOLD_TOKENS = 170_000;
+
+/**
+ * Build history messages using the same pipeline as the cloud/server-side path:
+ * token-budgeted event selection, tool call/result formatting, and micro-compaction.
+ *
+ * The `_maxMessages` parameter is kept for call-site backward compat but is not used;
+ * selection is now token-budget-based (default 24 000 tokens, matching the backend).
+ */
 export const buildLocalHistoryMessages = (
   conversationId: string,
-  maxMessages = 50,
+  _maxMessages = 50,
 ): LocalHistoryMessage[] => {
-  const events = listLocalEvents(conversationId, maxMessages * 4);
-  const history: LocalHistoryMessage[] = [];
-  for (const event of events) {
-    if (event.type !== "user_message" && event.type !== "assistant_message") {
-      continue;
-    }
-    const content = getEventText(event);
-    if (!content) continue;
-    history.push({
-      role: event.type === "user_message" ? "user" : "assistant",
-      content,
-    });
-  }
-  if (history.length <= maxMessages) return history;
-  return history.slice(history.length - maxMessages);
+  // Fetch a generous window of raw events
+  const events = listLocalEvents(conversationId, 800);
+
+  // Keep only model-context-relevant event types
+  const contextEvents = events.filter((e) => CONTEXT_EVENT_TYPES.has(e.type));
+  if (contextEvents.length === 0) return [];
+
+  // Select a recent tail within the token budget (newest-first input)
+  const newestFirst = [...contextEvents].reverse();
+  const selected = selectRecentByTokenBudget({
+    itemsNewestFirst: newestFirst,
+    maxTokens: DEFAULT_HISTORY_MAX_TOKENS,
+    estimateTokens: (e) =>
+      estimateContextEventTokens({
+        type: e.type,
+        payload: e.payload,
+        requestId: e.requestId,
+      }),
+  });
+
+  // Convert back to chronological order for the formatter
+  const chronological = [...selected].reverse();
+
+  // Run through the shared formatter (tool call/result formatting, micro-compaction)
+  const { messages } = eventsToHistoryMessages(
+    chronological as ContextEvent[],
+    {
+      microcompact: {
+        trigger: "auto",
+        warningThresholdTokens: DEFAULT_WARNING_THRESHOLD_TOKENS,
+      },
+    },
+  );
+
+  return messages;
 };
 
 export const buildLocalSyncMessages = (
