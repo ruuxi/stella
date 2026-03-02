@@ -54,6 +54,15 @@ const isOrchestratorBusyError = (error: unknown): boolean => {
   return message.toLowerCase().includes("orchestrator is already running");
 };
 
+const getUserEventText = (event: EventRecord): string => {
+  if (!event.payload || typeof event.payload !== "object") return "";
+  const payload = event.payload as { text?: unknown; content?: unknown; message?: unknown };
+  if (typeof payload.text === "string" && payload.text.trim()) return payload.text;
+  if (typeof payload.content === "string" && payload.content.trim()) return payload.content;
+  if (typeof payload.message === "string" && payload.message.trim()) return payload.message;
+  return "";
+};
+
 export function useStreamingChat({
   conversationId,
   events,
@@ -65,11 +74,10 @@ export function useStreamingChat({
     appendAgentEvent: chatStoreAppendAgentEvent,
     appendEvent: chatStoreAppendEvent,
     uploadAttachments: chatStoreUploadAttachments,
-    buildHistory: chatStoreBuildHistory,
   } = useChatStore();
 
   const [streamingText, appendStreamingDelta, resetStreamingText, streamingTextRef] = useRafStringAccumulator();
-  const [reasoningText, appendReasoningDelta, resetReasoningText] = useRafStringAccumulator();
+  const [reasoningText, , resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef(0);
@@ -218,8 +226,8 @@ export function useStreamingChat({
     (
       args: {
         userMessageId: string;
+        userPrompt: string;
         attachments?: AttachmentRef[];
-        localHistory?: import("../services/local-chat-store").LocalHistoryMessage[];
       },
       runIdCounter: number,
     ) => {
@@ -237,8 +245,8 @@ export function useStreamingChat({
         .startAgentChat({
           conversationId: activeConversationId,
           userMessageId: args.userMessageId,
+          userPrompt: args.userPrompt,
           storageMode,
-          localHistory: args.localHistory,
         })
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return;
@@ -266,8 +274,8 @@ export function useStreamingChat({
   const startStream = useCallback(
     (args: {
       userMessageId: string;
+      userPrompt: string;
       attachments?: AttachmentRef[];
-      localHistory?: import("../services/local-chat-store").LocalHistoryMessage[];
     }) => {
       if (!activeConversationId) {
         return;
@@ -362,11 +370,12 @@ export function useStreamingChat({
     // Use microtask to avoid double-fire edge case
     void Promise.resolve().then(() => {
       if (cancelled) return;
-      const localHistory = chatStoreBuildHistory(activeConversationId, 50);
+      const userPrompt = getUserEventText(queued.event);
+      if (!userPrompt) return;
       startStream({
         userMessageId: queued.event._id,
+        userPrompt,
         attachments: queued.attachments,
-        localHistory,
       });
     });
 
@@ -379,7 +388,6 @@ export function useStreamingChat({
     pendingUserMessageId,
     startStream,
     activeConversationId,
-    chatStoreBuildHistory,
   ]);
 
   const sendMessage = useCallback(
@@ -463,8 +471,7 @@ export function useStreamingChat({
           return;
         }
         opts.onClear();
-        const localHistory = chatStoreBuildHistory(resolvedConversationId, 50);
-        startStream({ userMessageId: eventId, attachments, localHistory });
+        startStream({ userMessageId: eventId, userPrompt: combinedText, attachments });
       }
     },
     [
@@ -473,7 +480,6 @@ export function useStreamingChat({
       isStreaming,
       chatStoreAppendEvent,
       chatStoreUploadAttachments,
-      chatStoreBuildHistory,
       startStream,
     ],
   );

@@ -85,7 +85,6 @@ type BaseRunOptions = {
   userMessageId: string;
   agentType: string;
   userPrompt: string;
-  localHistory?: Array<{ role: "user" | "assistant"; content: string }>;
   agentContext: LocalTaskManagerAgentContext;
   toolExecutor: (
     toolName: string,
@@ -365,7 +364,6 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
   });
 
   const historySource =
-    opts.localHistory ??
     opts.agentContext.threadHistory
       ?.filter((entry): entry is { role: "user" | "assistant"; content: string } =>
         (entry.role === "user" || entry.role === "assistant") && typeof entry.content === "string")
