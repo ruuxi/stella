@@ -309,6 +309,7 @@ export async function createWakeWordDetector(
         featureRows = 0;
         accumulatedSamples = 0;
         rawRemainder = new Int16Array(0);
+        recentScores.length = 0; // Clear confidence stack
       }
       return { detected: false, score: 0, vadScore };
     }
@@ -366,18 +367,23 @@ export async function createWakeWordDetector(
     }
 
     // ── Mel + Embedding + Classifier (only runs on speech) ──
-    if (chunkDbg++ < 20) {
+    if (chunkDbg++ < 40) {
       console.log(`[WakeWord:dbg] pcm=${pcm.length} accum=${accumulatedSamples} melRows=${melRows} featRows=${featureRows} rawBufLen=${rawBufferLen}`);
     }
 
     // ── Mel + Embedding + Classifier (only runs on speech) ──
     // Wait for accumulated samples to reach the threshold before calculating
-    if (accumulatedSamples >= CHUNK_SAMPLES && accumulatedSamples % CHUNK_SAMPLES === 0) {
+    if (accumulatedSamples >= CHUNK_SAMPLES) {
+      // Because we check >= CHUNK_SAMPLES, we need to ensure we process only integer chunks.
+      // E.g., if accumulatedSamples is 2560, we process 2560.
+      // If accumulatedSamples is 1280, we process 1280.
+      const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
+      const samplesToProcess = nChunks * CHUNK_SAMPLES;
+
       // Streaming mel with context overlap
-      await streamingMelspec(accumulatedSamples);
+      await streamingMelspec(samplesToProcess);
 
       // Compute embeddings (matching Python loop)
-      const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
       // We must calculate the embeddings in chronological order so that the features array
       // receives the oldest frames first and the newest frames last!
       // In python they looped backwards because they vstack'd to a matrix where the end is the newest.
@@ -415,7 +421,7 @@ export async function createWakeWordDetector(
         featureRows++;
       }
 
-      accumulatedSamples = 0;
+      accumulatedSamples = accumulatedSamples - samplesToProcess;
     }
 
     // Warm-up skip
@@ -437,16 +443,16 @@ export async function createWakeWordDetector(
     }
 
     const score = await runClassifier(features);
-    if (chunkDbg < 25 && score < 0.01 && featureRows >= 5) {
-      // Check if features are populated
-      let sum = 0;
-      for (let j = 0; j < features.length; j++) sum += Math.abs(features[j]);
-      console.log(`[WakeWord:dbg] score=${score.toFixed(4)} featSum=${sum.toFixed(2)} available=${available} srcStart=${(featureRows - available) * EMBEDDING_DIM} dstStart=${(MODEL_INPUT_FRAMES - available) * EMBEDDING_DIM}`);
-    }
-
     // Confidence stacking
     // OpenWakeWord zero-pads predictions for first 5 frames to prevent early misfires
     const finalScore = featureRows < 5 ? 0.0 : score;
+
+    if (chunkDbg < 25 && finalScore < 0.01 && featureRows >= 5) {
+      // Check if features are populated
+      let sum = 0;
+      for (let j = 0; j < features.length; j++) sum += Math.abs(features[j]);
+      console.log(`[WakeWord:dbg] score=${finalScore.toFixed(4)} featSum=${sum.toFixed(2)} available=${available} srcStart=${(featureRows - available) * EMBEDDING_DIM} dstStart=${(MODEL_INPUT_FRAMES - available) * EMBEDDING_DIM}`);
+    }
 
     recentScores.push(finalScore);
     if (recentScores.length > STACK_WINDOW) recentScores.shift();
@@ -494,6 +500,7 @@ export async function createWakeWordDetector(
     rawBuffer.fill(0);
     
     warmupFrames = WARMUP_FRAMES;
+    chunkDbg = 0; // Keep logging neat
   }
 
   return {
