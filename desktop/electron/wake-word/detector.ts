@@ -392,12 +392,9 @@ export async function createWakeWordDetector(
       await streamingMelspec(samplesToProcess);
 
       // Compute embeddings (matching Python loop)
-      // We must calculate the embeddings in chronological order so that the features array
-      // receives the oldest frames first and the newest frames last!
-      // In python they looped backwards because they vstack'd to a matrix where the end is the newest.
-      for (let i = 0; i < nChunks; i++) {
-        // i=0 is the oldest chunk, i=nChunks-1 is the newest chunk
-        const offset = 8 * (nChunks - 1 - i);
+      // Process chunks in chronological order (i=nChunks-1 is the oldest chunk, i=0 is the newest)
+      for (let i = nChunks - 1; i >= 0; i--) {
+        const offset = 8 * i;
         
         // This is perfectly matching the Python logic.
         // E.g., if accumulatedSamples=1280 (1 chunk), nChunks=1. i=0, offset=0.
