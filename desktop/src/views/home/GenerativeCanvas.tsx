@@ -1,16 +1,25 @@
 import { StellaAnimation } from "@/components/StellaAnimation"
 import { DashboardCard } from "./DashboardCard"
 
+function getGreeting(): string {
+  const h = new Date().getHours()
+  if (h < 12) return "Good morning"
+  if (h < 17) return "Good afternoon"
+  return "Good evening"
+}
+
 export function GenerativeCanvas() {
   return (
     <DashboardCard>
       <div className="canvas-container">
         <div className="canvas-rings-outer" />
         <div className="canvas-rings" />
-        <div className="home-stella-orb" style={{ width: 140, height: 140 }}>
-          <StellaAnimation width={80} height={56} />
+        <div className="home-stella-orb">
+          <StellaAnimation width={96} height={68} />
         </div>
-        <span className="canvas-label">Generative Canvas</span>
+        <div className="canvas-footer">
+          <span className="canvas-greeting">{getGreeting()}</span>
+        </div>
       </div>
     </DashboardCard>
   )

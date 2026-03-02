@@ -1,4 +1,64 @@
-/* ===== Home Dashboard Grid Layout ===== */
+/* ===== Home Dashboard — Luminous Glass ===== */
+
+/* --- Keyframes --- */
+
+@keyframes home-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ring-breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.6;
+  }
+}
+
+@keyframes ring-breathe-slow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.25;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.38;
+  }
+}
+
+@keyframes orb-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 30px 6px color-mix(in oklch, var(--foreground) 3%, transparent),
+      0 0 60px 15px color-mix(in oklch, var(--foreground) 2%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 40px 10px color-mix(in oklch, var(--foreground) 5%, transparent),
+      0 0 80px 20px color-mix(in oklch, var(--foreground) 3%, transparent);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes music-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+/* --- Root & Grid --- */
 
 .home-root {
   position: relative;
@@ -16,42 +76,56 @@
 
 .home-dashboard {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 260px;
+  grid-template-rows: 1fr auto;
   grid-template-areas:
-    "news    gallery"
-    "canvas  sidebar";
-  gap: 12px;
-  padding: 16px;
+    "canvas  news    sidebar"
+    "music   music   music";
+  gap: 10px;
+  padding: 14px;
   height: 100%;
   overflow: hidden;
 }
 
-.home-zone-news { grid-area: news; }
-.home-zone-gallery { grid-area: gallery; }
-.home-zone-canvas { grid-area: canvas; }
+.home-zone-canvas {
+  grid-area: canvas;
+  animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0s;
+}
+.home-zone-news {
+  grid-area: news;
+  animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.08s;
+}
 .home-zone-sidebar {
   grid-area: sidebar;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   overflow-y: auto;
   scrollbar-width: none;
   min-height: 0;
+  animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.14s;
 }
 .home-zone-sidebar::-webkit-scrollbar { display: none; }
 
-/* ===== Responsive: single column ===== */
+.home-zone-music {
+  grid-area: music;
+  animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.06s;
+}
 
-@container home (max-width: 540px) {
+/* --- Responsive --- */
+
+@container home (max-width: 780px) {
   .home-dashboard {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr auto auto;
     grid-template-areas:
-      "canvas"
-      "sidebar"
-      "news"
-      "gallery";
+      "canvas  news"
+      "sidebar sidebar"
+      "music   music";
     overflow-y: auto;
     scrollbar-width: none;
     height: auto;
@@ -59,24 +133,69 @@
   }
   .home-dashboard::-webkit-scrollbar { display: none; }
 
-  .home-zone-canvas {
-    min-height: 200px;
+  .home-zone-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    overflow-y: visible;
   }
+  .home-zone-sidebar > * {
+    flex: 1 1 220px;
+  }
+
+  /* Stack music bar vertically on medium screens */
+  .home-zone-music .dashboard-card { flex-direction: column; }
+  .home-zone-music .dashboard-card-header { display: flex; }
+  .home-zone-music .dashboard-card-body {
+    flex-direction: column;
+    gap: 14px;
+  }
+  .home-zone-music .music-waveform {
+    position: relative;
+    width: 100%;
+    height: 48px;
+    opacity: 1;
+  }
+  .home-zone-music .music-moods { flex-wrap: wrap; }
+  .home-zone-music .music-player-center { max-width: none; }
+  .home-zone-music .music-prompt-bar { max-width: none; }
+}
+
+@container home (max-width: 540px) {
+  .home-dashboard {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    grid-template-areas:
+      "canvas"
+      "news"
+      "sidebar"
+      "music";
+    overflow-y: auto;
+    scrollbar-width: none;
+    height: auto;
+    min-height: 100%;
+  }
+  .home-dashboard::-webkit-scrollbar { display: none; }
+
+  .home-zone-canvas { min-height: 200px; }
+  .home-zone-sidebar {
+    flex-direction: column;
+  }
+  .home-zone-sidebar > * { flex: none; }
 }
 
 @container home (max-width: 360px) {
-  .home-zone-news,
-  .home-zone-gallery {
+  .home-zone-news {
     display: none;
   }
 }
 
-/* ===== Dashboard Card ===== */
+/* --- Dashboard Card --- */
 
 .dashboard-card {
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  border-radius: 12px;
+  position: relative;
+  background: color-mix(in oklch, var(--foreground) 3.5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-radius: 14px;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -84,6 +203,17 @@
   min-height: 0;
   overflow: hidden;
   height: 100%;
+  box-shadow:
+    0 1px 2px color-mix(in oklch, var(--foreground) 2%, transparent),
+    0 4px 12px color-mix(in oklch, var(--foreground) 1.5%, transparent);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.dashboard-card:hover {
+  border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
+  box-shadow:
+    0 1px 2px color-mix(in oklch, var(--foreground) 2%, transparent),
+    0 6px 20px color-mix(in oklch, var(--foreground) 2.5%, transparent);
 }
 
 .dashboard-card-header {
@@ -94,12 +224,12 @@
 }
 
 .dashboard-card-label {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--foreground);
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 .dashboard-card-actions {
@@ -113,15 +243,93 @@
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 .dashboard-card-body::-webkit-scrollbar { display: none; }
 
-/* ===== Skeleton shimmer ===== */
-
-@keyframes skeleton-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+/* Sidebar cards: size to content, don't stretch */
+.home-zone-sidebar .dashboard-card {
+  height: auto;
+  flex-shrink: 0;
 }
+
+/* --- Generative Canvas --- */
+
+.home-zone-canvas .dashboard-card {
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.canvas-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.canvas-rings {
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    transparent 25%,
+    color-mix(in oklch, var(--foreground) 2.5%, transparent) 50%,
+    transparent 65%
+  );
+  pointer-events: none;
+  animation: ring-breathe 6s ease-in-out infinite;
+}
+
+.canvas-rings-outer {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    transparent 35%,
+    color-mix(in oklch, var(--foreground) 1.5%, transparent) 55%,
+    transparent 70%
+  );
+  pointer-events: none;
+  animation: ring-breathe-slow 8s ease-in-out infinite;
+  animation-delay: 1s;
+}
+
+/* Extra decorative ring */
+.canvas-rings-outer::after {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklch, var(--foreground) 3%, transparent);
+  animation: ring-breathe-slow 10s ease-in-out infinite;
+  animation-delay: 2s;
+}
+
+.canvas-footer {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+}
+
+.canvas-greeting {
+  font-size: 14px;
+  font-weight: 450;
+  color: var(--foreground);
+  opacity: 0.38;
+  letter-spacing: 0.01em;
+}
+
+/* --- Skeleton --- */
 
 .skeleton-line {
   height: 10px;
@@ -133,7 +341,7 @@
     color-mix(in oklch, var(--foreground) 5%, transparent) 75%
   );
   background-size: 200% 100%;
-  animation: skeleton-shimmer 2s ease-in-out infinite;
+  animation: skeleton-shimmer 2.2s ease-in-out infinite;
 }
 
 .skeleton-line-sm {
@@ -146,10 +354,10 @@
     color-mix(in oklch, var(--foreground) 4%, transparent) 75%
   );
   background-size: 200% 100%;
-  animation: skeleton-shimmer 2s ease-in-out infinite;
+  animation: skeleton-shimmer 2.2s ease-in-out infinite;
 }
 
-/* ===== News Feed placeholder ===== */
+/* --- News Feed --- */
 
 .news-feed-list {
   display: flex;
@@ -172,45 +380,46 @@
 .news-feed-footnote {
   font-size: 11px;
   color: var(--foreground);
-  opacity: 0.32;
+  opacity: 0.28;
   line-height: 1.4;
   margin-top: auto;
   flex-shrink: 0;
   padding-top: 8px;
 }
 
-/* ===== Image Gallery placeholder ===== */
+/* --- Image Gallery (compact, in sidebar) --- */
 
 .gallery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 8px;
-  flex: 1;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
 }
 
 .gallery-placeholder {
   aspect-ratio: 1;
   border-radius: 8px;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  transition: border-color 0.2s;
 }
-
+.gallery-placeholder:hover {
+  border-color: color-mix(in oklch, var(--foreground) 9%, transparent);
+}
 .gallery-placeholder svg {
-  opacity: 0.15;
+  opacity: 0.12;
 }
 
 .gallery-footnote {
   font-size: 11px;
   color: var(--foreground);
-  opacity: 0.32;
+  opacity: 0.28;
   line-height: 1.4;
-  margin-top: auto;
   flex-shrink: 0;
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
 .gallery-refresh-btn {
@@ -228,24 +437,98 @@
   color: var(--foreground);
 }
 
-/* ===== Music Player ===== */
+/* ===== Music Player — Horizontal Bar ===== */
+
+/* Override card to be a horizontal bar */
+.home-zone-music .dashboard-card {
+  flex-direction: row;
+  align-items: center;
+  padding: 10px 16px;
+  gap: 16px;
+  height: auto;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Hide the header label in bar mode, keep stop button */
+.home-zone-music .dashboard-card-header {
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+/* Horizontal body layout */
+.home-zone-music .dashboard-card-body {
+  flex: 1;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+  overflow: visible;
+  min-height: auto;
+}
+
+/* Waveform: absolute background behind bar content */
+.home-zone-music .music-waveform {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.2;
+  border-radius: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Lift all content above the waveform background */
+.home-zone-music .dashboard-card-header,
+.home-zone-music .dashboard-card-body {
+  position: relative;
+  z-index: 1;
+}
+
+/* Player row in bar mode */
+.home-zone-music .music-player-row {
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.home-zone-music .music-player-center {
+  min-width: 120px;
+  max-width: 220px;
+}
+
+/* Moods: single row, no wrap */
+.home-zone-music .music-moods {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  gap: 5px;
+}
+
+/* Prompt bar: fills remaining space */
+.home-zone-music .music-prompt-bar {
+  flex: 1;
+  min-width: 0;
+  max-width: 280px;
+}
+
+/* --- Base music element styles --- */
 
 .music-waveform {
   width: 100%;
-  height: 40px;
-  border-radius: 6px;
+  height: 48px;
+  border-radius: 8px;
   color: var(--foreground);
 }
 
 .music-player-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .music-play-btn {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
@@ -253,11 +536,10 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  opacity: 1;
   padding: 0;
   color: var(--foreground);
   flex-shrink: 0;
-  transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.25s;
 }
 .music-play-btn:disabled {
   cursor: not-allowed;
@@ -266,10 +548,12 @@
 .music-play-btn:not(:disabled):hover {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
   border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  box-shadow: 0 0 12px color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 .music-play-btn--active {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
   border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+  box-shadow: 0 0 16px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .music-stop-btn {
@@ -287,16 +571,14 @@
   opacity: 0.4;
   transition: opacity 0.15s;
 }
-.music-stop-btn:hover {
-  opacity: 0.7;
-}
+.music-stop-btn:hover { opacity: 0.7; }
 
 .music-player-center {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .music-track-info {
@@ -323,13 +605,14 @@
   color: var(--foreground);
   opacity: 0.4;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .music-progress {
   width: 100%;
   height: 3px;
   border-radius: 2px;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
   overflow: hidden;
 }
 
@@ -353,22 +636,23 @@
   font-family: var(--font-family-sans, Inter, sans-serif);
   letter-spacing: 0.01em;
   line-height: 1;
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   background: transparent;
   color: var(--foreground);
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: pointer;
-  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s, transform 0.15s;
 }
 .music-mood-chip:hover {
-  opacity: 0.8;
+  opacity: 0.75;
+  transform: translateY(-1px);
 }
 .music-mood-chip--selected {
   opacity: 1;
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
 .music-lyrics-toggle {
@@ -381,34 +665,35 @@
 .music-prompt-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .music-prompt-input {
   flex: 1;
   min-width: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-family-sans, Inter, sans-serif);
   color: var(--foreground);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  border-radius: 8px;
-  padding: 5px 10px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-radius: 10px;
+  padding: 8px 12px;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .music-prompt-input::placeholder {
   color: var(--foreground);
-  opacity: 0.3;
+  opacity: 0.25;
 }
 .music-prompt-input:focus {
-  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 16%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 3%, transparent);
 }
 
 .music-prompt-submit {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   background: transparent;
   display: flex;
@@ -439,66 +724,7 @@
   animation: music-pulse 1.2s ease-in-out infinite;
 }
 
-@keyframes music-pulse {
-  0%, 100% { opacity: 0.3; transform: scale(0.8); }
-  50% { opacity: 0.7; transform: scale(1.1); }
-}
-
-/* ===== Generative Canvas ===== */
-
-.canvas-container {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.canvas-rings {
-  position: absolute;
-  width: 260px;
-  height: 260px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    transparent 25%,
-    color-mix(in oklch, var(--foreground) 2%, transparent) 50%,
-    transparent 65%
-  );
-  pointer-events: none;
-  opacity: 0.6;
-}
-
-.canvas-rings-outer {
-  position: absolute;
-  width: 360px;
-  height: 360px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    transparent 35%,
-    color-mix(in oklch, var(--foreground) 1.5%, transparent) 55%,
-    transparent 70%
-  );
-  pointer-events: none;
-  opacity: 0.4;
-}
-
-.canvas-label {
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--foreground);
-  opacity: 0.2;
-  white-space: nowrap;
-}
-
-/* ===== Activity Feed (vertical) ===== */
+/* --- Activity Feed --- */
 
 .activity-feed-list {
   display: flex;
@@ -507,13 +733,18 @@
 }
 
 .activity-feed-item {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   background: color-mix(in oklch, var(--foreground) 2%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.activity-feed-item:hover {
+  border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3.5%, transparent);
 }
 
 .activity-feed-header {
@@ -540,19 +771,30 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   flex-shrink: 0;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  padding: 2px 6px;
+  border-radius: 5px;
 }
-.activity-feed-kind[data-kind="scheduled"] { color: oklch(0.45 0.12 155); }
-.activity-feed-kind[data-kind="monitoring"] { color: oklch(0.45 0.12 280); }
-:root[data-theme="dark"] .activity-feed-kind[data-kind="scheduled"] { color: oklch(0.78 0.10 155); }
-:root[data-theme="dark"] .activity-feed-kind[data-kind="monitoring"] { color: oklch(0.78 0.10 280); }
+.activity-feed-kind[data-kind="scheduled"] {
+  color: oklch(0.45 0.12 155);
+  background: color-mix(in oklch, oklch(0.45 0.12 155) 8%, transparent);
+}
+.activity-feed-kind[data-kind="monitoring"] {
+  color: oklch(0.45 0.12 280);
+  background: color-mix(in oklch, oklch(0.45 0.12 280) 8%, transparent);
+}
+:root[data-theme="dark"] .activity-feed-kind[data-kind="scheduled"] {
+  color: oklch(0.78 0.10 155);
+  background: color-mix(in oklch, oklch(0.78 0.10 155) 10%, transparent);
+}
+:root[data-theme="dark"] .activity-feed-kind[data-kind="monitoring"] {
+  color: oklch(0.78 0.10 280);
+  background: color-mix(in oklch, oklch(0.78 0.10 280) 10%, transparent);
+}
 
 .activity-feed-status {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .activity-feed-dot {
@@ -561,33 +803,42 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.activity-feed-dot[data-status="ok"] { background: oklch(0.65 0.18 145); }
-.activity-feed-dot[data-status="error"] { background: oklch(0.60 0.20 25); }
-.activity-feed-dot[data-status="none"] { background: color-mix(in oklch, var(--foreground) 25%, transparent); }
+.activity-feed-dot[data-status="ok"] {
+  background: oklch(0.65 0.18 145);
+  box-shadow: 0 0 6px oklch(0.65 0.18 145 / 0.4);
+}
+.activity-feed-dot[data-status="error"] {
+  background: oklch(0.60 0.20 25);
+  box-shadow: 0 0 6px oklch(0.60 0.20 25 / 0.4);
+}
+.activity-feed-dot[data-status="none"] {
+  background: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
 
 .activity-feed-time {
   font-size: 11px;
   color: var(--foreground);
-  opacity: 0.5;
+  opacity: 0.45;
+  font-variant-numeric: tabular-nums;
 }
 
 .activity-feed-preview {
   font-size: 11px;
   color: var(--foreground);
-  opacity: 0.4;
-  line-height: 1.3;
+  opacity: 0.35;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-/* ===== Sidebar empty state ===== */
+/* --- Empty state --- */
 
 .home-sidebar-empty {
   font-size: 12px;
   color: var(--foreground);
-  opacity: 0.3;
+  opacity: 0.25;
   line-height: 1.5;
   padding: 8px 0;
 }
