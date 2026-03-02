@@ -2170,6 +2170,11 @@ export const batchPersistRunChunk = mutation({
     agentType: v.string(),
     ownerId: v.optional(v.string()),
     activeThreadId: v.optional(v.id("threads")),
+    // Finalization flags — parity with finalizeOrchestratorTurn
+    reminderTokenCounter: v.optional(v.object({
+      reset: v.boolean(),
+      outputTokens: v.optional(v.number()),
+    })),
   },
   handler: async (ctx, args) => {
     const conversation = await requireConversationOwner(ctx, args.conversationId);
@@ -2294,6 +2299,27 @@ export const batchPersistRunChunk = mutation({
           createdAt: now,
         });
       }
+
+      // 4. Reminder token counter update
+      if (args.reminderTokenCounter) {
+        try {
+          if (args.reminderTokenCounter.reset) {
+            await ctx.runMutation(internal.conversations.updateReminderTokenCounter, {
+              conversationId: args.conversationId,
+              resetTo: 0,
+            });
+          } else if ((args.reminderTokenCounter.outputTokens ?? 0) > 0) {
+            await ctx.runMutation(internal.conversations.updateReminderTokenCounter, {
+              conversationId: args.conversationId,
+              incrementBy: args.reminderTokenCounter.outputTokens,
+            });
+          }
+        } catch {
+          // Best effort
+        }
+      }
+
+      // Suggestions and thread compaction are handled locally by the desktop.
     }
 
     return { persisted: true, duplicate: false };
