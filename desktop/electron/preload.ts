@@ -210,6 +210,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('voice-rtc:pre-warm', handler)
     return () => { ipcRenderer.removeListener('voice-rtc:pre-warm', handler) }
   },
+  onVoiceRtcPrefetchToken: (callback: () => void) => {
+    const handler = () => { callback() }
+    ipcRenderer.on('voice-rtc:prefetch-token', handler)
+    return () => { ipcRenderer.removeListener('voice-rtc:prefetch-token', handler) }
+  },
   onVoiceTranscript: (callback: (transcript: string) => void) => {
     const handler = (_event: IpcRendererEvent, transcript: string) => {
       callback(transcript)

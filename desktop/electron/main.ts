@@ -1932,19 +1932,44 @@ app.whenReady().then(async () => {
       const detector = await createWakeWordDetector(modelsDir)
       const capture = createAudioCaptureManager(detector, getCaptureWindow)
 
+      // ── Token pre-fetch: keep a fresh ephemeral token cached in the renderer ──
+      // so the SDP exchange can start instantly when wake word fires (~200-500ms saved).
+      const TOKEN_PREFETCH_INTERVAL_MS = 50_000
+      let tokenPrefetchTimer: ReturnType<typeof setInterval> | null = null
+
+      const getVoiceTargetWindow = () =>
+        fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()
+          ? fullWindow
+          : miniWindow
+
+      const startTokenPrefetch = () => {
+        stopTokenPrefetch()
+        const target = getVoiceTargetWindow()
+        if (target) target.webContents.send('voice-rtc:prefetch-token')
+        tokenPrefetchTimer = setInterval(() => {
+          const t = getVoiceTargetWindow()
+          if (t) t.webContents.send('voice-rtc:prefetch-token')
+        }, TOKEN_PREFETCH_INTERVAL_MS)
+      }
+
+      const stopTokenPrefetch = () => {
+        if (tokenPrefetchTimer) {
+          clearInterval(tokenPrefetchTimer)
+          tokenPrefetchTimer = null
+        }
+      }
+
       capture.onDetection((result) => {
         if (!appReady) return
         console.log(`[WakeWord] Detected! score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)}`)
 
         // Pre-warm: tell renderer to start the Realtime API connection IMMEDIATELY,
-        // before React processes the state change. This lets token fetch, mic
-        // acquisition, and SDP offer creation begin ~20-50ms earlier.
+        // before React processes the state change. The renderer uses its cached
+        // ephemeral token (from periodic pre-fetch) to skip the token round-trip.
         // IMPORTANT: Only send to the target window — sending to all windows
         // causes duplicate WebRTC sessions and double audio playback.
         const convId = uiState.conversationId ?? 'voice-rtc'
-        const voiceTarget = fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()
-          ? fullWindow
-          : miniWindow
+        const voiceTarget = getVoiceTargetWindow()
         if (voiceTarget) {
           voiceTarget.webContents.send('voice-rtc:pre-warm', convId)
         }
@@ -1963,7 +1988,8 @@ app.whenReady().then(async () => {
         }
         broadcastUiState()
 
-        // Pause wake word while voice is active
+        // Pause wake word + token pre-fetch while voice is active
+        stopTokenPrefetch()
         capture.stop()
       })
 
@@ -1977,11 +2003,13 @@ app.whenReady().then(async () => {
               win.webContents.once('did-finish-load', () => {
                 setTimeout(() => {
                   capture.start()
+                  startTokenPrefetch()
                   console.log('[WakeWord] Listening started (after capture window load)')
                 }, 500)
               })
             } else {
               capture.start()
+              startTokenPrefetch()
               console.log('[WakeWord] Listening started')
             }
           }
