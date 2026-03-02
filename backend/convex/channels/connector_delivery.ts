@@ -749,7 +749,9 @@ export const rescueOrphanedTurns = internalAction({
 
     for (const orphan of orphans) {
       const payload = orphan.payload as Record<string, unknown>;
-      const conversationId = payload.conversationId as string;
+      const source = (payload.source as string | undefined) ?? "connector";
+      const isCronRequest = source === "cron";
+      const conversationId = orphan.conversationId;
       const userMessageId = payload.userMessageId as string | undefined;
       const prompt = (payload.text as string) ?? "";
       const provider = (payload.provider as string) ?? "";
@@ -757,6 +759,70 @@ export const rescueOrphanedTurns = internalAction({
         (payload.deliveryMeta as Record<string, unknown>) ?? {};
 
       try {
+        if (isCronRequest) {
+          if (orphan.claimed) {
+            // Claimed cron turns should be fulfilled atomically by desktop.
+            // If they are still orphaned, mark as failed to unblock the job.
+            await ctx.runMutation(
+              internal.scheduling.cron_jobs.completeCronTurnResultFromWatchdog,
+              {
+                requestId: orphan.requestId,
+                conversationId,
+                text: "",
+                status: "error",
+                error:
+                  "Cron turn was claimed by desktop but never fulfilled before watchdog timeout.",
+                skipAssistantMessage: true,
+              },
+            );
+            console.log(
+              `[watchdog] Rescued cron orphan ${orphan.requestId} (claimed -> marked failed)`,
+            );
+            continue;
+          }
+
+          const conversation = await ctx.runQuery(internal.conversations.getById, {
+            id: conversationId,
+          });
+          if (!conversation) {
+            await ctx.runMutation(
+              internal.scheduling.cron_jobs.completeCronTurnResultFromWatchdog,
+              {
+                requestId: orphan.requestId,
+                conversationId,
+                text: "",
+                status: "error",
+                error: `Conversation ${String(conversationId)} not found during watchdog rescue.`,
+                skipAssistantMessage: true,
+              },
+            );
+            continue;
+          }
+
+          const result = await runAgentTurn({
+            ctx,
+            conversationId,
+            prompt,
+            agentType: "orchestrator",
+            ownerId: conversation.ownerId,
+            userMessageId: userMessageId as Id<"events"> | undefined,
+          });
+
+          await ctx.runMutation(
+            internal.scheduling.cron_jobs.completeCronTurnResultFromWatchdog,
+            {
+              requestId: orphan.requestId,
+              conversationId,
+              text: result.text.trim(),
+              status: "ok",
+            },
+          );
+          console.log(
+            `[watchdog] Rescued cron orphan ${orphan.requestId} (cloud fallback execution)`,
+          );
+          continue;
+        }
+
         if (orphan.claimed) {
           // Case 1: Claimed but not fulfilled — the local device ran the turn
           // but delivery failed. Retry delivery only (no re-execution).
@@ -780,18 +846,18 @@ export const rescueOrphanedTurns = internalAction({
           // request. Run the full turn through cloud + deliver.
           const conversation = await ctx.runQuery(
             internal.conversations.getById,
-            { id: conversationId as Id<"conversations"> },
+            { id: conversationId },
           );
           if (!conversation) {
             console.error(
-              `[watchdog] Conversation ${conversationId} not found, skipping`,
+              `[watchdog] Conversation ${String(conversationId)} not found, skipping`,
             );
             continue;
           }
 
           const result = await runAgentTurn({
             ctx,
-            conversationId: conversationId as Id<"conversations">,
+            conversationId,
             prompt,
             agentType: "orchestrator",
             ownerId: conversation.ownerId,
@@ -801,7 +867,7 @@ export const rescueOrphanedTurns = internalAction({
           // Persist assistant message
           if (result.text.trim() && !result.silent) {
             await ctx.runMutation(internal.events.appendInternalEvent, {
-              conversationId: conversationId as Id<"conversations">,
+              conversationId,
               type: "assistant_message",
               payload: {
                 text: result.text,
@@ -817,7 +883,7 @@ export const rescueOrphanedTurns = internalAction({
             internal.channels.connector_delivery.deliverToConnector,
             {
               requestId: orphan.requestId,
-              conversationId: conversationId as Id<"conversations">,
+              conversationId,
               provider,
               deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
               text: responseText,
@@ -834,10 +900,29 @@ export const rescueOrphanedTurns = internalAction({
           error,
         );
 
+        if (isCronRequest) {
+          try {
+            await ctx.runMutation(
+              internal.scheduling.cron_jobs.completeCronTurnResultFromWatchdog,
+              {
+                requestId: orphan.requestId,
+                conversationId,
+                text: "",
+                status: "error",
+                error: String(error),
+                skipAssistantMessage: true,
+              },
+            );
+          } catch {
+            // Best effort.
+          }
+          continue;
+        }
+
         // Mark as fulfilled to prevent infinite retries
         try {
           await ctx.runMutation(internal.events.appendInternalEvent, {
-            conversationId: conversationId as Id<"conversations">,
+            conversationId,
             type: "remote_turn_fulfilled",
             requestId: `fulfilled:${orphan.requestId}`,
             payload: {
