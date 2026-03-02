@@ -1,20 +1,21 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { createToolHost } from "../local-host/tools.js";
-import { loadAgentsFromHome } from "../local-host/agents.js";
-import { loadSkillsFromHome } from "../local-host/skills.js";
+import { createToolHost } from "./extensions/stella/tools.js";
+import { loadAgentsFromHome } from "./extensions/stella/agents.js";
+import { loadSkillsFromHome } from "./extensions/stella/skills.js";
 import {
   getCodexLocalMaxConcurrency,
   getGeneralAgentEngine,
   getModelOverride,
-} from "../local-host/local_preferences.js";
-import { LocalTaskManager, type LocalTaskManagerAgentContext } from "../local-host/local_task_manager.js";
-import type { ToolContext } from "../local-host/tools-types.js";
+} from "./extensions/stella/local_preferences.js";
+import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./extensions/stella/local_task_manager.js";
+import type { ToolContext } from "./extensions/stella/tools-types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import {
   runPiOrchestratorTurn,
   runPiSubagentTask,
+  shutdownPiSubagentRuntimes,
   type PiEndEvent,
   type PiErrorEvent,
   type PiRunCallbacks,
@@ -344,6 +345,7 @@ export const createPiHostRunner = ({
     }
     activeRunAbortControllers.clear();
     toolHost.killAllShells();
+    shutdownPiSubagentRuntimes();
   };
 
   const agentHealthCheck = (): AgentHealth => {
