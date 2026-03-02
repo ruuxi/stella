@@ -442,6 +442,17 @@ const broadcastUiState = () => {
   }
 }
 
+const deactivateVoiceModes = () => {
+  if (!uiState.isVoiceActive && !uiState.isVoiceRtcActive) {
+    return false
+  }
+  uiState.isVoiceActive = false
+  uiState.isVoiceRtcActive = false
+  scheduleResumeWakeWord()
+  broadcastUiState()
+  return true
+}
+
 
 const setPendingChatContext = (next: ChatContext | null) => {
   pendingChatContext = next
@@ -1057,6 +1068,7 @@ const createMiniWindow = () => {
       return
     }
     event.preventDefault()
+    deactivateVoiceModes()
     hideMiniWindow(false)
   })
 
@@ -2174,6 +2186,7 @@ app.whenReady().then(async () => {
     appReady = false
     pendingAuthCallback = null
     uiState.isVoiceActive = false
+    uiState.isVoiceRtcActive = false
 
     if (pendingMiniChatContextAck) {
       clearTimeout(pendingMiniChatContextAck.timeout)
@@ -2248,6 +2261,7 @@ app.whenReady().then(async () => {
     // For spotlight-style overlays, "close" should dismiss without destroying the window.
     // Destroying/recreating transparent windows can cause visible flashes/flicker.
     if (win === miniWindow) {
+      deactivateVoiceModes()
       hideMiniWindow(true)
       return
     }
