@@ -7,12 +7,14 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord } from "./tools-types.js";
+import type { SecretFileMountHandle } from "./tools-utils.js";
 import { removeSecretFile, truncate, writeSecretFile } from "./tools-utils.js";
 import { isDangerousCommand } from "./command_safety.js";
 
 export type ShellState = {
   shells: Map<string, ShellRecord>;
   skillCache: SkillRecord[];
+  secretStateRoot: string;
   resolveSecretValue: (
     spec: SecretMountSpec,
     cache: Map<string, string>,
@@ -23,9 +25,11 @@ export type ShellState = {
 
 export const createShellState = (
   resolveSecretValue: ShellState["resolveSecretValue"],
+  secretStateRoot: string,
 ): ShellState => ({
   shells: new Map(),
   skillCache: [],
+  secretStateRoot,
   resolveSecretValue,
 });
 
@@ -362,10 +366,10 @@ export const handleSkillBash = async (
 
   const envOverrides: Record<string, string> = {};
   const providerCache = new Map<string, string>();
-  const mountedSecretFiles: string[] = [];
+  const mountedSecretFiles: SecretFileMountHandle[] = [];
   const cleanupMountedSecretFiles = async () => {
-    for (const mountedPath of mountedSecretFiles) {
-      await removeSecretFile(mountedPath);
+    for (const mountedFile of mountedSecretFiles) {
+      await removeSecretFile(mountedFile);
     }
   };
 
@@ -403,16 +407,21 @@ export const handleSkillBash = async (
           error: `Missing secret for ${spec.provider}.`,
         };
       }
-      const mountedPath = await writeSecretFile(filePath, value, cwd);
-      mountedSecretFiles.push(mountedPath);
+      const mountedFile = await writeSecretFile(
+        filePath,
+        value,
+        cwd,
+        state.secretStateRoot,
+      );
+      mountedSecretFiles.push(mountedFile);
     }
   }
 
   if (runInBackground) {
     try {
       const record = startShell(state, command, cwd, envOverrides, () => {
-        for (const mountedPath of mountedSecretFiles) {
-          void removeSecretFile(mountedPath);
+        for (const mountedFile of mountedSecretFiles) {
+          void removeSecretFile(mountedFile);
         }
       });
       return {
