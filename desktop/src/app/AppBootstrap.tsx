@@ -3,7 +3,7 @@ import { useConvexAuth, useMutation } from "convex/react";
 import { useUiState } from "./state/ui-state";
 import { api } from "../convex/api";
 import { useAccountMode } from "../hooks/use-account-mode";
-import { configureLocalHost, getOrCreateDeviceId } from "../services/device";
+import { configurePiRuntime, getOrCreateDeviceId } from "../services/device";
 import {
   buildLocalSyncMessages,
   getLocalSyncCheckpoint,
@@ -50,7 +50,7 @@ export const AppBootstrap = () => {
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const hostPromise = configureLocalHost();
+      const hostPromise = configurePiRuntime();
       const devicePromise = getOrCreateDeviceId();
 
       if (!isAuthenticated) {

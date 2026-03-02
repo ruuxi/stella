@@ -2,7 +2,7 @@
 /**
  * Manual Test Script for All User Signal Collection
  *
- * Run with: bun electron/local-host/collect-all.manual-test.ts
+ * Run with: bun electron/system/collect-all.manual-test.ts
  *
  * This will collect:
  * 1. Browser history (visits, domains, content)

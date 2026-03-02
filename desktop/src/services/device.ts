@@ -26,15 +26,15 @@ const generateFallbackDeviceId = () => {
   return fallback;
 };
 
-export const configureLocalHost = async () => {
+export const configurePiRuntime = async () => {
   const api = getElectronApi();
   const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
   const convexSiteUrl = import.meta.env.VITE_CONVEX_SITE_URL as string | undefined;
-  if (!api?.configureHost || !convexUrl) {
+  if (!api?.configurePiRuntime || !convexUrl) {
     return;
   }
   try {
-    const response = await api.configureHost({ convexUrl, convexSiteUrl });
+    const response = await api.configurePiRuntime({ convexUrl, convexSiteUrl });
     if (response?.deviceId) {
       cachedDeviceId = response.deviceId;
       writeLocalDeviceId(response.deviceId);

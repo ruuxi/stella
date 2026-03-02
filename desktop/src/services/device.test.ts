@@ -87,17 +87,17 @@ describe("device service", () => {
     });
   });
 
-  describe("configureLocalHost", () => {
+  describe("configurePiRuntime", () => {
     it("does nothing when electron API is absent", async () => {
-      const { configureLocalHost } = await import("./device");
+      const { configurePiRuntime } = await import("./device");
       // Should not throw
-      await configureLocalHost();
+      await configurePiRuntime();
     });
 
-    it("does nothing when configureHost is not on the API", async () => {
+    it("does nothing when configurePiRuntime is not on the API", async () => {
       ((window as unknown as Record<string, unknown>)).electronAPI = {};
-      const { configureLocalHost } = await import("./device");
-      await configureLocalHost();
+      const { configurePiRuntime } = await import("./device");
+      await configurePiRuntime();
     });
   });
 });

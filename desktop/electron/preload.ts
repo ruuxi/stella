@@ -52,7 +52,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
-  configureHost: (config: { convexUrl?: string; convexSiteUrl?: string }) => ipcRenderer.invoke('host:configure', config),
+  configurePiRuntime: (config: { convexUrl?: string; convexSiteUrl?: string }) =>
+    ipcRenderer.invoke('host:configurePiRuntime', config),
   setAuthState: (payload: { authenticated: boolean; token?: string }) => ipcRenderer.invoke('auth:setState', payload),
   setCloudSyncEnabled: (payload: { enabled: boolean }) => ipcRenderer.invoke('host:setCloudSyncEnabled', payload),
   onAuthCallback: (callback: (data: { url: string }) => void) => {
