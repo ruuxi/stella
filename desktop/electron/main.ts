@@ -35,7 +35,11 @@ import { createPiHostRunner } from './pi-runtime/runner.js'
 import { getDevServerUrl } from './dev-url.js'
 import { resolveStellaHome } from './local-host/stella-home.js'
 import { getLocalEventStore, type AppendEventArgs as EventStoreAppendArgs } from './local-host/local_event_store.js'
-import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from './local-host/local_preferences.js'
+import {
+  getSyncMode,
+  loadLocalPreferences,
+  saveLocalPreferences,
+} from './pi-runtime/extensions/stella/local_preferences.js'
 import {
   collectBrowserData,
   coreMemoryExists,
@@ -53,7 +57,7 @@ import {
   handleInstallSkill,
   handleInstallTheme,
   handleUninstallPackage,
-} from './local-host/tools_store.js'
+} from './pi-runtime/extensions/stella/tools_store.js'
 import * as bridgeManager from './local-host/bridge_manager.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -2882,7 +2886,7 @@ app.whenReady().then(async () => {
       throw new Error('Local host runner not available')
     }
     // Import revert handler dynamically to avoid circular deps
-    const { handleSelfModRevert } = await import('./local-host/tools_self_mod.js')
+    const { handleSelfModRevert } = await import('./pi-runtime/extensions/stella/tools_self_mod.js')
     const frontendRoot = path.join(__dirname, '..')
     const context = { conversationId: '', requestId: '', deviceId: '', agentType: 'user' }
     return handleSelfModRevert(

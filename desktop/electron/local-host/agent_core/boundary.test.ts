@@ -33,10 +33,10 @@ describe("agent core boundaries", () => {
     }
   });
 
-  test("runtime adapter consumes extracted core helpers", () => {
-    const source = read("electron/local-host/agent_runtime.ts");
-    expect(source).toContain('from "./agent_core/model_proxy.js"');
-    expect(source).toContain('from "./agent_core/runtime_utils.js"');
-    expect(source).toContain('from "./agent_core/tool_call_ids.js"');
+  test("pi runtime stays isolated from local-host runtime files", () => {
+    const source = read("electron/pi-runtime/pi_agent_runtime.ts");
+    expect(source).toContain('from "./extensions/stella/local_task_manager.js"');
+    expect(source).toContain('from "./extensions/stella/tools-types.js"');
+    expect(source).not.toContain("../local-host/");
   });
 });

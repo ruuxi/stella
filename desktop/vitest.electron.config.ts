@@ -6,7 +6,12 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['electron/**/*.test.ts'],
-    exclude: ['node_modules', 'dist', 'dist-electron'],
+    exclude: [
+      'node_modules',
+      'dist',
+      'dist-electron',
+      'electron/pi-runtime/vendor/**',
+    ],
     testTimeout: 30000,
   },
   resolve: {
