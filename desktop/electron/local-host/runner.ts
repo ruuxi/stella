@@ -1467,11 +1467,11 @@ export const createLocalHostRunner = ({
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-      // Read thread history from local thread store (no Convex round-trip)
+      // Read thread summary for compaction context (not individual messages)
       const threadStore = getLocalThreadStore(StellaHome);
       const localThread = threadStore.getOrCreateThread(payload.conversationId, "Main");
       const activeThreadId = localThread.id;
-      const threadHistory = threadStore.loadMessagesForContext(activeThreadId, 50);
+      const threadSummary = localThread.summary || undefined;
 
       // Read core memory from disk
       const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
@@ -1483,11 +1483,11 @@ export const createLocalHostRunner = ({
         // No core memory file
       }
 
-      // Server call: prompt + model + skills + token (no thread history)
+      // Server call: prompt + model + skills + token
       const serverResult = await callAction("agent/mint_proxy_token:mintProxyToken", {
         agentType,
         runId,
-        conversationId: storageMode === "cloud" ? payload.conversationId : undefined,
+        conversationId: payload.conversationId,
         platform: process.platform,
         timezone: tz,
       }) as {
@@ -1506,9 +1506,8 @@ export const createLocalHostRunner = ({
       agentContext = {
         ...serverResult,
         coreMemory,
-        threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
+        threadSummary,
         activeThreadId,
-        // Codex engine settings are local — they control which runtime runs on this machine
         generalAgentEngine: agentType === "general" ? getGeneralAgentEngine(StellaHome) : undefined,
         codexLocalMaxConcurrency: agentType === "general" ? getCodexLocalMaxConcurrency(StellaHome) : undefined,
       } as AgentContext;
@@ -1517,7 +1516,7 @@ export const createLocalHostRunner = ({
         hasSystemPrompt: !!agentContext?.systemPrompt,
         model: agentContext?.model,
         hasProxyToken: !!agentContext?.proxyToken,
-        threadMessages: threadHistory.length,
+        hasThreadSummary: !!threadSummary,
       });
     } catch (err) {
       logError("Failed to build agent context:", err);
