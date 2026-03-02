@@ -39,6 +39,8 @@ type RuntimeTaskRecord = {
   controller: AbortController;
   storageMode: "cloud" | "local";
   cloudTaskId?: string;
+  /** Resolves when the cloud task record has been created (or rejected). */
+  cloudCreatePromise?: Promise<void>;
   parentTaskId?: string;
   threadId?: string;
   threadName?: string;
@@ -289,19 +291,29 @@ export class LocalTaskManager implements TaskToolApi {
       }
     }
 
-    if (task.storageMode === "cloud" && task.cloudTaskId) {
-      const status =
-        task.status === "completed"
-          ? "completed"
-          : task.status === "canceled"
-            ? "canceled"
-            : "error";
-      await this.opts.completeCloudTaskRecord({
-        taskId: task.cloudTaskId,
-        status,
-        result: task.result ? truncate(task.result, 30_000) : undefined,
-        error: task.error ? truncate(task.error, 10_000) : undefined,
-      });
+    // Sync task completion to Convex in background (non-blocking)
+    if (task.storageMode === "cloud") {
+      void (async () => {
+        // Wait for cloud task creation to finish so we have the cloudTaskId
+        if (task.cloudCreatePromise) {
+          await task.cloudCreatePromise.catch(() => {});
+        }
+        if (!task.cloudTaskId) return;
+        const status =
+          task.status === "completed"
+            ? "completed"
+            : task.status === "canceled"
+              ? "canceled"
+              : "error";
+        await this.opts.completeCloudTaskRecord({
+          taskId: task.cloudTaskId,
+          status,
+          result: task.result ? truncate(task.result, 30_000) : undefined,
+          error: task.error ? truncate(task.error, 10_000) : undefined,
+        }).catch(() => {
+          // Background sync failure — task is still tracked locally
+        });
+      })();
     }
   }
 
@@ -329,25 +341,30 @@ export class LocalTaskManager implements TaskToolApi {
       progressBuffer: "",
     };
 
+    this.tasks.set(task.id, task);
+    this.pendingQueue.push(task.id);
+
+    // Create cloud record in background (non-blocking)
+    // Store the promise so completion can await it before syncing status.
     if (request.storageMode === "cloud") {
       const cloudParentTaskId =
         request.parentTaskId && !request.parentTaskId.startsWith("local:")
           ? request.parentTaskId
           : undefined;
-      const created = await this.opts.createCloudTaskRecord({
+      task.cloudCreatePromise = this.opts.createCloudTaskRecord({
         conversationId: request.conversationId,
         description: request.description,
         prompt: request.prompt,
         agentType: request.agentType,
         parentTaskId: cloudParentTaskId,
         commandId: request.commandId,
+      }).then((created) => {
+        task.cloudTaskId = created.taskId;
+      }).catch(() => {
+        // Cloud record creation failed — task runs locally only
       });
-      task.cloudTaskId = created.taskId;
-      task.id = created.taskId;
     }
 
-    this.tasks.set(task.id, task);
-    this.pendingQueue.push(task.id);
     this.tryStartNext();
     return { taskId: task.id };
   }
