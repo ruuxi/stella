@@ -52,11 +52,13 @@ const VAD_CONTEXT_SIZE = 64; // context window prepended to each frame
 const VAD_STATE_DIM = 128;
 const VAD_THRESHOLD = 0.5;
 
-// Confidence stacking
-const STACK_WINDOW = 5;
-const STACK_REQUIRED = 3;
-const COOLDOWN_MS = 1000;
-const WARMUP_FRAMES = 0;
+  // Confidence stacking
+  // We explicitly match the exact openWakeWord python buffering behavior
+  // Python has debounce_time, patience, etc.
+  const STACK_WINDOW = 5;
+  const STACK_REQUIRED = 3;
+  const COOLDOWN_MS = 1000;
+  const WARMUP_FRAMES = 0;
 
 const DEFAULT_THRESHOLD = 0.5;
 const MIN_THRESHOLD = 0.3;
@@ -303,6 +305,7 @@ export async function createWakeWordDetector(
       if (accumulatedSamples > 0 || featureRows > 0) {
         melBuffer.fill(1.0);
         melRows = EMBEDDING_WINDOW;
+        featureBuffer.fill(0); // Clear old embeddings
         featureRows = 0;
         accumulatedSamples = 0;
         rawRemainder = new Int16Array(0);
@@ -375,8 +378,12 @@ export async function createWakeWordDetector(
 
       // Compute embeddings (matching Python loop)
       const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
-      for (let i = nChunks - 1; i >= 0; i--) {
-        const offset = 8 * i;
+      // We must calculate the embeddings in chronological order so that the features array
+      // receives the oldest frames first and the newest frames last!
+      // In python they looped backwards because they vstack'd to a matrix where the end is the newest.
+      for (let i = 0; i < nChunks; i++) {
+        // i=0 is the oldest chunk, i=nChunks-1 is the newest chunk
+        const offset = 8 * (nChunks - 1 - i);
         
         // This is perfectly matching the Python logic.
         // E.g., if accumulatedSamples=1280 (1 chunk), nChunks=1. i=0, offset=0.
@@ -387,7 +394,7 @@ export async function createWakeWordDetector(
         const endMel = melRows - offset;
         const startMel = endMel - EMBEDDING_WINDOW;
 
-        if (startMel < 0 || endMel > melRows || endMel - startMel !== EMBEDDING_WINDOW) {
+        if (startMel < 0 || endMel > melRows) {
           continue;
         }
 
@@ -438,7 +445,10 @@ export async function createWakeWordDetector(
     }
 
     // Confidence stacking
-    recentScores.push(score);
+    // OpenWakeWord zero-pads predictions for first 5 frames to prevent early misfires
+    const finalScore = featureRows < 5 ? 0.0 : score;
+
+    recentScores.push(finalScore);
     if (recentScores.length > STACK_WINDOW) recentScores.shift();
 
     let consecutive = 0;
@@ -455,7 +465,7 @@ export async function createWakeWordDetector(
       recentScores.length = 0;
     }
 
-    return { detected, score, vadScore };
+    return { detected, score: finalScore, vadScore };
   }
 
   // ---- Reset ----
@@ -466,27 +476,21 @@ export async function createWakeWordDetector(
     // We only reset the indices/lengths, which guarantees stale data is overwritten.
     
     rawBufferLen = 0;
-    // rawRemainder represents partial chunks across calls, but since we are resetting,
-    // we want to drop any old remainder so it doesn't bleed into the new session.
     rawRemainder = new Int16Array(0); 
     
     accumulatedSamples = 0;
     
-    // Mel buffer should start filled with ones, simulating total silence.
-    // The embedding window is 76 frames, so we start writing *after* those 76 frames
     melBuffer.fill(1.0);
     melRows = EMBEDDING_WINDOW; 
     
+    featureBuffer.fill(0); // explicitly clear features
     featureRows = 0;
     recentScores.length = 0;
     
-    // Silero VAD state needs to be zeros on reset to wipe past voice activity
     vadState.fill(0);
     vadContext.fill(0);
     vadHangover = 0;
     
-    // Also clear rawBuffer so we don't accidentally pull stale samples if context overlaps
-    // before we've accumulated enough new samples
     rawBuffer.fill(0);
     
     warmupFrames = WARMUP_FRAMES;
