@@ -54,6 +54,8 @@ const CREATION_STEPS = [
     action: "selfmod" as const,
   },
 ];
+const preloadDjStudioDemo = () => import("./panels/DJStudioDemo");
+const preloadWeatherStationDemo = () => import("./panels/WeatherStationDemo");
 
 export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onComplete,
@@ -211,6 +213,13 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       onDemoChange?.(null);
     }
   }, [phase, onDemoChange]);
+
+  // Preload creation demo chunks before users open them.
+  useEffect(() => {
+    if (phase !== "creation") return;
+    void preloadDjStudioDemo();
+    void preloadWeatherStationDemo();
+  }, [phase]);
 
   // Theme (inline)
   const {

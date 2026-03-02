@@ -12,6 +12,8 @@ import { SuggestionsPanel } from "./SuggestionsPanel"
 import { ActiveTasks } from "./ActiveTasks"
 import { ActivityFeed } from "./ActivityFeed"
 import { DashboardCard } from "./DashboardCard"
+import "./home-view.css"
+import "./home-dashboard.css"
 
 type ScheduleItem = {
   id: string
