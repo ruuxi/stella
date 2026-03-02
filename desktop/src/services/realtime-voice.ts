@@ -33,6 +33,48 @@ export type VoiceSessionEvent =
 type VoiceSessionListener = (event: VoiceSessionEvent) => void;
 
 // ---------------------------------------------------------------------------
+// Token pre-fetch cache: keeps a fresh ephemeral token while wake word listens
+// ---------------------------------------------------------------------------
+
+type CachedToken = {
+  clientSecret: string;
+  model: string;
+  voice: string;
+  expiresAt?: number;
+};
+
+let cachedToken: CachedToken | null = null;
+
+async function prefetchToken(): Promise<void> {
+  try {
+    const { endpoint, headers } = await createServiceRequest("/api/voice/session");
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: "voice-rtc" }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    // Only cache if token has >10s of remaining validity
+    if (data.expiresAt && (data.expiresAt * 1000 - Date.now()) < 10_000) return;
+    cachedToken = data;
+    console.log("[RealtimeVoice] token pre-fetched");
+  } catch {
+    // Silent — pre-fetch is best-effort
+  }
+}
+
+function consumeCachedToken(): CachedToken | null {
+  const t = cachedToken;
+  cachedToken = null;
+  if (!t) return null;
+  // Discard if <5s remaining (not enough for SDP exchange)
+  if (t.expiresAt && (t.expiresAt * 1000 - Date.now()) < 5_000) return null;
+  console.log("[RealtimeVoice] using cached token");
+  return t;
+}
+
+// ---------------------------------------------------------------------------
 // Pre-warm: start connection from IPC before React lifecycle kicks in
 // ---------------------------------------------------------------------------
 
@@ -49,7 +91,8 @@ export function preWarmVoiceSession(conversationId: string): void {
   const session = new RealtimeVoiceSession();
   preWarmedSession = session;
   preWarmConvId = conversationId;
-  session.connect(conversationId).catch((err) => {
+  const token = consumeCachedToken() ?? undefined;
+  session.connect(conversationId, token).catch((err) => {
     console.error("[RealtimeVoice] pre-warm failed:", err);
     if (preWarmedSession === session) {
       preWarmedSession = null;
@@ -73,12 +116,20 @@ export function claimPreWarmedSession(
   return session;
 }
 
-// Register IPC listener so the main process can trigger pre-warm on wake word
+// Register IPC listeners for main process triggers
 if (typeof window !== "undefined") {
-  const api = (window as { electronAPI?: { onVoiceRtcPreWarm?: (cb: (id: string) => void) => () => void } }).electronAPI;
+  const api = (window as { electronAPI?: {
+    onVoiceRtcPreWarm?: (cb: (id: string) => void) => () => void;
+    onVoiceRtcPrefetchToken?: (cb: () => void) => () => void;
+  } }).electronAPI;
   if (api?.onVoiceRtcPreWarm) {
     api.onVoiceRtcPreWarm((conversationId: string) => {
       preWarmVoiceSession(conversationId);
+    });
+  }
+  if (api?.onVoiceRtcPrefetchToken) {
+    api.onVoiceRtcPrefetchToken(() => {
+      void prefetchToken();
     });
   }
 }
@@ -135,7 +186,10 @@ export class RealtimeVoiceSession {
   // Public API
   // ---------------------------------------------------------------------------
 
-  async connect(conversationId: string): Promise<void> {
+  async connect(
+    conversationId: string,
+    prefetchedToken?: CachedToken,
+  ): Promise<void> {
     if (this._state !== "idle") {
       throw new Error(`Cannot connect in state: ${this._state}`);
     }
@@ -145,8 +199,10 @@ export class RealtimeVoiceSession {
     try {
       // ── Phase 1: Start ALL work in parallel ────────────────────────
 
-      // A) Fetch ephemeral token from backend
-      const keyPromise = (async () => {
+      // A) Use pre-fetched token if available, otherwise fetch inline
+      const keyPromise = prefetchedToken
+        ? Promise.resolve(prefetchedToken)
+        : (async () => {
         const { endpoint, headers } = await createServiceRequest("/api/voice/session");
         const res = await fetch(endpoint, {
           method: "POST",
@@ -157,12 +213,7 @@ export class RealtimeVoiceSession {
           const detail = await res.text();
           throw new Error(`Failed to create voice session: ${res.status} ${detail}`);
         }
-        return (await res.json()) as {
-          clientSecret: string;
-          expiresAt?: number;
-          model: string;
-          voice: string;
-        };
+        return (await res.json()) as CachedToken;
       })();
 
       // B) Acquire microphone (runs in parallel, awaited later)
