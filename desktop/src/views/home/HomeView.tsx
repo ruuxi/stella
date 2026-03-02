@@ -133,25 +133,14 @@ export function HomeView({ conversationId }: HomeViewProps) {
   return (
     <div className="home-root">
       <div className="home-dashboard">
-        <div className="home-zone-news">
-          <NewsFeed />
-        </div>
-        <div className="home-zone-gallery">
-          <ImageGallery />
-        </div>
         <div className="home-zone-canvas">
           <GenerativeCanvas />
         </div>
+        <div className="home-zone-news">
+          <NewsFeed />
+        </div>
         <div className="home-zone-sidebar">
-          <Suspense
-            fallback={
-              <DashboardCard label="Ambient">
-                <span className="home-sidebar-empty">Loading ambient controls...</span>
-              </DashboardCard>
-            }
-          >
-            <MusicPlayer />
-          </Suspense>
+          <ImageGallery />
           {hasSuggestions && (
             <SuggestionsPanel
               suggestions={welcomeSuggestions}
@@ -167,6 +156,17 @@ export function HomeView({ conversationId }: HomeViewProps) {
               </span>
             </DashboardCard>
           )}
+        </div>
+        <div className="home-zone-music">
+          <Suspense
+            fallback={
+              <DashboardCard label="Ambient">
+                <span className="home-sidebar-empty">Loading ambient controls...</span>
+              </DashboardCard>
+            }
+          >
+            <MusicPlayer />
+          </Suspense>
         </div>
       </div>
     </div>

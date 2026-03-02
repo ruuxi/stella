@@ -11,25 +11,27 @@
   align-items: flex-start;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
   cursor: pointer;
-  transition: background 0.25s, border-color 0.25s, opacity 0.25s;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
   text-align: left;
   font-family: inherit;
   width: 100%;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 .home-suggestion-card:hover {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in oklch, var(--foreground) 3%, transparent);
   opacity: 1;
 }
 
 .home-suggestion-content {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 .home-suggestion-header {
@@ -44,25 +46,44 @@
   line-height: 1.3;
 }
 .home-suggestion-badge {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  line-height: 1.5;
+  line-height: 1;
   flex-shrink: 0;
-  background: none;
+  padding: 2px 6px;
+  border-radius: 5px;
 }
-.home-suggestion-badge[data-category="cron"] { color: oklch(0.45 0.12 155); }
-.home-suggestion-badge[data-category="skill"] { color: oklch(0.45 0.12 250); }
-.home-suggestion-badge[data-category="app"] { color: oklch(0.50 0.12 75); }
-:root[data-theme="dark"] .home-suggestion-badge[data-category="cron"] { color: oklch(0.78 0.10 155); }
-:root[data-theme="dark"] .home-suggestion-badge[data-category="skill"] { color: oklch(0.78 0.10 250); }
-:root[data-theme="dark"] .home-suggestion-badge[data-category="app"] { color: oklch(0.80 0.10 75); }
+.home-suggestion-badge[data-category="cron"] {
+  color: oklch(0.45 0.12 155);
+  background: color-mix(in oklch, oklch(0.45 0.12 155) 8%, transparent);
+}
+.home-suggestion-badge[data-category="skill"] {
+  color: oklch(0.45 0.12 250);
+  background: color-mix(in oklch, oklch(0.45 0.12 250) 8%, transparent);
+}
+.home-suggestion-badge[data-category="app"] {
+  color: oklch(0.50 0.12 75);
+  background: color-mix(in oklch, oklch(0.50 0.12 75) 8%, transparent);
+}
+:root[data-theme="dark"] .home-suggestion-badge[data-category="cron"] {
+  color: oklch(0.78 0.10 155);
+  background: color-mix(in oklch, oklch(0.78 0.10 155) 10%, transparent);
+}
+:root[data-theme="dark"] .home-suggestion-badge[data-category="skill"] {
+  color: oklch(0.78 0.10 250);
+  background: color-mix(in oklch, oklch(0.78 0.10 250) 10%, transparent);
+}
+:root[data-theme="dark"] .home-suggestion-badge[data-category="app"] {
+  color: oklch(0.80 0.10 75);
+  background: color-mix(in oklch, oklch(0.80 0.10 75) 10%, transparent);
+}
 
 .home-suggestion-desc {
   font-size: 12px;
   color: var(--foreground);
-  opacity: 0.5;
+  opacity: 0.45;
   line-height: 1.4;
 }
 
@@ -76,15 +97,20 @@
 .home-task-card {
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  transition: border-color 0.2s, background 0.2s;
+}
+.home-task-card:hover {
+  border-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 .home-task-description {
   font-size: 13px;
   font-weight: 500;
   color: var(--foreground);
   line-height: 1.3;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 .home-task-meta {
   display: flex;
@@ -92,18 +118,24 @@
   gap: 6px;
 }
 .home-task-agent-badge {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 5px;
   color: oklch(0.45 0.12 250);
+  background: color-mix(in oklch, oklch(0.45 0.12 250) 8%, transparent);
 }
-:root[data-theme="dark"] .home-task-agent-badge { color: oklch(0.78 0.10 250); }
+:root[data-theme="dark"] .home-task-agent-badge {
+  color: oklch(0.78 0.10 250);
+  background: color-mix(in oklch, oklch(0.78 0.10 250) 10%, transparent);
+}
 
 .home-task-status {
   font-size: 11px;
   color: var(--foreground);
-  opacity: 0.5;
+  opacity: 0.45;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -115,10 +147,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 96px;
-  height: 96px;
+  width: 160px;
+  height: 160px;
   border-radius: 50%;
   background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   flex-shrink: 0;
+  animation: orb-glow 6s ease-in-out infinite;
+  z-index: 1;
 }
