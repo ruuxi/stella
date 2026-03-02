@@ -1,0 +1,172 @@
+import { v } from "convex/values";
+import { internalAction, internalMutation } from "../_generated/server";
+import { internal } from "../_generated/api";
+import {
+  getActiveSecretKeyVersion,
+  rotateSecretToActiveKey,
+} from "./secrets_crypto";
+
+const DEFAULT_BATCH_SIZE = 100;
+const MAX_BATCH_SIZE = 500;
+
+const normalizeBatchSize = (batchSize?: number) => {
+  if (!Number.isFinite(batchSize)) {
+    return DEFAULT_BATCH_SIZE;
+  }
+  return Math.max(1, Math.min(MAX_BATCH_SIZE, Math.floor(batchSize as number)));
+};
+
+const shouldRotateByVersion = (
+  currentVersion: number | undefined,
+  activeVersion: number,
+) => typeof currentVersion !== "number" || currentVersion !== activeVersion;
+
+export const rotateEncryptedMaterialBatch = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const activeKeyVersion = getActiveSecretKeyVersion();
+    const batchSize = normalizeBatchSize(args.batchSize);
+    const now = Date.now();
+
+    let rotated = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    let remaining = batchSize;
+
+    if (remaining > 0) {
+      const secrets = await ctx.db.query("secrets").collect();
+      const candidates = secrets.filter((record) =>
+        shouldRotateByVersion(record.keyVersion, activeKeyVersion),
+      );
+
+      for (const candidate of candidates) {
+        if (remaining <= 0) break;
+        try {
+          const result = await rotateSecretToActiveKey(candidate.encryptedValue);
+          if (!result.changed) {
+            skipped += 1;
+            continue;
+          }
+          await ctx.db.patch(candidate._id, {
+            encryptedValue: result.serialized,
+            keyVersion: result.keyVersion,
+            updatedAt: now,
+          });
+          rotated += 1;
+          remaining -= 1;
+        } catch {
+          failed += 1;
+        }
+      }
+    }
+
+    if (remaining > 0) {
+      const installations = await ctx.db.query("slack_installations").collect();
+      const candidates = installations.filter((record) =>
+        shouldRotateByVersion(record.botTokenKeyVersion, activeKeyVersion),
+      );
+
+      for (const candidate of candidates) {
+        if (remaining <= 0) break;
+        try {
+          const result = await rotateSecretToActiveKey(candidate.botToken);
+          if (!result.changed) {
+            skipped += 1;
+            continue;
+          }
+          await ctx.db.patch(candidate._id, {
+            botToken: result.serialized,
+            botTokenKeyVersion: result.keyVersion,
+            updatedAt: now,
+          });
+          rotated += 1;
+          remaining -= 1;
+        } catch {
+          failed += 1;
+        }
+      }
+    }
+
+    if (remaining > 0) {
+      const sessions = await ctx.db.query("bridge_sessions").collect();
+      const candidates = sessions.filter((record) =>
+        shouldRotateByVersion(record.webhookSecretKeyVersion, activeKeyVersion),
+      );
+
+      for (const candidate of candidates) {
+        if (remaining <= 0) break;
+        try {
+          const result = await rotateSecretToActiveKey(candidate.webhookSecret);
+          if (!result.changed) {
+            skipped += 1;
+            continue;
+          }
+          await ctx.db.patch(candidate._id, {
+            webhookSecret: result.serialized,
+            webhookSecretKeyVersion: result.keyVersion,
+            updatedAt: now,
+          });
+          rotated += 1;
+          remaining -= 1;
+        } catch {
+          failed += 1;
+        }
+      }
+    }
+
+    return {
+      activeKeyVersion,
+      batchSize,
+      rotated,
+      failed,
+      skipped,
+      hasMoreCandidates: remaining === 0,
+    };
+  },
+});
+
+export const rotateEncryptedMaterial = internalAction({
+  args: {
+    batchSize: v.optional(v.number()),
+    maxBatches: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const maxBatches = Number.isFinite(args.maxBatches)
+      ? Math.max(1, Math.min(50, Math.floor(args.maxBatches as number)))
+      : 5;
+    const batchSize = normalizeBatchSize(args.batchSize);
+
+    let totalRotated = 0;
+    let totalFailed = 0;
+    let totalSkipped = 0;
+    let activeKeyVersion = getActiveSecretKeyVersion();
+
+    for (let batchIndex = 0; batchIndex < maxBatches; batchIndex += 1) {
+      const batch = await ctx.runMutation(
+        internal.data.secrets_rotation.rotateEncryptedMaterialBatch,
+        { batchSize },
+      );
+
+      activeKeyVersion = batch.activeKeyVersion;
+      totalRotated += batch.rotated;
+      totalFailed += batch.failed;
+      totalSkipped += batch.skipped;
+
+      if (!batch.hasMoreCandidates || batch.rotated === 0) {
+        break;
+      }
+    }
+
+    return {
+      activeKeyVersion,
+      batchSize,
+      maxBatches,
+      rotated: totalRotated,
+      failed: totalFailed,
+      skipped: totalSkipped,
+    };
+  },
+});
