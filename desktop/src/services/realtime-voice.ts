@@ -44,6 +44,21 @@ type CachedToken = {
 };
 
 let cachedToken: CachedToken | null = null;
+const CONVEX_CONVERSATION_ID_PATTERN = /^[a-z][a-z0-9]+$/;
+
+const toConvexConversationId = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!CONVEX_CONVERSATION_ID_PATTERN.test(normalized)) return null;
+  return normalized;
+};
+
+const buildVoiceSessionRequestBody = (
+  conversationId?: string,
+): { conversationId?: string } => {
+  const convexConversationId = toConvexConversationId(conversationId);
+  return convexConversationId ? { conversationId: convexConversationId } : {};
+};
 
 async function prefetchToken(): Promise<void> {
   try {
@@ -51,7 +66,7 @@ async function prefetchToken(): Promise<void> {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId: "voice-rtc" }),
+      body: JSON.stringify(buildVoiceSessionRequestBody()),
     });
     if (!res.ok) return;
     const data = await res.json();
@@ -247,7 +262,7 @@ export class RealtimeVoiceSession {
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ conversationId }),
+          body: JSON.stringify(buildVoiceSessionRequestBody(conversationId)),
         });
         if (!res.ok) {
           const detail = await res.text();
@@ -553,7 +568,6 @@ export class RealtimeVoiceSession {
             text: transcript,
             isFinal: true,
           });
-          void this.logTranscript("assistant_message", transcript);
           this.assistantTranscriptBuffer = "";
         }
         break;
@@ -568,7 +582,6 @@ export class RealtimeVoiceSession {
             text: transcript,
             isFinal: true,
           });
-          void this.logTranscript("user_message", transcript);
         }
         break;
       }
@@ -657,31 +670,6 @@ export class RealtimeVoiceSession {
 
     // Trigger model to continue (speak the result)
     this.sendEvent({ type: "response.create" });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Transcript logging
-  // ---------------------------------------------------------------------------
-
-  private async logTranscript(
-    type: "user_message" | "assistant_message",
-    content: string
-  ) {
-    if (!this.conversationId || !content.trim()) return;
-    try {
-      const { endpoint, headers } = await createServiceRequest("/api/voice/log");
-      await fetch(endpoint, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: this.conversationId,
-          type,
-          content,
-        }),
-      });
-    } catch (err) {
-      console.error("[RealtimeVoice] log transcript failed:", err);
-    }
   }
 
   // ---------------------------------------------------------------------------
