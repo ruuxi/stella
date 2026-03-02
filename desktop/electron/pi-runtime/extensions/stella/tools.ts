@@ -26,7 +26,7 @@ import type {
 } from "./tools-types.js";
 
 // Utilities
-import { log, logError } from "./tools-utils.js";
+import { log, logError, recoverStaleSecretFiles } from "./tools-utils.js";
 
 // Tool handlers
 import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./tools-file.js";
@@ -115,8 +115,18 @@ export const createToolHost = ({
   };
 
   // Initialize shell and state contexts
-  const shellState: ShellState = createShellState(resolveSecretValue);
+  const shellState: ShellState = createShellState(resolveSecretValue, stateRoot);
   const stateContext: StateContext = createStateContext(stateRoot, taskApi);
+
+  void recoverStaleSecretFiles(stateRoot)
+    .then((result) => {
+      if (result.recovered > 0 || result.skipped > 0) {
+        log("Recovered stale secret mounts", result);
+      }
+    })
+    .catch((error) => {
+      logError("Failed to recover stale secret mounts", error);
+    });
 
   const setSkills = (skills: SkillRecord[]) => {
     shellState.skillCache = skills;

@@ -16,10 +16,21 @@ const resolveCloudBaseUrl = (): string => {
   if (!baseUrl) {
     throw new Error("VITE_CONVEX_URL is not set.");
   }
-  return (
+  const resolved =
     import.meta.env.VITE_CONVEX_HTTP_URL ??
-    baseUrl.replace(".convex.cloud", ".convex.site")
-  );
+    baseUrl.replace(".convex.cloud", ".convex.site");
+
+  const parsed = new URL(resolved);
+  const host = parsed.hostname.toLowerCase();
+  const isLocalHost =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1";
+  if (!isLocalHost && parsed.protocol !== "https:") {
+    throw new Error("Service base URL must use HTTPS outside local development.");
+  }
+
+  return resolved;
 };
 
 export const resolveServiceBaseUrl = (): string => {

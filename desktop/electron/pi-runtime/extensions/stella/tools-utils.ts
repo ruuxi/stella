@@ -7,6 +7,7 @@ import type { Dirent } from "fs";
 import path from "path";
 import os from "os";
 import { spawn } from "child_process";
+import { createHash } from "crypto";
 
 // Constants
 export const MAX_OUTPUT = 30_000;
@@ -286,30 +287,245 @@ const tightenWindowsAcl = async (resolvedPath: string) => {
   });
 };
 
-export const writeSecretFile = async (filePath: string, value: string, cwd: string) => {
-  const expanded = expandHomePath(filePath);
-  const resolved = path.isAbsolute(expanded)
-    ? expanded
-    : path.resolve(cwd, expanded);
-  await fs.mkdir(path.dirname(resolved), { recursive: true });
-  await fs.writeFile(resolved, value, "utf-8");
-  try {
-    await fs.chmod(resolved, 0o600);
-  } catch {
-    // Ignore permission failures.
-  }
-  try {
-    await tightenWindowsAcl(resolved);
-  } catch {
-    // Ignore ACL hardening failures.
-  }
-  return resolved;
-};
+const DEFAULT_SECRET_STATE_ROOT = path.join(os.homedir(), ".stella", "state");
 
-export const removeSecretFile = async (filePath: string) => {
+const getSecretMountRecordsDir = (stateRoot?: string) =>
+  path.join(stateRoot ?? DEFAULT_SECRET_STATE_ROOT, "secret_mounts", "records");
+
+const removeFileIfExists = async (filePath: string) => {
   try {
     await fs.unlink(filePath);
   } catch {
     // Best-effort cleanup.
   }
+};
+
+const fileExists = async (filePath: string) => {
+  try {
+    await fs.stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const hashBuffer = (buffer: Buffer) =>
+  createHash("sha256").update(buffer).digest("hex");
+
+const hashString = (value: string) =>
+  createHash("sha256").update(value, "utf-8").digest("hex");
+
+type SecretMountRecord = {
+  id: string;
+  mountPath: string;
+  backupPath?: string;
+  recordPath: string;
+  mountedHash: string;
+  createdAt: number;
+};
+
+export type SecretFileMountHandle = {
+  id: string;
+  mountPath: string;
+  backupPath?: string;
+  recordPath: string;
+  mountedHash: string;
+};
+
+const asSecretMountRecord = (value: unknown): SecretMountRecord | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.mountPath !== "string" ||
+    typeof record.recordPath !== "string" ||
+    typeof record.mountedHash !== "string" ||
+    typeof record.createdAt !== "number"
+  ) {
+    return null;
+  }
+  if (record.backupPath !== undefined && typeof record.backupPath !== "string") {
+    return null;
+  }
+  return {
+    id: record.id,
+    mountPath: record.mountPath,
+    backupPath: record.backupPath as string | undefined,
+    recordPath: record.recordPath,
+    mountedHash: record.mountedHash,
+    createdAt: record.createdAt,
+  };
+};
+
+const restoreBackup = async (backupPath: string, mountPath: string) => {
+  if (!(await fileExists(backupPath))) {
+    return;
+  }
+  await fs.mkdir(path.dirname(mountPath), { recursive: true });
+  await removeFileIfExists(mountPath);
+  try {
+    await fs.rename(backupPath, mountPath);
+  } catch {
+    // Fallback to copy+delete if rename cannot complete.
+    await fs.copyFile(backupPath, mountPath);
+    await removeFileIfExists(backupPath);
+  }
+};
+
+export const writeSecretFile = async (
+  filePath: string,
+  value: string,
+  cwd: string,
+  stateRoot?: string,
+): Promise<SecretFileMountHandle> => {
+  const expanded = expandHomePath(filePath);
+  const resolved = path.isAbsolute(expanded)
+    ? expanded
+    : path.resolve(cwd, expanded);
+
+  const mountId = crypto.randomUUID();
+  const recordsDir = getSecretMountRecordsDir(stateRoot);
+  const recordPath = path.join(recordsDir, `${mountId}.json`);
+  const backupPath = `${resolved}.stella-backup-${mountId}`;
+  const mountedHash = hashString(value);
+
+  let hasBackup = false;
+
+  try {
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await fs.mkdir(recordsDir, { recursive: true });
+
+    if (await fileExists(resolved)) {
+      await removeFileIfExists(backupPath);
+      await fs.rename(resolved, backupPath);
+      hasBackup = true;
+    }
+
+    await fs.writeFile(resolved, value, "utf-8");
+    try {
+      await fs.chmod(resolved, 0o600);
+    } catch {
+      // Ignore permission failures.
+    }
+    try {
+      await tightenWindowsAcl(resolved);
+    } catch {
+      // Ignore ACL hardening failures.
+    }
+
+    const record: SecretMountRecord = {
+      id: mountId,
+      mountPath: resolved,
+      backupPath: hasBackup ? backupPath : undefined,
+      recordPath,
+      mountedHash,
+      createdAt: Date.now(),
+    };
+    await saveJson(recordPath, record);
+
+    return {
+      id: mountId,
+      mountPath: resolved,
+      backupPath: hasBackup ? backupPath : undefined,
+      recordPath,
+      mountedHash,
+    };
+  } catch (error) {
+    await removeFileIfExists(recordPath);
+    await removeFileIfExists(resolved);
+    if (hasBackup) {
+      try {
+        await restoreBackup(backupPath, resolved);
+      } catch {
+        // Best-effort rollback.
+      }
+    }
+    throw error;
+  }
+};
+
+export const removeSecretFile = async (mount: SecretFileMountHandle) => {
+  const stored = asSecretMountRecord(
+    await loadJson<unknown>(mount.recordPath, null),
+  );
+  const record = stored ?? {
+    id: mount.id,
+    mountPath: mount.mountPath,
+    backupPath: mount.backupPath,
+    recordPath: mount.recordPath,
+    mountedHash: mount.mountedHash,
+    createdAt: Date.now(),
+  };
+
+  await removeFileIfExists(record.mountPath);
+  if (record.backupPath) {
+    try {
+      await restoreBackup(record.backupPath, record.mountPath);
+    } catch {
+      // Preserve backup file for manual recovery if restore fails.
+    }
+  }
+  await removeFileIfExists(record.recordPath);
+};
+
+export const recoverStaleSecretFiles = async (stateRoot?: string) => {
+  const recordsDir = getSecretMountRecordsDir(stateRoot);
+  let entries: Dirent[] = [];
+  try {
+    entries = await fs.readdir(recordsDir, { withFileTypes: true });
+  } catch {
+    return { recovered: 0, skipped: 0 };
+  }
+
+  let recovered = 0;
+  let skipped = 0;
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) {
+      continue;
+    }
+    const recordPath = path.join(recordsDir, entry.name);
+    const stored = asSecretMountRecord(
+      await loadJson<unknown>(recordPath, null),
+    );
+    if (!stored) {
+      await removeFileIfExists(recordPath);
+      continue;
+    }
+
+    const mountExists = await fileExists(stored.mountPath);
+    const backupExists = stored.backupPath
+      ? await fileExists(stored.backupPath)
+      : false;
+
+    if (mountExists) {
+      try {
+        const currentBytes = await fs.readFile(stored.mountPath);
+        const currentHash = hashBuffer(currentBytes);
+        if (currentHash !== stored.mountedHash) {
+          skipped += 1;
+          continue;
+        }
+      } catch {
+        skipped += 1;
+        continue;
+      }
+    }
+
+    await removeFileIfExists(stored.mountPath);
+    if (backupExists && stored.backupPath) {
+      try {
+        await restoreBackup(stored.backupPath, stored.mountPath);
+      } catch {
+        skipped += 1;
+        continue;
+      }
+    }
+
+    await removeFileIfExists(recordPath);
+    recovered += 1;
+  }
+  return { recovered, skipped };
 };
