@@ -75,9 +75,9 @@ type HostRunnerOptions = {
 type ChatPayload = {
   conversationId: string;
   userMessageId: string;
+  userPrompt: string;
   agentType?: string;
   storageMode?: "cloud" | "local";
-  localHistory?: Array<{ role: "user" | "assistant"; content: string }>;
 };
 
 type AgentHealth = {
@@ -129,17 +129,6 @@ const readCoreMemory = (stellaHome: string): string | undefined => {
   } catch {
     return undefined;
   }
-};
-
-const resolveUserPrompt = (payload: ChatPayload): string => {
-  const history = payload.localHistory ?? [];
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const item = history[index];
-    if (item?.role === "user" && typeof item.content === "string" && item.content.trim()) {
-      return item.content;
-    }
-  }
-  return "";
 };
 
 export const createPiHostRunner = ({
@@ -379,8 +368,12 @@ export const createPiHostRunner = ({
     const conversationId = payload.conversationId;
     const runId = `local:${crypto.randomUUID()}`;
     const agentType = payload.agentType ?? "orchestrator";
-    const userPrompt = resolveUserPrompt(payload);
+    const userPrompt = payload.userPrompt.trim();
     const proxy = ensureProxyReady();
+
+    if (!userPrompt) {
+      throw new Error("Missing user prompt");
+    }
 
     const agentContext = await buildAgentContext({
       conversationId,
@@ -424,7 +417,6 @@ export const createPiHostRunner = ({
       userMessageId: payload.userMessageId,
       agentType,
       userPrompt,
-      localHistory: payload.localHistory,
       agentContext,
       callbacks: runtimeCallbacks,
       toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),

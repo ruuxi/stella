@@ -267,9 +267,9 @@ export type ElectronApi = {
   startAgentChat: (payload: {
     conversationId: string
     userMessageId: string
+    userPrompt: string
     agentType?: string
     storageMode?: "cloud" | "local"
-    localHistory?: Array<{ role: "user" | "assistant"; content: string }>
   }) => Promise<{ runId: string }>
   cancelAgentChat: (runId: string) => void
   resumeAgentStream: (payload: {
@@ -289,36 +289,6 @@ export type ElectronApi = {
   appReload: () => void
   hardResetLocalState: () => Promise<{ ok: boolean }>
 
-  // Local event store
-  eventStoreAppend: (args: {
-    conversationId: string
-    type: string
-    payload?: unknown
-    deviceId?: string
-    requestId?: string
-    targetDeviceId?: string
-    timestamp?: number
-    eventId?: string
-  }) => Promise<{
-    id: string
-    conversationId: string
-    type: string
-    timestamp: number
-    deviceId?: string
-    requestId?: string
-    targetDeviceId?: string
-    payload?: Record<string, unknown>
-  }>
-  eventStoreList: (conversationId: string, limit?: number) => Promise<Array<{
-    id: string
-    conversationId: string
-    type: string
-    timestamp: number
-    deviceId?: string
-    requestId?: string
-    targetDeviceId?: string
-    payload?: Record<string, unknown>
-  }>>
   getLocalSyncMode: () => Promise<string>
   setLocalSyncMode: (mode: string) => Promise<void>
 }
