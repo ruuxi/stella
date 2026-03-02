@@ -10,6 +10,7 @@ const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const KEY_MAP_JSON_ENV = "STELLA_SECRETS_MASTER_KEYS_JSON";
 
 const bytesToBase64 = (bytes: Uint8Array) => {
   let binary = "";
@@ -28,26 +29,97 @@ const base64ToBytes = (value: string) => {
   return bytes;
 };
 
-const getMasterKeyBytes = () => {
-  const raw = process.env.STELLA_SECRETS_MASTER_KEY ?? "";
-  if (!raw) {
-    throw new Error("STELLA_SECRETS_MASTER_KEY is not set");
+const parseKeyVersion = (raw: string, context: string): number => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${context} has invalid key version "${raw}"`);
   }
+  return Math.floor(parsed);
+};
+
+const decodeMasterKey = (raw: string, context: string): Uint8Array => {
   const bytes = base64ToBytes(raw);
   if (bytes.length !== KEY_BYTES) {
-    throw new Error("STELLA_SECRETS_MASTER_KEY must be 32 bytes (base64)");
+    throw new Error(`${context} must be 32 bytes (base64)`);
   }
   return bytes;
 };
 
-const getKeyVersion = () => {
-  const raw = process.env.STELLA_SECRETS_MASTER_KEY_VERSION;
-  const parsed = raw != null ? Number(raw) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
+type MasterKeyRing = {
+  activeVersion: number;
+  entries: Map<number, Uint8Array>;
 };
 
-const importAesKey = (bytes: Uint8Array) =>
-  crypto.subtle.importKey("raw", bytes.buffer as ArrayBuffer, "AES-GCM", false, ["encrypt", "decrypt"]);
+const parseMasterKeysFromJsonEnv = (raw: string): Map<number, Uint8Array> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new Error(`${KEY_MAP_JSON_ENV} must be valid JSON`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${KEY_MAP_JSON_ENV} must be a JSON object of {"<version>":"<base64Key>"}`);
+  }
+
+  const entries = new Map<number, Uint8Array>();
+  for (const [rawVersion, rawKey] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof rawKey !== "string" || rawKey.trim().length === 0) {
+      throw new Error(`${KEY_MAP_JSON_ENV} entry "${rawVersion}" must be a non-empty base64 string`);
+    }
+    const version = parseKeyVersion(rawVersion, `${KEY_MAP_JSON_ENV} entry`);
+    entries.set(version, decodeMasterKey(rawKey, `${KEY_MAP_JSON_ENV} entry "${rawVersion}"`));
+  }
+  return entries;
+};
+
+const parseActiveKeyVersion = (entries: Map<number, Uint8Array>): number => {
+  const raw = process.env.STELLA_SECRETS_MASTER_KEY_VERSION;
+  if (raw != null && raw.trim().length > 0) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error("STELLA_SECRETS_MASTER_KEY_VERSION must be a positive integer");
+    }
+    return Math.floor(parsed);
+  }
+
+  const versions = [...entries.keys()].sort((a, b) => b - a);
+  if (versions.length === 0) {
+    return 1;
+  }
+  return versions[0];
+};
+
+const getMasterKeyRing = (): MasterKeyRing => {
+  const rawJson = process.env[KEY_MAP_JSON_ENV];
+  if (!rawJson || rawJson.trim().length === 0) {
+    throw new Error(`${KEY_MAP_JSON_ENV} is required`);
+  }
+  const entries = parseMasterKeysFromJsonEnv(rawJson);
+
+  if (entries.size === 0) {
+    throw new Error(`${KEY_MAP_JSON_ENV} must contain at least one key`);
+  }
+
+  const activeVersion = parseActiveKeyVersion(entries);
+  if (!entries.has(activeVersion)) {
+    throw new Error(
+      `Active secret key version ${activeVersion} is missing from configured master keys.`,
+    );
+  }
+
+  return {
+    activeVersion,
+    entries,
+  };
+};
+
+const importAesKey = (bytes: Uint8Array) => {
+  const keyData = Uint8Array.from(bytes).buffer;
+  return crypto.subtle.importKey("raw", keyData, "AES-GCM", false, [
+    "encrypt",
+    "decrypt",
+  ]);
+};
 
 const randomNonce = () => crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
 
@@ -78,7 +150,9 @@ const decryptWithKey = async (
   return new Uint8Array(plaintext);
 };
 
-const isEncryptedSecretPayload = (value: unknown): value is EncryptedSecretPayload => {
+const isEncryptedSecretPayload = (
+  value: unknown,
+): value is EncryptedSecretPayload => {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -92,10 +166,41 @@ const isEncryptedSecretPayload = (value: unknown): value is EncryptedSecretPaylo
   );
 };
 
+const parseEncryptedSecretPayload = (
+  serialized: string,
+): EncryptedSecretPayload => {
+  const payloadRaw = JSON.parse(serialized) as unknown;
+  if (!isEncryptedSecretPayload(payloadRaw)) {
+    throw new Error("Invalid encrypted secret payload");
+  }
+  return payloadRaw as EncryptedSecretPayload;
+};
+
+const decryptDataKey = async (
+  payload: EncryptedSecretPayload,
+  keyRing: MasterKeyRing,
+): Promise<Uint8Array> => {
+  const preferred = keyRing.entries.get(payload.keyVersion);
+  if (!preferred) {
+    throw new Error(
+      `Missing master key for payload key version ${payload.keyVersion}.`,
+    );
+  }
+  const masterKey = await importAesKey(preferred);
+  return await decryptWithKey(masterKey, {
+    nonce: payload.keyNonce,
+    ciphertext: payload.keyCiphertext,
+  });
+};
+
 export const encryptSecret = async (plaintext: string): Promise<EncryptedSecretPayload> => {
-  const masterKeyBytes = getMasterKeyBytes();
-  const masterKey = await importAesKey(masterKeyBytes);
-  const keyVersion = getKeyVersion();
+  const keyRing = getMasterKeyRing();
+  const keyVersion = keyRing.activeVersion;
+  const activeMasterKeyBytes = keyRing.entries.get(keyVersion);
+  if (!activeMasterKeyBytes) {
+    throw new Error(`Missing active master key for version ${keyVersion}`);
+  }
+  const masterKey = await importAesKey(activeMasterKeyBytes);
   const dataKeyBytes = crypto.getRandomValues(new Uint8Array(KEY_BYTES));
   const dataKey = await importAesKey(dataKeyBytes);
 
@@ -112,18 +217,9 @@ export const encryptSecret = async (plaintext: string): Promise<EncryptedSecretP
 };
 
 export const decryptSecret = async (serialized: string): Promise<string> => {
-  const masterKeyBytes = getMasterKeyBytes();
-  const masterKey = await importAesKey(masterKeyBytes);
-  const payloadRaw = JSON.parse(serialized) as unknown;
-  if (!isEncryptedSecretPayload(payloadRaw)) {
-    throw new Error("Invalid encrypted secret payload");
-  }
-  const payload = payloadRaw as EncryptedSecretPayload;
-
-  const dataKeyBytes = await decryptWithKey(masterKey, {
-    nonce: payload.keyNonce,
-    ciphertext: payload.keyCiphertext,
-  });
+  const keyRing = getMasterKeyRing();
+  const payload = parseEncryptedSecretPayload(serialized);
+  const dataKeyBytes = await decryptDataKey(payload, keyRing);
   const dataKey = await importAesKey(dataKeyBytes);
 
   const plaintextBytes = await decryptWithKey(dataKey, {
@@ -150,4 +246,32 @@ export const decryptSecretIfNeeded = async (value: string): Promise<string> => {
     return value;
   }
   return await decryptSecret(value);
+};
+
+export const getActiveSecretKeyVersion = (): number => getMasterKeyRing().activeVersion;
+
+export const rotateSecretToActiveKey = async (
+  serialized: string,
+): Promise<{ serialized: string; keyVersion: number; changed: boolean }> => {
+  const activeVersion = getActiveSecretKeyVersion();
+  if (!isEncryptedSecretSerialized(serialized)) {
+    throw new Error("Cannot rotate non-encrypted secret payload.");
+  }
+
+  const payload = parseEncryptedSecretPayload(serialized);
+  if (payload.keyVersion === activeVersion) {
+    return {
+      serialized,
+      keyVersion: activeVersion,
+      changed: false,
+    };
+  }
+
+  const plaintext = await decryptSecret(serialized);
+  const encrypted = await encryptSecret(plaintext);
+  return {
+    serialized: JSON.stringify(encrypted),
+    keyVersion: encrypted.keyVersion,
+    changed: true,
+  };
 };
