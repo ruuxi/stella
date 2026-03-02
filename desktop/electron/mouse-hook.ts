@@ -58,9 +58,7 @@ export class MouseHookManager {
         }
       })
       
-      if (this.useNativeBlocking) {
-        console.log('[mouse-hook] Using native blocking for Ctrl+right-click')
-      }
+      // native blocking active — skip uiohook mouse events below
     }
 
     // Track modifier key state (always needed)
