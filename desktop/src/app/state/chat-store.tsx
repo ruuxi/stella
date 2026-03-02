@@ -4,9 +4,9 @@
  * without knowing whether data goes to Convex or localStorage.
  */
 
-import { createContext, useCallback, useContext, useMemo } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useConvexAuth, useMutation, useAction, useQuery } from 'convex/react'
+import { useConvexAuth, useMutation, useAction } from 'convex/react'
 import { api } from '../../convex/api'
 import { useAccountMode } from '../../hooks/use-account-mode'
 import {
@@ -66,13 +66,25 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated } = useConvexAuth()
   const accountMode = useAccountMode()
 
-  const syncMode = useQuery(
-    api.data.preferences.getSyncMode,
-    accountMode === 'connected' ? {} : 'skip',
-  ) as 'on' | 'off' | undefined
+  // Read sync mode from local preferences (no Convex round-trip).
+  // Re-reads on visibility change so settings changes take effect without reload.
+  const [syncMode, setSyncMode] = useState<'on' | 'off'>('on')
+  useEffect(() => {
+    const read = () => {
+      if (typeof window !== 'undefined' && window.electronAPI?.getLocalSyncMode) {
+        void window.electronAPI.getLocalSyncMode().then((mode) => {
+          setSyncMode(mode === 'off' ? 'off' : 'on')
+        })
+      }
+    }
+    read()
+    const onVisibility = () => { if (!document.hidden) read() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
 
   const cloudFeaturesEnabled = isAuthenticated && accountMode === 'connected'
-  const cloudStorageEnabled = cloudFeaturesEnabled && (syncMode ?? 'on') !== 'off'
+  const cloudStorageEnabled = cloudFeaturesEnabled && syncMode !== 'off'
   const storageMode: ChatStorageMode = cloudStorageEnabled ? 'cloud' : 'local'
   const isLocalStorage = storageMode === 'local'
 
@@ -113,8 +125,11 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
 
   const appendEvent = useCallback(
     async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
+      // Always write to localStorage so the desktop runtime has local message
+      // history available for both storage modes (thread store reads from here).
+      const localEvent = appendLocalEvent(args)
+
       if (isLocalStorage) {
-        const localEvent = appendLocalEvent(args)
         return { _id: localEvent._id }
       }
 
@@ -133,8 +148,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
 
   const appendAgentEvent = useCallback(
     (args: AppendAgentEventArgs) => {
-      if (!isLocalStorage) return
-
+      // Always write to localStorage for local message history availability.
       if (args.type === 'assistant_message') {
         appendLocalEvent({
           conversationId: args.conversationId,
@@ -170,7 +184,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
         },
       })
     },
-    [isLocalStorage],
+    [],
   )
 
   const uploadAttachments = useCallback(
@@ -196,10 +210,11 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
 
   const buildHistory = useCallback(
     (conversationId: string, _max?: number): LocalHistoryMessage[] | undefined => {
-      if (!isLocalStorage) return undefined
+      // Always build from local events — both modes write to localStorage
+      // so the desktop runtime always has message history available.
       return buildLocalHistoryMessages(conversationId)
     },
-    [isLocalStorage],
+    [],
   )
 
   const value = useMemo<ChatStoreContextValue>(

@@ -133,19 +133,35 @@ describe("ChatStoreProvider", () => {
       expect(result.current.isLocalStorage).toBe(true);
     });
 
-    it("returns local when syncMode is off", () => {
-      // First call: accountMode = "connected", second call: syncMode = "off"
-      let callCount = 0;
-      mockUseQuery.mockImplementation(() => {
-        callCount++;
-        // accountMode query returns "connected", syncMode query returns "off"
-        if (callCount % 2 === 1) return "connected";
-        return "off";
+    it("returns local when syncMode is off", async () => {
+      // Mock electronAPI.getLocalSyncMode to return "off"
+      const original = globalThis.window?.electronAPI;
+      Object.defineProperty(globalThis, "window", {
+        value: {
+          ...globalThis.window,
+          electronAPI: {
+            ...original,
+            getLocalSyncMode: () => Promise.resolve("off"),
+          },
+        },
+        writable: true,
       });
 
-      const { result } = renderHook(() => useChatStore(), { wrapper });
+      const { result, rerender } = renderHook(() => useChatStore(), { wrapper });
+
+      // Wait for the async useEffect to resolve
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+      rerender();
 
       expect(result.current.storageMode).toBe("local");
+
+      // Restore
+      Object.defineProperty(globalThis, "window", {
+        value: { ...globalThis.window, electronAPI: original },
+        writable: true,
+      });
     });
   });
 
@@ -186,7 +202,7 @@ describe("ChatStoreProvider", () => {
   // appendAgentEvent
   // ----------------------------------------------------------------
   describe("appendAgentEvent", () => {
-    it("is a no-op in cloud mode", () => {
+    it("writes to localStorage even in cloud mode for local history", () => {
       const { result } = renderHook(() => useChatStore(), { wrapper });
 
       act(() => {
@@ -197,7 +213,7 @@ describe("ChatStoreProvider", () => {
         });
       });
 
-      expect(mockAppendLocalEvent).not.toHaveBeenCalled();
+      expect(mockAppendLocalEvent).toHaveBeenCalled();
     });
 
     it("calls appendLocalEvent for assistant_message in local mode", () => {
@@ -314,11 +330,12 @@ describe("ChatStoreProvider", () => {
   // buildHistory
   // ----------------------------------------------------------------
   describe("buildHistory", () => {
-    it("returns undefined in cloud mode", () => {
+    it("returns local history in cloud mode (both modes use local events)", () => {
       const { result } = renderHook(() => useChatStore(), { wrapper });
 
-      expect(result.current.buildHistory("conv-1")).toBeUndefined();
-      expect(mockBuildLocalHistoryMessages).not.toHaveBeenCalled();
+      const history = result.current.buildHistory("conv-1");
+      expect(mockBuildLocalHistoryMessages).toHaveBeenCalled();
+      expect(history).toEqual([{ role: "user", content: "hello" }]);
     });
 
     it("returns local history in local mode", () => {

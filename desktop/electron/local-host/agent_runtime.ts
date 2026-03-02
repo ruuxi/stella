@@ -27,6 +27,7 @@ import { isClaudeCodeModel, runClaudeCodeTurn } from "./claude_code_session_runt
 import { runCodexAppServerTurn } from "./codex_app_server_runtime.js";
 import { generateSuggestionsLocally } from "./local_suggestions.js";
 import { compactThreadLocally } from "./local_compaction.js";
+import { getLocalThreadStore } from "./local_thread_store.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -232,17 +233,14 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
         conversationId,
         agentType,
         mode: storageMode,
-        ...(storageMode === "local"
-          ? {
-            localMemory: {
-              stellaHome,
-              proxyBaseUrl,
-              proxyToken: agentContext.proxyToken.token,
-              rerankModelId: "openai/gpt-4.1-mini",
-              localHistory: historyForLocalMemory,
-            },
-          }
-          : {}),
+        stellaHome,
+        localMemory: {
+          stellaHome,
+          proxyBaseUrl,
+          proxyToken: agentContext.proxyToken.token,
+          rerankModelId: "openai/gpt-4.1-mini",
+          localHistory: historyForLocalMemory,
+        },
       })
     : {};
 
@@ -370,37 +368,39 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
     return runId;
   }
 
-  // Mark run complete locally
+  // Mark run complete locally — this is the primary persistence layer
   journal.completeRun(runId);
   clearTimeout(timeoutId);
 
-  // Persist to Convex in chunks
-  let persisted = false;
-  if (persistToConvex) {
-    try {
-      await persistRunToConvex({
-        journal,
-        runId,
-        conversationId,
-        agentType,
-        convexUrl,
-        authToken,
-        fullText,
-        usage,
-        activeThreadId: agentContext.activeThreadId,
-        reminderTokenCounter: {
-          reset: false,
-          outputTokens: usage?.outputTokens,
-        },
-      });
-      persisted = true;
-    } catch (err) {
-      console.error("[agent-runtime] Persist failed:", err);
-    }
-  }
-
+  // Signal completion immediately (locally persisted via journal)
   const s = nextSeq();
-  callbacks.onEnd({ runId, seq: s, finalText: fullText, persisted });
+  callbacks.onEnd({ runId, seq: s, finalText: fullText, persisted: true });
+
+  // Persist to Convex in background (non-blocking)
+  // Journal must stay open until persistence finishes since persistRunToConvex writes to it.
+  if (persistToConvex) {
+    void persistRunToConvex({
+      journal,
+      runId,
+      conversationId,
+      agentType,
+      convexUrl,
+      authToken,
+      fullText,
+      usage,
+      activeThreadId: agentContext.activeThreadId,
+      reminderTokenCounter: {
+        reset: false,
+        outputTokens: usage?.outputTokens,
+      },
+    }).catch((err) => {
+      console.error("[agent-runtime] Background persist failed (will retry on next startup):", err);
+    }).finally(() => {
+      journal.close();
+    });
+  } else {
+    journal.close();
+  }
 
   // ── Local post-run tasks (fire-and-forget) ──
   // These run after the user sees the response, so latency doesn't matter.
@@ -440,48 +440,86 @@ export async function runOrchestratorTurn(opts: RunOrchestratorOpts): Promise<st
     });
   }
 
-  // Thread compaction
-  if (persisted && agentContext.activeThreadId) {
-    void compactThreadLocally({
-      model: postRunModel,
-      threadId: agentContext.activeThreadId,
-      agentType,
-      fetchThreadData: async () => {
-        const baseUrl = convexUrl.replace(/\/+$/, "");
-        const resp = await fetch(`${baseUrl}/api/query`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
+  // Thread compaction — read/write from local thread store
+  if (agentContext.activeThreadId) {
+    void (async () => {
+      try {
+        const threadStore = getLocalThreadStore(stellaHome);
+        const threadId = agentContext.activeThreadId!;
+
+        // Save only the new assistant response to local thread store
+        // (existing history is already stored; we only append the new turn)
+        if (fullText.trim()) {
+          const thread = threadStore.getThread(threadId);
+          if (!thread) {
+            threadStore.getOrCreateThread(conversationId, "Main");
+          }
+          // Find the user message from this turn (last user message in history)
+          const history = localHistory ?? agentContext.threadHistory ?? [];
+          const lastUserMsg = [...history].reverse().find((m) => m.role === "user");
+          const newMessages: Array<{ role: string; content: string }> = [];
+          if (lastUserMsg) {
+            newMessages.push({ role: "user", content: lastUserMsg.content });
+          }
+          newMessages.push({ role: "assistant", content: fullText });
+          threadStore.saveMessages(threadId, newMessages);
+        }
+
+        // Run compaction from local store
+        await compactThreadLocally({
+          model: postRunModel,
+          threadId,
+          agentType,
+          fetchThreadData: async () => {
+            const thread = threadStore.getThread(threadId);
+            if (!thread) return null;
+            const messages = threadStore.loadMessages(threadId);
+            return {
+              thread: {
+                _id: thread.id,
+                name: thread.name,
+                status: thread.status,
+                summary: thread.summary,
+                totalTokenEstimate: thread.totalTokenEstimate,
+                messageCount: thread.messageCount,
+              },
+              messages: messages.map((m) => ({
+                role: m.role,
+                content: m.content,
+                ordinal: m.ordinal,
+                tokenEstimate: m.tokenEstimate,
+              })),
+            };
           },
-          body: JSON.stringify({
-            path: "data/threads:loadThreadMessagesForRuntime",
-            args: { threadId: agentContext.activeThreadId },
-          }),
-        });
-        if (!resp.ok) return null;
-        const result = await resp.json();
-        return result?.value ?? null;
-      },
-      applyCompaction: async (args) => {
-        const baseUrl = convexUrl.replace(/\/+$/, "");
-        await fetch(`${baseUrl}/api/mutation`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
+          applyCompaction: async (args) => {
+            // Apply locally
+            threadStore.applyCompaction(args.threadId, {
+              cutOrdinal: args.keepFromOrdinal - 1,
+              summary: args.summary,
+              newTokenEstimate: 0, // Will be recalculated from remaining messages
+            });
+            // Also sync to Convex in background
+            if (persistToConvex) {
+              const baseUrl = convexUrl.replace(/\/+$/, "");
+              fetch(`${baseUrl}/api/mutation`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${authToken}`,
+                },
+                body: JSON.stringify({
+                  path: "data/threads:applyCompactionForRuntime",
+                  args,
+                }),
+              }).catch(() => {});
+            }
           },
-          body: JSON.stringify({
-            path: "data/threads:applyCompactionForRuntime",
-            args,
-          }),
         });
-      },
-    }).catch((err) => {
-      console.error("[agent-runtime] Thread compaction failed:", err);
-    });
+      } catch (err) {
+        console.error("[agent-runtime] Thread compaction failed:", err);
+      }
+    })();
   }
-  journal.close();
   return runId;
 }
 
@@ -744,17 +782,14 @@ export async function runSubagentTask(opts: RunSubagentOpts): Promise<{
         conversationId,
         agentType,
         mode: storageMode,
-        ...(storageMode === "local"
-          ? {
-            localMemory: {
-              stellaHome,
-              proxyBaseUrl,
-              proxyToken: agentContext.proxyToken.token,
-              rerankModelId: "openai/gpt-4.1-mini",
-              localHistory: historyForLocalMemory,
-            },
-          }
-          : {}),
+        stellaHome,
+        localMemory: {
+          stellaHome,
+          proxyBaseUrl,
+          proxyToken: agentContext.proxyToken.token,
+          rerankModelId: "openai/gpt-4.1-mini",
+          localHistory: historyForLocalMemory,
+        },
       })
     : {};
 

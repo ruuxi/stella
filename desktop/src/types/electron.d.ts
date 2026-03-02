@@ -288,6 +288,39 @@ export type ElectronApi = {
   // App reload (used by recovery page)
   appReload: () => void
   hardResetLocalState: () => Promise<{ ok: boolean }>
+
+  // Local event store
+  eventStoreAppend: (args: {
+    conversationId: string
+    type: string
+    payload?: unknown
+    deviceId?: string
+    requestId?: string
+    targetDeviceId?: string
+    timestamp?: number
+    eventId?: string
+  }) => Promise<{
+    id: string
+    conversationId: string
+    type: string
+    timestamp: number
+    deviceId?: string
+    requestId?: string
+    targetDeviceId?: string
+    payload?: Record<string, unknown>
+  }>
+  eventStoreList: (conversationId: string, limit?: number) => Promise<Array<{
+    id: string
+    conversationId: string
+    type: string
+    timestamp: number
+    deviceId?: string
+    requestId?: string
+    targetDeviceId?: string
+    payload?: Record<string, unknown>
+  }>>
+  getLocalSyncMode: () => Promise<string>
+  setLocalSyncMode: (mode: string) => Promise<void>
 }
 
 export type AgentStreamIpcEvent = {

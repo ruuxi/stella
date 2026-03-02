@@ -34,6 +34,8 @@ import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/dev
 import { createLocalHostRunner } from './local-host/runner.js'
 import { getDevServerUrl } from './dev-url.js'
 import { resolveStellaHome } from './local-host/stella-home.js'
+import { getLocalEventStore, type AppendEventArgs as EventStoreAppendArgs } from './local-host/local_event_store.js'
+import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from './local-host/local_preferences.js'
 import {
   collectBrowserData,
   coreMemoryExists,
@@ -2900,6 +2902,31 @@ app.whenReady().then(async () => {
     if (fullWindow && !fullWindow.isDestroyed()) {
       loadWindow(fullWindow, 'full')
     }
+  })
+
+  // ── Local event store IPC ──────────────────────────────────────────────
+  ipcMain.handle('eventStore:append', (_event, args: EventStoreAppendArgs) => {
+    if (!StellaHomePath) throw new Error('Stella home not resolved')
+    const store = getLocalEventStore(StellaHomePath)
+    return store.appendEvent(args)
+  })
+
+  ipcMain.handle('eventStore:list', (_event, conversationId: string, limit?: number) => {
+    if (!StellaHomePath) throw new Error('Stella home not resolved')
+    const store = getLocalEventStore(StellaHomePath)
+    return store.listEvents(conversationId, limit ?? 200)
+  })
+
+  ipcMain.handle('preferences:getSyncMode', () => {
+    if (!StellaHomePath) return 'on'
+    return getSyncMode(StellaHomePath)
+  })
+
+  ipcMain.handle('preferences:setSyncMode', (_event, mode: string) => {
+    if (!StellaHomePath) return
+    const prefs = loadLocalPreferences(StellaHomePath)
+    prefs.syncMode = mode === 'off' ? 'off' : 'on'
+    saveLocalPreferences(StellaHomePath, prefs)
   })
 
   ipcMain.handle('screenshot:capture', async (_event, point?: { x: number; y: number }) => {

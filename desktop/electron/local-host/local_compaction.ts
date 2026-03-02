@@ -60,7 +60,7 @@ async function generateWithRetry(
         model,
         system: "Output ONLY the summary content.",
         messages: [{ role: "user", content: promptBody }],
-        maxTokens: 12096,
+        maxOutputTokens: 12096,
       });
       const text = result.text.trim();
       if (text.length > 0) return text;

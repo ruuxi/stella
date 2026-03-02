@@ -142,6 +142,10 @@ function BasicTab({ onSignOut }: {
     const nextMode = effectiveSyncMode === "on" ? "off" : "on";
 
     try {
+      // Write to local preferences first (source of truth for runtime)
+      if (window.electronAPI?.setLocalSyncMode) {
+        await window.electronAPI.setLocalSyncMode(nextMode);
+      }
       await setSyncMode({ mode: nextMode });
     } catch (error) {
       setSyncModeError(error instanceof Error ? error.message : "Failed to update sync mode.");

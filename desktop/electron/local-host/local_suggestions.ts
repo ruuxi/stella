@@ -159,7 +159,7 @@ export async function generateSuggestionsLocally(
     const result = await generateText({
       model: opts.model,
       messages: [{ role: "user", content: prompt }],
-      maxTokens: 500,
+      maxOutputTokens: 500,
     });
 
     const text = result.text.trim();
