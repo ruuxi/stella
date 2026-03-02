@@ -129,7 +129,7 @@ const uiState: UiState = {
 // Callback set by the wake word block to resume listening after voice deactivation.
 // Hoisted so the ui:setState handler can trigger an immediate restart.
 let resumeWakeWordCapture: (() => void) | null = null
-const WAKE_WORD_RESUME_DELAY_MS = 1000
+const WAKE_WORD_RESUME_DELAY_MS = 150
 let resumeWakeWordTimer: ReturnType<typeof setTimeout> | null = null
 /** Debounced wake word resume — only one timer pending at a time. */
 const scheduleResumeWakeWord = () => {
@@ -1986,17 +1986,14 @@ app.whenReady().then(async () => {
 
       capture.onDetection((result) => {
         if (!appReady) return
-        console.log(`[WakeWord] Detected! score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)}`)
+        const t0 = Date.now()
+        console.log(`[VoiceRTC:main] t+0ms wake-word detected score=${result.score.toFixed(3)} vad=${result.vadScore.toFixed(3)}`)
 
-        // Pre-warm: tell renderer to start the Realtime API connection IMMEDIATELY,
-        // before React processes the state change. The renderer uses its cached
-        // ephemeral token (from periodic pre-fetch) to skip the token round-trip.
-        // IMPORTANT: Only send to the target window - sending to all windows
-        // causes duplicate WebRTC sessions and double audio playback.
         const convId = uiState.conversationId ?? 'voice-rtc'
         const voiceTarget = getVoiceTargetWindow()
         if (voiceTarget) {
           voiceTarget.webContents.send('voice-rtc:pre-warm', convId)
+          console.log(`[VoiceRTC:main] t+${Date.now() - t0}ms pre-warm IPC sent`)
         }
 
         // Activate realtime voice-to-voice mode
@@ -2006,14 +2003,13 @@ app.whenReady().then(async () => {
         // Set active window before broadcast so renderers know which window should handle voice.
         // showWindow sets this inside a setTimeout for mini, which would race with broadcastUiState.
         uiState.window = targetWindowMode as UiState['window']
-        // Must use showWindow() — on Windows, a bare .focus() won't bring the
-        // window to the foreground due to OS foreground-stealing restrictions.
         showWindow(targetWindowMode)
+        console.log(`[VoiceRTC:main] t+${Date.now() - t0}ms showWindow(${targetWindowMode}) + broadcastUiState`)
         broadcastUiState()
 
-        // Pause wake word + token pre-fetch while voice is active
         stopTokenPrefetch()
         capture.stop()
+        console.log(`[VoiceRTC:main] t+${Date.now() - t0}ms detection handler done`)
       })
 
       // Start wake word listening when app becomes ready
@@ -2026,10 +2022,10 @@ app.whenReady().then(async () => {
       }
 
       if (appReady) {
-        setTimeout(tryStartCapture, 2000)
+        setTimeout(tryStartCapture, 150)
       }
       ipcMain.on('app:setReady', () => {
-        setTimeout(tryStartCapture, 2000)
+        setTimeout(tryStartCapture, 150)
       })
 
       // Resume wake word when voice mode deactivates (called from ui:setState and toggleVoiceRtc)
