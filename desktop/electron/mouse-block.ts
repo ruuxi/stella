@@ -64,7 +64,6 @@ export const startMouseBlock = (callback: MouseBlockCallback): boolean => {
     return false
   }
 
-  console.log('[mouse-block] Starting helper:', helperPath)
   currentCallback = callback
 
   try {
