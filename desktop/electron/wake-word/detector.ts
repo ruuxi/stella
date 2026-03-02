@@ -83,7 +83,7 @@ export async function createWakeWordDetector(
         : process.platform === "darwin"
           ? ["coreml", "cpu"]
           : ["cpu"],
-    logSeverityLevel: 3, // suppress EP node-assignment warnings (benign; shape ops run on CPU by design)
+    logSeverityLevel: 3,
   };
 
   const [melspecSession, embeddingSession, wakewordSession, vadSession] =

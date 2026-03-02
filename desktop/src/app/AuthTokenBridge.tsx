@@ -1,9 +1,21 @@
 import { useEffect } from "react";
-import { useConvexAuth } from "convex/react";
+import { useAction, useConvexAuth } from "convex/react";
 import { getConvexToken } from "@/services/auth-token";
+import { api } from "@/convex/api";
+
+const PROXY_TOKEN_REFRESH_MS = 3 * 60 * 1000;
+
+const buildProxyRunId = () => {
+  const suffix =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  return `desktop:proxy:${suffix}`;
+};
 
 export const AuthTokenBridge = () => {
   const { isAuthenticated } = useConvexAuth();
+  const mintProxyToken = useAction(api["agent/mint_proxy_token"].mintProxyToken);
 
   useEffect(() => {
     const electronApi = window.electronAPI;
@@ -16,24 +28,40 @@ export const AuthTokenBridge = () => {
       return undefined;
     }
 
-    // Fetch the Convex JWT and send it to the main process so the runner
-    // can authenticate directly (BetterAuth crossDomain stores sessions in
-    // localStorage, not cookies, so the main process cannot fetch its own token).
-    void getConvexToken().then((token) => {
+    let cancelled = false;
+    const syncToken = async () => {
+      try {
+        const minted = await mintProxyToken({
+          agentType: "orchestrator",
+          runId: buildProxyRunId(),
+          platform: window.electronAPI?.platform,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+        if (cancelled) return;
+        void electronApi.setAuthState({
+          authenticated: true,
+          token: minted?.proxyToken?.token ?? undefined,
+        });
+        return;
+      } catch {
+        // Fall back to Convex JWT mode when proxy-token minting is unavailable.
+      }
+
+      const token = await getConvexToken();
+      if (cancelled) return;
       void electronApi.setAuthState({ authenticated: true, token: token ?? undefined });
-    });
+    };
 
-    // Refresh the token every 3 minutes (JWT lifetime is 5 min)
+    void syncToken();
     const interval = setInterval(() => {
-      void getConvexToken().then((token) => {
-        if (token) {
-          void electronApi.setAuthState({ authenticated: true, token });
-        }
-      });
-    }, 3 * 60 * 1000);
+      void syncToken();
+    }, PROXY_TOKEN_REFRESH_MS);
 
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, mintProxyToken]);
 
   useEffect(() => {
     const electronApi = window.electronAPI;

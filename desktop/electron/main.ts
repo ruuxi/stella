@@ -126,6 +126,20 @@ const uiState: UiState = {
   isVoiceRtcActive: false,
 }
 
+// Callback set by the wake word block to resume listening after voice deactivation.
+// Hoisted so the ui:setState handler can trigger an immediate restart.
+let resumeWakeWordCapture: (() => void) | null = null
+const WAKE_WORD_RESUME_DELAY_MS = 1000
+let resumeWakeWordTimer: ReturnType<typeof setTimeout> | null = null
+/** Debounced wake word resume — only one timer pending at a time. */
+const scheduleResumeWakeWord = () => {
+  if (resumeWakeWordTimer) clearTimeout(resumeWakeWordTimer)
+  resumeWakeWordTimer = setTimeout(() => {
+    resumeWakeWordTimer = null
+    resumeWakeWordCapture?.()
+  }, WAKE_WORD_RESUME_DELAY_MS)
+}
+
 let fullWindow: BrowserWindow | null = null
 let miniWindow: BrowserWindow | null = null
 let mouseHook: MouseHookManager | null = null
@@ -1911,11 +1925,9 @@ app.whenReady().then(async () => {
         ? 'full' as const
         : 'mini' as const
       uiState.window = target
-      if (target === 'full') {
-        fullWindow!.focus()
-      } else {
-        showWindow('mini')
-      }
+      showWindow(target)
+    } else {
+      scheduleResumeWakeWord()
     }
     broadcastUiState()
   })
@@ -1924,10 +1936,6 @@ app.whenReady().then(async () => {
   {
     const { createWakeWordDetector } = await import('./wake-word/detector.js')
     const { createAudioCaptureManager } = await import('./wake-word/audio-capture.js')
-    const { createCaptureWindow, getCaptureWindow } = await import('./wake-word/capture-window.js')
-
-    // Create the hidden capture window (always on, no UI)
-    createCaptureWindow()
 
     const modelsDir = isDev
       ? path.join(__dirname, '..', 'resources', 'models')
@@ -1935,7 +1943,7 @@ app.whenReady().then(async () => {
 
     try {
       const detector = await createWakeWordDetector(modelsDir)
-      const capture = createAudioCaptureManager(detector, getCaptureWindow)
+      const capture = createAudioCaptureManager(detector)
 
       // -- Token pre-fetch: keep a fresh ephemeral token cached in the renderer --
       // so the SDP exchange can start instantly when wake word fires (~200-500ms saved).
@@ -1984,13 +1992,11 @@ app.whenReady().then(async () => {
         uiState.isVoiceRtcActive = true
         uiState.isVoiceActive = false
         // Set active window before broadcast so renderers know which window should handle voice.
-        // showWindow('mini') sets this inside a setTimeout, which would race with broadcastUiState.
+        // showWindow sets this inside a setTimeout for mini, which would race with broadcastUiState.
         uiState.window = targetWindowMode as UiState['window']
-        if (targetWindowMode === 'full') {
-          fullWindow!.focus()
-        } else {
-          showWindow('mini')
-        }
+        // Must use showWindow() — on Windows, a bare .focus() won't bring the
+        // window to the foreground due to OS foreground-stealing restrictions.
+        showWindow(targetWindowMode)
         broadcastUiState()
 
         // Pause wake word + token pre-fetch while voice is active
@@ -2002,22 +2008,8 @@ app.whenReady().then(async () => {
       // (app:setReady may have already fired, so also check appReady directly)
       const tryStartCapture = () => {
         if (!capture.isCapturing()) {
-          const win = getCaptureWindow()
-          if (win && !win.isDestroyed()) {
-            if (win.webContents.isLoading()) {
-              win.webContents.once('did-finish-load', () => {
-                setTimeout(() => {
-                  capture.start()
-                  startTokenPrefetch()
-                  console.log('[WakeWord] Listening started (after capture window load)')
-                }, 500)
-              })
-            } else {
-              capture.start()
-              startTokenPrefetch()
-              console.log('[WakeWord] Listening started')
-            }
-          }
+          capture.start()
+          startTokenPrefetch()
         }
       }
 
@@ -2028,12 +2020,13 @@ app.whenReady().then(async () => {
         setTimeout(tryStartCapture, 2000)
       })
 
-      // Resume wake word when voice mode deactivates
-      setInterval(() => {
+      // Resume wake word when voice mode deactivates (called from ui:setState and toggleVoiceRtc)
+      resumeWakeWordCapture = () => {
         if (appReady && !uiState.isVoiceActive && !uiState.isVoiceRtcActive && !capture.isCapturing()) {
+          console.log('[WakeWord] Resuming capture after voice deactivation')
           tryStartCapture()
         }
-      }, 2000)
+      }
 
       console.log('[WakeWord] Detector initialized')
     } catch (err) {
@@ -2055,11 +2048,10 @@ app.whenReady().then(async () => {
         : 'mini' as const
       // Set active window before broadcast so only the visible window creates a session
       uiState.window = target
-      if (target === 'full') {
-        fullWindow!.focus()
-      } else {
-        showWindow('mini')
-      }
+      showWindow(target)
+    } else {
+      // Voice deactivated — resume wake word after mic release
+      scheduleResumeWakeWord()
     }
     broadcastUiState()
   }
@@ -2284,6 +2276,12 @@ app.whenReady().then(async () => {
     }
     if (isVoiceActive !== undefined || isVoiceRtcActive !== undefined) {
       broadcastUiState()
+      // If voice just deactivated, immediately try to resume wake word
+      // instead of waiting up to 2s for the polling interval.
+      if ((isVoiceActive === false || isVoiceRtcActive === false) && resumeWakeWordCapture) {
+        // Small delay to let the voice session fully release the mic
+        scheduleResumeWakeWord()
+      }
     }
     return uiState
   })

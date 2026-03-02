@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   RealtimeVoiceSession,
   claimPreWarmedSession,
@@ -6,6 +6,7 @@ import {
   type VoiceSessionState,
 } from "../services/realtime-voice";
 import { useUiState } from "../app/state/ui-state";
+import { useWindowType } from "./use-window-type";
 
 interface UseRealtimeVoiceResult {
   analyserRef: React.RefObject<AnalyserNode | null>;
@@ -19,12 +20,7 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sessionRef = useRef<RealtimeVoiceSession | null>(null);
-
-  // Determine this window's type from the URL (stable across renders)
-  const windowType = useMemo(
-    () => new URLSearchParams(window.location.search).get("window") === "mini" ? "mini" : "full",
-    [],
-  );
+  const windowType = useWindowType();
 
   useEffect(() => {
     if (!state.isVoiceRtcActive) return;

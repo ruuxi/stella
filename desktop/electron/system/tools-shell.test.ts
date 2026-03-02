@@ -27,7 +27,7 @@ describe("SkillBash secret mounts", () => {
       callCount += 1;
       if (callCount === 1) return "first-secret";
       return null;
-    });
+    }, "/tmp/test-state");
 
     state.skillCache = [
       {
