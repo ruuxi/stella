@@ -1,5 +1,5 @@
 import { Cron } from "croner";
-import { internalAction, internalMutation, internalQuery } from "../_generated/server";
+import { mutation, internalAction, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
@@ -611,6 +611,69 @@ export const execute = internalAction({
           targetDeviceId: target.targetDeviceId,
         });
         const agentType = payloadResolved.agentType ?? "orchestrator";
+
+        // Inverted execution: when the desktop is online, insert a
+        // remote_turn_request and let the desktop run the AI turn locally.
+        const firstCandidate = candidates[0];
+        if (firstCandidate?.mode === "local" && !transient) {
+          // Persist a synthetic user message so the desktop has a userMessageId
+          const userMessageId = await ctx.runMutation(internal.events.appendInternalEvent, {
+            conversationId,
+            type: "user_message",
+            payload: {
+              text: prompt,
+              source: "cron",
+              cronJobId: String(job._id),
+            },
+          });
+
+          const requestId = crypto.randomUUID();
+          await ctx.runMutation(internal.events.appendInternalEvent, {
+            conversationId,
+            type: "remote_turn_request",
+            targetDeviceId: firstCandidate.targetDeviceId,
+            requestId,
+            payload: {
+              conversationId: String(conversationId),
+              userMessageId: String(userMessageId),
+              text: prompt,
+              source: "cron",
+              cronJobId: String(job._id),
+              cronJobName: job.name,
+              deliver: payloadResolved.deliver !== false,
+              sessionTarget: job.sessionTarget,
+            },
+          });
+
+          // Schedule next run — the desktop will update status on completion.
+          // The orphan watchdog handles cases where the desktop goes offline.
+          if (scheduleResolved.kind === "at") {
+            // One-shot schedule: disable (don't retrigger). Desktop's
+            // completeCronTurnResult will delete the job if deleteAfterRun.
+            // Keep runningAtMs set (omit from args) so the claim guard blocks
+            // overlapping runs; the stuck-run timeout handles desktop crashes.
+            const farFuture = now + 365 * 24 * 60 * 60 * 1000;
+            await ctx.runMutation(internal.scheduling.cron_jobs.finishRun, {
+              id: job._id,
+              nextRunAtMs: farFuture,
+              lastRunAtMs: now,
+              lastStatus: "deferred",
+              enabled: false,
+            });
+          } else {
+            // Repeating schedule: schedule the next run but keep the current
+            // run's runningAtMs set to prevent overlap.
+            const nextRunAtMs = computeNextRunAtMs(scheduleResolved, Date.now());
+            await ctx.runMutation(internal.scheduling.cron_jobs.finishRun, {
+              id: job._id,
+              nextRunAtMs: nextRunAtMs ?? now + 60_000,
+              lastRunAtMs: now,
+              lastStatus: "deferred",
+            });
+          }
+          return null;
+        }
+
         const result = await runAgentTurnWithFallback({
           ctx,
           conversationId,
@@ -683,6 +746,113 @@ export const execute = internalAction({
         },
       });
     }
+    return null;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// completeCronTurnResult — called by the desktop after inverted execution
+// ---------------------------------------------------------------------------
+
+export const completeCronTurnResult = mutation({
+  args: {
+    requestId: v.string(),
+    text: v.string(),
+    conversationId: v.id("conversations"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+
+    // Verify conversation ownership
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation || conversation.ownerId !== userId) {
+      throw new Error("Not authorized");
+    }
+
+    // Idempotency: skip if already claimed
+    const existing = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) =>
+        q.eq("requestId", `claimed:${args.requestId}`),
+      )
+      .first();
+    if (existing) return null;
+
+    // Validate the original remote_turn_request exists and read routing data
+    // from it (never trust caller-provided routing data)
+    const request = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
+      .first();
+    if (!request || request.type !== "remote_turn_request") {
+      throw new Error("Invalid or missing remote_turn_request");
+    }
+    if (request.conversationId !== args.conversationId) {
+      throw new Error("Conversation mismatch");
+    }
+    const reqPayload = request.payload as Record<string, unknown>;
+    if (reqPayload.source !== "cron") {
+      throw new Error("Request is not a cron remote turn");
+    }
+    const cronJobId = reqPayload.cronJobId as string | undefined;
+    const cronJobName = reqPayload.cronJobName as string | undefined;
+    const deliver = reqPayload.deliver as boolean | undefined;
+    const sessionTarget = reqPayload.sessionTarget as string | undefined;
+
+    // Insert claimed marker (matches connector_delivery format)
+    await ctx.db.insert("events", {
+      conversationId: args.conversationId,
+      timestamp: Date.now(),
+      type: "remote_turn_claimed",
+      requestId: `claimed:${args.requestId}`,
+      payload: { requestId: args.requestId, source: "cron" },
+    });
+
+    // Update cron job record with the result and clear runningAtMs
+    if (cronJobId) {
+      const jobId = cronJobId as Id<"cron_jobs">;
+      const job = await ctx.db.get(jobId);
+      if (job && job.ownerId === userId) {
+        await ctx.db.patch(jobId, {
+          runningAtMs: undefined,
+          lastStatus: "ok",
+          lastOutputPreview: args.text ? truncatePreview(args.text) : undefined,
+          updatedAt: Date.now(),
+        });
+
+        // For "at" schedules that were deferred: delete if deleteAfterRun
+        if (job.deleteAfterRun === true) {
+          await ctx.db.delete(jobId);
+        }
+      }
+    }
+
+    // Deliver output as assistant_message
+    if ((deliver ?? true) && args.text.trim().length > 0) {
+      await ctx.db.insert("events", {
+        conversationId: args.conversationId,
+        timestamp: Date.now(),
+        type: "assistant_message",
+        payload: {
+          text: args.text,
+          source: "cron",
+          cronJobId,
+          cronJobName,
+          sessionTarget,
+        },
+      });
+    }
+
+    // Insert fulfilled marker (so orphan watchdog skips this request)
+    await ctx.db.insert("events", {
+      conversationId: args.conversationId,
+      timestamp: Date.now(),
+      type: "remote_turn_fulfilled",
+      requestId: `fulfilled:${args.requestId}`,
+      payload: { requestId: args.requestId, source: "cron" },
+    });
+
     return null;
   },
 });
