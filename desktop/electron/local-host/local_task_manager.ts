@@ -25,6 +25,12 @@ export type LocalTaskManagerAgentContext = {
 
 export type LocalTaskManagerStatus = "pending" | "running" | "completed" | "error" | "canceled";
 
+type TaskMessageEntry = {
+  from: "orchestrator" | "subagent";
+  text: string;
+  timestamp: number;
+};
+
 type RuntimeTaskRecord = {
   id: string;
   conversationId: string;
@@ -48,6 +54,9 @@ type RuntimeTaskRecord = {
   systemPromptOverride?: string;
   recentActivity: string[];
   progressBuffer: string;
+  toSubagentQueue: string[];
+  toOrchestratorQueue: string[];
+  messageLog: TaskMessageEntry[];
 };
 
 type FsLock = {
@@ -163,6 +172,8 @@ export class LocalTaskManager implements TaskToolApi {
   private runningCount = 0;
   private readonly activeFsLocks: FsLock[] = [];
   private readonly fsLockWaiters: Array<() => void> = [];
+  private static readonly MAX_QUEUE_MESSAGES = 32;
+  private static readonly MAX_LOG_MESSAGES = 80;
 
   constructor(opts: LocalTaskManagerOpts) {
     this.opts = opts;
@@ -256,13 +267,17 @@ export class LocalTaskManager implements TaskToolApi {
           task.recentActivity = [truncate(compact, 500)];
         },
         toolExecutor: async (toolName, toolArgs, toolContext) => {
+          const scopedContext: ToolContext = {
+            ...toolContext,
+            taskId: task.id,
+          };
           const lockKey = getFsLockKey(toolName, toolArgs);
           if (!lockKey) {
-            return await this.opts.toolExecutor(toolName, toolArgs, toolContext);
+            return await this.opts.toolExecutor(toolName, toolArgs, scopedContext);
           }
           const release = await this.acquireFsLock(task.id, lockKey);
           try {
-            return await this.opts.toolExecutor(toolName, toolArgs, toolContext);
+            return await this.opts.toolExecutor(toolName, toolArgs, scopedContext);
           } finally {
             release();
           }
@@ -339,6 +354,9 @@ export class LocalTaskManager implements TaskToolApi {
       systemPromptOverride: request.systemPromptOverride,
       recentActivity: [],
       progressBuffer: "",
+      toSubagentQueue: [],
+      toOrchestratorQueue: [],
+      messageLog: [],
     };
 
     this.tasks.set(task.id, task);
@@ -381,6 +399,7 @@ export class LocalTaskManager implements TaskToolApi {
         result: local.result,
         error: local.error,
         recentActivity: local.status === "running" ? local.recentActivity : undefined,
+        messages: local.messageLog.slice(-10),
       };
     }
     if (!taskId.startsWith("local:task:")) {
@@ -408,5 +427,42 @@ export class LocalTaskManager implements TaskToolApi {
       return await this.opts.cancelCloudTaskRecord(taskId, reason);
     }
     return { canceled: false };
+  }
+
+  async sendTaskMessage(
+    taskId: string,
+    message: string,
+    from: "orchestrator" | "subagent",
+  ): Promise<{ delivered: boolean }> {
+    const task = this.tasks.get(taskId);
+    if (!task) return { delivered: false };
+    const text = message.trim();
+    if (!text) return { delivered: false };
+
+    const targetQueue = from === "orchestrator" ? task.toSubagentQueue : task.toOrchestratorQueue;
+    targetQueue.push(text);
+    if (targetQueue.length > LocalTaskManager.MAX_QUEUE_MESSAGES) {
+      targetQueue.splice(0, targetQueue.length - LocalTaskManager.MAX_QUEUE_MESSAGES);
+    }
+
+    task.messageLog.push({ from, text: truncate(text, 500), timestamp: Date.now() });
+    if (task.messageLog.length > LocalTaskManager.MAX_LOG_MESSAGES) {
+      task.messageLog.splice(0, task.messageLog.length - LocalTaskManager.MAX_LOG_MESSAGES);
+    }
+
+    return { delivered: true };
+  }
+
+  async drainTaskMessages(
+    taskId: string,
+    recipient: "orchestrator" | "subagent",
+  ): Promise<string[]> {
+    const task = this.tasks.get(taskId);
+    if (!task) return [];
+    const queue = recipient === "subagent" ? task.toSubagentQueue : task.toOrchestratorQueue;
+    if (queue.length === 0) return [];
+    const out = [...queue];
+    queue.length = 0;
+    return out;
   }
 }
