@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RealtimeVoiceSession,
   claimPreWarmedSession,
@@ -20,8 +20,18 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sessionRef = useRef<RealtimeVoiceSession | null>(null);
 
+  // Determine this window's type from the URL (stable across renders)
+  const windowType = useMemo(
+    () => new URLSearchParams(window.location.search).get("window") === "mini" ? "mini" : "full",
+    [],
+  );
+
   useEffect(() => {
     if (!state.isVoiceRtcActive) return;
+
+    // Only the active window should create a session — state.window tracks which
+    // window is visible, so the hidden window skips session creation entirely.
+    if (state.window !== windowType) return;
 
     // Disconnect any zombie session from a previous StrictMode mount
     if (sessionRef.current) {
@@ -68,7 +78,7 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
       sessionRef.current = null;
       setSessionState("idle");
     };
-  }, [state.isVoiceRtcActive, state.conversationId]);
+  }, [state.isVoiceRtcActive, state.conversationId, state.window, windowType]);
 
   return {
     analyserRef,

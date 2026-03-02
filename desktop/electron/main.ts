@@ -1902,9 +1902,12 @@ app.whenReady().then(async () => {
     uiState.isVoiceActive = !uiState.isVoiceActive
     if (uiState.isVoiceActive) {
       uiState.mode = 'voice'
-      // Focus the appropriate visible window so VoiceOverlay picks up the state
-      if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
-        fullWindow.focus()
+      const target = fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()
+        ? 'full' as const
+        : 'mini' as const
+      uiState.window = target
+      if (target === 'full') {
+        fullWindow!.focus()
       } else {
         showWindow('mini')
       }
@@ -1936,16 +1939,25 @@ app.whenReady().then(async () => {
         // Pre-warm: tell renderer to start the Realtime API connection IMMEDIATELY,
         // before React processes the state change. This lets token fetch, mic
         // acquisition, and SDP offer creation begin ~20-50ms earlier.
+        // IMPORTANT: Only send to the target window — sending to all windows
+        // causes duplicate WebRTC sessions and double audio playback.
         const convId = uiState.conversationId ?? 'voice-rtc'
-        for (const win of BrowserWindow.getAllWindows()) {
-          win.webContents.send('voice-rtc:pre-warm', convId)
+        const voiceTarget = fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()
+          ? fullWindow
+          : miniWindow
+        if (voiceTarget) {
+          voiceTarget.webContents.send('voice-rtc:pre-warm', convId)
         }
 
-        // Activate realtime voice-to-voice mode (same as toggleVoiceRtc)
+        // Activate realtime voice-to-voice mode
+        const targetWindowMode = voiceTarget === fullWindow ? 'full' : 'mini'
         uiState.isVoiceRtcActive = true
         uiState.isVoiceActive = false
-        if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
-          fullWindow.focus()
+        // Set active window before broadcast so renderers know which window should handle voice.
+        // showWindow('mini') sets this inside a setTimeout, which would race with broadcastUiState.
+        uiState.window = targetWindowMode as UiState['window']
+        if (targetWindowMode === 'full') {
+          fullWindow!.focus()
         } else {
           showWindow('mini')
         }
@@ -2005,9 +2017,13 @@ app.whenReady().then(async () => {
     if (uiState.isVoiceRtcActive) {
       // Deactivate STT voice if it was on
       uiState.isVoiceActive = false
-      // Focus the appropriate window so VoiceOverlay picks up the state
-      if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
-        fullWindow.focus()
+      const target = fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()
+        ? 'full' as const
+        : 'mini' as const
+      // Set active window before broadcast so only the visible window creates a session
+      uiState.window = target
+      if (target === 'full') {
+        fullWindow!.focus()
       } else {
         showWindow('mini')
       }
