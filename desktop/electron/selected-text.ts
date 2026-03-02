@@ -78,7 +78,7 @@ Write-Output "READY"
     if (outputBuffer.includes('READY')) {
       outputBuffer = ''
       psReady = true
-      console.log('[selected-text] PowerShell process ready')
+      // Ready
     } else {
       setTimeout(checkReady, 50)
     }
@@ -104,7 +104,6 @@ export const cleanupSelectedTextProcess = (): void => {
 const getSelectedTextWindows = (): Promise<string | null> => {
   return new Promise((resolve) => {
     if (!psProcess || !psReady) {
-      console.log('[selected-text] PowerShell not ready:', { psProcess: !!psProcess, psReady })
       resolve(null)
       return
     }

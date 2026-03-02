@@ -1797,12 +1797,6 @@ const startAuthRefreshLoop = () => {
 }
 
 const setHostAuthState = (authenticated: boolean, token?: string) => {
-  console.log('[auth] setHostAuthState called', {
-    authenticated,
-    hasToken: !!token,
-    tokenLength: token?.length ?? 0,
-    hasRunner: !!piHostRunner,
-  })
   hostAuthAuthenticated = authenticated
   if (!authenticated) {
     stopAuthRefreshLoop()
