@@ -261,9 +261,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startAgentChat: (payload: {
     conversationId: string;
     userMessageId: string;
+    userPrompt: string;
     agentType?: string;
     storageMode?: 'cloud' | 'local';
-    localHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
   }) => ipcRenderer.invoke('agent:startChat', payload) as Promise<{ runId: string }>,
 
   cancelAgentChat: (runId: string) => ipcRenderer.send('agent:cancelChat', runId),
@@ -317,10 +317,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appReload: () => ipcRenderer.send('app:reload'),
   hardResetLocalState: () => ipcRenderer.invoke('app:hardResetLocalState') as Promise<{ ok: boolean }>,
 
-  // Local event store
-  eventStoreAppend: (args: unknown) => ipcRenderer.invoke('eventStore:append', args),
-  eventStoreList: (conversationId: string, limit?: number) =>
-    ipcRenderer.invoke('eventStore:list', conversationId, limit),
   getLocalSyncMode: () => ipcRenderer.invoke('preferences:getSyncMode') as Promise<string>,
   setLocalSyncMode: (mode: string) => ipcRenderer.invoke('preferences:setSyncMode', mode),
 })

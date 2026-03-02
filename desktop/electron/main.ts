@@ -34,7 +34,6 @@ import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './system/device.
 import { createPiHostRunner } from './pi-runtime/runner.js'
 import { getDevServerUrl } from './dev-url.js'
 import { resolveStellaHome } from './system/stella-home.js'
-import { getLocalEventStore, type AppendEventArgs as EventStoreAppendArgs } from './system/local_event_store.js'
 import {
   getSyncMode,
   loadLocalPreferences,
@@ -2088,9 +2087,9 @@ app.whenReady().then(async () => {
         {
           conversationId: payload.conversationId,
           userMessageId: `voice-${Date.now()}`,
+          userPrompt: payload.message,
           agentType: 'orchestrator',
           storageMode: 'local',
-          localHistory: [{ role: 'user', content: payload.message }],
         },
         {
           onStream: (ev) => {
@@ -2836,9 +2835,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('agent:startChat', async (_event, payload: {
     conversationId: string
     userMessageId: string
+    userPrompt: string
     agentType?: string
     storageMode?: 'cloud' | 'local'
-    localHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   }) => {
     console.log('[agent:startChat] received', {
       hasRunner: !!piHostRunner,
@@ -2906,19 +2905,6 @@ app.whenReady().then(async () => {
     if (fullWindow && !fullWindow.isDestroyed()) {
       loadWindow(fullWindow, 'full')
     }
-  })
-
-  // -- Local event store IPC -----------------------------------------------
-  ipcMain.handle('eventStore:append', (_event, args: EventStoreAppendArgs) => {
-    if (!StellaHomePath) throw new Error('Stella home not resolved')
-    const store = getLocalEventStore(StellaHomePath)
-    return store.appendEvent(args)
-  })
-
-  ipcMain.handle('eventStore:list', (_event, conversationId: string, limit?: number) => {
-    if (!StellaHomePath) throw new Error('Stella home not resolved')
-    const store = getLocalEventStore(StellaHomePath)
-    return store.listEvents(conversationId, limit ?? 200)
   })
 
   ipcMain.handle('preferences:getSyncMode', () => {
