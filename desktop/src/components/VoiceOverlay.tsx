@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUiState } from "../app/state/ui-state";
 import { useVoiceRecording } from "../hooks/use-voice-recording";
 import { useRealtimeVoice } from "../hooks/use-realtime-voice";
+import { useWindowType } from "../hooks/use-window-type";
 
 interface VoiceOverlayProps {
   onTranscript: (text: string) => void;
@@ -102,10 +103,7 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
 
   // Only run voice logic in the active window — both full and mini mount VoiceOverlay,
   // but state.window tells us which one is currently visible.
-  const windowType = useMemo(
-    () => new URLSearchParams(window.location.search).get("window") === "mini" ? "mini" : "full",
-    [],
-  );
+  const windowType = useWindowType();
   const isActiveWindow = state.window === windowType;
 
   // Swatch refs for 5 theme colors

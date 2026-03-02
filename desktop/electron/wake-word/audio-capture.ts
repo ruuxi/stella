@@ -1,18 +1,19 @@
 /**
  * Audio capture manager for wake word detection.
  *
- * Captures microphone audio from the hidden capture window via IPC
- * and feeds it to the wake word detector in the main process.
- *
- * Flow:
- *   Renderer (capture window) → ScriptProcessorNode captures audio
- *   → Resamples to 16kHz mono → Converts to Int16 PCM
- *   → IPC send 'wake-word:audio-chunk' to main process
- *   → Main process feeds to WakeWordDetector.predict()
+ * Spawns a utility process that captures microphone audio via naudiodon2
+ * (PortAudio) and sends 16kHz mono Int16 PCM chunks back via IPC.
+ * The utility process keeps naudiodon2 isolated from onnxruntime's DirectML
+ * in the main process, avoiding native addon conflicts.
  */
 
-import { ipcMain, BrowserWindow } from "electron";
+import { utilityProcess, type UtilityProcess } from "electron";
+import path from "path";
+import { fileURLToPath } from "url";
 import type { WakeWordDetector, WakeWordResult } from "./detector.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export interface AudioCaptureManager {
   /** Start capturing audio and feeding to detector. */
@@ -27,62 +28,75 @@ export interface AudioCaptureManager {
 
 export function createAudioCaptureManager(
   detector: WakeWordDetector,
-  getVoiceWindow: () => BrowserWindow | null
 ): AudioCaptureManager {
   let capturing = false;
   let detectionCallback: ((result: WakeWordResult) => void) | null = null;
-  let processing = false; // prevent overlapping predict calls
-
+  let processing = false;
+  let worker: UtilityProcess | null = null;
   let chunkCount = 0;
-
-  // Handle audio chunks from renderer
-  const handleAudioChunk = async (_event: Electron.IpcMainEvent, buffer: ArrayBuffer) => {
-    if (!capturing || processing) return;
-
-    chunkCount++;
-
-    processing = true;
-    try {
-      const pcm = new Int16Array(buffer);
-      const result = await detector.predict(pcm);
-
-      if (result.detected && detectionCallback) {
-        detectionCallback(result);
-      }
-    } catch (err) {
-      if (chunkCount <= 5) {
-        console.error("[WakeWord] Predict error:", (err as Error).message);
-      }
-    } finally {
-      processing = false;
-    }
-  };
-
-  // Register IPC handler
-  ipcMain.on("wake-word:audio-chunk", handleAudioChunk);
-
-  // When the renderer signals it's mounted, re-send start if we're supposed to be capturing.
-  // This fixes the race where start-capture was sent before the component mounted.
-  ipcMain.on("wake-word:renderer-ready", () => {
-    if (capturing) {
-      const win = getVoiceWindow();
-      if (win && !win.isDestroyed()) {
-        win.webContents.send("wake-word:start-capture");
-        console.log("[WakeWord] Renderer ready — re-sent start-capture");
-      }
-    }
-  });
+  let killTimer: ReturnType<typeof setTimeout> | null = null;
 
   return {
     start() {
       if (capturing) return;
+      // Cancel any pending kill timer from a previous stop()
+      if (killTimer) { clearTimeout(killTimer); killTimer = null; }
       capturing = true;
+      chunkCount = 0;
       detector.start();
 
-      // Tell the voice window renderer to start capturing
-      const win = getVoiceWindow();
-      if (win && !win.isDestroyed()) {
-        win.webContents.send("wake-word:start-capture");
+      try {
+        const workerPath = path.join(__dirname, "audio-worker.js");
+        worker = utilityProcess.fork(workerPath, [], {
+          stdio: "pipe",
+        });
+
+        worker.on("message", async (msg: { type: string; buffer?: ArrayBuffer }) => {
+          if (msg.type === "ready") {
+            if (worker) worker.postMessage({ type: "start" });
+            console.log("[WakeWord] Audio capture worker started");
+            return;
+          }
+
+          if (msg.type !== "audio" || !msg.buffer || !capturing || processing) return;
+
+          chunkCount++;
+          processing = true;
+          try {
+            const pcm = new Int16Array(msg.buffer);
+            const result = await detector.predict(pcm);
+            if (result.detected && detectionCallback) {
+              detectionCallback(result);
+            }
+          } catch (err) {
+            if (chunkCount <= 5) {
+              console.error("[WakeWord] Predict error:", (err as Error).message);
+            }
+          } finally {
+            processing = false;
+          }
+        });
+
+        if (worker.stdout) {
+          worker.stdout.on("data", (data: Buffer) => {
+            process.stdout.write(`[AudioWorker] ${data}`);
+          });
+        }
+        if (worker.stderr) {
+          worker.stderr.on("data", (data: Buffer) => {
+            process.stderr.write(`[AudioWorker] ${data}`);
+          });
+        }
+
+        worker.on("exit", (code) => {
+          if (capturing) {
+            console.warn(`[WakeWord] Worker exited unexpectedly (code ${code})`);
+          }
+          worker = null;
+        });
+      } catch (err) {
+        console.error("[WakeWord] Failed to start audio worker:", (err as Error).message);
+        capturing = false;
       }
     },
 
@@ -91,11 +105,24 @@ export function createAudioCaptureManager(
       capturing = false;
       detector.stop();
 
-      // Tell renderer to stop
-      const win = getVoiceWindow();
-      if (win && !win.isDestroyed()) {
-        win.webContents.send("wake-word:stop-capture");
+      if (worker) {
+        try {
+          // Send "exit" for clean shutdown (stops audio + exits process)
+          worker.postMessage({ type: "exit" });
+          // Force-kill if it doesn't exit within 2s
+          killTimer = setTimeout(() => {
+            killTimer = null;
+            if (worker) {
+              worker.kill();
+              worker = null;
+            }
+          }, 2000);
+        } catch {
+          worker.kill();
+          worker = null;
+        }
       }
+      console.log("[WakeWord] Audio capture stopped");
     },
 
     onDetection(callback: (result: WakeWordResult) => void) {

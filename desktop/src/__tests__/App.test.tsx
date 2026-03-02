@@ -67,10 +67,6 @@ vi.mock("../screens/RegionCapture", () => ({
   RegionCapture: () => <div data-testid="region-capture" />,
 }));
 
-vi.mock("../screens/WakeWordCapture", () => ({
-  WakeWordCapture: () => <div data-testid="wake-word-capture" />,
-}));
-
 import App from "../App";
 import { useUiState } from "../app/state/ui-state";
 
