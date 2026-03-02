@@ -754,6 +754,133 @@ export const execute = internalAction({
 // completeCronTurnResult — called by the desktop after inverted execution
 // ---------------------------------------------------------------------------
 
+type CompleteCronTurnStatus = "ok" | "error";
+
+async function completeCronTurnResultCore(
+  ctx: { db: any },
+  args: {
+    requestId: string;
+    text: string;
+    conversationId: Id<"conversations">;
+    status?: CompleteCronTurnStatus;
+    error?: string;
+    skipAssistantMessage?: boolean;
+    rescuedByWatchdog?: boolean;
+  },
+) {
+  const status: CompleteCronTurnStatus = args.status ?? "ok";
+  const trimmedText = args.text.trim();
+
+  const request = await ctx.db
+    .query("events")
+    .withIndex("by_requestId", (q: any) => q.eq("requestId", args.requestId))
+    .first();
+  if (!request || request.type !== "remote_turn_request") {
+    throw new Error("Invalid or missing remote_turn_request");
+  }
+  if (request.conversationId !== args.conversationId) {
+    throw new Error("Conversation mismatch");
+  }
+
+  const reqPayload = request.payload as Record<string, unknown>;
+  if (reqPayload.source !== "cron") {
+    throw new Error("Request is not a cron remote turn");
+  }
+
+  const fulfilled = await ctx.db
+    .query("events")
+    .withIndex("by_requestId", (q: any) =>
+      q.eq("requestId", `fulfilled:${args.requestId}`),
+    )
+    .first();
+  if (fulfilled) return;
+
+  const claimed = await ctx.db
+    .query("events")
+    .withIndex("by_requestId", (q: any) =>
+      q.eq("requestId", `claimed:${args.requestId}`),
+    )
+    .first();
+  if (!claimed) {
+    await ctx.db.insert("events", {
+      conversationId: args.conversationId,
+      timestamp: Date.now(),
+      type: "remote_turn_claimed",
+      requestId: `claimed:${args.requestId}`,
+      payload: {
+        requestId: args.requestId,
+        source: "cron",
+        rescuedByWatchdog: args.rescuedByWatchdog === true,
+      },
+    });
+  }
+
+  const cronJobId = reqPayload.cronJobId as string | undefined;
+  const cronJobName = reqPayload.cronJobName as string | undefined;
+  const deliver = reqPayload.deliver as boolean | undefined;
+  const sessionTarget = reqPayload.sessionTarget as string | undefined;
+
+  if (cronJobId) {
+    const jobId = cronJobId as Id<"cron_jobs">;
+    const job = await ctx.db.get(jobId);
+    if (job) {
+      await ctx.db.patch(jobId, {
+        runningAtMs: undefined,
+        lastStatus: status,
+        lastError:
+          status === "error"
+            ? args.error ?? "Cron remote turn failed before fulfillment."
+            : undefined,
+        lastOutputPreview:
+          status === "ok" && trimmedText.length > 0
+            ? truncatePreview(trimmedText)
+            : undefined,
+        updatedAt: Date.now(),
+      });
+
+      if (status === "ok" && job.deleteAfterRun === true) {
+        await ctx.db.delete(jobId);
+      }
+    }
+  }
+
+  if (
+    status === "ok" &&
+    !args.skipAssistantMessage &&
+    (deliver ?? true) &&
+    trimmedText.length > 0
+  ) {
+    await ctx.db.insert("events", {
+      conversationId: args.conversationId,
+      timestamp: Date.now(),
+      type: "assistant_message",
+      payload: {
+        text: trimmedText,
+        source: "cron",
+        cronJobId,
+        cronJobName,
+        sessionTarget,
+      },
+    });
+  }
+
+  await ctx.db.insert("events", {
+    conversationId: args.conversationId,
+    timestamp: Date.now(),
+    type: "remote_turn_fulfilled",
+    requestId: `fulfilled:${args.requestId}`,
+    payload: {
+      requestId: args.requestId,
+      source: "cron",
+      status,
+      rescuedByWatchdog: args.rescuedByWatchdog === true,
+      ...(status === "error" && args.error
+        ? { error: args.error }
+        : {}),
+    },
+  });
+}
+
 export const completeCronTurnResult = mutation({
   args: {
     requestId: v.string(),
@@ -770,89 +897,37 @@ export const completeCronTurnResult = mutation({
       throw new Error("Not authorized");
     }
 
-    // Idempotency: skip if already claimed
-    const existing = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) =>
-        q.eq("requestId", `claimed:${args.requestId}`),
-      )
-      .first();
-    if (existing) return null;
-
-    // Validate the original remote_turn_request exists and read routing data
-    // from it (never trust caller-provided routing data)
-    const request = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
-      .first();
-    if (!request || request.type !== "remote_turn_request") {
-      throw new Error("Invalid or missing remote_turn_request");
-    }
-    if (request.conversationId !== args.conversationId) {
-      throw new Error("Conversation mismatch");
-    }
-    const reqPayload = request.payload as Record<string, unknown>;
-    if (reqPayload.source !== "cron") {
-      throw new Error("Request is not a cron remote turn");
-    }
-    const cronJobId = reqPayload.cronJobId as string | undefined;
-    const cronJobName = reqPayload.cronJobName as string | undefined;
-    const deliver = reqPayload.deliver as boolean | undefined;
-    const sessionTarget = reqPayload.sessionTarget as string | undefined;
-
-    // Insert claimed marker (matches connector_delivery format)
-    await ctx.db.insert("events", {
+    await completeCronTurnResultCore(ctx, {
+      requestId: args.requestId,
+      text: args.text,
       conversationId: args.conversationId,
-      timestamp: Date.now(),
-      type: "remote_turn_claimed",
-      requestId: `claimed:${args.requestId}`,
-      payload: { requestId: args.requestId, source: "cron" },
+      status: "ok",
     });
 
-    // Update cron job record with the result and clear runningAtMs
-    if (cronJobId) {
-      const jobId = cronJobId as Id<"cron_jobs">;
-      const job = await ctx.db.get(jobId);
-      if (job && job.ownerId === userId) {
-        await ctx.db.patch(jobId, {
-          runningAtMs: undefined,
-          lastStatus: "ok",
-          lastOutputPreview: args.text ? truncatePreview(args.text) : undefined,
-          updatedAt: Date.now(),
-        });
+    return null;
+  },
+});
 
-        // For "at" schedules that were deferred: delete if deleteAfterRun
-        if (job.deleteAfterRun === true) {
-          await ctx.db.delete(jobId);
-        }
-      }
-    }
-
-    // Deliver output as assistant_message
-    if ((deliver ?? true) && args.text.trim().length > 0) {
-      await ctx.db.insert("events", {
-        conversationId: args.conversationId,
-        timestamp: Date.now(),
-        type: "assistant_message",
-        payload: {
-          text: args.text,
-          source: "cron",
-          cronJobId,
-          cronJobName,
-          sessionTarget,
-        },
-      });
-    }
-
-    // Insert fulfilled marker (so orphan watchdog skips this request)
-    await ctx.db.insert("events", {
+export const completeCronTurnResultFromWatchdog = internalMutation({
+  args: {
+    requestId: v.string(),
+    text: v.string(),
+    conversationId: v.id("conversations"),
+    status: v.union(v.literal("ok"), v.literal("error")),
+    error: v.optional(v.string()),
+    skipAssistantMessage: v.optional(v.boolean()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await completeCronTurnResultCore(ctx, {
+      requestId: args.requestId,
+      text: args.text,
       conversationId: args.conversationId,
-      timestamp: Date.now(),
-      type: "remote_turn_fulfilled",
-      requestId: `fulfilled:${args.requestId}`,
-      payload: { requestId: args.requestId, source: "cron" },
+      status: args.status,
+      error: args.error,
+      skipAssistantMessage: args.skipAssistantMessage,
+      rescuedByWatchdog: true,
     });
-
     return null;
   },
 });

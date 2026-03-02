@@ -21,6 +21,7 @@ import type * as agent_history_messages from "../agent/history_messages.js";
 import type * as agent_hooks from "../agent/hooks.js";
 import type * as agent_invoke from "../agent/invoke.js";
 import type * as agent_local_runtime from "../agent/local_runtime.js";
+import type * as agent_mint_proxy_token from "../agent/mint_proxy_token.js";
 import type * as agent_model from "../agent/model.js";
 import type * as agent_model_execution from "../agent/model_execution.js";
 import type * as agent_model_failover from "../agent/model_failover.js";
@@ -143,6 +144,7 @@ declare const fullApi: ApiFromModules<{
   "agent/hooks": typeof agent_hooks;
   "agent/invoke": typeof agent_invoke;
   "agent/local_runtime": typeof agent_local_runtime;
+  "agent/mint_proxy_token": typeof agent_mint_proxy_token;
   "agent/model": typeof agent_model;
   "agent/model_execution": typeof agent_model_execution;
   "agent/model_failover": typeof agent_model_failover;

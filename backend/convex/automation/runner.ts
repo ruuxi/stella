@@ -5,6 +5,7 @@ import { buildSystemPrompt } from "../agent/prompt_builder";
 import {
   AUTOMATION_HISTORY_MAX_TOKENS,
 } from "../agent/context_budget";
+import { CLOUD_ONLY_TOOL_NAMES } from "../agent/device_tools";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
 import {
@@ -136,10 +137,9 @@ export async function runAgentTurn({
 
   // When the desktop is offline (no targetDeviceId), restrict to cloud-only
   // tools since local tools (shell, file system, browser) can't execute.
-  const CLOUD_ONLY_TOOLS = ["WebFetch", "WebSearch", "RecallMemories", "NoResponse"];
   const effectiveToolsAllowlist = targetDeviceId
     ? promptBuild.toolsAllowlist
-    : CLOUD_ONLY_TOOLS;
+    : [...CLOUD_ONLY_TOOL_NAMES];
 
   const tools = createTools(
     ctx,

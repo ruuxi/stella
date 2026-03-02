@@ -20,6 +20,7 @@ export const sanitizeToolName = (name: string): string =>
   name.replace(/\./g, "_");
 
 export { DEVICE_TOOL_NAMES as CORE_DEVICE_TOOL_NAMES } from "@stella/shared";
+export const CLOUD_ONLY_TOOL_NAMES = ["WebFetch", "WebSearch"] as const;
 
 type DeviceToolName = SharedDeviceToolName | string;
 
