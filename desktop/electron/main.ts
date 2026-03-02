@@ -31,7 +31,7 @@ import {
   resizeVoiceWindow,
 } from './voice-window.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
-import { createLocalHostRunner } from './local-host/runner.js'
+import { createPiHostRunner } from './pi-runtime/runner.js'
 import { getDevServerUrl } from './dev-url.js'
 import { resolveStellaHome } from './local-host/stella-home.js'
 import { getLocalEventStore, type AppendEventArgs as EventStoreAppendArgs } from './local-host/local_event_store.js'
@@ -126,7 +126,7 @@ const uiState: UiState = {
 let fullWindow: BrowserWindow | null = null
 let miniWindow: BrowserWindow | null = null
 let mouseHook: MouseHookManager | null = null
-let localHostRunner: ReturnType<typeof createLocalHostRunner> | null = null
+let localHostRunner: ReturnType<typeof createPiHostRunner> | null = null
 let deviceId: string | null = null
 let StellaHomePath: string | null = null
 let appReady = false // true when authenticated + onboarding complete
@@ -1853,7 +1853,7 @@ app.whenReady().then(async () => {
   await loadSecurityPolicy()
   const deviceIdentity = await getOrCreateDeviceIdentity(StellaHome.statePath)
   deviceId = deviceIdentity.deviceId
-  localHostRunner = createLocalHostRunner({
+  localHostRunner = createPiHostRunner({
     deviceId,
     StellaHome: StellaHome.homePath,
     frontendRoot: path.resolve(__dirname, '..'),
@@ -2213,7 +2213,7 @@ app.whenReady().then(async () => {
       const deviceIdentity = await getOrCreateDeviceIdentity(StellaHome.statePath)
       deviceId = deviceIdentity.deviceId
 
-      localHostRunner = createLocalHostRunner({
+      localHostRunner = createPiHostRunner({
         deviceId,
         StellaHome: StellaHome.homePath,
         frontendRoot: path.resolve(__dirname, '..'),

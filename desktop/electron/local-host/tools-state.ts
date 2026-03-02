@@ -25,19 +25,25 @@ const toOptionalString = (value: unknown): string | undefined => {
 
 const formatTaskSnapshot = (snapshot: TaskToolSnapshot): string => {
   const duration = (snapshot.completedAt ?? Date.now()) - snapshot.startedAt;
+  const messageSection =
+    snapshot.messages && snapshot.messages.length > 0
+      ? `\n\nMessages:\n${snapshot.messages
+          .map((entry) => `- [${entry.from}] ${truncate(entry.text, 240)}`)
+          .join("\n")}`
+      : "";
   if (snapshot.status === "completed") {
-    return `Task completed.\nDuration: ${duration}ms\n\n--- Result ---\n${truncate(snapshot.result ?? "")}`;
+    return `Task completed.\nDuration: ${duration}ms\n\n--- Result ---\n${truncate(snapshot.result ?? "")}${messageSection}`;
   }
   if (snapshot.status === "error" || snapshot.status === "canceled") {
     const label = snapshot.status === "canceled" ? "Task canceled." : "Task failed.";
-    return `${label}\nDuration: ${duration}ms\n\n--- Error ---\n${truncate(snapshot.error ?? "")}`;
+    return `${label}\nDuration: ${duration}ms\n\n--- Error ---\n${truncate(snapshot.error ?? "")}${messageSection}`;
   }
   const elapsed = Date.now() - snapshot.startedAt;
   if (snapshot.recentActivity && snapshot.recentActivity.length > 0) {
     const activity = snapshot.recentActivity.map((line) => `- ${truncate(line, 300)}`).join("\n");
-    return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms\n\nRecent activity:\n${activity}`;
+    return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms\n\nRecent activity:\n${activity}${messageSection}`;
   }
-  return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms`;
+  return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms${messageSection}`;
 };
 
 export const createStateContext = (
@@ -56,6 +62,47 @@ export const handleTask = async (
 ): Promise<ToolResult> => {
   const action = toOptionalString(args.action)?.toLowerCase();
   const explicitTaskId = toOptionalString(args.task_id ?? args.taskId ?? args.id);
+  const contextTaskId = toOptionalString(context.taskId);
+  const resolvedTaskId = explicitTaskId ?? contextTaskId;
+  const sender: "orchestrator" | "subagent" =
+    context.agentType === "orchestrator" ? "orchestrator" : "subagent";
+  if ((action === "message" || action === "send") && ctx.taskApi?.sendTaskMessage) {
+    const taskId = resolvedTaskId;
+    if (!taskId) {
+      return { error: "task_id is required for action=message" };
+    }
+    const message =
+      toOptionalString(args.message) ??
+      toOptionalString(args.content) ??
+      toOptionalString(args.text);
+    if (!message) {
+      return { error: "message is required for action=message" };
+    }
+    const delivered = await ctx.taskApi.sendTaskMessage(taskId, message, sender);
+    if (!delivered.delivered) {
+      return { error: `Task not found: ${taskId}` };
+    }
+    return {
+      result: `Message delivered to task ${taskId}.`,
+    };
+  }
+
+  if ((action === "inbox" || action === "messages") && ctx.taskApi?.drainTaskMessages) {
+    const taskId = resolvedTaskId;
+    if (!taskId) {
+      return { error: "task_id is required for action=inbox" };
+    }
+    const recipient: "orchestrator" | "subagent" =
+      sender === "orchestrator" ? "orchestrator" : "subagent";
+    const messages = await ctx.taskApi.drainTaskMessages(taskId, recipient);
+    if (messages.length === 0) {
+      return { result: "No new messages." };
+    }
+    return {
+      result: messages.map((entry, index) => `${index + 1}. ${truncate(entry, 1000)}`).join("\n"),
+    };
+  }
+
   if ((action === "cancel" || action === "stop") && explicitTaskId) {
     if (ctx.taskApi) {
       const reason = toOptionalString(args.reason);

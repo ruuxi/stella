@@ -8,6 +8,7 @@ export type ToolContext = {
   requestId: string;
   agentType?: string;
   storageMode?: "cloud" | "local";
+  taskId?: string;
 };
 
 export type ToolResult = {
@@ -78,12 +79,22 @@ export type TaskToolSnapshot = {
   result?: string;
   error?: string;
   recentActivity?: string[];
+  messages?: Array<{ from: "orchestrator" | "subagent"; text: string; timestamp: number }>;
 };
 
 export type TaskToolApi = {
   createTask: (request: TaskToolRequest) => Promise<{ taskId: string }>;
   getTask: (taskId: string) => Promise<TaskToolSnapshot | null>;
   cancelTask: (taskId: string, reason?: string) => Promise<{ canceled: boolean }>;
+  sendTaskMessage?: (
+    taskId: string,
+    message: string,
+    from: "orchestrator" | "subagent",
+  ) => Promise<{ delivered: boolean }>;
+  drainTaskMessages?: (
+    taskId: string,
+    recipient: "orchestrator" | "subagent",
+  ) => Promise<string[]>;
 };
 
 export type ToolHostOptions = {

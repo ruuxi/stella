@@ -159,8 +159,9 @@ const toolSchemas: Record<string, z.ZodType<Record<string, unknown>>> = {
 const toolDescriptions: Record<string, string> = {
   ...TOOL_DESCRIPTIONS,
   TaskCreate: "Create and run a background subagent task",
-  Task: "Create or manage a background task",
-  TaskOutput: "Get output from a background task",
+  Task:
+    "Create or manage a background task. Supports action=create|cancel|message|inbox for bidirectional orchestrator/subagent messaging.",
+  TaskOutput: "Get output from a background task, including recent activity and exchanged messages.",
   TaskCancel: "Cancel a running background task",
   SelfModStart: "Start a self-modification feature",
   SelfModApply: "Apply a self-modification feature",
