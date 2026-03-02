@@ -17,6 +17,11 @@ const port = process.parentPort ?? null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let audioStream: any = null;
 
+function postMessage(type: string, payload: Record<string, unknown> = {}) {
+  if (!port) return;
+  port.postMessage({ type, ...payload });
+}
+
 function start() {
   if (audioStream) return;
 
@@ -33,18 +38,22 @@ function start() {
 
     audioStream.on("data", (buf: Buffer) => {
       if (!port) return;
-      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
-      port.postMessage({ type: "audio", buffer: ab });
+      port.postMessage({ type: "audio", buffer: buf.toString("base64") });
     });
 
     audioStream.on("error", (err: Error) => {
       console.error("[AudioWorker] Stream error:", err.message);
+      postMessage("stream-error", { error: err.message });
     });
 
     audioStream.start();
+    postMessage("started");
     console.log("[AudioWorker] Capture started");
   } catch (err) {
-    console.error("[AudioWorker] Failed to start:", (err as Error).message);
+    const message = (err as Error).message;
+    console.error("[AudioWorker] Failed to start:", message);
+    postMessage("start-failed", { error: message });
+    audioStream = null;
   }
 }
 
@@ -71,5 +80,5 @@ if (port) {
     }
   });
 
-  port.postMessage({ type: "ready" });
+  postMessage("ready");
 }
