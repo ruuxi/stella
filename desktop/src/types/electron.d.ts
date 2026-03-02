@@ -217,6 +217,7 @@ export type ElectronApi = {
   voiceOrchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
   setVoiceRtcShortcut: (shortcut: string) => void
   onVoiceRtcPreWarm: (callback: (conversationId: string) => void) => () => void
+  onVoiceRtcPrefetchToken: (callback: () => void) => () => void
 
   // Store package management
   storeInstallSkill: (payload: {
