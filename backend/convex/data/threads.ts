@@ -1,5 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import {
+  query,
+  mutation,
   internalAction,
   internalMutation,
   internalQuery,
@@ -8,6 +10,7 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { requireUserId } from "../auth";
 import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
 import {
@@ -807,5 +810,73 @@ export const sweepThreadLifecycle = internalMutation({
     }
 
     return { idled, archived };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Public APIs for desktop-driven thread compaction
+// ---------------------------------------------------------------------------
+
+/** Load thread messages for local compaction — desktop calls this to get the data. */
+export const loadThreadMessagesForRuntime = query({
+  args: {
+    threadId: v.id("threads"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) return null;
+    // Verify ownership via the conversation
+    const conversation = await ctx.db.get(thread.conversationId);
+    if (!conversation || conversation.ownerId !== userId) return null;
+
+    const messages = await ctx.db
+      .query("thread_messages")
+      .withIndex("by_threadId_and_ordinal", (q) =>
+        q.eq("threadId", args.threadId),
+      )
+      .collect();
+
+    return {
+      thread: {
+        _id: thread._id,
+        name: thread.name,
+        status: thread.status,
+        summary: thread.summary,
+        totalTokenEstimate: thread.totalTokenEstimate,
+        messageCount: thread.messageCount,
+      },
+      messages: messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        ordinal: m.ordinal,
+        tokenEstimate: m.tokenEstimate,
+      })),
+    };
+  },
+});
+
+/** Apply a pre-computed compaction summary — desktop calls this after generating the summary locally. */
+export const applyCompactionForRuntime = mutation({
+  args: {
+    threadId: v.id("threads"),
+    keepFromOrdinal: v.number(),
+    summary: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) return null;
+    const conversation = await ctx.db.get(thread.conversationId);
+    if (!conversation || conversation.ownerId !== userId) return null;
+
+    // Delegate to the existing internal finalization
+    await ctx.runMutation(internal.data.threads.finalizeThreadCompaction, {
+      threadId: args.threadId,
+      keepFromOrdinal: args.keepFromOrdinal,
+      summary: args.summary,
+    });
+
+    return null;
   },
 });

@@ -134,6 +134,13 @@ export async function runAgentTurn({
     ];
   }
 
+  // When the desktop is offline (no targetDeviceId), restrict to cloud-only
+  // tools since local tools (shell, file system, browser) can't execute.
+  const CLOUD_ONLY_TOOLS = ["WebFetch", "WebSearch", "RecallMemories", "NoResponse"];
+  const effectiveToolsAllowlist = targetDeviceId
+    ? promptBuild.toolsAllowlist
+    : CLOUD_ONLY_TOOLS;
+
   const tools = createTools(
     ctx,
     targetDeviceId
@@ -147,8 +154,8 @@ export async function runAgentTurn({
       : undefined,
     {
       agentType,
-      toolsAllowlist: promptBuild.toolsAllowlist,
-      maxTaskDepth: promptBuild.maxTaskDepth,
+      toolsAllowlist: effectiveToolsAllowlist,
+      maxTaskDepth: targetDeviceId ? promptBuild.maxTaskDepth : 0,
       ownerId: resolvedOwnerId,
       conversationId,
       transient: Boolean(transient),
@@ -157,8 +164,13 @@ export async function runAgentTurn({
 
   const streamLifecycle = createStreamExecutionLifecycle();
 
+  // Append cloud-only notice when desktop is offline
+  const systemPrompt = targetDeviceId
+    ? promptBuild.systemPrompt
+    : `${promptBuild.systemPrompt}\n\n<system-notice>You are running in cloud-only mode. The user's desktop is offline, so local tools (file system, shell, browser, apps) are unavailable. You can only chat and search the web. Let the user know if they ask for something that requires their desktop.</system-notice>`;
+
   const runnerSharedArgs = {
-    system: promptBuild.systemPrompt,
+    system: systemPrompt,
     tools,
     messages: requestMessages,
     onStepFinish: streamLifecycle.onStepFinish,
