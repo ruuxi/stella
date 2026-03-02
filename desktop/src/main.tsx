@@ -1,4 +1,3 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ConvexBetterAuthProvider, type AuthClient } from '@convex-dev/better-auth/react'
 import './index.css'
@@ -103,13 +102,11 @@ const appTree = (
 )
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    {shouldEnableConvex ? (
-      <ConvexBetterAuthProvider client={convexClient} authClient={authClientForProvider}>
-        {appTree}
-      </ConvexBetterAuthProvider>
-    ) : (
-      appTree
-    )}
-  </StrictMode>,
+  shouldEnableConvex ? (
+    <ConvexBetterAuthProvider client={convexClient} authClient={authClientForProvider}>
+      {appTree}
+    </ConvexBetterAuthProvider>
+  ) : (
+    appTree
+  ),
 )
