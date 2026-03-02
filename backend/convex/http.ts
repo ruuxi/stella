@@ -878,8 +878,14 @@ http.route({
 
 const VOICE_SESSION_RATE_LIMIT = 10; // per minute
 const VOICE_SESSION_RATE_WINDOW_MS = 60_000;
-const VOICE_LOG_RATE_LIMIT = 120; // per minute
-const VOICE_LOG_RATE_WINDOW_MS = 60_000;
+const CONVEX_CONVERSATION_ID_PATTERN = /^[a-z][a-z0-9]+$/;
+
+const asConvexConversationId = (value: unknown): Id<"conversations"> | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!CONVEX_CONVERSATION_ID_PATTERN.test(normalized)) return null;
+  return normalized as Id<"conversations">;
+};
 
 http.route({
   path: "/api/voice/session",
@@ -927,14 +933,13 @@ http.route({
     // Only attempt ownership verification for IDs that look like Convex IDs
     // (lowercase, no leading digits) to avoid noisy validation errors in logs.
     let convexConversationId: Id<"conversations"> | undefined;
-    const rawConvId = body?.conversationId;
-    const looksLikeConvexId = rawConvId && /^[a-z]/.test(rawConvId);
-    if (looksLikeConvexId) {
+    const parsedConvId = asConvexConversationId(body?.conversationId);
+    if (parsedConvId) {
       try {
-        await requireConversationOwnerAction(ctx, rawConvId as Id<"conversations">);
-        convexConversationId = rawConvId as Id<"conversations">;
+        await requireConversationOwnerAction(ctx, parsedConvId);
+        convexConversationId = parsedConvId;
       } catch {
-        // Conversation not found — skip context enrichment
+        // Conversation not found - skip context enrichment
       }
     }
 
@@ -1100,79 +1105,15 @@ http.route({
     const rejection = rejectDisallowedCorsOrigin(request);
     if (rejection) return rejection;
     const origin = request.headers.get("origin");
-
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return withCors(new Response("Unauthorized", { status: 401 }), origin);
-    }
-
-    const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
-      scope: "voice_log",
-      key: identity.subject,
-      limit: VOICE_LOG_RATE_LIMIT,
-      windowMs: VOICE_LOG_RATE_WINDOW_MS,
-      blockMs: VOICE_LOG_RATE_WINDOW_MS,
-    });
-    if (!rateLimit.allowed) {
-      return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
-    }
-
-    type VoiceLogBody = {
-      conversationId: string;
-      type: "user_message" | "assistant_message" | "tool_request" | "tool_result";
-      content: string;
-      metadata?: Record<string, unknown>;
-    };
-    let body: VoiceLogBody | null = null;
-    try {
-      body = (await request.json()) as VoiceLogBody;
-    } catch {
-      return withCors(new Response("Invalid JSON body", { status: 400 }), origin);
-    }
-
-    if (!body?.conversationId || !body?.type || !body?.content) {
-      return withCors(new Response("conversationId, type, and content are required", { status: 400 }), origin);
-    }
-
-    const allowedTypes = ["user_message", "assistant_message", "tool_request", "tool_result"];
-    if (!allowedTypes.includes(body.type)) {
-      return withCors(new Response(`type must be one of: ${allowedTypes.join(", ")}`, { status: 400 }), origin);
-    }
-
-    try {
-      await requireConversationOwnerAction(ctx, body.conversationId as Id<"conversations">);
-    } catch {
-      return withCors(new Response("Conversation not found or access denied", { status: 403 }), origin);
-    }
-
-    try {
-      await ctx.runMutation(internal.events.appendInternalEvent, {
-        conversationId: body.conversationId as Id<"conversations">,
-        type: body.type,
-        payload: {
-          text: body.content,
-          source: "voice",
-          ...body.metadata,
-        },
-      });
-
-      return withCors(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-        origin,
-      );
-    } catch (error) {
-      console.error("[voice/log] Failed to append event:", (error as Error).message);
-      return withCors(
-        new Response(JSON.stringify({ error: "Failed to log voice event" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }),
-        origin,
-      );
-    }
+    // Voice transcript/event logging is intentionally disabled.
+    // Keep this endpoint as a no-op for older clients.
+    return withCors(
+      new Response(JSON.stringify({ ok: true, skipped: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+      origin,
+    );
   }),
 });
 
