@@ -30,11 +30,11 @@ import {
   hideVoiceWindow,
   resizeVoiceWindow,
 } from './voice-window.js'
-import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './local-host/device.js'
+import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './system/device.js'
 import { createPiHostRunner } from './pi-runtime/runner.js'
 import { getDevServerUrl } from './dev-url.js'
-import { resolveStellaHome } from './local-host/stella-home.js'
-import { getLocalEventStore, type AppendEventArgs as EventStoreAppendArgs } from './local-host/local_event_store.js'
+import { resolveStellaHome } from './system/stella-home.js'
+import { getLocalEventStore, type AppendEventArgs as EventStoreAppendArgs } from './system/local_event_store.js'
 import {
   getSyncMode,
   loadLocalPreferences,
@@ -49,16 +49,16 @@ import {
   formatBrowserDataForSynthesis,
   type BrowserData,
   type BrowserType,
-} from './local-host/browser-data.js'
-import { collectAllSignals } from './local-host/collect-all.js'
-import type { AllUserSignalsResult } from './local-host/types.js'
+} from './system/browser-data.js'
+import { collectAllSignals } from './system/collect-all.js'
+import type { AllUserSignalsResult } from './system/types.js'
 import {
   handleInstallCanvas,
   handleInstallSkill,
   handleInstallTheme,
   handleUninstallPackage,
 } from './pi-runtime/extensions/stella/tools_store.js'
-import * as bridgeManager from './local-host/bridge_manager.js'
+import * as bridgeManager from './system/bridge_manager.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -130,7 +130,7 @@ const uiState: UiState = {
 let fullWindow: BrowserWindow | null = null
 let miniWindow: BrowserWindow | null = null
 let mouseHook: MouseHookManager | null = null
-let localHostRunner: ReturnType<typeof createPiHostRunner> | null = null
+let piHostRunner: ReturnType<typeof createPiHostRunner> | null = null
 let deviceId: string | null = null
 let StellaHomePath: string | null = null
 let appReady = false // true when authenticated + onboarding complete
@@ -298,7 +298,7 @@ const listWorkspacePanels = async () => {
     .map(({ name, title }) => ({ name, title }))
 }
 
-// File watcher for workspace panels directory — replaces 3s polling in the renderer
+// File watcher for workspace panels directory - replaces 3s polling in the renderer
 let panelWatcher: import('fs').FSWatcher | null = null
 
 function startWorkspacePanelWatcher(mainWindow: import('electron').BrowserWindow) {
@@ -1522,7 +1522,7 @@ const handleRadialSelection = async (wedge: RadialWedge) => {
       break
     }
     case 'voice':
-      // No-op for now — voice UI will be rebuilt
+      // No-op for now - voice UI will be rebuilt
       break
     case 'full':
       cancelRadialContextCapture()
@@ -1559,7 +1559,7 @@ const initMouseHook = () => {
       }
       if (process.platform === 'darwin') {
         // Hide preemptive overlay when modifier is released (unless radial is
-        // active Ã¢â‚¬â€ onRadialHide will handle cleanup in that case).
+        // active - onRadialHide will handle cleanup in that case).
         if (!mouseHook?.isRadialActive()) {
           hideModifierOverlay()
         }
@@ -1740,15 +1740,15 @@ const fetchRunnerAuthToken = async (): Promise<string | null> => {
 
 const refreshRunnerAuthToken = async () => {
   if (!hostAuthAuthenticated) {
-    localHostRunner?.setAuthToken(null)
+    piHostRunner?.setAuthToken(null)
 
     return
   }
   const token = await fetchRunnerAuthToken()
   // Only update if we actually got a token from cookies.
-  // If null, the renderer's token (via auth:setState) is still valid — don't clear it.
+  // If null, the renderer's token (via auth:setState) is still valid - do not clear it.
   if (token) {
-    localHostRunner?.setAuthToken(token)
+    piHostRunner?.setAuthToken(token)
   }
 }
 
@@ -1757,7 +1757,7 @@ const stopAuthRefreshLoop = () => {
     clearInterval(authRefreshTimer)
     authRefreshTimer = null
   }
-  localHostRunner?.setAuthToken(null)
+  piHostRunner?.setAuthToken(null)
 
 }
 
@@ -1776,7 +1776,7 @@ const setHostAuthState = (authenticated: boolean, token?: string) => {
     authenticated,
     hasToken: !!token,
     tokenLength: token?.length ?? 0,
-    hasRunner: !!localHostRunner,
+    hasRunner: !!piHostRunner,
   })
   hostAuthAuthenticated = authenticated
   if (!authenticated) {
@@ -1788,7 +1788,7 @@ const setHostAuthState = (authenticated: boolean, token?: string) => {
   // This bypasses the cookie-based fetch which fails with BetterAuth crossDomain
   // (sessions are in localStorage, not cookies).
   if (token) {
-    localHostRunner?.setAuthToken(token)
+    piHostRunner?.setAuthToken(token)
   }
 
   // Still start the refresh loop as a fallback (it will no-op if cookies aren't available,
@@ -1796,12 +1796,12 @@ const setHostAuthState = (authenticated: boolean, token?: string) => {
   startAuthRefreshLoop()
 }
 
-const configureLocalHost = (config: { convexUrl: string; convexSiteUrl?: string }) => {
+const configurePiRuntime = (config: { convexUrl: string; convexSiteUrl?: string }) => {
   const convexUrl = config.convexUrl
   pendingConvexUrl = convexUrl
   pendingConvexSiteUrl = config.convexSiteUrl ?? null
-  if (localHostRunner) {
-    localHostRunner.setConvexUrl(convexUrl)
+  if (piHostRunner) {
+    piHostRunner.setConvexUrl(convexUrl)
   }
 
   if (hostAuthAuthenticated) {
@@ -1857,7 +1857,7 @@ app.whenReady().then(async () => {
   await loadSecurityPolicy()
   const deviceIdentity = await getOrCreateDeviceIdentity(StellaHome.statePath)
   deviceId = deviceIdentity.deviceId
-  localHostRunner = createPiHostRunner({
+  piHostRunner = createPiHostRunner({
     deviceId,
     StellaHome: StellaHome.homePath,
     frontendRoot: path.resolve(__dirname, '..'),
@@ -1868,9 +1868,9 @@ app.whenReady().then(async () => {
     }),
   })
   if (pendingConvexUrl) {
-    localHostRunner.setConvexUrl(pendingConvexUrl)
+    piHostRunner.setConvexUrl(pendingConvexUrl)
   }
-  localHostRunner.start()
+  piHostRunner.start()
 
   createFullWindow()
   createMiniWindow()
@@ -1921,7 +1921,7 @@ app.whenReady().then(async () => {
     broadcastUiState()
   })
 
-  // ─── Wake Word Detection ──────────────────────────────────────────────
+  // --- Wake Word Detection ------------------------------------------------
   {
     const { createWakeWordDetector } = await import('./wake-word/detector.js')
     const { createAudioCaptureManager } = await import('./wake-word/audio-capture.js')
@@ -1938,7 +1938,7 @@ app.whenReady().then(async () => {
       const detector = await createWakeWordDetector(modelsDir)
       const capture = createAudioCaptureManager(detector, getCaptureWindow)
 
-      // ── Token pre-fetch: keep a fresh ephemeral token cached in the renderer ──
+      // -- Token pre-fetch: keep a fresh ephemeral token cached in the renderer --
       // so the SDP exchange can start instantly when wake word fires (~200-500ms saved).
       const TOKEN_PREFETCH_INTERVAL_MS = 50_000
       let tokenPrefetchTimer: ReturnType<typeof setInterval> | null = null
@@ -1972,7 +1972,7 @@ app.whenReady().then(async () => {
         // Pre-warm: tell renderer to start the Realtime API connection IMMEDIATELY,
         // before React processes the state change. The renderer uses its cached
         // ephemeral token (from periodic pre-fetch) to skip the token round-trip.
-        // IMPORTANT: Only send to the target window — sending to all windows
+        // IMPORTANT: Only send to the target window - sending to all windows
         // causes duplicate WebRTC sessions and double audio playback.
         const convId = uiState.conversationId ?? 'voice-rtc'
         const voiceTarget = getVoiceTargetWindow()
@@ -2042,7 +2042,7 @@ app.whenReady().then(async () => {
     }
   }
 
-  // ─── Voice-to-Voice (Realtime API) ──────────────────────────────────────────
+  // --- Voice-to-Voice (Realtime API) -------------------------------------
   let currentVoiceRtcShortcut = 'CommandOrControl+Shift+D'
 
   const toggleVoiceRtc = () => {
@@ -2077,14 +2077,14 @@ app.whenReady().then(async () => {
 
   // Voice-to-voice: delegate to the orchestrator via the local agent runtime
   ipcMain.handle('voice:orchestratorChat', async (_event, payload: { conversationId: string; message: string }) => {
-    if (!localHostRunner) {
-      return 'Error: Local host runner not initialized'
+    if (!piHostRunner) {
+      return 'Error: Pi runtime not initialized'
     }
 
     return new Promise<string>((resolve) => {
       let fullText = ''
 
-      localHostRunner!.handleLocalChat(
+      piHostRunner!.handleLocalChat(
         {
           conversationId: payload.conversationId,
           userMessageId: `voice-${Date.now()}`,
@@ -2148,14 +2148,14 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('device:getId', () => deviceId)
-  ipcMain.handle('host:configure', (event, config: { convexUrl?: string; convexSiteUrl?: string }) => {
-    if (!assertPrivilegedSender(event, 'host:configure')) {
+  ipcMain.handle('host:configurePiRuntime', (event, config: { convexUrl?: string; convexSiteUrl?: string }) => {
+    if (!assertPrivilegedSender(event, 'host:configurePiRuntime')) {
       throw new Error('Blocked untrusted host configuration request.')
     }
     const convexUrl = sanitizeOptionalHttpUrl(config?.convexUrl, 'convexUrl')
     const convexSiteUrl = sanitizeOptionalHttpUrl(config?.convexSiteUrl, 'convexSiteUrl')
     if (convexUrl) {
-      configureLocalHost({ convexUrl, convexSiteUrl })
+      configurePiRuntime({ convexUrl, convexSiteUrl })
     }
     return { deviceId }
   })
@@ -2164,7 +2164,7 @@ app.whenReady().then(async () => {
     return { ok: true }
   })
   ipcMain.handle('host:setCloudSyncEnabled', (_event, payload: { enabled: boolean }) => {
-    localHostRunner?.setCloudSyncEnabled(Boolean(payload?.enabled))
+    piHostRunner?.setCloudSyncEnabled(Boolean(payload?.enabled))
     return { ok: true }
   })
   ipcMain.handle('app:hardResetLocalState', async (event) => {
@@ -2172,11 +2172,11 @@ app.whenReady().then(async () => {
       throw new Error('Blocked untrusted local reset request.')
     }
 
-    const hadRunner = Boolean(localHostRunner)
+    const hadRunner = Boolean(piHostRunner)
 
-    if (localHostRunner) {
-      localHostRunner.stop()
-      localHostRunner = null
+    if (piHostRunner) {
+      piHostRunner.stop()
+      piHostRunner = null
     }
 
     setHostAuthState(false)
@@ -2217,7 +2217,7 @@ app.whenReady().then(async () => {
       const deviceIdentity = await getOrCreateDeviceIdentity(StellaHome.statePath)
       deviceId = deviceIdentity.deviceId
 
-      localHostRunner = createPiHostRunner({
+      piHostRunner = createPiHostRunner({
         deviceId,
         StellaHome: StellaHome.homePath,
         frontendRoot: path.resolve(__dirname, '..'),
@@ -2228,9 +2228,9 @@ app.whenReady().then(async () => {
         }),
       })
       if (pendingConvexUrl) {
-        localHostRunner.setConvexUrl(pendingConvexUrl)
+        piHostRunner.setConvexUrl(pendingConvexUrl)
       }
-      localHostRunner.start()
+      piHostRunner.start()
     }
 
     broadcastUiState()
@@ -2498,20 +2498,20 @@ app.whenReady().then(async () => {
     if (!StellaHomePath) {
       return { data: null, formatted: null, error: 'Stella home not initialized' }
     }
-    const categories = options?.categories as import('./local-host/discovery_types.js').DiscoveryCategory[] | undefined
+    const categories = options?.categories as import('./system/discovery_types.js').DiscoveryCategory[] | undefined
     return collectAllSignals(StellaHomePath, categories)
   })
 
   // Identity map for depseudonymization
   ipcMain.handle('identity:getMap', async () => {
     if (!StellaHomePath) return { version: 1, mappings: [] }
-    const { loadIdentityMap } = await import('./local-host/identity_map.js')
+    const { loadIdentityMap } = await import('./system/identity_map.js')
     return loadIdentityMap(StellaHomePath)
   })
 
   ipcMain.handle('identity:depseudonymize', async (_event, text: string) => {
     if (!StellaHomePath || !text) return text
-    const { loadIdentityMap, depseudonymize } = await import('./local-host/identity_map.js')
+    const { loadIdentityMap, depseudonymize } = await import('./system/identity_map.js')
     const map = await loadIdentityMap(StellaHomePath)
     if (map.mappings.length === 0) return text
     return depseudonymize(text, map)
@@ -2697,8 +2697,8 @@ app.whenReady().then(async () => {
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       throw new Error('Invalid port.')
     }
-    if (localHostRunner) {
-      localHostRunner.killShellsByPort(port)
+    if (piHostRunner) {
+      piHostRunner.killShellsByPort(port)
     }
   })
 
@@ -2727,7 +2727,7 @@ app.whenReady().then(async () => {
     }
   })
 
-  // ─── Local Agent Runtime IPC ──────────────────────────────────────────────
+  // --- Local Agent Runtime IPC --------------------------------------------
 
   type AgentEventPayload = {
     type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end'
@@ -2796,11 +2796,11 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.handle('agent:healthCheck', async () => {
-    if (!localHostRunner) {
+    if (!piHostRunner) {
       console.log('[agent:healthCheck] no runner')
       return null
     }
-    const result = localHostRunner.agentHealthCheck()
+    const result = piHostRunner.agentHealthCheck()
     if (result) {
       console.log('[agent:healthCheck]', result)
     }
@@ -2808,10 +2808,10 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('agent:getActiveRun', async () => {
-    if (!localHostRunner) return null
-    const health = localHostRunner.agentHealthCheck()
+    if (!piHostRunner) return null
+    const health = piHostRunner.agentHealthCheck()
     if (!health?.ready) return null
-    return localHostRunner.getActiveOrchestratorRun()
+    return piHostRunner.getActiveOrchestratorRun()
   })
 
   ipcMain.handle('agent:resume', async (_event, payload: { runId: string; lastSeq: number }) => {
@@ -2841,22 +2841,22 @@ app.whenReady().then(async () => {
     localHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   }) => {
     console.log('[agent:startChat] received', {
-      hasRunner: !!localHostRunner,
+      hasRunner: !!piHostRunner,
       conversationId: payload.conversationId,
       storageMode: payload.storageMode,
     })
-    if (!localHostRunner) {
-      throw new Error('Local host runner not available')
+    if (!piHostRunner) {
+      throw new Error('Pi runtime not available')
     }
 
-    const healthCheck = localHostRunner.agentHealthCheck()
+    const healthCheck = piHostRunner.agentHealthCheck()
     console.log('[agent:startChat] healthCheck =', healthCheck)
     if (!healthCheck?.ready) {
       throw new Error('Agent runtime not ready')
     }
 
     const senderWebContentsId = _event.sender.id
-    const result = await localHostRunner.handleLocalChat(payload, {
+    const result = await piHostRunner.handleLocalChat(payload, {
       onStream: (ev) => emitAgentEvent(ev.runId, { type: 'stream', ...ev }, senderWebContentsId),
       onToolStart: (ev) => emitAgentEvent(ev.runId, { type: 'tool-start', ...ev }, senderWebContentsId),
       onToolEnd: (ev) => emitAgentEvent(ev.runId, { type: 'tool-end', ...ev }, senderWebContentsId),
@@ -2875,15 +2875,15 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.on('agent:cancelChat', (_event, runId: string) => {
-    if (localHostRunner && typeof runId === 'string') {
-      localHostRunner.cancelLocalChat(runId)
+    if (piHostRunner && typeof runId === 'string') {
+      piHostRunner.cancelLocalChat(runId)
       agentRunOwners.delete(runId)
     }
   })
 
   ipcMain.handle('selfmod:revert', async (_event, payload: { featureId: string; steps?: number }) => {
-    if (!localHostRunner) {
-      throw new Error('Local host runner not available')
+    if (!piHostRunner) {
+      throw new Error('Pi runtime not available')
     }
     // Import revert handler dynamically to avoid circular deps
     const { handleSelfModRevert } = await import('./pi-runtime/extensions/stella/tools_self_mod.js')
@@ -2897,18 +2897,18 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('selfmod:lastFeature', async () => {
-    if (!localHostRunner) return null
-    return localHostRunner.getLastAppliedFeatureId()
+    if (!piHostRunner) return null
+    return piHostRunner.getLastAppliedFeatureId()
   })
 
-  // App reload — used by recovery page to restart the full app after crash recovery
+  // App reload - used by recovery page to restart the full app after crash recovery
   ipcMain.on('app:reload', () => {
     if (fullWindow && !fullWindow.isDestroyed()) {
       loadWindow(fullWindow, 'full')
     }
   })
 
-  // ── Local event store IPC ──────────────────────────────────────────────
+  // -- Local event store IPC -----------------------------------------------
   ipcMain.handle('eventStore:append', (_event, args: EventStoreAppendArgs) => {
     if (!StellaHomePath) throw new Error('Stella home not resolved')
     const store = getLocalEventStore(StellaHomePath)
@@ -2982,8 +2982,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   isQuitting = true
   stopAuthRefreshLoop()
-  if (localHostRunner) {
-    localHostRunner.killAllShells()
+  if (piHostRunner) {
+    piHostRunner.killAllShells()
   }
   bridgeManager.stopAll()
   cleanupSelectedTextProcess()
@@ -2997,8 +2997,8 @@ app.on('will-quit', () => {
     mouseHook.stop()
     mouseHook = null
   }
-  if (localHostRunner) {
-    localHostRunner.stop()
-    localHostRunner = null
+  if (piHostRunner) {
+    piHostRunner.stop()
+    piHostRunner = null
   }
 })

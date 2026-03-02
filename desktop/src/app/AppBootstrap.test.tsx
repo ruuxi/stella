@@ -39,7 +39,7 @@ vi.mock("../convex/api", () => ({
   },
 }));
 
-const mockConfigureLocalHost = vi.fn();
+const mockConfigurePiRuntime = vi.fn();
 const mockGetOrCreateDeviceId = vi.fn();
 const mockGetOrCreateLocalConversationId = vi.fn(() => "01KHVRH3ZAPQN48JWYNJNYDCVC");
 const mockBuildLocalSyncMessages = vi.fn(() => [] as Array<{
@@ -52,7 +52,7 @@ const mockBuildLocalSyncMessages = vi.fn(() => [] as Array<{
 const mockGetLocalSyncCheckpoint = vi.fn((): string | null => null);
 const mockSetLocalSyncCheckpoint = vi.fn();
 vi.mock("../services/device", () => ({
-  configureLocalHost: () => mockConfigureLocalHost(),
+  configurePiRuntime: () => mockConfigurePiRuntime(),
   getOrCreateDeviceId: () => mockGetOrCreateDeviceId(),
 }));
 vi.mock("../services/local-chat-store", () => ({
@@ -67,7 +67,7 @@ describe("AppBootstrap", () => {
     vi.clearAllMocks();
     mockUseConvexAuth.mockReturnValue({ isAuthenticated: true, isLoading: false });
     mockUseQuery.mockReturnValue("connected");
-    mockConfigureLocalHost.mockResolvedValue(undefined);
+    mockConfigurePiRuntime.mockResolvedValue(undefined);
     mockGetOrCreateDeviceId.mockResolvedValue("device-id-123");
     mockGetOrCreateDefaultConversation.mockResolvedValue({
       _id: "conv-123",
@@ -96,10 +96,10 @@ describe("AppBootstrap", () => {
     });
   });
 
-  it("calls configureLocalHost and getOrCreateDeviceId", async () => {
+  it("calls configurePiRuntime and getOrCreateDeviceId", async () => {
     render(<AppBootstrap />);
     await waitFor(() => {
-      expect(mockConfigureLocalHost).toHaveBeenCalled();
+      expect(mockConfigurePiRuntime).toHaveBeenCalled();
       expect(mockGetOrCreateDeviceId).toHaveBeenCalled();
     });
   });
@@ -141,8 +141,8 @@ describe("AppBootstrap", () => {
     expect(mockSetConversationId).not.toHaveBeenCalled();
   });
 
-  it("handles configureLocalHost failure gracefully", async () => {
-    mockConfigureLocalHost.mockRejectedValue(new Error("host setup failed"));
+  it("handles configurePiRuntime failure gracefully", async () => {
+    mockConfigurePiRuntime.mockRejectedValue(new Error("host setup failed"));
     render(<AppBootstrap />);
     await waitFor(() => {
       expect(mockSetConversationId).toHaveBeenCalledWith("conv-123");
@@ -165,7 +165,7 @@ describe("AppBootstrap", () => {
     render(<AppBootstrap />);
 
     await waitFor(() => {
-      expect(mockConfigureLocalHost).toHaveBeenCalled();
+      expect(mockConfigurePiRuntime).toHaveBeenCalled();
       expect(mockGetOrCreateDeviceId).toHaveBeenCalled();
     });
     expect(mockGetOrCreateDefaultConversation).not.toHaveBeenCalled();
