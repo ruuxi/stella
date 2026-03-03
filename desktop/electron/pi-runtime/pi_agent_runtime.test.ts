@@ -25,6 +25,24 @@ vi.mock("./extensions/stella/claude_code_session_runtime.js", () => ({
 
 import { runPiSubagentTask } from "./pi_agent_runtime.js";
 
+type StoreStub = {
+  appendThreadMessage: ReturnType<typeof vi.fn>;
+  loadThreadMessages: ReturnType<typeof vi.fn>;
+  recordRunEvent: ReturnType<typeof vi.fn>;
+  saveMemory: ReturnType<typeof vi.fn>;
+  recallMemories: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+};
+
+const createStoreStub = (): StoreStub => ({
+  appendThreadMessage: vi.fn(),
+  loadThreadMessages: vi.fn().mockReturnValue([]),
+  recordRunEvent: vi.fn(),
+  saveMemory: vi.fn(),
+  recallMemories: vi.fn().mockReturnValue([]),
+  close: vi.fn(),
+});
+
 const buildAgentContext = (
   overrides?: Partial<LocalTaskManagerAgentContext>,
 ): LocalTaskManagerAgentContext => ({
@@ -52,7 +70,7 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runPiSubagentTask>[0]>)
   stellaHome: "/tmp/.stella",
   proxyBaseUrl: "https://proxy.example.com/llm-proxy/v1",
   proxyToken: "proxy-token",
-  store: {} as JsonlRuntimeStore,
+  store: createStoreStub() as unknown as JsonlRuntimeStore,
   ...overrides,
 });
 
@@ -65,6 +83,7 @@ describe("runPiSubagentTask engine selection", () => {
   });
 
   it("uses Codex app server when generalAgentEngine is codex_local", async () => {
+    const store = createStoreStub();
     runCodexAppServerTurnMock.mockResolvedValue({
       text: "codex-result",
       threadId: "thread-1",
@@ -76,6 +95,7 @@ describe("runPiSubagentTask engine selection", () => {
         generalAgentEngine: "codex_local",
         codexLocalMaxConcurrency: 2,
       }),
+      store: store as unknown as JsonlRuntimeStore,
     }));
 
     expect(result.error).toBeUndefined();
@@ -86,10 +106,14 @@ describe("runPiSubagentTask engine selection", () => {
       maxConcurrency: 2,
       prompt: "Solve this task",
     }));
+    expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
+    expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
+    expect(store.appendThreadMessage).toHaveBeenCalledTimes(2);
     expect(runClaudeCodeTurnMock).not.toHaveBeenCalled();
   });
 
   it("uses Claude Code when generalAgentEngine is claude_code_local", async () => {
+    const store = createStoreStub();
     runClaudeCodeTurnMock.mockResolvedValue({
       text: "claude-result",
       sessionId: "session-1",
@@ -99,6 +123,7 @@ describe("runPiSubagentTask engine selection", () => {
       agentContext: buildAgentContext({
         generalAgentEngine: "claude_code_local",
       }),
+      store: store as unknown as JsonlRuntimeStore,
     }));
 
     expect(result.error).toBeUndefined();
@@ -108,10 +133,14 @@ describe("runPiSubagentTask engine selection", () => {
       modelId: "openai/gpt-4.1-mini",
       prompt: "Solve this task",
     }));
+    expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
+    expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
+    expect(store.appendThreadMessage).toHaveBeenCalledTimes(2);
     expect(runCodexAppServerTurnMock).not.toHaveBeenCalled();
   });
 
   it("uses Claude Code when model is claude-code/* for general agent", async () => {
+    const store = createStoreStub();
     isClaudeCodeModelMock.mockReturnValue(true);
     runClaudeCodeTurnMock.mockResolvedValue({
       text: "claude-model-result",
@@ -122,12 +151,16 @@ describe("runPiSubagentTask engine selection", () => {
       agentContext: buildAgentContext({
         model: "claude-code/sonnet",
       }),
+      store: store as unknown as JsonlRuntimeStore,
     }));
 
     expect(result.error).toBeUndefined();
     expect(result.result).toBe("claude-model-result");
     expect(isClaudeCodeModelMock).toHaveBeenCalledWith("claude-code/sonnet");
     expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
+    expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
+    expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
+    expect(store.appendThreadMessage).toHaveBeenCalledTimes(2);
     expect(runCodexAppServerTurnMock).not.toHaveBeenCalled();
   });
 });

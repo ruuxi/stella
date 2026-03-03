@@ -234,6 +234,16 @@ const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
   return sections.filter(Boolean).join("\n\n");
 };
 
+const buildSubagentThreadConversationId = (args: {
+  conversationId: string;
+  agentType: string;
+  runId: string;
+  threadId?: string;
+}): string => {
+  const threadKey = args.threadId?.trim() || `run:${args.runId}`;
+  return `${args.conversationId}::subagent::${args.agentType}::${threadKey}`;
+};
+
 const getRecallQuery = (args: Record<string, unknown>): string => {
   const direct = typeof args.query === "string" ? args.query : "";
   if (direct.trim()) return direct;
@@ -551,8 +561,44 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
 }> {
   const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
   const prompt = opts.userPrompt.trim();
+  const subagentThreadConversationId = buildSubagentThreadConversationId({
+    conversationId: opts.conversationId,
+    agentType: opts.agentType,
+    runId,
+    threadId: opts.agentContext.activeThreadId,
+  });
+  let seq = 0;
+  const nextSeq = () => ++seq;
+
+  opts.store.recordRunEvent({
+    timestamp: now(),
+    runId,
+    conversationId: opts.conversationId,
+    agentType: opts.agentType,
+    type: "run_start",
+  });
+
+  if (prompt) {
+    opts.store.appendThreadMessage({
+      timestamp: now(),
+      conversationId: subagentThreadConversationId,
+      role: "user",
+      content: prompt,
+    });
+  }
 
   if (opts.abortSignal?.aborted) {
+    const errSeq = nextSeq();
+    opts.store.recordRunEvent({
+      timestamp: now(),
+      runId,
+      conversationId: opts.conversationId,
+      agentType: opts.agentType,
+      seq: errSeq,
+      type: "error",
+      error: "Aborted",
+      fatal: true,
+    });
     return { runId, result: "", error: "Aborted" };
   }
 
@@ -569,15 +615,58 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
         sessionKey,
         prompt,
         abortSignal: opts.abortSignal,
-        onProgress: opts.onProgress,
+        onProgress: (chunk) => {
+          if (!chunk) return;
+          opts.onProgress?.(chunk);
+          const s = nextSeq();
+          opts.store.recordRunEvent({
+            timestamp: now(),
+            runId,
+            conversationId: opts.conversationId,
+            agentType: opts.agentType,
+            seq: s,
+            type: "stream",
+            chunk,
+          });
+        },
         maxConcurrency: opts.agentContext.codexLocalMaxConcurrency,
+      });
+      if (result.text.trim()) {
+        opts.store.appendThreadMessage({
+          timestamp: now(),
+          conversationId: subagentThreadConversationId,
+          role: "assistant",
+          content: result.text,
+        });
+      }
+      const endSeq = nextSeq();
+      opts.store.recordRunEvent({
+        timestamp: now(),
+        runId,
+        conversationId: opts.conversationId,
+        agentType: opts.agentType,
+        seq: endSeq,
+        type: "run_end",
+        finalText: result.text,
       });
       return { runId, result: result.text };
     } catch (error) {
+      const errorMessage = `Codex App Server execution failed: ${(error as Error).message || "Unknown error"}`;
+      const errSeq = nextSeq();
+      opts.store.recordRunEvent({
+        timestamp: now(),
+        runId,
+        conversationId: opts.conversationId,
+        agentType: opts.agentType,
+        seq: errSeq,
+        type: "error",
+        error: errorMessage,
+        fatal: true,
+      });
       return {
         runId,
         result: "",
-        error: `Codex App Server execution failed: ${(error as Error).message || "Unknown error"}`,
+        error: errorMessage,
       };
     }
   }
@@ -593,14 +682,57 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
         modelId: primaryModelId,
         prompt,
         abortSignal: opts.abortSignal,
-        onProgress: opts.onProgress,
+        onProgress: (chunk) => {
+          if (!chunk) return;
+          opts.onProgress?.(chunk);
+          const s = nextSeq();
+          opts.store.recordRunEvent({
+            timestamp: now(),
+            runId,
+            conversationId: opts.conversationId,
+            agentType: opts.agentType,
+            seq: s,
+            type: "stream",
+            chunk,
+          });
+        },
+      });
+      if (result.text.trim()) {
+        opts.store.appendThreadMessage({
+          timestamp: now(),
+          conversationId: subagentThreadConversationId,
+          role: "assistant",
+          content: result.text,
+        });
+      }
+      const endSeq = nextSeq();
+      opts.store.recordRunEvent({
+        timestamp: now(),
+        runId,
+        conversationId: opts.conversationId,
+        agentType: opts.agentType,
+        seq: endSeq,
+        type: "run_end",
+        finalText: result.text,
       });
       return { runId, result: result.text };
     } catch (error) {
+      const errorMessage = `Claude Code execution failed: ${(error as Error).message || "Unknown error"}`;
+      const errSeq = nextSeq();
+      opts.store.recordRunEvent({
+        timestamp: now(),
+        runId,
+        conversationId: opts.conversationId,
+        agentType: opts.agentType,
+        seq: errSeq,
+        type: "error",
+        error: errorMessage,
+        fatal: true,
+      });
       return {
         runId,
         result: "",
-        error: `Claude Code execution failed: ${(error as Error).message || "Unknown error"}`,
+        error: errorMessage,
       };
     }
   }
@@ -645,7 +777,49 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
       const chunk = event.assistantMessageEvent.delta;
       if (chunk) {
         opts.onProgress?.(chunk);
+        const s = nextSeq();
+        opts.store.recordRunEvent({
+          timestamp: now(),
+          runId,
+          conversationId: opts.conversationId,
+          agentType: opts.agentType,
+          seq: s,
+          type: "stream",
+          chunk,
+        });
       }
+      return;
+    }
+
+    if (event.type === "tool_execution_start") {
+      const s = nextSeq();
+      opts.store.recordRunEvent({
+        timestamp: now(),
+        runId,
+        conversationId: opts.conversationId,
+        agentType: opts.agentType,
+        seq: s,
+        type: "tool_start",
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+      });
+      return;
+    }
+
+    if (event.type === "tool_execution_end") {
+      const preview = textFromUnknown(event.result).slice(0, MAX_RESULT_PREVIEW);
+      const s = nextSeq();
+      opts.store.recordRunEvent({
+        timestamp: now(),
+        runId,
+        conversationId: opts.conversationId,
+        agentType: opts.agentType,
+        seq: s,
+        type: "tool_end",
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        resultPreview: preview,
+      });
     }
   });
 
@@ -660,16 +834,46 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
       .reverse()
       .find((message) => message.role === "assistant");
     const result = extractAssistantText(latestAssistant);
+    if (result.trim()) {
+      opts.store.appendThreadMessage({
+        timestamp: now(),
+        conversationId: subagentThreadConversationId,
+        role: "assistant",
+        content: result,
+      });
+    }
+    const endSeq = nextSeq();
+    opts.store.recordRunEvent({
+      timestamp: now(),
+      runId,
+      conversationId: opts.conversationId,
+      agentType: opts.agentType,
+      seq: endSeq,
+      type: "run_end",
+      finalText: result,
+    });
 
     return {
       runId,
       result,
     };
   } catch (error) {
+    const errorMessage = (error as Error).message || "Subagent failed";
+    const errSeq = nextSeq();
+    opts.store.recordRunEvent({
+      timestamp: now(),
+      runId,
+      conversationId: opts.conversationId,
+      agentType: opts.agentType,
+      seq: errSeq,
+      type: "error",
+      error: errorMessage,
+      fatal: true,
+    });
     return {
       runId,
       result: "",
-      error: (error as Error).message || "Subagent failed",
+      error: errorMessage,
     };
   } finally {
     unsubscribe();
