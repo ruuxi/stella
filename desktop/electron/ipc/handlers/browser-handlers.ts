@@ -1,0 +1,99 @@
+import { ipcMain } from 'electron'
+import {
+  collectBrowserData,
+  coreMemoryExists,
+  detectPreferredBrowserProfile,
+  formatBrowserDataForSynthesis,
+  listBrowserProfiles,
+  writeCoreMemory,
+  type BrowserData,
+  type BrowserType,
+} from '../../system/browser-data.js'
+import { collectAllSignals } from '../../system/collect-all.js'
+import type { AllUserSignalsResult } from '../../system/types.js'
+import type { WorkspaceService } from '../../services/workspace-service.js'
+
+type BrowserHandlersOptions = {
+  getStellaHomePath: () => string | null
+  workspaceService: WorkspaceService
+}
+
+export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
+  ipcMain.handle('browserData:exists', async () => {
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) return false
+    return coreMemoryExists(stellaHomePath)
+  })
+
+  ipcMain.handle('browserData:collect', async (): Promise<{
+    data: BrowserData | null
+    formatted: string | null
+    error?: string
+  }> => {
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) {
+      return { data: null, formatted: null, error: 'Stella home not initialized' }
+    }
+    try {
+      const data = await collectBrowserData(stellaHomePath)
+      const formatted = formatBrowserDataForSynthesis(data)
+      return { data, formatted }
+    } catch (error) {
+      return {
+        data: null,
+        formatted: null,
+        error: (error as Error).message,
+      }
+    }
+  })
+
+  ipcMain.handle('browserData:writeCoreMemory', async (_event, content: string) => {
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) {
+      return { ok: false, error: 'Stella home not initialized' }
+    }
+    try {
+      await writeCoreMemory(stellaHomePath, content)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('browserData:detectPreferredBrowser', async () => {
+    return detectPreferredBrowserProfile()
+  })
+
+  ipcMain.handle('browserData:listProfiles', async (_event, browserType: string) => {
+    return listBrowserProfiles(browserType as BrowserType)
+  })
+
+  ipcMain.handle('workspace:listPanels', async () => {
+    return options.workspaceService.listWorkspacePanels()
+  })
+
+  ipcMain.handle('signals:collectAll', async (_event, ipcOptions?: { categories?: string[] }): Promise<AllUserSignalsResult> => {
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) {
+      return { data: null, formatted: null, error: 'Stella home not initialized' }
+    }
+    const categories = ipcOptions?.categories as import('../../system/discovery_types.js').DiscoveryCategory[] | undefined
+    return collectAllSignals(stellaHomePath, categories)
+  })
+
+  ipcMain.handle('identity:getMap', async () => {
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) return { version: 1, mappings: [] }
+    const { loadIdentityMap } = await import('../../system/identity_map.js')
+    return loadIdentityMap(stellaHomePath)
+  })
+
+  ipcMain.handle('identity:depseudonymize', async (_event, text: string) => {
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath || !text) return text
+    const { loadIdentityMap, depseudonymize } = await import('../../system/identity_map.js')
+    const map = await loadIdentityMap(stellaHomePath)
+    if (map.mappings.length === 0) return text
+    return depseudonymize(text, map)
+  })
+}

@@ -1,0 +1,53 @@
+import { BrowserWindow, ipcMain } from 'electron'
+import type { CaptureService } from '../../services/capture-service.js'
+import type { RegionSelection } from '../../types.js'
+import type { WindowManager } from '../../windows/window-manager.js'
+
+type CaptureHandlersOptions = {
+  captureService: CaptureService
+  windowManager: WindowManager
+}
+
+export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
+  ipcMain.on('chatContext:ack', (event, payload: { version?: unknown }) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const miniWindow = options.windowManager.getMiniWindow()
+    if (!miniWindow || win !== miniWindow) {
+      return
+    }
+
+    const version = payload?.version
+    if (typeof version !== 'number') {
+      return
+    }
+
+    options.captureService.ackMiniChatContext(version)
+  })
+
+  ipcMain.handle('chatContext:get', () => options.captureService.getChatContextSnapshot())
+
+  ipcMain.on('chatContext:removeScreenshot', (_event, index: number) => {
+    options.captureService.removeScreenshot(index)
+    options.captureService.broadcastChatContext()
+  })
+
+  ipcMain.on('region:select', (_event, selection: RegionSelection) => {
+    void options.captureService.finalizeRegionCapture(selection)
+  })
+
+  ipcMain.on('region:cancel', () => {
+    options.captureService.cancelRegionCapture()
+  })
+
+  ipcMain.handle('region:getWindowCapture', async (_event, point: { x: number; y: number }) => {
+    return options.captureService.getRegionWindowCapture(point)
+  })
+
+  ipcMain.on('region:click', async (_event, point: { x: number; y: number }) => {
+    await options.captureService.handleRegionClick(point)
+  })
+
+  ipcMain.handle('screenshot:capture', async (_event, point?: { x: number; y: number }) => {
+    return options.captureService.captureScreenshot(point)
+  })
+}

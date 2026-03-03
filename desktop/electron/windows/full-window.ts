@@ -1,0 +1,115 @@
+import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
+import path from 'path'
+import { loadWindow } from './window-load.js'
+
+type FullWindowControllerOptions = {
+  electronDir: string
+  preloadPath: string
+  sessionPartition: string
+  isDev: boolean
+  getDevServerUrl: () => string
+  setupExternalLinkHandlers: (window: BrowserWindow) => void
+  onDidStartLoading?: () => void
+  onRenderProcessGone?: (details: RenderProcessGoneDetails, window: BrowserWindow) => void
+  onClosed?: () => void
+}
+
+export class FullWindowController {
+  private window: BrowserWindow | null = null
+  private lastBounds: Electron.Rectangle | null = null
+
+  constructor(private readonly options: FullWindowControllerOptions) {}
+
+  getWindow() {
+    return this.window
+  }
+
+  getLastBounds() {
+    return this.lastBounds
+  }
+
+  create() {
+    if (this.window && !this.window.isDestroyed()) {
+      return this.window
+    }
+
+    const isMac = process.platform === 'darwin'
+    const isWindows = process.platform === 'win32'
+    const window = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      minWidth: 400,
+      minHeight: 300,
+      frame: isMac,
+      titleBarStyle: isMac ? 'hiddenInset' : undefined,
+      trafficLightPosition: isMac ? { x: 16, y: 18 } : undefined,
+      ...(isWindows || process.platform === 'linux' ? { frame: false } : {}),
+      webPreferences: {
+        preload: this.options.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        partition: this.options.sessionPartition,
+      },
+    })
+
+    this.window = window
+    this.lastBounds = window.getBounds()
+
+    window.on('resize', () => {
+      this.lastBounds = window.getBounds()
+    })
+    window.on('move', () => {
+      this.lastBounds = window.getBounds()
+    })
+
+    this.options.setupExternalLinkHandlers(window)
+    loadWindow(window, {
+      electronDir: this.options.electronDir,
+      isDev: this.options.isDev,
+      mode: 'full',
+      getDevServerUrl: this.options.getDevServerUrl,
+    })
+
+    if (this.options.isDev) {
+      window.webContents.openDevTools()
+    }
+
+    window.webContents.on('did-start-loading', () => {
+      this.options.onDidStartLoading?.()
+    })
+
+    window.webContents.on('render-process-gone', (_event, details) => {
+      this.options.onRenderProcessGone?.(details, window)
+    })
+
+    window.on('closed', () => {
+      this.window = null
+      this.options.onClosed?.()
+    })
+
+    return window
+  }
+
+  ensureWindow() {
+    return this.create()
+  }
+
+  loadRecoveryPage() {
+    if (!this.window || this.window.isDestroyed()) {
+      return
+    }
+    this.window.loadFile(path.join(this.options.electronDir, 'recovery.html'))
+  }
+
+  reloadMainWindow() {
+    if (!this.window || this.window.isDestroyed()) {
+      return
+    }
+    loadWindow(this.window, {
+      electronDir: this.options.electronDir,
+      isDev: this.options.isDev,
+      mode: 'full',
+      getDevServerUrl: this.options.getDevServerUrl,
+    })
+  }
+}
