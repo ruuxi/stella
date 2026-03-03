@@ -276,6 +276,7 @@ export type ElectronApi = {
   onVoiceTranscript: (callback: (transcript: string) => void) => () => void
 
   // Voice-to-Voice (Realtime API)
+  persistVoiceTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) => void
   voiceOrchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
   setVoiceRtcShortcut: (shortcut: string) => void
   onVoiceRtcPreWarm: (callback: (conversationId: string) => void) => () => void
