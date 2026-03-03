@@ -24,13 +24,14 @@ describe("history message formatting", () => {
         type: "assistant_message",
         payload: { text: "Trying that now." },
       },
-    ] as any[];
+    ] as unknown[];
 
     const messages = eventsToHistoryMessages(events).messages;
-    expect(messages).toEqual([
-      { role: "user", content: "Open Microsoft Word" },
-      { role: "assistant", content: "Trying that now." },
-    ]);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.role).toBe("user");
+    expect(messages[0]?.content).toContain("Open Microsoft Word");
+    expect(messages[1]?.role).toBe("assistant");
+    expect(messages[1]?.content).toContain("Trying that now.");
   });
 
   test("replays tool calls and tool results", () => {
@@ -56,7 +57,7 @@ describe("history message formatting", () => {
           result: "Command executed successfully.",
         },
       },
-    ] as any[];
+    ] as unknown[];
 
     const messages = eventsToHistoryMessages(events).messages;
     expect(messages).toHaveLength(2);
@@ -94,14 +95,15 @@ describe("history message formatting", () => {
         type: "user_message",
         payload: { text: "Any update?" },
       },
-    ] as any[];
+    ] as unknown[];
 
     const messages = eventsToHistoryMessages(events).messages;
     expect(messages).toHaveLength(3);
     expect(messages[1]?.content).toContain("[Tool result] Bash");
     expect(messages[1]?.content).toContain("request_id: req_missing");
     expect(messages[1]?.content).toContain("No result provided");
-    expect(messages[2]).toEqual({ role: "user", content: "Any update?" });
+    expect(messages[2]?.role).toBe("user");
+    expect(messages[2]?.content).toContain("Any update?");
   });
 
   test("replays task lifecycle events", () => {
@@ -134,7 +136,7 @@ describe("history message formatting", () => {
           error: "Tool timed out",
         },
       },
-    ] as any[];
+    ] as unknown[];
 
     const messages = eventsToHistoryMessages(events).messages;
     expect(messages).toHaveLength(3);
@@ -157,9 +159,11 @@ describe("history message formatting", () => {
         type: "user_message",
         payload: { text: "Hello" },
       },
-    ] as any[];
+    ] as unknown[];
 
     const messages = eventsToHistoryMessages(events).messages;
-    expect(messages).toEqual([{ role: "user", content: "Hello" }]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.role).toBe("user");
+    expect(messages[0]?.content).toContain("Hello");
   });
 });

@@ -18,21 +18,21 @@ describe("memory compaction acceptance", () => {
     expect(source).toContain("140_000");
   });
 
-  test("dynamic reminder injection is hash/thread gated and persisted", () => {
+  test("dynamic reminder injection is token-interval gated and persisted", () => {
     const promptSource = readBackendFile("convex/agent/orchestrator_prompt_context.ts");
     const conversationSource = readBackendFile("convex/conversations.ts");
 
-    expect(promptSource).toContain("orchestratorReminderHash");
-    expect(promptSource).toContain("orchestratorReminderThreadId");
+    expect(promptSource).toContain("reminderTokensSinceLastInjection");
+    expect(promptSource).toContain("forceReminderOnNextTurn");
     expect(promptSource).toContain("shouldInjectDynamicReminder");
-    expect(conversationSource).toContain("markOrchestratorReminderSeen");
+    expect(conversationSource).toContain("updateReminderTokenCounter");
   });
 
   test("recall history embeddings remain scoped to user/assistant messages", () => {
     const memorySource = readBackendFile("convex/data/memory.ts");
     const embeddingSource = readBackendFile("convex/data/event_embeddings.ts");
 
-    expect(memorySource).toContain('vectorSearch("event_embeddings"');
+    expect(memorySource).toContain("internal.data.event_embeddings.searchByContent");
     expect(embeddingSource).toContain('event.type !== "user_message" && event.type !== "assistant_message"');
   });
 

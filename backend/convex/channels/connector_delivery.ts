@@ -10,12 +10,31 @@
  */
 import { internalAction, internalQuery, mutation } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { jsonValueValidator } from "../shared_validators";
 import { retryFetch } from "../lib/retry_fetch";
-import { requireUserId } from "../auth";
+import { base64UrlDecode } from "../lib/crypto_utils";
+import { requireConversationOwner } from "../auth";
 import { runAgentTurn } from "../automation/runner";
 import type { Id } from "../_generated/dataModel";
+
+// ─── Connector Message Length Limits ──────────────────────────────────────────
+const SLACK_MAX_MESSAGE_CHARS = 40_000;
+const TELEGRAM_MAX_MESSAGE_CHARS = 4096;
+const DISCORD_MAX_MESSAGE_CHARS = 2000;
+const GOOGLE_CHAT_MAX_MESSAGE_CHARS = 4096;
+const TEAMS_MAX_MESSAGE_CHARS = 28_000;
+
+// ─── OAuth / JWT Token Constants ─────────────────────────────────────────────
+const GOOGLE_JWT_EXPIRATION_SECONDS = 3600;
+const TOKEN_REFRESH_BUFFER_MS = 60_000;
+const DEFAULT_TOKEN_LIFETIME_SECONDS = 3600;
+
+/** Truncate text to fit a connector's message-size limit, appending a suffix when clipped. */
+const truncateForConnector = (text: string, maxLen: number): string =>
+  text.length > maxLen
+    ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
+    : text;
 
 // ─── Public Mutation (called by local device via HTTP) ──────────────────────
 export const completeRemoteTurn = mutation({
@@ -26,13 +45,7 @@ export const completeRemoteTurn = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-
-    // Verify conversation ownership
-    const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation || conversation.ownerId !== userId) {
-      throw new Error("Not authorized");
-    }
+    await requireConversationOwner(ctx, args.conversationId);
 
     // Idempotency: skip if already claimed
     const existing = await ctx.db
@@ -50,7 +63,7 @@ export const completeRemoteTurn = mutation({
       .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
       .first();
     if (!request || request.type !== "remote_turn_request") {
-      throw new Error("Invalid or missing remote_turn_request");
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "Invalid or missing remote_turn_request" });
     }
     const reqPayload = request.payload as Record<string, unknown>;
     const provider = reqPayload.provider as string;
@@ -121,9 +134,10 @@ export const deliverToConnector = internalAction({
           await deliverBridge(ctx, meta, args.text, args.provider);
           break;
         default:
-          console.error(
-            `[connector_delivery] Unknown provider: ${args.provider}`,
-          );
+          throw new ConvexError({
+            code: "INVALID_ARGUMENT",
+            message: `Unknown delivery provider: ${args.provider}`,
+          });
       }
 
       // Mark fulfilled AFTER successful delivery
@@ -144,8 +158,14 @@ export const deliverToConnector = internalAction({
     return null;
   },
 });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Convex ActionCtx.runQuery/runMutation have complex generated types
+type InternalRunCtx = {
+  runQuery: (...args: any[]) => Promise<unknown>;
+  runMutation: (...args: any[]) => Promise<unknown>;
+};
+
 async function deliverSlack(
-  ctx: { runQuery: (ref: never, args: never) => Promise<unknown> },
+  ctx: Pick<InternalRunCtx, "runQuery">,
   meta: Record<string, unknown>,
   text: string,
 ) {
@@ -160,8 +180,8 @@ async function deliverSlack(
   let token: string | null = null;
   if (teamId) {
     const installation = (await ctx.runQuery(
-      internal.channels.slack_installations.getByTeamId as never,
-      { teamId } as never,
+      internal.channels.slack_installations.getByTeamId,
+      { teamId },
     )) as { botToken: string } | null;
     if (installation) token = installation.botToken;
   }
@@ -173,11 +193,7 @@ async function deliverSlack(
     return;
   }
 
-  const maxLen = 40000;
-  const truncated =
-    text.length > maxLen
-      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
-      : text;
+  const truncated = truncateForConnector(text, SLACK_MAX_MESSAGE_CHARS);
 
   const res = await retryFetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
@@ -212,11 +228,7 @@ async function deliverTelegram(
     return;
   }
 
-  const maxLen = 4096;
-  const truncated =
-    text.length > maxLen
-      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
-      : text;
+  const truncated = truncateForConnector(text, TELEGRAM_MAX_MESSAGE_CHARS);
 
   // Try MarkdownV2 first, fall back to plain text
   const mdRes = await retryFetch(
@@ -253,11 +265,7 @@ async function deliverDiscord(
     return;
   }
 
-  const maxLen = 2000;
-  const truncated =
-    text.length > maxLen
-      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
-      : text;
+  const truncated = truncateForConnector(text, DISCORD_MAX_MESSAGE_CHARS);
 
   // Edit the deferred interaction response
   const res = await fetch(
@@ -303,11 +311,7 @@ async function deliverGoogleChat(
 
   const accessToken = await getGoogleAccessToken();
 
-  const maxLen = 4096;
-  const truncated =
-    text.length > maxLen
-      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
-      : text;
+  const truncated = truncateForConnector(text, GOOGLE_CHAT_MAX_MESSAGE_CHARS);
 
   const res = await retryFetch(
     `https://chat.googleapis.com/v1/${spaceName}/messages`,
@@ -341,11 +345,7 @@ async function deliverTeams(meta: Record<string, unknown>, text: string) {
 
   const token = await getTeamsBotToken();
 
-  const maxLen = 28000;
-  const truncated =
-    text.length > maxLen
-      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
-      : text;
+  const truncated = truncateForConnector(text, TEAMS_MAX_MESSAGE_CHARS);
 
   const baseUrl = serviceUrl.endsWith("/")
     ? serviceUrl.slice(0, -1)
@@ -436,10 +436,7 @@ async function deliverLinq(meta: Record<string, unknown>, text: string) {
   }
 }
 async function deliverBridge(
-  ctx: {
-    runQuery: (ref: never, args: never) => Promise<unknown>;
-    runMutation: (ref: never, args: never) => Promise<unknown>;
-  },
+  ctx: InternalRunCtx,
   meta: Record<string, unknown>,
   text: string,
   provider: string,
@@ -455,8 +452,8 @@ async function deliverBridge(
 
   // Look up the bridge session by ownerId and provider
   const session = (await ctx.runQuery(
-    internal.channels.bridge.getBridgeSession as never,
-    { ownerId, provider } as never,
+    internal.channels.bridge.getBridgeSession,
+    { ownerId, provider },
   )) as { _id: string } | null;
 
   if (!session) {
@@ -466,34 +463,26 @@ async function deliverBridge(
     return;
   }
 
-  await ctx.runMutation(internal.channels.bridge_outbound.enqueue as never, {
+  await ctx.runMutation(internal.channels.bridge_outbound.enqueue, {
     sessionId: session._id,
     ownerId,
     provider,
     externalUserId,
     text,
-  } as never);
+  });
 }
 // ─── Shared Auth Helpers ────────────────────────────────────────────────────
 
 // Google Chat service account JWT auth
+// Module-level cache: cold starts reset to null; fallback is a fresh token fetch.
 let cachedGoogleToken: { token: string; expiresAt: number } | null = null;
 
-function base64UrlDecode(str: string): Uint8Array {
-  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
+// base64UrlDecode imported from lib/crypto_utils
 
 async function getGoogleAccessToken(): Promise<string> {
   if (
     cachedGoogleToken &&
-    cachedGoogleToken.expiresAt > Date.now() + 60_000
+    cachedGoogleToken.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS
   ) {
     return cachedGoogleToken.token;
   }
@@ -510,7 +499,7 @@ async function getGoogleAccessToken(): Promise<string> {
     scope: "https://www.googleapis.com/auth/chat.bot",
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
-    exp: now + 3600,
+    exp: now + GOOGLE_JWT_EXPIRATION_SECONDS,
   };
 
   const encode = (obj: unknown) => {
@@ -573,16 +562,17 @@ async function getGoogleAccessToken(): Promise<string> {
     token: tokenData.access_token,
     expiresAt:
       Date.now() +
-      ((Number.isFinite(expiresIn) ? expiresIn : 3600) - 60) * 1000,
+      ((Number.isFinite(expiresIn) ? expiresIn : DEFAULT_TOKEN_LIFETIME_SECONDS) - 60) * 1000,
   };
   return tokenData.access_token;
 }
 
 // Teams Bot Framework token auth
+// Module-level cache: cold starts reset to null; fallback is a fresh token fetch.
 let cachedBotToken: { token: string; expiresAt: number } | null = null;
 
 async function getTeamsBotToken(): Promise<string> {
-  if (cachedBotToken && cachedBotToken.expiresAt > Date.now() + 60000) {
+  if (cachedBotToken && cachedBotToken.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
     return cachedBotToken.token;
   }
 
@@ -621,15 +611,15 @@ async function getTeamsBotToken(): Promise<string> {
 
 /** Fetch the most recent assistant_message text for a conversation. */
 async function getLatestAssistantText(
-  ctx: { runQuery: (ref: never, args: never) => Promise<unknown> },
+  ctx: Pick<InternalRunCtx, "runQuery">,
   conversationId: Id<"conversations">,
 ): Promise<string> {
   const events = (await ctx.runQuery(
-    internal.events.listEventsSince as never,
+    internal.events.listEventsSince,
     {
       conversationId,
       limit: 20,
-    } as never,
+    },
   )) as Array<{ type: string; payload: Record<string, unknown> }> | null;
 
   if (!events) return "(Stella had nothing to say.)";

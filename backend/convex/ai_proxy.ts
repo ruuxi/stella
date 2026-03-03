@@ -19,35 +19,29 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { streamText, generateText, createGateway, embed } from "ai";
 import { getModelConfig } from "./agent/model";
+import { getClientAddressKey } from "./lib/http_utils";
+import { parseJsonObject, asNonEmptyString, withoutTrailingSlash } from "./lib/json";
+import { getCorsHeaders, withCors, errorResponse, jsonResponse } from "./http_shared/cors";
+import { getAnonDeviceId, isAnonDeviceHashSaltMissingError, logMissingSaltOnce } from "./http_shared/anon_device";
+import { resolveByokApiKey, resolvePlatformApiKey } from "./lib/provider_keys";
 
-function corsHeaders(request: Request): Record<string, string> {
-  const origin = request.headers.get("origin");
-  const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-ID",
-    "Access-Control-Max-Age": "86400",
-  };
-  if (origin) headers["Access-Control-Allow-Origin"] = origin;
-  return headers;
-}
-
+/** Convenience wrapper: extracts origin from request and delegates to the standard withCors. */
 function withProxyCors(response: Response, request: Request): Response {
-  const headers = new Headers(response.headers);
-  for (const [k, v] of Object.entries(corsHeaders(request))) {
-    headers.set(k, v);
-  }
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return withCors(response, request.headers.get("origin"));
 }
 
-const MAX_ANON_REQUESTS = 50000;
-const ANON_DEVICE_HASH_SALT_MISSING_MESSAGE = "Missing ANON_DEVICE_ID_HASH_SALT";
-let didLogMissingAnonDeviceSaltForProxy = false;
-const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
-const CLIENT_ADDRESS_KEY_PATTERN = /^[0-9a-fA-F:.]+$/;
+/** Convenience wrapper: JSON response with CORS extracted from request. */
+function proxyJsonResponse(data: unknown, status: number, request: Request): Response {
+  return jsonResponse(data, status, request.headers.get("origin"));
+}
+
+/** Convenience wrapper: error response with CORS extracted from request. */
+function proxyErrorResponse(status: number, message: string, request: Request): Response {
+  return errorResponse(status, message, request.headers.get("origin"));
+}
+
+const MAX_ANON_REQUESTS = 50_000;
+const DEFAULT_RETRY_AFTER_MS = 60_000;
 
 type ProxyAuth =
   | { type: "jwt"; userId: string; isAnonymous: boolean }
@@ -63,43 +57,15 @@ async function resolveAuth(ctx: ActionCtx, request: Request): Promise<ProxyAuth>
     return { type: "jwt", userId: identity.subject, isAnonymous };
   }
 
-  // Try device ID
-  const deviceId = request.headers.get("X-Device-ID")?.trim();
-  if (deviceId && deviceId.length > 0 && deviceId.length < 256) {
+  // Try device ID — delegate to the shared validator for consistent length/format checks
+  const deviceId = getAnonDeviceId(request);
+  if (deviceId) {
     return { type: "device", deviceId };
   }
 
   return { type: "none" };
 }
 
-const normalizeClientAddressKey = (value: string | null): string | null => {
-  if (!value) return null;
-  const trimmed = value.trim().toLowerCase();
-  if (
-    trimmed.length === 0 ||
-    trimmed.length > MAX_CLIENT_ADDRESS_KEY_LENGTH ||
-    !CLIENT_ADDRESS_KEY_PATTERN.test(trimmed)
-  ) {
-    return null;
-  }
-  return trimmed;
-};
-
-const getClientAddressKey = (request: Request): string | null => {
-  const cloudflareIp = normalizeClientAddressKey(request.headers.get("cf-connecting-ip"));
-  if (cloudflareIp) return cloudflareIp;
-
-  const realIp = normalizeClientAddressKey(request.headers.get("x-real-ip"));
-  if (realIp) return realIp;
-
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (!forwardedFor) return null;
-  const firstHop = forwardedFor.split(",")[0] ?? "";
-  return normalizeClientAddressKey(firstHop);
-};
-
-const isAnonDeviceHashSaltMissingError = (error: unknown): boolean =>
-  error instanceof Error && error.message.includes(ANON_DEVICE_HASH_SALT_MISSING_MESSAGE);
 
 async function consumeDeviceRateLimit(
   ctx: ActionCtx,
@@ -117,12 +83,7 @@ async function consumeDeviceRateLimit(
     if (!isAnonDeviceHashSaltMissingError(error)) {
       throw error;
     }
-    if (!didLogMissingAnonDeviceSaltForProxy) {
-      didLogMissingAnonDeviceSaltForProxy = true;
-      console.error(
-        "[ai-proxy] Missing ANON_DEVICE_ID_HASH_SALT; failing closed to prevent rate limit bypass.",
-      );
-    }
+    logMissingSaltOnce("ai-proxy");
     return false;
   }
 }
@@ -139,13 +100,7 @@ async function consumeAnonJwtRateLimit(
     getClientAddressKey(request),
   );
   if (!allowed) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "Rate limit exceeded. Please create an account for continued access.",
-      }),
-      { status: 429, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(429, "Rate limit exceeded. Please create an account for continued access.", request);
   }
   return null;
 }
@@ -161,7 +116,7 @@ function getGateway() {
 export const proxyChat = httpAction(async (ctx, request) => {
   const auth = await resolveAuth(ctx, request);
   if (auth.type === "none") {
-    return withProxyCors(new Response("Unauthorized", { status: 401 }), request);
+    return proxyErrorResponse(401, "Unauthorized", request);
   }
 
   let body: {
@@ -177,11 +132,11 @@ export const proxyChat = httpAction(async (ctx, request) => {
   try {
     body = await request.json();
   } catch {
-    return withProxyCors(new Response("Invalid JSON", { status: 400 }), request);
+    return proxyErrorResponse(400, "Invalid JSON", request);
   }
 
   if (!body.messages || !Array.isArray(body.messages)) {
-    return withProxyCors(new Response("messages array is required", { status: 400 }), request);
+    return proxyErrorResponse(400, "messages array is required", request);
   }
 
   if (auth.type === "device") {
@@ -191,17 +146,11 @@ export const proxyChat = httpAction(async (ctx, request) => {
       getClientAddressKey(request),
     );
     if (!allowed) {
-      return withProxyCors(
-        new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
-          { status: 429, headers: { "Content-Type": "application/json" } },
-        ),
-        request,
-      );
+      return proxyErrorResponse(429, "Rate limit exceeded. Please create an account for continued access.", request);
     }
   } else if (auth.type === "jwt") {
     const rateLimitResponse = await consumeAnonJwtRateLimit(ctx, auth, request);
-    if (rateLimitResponse) return withProxyCors(rateLimitResponse, request);
+    if (rateLimitResponse) return rateLimitResponse;
   }
 
   const gateway = getGateway();
@@ -232,26 +181,11 @@ export const proxyChat = httpAction(async (ctx, request) => {
         temperature: body.temperature ?? defaults.temperature,
       });
 
-      return withProxyCors(
-        new Response(
-          JSON.stringify({
-            text: result.text,
-            usage: result.usage,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-        request,
-      );
+      return proxyJsonResponse({ text: result.text, usage: result.usage }, 200, request);
     }
   } catch (error) {
     console.error("[ai-proxy] Chat error:", error);
-    return withProxyCors(
-      new Response(
-        JSON.stringify({ error: (error as Error).message }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      ),
-      request,
-    );
+    return proxyErrorResponse(500, "An internal error occurred", request);
   }
 });
 
@@ -260,18 +194,18 @@ export const proxyChat = httpAction(async (ctx, request) => {
 export const proxyEmbed = httpAction(async (ctx, request) => {
   const auth = await resolveAuth(ctx, request);
   if (auth.type === "none") {
-    return new Response("Unauthorized", { status: 401 });
+    return proxyErrorResponse(401, "Unauthorized", request);
   }
 
   let body: { text: string; model?: string };
   try {
     body = await request.json();
   } catch {
-    return new Response("Invalid JSON", { status: 400 });
+    return proxyErrorResponse(400, "Invalid JSON", request);
   }
 
   if (!body.text) {
-    return new Response("text is required", { status: 400 });
+    return proxyErrorResponse(400, "text is required", request);
   }
 
   if (auth.type === "device") {
@@ -281,10 +215,7 @@ export const proxyEmbed = httpAction(async (ctx, request) => {
       getClientAddressKey(request),
     );
     if (!allowed) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded" }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
-      );
+      return proxyErrorResponse(429, "Rate limit exceeded", request);
     }
   } else if (auth.type === "jwt") {
     const rateLimitResponse = await consumeAnonJwtRateLimit(ctx, auth, request);
@@ -300,16 +231,10 @@ export const proxyEmbed = httpAction(async (ctx, request) => {
       value: body.text,
     });
 
-    return new Response(
-      JSON.stringify({ embedding: result.embedding }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyJsonResponse({ embedding: result.embedding }, 200, request);
   } catch (error) {
     console.error("[ai-proxy] Embed error:", error);
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(500, "An internal error occurred", request);
   }
 });
 
@@ -318,18 +243,18 @@ export const proxyEmbed = httpAction(async (ctx, request) => {
 export const proxySearch = httpAction(async (ctx, request) => {
   const auth = await resolveAuth(ctx, request);
   if (auth.type === "none") {
-    return new Response("Unauthorized", { status: 401 });
+    return proxyErrorResponse(401, "Unauthorized", request);
   }
 
   let body: { query: string; maxResults?: number };
   try {
     body = await request.json();
   } catch {
-    return new Response("Invalid JSON", { status: 400 });
+    return proxyErrorResponse(400, "Invalid JSON", request);
   }
 
   if (!body.query) {
-    return new Response("query is required", { status: 400 });
+    return proxyErrorResponse(400, "query is required", request);
   }
 
   if (auth.type === "device") {
@@ -339,10 +264,7 @@ export const proxySearch = httpAction(async (ctx, request) => {
       getClientAddressKey(request),
     );
     if (!allowed) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
-      );
+      return proxyErrorResponse(429, "Rate limit exceeded. Please create an account for continued access.", request);
     }
   } else if (auth.type === "jwt") {
     const rateLimitResponse = await consumeAnonJwtRateLimit(ctx, auth, request);
@@ -353,10 +275,7 @@ export const proxySearch = httpAction(async (ctx, request) => {
   const searchApiKey = process.env.SEARCH_API_KEY;
 
   if (!searchApiKey) {
-    return new Response(
-      JSON.stringify({ error: "Search not configured on server" }),
-      { status: 501, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(501, "Search not configured on server", request);
   }
 
   try {
@@ -379,16 +298,10 @@ export const proxySearch = httpAction(async (ctx, request) => {
     }
 
     const data = await response.json();
-    return new Response(
-      JSON.stringify(data),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyJsonResponse(data, 200, request);
   } catch (error) {
     console.error("[ai-proxy] Search error:", error);
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(500, "An internal error occurred", request);
   }
 });
 
@@ -412,28 +325,6 @@ export const proxySearch = httpAction(async (ctx, request) => {
 //   4. Forwards request to upstream with real credentials
 //   5. Pipes response body directly
 //   6. Post-hoc usage logging (best-effort)
-
-function parseJsonObject(value: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function asNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function withoutTrailingSlash(url: string): string {
-  return url.replace(/\/+$/, "");
-}
 
 function googleVertexProject(apiKey?: string): string | null {
   const parsed = apiKey ? parseJsonObject(apiKey) : null;
@@ -665,10 +556,7 @@ export const llmProxy = httpAction(async (ctx, request) => {
   // 1. Authenticate via Convex JWT
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
-    return new Response(
-      JSON.stringify({ error: "Unauthorized" }),
-      { status: 401, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(401, "Unauthorized", request);
   }
 
   const ownerId = identity.subject;
@@ -679,12 +567,7 @@ export const llmProxy = httpAction(async (ctx, request) => {
   // Unknown providers are routed through OpenRouter using the model string.
   const requestedProvider = request.headers.get("X-Provider")?.trim()?.toLowerCase();
   if (!requestedProvider) {
-    return new Response(
-      JSON.stringify({
-        error: "Missing X-Provider header",
-      }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(400, "Missing X-Provider header", request);
   }
   const provider = isSupportedProvider(requestedProvider)
     ? requestedProvider
@@ -693,18 +576,12 @@ export const llmProxy = httpAction(async (ctx, request) => {
   const url = new URL(request.url);
   const originalPath = request.headers.get("X-Original-Path")?.trim() || url.pathname.replace(/^\/api\/ai\/llm-proxy/, "");
   if (!originalPath) {
-    return new Response(
-      JSON.stringify({ error: "Missing X-Original-Path header" }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(400, "Missing X-Original-Path header", request);
   }
 
   const sanitizedPath = sanitizePathSuffix(originalPath);
   if (!sanitizedPath) {
-    return new Response(
-      JSON.stringify({ error: "Invalid path" }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(400, "Invalid path", request);
   }
 
   // 3. Rate limit check
@@ -715,10 +592,7 @@ export const llmProxy = httpAction(async (ctx, request) => {
       getClientAddressKey(request),
     );
     if (!allowed) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded. Please create an account for continued access." }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
-      );
+      return proxyErrorResponse(429, "Rate limit exceeded. Please create an account for continued access.", request);
     }
   } else {
     const rateCheck = await ctx.runMutation(internal.ai_proxy_data.checkProxyRateLimit, {
@@ -726,134 +600,60 @@ export const llmProxy = httpAction(async (ctx, request) => {
     });
 
     if (!rateCheck.allowed) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded" }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "Retry-After": String(Math.ceil((rateCheck.retryAfterMs ?? 60000) / 1000)),
-          },
-        },
-      );
+      const response = proxyErrorResponse(429, "Rate limit exceeded", request);
+      response.headers.set("Retry-After", String(Math.ceil((rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)));
+      return response;
     }
   }
 
-  // 4. Resolve API key via BYOK chain
+  // 4. Resolve API key via shared BYOK chain
   //    X-Model-Id header carries the full model string (e.g. "anthropic/claude-opus-4.6")
-  //    for BYOK key resolution
   const modelId =
     request.headers.get("X-Model-Id")?.trim() || `${requestedProvider}/unknown`;
   let apiKey: string | null = null;
-  const canUseDirectProviderKey = isSupportedProvider(requestedProvider);
 
-  // Try user's own key first
-  if (canUseDirectProviderKey) {
-    try {
-      const userKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
-        ownerId,
-        provider: `llm:${requestedProvider}`,
-      });
-      if (userKey) {
-        apiKey = userKey;
-      }
-    } catch (err) {
-      console.warn("[ai-proxy] Failed to look up user key:", err);
+  // Try user's BYOK keys (direct provider → OpenRouter)
+  const byok = await resolveByokApiKey(ctx, ownerId, requestedProvider);
+  if (byok) {
+    if (byok.source === "openrouter") {
+      // Redirect to OpenRouter upstream
+      const upstreamUrl = `${STATIC_PROVIDER_UPSTREAMS.openrouter}${sanitizedPath}`;
+      return await forwardRequest(ctx, request, { url: upstreamUrl, provider: "openrouter", apiKey: byok.apiKey }, { ownerId, agentType, modelId }, { isGateway: true });
     }
-  }
-
-  // Try OpenRouter key as fallback
-  if (!apiKey) {
-    try {
-      const openrouterKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
-        ownerId,
-        provider: "llm:openrouter",
-      });
-      if (openrouterKey) {
-        apiKey = openrouterKey;
-        // Redirect to OpenRouter upstream
-        const upstreamUrl = `${STATIC_PROVIDER_UPSTREAMS.openrouter}${sanitizedPath}`;
-        return await forwardRequest(ctx, request, upstreamUrl, "openrouter", openrouterKey, ownerId, agentType, modelId, { isGateway: true });
-      }
-    } catch (err) {
-      console.warn("[ai-proxy] Failed to look up OpenRouter key:", err);
-    }
+    apiKey = byok.apiKey;
   }
 
   // Fall back to platform key from env
   if (!apiKey) {
-    const envKeyMap: Record<string, string> = {
-      anthropic: "ANTHROPIC_API_KEY",
-      openai: "OPENAI_API_KEY",
-      google: "GOOGLE_AI_API_KEY",
-      openrouter: "OPENROUTER_API_KEY",
-      azure: "AZURE_API_KEY",
-      "azure-cognitive-services": "AZURE_COGNITIVE_SERVICES_API_KEY",
-      "cloudflare-workers-ai": "CLOUDFLARE_API_KEY",
-      "cloudflare-ai-gateway": "CLOUDFLARE_API_TOKEN",
-      vercel: "AI_GATEWAY_API_KEY",
-      zenmux: "ZENMUX_API_KEY",
-      cerebras: "CEREBRAS_API_KEY",
-      kilo: "KILO_API_KEY",
-      "amazon-bedrock": "AWS_BEARER_TOKEN_BEDROCK",
-      gitlab: "GITLAB_TOKEN",
-      "github-copilot": "GITHUB_TOKEN",
-      "github-copilot-enterprise": "GITHUB_TOKEN",
-      "sap-ai-core": "AICORE_SERVICE_KEY",
-      opencode: "OPENCODE_API_KEY",
-    };
-    const envKey = envKeyMap[provider];
-    if (envKey) {
-      apiKey = process.env[envKey] ?? null;
-    }
-    if (!apiKey && (provider === "google-vertex" || provider === "google-vertex-anthropic")) {
-      apiKey =
-        process.env.GOOGLE_VERTEX_ACCESS_TOKEN?.trim() ||
-        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim() ||
-        null;
-    }
+    apiKey = resolvePlatformApiKey(provider);
   }
 
   if (!apiKey) {
     // Last resort: route through Vercel AI Gateway using the platform key.
-    // The request body must contain a provider-prefixed model id
-    // (e.g. "anthropic/claude-sonnet-4-6") so the gateway can route it.
     const gatewayKey = process.env.AI_GATEWAY_API_KEY;
     if (gatewayKey) {
-      // The Vercel gateway base already includes /v1, and sanitizedPath
-      // also starts with /v1 (from the OpenAI SDK). Strip the duplicate.
       const gatewayBase = STATIC_PROVIDER_UPSTREAMS.vercel.replace(/\/v1$/, "");
       const gatewayUpstream = `${gatewayBase}${sanitizedPath}`;
-      return await forwardRequest(ctx, request, gatewayUpstream, "vercel", gatewayKey, ownerId, agentType, modelId, { isGateway: true });
+      return await forwardRequest(ctx, request, { url: gatewayUpstream, provider: "vercel", apiKey: gatewayKey }, { ownerId, agentType, modelId }, { isGateway: true });
     }
-    return new Response(
-      JSON.stringify({ error: "No API key available for provider" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(503, "No API key available for provider", request);
   }
 
   // 5. Forward to upstream
   const upstreamBase = resolveProviderUpstream(provider, apiKey);
   if (!upstreamBase) {
-    return new Response(
-      JSON.stringify({ error: `Provider ${provider} is not configured on server. Missing required environment configuration.` }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(503, "Provider is not configured", request);
   }
   const upstreamUrl = `${upstreamBase}${sanitizedPath}`;
 
-  return await forwardRequest(ctx, request, upstreamUrl, provider, apiKey, ownerId, agentType, modelId);
+  return await forwardRequest(ctx, request, { url: upstreamUrl, provider, apiKey }, { ownerId, agentType, modelId });
 });
 
 async function forwardRequest(
   ctx: ActionCtx,
   request: Request,
-  upstreamUrl: string,
-  provider: string,
-  apiKey: string,
-  ownerId: string,
-  agentType: string,
-  modelId: string,
+  upstream: { url: string; provider: string; apiKey: string },
+  usage: { ownerId: string; agentType: string; modelId: string },
   options?: { isGateway?: boolean },
 ): Promise<Response> {
   // Build forwarded headers
@@ -865,7 +665,7 @@ async function forwardRequest(
   });
 
   // Replace auth headers with real credentials
-  const authHeaders = await buildUpstreamAuthHeaders(ctx, provider, apiKey);
+  const authHeaders = await buildUpstreamAuthHeaders(ctx, upstream.provider, upstream.apiKey);
   // Remove any existing auth headers the client might have sent
   delete forwardHeaders["authorization"];
   delete forwardHeaders["Authorization"];
@@ -895,7 +695,7 @@ async function forwardRequest(
   const startMs = Date.now();
 
   try {
-    const upstreamResponse = await fetch(upstreamUrl, {
+    const upstreamResponse = await fetch(upstream.url, {
       method: request.method,
       headers: forwardHeaders,
       body,
@@ -904,8 +704,10 @@ async function forwardRequest(
     const durationMs = Date.now() - startMs;
     const isStreaming = upstreamResponse.headers.get("content-type")?.includes("text/event-stream");
 
-    // Build response headers (strip upstream auth-related headers)
-    const responseHeaders: Record<string, string> = {};
+    // Build response headers (strip upstream auth-related headers, inject CORS)
+    const origin = request.headers.get("origin");
+    const corsHeaders = getCorsHeaders(origin);
+    const responseHeaders: Record<string, string> = { ...corsHeaders };
     upstreamResponse.headers.forEach((value, key) => {
       const lower = key.toLowerCase();
       if (lower !== "set-cookie" && lower !== "www-authenticate") {
@@ -916,9 +718,9 @@ async function forwardRequest(
     if (isStreaming) {
       // Pipe streaming response directly — post-hoc usage logging
       void ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
-        ownerId,
-        agentType,
-        model: modelId,
+        ownerId: usage.ownerId,
+        agentType: usage.agentType,
+        model: usage.modelId,
         durationMs,
         success: upstreamResponse.ok,
         estimateFromRequest: true,
@@ -946,9 +748,9 @@ async function forwardRequest(
       }
 
       void ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
-        ownerId,
-        agentType,
-        model: modelId,
+        ownerId: usage.ownerId,
+        agentType: usage.agentType,
+        model: usage.modelId,
         durationMs,
         success: upstreamResponse.ok,
         inputTokens,
@@ -966,17 +768,14 @@ async function forwardRequest(
     const durationMs = Date.now() - startMs;
 
     void ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
-      ownerId,
-      agentType,
-      model: modelId,
+      ownerId: usage.ownerId,
+      agentType: usage.agentType,
+      model: usage.modelId,
       durationMs,
       success: false,
       estimateFromRequest: true,
     });
 
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      { status: 502, headers: { "Content-Type": "application/json" } },
-    );
+    return proxyErrorResponse(502, "Failed to reach upstream provider", request);
   }
 }

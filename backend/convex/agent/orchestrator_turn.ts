@@ -7,7 +7,6 @@ import {
 } from "./context_budget";
 import {
   eventsToHistoryMessages,
-  formatMessageTimestamp,
   type HistoryBuildOptions,
   type HistoryMessage,
   type MicrocompactTrigger,

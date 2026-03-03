@@ -4,6 +4,8 @@
 
 import { v } from "convex/values";
 import { internalQuery, internalMutation } from "./_generated/server";
+import { hashSha256Hex } from "./lib/crypto_utils";
+import { clampIntToRange } from "./lib/number_utils";
 
 const DEVICE_USAGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
@@ -43,13 +45,7 @@ async function hashDeviceId(
     ? `${deviceId}|addr:${normalizedAddressKey}`
     : deviceId;
   const material = `${salt}:${materialBase}`;
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(material),
-  );
-  const hashHex = Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  const hashHex = await hashSha256Hex(material);
   return `sha256:${hashHex}`;
 }
 
@@ -58,6 +54,14 @@ export const getDeviceUsage = internalQuery({
     deviceId: v.string(),
     clientAddressKey: v.optional(v.string()),
   },
+  returns: v.union(
+    v.null(),
+    v.object({
+      requestCount: v.number(),
+      firstRequestAt: v.number(),
+      lastRequestAt: v.number(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
     const row = await ctx.db
@@ -81,6 +85,7 @@ export const incrementDeviceUsage = internalMutation({
     deviceId: v.string(),
     clientAddressKey: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
     const existing = await ctx.db
@@ -121,7 +126,7 @@ export const consumeDeviceAllowance = internalMutation({
   },
   returns: consumeDeviceAllowanceResultValidator,
   handler: async (ctx, args) => {
-    const maxRequests = Math.max(1, Math.floor(args.maxRequests));
+    const maxRequests = clampIntToRange(args.maxRequests, 1, Number.MAX_SAFE_INTEGER);
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
     const existing = await ctx.db
       .query("anon_device_usage")
@@ -170,6 +175,10 @@ export const checkProxyRateLimit = internalMutation({
     ownerId: v.string(),
     estimatedTokens: v.optional(v.number()),
   },
+  returns: v.object({
+    allowed: v.boolean(),
+    retryAfterMs: v.optional(v.number()),
+  }),
   handler: async (ctx, args) => {
     const limitStr = process.env.PROXY_TOKENS_PER_MINUTE;
     const limit = limitStr ? parseInt(limitStr, 10) : DEFAULT_PROXY_TOKENS_PER_MINUTE;

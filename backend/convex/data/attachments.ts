@@ -25,6 +25,13 @@ export const createFromDataUrl = action({
     deviceId: v.string(),
     dataUrl: v.string(),
   },
+  returns: v.object({
+    _id: v.id("attachments"),
+    storageKey: v.id("_storage"),
+    url: v.union(v.null(), v.string()),
+    mimeType: v.string(),
+    size: v.number(),
+  }),
   handler: async (ctx, args): Promise<{
     _id: Id<"attachments">;
     storageKey: Id<"_storage">;
@@ -78,6 +85,7 @@ export const insertAttachment = internalMutation({
     mimeType: v.string(),
     size: v.number(),
   },
+  returns: v.id("attachments"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("attachments", {
       conversationId: args.conversationId,
@@ -93,6 +101,17 @@ export const insertAttachment = internalMutation({
 
 export const getById = internalQuery({
   args: { id: v.id("attachments") },
+  returns: v.union(v.null(), v.object({
+    _id: v.id("attachments"),
+    _creationTime: v.number(),
+    conversationId: v.id("conversations"),
+    deviceId: v.string(),
+    storageKey: v.string(),
+    url: v.optional(v.string()),
+    mimeType: v.string(),
+    size: v.number(),
+    createdAt: v.number(),
+  })),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },

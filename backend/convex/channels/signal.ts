@@ -15,6 +15,7 @@ import { v } from "convex/values";
  */
 export const getLinkUri = query({
   args: {},
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;

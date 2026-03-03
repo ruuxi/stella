@@ -214,6 +214,7 @@ const parseExecNdjson = (raw: string): SpritesExecResult | null => {
     try {
       parsed = JSON.parse(line);
     } catch {
+      // best-effort: skip unparseable NDJSON line
       continue;
     }
 
@@ -514,6 +515,7 @@ export const assertNdjsonNoError = (raw: string, context: string) => {
 
 export const resolveForOwner = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const runtimePreference = await ctx.db
       .query("user_preferences")
@@ -542,6 +544,7 @@ export const resolveForOwner = internalQuery({
  */
 export const resolveForOwnerUngated = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -581,6 +584,7 @@ export const listInactiveBefore = internalQuery({
 
 export const getForOwner = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.union(v.null(), cloudDeviceValidator),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -596,6 +600,7 @@ export const getForOwner = internalQuery({
 
 export const touchActivity = internalMutation({
   args: { ownerId: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -619,6 +624,7 @@ export const updateStatus = internalMutation({
     status: v.string(),
     setupComplete: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = {
       status: args.status,
@@ -636,6 +642,7 @@ export const deleteCloudDevicesByIds = internalMutation({
   args: {
     ids: v.array(v.id("cloud_devices")),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     for (const id of args.ids) {
       await ctx.db.delete(id);
@@ -691,6 +698,7 @@ export const ensureSingleRecordForOwner = internalMutation({
 
 export const deleteCloudDevice = internalMutation({
   args: { id: v.id("cloud_devices") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
     return null;
@@ -707,6 +715,7 @@ export const setupSprite = internalAction({
     spriteName: v.string(),
     ownerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       const spritesToken = await getSpritesTokenForOwner(ctx, args.ownerId);
@@ -801,6 +810,7 @@ export const get247Status = query({
 
 export const getActive = internalQuery({
   args: {},
+  returns: v.union(v.null(), cloudDeviceValidator),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -847,7 +857,9 @@ const ensureSingleCloudDeviceForOwner = async (
     try {
       await spritesApi(spritesToken, `/sprites/${duplicate.spriteName}`, "DELETE");
     } catch (error) {
+      // Non-fatal: best-effort cleanup of duplicate sprites; primary record is preserved.
       console.error("[cloud_devices] Duplicate sprite deletion error (continuing):", error);
+      continue;
     }
   }
 
@@ -873,8 +885,8 @@ const ensure247ForOwner = async (
   if (existing && existing.status === "error") {
     try {
       await spritesApi(spritesToken, `/sprites/${existing.spriteName}`, "DELETE");
-    } catch (error) {
-      console.error("[cloud_devices] Error-state sprite deletion error (continuing):", error);
+    } catch (_error) {
+      // Non-fatal: the error-state sprite will be orphaned but a fresh one is created below.
     }
     await ctx.runMutation(internal.agent.cloud_devices.deleteCloudDevice, {
       id: existing._id,

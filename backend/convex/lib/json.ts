@@ -19,6 +19,32 @@ export const stableStringify = (value: unknown): string => {
   return stringify(value);
 };
 
+/**
+ * Safely parse a JSON string that is expected to be a plain object.
+ * Returns `null` for arrays, primitives, or invalid JSON.
+ */
+export function parseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function withoutTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
 export const extractJsonBlock = (text: string): string | null => {
   const trimmed = text.trim();
   if (!trimmed) return null;

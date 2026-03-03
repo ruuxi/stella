@@ -4,6 +4,19 @@ import { requireUserId } from "../auth";
 
 export const listCronJobs = query({
   args: {},
+  returns: v.array(
+    v.object({
+      _id: v.id("cron_jobs"),
+      name: v.string(),
+      description: v.optional(v.string()),
+      enabled: v.optional(v.boolean()),
+      nextRunAtMs: v.optional(v.number()),
+      lastRunAtMs: v.optional(v.number()),
+      lastStatus: v.optional(v.string()),
+      lastOutputPreview: v.optional(v.string()),
+      lastDurationMs: v.optional(v.number()),
+    }),
+  ),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const jobs = await ctx.db
@@ -27,6 +40,18 @@ export const listCronJobs = query({
 
 export const listHeartbeats = query({
   args: {},
+  returns: v.array(
+    v.object({
+      _id: v.id("heartbeat_configs"),
+      enabled: v.optional(v.boolean()),
+      intervalMs: v.optional(v.number()),
+      prompt: v.optional(v.string()),
+      nextRunAtMs: v.optional(v.number()),
+      lastRunAtMs: v.optional(v.number()),
+      lastStatus: v.optional(v.string()),
+      lastSentText: v.optional(v.string()),
+    }),
+  ),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const configs = await ctx.db

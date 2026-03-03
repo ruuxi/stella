@@ -57,17 +57,24 @@ export const migrateTableBatch = internalMutation({
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = await (ctx.db as any)
+    // Dynamic table/index names require casting the typed query builder.
+    const db = ctx.db as unknown as {
+      query(table: string): {
+        withIndex(
+          name: string,
+          pred: (q: { eq: (field: string, value: string) => unknown }) => unknown,
+        ): { take(n: number): Promise<Array<{ _id: any; ownerId: string }>> };
+      };
+    };
+    const rows = await db
       .query(args.table)
-      .withIndex(args.index, (q: { eq: (field: string, value: string) => unknown }) =>
-        q.eq("ownerId", args.fromOwnerId),
-      )
+      .withIndex(args.index, (q) => q.eq("ownerId", args.fromOwnerId))
       .take(BATCH_SIZE);
 
     for (const row of rows) {
-      await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
+      await ctx.db.patch(row._id as any, { ownerId: args.toOwnerId });
     }
 
     return rows.length === BATCH_SIZE;
@@ -83,6 +90,7 @@ export const deduplicateDefaultConversation = internalMutation({
   args: {
     toOwnerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const defaults = await ctx.db
       .query("conversations")
@@ -113,6 +121,7 @@ export const migrateOwnership = internalAction({
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     if (args.fromOwnerId === args.toOwnerId) return null;
 
@@ -169,6 +178,7 @@ export const migratePersistChunksBatch = internalMutation({
     fromOwnerId: v.string(),
     toOwnerId: v.string(),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     // persist_chunks doesn't have a by_ownerId index, so we scan
     const rows = await ctx.db

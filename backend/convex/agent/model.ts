@@ -2,23 +2,14 @@
  * Centralized model configuration for all AI requests.
  * Update this file to switch models or providers per agent type.
  */
+import type { JSONValue } from "@ai-sdk/provider";
 
 export type ModelConfig = {
   model: string;
   fallback?: string; // fallback model if primary fails
   temperature?: number;
   maxOutputTokens?: number;
-  providerOptions?: {
-    gateway?: {
-      only?: string[];
-      order?: string[];
-    };
-    deepinfra?: {
-      dimensions?: number;
-      [key: string]: any;
-    };
-    [key: string]: any;
-  };
+  providerOptions?: Record<string, Record<string, JSONValue>>;
 };
 
 const DEFAULT_MODEL: ModelConfig = {

@@ -1,3 +1,17 @@
+/**
+ * Execution Policy — orchestrates how agent turns are executed.
+ *
+ * Execution pipeline flow:
+ *   1. Caller (channels/message_pipeline, scheduling/cron_jobs, scheduling/heartbeat)
+ *      builds execution candidates via `buildExecutionCandidates`.
+ *   2. `runAgentTurnWithFallback` iterates candidates (local → cloud) and delegates
+ *      each attempt to `automation/runner.runAgentTurn`.
+ *   3. `runAgentTurn` in automation/runner invokes the appropriate agent
+ *      (defined in agent/agents.ts) and manages the turn lifecycle.
+ *
+ * Dependency direction: channels → execution_policy ← scheduling
+ * Both channels and scheduling modules depend on this shared orchestration layer.
+ */
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { runAgentTurn } from "../automation/runner";
@@ -44,13 +58,16 @@ export const runAgentTurnWithFallback = async (args: {
   ownerId: string;
   transient?: boolean;
   candidates: ExecutionCandidate[];
-}) => {
-  let result = null as Awaited<ReturnType<typeof runAgentTurn>> | null;
+  userMessageId?: Id<"events">;
+}): Promise<{
+  result: Awaited<ReturnType<typeof runAgentTurn>>;
+  selectedMode: ExecutionCandidate["mode"];
+}> => {
   let lastExecutionError: Error | null = null;
 
   for (const candidate of args.candidates) {
     try {
-      result = await runAgentTurn({
+      const result = await runAgentTurn({
         ctx: args.ctx,
         conversationId: args.conversationId,
         prompt: args.prompt,
@@ -58,15 +75,13 @@ export const runAgentTurnWithFallback = async (args: {
         ownerId: args.ownerId,
         targetDeviceId: candidate.mode === "local" ? candidate.targetDeviceId : undefined,
         transient: args.transient,
+        userMessageId: args.userMessageId,
       });
-      break;
+      return { result, selectedMode: candidate.mode };
     } catch (error) {
       lastExecutionError = error as Error;
     }
   }
 
-  if (!result) {
-    throw lastExecutionError ?? new Error("No execution candidate succeeded");
-  }
-  return result;
+  throw lastExecutionError ?? new Error("No execution candidate succeeded");
 };

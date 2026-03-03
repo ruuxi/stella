@@ -1,6 +1,7 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage, processLinkCode } from "./utils";
+import { processIncomingMessage } from "./message_pipeline";
+import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
@@ -66,6 +67,7 @@ const sendTelegramMessage = async (chatId: string, text: string) => {
         await sendTelegramChunk(token, chatId, escapedChunk, "MarkdownV2");
         sent = true;
       } catch (error) {
+        // best-effort: MarkdownV2 is a cosmetic upgrade; fall through to plain-text retry below
         console.error("[telegram] MarkdownV2 send failed, retrying plain:", error);
       }
     }
@@ -74,6 +76,7 @@ const sendTelegramMessage = async (chatId: string, text: string) => {
       try {
         await sendTelegramChunk(token, chatId, rawChunk);
       } catch (error) {
+        // best-effort: final delivery attempt per chunk; dropping is preferable to crashing the send loop
         console.error("[telegram] Plain send failed:", error);
       }
     }
@@ -91,6 +94,7 @@ export const handleStartCommand = internalAction({
     codeArg: v.optional(v.string()),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     if (!args.codeArg) {
       await sendTelegramMessage(
@@ -147,6 +151,7 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 
@@ -196,6 +201,7 @@ export const handleIncomingMessage = internalAction({
 
 export const registerWebhook = internalAction({
   args: {},
+  returns: v.object({ ok: v.boolean(), description: v.optional(v.string()) }),
   handler: async () => {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -232,7 +238,6 @@ export const registerWebhook = internalAction({
       ok: Boolean(result?.ok ?? response.ok),
       description: typeof result?.description === "string" ? result.description : undefined,
     };
-    console.log("[telegram] Webhook registered:", normalized);
     return normalized;
   },
 });

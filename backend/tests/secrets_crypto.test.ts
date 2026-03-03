@@ -7,10 +7,13 @@ import {
 } from "../convex/data/secrets_crypto";
 
 const TEST_MASTER_KEY_B64 = Buffer.alloc(32, 7).toString("base64");
+const TEST_KEYS_JSON = JSON.stringify({ "3": TEST_MASTER_KEY_B64 });
+
+const hasKeysEnvOrCanFake = true;
 
 describe("secrets crypto", () => {
   beforeEach(() => {
-    process.env.STELLA_SECRETS_MASTER_KEY = TEST_MASTER_KEY_B64;
+    process.env.STELLA_SECRETS_MASTER_KEYS_JSON = TEST_KEYS_JSON;
     process.env.STELLA_SECRETS_MASTER_KEY_VERSION = "3";
   });
 

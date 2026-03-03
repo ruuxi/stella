@@ -144,10 +144,8 @@ const extractJsonObject = (value: string): string | null => {
   return trimmed.slice(start, end + 1).trim();
 };
 
-const truncate = (value: string, maxChars: number): string => {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars - 3)}...`;
-};
+const truncate = (value: string, max: number): string =>
+  value.length <= max ? value : `${value.slice(0, max)}\n\n... (truncated)`;
 
 const parseRerankSelection = (
   response: string,
@@ -366,6 +364,7 @@ export const insertMemory = internalMutation({
     conversationId: v.optional(v.id("conversations")),
     content: v.string(),
   },
+  returns: v.id("memories"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("memories", {
@@ -389,6 +388,7 @@ export const mergeMemory = internalMutation({
     memoryId: v.id("memories"),
     content: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     await ctx.db.patch(args.memoryId, {
@@ -413,6 +413,7 @@ export const touchMemoriesById = internalMutation({
       }),
     ),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     await Promise.all(
@@ -441,8 +442,21 @@ export const touchMemoriesById = internalMutation({
 // getMemoryById (internal query)
 // ---------------------------------------------------------------------------
 
+const memoryDocValidator = v.object({
+  _id: v.id("memories"),
+  _creationTime: v.number(),
+  ownerId: v.string(),
+  conversationId: v.optional(v.id("conversations")),
+  content: v.string(),
+  accessCount: v.number(),
+  accessedAt: v.number(),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});
+
 export const getMemoryById = internalQuery({
   args: { id: v.id("memories") },
+  returns: v.union(v.null(), memoryDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -454,6 +468,7 @@ export const getMemoryById = internalQuery({
 
 export const getMemoriesByIds = internalQuery({
   args: { ids: v.array(v.id("memories")) },
+  returns: v.array(memoryDocValidator),
   handler: async (ctx, args) => {
     const results = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
     return results.filter((m): m is NonNullable<typeof m> => m !== null);
@@ -470,6 +485,7 @@ export const searchMemoriesByContent = internalQuery({
     query: v.string(),
     limit: v.number(),
   },
+  returns: v.array(memoryDocValidator),
   handler: async (ctx, args) => {
     const normalizedQuery = args.query.trim();
     if (!normalizedQuery) return [];
@@ -489,6 +505,7 @@ export const searchMemoriesByContent = internalQuery({
 
 export const deleteMemory = internalMutation({
   args: { memoryId: v.id("memories") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.memoryId);
     return null;
@@ -506,6 +523,7 @@ export const recallMemories = internalAction({
     source: v.optional(v.union(v.literal("memory"), v.literal("history"))),
     conversationId: v.optional(v.id("conversations")),
   },
+  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const query = args.query.trim();
     if (!query) return "";
@@ -623,6 +641,7 @@ export const recallMemories = internalAction({
 
       return selectedDocs.map((doc: MemoryDoc) => `- ${doc.content}`).join("\n");
     } catch (err) {
+      // best-effort: memory recall is supplementary context; returning empty degrades gracefully
       console.error("[memory] recallMemories failed:", err);
       return "";
     }
@@ -639,6 +658,7 @@ export const adjudicateAndStoreFact = internalAction({
     content: v.string(),
     conversationId: v.optional(v.id("conversations")),
   },
+  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     try {
       const docs = (await ctx.runQuery(internal.data.memory.searchMemoriesByContent, {
@@ -719,7 +739,9 @@ export const adjudicateAndStoreFact = internalAction({
 });
 
 // ---------------------------------------------------------------------------
-// saveMemory (internal action) — explicit write with lexical dedup + adjudication
+// saveMemory (internal action) — stable API surface for agent tool calls.
+// Delegates to adjudicateAndStoreFact so tool callers don't couple to the
+// adjudication implementation, which may gain pre-processing steps.
 // ---------------------------------------------------------------------------
 
 export const saveMemory = internalAction({
@@ -728,6 +750,7 @@ export const saveMemory = internalAction({
     content: v.string(),
     conversationId: v.optional(v.id("conversations")),
   },
+  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     return await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
       ownerId: args.ownerId,
@@ -746,6 +769,7 @@ export const seedFromDiscovery = internalAction({
     ownerId: v.string(),
     formattedSignals: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const response = await cheapLLM(
       MEMORY_DISCOVERY_FACT_EXTRACTION_MODEL_KEY,
@@ -755,11 +779,8 @@ export const seedFromDiscovery = internalAction({
     const { facts, parseOk } = parseFactResponse(response);
 
     if (!parseOk || facts.length === 0) {
-      console.log("[memory] seedFromDiscovery: no facts extracted", { parseOk, factCount: facts.length });
       return null;
     }
-
-    console.log(`[memory] seedFromDiscovery: extracted ${facts.length} facts, inserting...`);
 
     for (const fact of facts) {
       try {
@@ -768,11 +789,11 @@ export const seedFromDiscovery = internalAction({
           content: fact.content,
         });
       } catch (err) {
+        // best-effort: individual fact failure should not abort remaining facts in the batch
         console.error("[memory] seedFromDiscovery: error processing fact", err);
       }
     }
 
-    console.log("[memory] seedFromDiscovery: complete");
     return null;
   },
 });

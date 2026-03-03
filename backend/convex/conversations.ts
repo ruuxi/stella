@@ -10,7 +10,7 @@ import { RateLimiter } from "@convex-dev/rate-limiter";
 
 const rateLimiter = new RateLimiter(components.rateLimiter);
 
-const conversationValidator = v.object({
+const conversationDocValidator = v.union(v.null(), v.object({
   _id: v.id("conversations"),
   _creationTime: v.number(),
   ownerId: v.string(),
@@ -21,10 +21,11 @@ const conversationValidator = v.object({
   forceReminderOnNextTurn: v.optional(v.boolean()),
   createdAt: v.number(),
   updatedAt: v.number(),
-});
+}));
 
 export const getById = internalQuery({
   args: { id: v.id("conversations") },
+  returns: conversationDocValidator,
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -34,6 +35,7 @@ export const getOrCreateDefaultConversation = mutation({
   args: {
     title: v.optional(v.string()),
   },
+  returns: conversationDocValidator,
   handler: async (ctx, args) => {
     if (args.title && args.title.length > 200) {
       throw new ConvexError({
@@ -103,6 +105,7 @@ export const createConversation = mutation({
   args: {
     title: v.optional(v.string()),
   },
+  returns: conversationDocValidator,
   handler: async (ctx, args) => {
     if (args.title && args.title.length > 200) {
       throw new ConvexError({
@@ -161,6 +164,7 @@ export const getActiveThreadId = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.union(v.id("threads"), v.null()),
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     return conversation?.activeThreadId ?? null;
@@ -172,6 +176,7 @@ export const setActiveThreadId = internalMutation({
     conversationId: v.id("conversations"),
     threadId: v.id("threads"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.conversationId, {
       activeThreadId: args.threadId,

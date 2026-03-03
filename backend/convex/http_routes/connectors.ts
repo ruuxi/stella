@@ -1,4 +1,4 @@
-import { httpRouter } from "convex/server";
+import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { verifyDiscordSignature } from "../channels/discord";
@@ -7,23 +7,13 @@ import { verifyGoogleChatJwt } from "../channels/google_chat";
 import { verifyTeamsToken } from "../channels/teams";
 import { verifyLinqSignature } from "../channels/linq";
 import { consumeWebhookDedup, rateLimitResponse } from "../http_shared/webhook_controls";
+import { jsonResponse } from "../http_shared/cors";
+import { constantTimeEqual, bytesToHex } from "../lib/crypto_utils";
 
 const WEBHOOK_RATE_WINDOW_MS = 60_000;
 const BRIDGE_REPLAY_WINDOW_MS = 5 * 60_000;
 const BRIDGE_MAX_CLOCK_SKEW_SECONDS = 300;
 const BRIDGE_NONCE_MAX_LENGTH = 128;
-
-const constantTimeEqual = (a: string, b: string): boolean => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-};
-
-const bytesToHex = (bytes: Uint8Array) =>
-  Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 
 const computeHmacSha256Hex = async (secret: string, message: string) => {
   const encoder = new TextEncoder();
@@ -502,7 +492,7 @@ const normalizeBridgeReactions = (reactions: unknown) => {
 };
 
 
-export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRouter>) => {
+export const registerConnectorWebhookRoutes = (http: HttpRouter) => {
   // ---------------------------------------------------------------------------
   // Telegram Webhook
   // ---------------------------------------------------------------------------
@@ -582,7 +572,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
           return new Response("OK", { status: 200 });
         }
   
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "telegram",
           key: telegramUserId,
           limit: 30,
@@ -644,7 +634,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
   
         const summary = `Telegram reaction update on message ${reaction.message_id ?? "unknown"}: ${oldEmojis.join(", ") || "none"} -> ${newEmojis.join(", ") || "none"}`;
   
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "telegram",
           key: `${telegramUserId}:reaction`,
           limit: 30,
@@ -764,10 +754,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
   
       // 3. Handle PING (Discord verification check)
       if (interaction.type === INTERACTION_PING) {
-        return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse({ type: RESPONSE_PONG });
       }
   
       // 4. Handle slash commands
@@ -818,7 +805,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
           const codeRaw = options.find((o) => o.name === "code")?.value;
           const codeArg = typeof codeRaw === "string" ? codeRaw : String(codeRaw ?? "");
   
-          const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+          const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
             scope: "discord",
             key: `${discordUserId}:link`,
             limit: 30,
@@ -867,7 +854,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
             );
           }
   
-          const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+          const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
             scope: "discord",
             key: `${discordUserId}:ask`,
             limit: 20,
@@ -1146,10 +1133,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
   
       // Handle URL verification challenge (Slack setup requirement)
       if (payload.type === "url_verification") {
-        return new Response(JSON.stringify({ challenge: payload.challenge }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse({ challenge: payload.challenge });
       }
   
       // Handle event callbacks
@@ -1217,7 +1201,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
             }
           }
   
-          const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+          const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
             scope: "slack",
             key: kind === "message" ? slackUserId : `${slackUserId}:${kind}`,
             limit: 30,
@@ -1272,7 +1256,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
             return new Response("OK", { status: 200 });
           }
   
-          const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+          const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
             scope: "slack",
             key: `${slackUserId}:reaction`,
             limit: 30,
@@ -1386,10 +1370,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         const text = summarizeGoogleChatMessage(rawText, attachments);
   
         if (!spaceName || !googleUserId) {
-          return new Response(JSON.stringify({}), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          return jsonResponse({});
         }
         const messageDedupKey = event.message?.name
           ? `message:${spaceName}:${googleUserId}:${event.message.name}`
@@ -1402,19 +1383,13 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
           messageDedupKey,
         );
         if (!googleMessageDedupAllowed) {
-          return new Response(JSON.stringify({}), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          return jsonResponse({});
         }
         if (!text && attachments.length === 0) {
-          return new Response(JSON.stringify({}), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          return jsonResponse({});
         }
   
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "google_chat",
           key: googleUserId,
           limit: 30,
@@ -1465,10 +1440,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         );
         const emoji = (event.reaction?.emoji?.unicode ?? "").trim();
         if (!spaceName || !googleUserId || !emoji) {
-          return new Response(JSON.stringify({}), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          return jsonResponse({});
         }
         const reactionDedupKey = event.message?.name
           ? `reaction:${eventType}:${spaceName}:${googleUserId}:${event.message.name}`
@@ -1481,16 +1453,13 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
           reactionDedupKey,
         );
         if (!googleReactionDedupAllowed) {
-          return new Response(JSON.stringify({}), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          return jsonResponse({});
         }
   
         const action: "add" | "remove" = eventType.includes("REMOVE") ? "remove" : "add";
         const summary = `Google Chat reaction ${action === "add" ? "added" : "removed"}: ${emoji}`;
   
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "google_chat",
           key: `${googleUserId}:reaction`,
           limit: 30,
@@ -1523,10 +1492,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
       }
   
       // Return empty response (async processing)
-      return new Response(JSON.stringify({}), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({});
     }),
   });
   
@@ -1591,10 +1557,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
       const externalMessageId = activity.id ?? activity.replyToId ?? undefined;
   
       if (!teamsUserId || !conversationId) {
-        return new Response(JSON.stringify({ status: "ok" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse({ status: "ok" });
       }
   
       if (
@@ -1610,10 +1573,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
             : undefined;
         const teamsDedupAllowed = await consumeWebhookDedup(ctx, "teams", teamsDedupKey);
         if (!teamsDedupAllowed) {
-          return new Response(JSON.stringify({ status: "ok" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          return jsonResponse({ status: "ok" });
         }
   
         let kind: "message" | "edit" | "delete" | "reaction";
@@ -1627,10 +1587,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
           respond = true;
           text = summarizeTeamsMessage(cleanedText, attachments);
           if (!text && attachments.length === 0) {
-            return new Response(JSON.stringify({ status: "ok" }), {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            });
+            return jsonResponse({ status: "ok" });
           }
         } else if (activityType === "messageupdate") {
           kind = "edit";
@@ -1656,17 +1613,14 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
             .map((emoji) => ({ emoji, action: "remove" as const, targetMessageId }));
           reactions = [...removed, ...added];
           if (reactions.length === 0) {
-            return new Response(JSON.stringify({ status: "ok" }), {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            });
+            return jsonResponse({ status: "ok" });
           }
           const addedText = added.map((reaction) => reaction.emoji).join(", ") || "none";
           const removedText = removed.map((reaction) => reaction.emoji).join(", ") || "none";
           text = `Teams reaction update on message ${targetMessageId ?? "unknown"}: ${removedText} -> ${addedText}`;
         }
   
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "teams",
           key: kind === "message" ? teamsUserId : `${teamsUserId}:${kind}`,
           limit: 30,
@@ -1713,10 +1667,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         }
       }
   
-      return new Response(JSON.stringify({ status: "ok" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ status: "ok" });
     }),
   });
   
@@ -1804,7 +1755,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
       }
   
       // Rate limit
-      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
         scope: "linq",
         key: senderPhone,
         limit: 30,
@@ -1812,11 +1763,8 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         blockMs: WEBHOOK_RATE_WINDOW_MS,
       });
       if (!rateLimit.allowed) {
-        console.log("[linq] Rate limited:", senderPhone);
         return rateLimitResponse(rateLimit.retryAfterMs);
       }
-  
-      console.log("[linq] Dispatching message from", senderPhone, "text:", text.slice(0, 100), "chatId:", incomingChatId);
   
       // Detect link code: bare 6-digit alphanumeric code, or "link CODE"
       const linkPrefix = textOnly.toLowerCase().startsWith("link ") ? textOnly.slice(5).trim() : textOnly.trim();
@@ -1853,7 +1801,6 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         });
       }
   
-      console.log("[linq] Handler scheduled, returning 200");
       return new Response("OK", { status: 200 });
     }),
   });
@@ -1895,7 +1842,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         return signatureResult;
       }
   
-      const nonceResult = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      const nonceResult = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
         scope: "bridge_nonce",
         key: `${body.ownerId}:${body.provider}:${signatureResult.nonce}`,
         limit: 1,
@@ -1906,7 +1853,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         return new Response("Unauthorized", { status: 401 });
       }
   
-      const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
         scope: "bridge",
         key: `${body.ownerId}:${body.provider}:poll`,
         limit: 120,
@@ -1921,10 +1868,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         sessionId: session._id,
       });
   
-      return new Response(JSON.stringify({ messages }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ messages });
     }),
   });
   
@@ -2005,7 +1949,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
         return signatureResult;
       }
   
-      const nonceResult = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+      const nonceResult = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
         scope: "bridge_nonce",
         key: `${payload.ownerId}:${payload.provider}:${signatureResult.nonce}`,
         limit: 1,
@@ -2017,7 +1961,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
       }
   
       if (payload.type === "heartbeat") {
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "bridge",
           key: `${payload.ownerId}:${payload.provider}:heartbeat`,
           limit: 120,
@@ -2033,7 +1977,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
           provider: payload.provider,
         });
       } else if (payload.type === "auth_update") {
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "bridge",
           key: `${payload.ownerId}:${payload.provider}:auth`,
           limit: 30,
@@ -2075,7 +2019,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
           return new Response("OK", { status: 200 });
         }
   
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "bridge",
           key:
             kind === "message"
@@ -2115,7 +2059,7 @@ export const registerConnectorWebhookRoutes = (http: ReturnType<typeof httpRoute
           respond: payload.respond,
         });
       } else if (payload.type === "error") {
-        const rateLimit = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "bridge",
           key: `${payload.ownerId}:${payload.provider}:error`,
           limit: 20,
