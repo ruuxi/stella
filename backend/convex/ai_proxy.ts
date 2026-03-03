@@ -773,7 +773,7 @@ export const llmProxy = httpAction(async (ctx, request) => {
         apiKey = openrouterKey;
         // Redirect to OpenRouter upstream
         const upstreamUrl = `${STATIC_PROVIDER_UPSTREAMS.openrouter}${sanitizedPath}`;
-        return await forwardRequest(ctx, request, upstreamUrl, "openrouter", openrouterKey, ownerId, agentType, modelId);
+        return await forwardRequest(ctx, request, upstreamUrl, "openrouter", openrouterKey, ownerId, agentType, modelId, { isGateway: true });
       }
     } catch (err) {
       console.warn("[ai-proxy] Failed to look up OpenRouter key:", err);
@@ -824,7 +824,7 @@ export const llmProxy = httpAction(async (ctx, request) => {
       // also starts with /v1 (from the OpenAI SDK). Strip the duplicate.
       const gatewayBase = STATIC_PROVIDER_UPSTREAMS.vercel.replace(/\/v1$/, "");
       const gatewayUpstream = `${gatewayBase}${sanitizedPath}`;
-      return await forwardRequest(ctx, request, gatewayUpstream, "vercel", gatewayKey, ownerId, agentType, modelId);
+      return await forwardRequest(ctx, request, gatewayUpstream, "vercel", gatewayKey, ownerId, agentType, modelId, { isGateway: true });
     }
     return new Response(
       JSON.stringify({ error: "No API key available for provider" }),
@@ -854,6 +854,7 @@ async function forwardRequest(
   ownerId: string,
   agentType: string,
   modelId: string,
+  options?: { isGateway?: boolean },
 ): Promise<Response> {
   // Build forwarded headers
   const forwardHeaders: Record<string, string> = {};
@@ -873,13 +874,31 @@ async function forwardRequest(
   delete forwardHeaders["x-goog-api-key"];
   Object.assign(forwardHeaders, authHeaders);
 
+  // For direct provider requests (not gateway), the client sends
+  // prefixed model IDs like "anthropic/claude-sonnet-4-6" for gateway
+  // compatibility. Strip the prefix so direct providers receive bare IDs.
+  let body: BodyInit | null = request.body;
+  if (!options?.isGateway && request.body) {
+    try {
+      const raw = await request.text();
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.model === "string" && parsed.model.includes("/")) {
+        parsed.model = parsed.model.split("/").slice(1).join("/");
+      }
+      body = JSON.stringify(parsed);
+    } catch {
+      // Body is not JSON or already consumed — forward as-is
+      body = request.body;
+    }
+  }
+
   const startMs = Date.now();
 
   try {
     const upstreamResponse = await fetch(upstreamUrl, {
       method: request.method,
       headers: forwardHeaders,
-      body: request.body,
+      body,
     });
 
     const durationMs = Date.now() - startMs;
