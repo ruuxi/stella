@@ -98,12 +98,38 @@ export const bootstrapMainProcess = () => {
     broadcastUiState()
   }
 
+  const getStandaloneVoicePosition = (mode: 'stt' | 'realtime') => {
+    const cursor = screen.getCursorScreenPoint()
+    const display = screen.getDisplayNearestPoint(cursor)
+    const yOffset = mode === 'realtime' ? 88 : 56
+    return {
+      x: display.bounds.x + Math.round(display.bounds.width / 2),
+      y: display.bounds.y + display.bounds.height - yOffset,
+    }
+  }
+
+  const syncVoiceOverlay = () => {
+    if (!overlayController) return
+    if (uiState.isVoiceRtcActive) {
+      const pos = getStandaloneVoicePosition('realtime')
+      overlayController.showVoice(pos.x, pos.y, 'realtime')
+      return
+    }
+    if (uiState.isVoiceActive) {
+      const pos = getStandaloneVoicePosition('stt')
+      overlayController.showVoice(pos.x, pos.y, 'stt')
+      return
+    }
+    overlayController.hideVoice()
+  }
+
   const deactivateVoiceModes = () => {
     if (!uiState.isVoiceActive && !uiState.isVoiceRtcActive) {
       return false
     }
     uiState.isVoiceActive = false
     uiState.isVoiceRtcActive = false
+    syncVoiceOverlay()
     scheduleResumeWakeWord()
     broadcastUiState()
     return true
@@ -341,6 +367,7 @@ export const bootstrapMainProcess = () => {
     authService.clearPendingAuthCallback()
     uiState.isVoiceActive = false
     uiState.isVoiceRtcActive = false
+    syncVoiceOverlay()
     captureService.resetForHardReset()
     windowManager?.hideMiniWindow(false)
 
@@ -572,11 +599,9 @@ export const bootstrapMainProcess = () => {
       let tokenPrefetchTimer: ReturnType<typeof setInterval> | null = null
 
       const getVoiceTargetWindow = () => {
-        const fullWindow = windowManager?.getFullWindow()
-        if (fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()) {
-          return fullWindow
-        }
-        return windowManager?.getMiniWindow() ?? null
+        // Standalone voice is owned by the unified overlay window.
+        // Fallback to mini only if overlay has not been created yet.
+        return overlayController?.getWindow() ?? windowManager?.getMiniWindow() ?? null
       }
 
       const startTokenPrefetch = () => {
@@ -608,13 +633,11 @@ export const bootstrapMainProcess = () => {
           console.log(`[VoiceRTC:main] t+${Date.now() - t0}ms pre-warm IPC sent`)
         }
 
-        const fullWindow = windowManager?.getFullWindow()
-        const targetWindowMode = voiceTarget && fullWindow && voiceTarget === fullWindow ? 'full' : 'mini'
         uiState.isVoiceRtcActive = true
         uiState.isVoiceActive = false
-        uiState.window = targetWindowMode
-        windowManager?.showWindow(targetWindowMode)
-        console.log(`[VoiceRTC:main] t+${Date.now() - t0}ms showWindow(${targetWindowMode}) + broadcastUiState`)
+        uiState.mode = 'voice'
+        syncVoiceOverlay()
+        console.log(`[VoiceRTC:main] t+${Date.now() - t0}ms overlay voice activated + broadcastUiState`)
         broadcastUiState()
 
         stopTokenPrefetch()
@@ -696,6 +719,7 @@ export const bootstrapMainProcess = () => {
         windowManager,
         updateUiState,
         broadcastUiState,
+        syncVoiceOverlay,
         setAppReady: (ready) => { appReady = ready },
         getResumeWakeWordCapture: () => resumeWakeWordCapture,
         scheduleResumeWakeWord,
@@ -738,6 +762,7 @@ export const bootstrapMainProcess = () => {
         windowManager,
         broadcastUiState,
         scheduleResumeWakeWord,
+        syncVoiceOverlay,
         getPiHostRunner: () => piHostRunner,
       },
     })

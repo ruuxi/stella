@@ -7,6 +7,7 @@ type UiHandlersOptions = {
   windowManager: WindowManager
   updateUiState: (partial: Partial<UiState>) => void
   broadcastUiState: () => void
+  syncVoiceOverlay: () => void
   setAppReady: (ready: boolean) => void
   getResumeWakeWordCapture: () => (() => void) | null
   scheduleResumeWakeWord: () => void
@@ -67,6 +68,7 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
       options.updateUiState(rest)
     }
     if (isVoiceActive !== undefined || isVoiceRtcActive !== undefined) {
+      options.syncVoiceOverlay()
       options.broadcastUiState()
       if (
         (isVoiceActive === false || isVoiceRtcActive === false) &&

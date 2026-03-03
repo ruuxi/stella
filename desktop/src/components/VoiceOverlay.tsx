@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useUiState } from "../app/state/ui-state";
 import { useVoiceRecording } from "../hooks/use-voice-recording";
 import { useRealtimeVoice } from "../hooks/use-realtime-voice";
@@ -6,6 +6,7 @@ import { useWindowType } from "../hooks/use-window-type";
 
 interface VoiceOverlayProps {
   onTranscript: (text: string) => void;
+  style?: CSSProperties;
 }
 
 const BAR_COUNT = 30;
@@ -91,7 +92,7 @@ function computeBarAmplitudes(
   return out;
 }
 
-export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
+export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   const { state, updateState } = useUiState();
   const [showOverlay, setShowOverlay] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -101,13 +102,10 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
   const smoothedRef = useRef<Float32Array | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Only run voice logic in the active window — both full and mini mount VoiceOverlay,
-  // but state.window tells us which one is currently visible.
-  // The overlay window hosts the mini shell, so treat "overlay" as "mini".
+  // Voice overlay is standalone in the overlay renderer.
+  // Keep state.window gating as a fallback if this component is mounted elsewhere.
   const windowType = useWindowType();
-  const isActiveWindow =
-    state.window === windowType ||
-    (windowType === "overlay" && state.window === "mini");
+  const isActiveWindow = windowType === "overlay" || state.window === windowType;
 
   // Swatch refs for 5 theme colors
   const darkRef = useRef<HTMLSpanElement>(null);
@@ -129,7 +127,7 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
   const isAnyVoiceActive = isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
   const isAudioReady = isRecording || isConnected;
 
-  // Unified analyser — whichever mode is active
+  // Unified analyser for whichever mode is active.
   const analyserRef = state.isVoiceRtcActive ? rtcAnalyserRef : sttAnalyserRef;
 
   // Show/hide with exit animation
@@ -260,7 +258,7 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
   if (!showOverlay) return null;
 
   return (
-    <div className="voice-overlay">
+    <div className="voice-overlay" style={style}>
       <div
         className={`voice-overlay-pill${exiting ? " voice-overlay-exiting" : ""}`}
         onClick={handleClick}
