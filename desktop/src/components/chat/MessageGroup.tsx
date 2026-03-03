@@ -1,4 +1,5 @@
-import type { EventRecord, MessagePayload, Attachment } from "../../hooks/use-conversation-events";
+import type { EventRecord } from "../../hooks/use-conversation-events";
+import type { MessagePayload, Attachment } from "../../lib/event-transforms";
 import { WorkingIndicator } from "./WorkingIndicator";
 import { Markdown } from "./Markdown";
 import { isOrchestratorChatMessagePayload } from "./emotes/message-source";

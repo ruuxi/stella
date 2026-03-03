@@ -1,10 +1,7 @@
 import { memo, useRef, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type {
-  EventRecord,
-  Attachment,
-  TaskItem,
-} from "../../hooks/use-conversation-events";
+import type { EventRecord } from "../../hooks/use-conversation-events";
+import type { Attachment, TaskItem } from "../../lib/event-transforms";
 import {
   TurnItem,
   StreamingIndicator,

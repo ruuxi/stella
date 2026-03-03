@@ -1,11 +1,12 @@
 import path from 'path'
-import { ipcMain, webContents } from 'electron'
+import { ipcMain, webContents, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import type { PiHostRunner } from '../../pi-host-runner.js'
 
 type AgentHandlersOptions = {
   getPiHostRunner: () => PiHostRunner | null
   isHostAuthAuthenticated: () => boolean
   frontendRoot: string
+  assertPrivilegedSender: (event: IpcMainEvent | IpcMainInvokeEvent, channel: string) => boolean
 }
 
 type AgentEventPayload = {
@@ -20,6 +21,7 @@ type AgentEventPayload = {
   fatal?: boolean
   finalText?: string
   persisted?: boolean
+  selfModApplied?: { featureId: string; files: string[]; batchIndex: number }
 }
 
 const AGENT_EVENT_BUFFER_LIMIT = 1000
@@ -88,9 +90,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         ? { ...rawResult, reason: 'Awaiting auth token' }
         : rawResult
 
-    if (result && (result.ready || result.reason !== 'Awaiting auth token')) {
-      console.log('[agent:healthCheck]', result)
-    }
     return result
   })
 
@@ -128,6 +127,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     agentType?: string
     storageMode?: 'cloud' | 'local'
   }) => {
+    if (!options.assertPrivilegedSender(event, 'agent:startChat')) {
+      throw new Error('Blocked untrusted request.')
+    }
     const piHostRunner = options.getPiHostRunner()
     if (!piHostRunner) {
       throw new Error('Pi runtime not available')
@@ -157,7 +159,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     return result
   })
 
-  ipcMain.on('agent:cancelChat', (_event, runId: string) => {
+  ipcMain.on('agent:cancelChat', (event, runId: string) => {
+    if (!options.assertPrivilegedSender(event, 'agent:cancelChat')) {
+      return
+    }
     const piHostRunner = options.getPiHostRunner()
     if (piHostRunner && typeof runId === 'string') {
       piHostRunner.cancelLocalChat(runId)
@@ -165,11 +170,14 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     }
   })
 
-  ipcMain.handle('selfmod:revert', async (_event, payload: { featureId: string; steps?: number }) => {
+  ipcMain.handle('selfmod:revert', async (event, payload: { featureId: string; steps?: number }) => {
+    if (!options.assertPrivilegedSender(event, 'selfmod:revert')) {
+      throw new Error('Blocked untrusted request.')
+    }
     if (!options.getPiHostRunner()) {
       throw new Error('Pi runtime not available')
     }
-    const { handleSelfModRevert } = await import('../../pi-runtime/extensions/stella/tools_self_mod.js')
+    const { handleSelfModRevert } = await import('../../pi-runtime/extensions/stella/tools-self-mod.js')
     const context = { conversationId: '', requestId: '', deviceId: '', agentType: 'user' as const }
     return handleSelfModRevert(
       { feature_id: payload.featureId, steps: payload.steps },

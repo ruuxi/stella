@@ -1,5 +1,5 @@
 import { app, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
-import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '../../pi-runtime/extensions/stella/local_preferences.js'
+import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '../../pi-runtime/extensions/stella/local-preferences.js'
 import type { PiHostRunner } from '../../pi-host-runner.js'
 import type { AuthService } from '../../services/auth-service.js'
 import type { ExternalLinkService } from '../../services/external-link-service.js'
@@ -16,7 +16,7 @@ type SystemHandlersOptions = {
     detail: string,
     event?: IpcMainEvent | IpcMainInvokeEvent,
   ) => Promise<boolean>
-  hardResetLocalState: (event: IpcMainInvokeEvent) => Promise<{ ok: true }>
+  hardResetLocalState: () => Promise<{ ok: true }>
   submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) => { ok: boolean; error?: string }
   cancelCredential: (payload: { requestId: string }) => { ok: boolean; error?: string }
 }
@@ -61,7 +61,10 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return { deviceId: options.getDeviceId() }
   })
 
-  ipcMain.handle('auth:setState', (_event, payload: { authenticated?: boolean; token?: string }) => {
+  ipcMain.handle('auth:setState', (event, payload: { authenticated?: boolean; token?: string }) => {
+    if (!options.externalLinkService.assertPrivilegedSender(event, 'auth:setState')) {
+      throw new Error('Blocked untrusted auth:setState request.')
+    }
     options.authService.setHostAuthState(Boolean(payload?.authenticated), payload?.token)
     return { ok: true }
   })
@@ -71,8 +74,8 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return { ok: true }
   })
 
-  ipcMain.handle('app:hardResetLocalState', async (event) => {
-    return options.hardResetLocalState(event)
+  ipcMain.handle('app:hardResetLocalState', async () => {
+    return options.hardResetLocalState()
   })
 
   ipcMain.handle('credential:submit', (_event, payload: { requestId: string; secretId: string; provider: string; label: string }) => {
@@ -85,15 +88,16 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
   ipcMain.on('shell:openExternal', (event, url: string) => {
     if (!options.externalLinkService.assertPrivilegedSender(event, 'shell:openExternal')) {
+      console.debug('[system] blocked untrusted shell:openExternal')
       return
     }
     const safeUrl = options.externalLinkService.normalizeExternalHttpUrl(url)
     if (!safeUrl) {
-      console.warn('[security] Blocked unsafe shell:openExternal request.')
+      console.debug('[system] rejected invalid URL for shell:openExternal')
       return
     }
     if (!options.externalLinkService.consumeExternalOpenBudget(event.sender.id)) {
-      console.warn('[security] Throttled shell:openExternal request from renderer.')
+      console.debug('[system] shell:openExternal rate limited')
       return
     }
     void shell.openExternal(safeUrl)

@@ -27,7 +27,7 @@ function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
 
         const electronApi = window.electronAPI;
         const bridgeStatus = electronApi
-          ? await electronApi.bridgeStatus({ provider }).catch(() => null)
+          ? await electronApi.system.bridgeStatus({ provider }).catch(() => null)
           : null;
         if (cancelled) return;
 
@@ -62,7 +62,7 @@ function ConnectedView({ integration }: { integration: Integration }) {
     try {
       if (isBridge) {
         try {
-          await window.electronAPI?.bridgeStop({ provider: integration.provider });
+          await window.electronAPI?.system.bridgeStop({ provider: integration.provider });
         } catch {
           // Ignore; bridge may not be running locally.
         }
@@ -103,7 +103,7 @@ function BotSetupView({
   isExpanded: boolean;
 }) {
   const generateCode = useMutation(api.channels.utils.generateLinkCode);
-  const createSlackInstallUrl = useMutation((api as any).data.integrations.createSlackInstallUrl);
+  const createSlackInstallUrl = useMutation(api.data.integrations.createSlackInstallUrl);
   const [code, setCode] = useState<string | null>(null);
   const [botLink, setBotLink] = useState<string | null>(
     sanitizeExternalLinkUrl(integration.botLink),

@@ -1,7 +1,8 @@
 import { Spinner } from "../spinner";
 import { cn } from "@/lib/utils";
 import { computeStatus } from "./status-utils";
-import type { TaskItem } from "../../hooks/use-conversation-events";
+import type { TaskItem } from "../../lib/event-transforms";
+import { getAgentLabel } from "./agent-labels";
 
 interface WorkingIndicatorProps {
   status?: string;
@@ -12,23 +13,6 @@ interface WorkingIndicatorProps {
   duration?: string;
   className?: string;
 }
-
-const getAgentLabel = (agentType: string): string => {
-  switch (agentType) {
-    case "general":
-      return "Working";
-    case "explore":
-      return "Exploring";
-    case "browser":
-      return "Browsing";
-    case "self_mod":
-      return "Modifying";
-    case "orchestrator":
-      return "Coordinating";
-    default:
-      return agentType;
-  }
-};
 
 export function WorkingIndicator({
   status,

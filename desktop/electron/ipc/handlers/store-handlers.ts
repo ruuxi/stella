@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import os from 'os'
 import path from 'path'
 import {
@@ -7,11 +7,8 @@ import {
   handleInstallSkill,
   handleInstallTheme,
   handleUninstallPackage,
-} from '../../pi-runtime/extensions/stella/tools_store.js'
-import * as bridgeManager from '../../system/bridge_manager.js'
-import type { MiniBridgeRequest, MiniBridgeResponseEnvelope, MiniBridgeUpdate } from '../../mini-bridge.js'
-import type { MiniBridgeService } from '../../services/mini-bridge-service.js'
-import type { WindowManager } from '../../windows/window-manager.js'
+} from '../../pi-runtime/extensions/stella/tools-store.js'
+import * as bridgeManager from '../../system/bridge-manager.js'
 
 const STORE_ID_PATTERN = /^[a-zA-Z0-9._-]{1,80}$/
 const STORE_TOKEN_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/
@@ -32,8 +29,6 @@ type StoreHandlersOptions = {
     detail: string,
     event?: IpcMainEvent | IpcMainInvokeEvent,
   ) => Promise<boolean>
-  miniBridgeService: MiniBridgeService
-  windowManager: WindowManager
 }
 
 const asTrimmedString = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
@@ -210,40 +205,6 @@ const unwrapStoreResult = (result: { result?: unknown; error?: string }) => {
 }
 
 export const registerStoreHandlers = (options: StoreHandlersOptions) => {
-  ipcMain.handle('miniBridge:request', async (event, request: MiniBridgeRequest) => {
-    const senderWindow = BrowserWindow.fromWebContents(event.sender)
-    return options.miniBridgeService.requestFromMini(
-      senderWindow,
-      options.windowManager.getMiniWindow(),
-      options.windowManager.getFullWindow(),
-      request,
-    )
-  })
-
-  ipcMain.on('miniBridge:ready', (event) => {
-    options.miniBridgeService.handleReadySignal(
-      BrowserWindow.fromWebContents(event.sender),
-      options.windowManager.getFullWindow(),
-    )
-  })
-
-  ipcMain.on('miniBridge:response', (event, envelope: MiniBridgeResponseEnvelope) => {
-    options.miniBridgeService.handleResponseSignal(
-      BrowserWindow.fromWebContents(event.sender),
-      options.windowManager.getFullWindow(),
-      envelope,
-    )
-  })
-
-  ipcMain.on('miniBridge:update', (event, update: MiniBridgeUpdate) => {
-    options.miniBridgeService.handleUpdateSignal(
-      BrowserWindow.fromWebContents(event.sender),
-      options.windowManager.getFullWindow(),
-      options.windowManager.getMiniWindow(),
-      update,
-    )
-  })
-
   ipcMain.handle('store:installSkill', async (event, payload: {
     packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]
   }) => {
@@ -260,7 +221,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     if (!approved) {
       throw new Error('Skill install denied.')
     }
-    return unwrapStoreResult(await handleInstallSkill(safePayload as unknown as Record<string, unknown>))
+    return unwrapStoreResult(await handleInstallSkill(safePayload))
   })
 
   ipcMain.handle('store:installTheme', async (event, payload: {
@@ -279,7 +240,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     if (!approved) {
       throw new Error('Theme install denied.')
     }
-    return unwrapStoreResult(await handleInstallTheme(safePayload as unknown as Record<string, unknown>))
+    return unwrapStoreResult(await handleInstallTheme(safePayload))
   })
 
   ipcMain.handle('store:installCanvas', async (event, payload: {
@@ -302,7 +263,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     if (!approved) {
       throw new Error('Canvas install denied.')
     }
-    return unwrapStoreResult(await handleInstallCanvas(safePayload as unknown as Record<string, unknown>))
+    return unwrapStoreResult(await handleInstallCanvas(safePayload))
   })
 
   ipcMain.handle('store:uninstall', async (event, payload: {
@@ -321,7 +282,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     if (!approved) {
       throw new Error('Package uninstall denied.')
     }
-    return unwrapStoreResult(await handleUninstallPackage(safePayload as unknown as Record<string, unknown>))
+    return unwrapStoreResult(await handleUninstallPackage(safePayload))
   })
 
   ipcMain.handle('bridge:deploy', async (event, payload: {
@@ -365,7 +326,10 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return bridgeManager.stop(payload.provider)
   })
 
-  ipcMain.handle('bridge:status', async (_event, payload: { provider: string }) => {
+  ipcMain.handle('bridge:status', async (event, payload: { provider: string }) => {
+    if (!options.assertPrivilegedSender(event, 'bridge:status')) {
+      throw new Error('Blocked untrusted bridge status request.')
+    }
     return { running: bridgeManager.isRunning(payload.provider) }
   })
 

@@ -11,8 +11,8 @@ export const AuthTokenBridge = () => {
   const isSessionPending = Boolean(session.isPending);
 
   useEffect(() => {
-    const electronApi = window.electronAPI;
-    if (!electronApi?.setAuthState) {
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.setAuthState) {
       return undefined;
     }
 
@@ -22,7 +22,7 @@ export const AuthTokenBridge = () => {
     }
 
     if (!hasSession) {
-      void electronApi.setAuthState({ authenticated: false });
+      void systemApi.setAuthState({ authenticated: false });
       return undefined;
     }
 
@@ -50,7 +50,7 @@ export const AuthTokenBridge = () => {
           clearTimeout(retryTimer);
           retryTimer = null;
         }
-        void electronApi.setAuthState({ authenticated: true, token });
+        void systemApi.setAuthState({ authenticated: true, token });
         if (!refreshInterval) {
           refreshInterval = setInterval(() => {
             void syncToken();
@@ -60,7 +60,7 @@ export const AuthTokenBridge = () => {
       }
 
       // No token yet: keep host in unauthenticated state and retry quickly.
-      void electronApi.setAuthState({ authenticated: false });
+      void systemApi.setAuthState({ authenticated: false });
       if (!retryTimer) {
         retryTimer = setTimeout(() => {
           retryTimer = null;
@@ -78,13 +78,13 @@ export const AuthTokenBridge = () => {
   }, [hasSession, isSessionPending]);
 
   useEffect(() => {
-    const electronApi = window.electronAPI;
-    if (!electronApi?.setAuthState) {
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.setAuthState) {
       return undefined;
     }
 
     return () => {
-      void electronApi.setAuthState({ authenticated: false });
+      void systemApi.setAuthState({ authenticated: false });
     };
   }, []);
 

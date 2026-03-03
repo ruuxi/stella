@@ -23,8 +23,7 @@ describe("deployAndStartLocalBridge", () => {
     const bridgeDeploy = vi.fn().mockResolvedValue({ ok: true });
     const bridgeStart = vi.fn().mockResolvedValue({ ok: true });
     window.electronAPI = {
-      bridgeDeploy,
-      bridgeStart,
+      system: { bridgeDeploy, bridgeStart },
     } as unknown as typeof window.electronAPI;
 
     const getBridgeBundle = vi.fn().mockResolvedValue({
@@ -54,8 +53,7 @@ describe("deployAndStartLocalBridge", () => {
       .mockResolvedValue({ ok: false, error: "deploy failed" });
     const bridgeStart = vi.fn();
     window.electronAPI = {
-      bridgeDeploy,
-      bridgeStart,
+      system: { bridgeDeploy, bridgeStart },
     } as unknown as typeof window.electronAPI;
 
     const getBridgeBundle = vi.fn().mockResolvedValue({
@@ -76,8 +74,7 @@ describe("deployAndStartLocalBridge", () => {
       .fn()
       .mockResolvedValue({ ok: false, error: "start failed" });
     window.electronAPI = {
-      bridgeDeploy,
-      bridgeStart,
+      system: { bridgeDeploy, bridgeStart },
     } as unknown as typeof window.electronAPI;
 
     const getBridgeBundle = vi.fn().mockResolvedValue({

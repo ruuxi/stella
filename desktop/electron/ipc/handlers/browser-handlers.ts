@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import {
   collectBrowserData,
   coreMemoryExists,
@@ -16,6 +16,7 @@ import type { WorkspaceService } from '../../services/workspace-service.js'
 type BrowserHandlersOptions = {
   getStellaHomePath: () => string | null
   workspaceService: WorkspaceService
+  assertPrivilegedSender: (event: IpcMainEvent | IpcMainInvokeEvent, channel: string) => boolean
 }
 
 export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
@@ -47,7 +48,10 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     }
   })
 
-  ipcMain.handle('browserData:writeCoreMemory', async (_event, content: string) => {
+  ipcMain.handle('browserData:writeCoreMemory', async (event, content: string) => {
+    if (!options.assertPrivilegedSender(event, 'browserData:writeCoreMemory')) {
+      throw new Error('Blocked untrusted request.')
+    }
     const stellaHomePath = options.getStellaHomePath()
     if (!stellaHomePath) {
       return { ok: false, error: 'Stella home not initialized' }
@@ -72,26 +76,29 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     return options.workspaceService.listWorkspacePanels()
   })
 
-  ipcMain.handle('signals:collectAll', async (_event, ipcOptions?: { categories?: string[] }): Promise<AllUserSignalsResult> => {
+  ipcMain.handle('signals:collectAll', async (event, ipcOptions?: { categories?: string[] }): Promise<AllUserSignalsResult> => {
+    if (!options.assertPrivilegedSender(event, 'signals:collectAll')) {
+      throw new Error('Blocked untrusted request.')
+    }
     const stellaHomePath = options.getStellaHomePath()
     if (!stellaHomePath) {
       return { data: null, formatted: null, error: 'Stella home not initialized' }
     }
-    const categories = ipcOptions?.categories as import('../../system/discovery_types.js').DiscoveryCategory[] | undefined
+    const categories = ipcOptions?.categories as import('../../system/discovery-types.js').DiscoveryCategory[] | undefined
     return collectAllSignals(stellaHomePath, categories)
   })
 
   ipcMain.handle('identity:getMap', async () => {
     const stellaHomePath = options.getStellaHomePath()
     if (!stellaHomePath) return { version: 1, mappings: [] }
-    const { loadIdentityMap } = await import('../../system/identity_map.js')
+    const { loadIdentityMap } = await import('../../system/identity-map.js')
     return loadIdentityMap(stellaHomePath)
   })
 
   ipcMain.handle('identity:depseudonymize', async (_event, text: string) => {
     const stellaHomePath = options.getStellaHomePath()
     if (!stellaHomePath || !text) return text
-    const { loadIdentityMap, depseudonymize } = await import('../../system/identity_map.js')
+    const { loadIdentityMap, depseudonymize } = await import('../../system/identity-map.js')
     const map = await loadIdentityMap(stellaHomePath)
     if (map.mappings.length === 0) return text
     return depseudonymize(text, map)

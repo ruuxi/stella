@@ -16,16 +16,16 @@ import { collectBrowserData, formatBrowserDataForSynthesis } from "./browser-dat
 import { collectDevProjects, formatDevProjectsForSynthesis } from "./dev-projects.js";
 import { analyzeShellHistory, formatShellAnalysisForSynthesis } from "./shell-history.js";
 import { discoverApps, formatAppDiscoveryForSynthesis } from "./app-discovery.js";
-import { collectBrowserBookmarks, formatBrowserBookmarksForSynthesis } from "./browser_bookmarks.js";
-import { collectSafariData, formatSafariDataForSynthesis } from "./safari_data.js";
-import { filterLowSignalDomains, tierFormattedSignals } from "./signal_processing.js";
-import { collectDevEnvironment, formatDevEnvironmentForSynthesis } from "./dev_environment.js";
-import { collectSystemSignals, formatSystemSignalsForSynthesis } from "./system_signals.js";
-import { collectMessagesNotes, formatMessagesNotesForSynthesis } from "./messages_notes.js";
-import { addContacts, pseudonymize, loadIdentityMap } from "./identity_map.js";
+import { collectBrowserBookmarks, formatBrowserBookmarksForSynthesis } from "./browser-bookmarks.js";
+import { collectSafariData, formatSafariDataForSynthesis } from "./safari-data.js";
+import { filterLowSignalDomains, tierFormattedSignals } from "./signal-processing.js";
+import { collectDevEnvironment, formatDevEnvironmentForSynthesis } from "./dev-environment.js";
+import { collectSystemSignals, formatSystemSignalsForSynthesis } from "./system-signals.js";
+import { collectMessagesNotes, formatMessagesNotesForSynthesis } from "./messages-notes.js";
+import { addContacts, pseudonymize, loadIdentityMap } from "./identity-map.js";
 
 import type { AllUserSignals, AllUserSignalsResult } from "./types.js";
-import type { DiscoveryCategory, BrowserBookmarks, SafariData, DevEnvironmentSignals, SystemSignals, MessagesNotesSignals } from "./discovery_types.js";
+import type { DiscoveryCategory, BrowserBookmarks, SafariData, DevEnvironmentSignals, SystemSignals, MessagesNotesSignals } from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.log("[collect-all]", ...args);
 

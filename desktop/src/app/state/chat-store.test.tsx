@@ -59,8 +59,8 @@ vi.mock("../../convex/api", () => ({
 
 vi.mock("../../services/local-chat-store", () => ({
   appendLocalEvent: (args: unknown) => mockAppendLocalEvent(args),
-  buildLocalHistoryMessages: (conversationId: string, max?: number) =>
-    mockBuildLocalHistoryMessages(conversationId, max),
+  buildLocalHistoryMessages: (conversationId: string) =>
+    mockBuildLocalHistoryMessages(conversationId),
 }));
 
 vi.mock("../../hooks/streaming/attachment-upload", () => ({
@@ -141,7 +141,7 @@ describe("ChatStoreProvider", () => {
           ...globalThis.window,
           electronAPI: {
             ...original,
-            getLocalSyncMode: () => Promise.resolve("off"),
+            system: { getLocalSyncMode: () => Promise.resolve("off") },
           },
         },
         writable: true,
@@ -201,7 +201,6 @@ describe("ChatStoreProvider", () => {
       });
       mockUseQuery.mockReturnValue("connected");
       mockConvexAppendEvent.mockRejectedValueOnce(new Error("cloud down"));
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       const { result } = renderHook(() => useChatStore(), { wrapper });
 
@@ -218,9 +217,6 @@ describe("ChatStoreProvider", () => {
       expect(mockAppendLocalEvent).toHaveBeenCalled();
       expect(mockConvexAppendEvent).toHaveBeenCalled();
       expect(response).toEqual({ _id: "local-123" });
-      expect(warnSpy).toHaveBeenCalled();
-
-      warnSpy.mockRestore();
     });
 
     it("calls appendLocalEvent in local mode", async () => {
@@ -400,7 +396,7 @@ describe("ChatStoreProvider", () => {
 
       const { result } = renderHook(() => useChatStore(), { wrapper });
 
-      const history = result.current.buildHistory("conv-1", 25);
+      const history = result.current.buildHistory("conv-1");
 
       expect(mockBuildLocalHistoryMessages).toHaveBeenCalled();
       expect(mockBuildLocalHistoryMessages.mock.calls[0]![0]).toBe("conv-1");

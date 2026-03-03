@@ -1,6 +1,12 @@
+import type { ReactNode } from "react";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { secureSignOut } from "@/services/auth";
 import { ThemePicker } from "./ThemePicker";
+import LayoutGrid from "lucide-react/dist/esm/icons/layout-grid";
+import Link2 from "lucide-react/dist/esm/icons/link-2";
+import Settings from "lucide-react/dist/esm/icons/settings";
+import User from "lucide-react/dist/esm/icons/user";
+import LogIn from "lucide-react/dist/esm/icons/log-in";
 
 interface SidebarProps {
   hideThemePicker?: boolean;
@@ -15,27 +21,11 @@ interface SidebarProps {
   storeActive?: boolean;
 }
 
-const navItems = [
-  {
-    label: "App Store",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1.5" />
-        <rect x="14" y="3" width="7" height="7" rx="1.5" />
-        <rect x="3" y="14" width="7" height="7" rx="1.5" />
-        <rect x="14" y="14" width="7" height="7" rx="1.5" />
-      </svg>
-    ),
-  },
-  {
-    label: "Connect",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-      </svg>
-    ),
-  },
+type NavAction = "store" | "connect";
+
+const navItems: { action: NavAction; label: string; icon: ReactNode }[] = [
+  { action: "store", label: "App Store", icon: <LayoutGrid size={18} /> },
+  { action: "connect", label: "Connect", icon: <Link2 size={18} /> },
 ];
 
 const AuthButton = ({
@@ -62,20 +52,7 @@ const AuthButton = ({
       }}
     >
       <span className="sidebar-nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          {isAuthenticated ? (
-            <>
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </>
-          ) : (
-            <>
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-              <polyline points="10 17 15 12 10 7" />
-              <line x1="15" y1="12" x2="3" y2="12" />
-            </>
-          )}
-        </svg>
+        {isAuthenticated ? <User size={18} /> : <LogIn size={18} />}
       </span>
       <span className="sidebar-nav-label">{label}</span>
     </button>
@@ -94,10 +71,9 @@ export const Sidebar = ({
   onHome,
   storeActive,
 }: SidebarProps) => {
-  const getClickHandler = (label: string) => {
-    if (label === "App Store") return onStore;
-    if (label === "Connect") return onConnect;
-    return undefined;
+  const actionHandlers: Record<NavAction, (() => void) | undefined> = {
+    store: onStore,
+    connect: onConnect,
   };
 
   return (
@@ -112,10 +88,10 @@ export const Sidebar = ({
       <nav className="sidebar-nav">
         {navItems.map((item) => (
           <button
-            key={item.label}
-            className={`sidebar-nav-item${item.label === "App Store" && storeActive ? " sidebar-nav-item--active" : ""}`}
+            key={item.action}
+            className={`sidebar-nav-item${item.action === "store" && storeActive ? " sidebar-nav-item--active" : ""}`}
             type="button"
-            onClick={getClickHandler(item.label)}
+            onClick={actionHandlers[item.action]}
           >
             <span className="sidebar-nav-icon">{item.icon}</span>
             <span className="sidebar-nav-label">{item.label}</span>
@@ -133,10 +109,7 @@ export const Sidebar = ({
         </div>
         <button type="button" className="sidebar-nav-item" onClick={onSettings}>
           <span className="sidebar-nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
+            <Settings size={18} />
           </span>
           <span className="sidebar-nav-label">Settings</span>
         </button>

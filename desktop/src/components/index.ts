@@ -73,7 +73,7 @@ export { Avatar, type AvatarProps } from "./avatar";
 
 // Content Display Components
 export { Code, type CodeProps } from "./code";
-export { OnboardingStep1, useOnboardingState } from "./Onboarding";
+export { OnboardingStep1, useOnboardingState } from "./onboarding/Onboarding";
 export { ImagePreview, type ImagePreviewProps } from "./image-preview";
 export { Tag, type TagProps } from "./tag";
 export { ProgressCircle, type ProgressCircleProps } from "./progress-circle";

@@ -35,7 +35,7 @@ export function RegionCapture() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        getElectronApi()?.cancelRegionCapture?.();
+        getElectronApi()?.capture.cancelRegion?.();
         clearSelection();
       }
     };
@@ -46,7 +46,7 @@ export function RegionCapture() {
   // Listen for reset from main process (e.g. global Escape shortcut swallows
   // the keypress before the renderer's keydown handler fires).
   useEffect(() => {
-    const cleanup = getElectronApi()?.onRegionReset?.(() => {
+    const cleanup = getElectronApi()?.capture.onRegionReset?.(() => {
       clearSelection();
       setVacuum(null);
     });
@@ -60,14 +60,14 @@ export function RegionCapture() {
     const cy = (clickPoint.y - bounds.y) / bounds.height;
 
     runVacuumEffect(canvasRef.current, thumbnail, cx, cy).then(() => {
-      api?.submitRegionClick?.(clickPoint);
+      api?.capture.submitRegionClick?.(clickPoint);
       setVacuum(null);
     });
   }, [vacuum]);
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-    api?.cancelRegionCapture?.();
+    api?.capture.cancelRegion?.();
     clearSelection();
   };
 
@@ -99,20 +99,20 @@ export function RegionCapture() {
       resolvedSelection.height < MIN_SELECTION_SIZE
     ) {
       clearSelection();
-      const getWindowCapture = api?.getWindowCapture;
+      const getWindowCapture = api?.capture.getWindowCapture;
       if (!getWindowCapture) {
-        api?.submitRegionClick?.(endPoint);
+        api?.capture.submitRegionClick?.(endPoint);
         return;
       }
       const capture = await getWindowCapture(endPoint);
       if (capture) {
         setVacuum({ clickPoint: endPoint, ...capture });
       } else {
-        api?.submitRegionClick?.(endPoint);
+        api?.capture.submitRegionClick?.(endPoint);
       }
       return;
     }
-    api?.submitRegionSelection?.(resolvedSelection);
+    api?.capture.submitRegionSelection?.(resolvedSelection);
     clearSelection();
   };
 

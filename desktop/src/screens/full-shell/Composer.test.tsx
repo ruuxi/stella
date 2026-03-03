@@ -265,7 +265,7 @@ describe("Composer", () => {
     const setChatContext = vi.fn();
     const mockRemoveScreenshot = vi.fn();
     (window as unknown as Record<string, unknown>).electronAPI = {
-      removeScreenshot: mockRemoveScreenshot,
+      capture: { removeScreenshot: mockRemoveScreenshot },
     };
 
     const chatContext: ChatContext = {

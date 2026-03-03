@@ -12,19 +12,19 @@ describe("captureScreenshot", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when captureScreenshot method is missing", async () => {
-    ((window as unknown as Record<string, unknown>)).electronAPI = {};
+  it("returns null when capture.screenshot method is missing", async () => {
+    ((window as unknown as Record<string, unknown>)).electronAPI = { capture: {} };
     const result = await captureScreenshot();
     expect(result).toBeNull();
   });
 
-  it("calls electronAPI.captureScreenshot without point", async () => {
+  it("calls electronAPI.capture.screenshot without point", async () => {
     const mockCapture = vi.fn().mockResolvedValue({
       dataUrl: "data:image/png;base64,abc",
       width: 800,
       height: 600,
     });
-    ((window as unknown as Record<string, unknown>)).electronAPI = { captureScreenshot: mockCapture };
+    ((window as unknown as Record<string, unknown>)).electronAPI = { capture: { screenshot: mockCapture } };
 
     const result = await captureScreenshot();
     expect(mockCapture).toHaveBeenCalledWith(undefined);
@@ -41,7 +41,7 @@ describe("captureScreenshot", () => {
       width: 100,
       height: 100,
     });
-    ((window as unknown as Record<string, unknown>)).electronAPI = { captureScreenshot: mockCapture };
+    ((window as unknown as Record<string, unknown>)).electronAPI = { capture: { screenshot: mockCapture } };
 
     const point = { x: 50, y: 75 };
     await captureScreenshot(point);

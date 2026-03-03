@@ -8,7 +8,7 @@ import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
 import { ChatStoreProvider } from './app/state/chat-store'
 
-type WindowType = 'full' | 'mini' | 'radial' | 'region'
+type WindowType = 'full' | 'mini'
 const CredentialRequestLayer = lazy(() =>
   import('./app/CredentialRequestLayer').then((module) => ({
     default: module.CredentialRequestLayer,
@@ -20,24 +20,11 @@ const FullShell = lazy(() =>
 const MiniShell = lazy(() =>
   import('./screens/MiniShell').then((module) => ({ default: module.MiniShell })),
 )
-const RadialShell = lazy(() =>
-  import('./screens/RadialShell').then((module) => ({ default: module.RadialShell })),
-)
-const RegionCapture = lazy(() =>
-  import('./screens/RegionCapture').then((module) => ({ default: module.RegionCapture })),
-)
 function getWindowType(isElectron: boolean, windowParam: string | null, fallback: string): WindowType {
   if (!isElectron) {
     return fallback as WindowType
   }
-  switch (windowParam) {
-    case 'radial':
-    case 'region':
-    case 'mini':
-      return windowParam
-    default:
-      return 'full'
-  }
+  return windowParam === 'mini' ? 'mini' : 'full'
 }
 
 function App() {
@@ -46,50 +33,25 @@ function App() {
   const windowParam = useMemo(() => new URLSearchParams(window.location.search).get('window'), [])
   const isElectron = Boolean(api)
   const windowType = getWindowType(isElectron, windowParam, state.window)
-  const usesCloudFeatures = windowType === 'full' || windowType === 'mini'
+  const shell = (
+    <div className={`app window-${windowType}`}>
+      <ChatStoreProvider>
+        <AppBootstrap />
+        <CredentialRequestLayer />
+        {windowType === 'mini' ? <MiniShell /> : <FullShell />}
+      </ChatStoreProvider>
+    </div>
+  )
 
-  const shellFallback =
-    windowType === 'radial' ? (
-      <div className="app window-radial" />
-    ) : windowType === 'region' ? (
-      <div className="app window-region" />
-    ) : (
-      <div className={`app window-${windowType}`} />
-    )
-
-  const shell =
-    windowType === 'radial' ? (
-      <div className="app window-radial">
-        <RadialShell />
-      </div>
-    ) : windowType === 'region' ? (
-      <div className="app window-region">
-        <RegionCapture />
-      </div>
-    ) : (
-      <div className={`app window-${windowType}`}>
-        <ChatStoreProvider>
-          <AppBootstrap />
-          <CredentialRequestLayer />
-          {windowType === 'mini' ? <MiniShell /> : <FullShell />}
-        </ChatStoreProvider>
-      </div>
-    )
-
-  // Always show the shell - auth is handled inline with a dialog
   return (
     <>
-      {usesCloudFeatures ? (
-        <>
-          <AuthDeepLinkHandler />
-          <AutoAnonAuth />
-          <AuthTokenBridge />
-          <CloudSyncBridge />
-        </>
-      ) : null}
-      <Suspense fallback={shellFallback}>{shell}</Suspense>
+      <AuthDeepLinkHandler />
+      <AutoAnonAuth />
+      <AuthTokenBridge />
+      <CloudSyncBridge />
+      <Suspense fallback={<div className={`app window-${windowType}`} />}>{shell}</Suspense>
     </>
   )
 }
 
-export default App
+export { App }

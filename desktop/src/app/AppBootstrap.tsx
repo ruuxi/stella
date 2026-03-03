@@ -90,7 +90,7 @@ export const AppBootstrap = () => {
                   break;
                 }
                 await importLocalMessagesChunk({
-                  conversationId: conversation._id as never,
+                  conversationId: conversation._id,
                   messages: chunk,
                 });
               }
@@ -109,7 +109,7 @@ export const AppBootstrap = () => {
         }
         const savedShortcut = localStorage.getItem("stella-voice-shortcut");
         if (savedShortcut) {
-          window.electronAPI?.setVoiceShortcut(savedShortcut);
+          window.electronAPI?.voice.setShortcut(savedShortcut);
         }
       } catch (err) {
         console.error("[AppBootstrap] Cloud conversation setup failed:", err);

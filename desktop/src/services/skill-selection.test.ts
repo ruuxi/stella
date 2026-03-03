@@ -21,8 +21,8 @@ describe("selectDefaultSkills", () => {
 
   it("returns skill selection result on success", async () => {
     const mockResult = { selectedSkillIds: ["skill-1", "skill-2"] };
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify(mockResult), { status: 200 })
+    vi.mocked(fetch).mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(mockResult), { status: 200 }))
     );
 
     const result = await selectDefaultSkills("core memory");
@@ -40,8 +40,8 @@ describe("selectDefaultSkills", () => {
   });
 
   it("sends coreMemory in request body", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ selectedSkillIds: [] }), { status: 200 })
+    vi.mocked(fetch).mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ selectedSkillIds: [] }), { status: 200 }))
     );
 
     await selectDefaultSkills("test memory data");

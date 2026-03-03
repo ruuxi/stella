@@ -18,7 +18,7 @@ export function SelfModUndoButton({
     if (state !== "idle") return;
     setState("reverting");
     try {
-      await window.electronAPI?.selfModRevert(selfModApplied.featureId, 1);
+      await window.electronAPI?.agent.selfModRevert(selfModApplied.featureId, 1);
       setState("reverted");
     } catch (err) {
       console.error("Self-mod revert failed:", err);

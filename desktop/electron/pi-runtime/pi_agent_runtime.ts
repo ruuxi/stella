@@ -7,13 +7,13 @@ import {
   isClaudeCodeModel,
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
-} from "./extensions/stella/claude_code_session_runtime.js";
+} from "./extensions/stella/claude-code-session-runtime.js";
 import {
   runCodexAppServerTurn,
   shutdownCodexAppServerRuntime,
-} from "./extensions/stella/codex_app_server_runtime.js";
-import type { LocalTaskManagerAgentContext } from "./extensions/stella/local_task_manager.js";
-import { localActivateSkill, localNoResponse, localWebFetch } from "./extensions/stella/local_tool_overrides.js";
+} from "./extensions/stella/codex-app-server-runtime.js";
+import type { LocalTaskManagerAgentContext } from "./extensions/stella/local-task-manager.js";
+import { localActivateSkill, localNoResponse, localWebFetch } from "./extensions/stella/local-tool-overrides.js";
 import type { ToolContext, ToolResult } from "./extensions/stella/tools-types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 

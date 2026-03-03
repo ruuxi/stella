@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useMemo } from "react"
 import { useQuery } from "convex/react"
-import { useConversationEvents, getRunningTasks } from "@/hooks/use-conversation-events"
+import { useConversationEvents } from "@/hooks/use-conversation-events"
+import { getRunningTasks } from "@/lib/event-transforms"
 import { useWelcomeSuggestions } from "@/hooks/use-welcome-suggestions"
 import { useChatStore } from "@/app/state/chat-store"
 import { api } from "@/convex/api"

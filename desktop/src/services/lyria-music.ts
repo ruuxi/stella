@@ -1,3 +1,4 @@
+import type { LiveMusicSession } from "@google/genai"
 import { createServiceRequest } from "@/services/http/service-request"
 import {
   generateMusicPrompt,
@@ -60,8 +61,7 @@ export function getState(): MusicServiceState {
 // Internal refs
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type LyriaSession = any
+type LyriaSession = LiveMusicSession | null
 
 // Dual-session cross-fade: A is primary, B is standby
 let sessionA: LyriaSession = null
@@ -259,13 +259,12 @@ async function createSession(
     callbacks: {
       onmessage: createAudioHandler(slot),
       onerror: (error: unknown) => {
-        console.error(`[lyria-music] session ${slot} error:`, error)
+        console.debug(`[lyria-music] session ${slot} error:`, (error as Error).message)
       },
       onclose: (event: unknown) => {
         const closeEvent = event as { code?: number; reason?: string } | undefined
         const code = closeEvent?.code ?? 0
         const reason = closeEvent?.reason ?? ""
-        console.warn(`[lyria-music] session ${slot} closed`, code, reason)
 
         // Clear the closed session reference
         if (slot === "A") sessionA = null
@@ -291,7 +290,7 @@ async function createSession(
           !crossFadeInProgress
         ) {
           reconnectAttempts++
-          console.log(
+          console.debug(
             `[lyria-music] unexpected close, reconnecting (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`,
           )
           crossFadeToNewSession().catch((err) => {
@@ -329,8 +328,8 @@ function killSession(session: LyriaSession) {
   if (!session) return
   try {
     session.stop()
-  } catch {
-    // ignore — best effort
+  } catch (err) {
+    console.debug("[lyria-music] best-effort session stop failed:", (err as Error).message)
   }
 }
 
@@ -340,7 +339,6 @@ function killSession(session: LyriaSession) {
 
 async function crossFadeToNewSession(): Promise<void> {
   if (crossFadeInProgress) {
-    console.warn("[lyria-music] cross-fade already in progress, skipping")
     return
   }
   crossFadeInProgress = true
@@ -372,7 +370,10 @@ async function crossFadeToNewSession(): Promise<void> {
     currentPromptSet = promptSet
 
     // Bail if we were stopped while awaiting the LLM
-    if (intentionallyStopped) return
+    if (intentionallyStopped) {
+      crossFadeInProgress = false
+      return
+    }
 
     // Start new session on the standby slot (initially silent)
     const now = ctx.currentTime
@@ -384,6 +385,7 @@ async function crossFadeToNewSession(): Promise<void> {
     // Bail if we were stopped while creating session
     if (intentionallyStopped) {
       killSession(newSession)
+      crossFadeInProgress = false
       return
     }
 
@@ -416,9 +418,14 @@ async function crossFadeToNewSession(): Promise<void> {
       schedulePreemptiveReconnect()
 
       setState({ currentPromptLabel: promptSet.label })
+
+      // Release the cross-fade lock only after the slot swap is complete
+      crossFadeInProgress = false
     }, CROSSFADE_MS + 200)
-  } finally {
+  } catch (err) {
+    // Release the lock on failure so future cross-fades aren't permanently blocked
     crossFadeInProgress = false
+    throw err
   }
 }
 
@@ -433,11 +440,10 @@ function schedulePreemptiveReconnect() {
 
   preemptTimer = setTimeout(async () => {
     if (intentionallyStopped || state.status !== "playing") return
-    console.log("[lyria-music] pre-emptive session overlap starting...")
     try {
       await crossFadeToNewSession()
     } catch (err) {
-      console.warn("[lyria-music] pre-emptive reconnect failed:", err)
+      console.debug("[lyria-music] preemptive reconnect failed:", (err as Error).message)
     }
   }, remaining)
 }
@@ -482,8 +488,8 @@ function startAutoPromptCycle() {
       })
 
       setState({ currentPromptLabel: promptSet.label })
-    } catch {
-      // Non-fatal
+    } catch (err) {
+      console.debug("[lyria-music] auto-prompt cycle failed:", (err as Error).message)
     }
   }, PROMPT_CYCLE_MS)
 }
@@ -541,7 +547,7 @@ export async function play(): Promise<void> {
   // If already playing, cross-fade to apply current settings
   if (state.status === "playing" || state.status === "paused") {
     crossFadeToNewSession().catch((err) => {
-      console.warn("[lyria-music] play cross-fade failed:", err)
+      console.debug("[lyria-music] cross-fade on re-play failed:", (err as Error).message)
     })
     return
   }
@@ -603,7 +609,7 @@ export async function pause(): Promise<void> {
     stopElapsedTimer()
     clearPreemptTimer()
   } catch (err) {
-    console.error("lyria pause failed:", err);
+    console.debug("[lyria-music] pause failed:", (err as Error).message)
     setState({
       status: "error",
       error: err instanceof Error ? err.message : "Failed to pause music",
@@ -622,7 +628,7 @@ export async function resume(): Promise<void> {
     startElapsedTimer()
     schedulePreemptiveReconnect()
   } catch (err) {
-    console.error("lyria resume failed:", err);
+    console.debug("[lyria-music] resume failed:", (err as Error).message)
     setState({
       status: "error",
       error: err instanceof Error ? err.message : "Failed to resume music",

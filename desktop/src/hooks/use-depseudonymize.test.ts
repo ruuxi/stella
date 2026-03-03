@@ -28,7 +28,7 @@ describe("useDepseudonymize", () => {
     setDiscoveryCategories(["dev_environment"]);
     const getIdentityMap = vi.fn();
     window.electronAPI = {
-      getIdentityMap,
+      system: { getIdentityMap },
     } as unknown as typeof window.electronAPI;
 
     const { useDepseudonymize } = await import("./use-depseudonymize");
@@ -51,7 +51,7 @@ describe("useDepseudonymize", () => {
       ],
     } satisfies IdentityMapPayload);
     window.electronAPI = {
-      getIdentityMap,
+      system: { getIdentityMap },
     } as unknown as typeof window.electronAPI;
 
     const { useDepseudonymize } = await import("./use-depseudonymize");
@@ -84,7 +84,7 @@ describe("useDepseudonymize", () => {
       ],
     } satisfies IdentityMapPayload);
     window.electronAPI = {
-      getIdentityMap,
+      system: { getIdentityMap },
     } as unknown as typeof window.electronAPI;
 
     const { useDepseudonymize } = await import("./use-depseudonymize");
@@ -102,7 +102,7 @@ describe("useDepseudonymize", () => {
       mappings: [],
     } satisfies IdentityMapPayload);
     window.electronAPI = {
-      getIdentityMap,
+      system: { getIdentityMap },
     } as unknown as typeof window.electronAPI;
 
     const { useDepseudonymize } = await import("./use-depseudonymize");
@@ -119,7 +119,7 @@ describe("useDepseudonymize", () => {
     setDiscoveryCategories(["messages_notes"]);
     const getIdentityMap = vi.fn().mockRejectedValue(new Error("boom"));
     window.electronAPI = {
-      getIdentityMap,
+      system: { getIdentityMap },
     } as unknown as typeof window.electronAPI;
 
     const { useDepseudonymize } = await import("./use-depseudonymize");
@@ -145,7 +145,7 @@ describe("useDepseudonymize", () => {
       ],
     } satisfies IdentityMapPayload);
     window.electronAPI = {
-      getIdentityMap,
+      system: { getIdentityMap },
     } as unknown as typeof window.electronAPI;
 
     const { useDepseudonymize } = await import("./use-depseudonymize");
@@ -174,7 +174,7 @@ describe("useDepseudonymize", () => {
       ],
     } satisfies IdentityMapPayload);
     window.electronAPI = {
-      getIdentityMap,
+      system: { getIdentityMap },
     } as unknown as typeof window.electronAPI;
 
     const { useDepseudonymize } = await import("./use-depseudonymize");

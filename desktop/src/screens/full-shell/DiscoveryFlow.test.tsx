@@ -200,7 +200,7 @@ describe("useDiscoveryFlow", () => {
   it("does not run effect when not authenticated", async () => {
     const checkCoreMemoryExists = vi.fn();
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists,
+      browser: { checkCoreMemoryExists },
     };
     setCloudMode(false);
 
@@ -222,7 +222,7 @@ describe("useDiscoveryFlow", () => {
   it("does not run effect when conversationId is null", async () => {
     const checkCoreMemoryExists = vi.fn();
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists,
+      browser: { checkCoreMemoryExists },
     };
     setCloudMode(true);
 
@@ -247,8 +247,10 @@ describe("useDiscoveryFlow", () => {
     );
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() => Promise.resolve(true)),
-      collectAllSignals: vi.fn(),
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(true)),
+        collectAllSignals: vi.fn(),
+      },
     };
     setCloudMode(true);
 
@@ -264,7 +266,7 @@ describe("useDiscoveryFlow", () => {
 
     await vi.waitFor(() => {
       expect(
-        (window as unknown as Record<string, { collectAllSignals: ReturnType<typeof vi.fn> }>).electronAPI.collectAllSignals,
+        (window as unknown as Record<string, { browser: { collectAllSignals: ReturnType<typeof vi.fn> } }>).electronAPI.browser.collectAllSignals,
       ).not.toHaveBeenCalled();
       expect(synthesizeCoreMemory).not.toHaveBeenCalled();
     });
@@ -276,10 +278,12 @@ describe("useDiscoveryFlow", () => {
     );
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-      collectAllSignals: vi.fn(() =>
-        Promise.resolve({ error: "some error", formatted: null }),
-      ),
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+        collectAllSignals: vi.fn(() =>
+          Promise.resolve({ error: "some error", formatted: null }),
+        ),
+      },
     };
     setCloudMode(true);
 
@@ -320,14 +324,16 @@ describe("useDiscoveryFlow", () => {
     const writeCoreMemory = vi.fn(() => Promise.resolve());
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-      collectAllSignals: vi.fn(() =>
-        Promise.resolve({
-          formatted: "## Dev projects\n- project-a",
-          error: null,
-        }),
-      ),
-      writeCoreMemory,
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+        collectAllSignals: vi.fn(() =>
+          Promise.resolve({
+            formatted: "## Dev projects\n- project-a",
+            error: null,
+          }),
+        ),
+        writeCoreMemory,
+      },
     };
     setCloudMode(true);
 
@@ -394,11 +400,13 @@ describe("useDiscoveryFlow", () => {
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-      collectAllSignals: vi.fn(() =>
-        Promise.resolve({ formatted: "signals", error: null }),
-      ),
-      writeCoreMemory: vi.fn(() => Promise.resolve()),
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+        collectAllSignals: vi.fn(() =>
+          Promise.resolve({ formatted: "signals", error: null }),
+        ),
+        writeCoreMemory: vi.fn(() => Promise.resolve()),
+      },
     };
     setCloudMode(true);
 
@@ -436,11 +444,13 @@ describe("useDiscoveryFlow", () => {
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-      collectAllSignals: vi.fn(() =>
-        Promise.resolve({ formatted: "signals", error: null }),
-      ),
-      writeCoreMemory: vi.fn(() => Promise.resolve()),
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+        collectAllSignals: vi.fn(() =>
+          Promise.resolve({ formatted: "signals", error: null }),
+        ),
+        writeCoreMemory: vi.fn(() => Promise.resolve()),
+      },
     };
 
     const { result } = renderHook(() =>
@@ -477,11 +487,13 @@ describe("useDiscoveryFlow", () => {
 
     const writeCoreMemory = vi.fn(() => Promise.resolve());
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-      collectAllSignals: vi.fn(() =>
-        Promise.resolve({ formatted: "local unauth signals", error: null }),
-      ),
-      writeCoreMemory,
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+        collectAllSignals: vi.fn(() =>
+          Promise.resolve({ formatted: "local unauth signals", error: null }),
+        ),
+        writeCoreMemory,
+      },
     };
 
     const { result } = renderHook(() =>
@@ -515,11 +527,13 @@ describe("useDiscoveryFlow", () => {
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-      collectAllSignals: vi.fn(() =>
-        Promise.resolve({ formatted: "signals", error: null }),
-      ),
-      writeCoreMemory: vi.fn(() => Promise.resolve()),
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+        collectAllSignals: vi.fn(() =>
+          Promise.resolve({ formatted: "signals", error: null }),
+        ),
+        writeCoreMemory: vi.fn(() => Promise.resolve()),
+      },
     };
     setCloudMode(true);
 
@@ -540,9 +554,11 @@ describe("useDiscoveryFlow", () => {
 
   it("silently catches errors in the async run function", async () => {
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() =>
-        Promise.reject(new Error("some error")),
-      ),
+      browser: {
+        checkCoreMemoryExists: vi.fn(() =>
+          Promise.reject(new Error("some error")),
+        ),
+      },
     };
     setCloudMode(true);
 
@@ -573,11 +589,13 @@ describe("useDiscoveryFlow", () => {
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-      collectAllSignals: vi.fn(() =>
-        Promise.resolve({ formatted: "data", error: null }),
-      ),
-      writeCoreMemory: vi.fn(() => Promise.resolve()),
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+        collectAllSignals: vi.fn(() =>
+          Promise.resolve({ formatted: "data", error: null }),
+        ),
+        writeCoreMemory: vi.fn(() => Promise.resolve()),
+      },
     };
 
     const { result, rerender } = renderHook(

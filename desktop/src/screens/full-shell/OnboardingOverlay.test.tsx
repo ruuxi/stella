@@ -16,7 +16,7 @@ vi.mock("../../components/StellaAnimation", () => ({
   }),
 }));
 
-vi.mock("../../components/Onboarding", () => ({
+vi.mock("../../components/onboarding/Onboarding", () => ({
   OnboardingStep1: (props: any) => (
     <div data-testid="onboarding-step1">
       <button data-testid="complete-btn" onClick={props.onComplete}>
@@ -52,7 +52,7 @@ vi.mock("@/convex/api", () => ({
 
 // Re-import mock references for per-test overrides
 import { useConvexAuth } from "convex/react";
-import { useOnboardingState } from "../../components/Onboarding";
+import { useOnboardingState } from "../../components/onboarding/Onboarding";
 
 const mockedUseConvexAuth = vi.mocked(useConvexAuth);
 const mockedUseOnboardingState = vi.mocked(useOnboardingState) as any;

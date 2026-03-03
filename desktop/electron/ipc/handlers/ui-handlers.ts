@@ -1,6 +1,12 @@
 import { BrowserWindow, ipcMain } from 'electron'
+import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { UiState } from '../../types.js'
 import type { WindowManager } from '../../windows/window-manager.js'
+
+// IPC authorization policy:
+//   Privileged (assertPrivilegedSender):  ui:setState, window:show, app:reload, app:setReady
+//   Public (read-only, no assertion):     ui:getState, window:isMaximized
+//   Window-scoped (operates on sender):   window:minimize, window:maximize, window:close
 
 type UiHandlersOptions = {
   uiState: UiState
@@ -12,6 +18,7 @@ type UiHandlersOptions = {
   getResumeWakeWordCapture: () => (() => void) | null
   scheduleResumeWakeWord: () => void
   deactivateVoiceModes: () => boolean
+  assertPrivilegedSender: (event: IpcMainEvent | IpcMainInvokeEvent, channel: string) => boolean
 }
 
 export const registerUiHandlers = (options: UiHandlersOptions) => {
@@ -53,7 +60,8 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
 
   ipcMain.handle('ui:getState', () => options.uiState)
 
-  ipcMain.handle('ui:setState', (_event, partial: Partial<UiState>) => {
+  ipcMain.handle('ui:setState', (event, partial: Partial<UiState>) => {
+    if (!options.assertPrivilegedSender(event, 'ui:setState')) return options.uiState
     const { window: nextWindow, isVoiceActive, isVoiceRtcActive, ...rest } = partial
     if (nextWindow === 'mini' || nextWindow === 'full') {
       options.windowManager.showWindow(nextWindow)
@@ -80,7 +88,8 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     return options.uiState
   })
 
-  ipcMain.on('window:show', (_event, target: 'full' | 'mini') => {
+  ipcMain.on('window:show', (event, target: 'full' | 'mini') => {
+    if (!options.assertPrivilegedSender(event, 'window:show')) return
     if (target !== 'mini' && target !== 'full') {
       return
     }
@@ -96,7 +105,8 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     }
   })
 
-  ipcMain.on('app:reload', () => {
+  ipcMain.on('app:reload', (event) => {
+    if (!options.assertPrivilegedSender(event, 'app:reload')) return
     options.windowManager.reloadFullWindow()
   })
 }

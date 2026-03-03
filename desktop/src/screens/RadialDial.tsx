@@ -1,5 +1,13 @@
-import { useEffect, useState, useCallback, useRef, type ComponentType, type SVGProps } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  type ComponentType,
+  type SVGProps
+} from 'react';
 import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
+import { RADIAL_SIZE } from '@/constants/layout'
 import { getElectronApi } from '../services/electron'
 import type { RadialWedge } from '../types/electron'
 import { useTheme } from '../theme/theme-context'
@@ -22,16 +30,13 @@ const WEDGES: { id: RadialWedge; label: string; icon: ComponentType<SVGProps<SVG
   { id: 'auto', label: 'Auto', icon: Sparkles },
 ]
 
-const SIZE = 280
+const SIZE = RADIAL_SIZE
 const CENTER = SIZE / 2
 const INNER_RADIUS = 40
 const OUTER_RADIUS = 125
 const WEDGE_ANGLE = 72 // 360 / 5 wedges
 const DEAD_ZONE_RADIUS = 30 // Center zone for "dismiss"
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
-
-// How long into the open animation before SVG content starts fading in
-// handled via rAF callback in startOpen
 
 const toRgba = (color: string, alpha: number): string => {
   const [r, g, b] = cssToVec3(color)
@@ -70,33 +75,42 @@ const getContentPosition = (index: number) => {
   }
 }
 
+const calculateWedge = (x: number, y: number, centerX: number, centerY: number): RadialWedge => {
+  const dx = x - centerX
+  const dy = y - centerY
+  const distance = Math.sqrt(dx * dx + dy * dy)
+
+  if (distance < DEAD_ZONE_RADIUS) return 'dismiss'
+
+  let angle = Math.atan2(dy, dx) * (180 / Math.PI)
+  if (angle < 0) angle += 360
+  angle = (angle + 90) % 360
+
+  const wedgeIndex = Math.floor(angle / WEDGE_ANGLE)
+  return WEDGES[wedgeIndex]?.id ?? 'dismiss'
+}
+
 type Phase = 'hidden' | 'opening' | 'open' | 'closing'
 
-export function RadialDial() {
-  const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
-  const [phase, setPhase] = useState<Phase>('hidden')
-  const [contentVisible, setContentVisible] = useState(false)
-  const visibleRef = useRef(false)
-  const phaseRef = useRef<Phase>('hidden')
+type BlobRefs = {
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
+  blobReady: React.RefObject<boolean>
+  selectedIdxRef: React.RefObject<number>
+  colorsRef: React.RefObject<BlobColors>
+}
+
+/** Manages the WebGL blob lifecycle and theme color sync. */
+function useRadialBlob(colors: ReturnType<typeof useTheme>['colors']): BlobRefs {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const blobReady = useRef(false)
   const selectedIdxRef = useRef(-1)
-  const contentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const colorsRef = useRef<BlobColors>({
     fills: Array(5).fill([0.2, 0.2, 0.2] as [number, number, number]),
     selectedFill: [0.4, 0.4, 0.8],
     centerBg: [0.1, 0.1, 0.1],
     stroke: [0.3, 0.3, 0.3],
   })
-  const api = getElectronApi()
-  const { colors } = useTheme()
 
-  // Keep phaseRef in sync
-  useEffect(() => {
-    phaseRef.current = phase
-  }, [phase])
-
-  // Init WebGL on mount
   useEffect(() => {
     const canvas = canvasRef.current
     if (canvas && !blobReady.current) {
@@ -108,11 +122,9 @@ export function RadialDial() {
     return () => {
       destroyBlob()
       blobReady.current = false
-      if (contentTimerRef.current) clearTimeout(contentTimerRef.current)
     }
   }, [])
 
-  // Sync theme colors to blob renderer
   useEffect(() => {
     const cardVec = cssToVec3(colors.card)
     colorsRef.current = {
@@ -123,43 +135,20 @@ export function RadialDial() {
     }
   }, [colors])
 
-  // Sync selection to refs — but only show on the blob once the SVG is visible.
-  // During the opening animation the blob's asymmetric wobble makes the visual
-  // wedge positions look different from the mathematical boundaries, so
-  // highlighting a wedge on the blob would show what appears to be the "wrong"
-  // one until the animation settles.
-  useEffect(() => {
-    const idx = WEDGES.findIndex((w) => w.id === selectedWedge)
-    selectedIdxRef.current = phase === 'open' || phase === 'closing' ? idx : -1
+  return useMemo(() => ({ canvasRef, blobReady, selectedIdxRef, colorsRef }), [])
+}
 
-    const cardVec = cssToVec3(colors.card)
-    const selVec = cssToVec3(colors.interactive)
-    colorsRef.current = {
-      ...colorsRef.current,
-      fills: WEDGES.map((_, i) => (i === idx ? selVec : cardVec)),
-    }
-  }, [selectedWedge, colors, phase])
-
-  const calculateWedge = useCallback(
-    (x: number, y: number, centerX: number, centerY: number): RadialWedge => {
-      const dx = x - centerX
-      const dy = y - centerY
-      const distance = Math.sqrt(dx * dx + dy * dy)
-
-      if (distance < DEAD_ZONE_RADIUS) {
-        return 'dismiss'
-      }
-
-      let angle = Math.atan2(dy, dx) * (180 / Math.PI)
-      if (angle < 0) angle += 360
-
-      angle = (angle + 90) % 360
-
-      const wedgeIndex = Math.floor(angle / WEDGE_ANGLE)
-      return WEDGES[wedgeIndex]?.id ?? 'dismiss'
-    },
-    [],
-  )
+/** Subscribes to radial IPC events (show/hide/cursor) and drives phase transitions. */
+function useRadialIPC(
+  blob: BlobRefs,
+  setSelectedWedge: React.Dispatch<React.SetStateAction<RadialWedge>>,
+  setPhase: React.Dispatch<React.SetStateAction<Phase>>,
+  setContentVisible: React.Dispatch<React.SetStateAction<boolean>>,
+) {
+  const api = getElectronApi()
+  const visibleRef = useRef(false)
+  const phaseRef = useRef<Phase>('hidden')
+  const contentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!api) return
@@ -171,13 +160,11 @@ export function RadialDial() {
       visibleRef.current = true
 
       if (typeof data.x === 'number' && typeof data.y === 'number') {
-        const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
-        setSelectedWedge(wedge)
+        setSelectedWedge(calculateWedge(data.x, data.y, data.centerX, data.centerY))
       } else {
         setSelectedWedge('dismiss')
       }
 
-      // Cancel any running animation + pending content timer
       cancelAnimation()
       if (contentTimerRef.current) {
         clearTimeout(contentTimerRef.current)
@@ -185,13 +172,13 @@ export function RadialDial() {
       }
       setContentVisible(false)
 
-      if (blobReady.current) {
+      if (blob.blobReady.current) {
         setPhase('opening')
         phaseRef.current = 'opening'
 
         startOpen(
-          selectedIdxRef,
-          colorsRef,
+          blob.selectedIdxRef,
+          blob.colorsRef,
           () => {
             if (visibleRef.current) {
               setPhase('open')
@@ -199,35 +186,28 @@ export function RadialDial() {
               setContentVisible(true)
             }
           },
-          // Trigger SVG content fade-in via the rAF loop, rather than a loose setTimeout
           () => {
-            if (visibleRef.current) {
-              setContentVisible(true)
-            }
-          }
+            if (visibleRef.current) setContentVisible(true)
+          },
         )
       } else {
-        // Fallback: show immediately if WebGL unavailable
         setPhase('open')
         phaseRef.current = 'open'
         requestAnimationFrame(() => {
-          if (visibleRef.current) {
-            setContentVisible(true)
-          }
+          if (visibleRef.current) setContentVisible(true)
         })
       }
     }
 
     const handleHide = () => {
-      // Kill content fade timer
       if (contentTimerRef.current) {
         clearTimeout(contentTimerRef.current)
         contentTimerRef.current = null
       }
       setSelectedWedge('dismiss')
-      selectedIdxRef.current = -1
+      blob.selectedIdxRef.current = -1
 
-      if (blobReady.current && phaseRef.current !== 'hidden') {
+      if (blob.blobReady.current && phaseRef.current !== 'hidden') {
         setPhase('closing')
         phaseRef.current = 'closing'
 
@@ -235,18 +215,13 @@ export function RadialDial() {
           contentTimerRef.current = null
           setContentVisible(false)
         }, 60)
-        startClose(selectedIdxRef, colorsRef, () => {
+        startClose(blob.selectedIdxRef, blob.colorsRef, () => {
           visibleRef.current = false
           setPhase('hidden')
           phaseRef.current = 'hidden'
           setContentVisible(false)
-          // Wait one frame for React to commit opacity:0 to the DOM
-          // before signaling the main process to hide the window.
-          // Otherwise the compositor's backing-store snapshot still
-          // contains content at the old position, causing a visible
-          // flash when the window is next shown.
           requestAnimationFrame(() => {
-            window.electronAPI?.radialAnimDone?.()
+            window.electronAPI?.radial.animDone?.()
           })
         })
       } else {
@@ -268,10 +243,10 @@ export function RadialDial() {
     }
 
     const electronAPI = window.electronAPI
-    if (electronAPI?.onRadialShow) {
-      const cleanupShow = electronAPI.onRadialShow(handleShow)
-      const cleanupHide = electronAPI.onRadialHide(handleHide)
-      const cleanupCursor = electronAPI.onRadialCursor(handleCursor)
+    if (electronAPI?.radial.onShow) {
+      const cleanupShow = electronAPI.radial.onShow(handleShow)
+      const cleanupHide = electronAPI.radial.onHide(handleHide)
+      const cleanupCursor = electronAPI.radial.onCursor(handleCursor)
 
       return () => {
         cancelAnimation()
@@ -281,7 +256,32 @@ export function RadialDial() {
         cleanupCursor()
       }
     }
-  }, [api, calculateWedge])
+  }, [api, blob, setSelectedWedge, setPhase, setContentVisible])
+}
+
+export function RadialDial() {
+  const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
+  const [phase, setPhase] = useState<Phase>('hidden')
+  const [contentVisible, setContentVisible] = useState(false)
+  const { colors } = useTheme()
+
+  const blob = useRadialBlob(colors)
+  useRadialIPC(blob, setSelectedWedge, setPhase, setContentVisible)
+
+  // Sync selection highlight to blob colors — deferred until SVG is visible
+  // because the asymmetric wobble during opening makes visual wedge positions
+  // differ from mathematical boundaries.
+  useEffect(() => {
+    const idx = WEDGES.findIndex((w) => w.id === selectedWedge)
+    blob.selectedIdxRef.current = phase === 'open' || phase === 'closing' ? idx : -1
+
+    const cardVec = cssToVec3(colors.card)
+    const selVec = cssToVec3(colors.interactive)
+    blob.colorsRef.current = {
+      ...blob.colorsRef.current,
+      fills: WEDGES.map((_, i) => (i === idx ? selVec : cardVec)),
+    }
+  }, [selectedWedge, colors, phase, blob])
 
   // Canvas visible whenever the dial is not hidden to avoid compositor pops
   const showCanvas = phase !== 'hidden'
@@ -289,7 +289,7 @@ export function RadialDial() {
   return (
     <div className="radial-dial-container">
       <canvas
-        ref={canvasRef}
+        ref={blob.canvasRef}
         className="radial-blob-canvas"
         style={{
           width: SIZE,

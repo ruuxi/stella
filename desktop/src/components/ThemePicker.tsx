@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useTheme } from "../theme/theme-context";
+import { useTheme, useThemeControl } from "../theme/theme-context";
 import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "./popover";
 import { Button } from "./button";
 import { ChevronUp, Check } from "lucide-react";
@@ -37,15 +37,11 @@ export function ThemePicker({
   onOpenChange: controlledOnOpenChange,
   onThemeSelect,
 }: ThemePickerProps) {
+  const { themeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
   const {
-    themeId,
-    themes,
     setTheme,
-    colorMode,
     setColorMode,
-    gradientMode,
     setGradientMode,
-    gradientColor,
     setGradientColor,
     previewTheme,
     cancelThemePreview,
@@ -54,7 +50,7 @@ export function ThemePicker({
     previewGradientColor,
     cancelGradientColorPreview,
     cancelPreview,
-  } = useTheme();
+  } = useThemeControl();
 
   const [internalOpen, setInternalOpen] = useState(false);
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   RealtimeVoiceSession,
   claimPreWarmedSession,
+  initRealtimeVoiceIpc,
   type VoiceSessionEvent,
   type VoiceSessionState,
 } from "../services/realtime-voice";
@@ -20,17 +21,235 @@ const SESSION_ROTATE_MS = 55 * 60 * 1000;
 const RETRY_BASE_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
 
+// ---------------------------------------------------------------------------
+// VoiceSessionManager — extracted session lifecycle logic (no React imports)
+// ---------------------------------------------------------------------------
+
+interface VoiceSessionManagerDeps {
+  conversationIdRef: { current: string };
+  inputActiveRef: { current: boolean };
+  appendEventRef: { current: (...args: any[]) => any };
+  deviceIdRef: { current: string | null };
+  analyserRef: { current: AnalyserNode | null };
+  onStateChange: (state: VoiceSessionState) => void;
+}
+
+export class VoiceSessionManager {
+  private deps: VoiceSessionManagerDeps;
+  private sessionRef: { current: RealtimeVoiceSession | null } = { current: null };
+  private unsubscribeRef: { current: (() => void) | null } = { current: null };
+  private retryTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
+  private rotateTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
+  private retryAttemptRef: { current: number } = { current: 0 };
+  private aborted = false;
+
+  constructor(deps: VoiceSessionManagerDeps) {
+    this.deps = deps;
+  }
+
+  /** Boot the session lifecycle. */
+  start(): void {
+    this.aborted = false;
+    void this.startSession(true);
+  }
+
+  /** Tear down everything and mark aborted. */
+  stop(): void {
+    this.aborted = true;
+    this.deps.analyserRef.current = null;
+    this.deps.onStateChange("idle");
+    void this.teardownSession();
+  }
+
+  /** Forward conversationId / inputActive changes to the live session. */
+  updateSession(conversationId: string, inputActive: boolean): void {
+    const session = this.sessionRef.current;
+    if (!session) return;
+    session.setConversationId(conversationId);
+    session.setInputActive(inputActive);
+  }
+
+  // ---- private helpers ----------------------------------------------------
+
+  private clearRetryTimer(): void {
+    if (this.retryTimerRef.current) {
+      clearTimeout(this.retryTimerRef.current);
+      this.retryTimerRef.current = null;
+    }
+  }
+
+  private clearRotateTimer(): void {
+    if (this.rotateTimerRef.current) {
+      clearTimeout(this.rotateTimerRef.current);
+      this.rotateTimerRef.current = null;
+    }
+  }
+
+  private async teardownSession(): Promise<void> {
+    this.clearRetryTimer();
+    this.clearRotateTimer();
+    if (this.unsubscribeRef.current) {
+      this.unsubscribeRef.current();
+      this.unsubscribeRef.current = null;
+    }
+    const current = this.sessionRef.current;
+    this.sessionRef.current = null;
+    if (current) {
+      await current.disconnect().catch((err) => {
+        console.debug('[VoiceSessionManager] Disconnect failed during teardown:', (err as Error).message);
+      });
+    }
+  }
+
+  private scheduleRotate(): void {
+    this.clearRotateTimer();
+    this.rotateTimerRef.current = setTimeout(() => {
+      if (this.aborted) return;
+      void this.startSession(false);
+    }, SESSION_ROTATE_MS);
+  }
+
+  private scheduleRetry(): void {
+    this.clearRetryTimer();
+    const delayMs = Math.min(
+      RETRY_BASE_MS * Math.max(1, 2 ** this.retryAttemptRef.current),
+      RETRY_MAX_MS,
+    );
+    this.retryAttemptRef.current += 1;
+    this.retryTimerRef.current = setTimeout(() => {
+      if (this.aborted) return;
+      void this.startSession(false);
+    }, delayMs);
+  }
+
+  private persistTranscript(role: "user" | "assistant", text: string): void {
+    const cid = this.deps.conversationIdRef.current;
+    if (!cid) return;
+
+    // 1. Persist to JSONL store (orchestrator context) via IPC
+    try {
+      window.electronAPI?.voice.persistTranscript?.({
+        conversationId: cid,
+        role,
+        text,
+      });
+    } catch (err) {
+      console.debug('[VoiceSessionManager] Voice persistence failed:', (err as Error).message);
+    }
+
+    // 2. Persist to localStorage (UI display)
+    const type = role === "user" ? "user_message" : "assistant_message";
+    const payload: Record<string, unknown> = { text, source: "voice" };
+    const args: Parameters<typeof this.deps.appendEventRef.current>[0] = {
+      conversationId: cid,
+      type,
+      payload,
+      ...(role === "user" && this.deps.deviceIdRef.current
+        ? { deviceId: this.deps.deviceIdRef.current }
+        : {}),
+    };
+    Promise.resolve(this.deps.appendEventRef.current(args)).catch((err) => {
+      console.debug('[VoiceSessionManager] Event persistence failed:', (err as Error).message);
+    });
+  }
+
+  private attachSession(session: RealtimeVoiceSession): void {
+    this.sessionRef.current = session;
+    session.setConversationId(this.deps.conversationIdRef.current);
+    session.setInputActive(this.deps.inputActiveRef.current);
+
+    this.unsubscribeRef.current = session.on((event: VoiceSessionEvent) => {
+      if (this.aborted) return;
+
+      if (event.type === "state-change") {
+        this.deps.onStateChange(event.state);
+        this.deps.analyserRef.current = session.getAnalyser();
+        if (event.state === "connected") {
+          this.retryAttemptRef.current = 0;
+          this.scheduleRotate();
+        } else if (event.state === "error") {
+          this.clearRotateTimer();
+          this.scheduleRetry();
+        }
+        return;
+      }
+
+      // Persist finalized voice transcripts as conversation events
+      if (event.type === "user-transcript" && event.isFinal && event.text) {
+        this.persistTranscript("user", event.text);
+      } else if (event.type === "assistant-transcript" && event.isFinal && event.text) {
+        this.persistTranscript("assistant", event.text);
+      }
+    });
+  }
+
+  private async startSession(allowPreWarmed: boolean): Promise<void> {
+    this.clearRetryTimer();
+    this.clearRotateTimer();
+
+    const targetConversationId = this.deps.conversationIdRef.current;
+    const preWarmed = allowPreWarmed
+      ? claimPreWarmedSession(targetConversationId)
+      : null;
+    const session = preWarmed ?? new RealtimeVoiceSession();
+
+    if (this.unsubscribeRef.current) {
+      this.unsubscribeRef.current();
+      this.unsubscribeRef.current = null;
+    }
+    const previous = this.sessionRef.current;
+    this.sessionRef.current = null;
+    if (previous && previous !== session) {
+      await previous.disconnect().catch((err) => {
+        console.debug('[VoiceSessionManager] Previous session disconnect failed:', (err as Error).message);
+      });
+    }
+    if (this.aborted) {
+      await session.disconnect().catch((err) => {
+        console.debug('[VoiceSessionManager] Aborted session disconnect failed:', (err as Error).message);
+      });
+      return;
+    }
+
+    this.attachSession(session);
+
+    if (preWarmed) {
+      queueMicrotask(() => {
+        if (this.aborted) return;
+        this.deps.onStateChange(session.state);
+        if (session.state === "connected") {
+          this.deps.analyserRef.current = session.getAnalyser();
+          this.retryAttemptRef.current = 0;
+          this.scheduleRotate();
+        } else if (session.state === "error") {
+          this.scheduleRetry();
+        }
+      });
+      return;
+    }
+
+    try {
+      await session.connect(targetConversationId);
+    } catch (err) {
+      if (this.aborted) return;
+      console.error("[VoiceSessionManager] Failed to connect:", (err as Error).message);
+      this.deps.onStateChange("error");
+      this.scheduleRetry();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export function useRealtimeVoice(): UseRealtimeVoiceResult {
+  initRealtimeVoiceIpc();
   const { state } = useUiState();
   const chatStore = useChatStore();
   const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
 
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const sessionRef = useRef<RealtimeVoiceSession | null>(null);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryAttemptRef = useRef(0);
   const deviceIdRef = useRef<string | null>(null);
   const windowType = useWindowType();
   const isSessionOwnerWindow = windowType === "overlay" || state.window === windowType;
@@ -38,6 +257,7 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   const conversationIdRef = useRef<string>(conversationId);
   const inputActiveRef = useRef<boolean>(state.isVoiceRtcActive);
   const appendEventRef = useRef(chatStore.appendEvent);
+  const managerRef = useRef<VoiceSessionManager | null>(null);
 
   // Keep appendEvent ref current without re-triggering effects
   useEffect(() => {
@@ -59,188 +279,30 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     inputActiveRef.current = state.isVoiceRtcActive;
   }, [state.isVoiceRtcActive]);
 
+  // Main lifecycle effect — create manager, start, return cleanup
   useEffect(() => {
     if (!isSessionOwnerWindow) return;
 
-    let aborted = false;
-
-    const clearRetryTimer = () => {
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
-    };
-
-    const clearRotateTimer = () => {
-      if (rotateTimerRef.current) {
-        clearTimeout(rotateTimerRef.current);
-        rotateTimerRef.current = null;
-      }
-    };
-
-    const teardownSession = async () => {
-      clearRetryTimer();
-      clearRotateTimer();
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-      const current = sessionRef.current;
-      sessionRef.current = null;
-      if (current) {
-        await current.disconnect().catch(() => {});
-      }
-    };
-
-    const scheduleRotate = () => {
-      clearRotateTimer();
-      rotateTimerRef.current = setTimeout(() => {
-        if (aborted) return;
-        void startSession(false);
-      }, SESSION_ROTATE_MS);
-    };
-
-    const scheduleRetry = () => {
-      clearRetryTimer();
-      const delayMs = Math.min(
-        RETRY_BASE_MS * Math.max(1, 2 ** retryAttemptRef.current),
-        RETRY_MAX_MS,
-      );
-      retryAttemptRef.current += 1;
-      retryTimerRef.current = setTimeout(() => {
-        if (aborted) return;
-        void startSession(false);
-      }, delayMs);
-    };
-
-    const persistTranscript = (role: "user" | "assistant", text: string) => {
-      const cid = conversationIdRef.current;
-      if (!cid) return;
-
-      // 1. Persist to JSONL store (orchestrator context) via IPC
-      try {
-        window.electronAPI?.persistVoiceTranscript?.({
-          conversationId: cid,
-          role,
-          text,
-        });
-      } catch (err) {
-        console.warn("[useRealtimeVoice] Failed to persist voice transcript to JSONL:", err);
-      }
-
-      // 2. Persist to localStorage (UI display)
-      const type = role === "user" ? "user_message" : "assistant_message";
-      const payload: Record<string, unknown> = { text, source: "voice" };
-      const args: Parameters<typeof appendEventRef.current>[0] = {
-        conversationId: cid,
-        type,
-        payload,
-        ...(role === "user" && deviceIdRef.current
-          ? { deviceId: deviceIdRef.current }
-          : {}),
-      };
-      appendEventRef.current(args).catch((err) => {
-        console.warn("[useRealtimeVoice] Failed to persist voice transcript to local store:", err);
-      });
-    };
-
-    const attachSession = (session: RealtimeVoiceSession) => {
-      sessionRef.current = session;
-      session.setConversationId(conversationIdRef.current);
-      session.setInputActive(inputActiveRef.current);
-
-      unsubscribeRef.current = session.on((event: VoiceSessionEvent) => {
-        if (aborted) return;
-
-        if (event.type === "state-change") {
-          setSessionState(event.state);
-          analyserRef.current = session.getAnalyser();
-          if (event.state === "connected") {
-            retryAttemptRef.current = 0;
-            scheduleRotate();
-          } else if (event.state === "error") {
-            clearRotateTimer();
-            scheduleRetry();
-          }
-          return;
-        }
-
-        // Persist finalized voice transcripts as conversation events
-        if (event.type === "user-transcript" && event.isFinal && event.text) {
-          persistTranscript("user", event.text);
-        } else if (event.type === "assistant-transcript" && event.isFinal && event.text) {
-          persistTranscript("assistant", event.text);
-        }
-      });
-    };
-
-    const startSession = async (allowPreWarmed: boolean) => {
-      clearRetryTimer();
-      clearRotateTimer();
-
-      const targetConversationId = conversationIdRef.current;
-      const preWarmed = allowPreWarmed
-        ? claimPreWarmedSession(targetConversationId)
-        : null;
-      const session = preWarmed ?? new RealtimeVoiceSession();
-      console.log(`[VoiceRTC:hook] start session preWarmed=${!!preWarmed} window=${windowType}`);
-
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-      const previous = sessionRef.current;
-      sessionRef.current = null;
-      if (previous && previous !== session) {
-        await previous.disconnect().catch(() => {});
-      }
-      if (aborted) {
-        await session.disconnect().catch(() => {});
-        return;
-      }
-
-      attachSession(session);
-
-      if (preWarmed) {
-        queueMicrotask(() => {
-          if (aborted) return;
-          setSessionState(session.state);
-          if (session.state === "connected") {
-            analyserRef.current = session.getAnalyser();
-            retryAttemptRef.current = 0;
-            scheduleRotate();
-          } else if (session.state === "error") {
-            scheduleRetry();
-          }
-        });
-        return;
-      }
-
-      try {
-        await session.connect(targetConversationId);
-      } catch (err) {
-        if (aborted) return;
-        console.error("[useRealtimeVoice] Failed to connect:", err);
-        setSessionState("error");
-        scheduleRetry();
-      }
-    };
-
-    void startSession(true);
+    const manager = new VoiceSessionManager({
+      conversationIdRef,
+      inputActiveRef,
+      appendEventRef,
+      deviceIdRef,
+      analyserRef,
+      onStateChange: setSessionState,
+    });
+    managerRef.current = manager;
+    manager.start();
 
     return () => {
-      aborted = true;
-      analyserRef.current = null;
-      setSessionState("idle");
-      void teardownSession();
+      manager.stop();
+      managerRef.current = null;
     };
   }, [isSessionOwnerWindow, windowType]);
 
+  // Forward conversationId / inputActive changes to the live session
   useEffect(() => {
-    const session = sessionRef.current;
-    if (!session) return;
-    session.setConversationId(conversationId);
-    session.setInputActive(state.isVoiceRtcActive);
+    managerRef.current?.updateSession(conversationId, state.isVoiceRtcActive);
   }, [conversationId, state.isVoiceRtcActive]);
 
   return {

@@ -86,7 +86,7 @@ export function useMiniChat(opts: {
     if (!isActive) {
       return;
     }
-    const unsubscribe = window.electronAPI?.onMiniBridgeUpdate?.((update) => {
+    const unsubscribe = window.electronAPI?.mini.onUpdate?.((update) => {
       if (update.type !== "snapshot") {
         return;
       }
@@ -108,7 +108,7 @@ export function useMiniChat(opts: {
   }, [activeConversationId, isActive]);
 
   const sendMessage = useCallback(async () => {
-    if (!window.electronAPI?.miniBridgeRequest || !activeConversationId) {
+    if (!window.electronAPI?.mini.request || !activeConversationId) {
       return;
     }
 
@@ -122,7 +122,7 @@ export function useMiniChat(opts: {
       return;
     }
 
-    const response = await window.electronAPI.miniBridgeRequest({
+    const response = await window.electronAPI.mini.request({
       type: "mutation:sendMessage",
       conversationId: activeConversationId,
       text: message,
@@ -160,7 +160,6 @@ export function useMiniChat(opts: {
     if (!snapshotError) {
       return;
     }
-    console.warn("[miniBridge] snapshot query failed:", snapshotError);
   }, [snapshotError]);
 
   return {

@@ -6,6 +6,7 @@ import type { DiscoveryCategory } from "./use-onboarding-state";
 
 describe("OnboardingDiscovery", () => {
   const defaultCategoryStates: Record<DiscoveryCategory, boolean> = {
+    browsing_bookmarks: false,
     dev_environment: false,
     apps_system: false,
     messages_notes: false,
@@ -77,6 +78,7 @@ describe("OnboardingDiscovery", () => {
   it("sets data-active on category buttons based on categoryStates", () => {
     const onToggle = vi.fn();
     const states: Record<DiscoveryCategory, boolean> = {
+      browsing_bookmarks: false,
       dev_environment: true,
       apps_system: false,
       messages_notes: true,
@@ -109,6 +111,7 @@ describe("OnboardingDiscovery", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = { platform: "win32" };
 
     const states: Record<DiscoveryCategory, boolean> = {
+      browsing_bookmarks: false,
       dev_environment: false,
       apps_system: true, // requiresFDA = true
       messages_notes: false,
@@ -131,6 +134,7 @@ describe("OnboardingDiscovery", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = { platform: "darwin" };
 
     const states: Record<DiscoveryCategory, boolean> = {
+      browsing_bookmarks: false,
       dev_environment: false,
       apps_system: true, // requiresFDA = true
       messages_notes: false,
@@ -158,6 +162,7 @@ describe("OnboardingDiscovery", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = { platform: "darwin" };
 
     const states: Record<DiscoveryCategory, boolean> = {
+      browsing_bookmarks: false,
       dev_environment: true, // requiresFDA = false
       apps_system: false,
       messages_notes: false,
@@ -180,10 +185,11 @@ describe("OnboardingDiscovery", () => {
     const mockOpenFDA = vi.fn();
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "darwin",
-      openFullDiskAccess: mockOpenFDA,
+      system: { openFullDiskAccess: mockOpenFDA },
     };
 
     const states: Record<DiscoveryCategory, boolean> = {
+      browsing_bookmarks: false,
       dev_environment: false,
       apps_system: true,
       messages_notes: false,
@@ -206,6 +212,7 @@ describe("OnboardingDiscovery", () => {
   it("uses 'unknown' platform when electronAPI is absent", () => {
     // When platform is "unknown" (not "darwin"), FDA note should not appear
     const states: Record<DiscoveryCategory, boolean> = {
+      browsing_bookmarks: false,
       dev_environment: false,
       apps_system: true,
       messages_notes: false,

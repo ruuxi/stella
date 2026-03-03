@@ -22,7 +22,7 @@ export async function deployAndStartLocalBridge(
   const rawBundle = await getBridgeBundle({ provider });
   const bundleEnv = rawBundle.env;
 
-  const deployResult = await electronApi.bridgeDeploy({
+  const deployResult = await electronApi.system.bridgeDeploy({
     provider,
     code: rawBundle.code,
     env: bundleEnv,
@@ -32,7 +32,7 @@ export async function deployAndStartLocalBridge(
     throw new Error(deployResult.error ?? "Failed to deploy bridge locally");
   }
 
-  const startResult = await electronApi.bridgeStart({ provider });
+  const startResult = await electronApi.system.bridgeStart({ provider });
   if (!startResult.ok) {
     throw new Error(startResult.error ?? "Failed to start bridge locally");
   }

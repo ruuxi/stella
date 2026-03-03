@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import type { BrowserBookmarks, BookmarkEntry } from "./discovery_types.js";
+import type { BrowserBookmarks, BookmarkEntry } from "./discovery-types.js";
 
 const log = (...args: unknown[]) =>
   console.log("[browser-bookmarks]", ...args);

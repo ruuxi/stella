@@ -281,7 +281,7 @@ function SunRays() {
   );
 }
 
-export default function WeatherStation() {
+export function WeatherStation() {
   const [locationIdx, setLocationIdx] = useState(1);
   const [unit, setUnit] = useState<"F" | "C">("F");
 

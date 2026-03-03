@@ -75,14 +75,14 @@ describe("transcribeAudio", () => {
   });
 
   it("calls speech-to-text endpoint with audio and device id", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(
+    vi.mocked(fetch).mockImplementation(() =>
+      Promise.resolve(new Response(
         JSON.stringify({
           clientKey: "client-key-123",
           websocketUrl: "wss://platform-api.wisprflow.ai/api/v1/dash/client_ws",
         }),
         { status: 200 },
-      ),
+      ))
     );
 
     const transcriptionPromise = transcribeAudio({
@@ -157,8 +157,12 @@ describe("transcribeAudio", () => {
       generatedTokens: null,
     });
 
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
-    const [endpoint, init] = vi.mocked(fetch).mock.calls[0]!;
+    // Find the ws-token fetch call (auth-token may also call fetch)
+    const wsTokenCall = vi.mocked(fetch).mock.calls.find(
+      ([url]) => String(url).includes("/api/speech-to-text/ws-token"),
+    );
+    expect(wsTokenCall).toBeDefined();
+    const [endpoint, init] = wsTokenCall!;
     expect(String(endpoint)).toContain("/api/speech-to-text/ws-token");
     expect(init).toMatchObject({
       method: "POST",

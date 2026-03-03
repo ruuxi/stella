@@ -12,18 +12,12 @@ import * as path from 'path';
 import { getSocketDir, getSession } from './daemon.js';
 import type { Command } from './types.js';
 
-interface PendingCommand {
-  resolve: (response: any) => void;
-  reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
-}
-
 export class ExtensionBridge {
   private wss: WebSocketServer | null = null;
   private ws: WebSocket | null = null;
   private port: number;
   private token: string;
-  private pending: Map<string, PendingCommand> = new Map();
+  private pending: Map<string, { resolve: (response: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }> = new Map();
   private connected = false;
   private commandTimeout: number;
   private lastHealthCheckSuccess: number = 0;
@@ -64,7 +58,6 @@ export class ExtensionBridge {
           const origin = info.origin;
           if (!origin) return true; // No origin = non-browser client
           if (origin.startsWith('chrome-extension://')) return true;
-          console.log(`[ExtensionBridge] Rejected connection from origin: ${origin}`);
           return false;
         },
       });
@@ -74,13 +67,10 @@ export class ExtensionBridge {
       });
 
       this.wss.on('error', (error) => {
-        console.error('[ExtensionBridge] Server error:', error);
         reject(error);
       });
 
       this.wss.on('listening', () => {
-        console.log(`[ExtensionBridge] Listening on 127.0.0.1:${this.port}`);
-        console.log(`[ExtensionBridge] Token: ${this.token}`);
         resolve();
       });
     });
@@ -141,7 +131,6 @@ export class ExtensionBridge {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(hcId);
-        console.log('[ExtensionBridge] Health check timeout — service worker may be dead');
         resolve(false);
       }, 3000);
 
@@ -190,7 +179,6 @@ export class ExtensionBridge {
     }
 
     if (!isAlive) {
-      console.log('[ExtensionBridge] Connection dead, dropping it and waiting for reconnect...');
       if (this.ws) {
         this.ws.terminate();
         this.ws = null;
@@ -207,7 +195,6 @@ export class ExtensionBridge {
           isAlive = await this.verifyConnection();
           if (isAlive) {
             this.lastHealthCheckSuccess = Date.now();
-            console.log('[ExtensionBridge] Extension reconnected successfully');
             break;
           }
         }
@@ -224,7 +211,6 @@ export class ExtensionBridge {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(command.id);
-        console.log(`[ExtensionBridge] Command '${command.action}' timed out`);
         reject(new Error(`Command '${command.action}' timed out after ${this.commandTimeout}ms`));
       }, this.commandTimeout);
 
@@ -254,7 +240,6 @@ export class ExtensionBridge {
         }
       }
       // Existing connection is dead — clean up and accept the new one
-      console.log('[ExtensionBridge] Replacing dead connection');
       this.ws = null;
       this.connected = false;
     }
@@ -266,7 +251,6 @@ export class ExtensionBridge {
       try {
         msg = JSON.parse(data.toString());
       } catch {
-        console.error('[ExtensionBridge] Invalid JSON received');
         return;
       }
 
@@ -284,7 +268,6 @@ export class ExtensionBridge {
             })
           );
 
-          console.log('[ExtensionBridge] Extension connected and authenticated');
         } else {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'Invalid token' }));
           ws.close(4001, 'Invalid token');
@@ -321,7 +304,6 @@ export class ExtensionBridge {
 
     ws.on('close', () => {
       if (this.ws === ws) {
-        console.log('[ExtensionBridge] Extension disconnected');
         this.ws = null;
         this.connected = false;
         this.lastHealthCheckSuccess = 0;
@@ -336,13 +318,11 @@ export class ExtensionBridge {
     });
 
     ws.on('error', (err) => {
-      console.error('[ExtensionBridge] WebSocket error:', err);
     });
 
     // Give the extension 10 seconds to authenticate
     setTimeout(() => {
       if (!authenticated) {
-        console.log('[ExtensionBridge] Authentication timeout');
         ws.close(4002, 'Authentication timeout');
       }
     }, 10000);

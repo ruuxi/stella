@@ -59,7 +59,7 @@ import './styles/welcome-suggestions.css'
 import './styles/error-boundary.css'
 
 import './utils/vite-error-recovery'
-import App from './App.tsx'
+import { App } from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { UiStateProvider } from './app/state/ui-state'
 import { WorkspaceProvider } from './app/state/workspace-state'

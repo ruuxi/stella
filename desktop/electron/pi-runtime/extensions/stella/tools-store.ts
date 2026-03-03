@@ -13,7 +13,42 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
 import type { ToolResult } from "./tools-types.js";
-import { trashPathForDeferredDelete } from "./deferred_delete.js";
+import { trashPathForDeferredDelete } from "./deferred-delete.js";
+
+/* ------------------------------------------------------------------ */
+/*  Typed payloads for store install / uninstall handlers              */
+/* ------------------------------------------------------------------ */
+
+export type SkillInstallPayload = {
+  packageId: string;
+  skillId: string;
+  name: string;
+  markdown: string;
+  agentTypes?: string[];
+  tags?: string[];
+};
+
+export type ThemeInstallPayload = {
+  packageId: string;
+  themeId: string;
+  name: string;
+  light: Record<string, string>;
+  dark: Record<string, string>;
+};
+
+export type CanvasInstallPayload = {
+  packageId: string;
+  workspaceId?: string;
+  name: string;
+  dependencies?: Record<string, string>;
+  source?: string;
+};
+
+export type UninstallPayload = {
+  packageId: string;
+  type: "skill" | "theme" | "canvas" | "mod";
+  localId: string;
+};
 
 const getStellaRoot = () => path.join(os.homedir(), ".stella");
 const NPM_PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i;
@@ -87,13 +122,13 @@ const runCommand = async (
  * Writes SKILL.md and stella.yaml to ~/.stella/skills/{skillId}/
  */
 export const handleInstallSkill = async (
-  args: Record<string, unknown>,
+  args: SkillInstallPayload | Record<string, unknown>,
 ): Promise<ToolResult> => {
   const skillId = args.skillId as string;
   const name = args.name as string;
   const markdown = args.markdown as string;
-  const agentTypes = (args.agentTypes as string[]) ?? ["general"];
-  const tags = (args.tags as string[]) ?? [];
+  const agentTypes = (args.agentTypes as string[] | undefined) ?? ["general"];
+  const tags = (args.tags as string[] | undefined) ?? [];
 
   if (!skillId || !name || !markdown) {
     return { error: "Skill install requires skillId, name, and markdown." };
@@ -124,7 +159,7 @@ export const handleInstallSkill = async (
  * Writes to ~/.stella/themes/{themeId}.json
  */
 export const handleInstallTheme = async (
-  args: Record<string, unknown>,
+  args: ThemeInstallPayload | Record<string, unknown>,
 ): Promise<ToolResult> => {
   const themeId = args.themeId as string;
   const name = args.name as string;
@@ -153,7 +188,7 @@ export const handleInstallTheme = async (
  * Uses create-app.js to scaffold from the committed template.
  */
 export const handleInstallCanvas = async (
-  args: Record<string, unknown>,
+  args: CanvasInstallPayload | Record<string, unknown>,
 ): Promise<ToolResult> => {
   const packageId = String(args.packageId ?? "").trim();
   const appNameInput = String(args.workspaceId ?? args.name ?? packageId).trim();
@@ -221,7 +256,7 @@ export const handleInstallCanvas = async (
  * Uninstall a package locally by removing its files.
  */
 export const handleUninstallPackage = async (
-  args: Record<string, unknown>,
+  args: UninstallPayload | Record<string, unknown>,
 ): Promise<ToolResult> => {
   const type = args.type as string;
   const localId = args.localId as string;

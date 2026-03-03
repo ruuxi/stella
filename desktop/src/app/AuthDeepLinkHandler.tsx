@@ -38,10 +38,10 @@ const verifyOneTimeToken = async (token: string) => {
 export const AuthDeepLinkHandler = () => {
   useEffect(() => {
     const api = window.electronAPI;
-    if (!api?.onAuthCallback) {
+    if (!api?.system.onAuthCallback) {
       return;
     }
-    const unsubscribe = api.onAuthCallback(async ({ url }) => {
+    const unsubscribe = api.system.onAuthCallback(async ({ url }) => {
       try {
         const token = extractTrustedOtt(url);
         if (!token) {

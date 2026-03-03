@@ -18,7 +18,7 @@ import type {
   DockPin,
   AppUsageSummary,
   FilesystemSignals,
-} from "./discovery_types.js";
+} from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.log("[system-signals]", ...args);
 

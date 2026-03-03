@@ -66,7 +66,7 @@ vi.mock("../screens/RegionCapture", () => ({
   RegionCapture: () => <div data-testid="region-capture" />,
 }));
 
-import App from "../App";
+import { App } from "../App";
 import { useUiState } from "../app/state/ui-state";
 
 // --- Tests ---
@@ -121,30 +121,6 @@ describe("App", () => {
   });
 
 
-  it("renders RadialShell when Electron and window param is radial", async () => {
-    mockGetElectronApi.mockReturnValue({} as any);
-    Object.defineProperty(window, "location", {
-      value: { search: "?window=radial", href: "http://localhost/?window=radial" },
-      writable: true,
-    });
-
-    render(<App />);
-    expect(await screen.findByTestId("radial-shell")).toBeInTheDocument();
-    expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
-  });
-
-  it("renders RegionCapture when Electron and window param is region", async () => {
-    mockGetElectronApi.mockReturnValue({} as any);
-    Object.defineProperty(window, "location", {
-      value: { search: "?window=region", href: "http://localhost/?window=region" },
-      writable: true,
-    });
-
-    render(<App />);
-    expect(await screen.findByTestId("region-capture")).toBeInTheDocument();
-    expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
-  });
-
   it("renders FullShell when Electron and window param is unrecognized", async () => {
     mockGetElectronApi.mockReturnValue({} as any);
     Object.defineProperty(window, "location", {
@@ -180,37 +156,10 @@ describe("App", () => {
   });
 
 
-  it("does not render auth bridges for utility windows", async () => {
-    mockGetElectronApi.mockReturnValue({} as any);
-    Object.defineProperty(window, "location", {
-      value: { search: "?window=region", href: "http://localhost/?window=region" },
-      writable: true,
-    });
-
-    render(<App />);
-    expect(await screen.findByTestId("region-capture")).toBeInTheDocument();
-    expect(screen.queryByTestId("auth-deep-link-handler")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("auth-token-bridge")).not.toBeInTheDocument();
-  });
-
   it("renders AppBootstrap and CredentialRequestLayer for full/mini shells", async () => {
     render(<App />);
     expect(await screen.findByTestId("app-bootstrap")).toBeInTheDocument();
     expect(screen.getByTestId("credential-request-layer")).toBeInTheDocument();
-  });
-
-  it("does not render AppBootstrap or CredentialRequestLayer for radial shell", async () => {
-    mockGetElectronApi.mockReturnValue({} as any);
-    Object.defineProperty(window, "location", {
-      value: { search: "?window=radial", href: "http://localhost/?window=radial" },
-      writable: true,
-    });
-
-    render(<App />);
-    // Wait for lazy radial to load
-    await screen.findByTestId("radial-shell");
-    expect(screen.queryByTestId("app-bootstrap")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("credential-request-layer")).not.toBeInTheDocument();
   });
 
   it("shows fallback div with correct class while suspending", () => {
@@ -259,12 +208,12 @@ describe("getWindowType (tested indirectly)", () => {
     } as any);
     mockGetElectronApi.mockReturnValue({} as any);
     Object.defineProperty(window, "location", {
-      value: { search: "?window=radial", href: "http://localhost/?window=radial" },
+      value: { search: "?window=mini", href: "http://localhost/?window=mini" },
       writable: true,
     });
 
     render(<App />);
-    expect(await screen.findByTestId("radial-shell")).toBeInTheDocument();
+    expect(await screen.findByTestId("mini-shell")).toBeInTheDocument();
     expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
   });
 });

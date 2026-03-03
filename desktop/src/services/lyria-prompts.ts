@@ -160,8 +160,6 @@ export async function generateMusicPrompt(
     })
 
     if (!res.ok) {
-      const errBody = await res.text().catch(() => "")
-      console.warn(`[lyria-prompts] LLM call failed (${res.status}): ${errBody}`)
       return getFallbackPrompt(mood)
     }
 
@@ -193,7 +191,6 @@ export async function generateMusicPrompt(
 
     return parsed
   } catch (err) {
-    console.warn("[lyria-prompts] LLM prompt generation failed:", err)
     return getFallbackPrompt(mood)
   }
 }

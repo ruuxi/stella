@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import WeatherStation from "./WeatherStationDemo";
+import { WeatherStation } from "./WeatherStationDemo";
 
 describe("WeatherStationDemo", () => {
   describe("initial rendering", () => {

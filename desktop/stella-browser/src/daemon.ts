@@ -205,19 +205,13 @@ export async function startDaemon(options?: {
     // Always require a token, including user-browser mode.
     extensionBridge = new ExtensionBridge(extPort);
     await extensionBridge.start();
-    console.log(`[Daemon] Extension bridge listening on port ${extPort}`);
 
     // In user-browser mode, relaunch Chrome AFTER the WebSocket is ready
     if (isUserBrowser) {
       try {
-        const detected = await relaunchForExtensionBridge();
-        console.log(`[Daemon] Relaunched ${detected.name} with silent debugger API flag`);
-      } catch (err) {
-        console.error(
-          `[Daemon] Failed to relaunch browser:`,
-          err instanceof Error ? err.message : err
-        );
-        console.log(`[Daemon] Continuing in extension mode — connect the extension manually`);
+        await relaunchForExtensionBridge();
+      } catch {
+        // Failed to relaunch browser; continue in extension mode.
       }
     }
   } else {

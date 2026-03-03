@@ -12,25 +12,25 @@ export const CloudSyncBridge = () => {
   const accountMode = useAccountMode();
 
   useEffect(() => {
-    const electronApi = window.electronAPI;
-    if (!electronApi?.setCloudSyncEnabled) return;
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.setCloudSyncEnabled) return;
 
     // Wait until both queries have resolved before deciding.
     if (!isAuthenticated || user === undefined || accountMode === undefined) {
-      void electronApi.setCloudSyncEnabled({ enabled: false });
+      void systemApi.setCloudSyncEnabled({ enabled: false });
       return;
     }
 
     const enabled = user !== null && !user.isAnonymous && accountMode === "connected";
-    void electronApi.setCloudSyncEnabled({ enabled });
+    void systemApi.setCloudSyncEnabled({ enabled });
   }, [isAuthenticated, user, accountMode]);
 
   // Disable on unmount
   useEffect(() => {
-    const electronApi = window.electronAPI;
-    if (!electronApi?.setCloudSyncEnabled) return undefined;
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.setCloudSyncEnabled) return undefined;
     return () => {
-      void electronApi.setCloudSyncEnabled({ enabled: false });
+      void systemApi.setCloudSyncEnabled({ enabled: false });
     };
   }, []);
 

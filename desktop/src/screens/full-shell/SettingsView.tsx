@@ -143,8 +143,8 @@ function BasicTab({ onSignOut }: {
 
     try {
       // Write to local preferences first (source of truth for runtime)
-      if (window.electronAPI?.setLocalSyncMode) {
-        await window.electronAPI.setLocalSyncMode(nextMode);
+      if (window.electronAPI?.system.setLocalSyncMode) {
+        await window.electronAPI.system.setLocalSyncMode(nextMode);
       }
       await setSyncMode({ mode: nextMode });
     } catch (error) {
@@ -255,7 +255,10 @@ function ModelConfigSection() {
   const setCodexLocalMaxConcurrency = useMutation(api.data.preferences.setCodexLocalMaxConcurrency);
   const { groups } = useModelCatalog();
 
-  const serverOverrides: Record<string, string> = overridesJson ? JSON.parse(overridesJson) : {};
+  let serverOverrides: Record<string, string> = {};
+  if (overridesJson) {
+    try { serverOverrides = JSON.parse(overridesJson); } catch { /* malformed JSON from server — use empty */ }
+  }
   const [localOverrides, setLocalOverrides] = useState<Record<string, string | null>>({});
   const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
     "default" | "codex_local" | "claude_code_local" | null
