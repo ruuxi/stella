@@ -19,7 +19,7 @@ export interface AudioCaptureManager {
   /** Start capturing audio and feeding to detector. */
   start(): void;
   /** Stop capturing audio. */
-  stop(): void;
+  stop(options?: { releaseDevice?: boolean }): void;
   /** Set callback for wake word detection. */
   onDetection(callback: (result: WakeWordResult) => void): void;
   /** Whether capture is active. */
@@ -74,7 +74,7 @@ export function createAudioCaptureManager(
     }
   };
 
-  const scheduleRestart = (reason: string) => {
+  const scheduleRestart = () => {
     if (!capturing || restartTimer) return;
     restartTimer = setTimeout(() => {
       restartTimer = null;
@@ -138,12 +138,11 @@ export function createAudioCaptureManager(
           if (msg.type === "started") return;
 
           if (msg.type === "start-failed" || msg.type === "stream-error") {
-            const reason = msg.error ?? "unknown error";
             if (worker === nextWorker) {
               worker = null;
             }
             shutdownWorker(nextWorker);
-            scheduleRestart(reason);
+            scheduleRestart();
             return;
           }
 
@@ -160,13 +159,13 @@ export function createAudioCaptureManager(
         },
       );
 
-      nextWorker.on("exit", (code) => {
+      nextWorker.on("exit", () => {
         if (worker === nextWorker) worker = null;
         if (!capturing) return;
-        scheduleRestart(`worker exited (${code ?? "unknown"})`);
+        scheduleRestart();
       });
-    } catch (err) {
-      scheduleRestart((err as Error).message);
+    } catch {
+      scheduleRestart();
     }
   };
 
@@ -189,8 +188,9 @@ export function createAudioCaptureManager(
       });
     },
 
-    stop() {
-      if (!capturing) return;
+    stop(options?: { releaseDevice?: boolean }) {
+      const releaseDevice = options?.releaseDevice === true;
+      if (!capturing && !releaseDevice) return;
 
       capturing = false;
       processing = false;
@@ -199,7 +199,13 @@ export function createAudioCaptureManager(
       pendingAudio.length = 0;
 
       if (worker) {
-        try { worker.postMessage({ type: "stop" }); } catch { /* ignore */ }
+        if (releaseDevice) {
+          const activeWorker = worker;
+          worker = null;
+          shutdownWorker(activeWorker);
+        } else {
+          try { worker.postMessage({ type: "stop" }); } catch { /* ignore */ }
+        }
       }
     },
 

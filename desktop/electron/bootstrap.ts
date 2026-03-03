@@ -641,7 +641,8 @@ export const bootstrapMainProcess = () => {
         broadcastUiState()
 
         stopTokenPrefetch()
-        capture.stop()
+        // Fully release the wake-word microphone stream before realtime RTC starts.
+        capture.stop({ releaseDevice: true })
       })
 
       const tryStartCapture = () => {

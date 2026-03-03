@@ -365,8 +365,6 @@ export function OverlayRoot() {
           width: 280,
           height: 280,
           pointerEvents: state.radialVisible ? "auto" : "none",
-          // DEBUG: visible border to track if the container itself moves
-          border: state.radialVisible ? "2px solid red" : "none",
         }}
       >
         <RadialDial />
