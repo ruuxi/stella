@@ -140,13 +140,16 @@ export class WindowManager {
     overlay.getWindow()?.setFocusable(false)
 
     if (!animate) {
+      // Immediately clear mini activity so overlay can hide when idle.
+      overlay.hideMini()
       return
     }
 
-    // After the CSS animation completes, ensure click-through
+    // After the CSS animation completes, fully hide mini in overlay state.
     this.pendingMiniOpacityHideTimer = setTimeout(() => {
       if (hideEpoch !== this.miniVisibilityEpoch) return
       this.pendingMiniOpacityHideTimer = null
+      overlay.hideMini()
     }, MINI_SHELL_ANIM_MS)
   }
 

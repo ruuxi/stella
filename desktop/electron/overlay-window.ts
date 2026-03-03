@@ -40,6 +40,7 @@ type OverlayWindowControllerOptions = {
 export class OverlayWindowController {
   private window: BrowserWindow | null = null
   private displayListenersRegistered = false
+  private respanHandler: (() => void) | null = null
   private ready = false
   /** Overlay window origin in screen coords — used by renderer to compute component positions */
   private overlayOrigin = { x: 0, y: 0 }
@@ -51,28 +52,29 @@ export class OverlayWindowController {
   private activeRegionCapture = false
   private activeMini = false
   private activeVoice = false
+  private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
+    if (!this.window) return
+    if (interactive) {
+      this.window.setIgnoreMouseEvents(false)
+    } else {
+      this.window.setIgnoreMouseEvents(true, { forward: true })
+    }
+  }
+  private readonly handleRadialAnimDone = () => {
+    if (this.radialHideTimeout) {
+      clearTimeout(this.radialHideTimeout)
+      this.radialHideTimeout = null
+    }
+    this.activeRadial = false
+    this.hideOverlayIfIdle()
+  }
 
   constructor(private readonly options: OverlayWindowControllerOptions) {
     // Renderer -> main: toggle click-through
-    ipcMain.on('overlay:setInteractive', (_event, interactive: boolean) => {
-      if (!this.window) return
-      if (interactive) {
-        this.window.setIgnoreMouseEvents(false)
-      } else {
-        this.window.setIgnoreMouseEvents(true, { forward: true })
-      }
-    })
+    ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
 
     // Renderer signals radial close animation is done
-    ipcMain.on('radial:animDone', () => {
-      if (this.radialHideTimeout) {
-        clearTimeout(this.radialHideTimeout)
-        this.radialHideTimeout = null
-      }
-      this.activeRadial = false
-      this.hideOverlayIfIdle()
-    })
-
+    ipcMain.on('radial:animDone', this.handleRadialAnimDone)
   }
 
   getWindow() {
@@ -123,6 +125,10 @@ export class OverlayWindowController {
     this.window.once('ready-to-show', () => {
       this.ready = true
     })
+    // Fallback readiness signal for cases where ready-to-show does not fire.
+    this.window.webContents.once('did-finish-load', () => {
+      this.ready = true
+    })
 
     // Load the overlay page
     if (isDev) {
@@ -146,10 +152,10 @@ export class OverlayWindowController {
     // Register display change listeners to re-span all monitors
     if (!this.displayListenersRegistered) {
       this.displayListenersRegistered = true
-      const respanHandler = () => this.respanDisplays()
-      screen.on('display-added', respanHandler)
-      screen.on('display-removed', respanHandler)
-      screen.on('display-metrics-changed', respanHandler)
+      this.respanHandler = () => this.respanDisplays()
+      screen.on('display-added', this.respanHandler)
+      screen.on('display-removed', this.respanHandler)
+      screen.on('display-metrics-changed', this.respanHandler)
     }
 
     return this.window
@@ -196,6 +202,7 @@ export class OverlayWindowController {
     if (!this.window) return
     this.window.setIgnoreMouseEvents(true, { forward: true })
     this.window.setFocusable(false)
+    if (!this.ready) return
     this.window.hide()
   }
 
@@ -422,6 +429,17 @@ export class OverlayWindowController {
   // ─── Cleanup ──────────────────────────────────────────────────────────
 
   destroy() {
+    ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
+    ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
+
+    if (this.respanHandler) {
+      screen.removeListener('display-added', this.respanHandler)
+      screen.removeListener('display-removed', this.respanHandler)
+      screen.removeListener('display-metrics-changed', this.respanHandler)
+      this.respanHandler = null
+      this.displayListenersRegistered = false
+    }
+
     if (this.window) {
       this.window.removeAllListeners('close')
       this.window.destroy()

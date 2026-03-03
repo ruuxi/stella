@@ -2,13 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "./mini-shell/MiniShell";
-import { VoiceOverlay } from "../components/VoiceOverlay";
 
 /**
  * OverlayRoot manages the unified transparent overlay window.
  *
- * All overlay components (Radial Dial, Region Capture, Mini Shell, Voice,
- * and modifier-block behavior) live as absolutely-positioned children.
+ * All overlay components (Radial Dial, Region Capture, Mini Shell, and
+ * modifier-block behavior) live as absolutely-positioned children.
  * The overlay window is hidden when idle and only shown when a component
  * activates, preventing it from blocking interaction with windows below.
  *
@@ -31,12 +30,6 @@ type OverlayState = {
   miniPreviewVisible: boolean;
   /** Position for the mini shell (screen coords relative to overlay origin) */
   miniPosition: { x: number; y: number } | null;
-  /** Whether voice overlay is visible */
-  voiceVisible: boolean;
-  /** Voice overlay position */
-  voicePosition: { x: number; y: number } | null;
-  /** Voice mode */
-  voiceMode: "stt" | "realtime";
 };
 
 const initialState: OverlayState = {
@@ -47,9 +40,6 @@ const initialState: OverlayState = {
   miniVisible: false,
   miniPreviewVisible: false,
   miniPosition: null,
-  voiceVisible: false,
-  voicePosition: null,
-  voiceMode: "stt",
 };
 
 const MINI_SHELL_SIZE = {
@@ -125,7 +115,7 @@ export function OverlayRoot() {
 
     // radial:show includes extra screenX/screenY for container positioning
     const cleanupShow = api.onRadialShow(
-      (_event: unknown, data: { screenX?: number; screenY?: number }) => {
+      (_event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number; screenX?: number; screenY?: number }) => {
         if (typeof data.screenX === "number" && typeof data.screenY === "number") {
           setState((prev) => ({
             ...prev,
@@ -219,30 +209,6 @@ export function OverlayRoot() {
     );
   }, []);
 
-  // ─── Voice overlay ─────────────────────────────────────────────────
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.onOverlayShowVoice?.(
-      (data: { x: number; y: number; mode: "stt" | "realtime" }) => {
-        setState((prev) => ({
-          ...prev,
-          voiceVisible: true,
-          voicePosition: { x: data.x, y: data.y },
-          voiceMode: data.mode,
-        }));
-      },
-    );
-    const cleanupHide = api.onOverlayHideVoice?.(() => {
-      setState((prev) => ({ ...prev, voiceVisible: false }));
-    });
-    return () => {
-      cleanupShow?.();
-      cleanupHide?.();
-    };
-  }, []);
-
   // ─── Hit-testing: toggle setIgnoreMouseEvents ──────────────────────
   const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
     if (interactiveRef.current === shouldBeInteractive) return;
@@ -313,8 +279,7 @@ export function OverlayRoot() {
       state.radialVisible ||
       state.regionCaptureActive ||
       state.miniPreviewVisible ||
-      state.miniVisible ||
-      state.voiceVisible;
+      state.miniVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -374,7 +339,6 @@ export function OverlayRoot() {
       </div>
 
       {/* Voice Overlay — display-only, no pointer events */}
-      <VoiceOverlay onTranscript={() => {}} />
     </div>
   );
 }
