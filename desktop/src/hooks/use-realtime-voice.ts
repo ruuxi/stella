@@ -14,74 +14,176 @@ interface UseRealtimeVoiceResult {
   sessionState: VoiceSessionState;
 }
 
+const SESSION_ROTATE_MS = 55 * 60 * 1000;
+const RETRY_BASE_MS = 5_000;
+const RETRY_MAX_MS = 60_000;
+
 export function useRealtimeVoice(): UseRealtimeVoiceResult {
   const { state } = useUiState();
   const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sessionRef = useRef<RealtimeVoiceSession | null>(null);
-  const conversationIdRef = useRef<string>("voice-rtc");
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryAttemptRef = useRef(0);
   const windowType = useWindowType();
-  const isActiveWindow = windowType === "overlay" || state.window === windowType;
-  const shouldRunSession = state.isVoiceRtcActive && isActiveWindow;
+  const isSessionOwnerWindow = windowType === "overlay" || state.window === windowType;
+  const conversationId = state.conversationId ?? "voice-rtc";
+  const conversationIdRef = useRef<string>(conversationId);
+  const inputActiveRef = useRef<boolean>(state.isVoiceRtcActive);
 
   useEffect(() => {
-    conversationIdRef.current = state.conversationId ?? "voice-rtc";
-  }, [state.conversationId]);
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   useEffect(() => {
-    if (!shouldRunSession) return;
+    inputActiveRef.current = state.isVoiceRtcActive;
+  }, [state.isVoiceRtcActive]);
 
-    // Disconnect any zombie session from a previous StrictMode mount
-    if (sessionRef.current) {
-      void sessionRef.current.disconnect();
-      sessionRef.current = null;
-    }
+  useEffect(() => {
+    if (!isSessionOwnerWindow) return;
 
     let aborted = false;
-    const conversationId = conversationIdRef.current;
 
-    // Try to claim a pre-warmed session (started from IPC before React rendered)
-    const preWarmed = claimPreWarmedSession(conversationId);
-    const session = preWarmed ?? new RealtimeVoiceSession();
-    console.log(`[VoiceRTC:hook] effect fired - preWarmed=${!!preWarmed} window=${windowType}`);
-    sessionRef.current = session;
+    const clearRetryTimer = () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
 
-    const unsubscribe = session.on((event: VoiceSessionEvent) => {
-      if (aborted) return;
-      if (event.type === "state-change") {
+    const clearRotateTimer = () => {
+      if (rotateTimerRef.current) {
+        clearTimeout(rotateTimerRef.current);
+        rotateTimerRef.current = null;
+      }
+    };
+
+    const teardownSession = async () => {
+      clearRetryTimer();
+      clearRotateTimer();
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+      const current = sessionRef.current;
+      sessionRef.current = null;
+      if (current) {
+        await current.disconnect().catch(() => {});
+      }
+    };
+
+    const scheduleRotate = () => {
+      clearRotateTimer();
+      rotateTimerRef.current = setTimeout(() => {
+        if (aborted) return;
+        void startSession(false);
+      }, SESSION_ROTATE_MS);
+    };
+
+    const scheduleRetry = () => {
+      clearRetryTimer();
+      const delayMs = Math.min(
+        RETRY_BASE_MS * Math.max(1, 2 ** retryAttemptRef.current),
+        RETRY_MAX_MS,
+      );
+      retryAttemptRef.current += 1;
+      retryTimerRef.current = setTimeout(() => {
+        if (aborted) return;
+        void startSession(false);
+      }, delayMs);
+    };
+
+    const attachSession = (session: RealtimeVoiceSession) => {
+      sessionRef.current = session;
+      session.setConversationId(conversationIdRef.current);
+      session.setInputActive(inputActiveRef.current);
+
+      unsubscribeRef.current = session.on((event: VoiceSessionEvent) => {
+        if (aborted) return;
+        if (event.type !== "state-change") return;
         setSessionState(event.state);
         analyserRef.current = session.getAnalyser();
-      }
-    });
-
-    if (preWarmed) {
-      // Session is already connecting/connected; sync current state.
-      queueMicrotask(() => {
-        if (aborted) return;
-        setSessionState(session.state);
-        if (session.state === "connected") {
-          analyserRef.current = session.getAnalyser();
+        if (event.state === "connected") {
+          retryAttemptRef.current = 0;
+          scheduleRotate();
+        } else if (event.state === "error") {
+          clearRotateTimer();
+          scheduleRetry();
         }
       });
-    } else {
-      // No pre-warm; connect normally.
-      session.connect(conversationId).catch((err) => {
+    };
+
+    const startSession = async (allowPreWarmed: boolean) => {
+      clearRetryTimer();
+      clearRotateTimer();
+
+      const targetConversationId = conversationIdRef.current;
+      const preWarmed = allowPreWarmed
+        ? claimPreWarmedSession(targetConversationId)
+        : null;
+      const session = preWarmed ?? new RealtimeVoiceSession();
+      console.log(`[VoiceRTC:hook] start session preWarmed=${!!preWarmed} window=${windowType}`);
+
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+      const previous = sessionRef.current;
+      sessionRef.current = null;
+      if (previous && previous !== session) {
+        await previous.disconnect().catch(() => {});
+      }
+      if (aborted) {
+        await session.disconnect().catch(() => {});
+        return;
+      }
+
+      attachSession(session);
+
+      if (preWarmed) {
+        queueMicrotask(() => {
+          if (aborted) return;
+          setSessionState(session.state);
+          if (session.state === "connected") {
+            analyserRef.current = session.getAnalyser();
+            retryAttemptRef.current = 0;
+            scheduleRotate();
+          } else if (session.state === "error") {
+            scheduleRetry();
+          }
+        });
+        return;
+      }
+
+      try {
+        await session.connect(targetConversationId);
+      } catch (err) {
         if (aborted) return;
         console.error("[useRealtimeVoice] Failed to connect:", err);
         setSessionState("error");
-      });
-    }
+        scheduleRetry();
+      }
+    };
+
+    void startSession(true);
 
     return () => {
       aborted = true;
-      unsubscribe();
       analyserRef.current = null;
-      void session.disconnect();
-      sessionRef.current = null;
       setSessionState("idle");
+      void teardownSession();
     };
-  }, [shouldRunSession, windowType]);
+  }, [isSessionOwnerWindow, windowType]);
+
+  useEffect(() => {
+    const session = sessionRef.current;
+    if (!session) return;
+    session.setConversationId(conversationId);
+    session.setInputActive(state.isVoiceRtcActive);
+  }, [conversationId, state.isVoiceRtcActive]);
 
   return {
     analyserRef,

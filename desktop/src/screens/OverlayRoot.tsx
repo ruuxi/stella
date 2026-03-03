@@ -378,7 +378,6 @@ export function OverlayRoot() {
       )}
 
       {/* Mini shell: always mounted for context sync, visibility via CSS. */}
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
         ref={miniRef}
         onMouseDown={handleMiniTitlebarMouseDown}
@@ -396,18 +395,20 @@ export function OverlayRoot() {
         <MiniShell onPreviewVisibilityChange={handleMiniPreviewVisibilityChange} />
       </div>
 
-      {state.voiceVisible && state.voicePosition && (
-        <VoiceOverlay
-          onTranscript={handleVoiceTranscript}
-          style={{
-            position: "absolute",
-            left: state.voicePosition.x,
-            top: state.voicePosition.y,
-            bottom: "auto",
-            transform: "translate(-50%, -50%)",
-          }}
-        />
-      )}
+      <VoiceOverlay
+        onTranscript={handleVoiceTranscript}
+        style={
+          state.voiceVisible && state.voicePosition
+            ? {
+                position: "absolute",
+                left: state.voicePosition.x,
+                top: state.voicePosition.y,
+                bottom: "auto",
+                transform: "translate(-50%, -50%)",
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
