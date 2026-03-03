@@ -68,6 +68,11 @@ const getVoiceRuntimeState = (): VoiceRuntimeState => {
 let cachedToken: CachedToken | null = null;
 const CONVEX_CONVERSATION_ID_PATTERN = /^[a-z][a-z0-9]+$/;
 const PRECONNECT_BUFFER_CHUNK_LIMIT = 36; // ~3s at 24kHz with 2048-sample chunks
+const PRECONNECT_SPEECH_RMS_THRESHOLD = 0.012;
+const PRECONNECT_SILENCE_MS = 280;
+const PRECONNECT_BOUNDARY_MAX_WAIT_MS = 1800;
+const PRECONNECT_BOUNDARY_POLL_MS = 40;
+const DATA_CHANNEL_OPEN_TIMEOUT_MS = 8_000;
 
 const RTC_CONFIGURATION: RTCConfiguration = {
   // Pre-gather one ICE candidate batch to shorten negotiation time.
@@ -139,6 +144,11 @@ let preWarmConvId: string | null = null;
  * handler so the token fetch + mic + SDP pipeline begins before React renders.
  */
 export function preWarmVoiceSession(conversationId: string): void {
+  const runtime = getVoiceRuntimeState();
+  if (runtime.activeSession) {
+    // Persistent session already active; no need for wake-time pre-warm.
+    return;
+  }
   if (preWarmedSession) {
     if (preWarmConvId === conversationId) return;
     void preWarmedSession.disconnect();
@@ -219,15 +229,21 @@ export class RealtimeVoiceSession {
   private dc: RTCDataChannel | null = null;
   private audioElement: HTMLAudioElement | null = null;
   private localStream: MediaStream | null = null;
+  private inputTrack: MediaStreamTrack | null = null;
   private analyser: AnalyserNode | null = null;
   private audioContext: AudioContext | null = null;
   private destroyed = false;
+  private inputActive = false;
 
   // Pre-connection audio buffer — captures mic audio while SDP negotiation is in progress
   private preConnectBuffer: string[] = []; // base64-encoded PCM chunks
   private preConnectRecorder: ScriptProcessorNode | null = null;
   private preConnectCtx: AudioContext | null = null;
   private isBufferingPreConnect = false;
+  private preConnectObservedSpeech = false;
+  private preConnectLastSpeechAt = 0;
+  private dataChannelOpenPromise: Promise<void> | null = null;
+  private resolveDataChannelOpenPromise: (() => void) | null = null;
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
@@ -263,6 +279,27 @@ export class RealtimeVoiceSession {
 
   get state(): VoiceSessionState {
     return this._state;
+  }
+
+  setConversationId(conversationId: string) {
+    this.conversationId = conversationId;
+  }
+
+  /**
+   * Toggle whether mic audio is actively sent to Realtime.
+   * Session stays connected; we only gate the input track.
+   */
+  setInputActive(active: boolean) {
+    this.inputActive = active;
+    if (this.inputTrack && this.inputTrack.readyState === "live") {
+      this.inputTrack.enabled = active;
+    }
+    if (active && this.localStream && !this.inputTrack && !this.isBufferingPreConnect) {
+      this.startPreConnectBuffering(this.localStream);
+    }
+    if (!active && this.isBufferingPreConnect) {
+      this.stopPreConnectBuffering();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -340,7 +377,7 @@ export class RealtimeVoiceSession {
       const micPromise = navigator.mediaDevices.getUserMedia({
         audio: VOICE_MIC_CONSTRAINTS,
       }).then((stream) => {
-        if (!this.destroyed) {
+        if (!this.destroyed && this.inputActive) {
           ct("mic: acquired — starting pre-connect buffer");
           this.startPreConnectBuffering(stream);
         }
@@ -353,6 +390,7 @@ export class RealtimeVoiceSession {
       const transceiver = this.pc.addTransceiver("audio", { direction: "sendrecv" });
 
       this.dc = this.pc.createDataChannel("oai-events");
+      this.initDataChannelOpenLatch();
       this.setupDataChannel();
 
       this.pc.ontrack = (event) => {
@@ -414,8 +452,30 @@ export class RealtimeVoiceSession {
         return;
       }
       this.localStream = micStream;
-      await transceiver.sender.replaceTrack(micStream.getTracks()[0]);
-      ct("mic: track attached to peer connection");
+      this.inputTrack = micStream.getTracks()[0] ?? null;
+      if (!this.inputTrack) {
+        throw new Error("No microphone track available");
+      }
+
+      if (this.inputActive) {
+        if (!this.isBufferingPreConnect) {
+          this.startPreConnectBuffering(micStream);
+        }
+        await this.waitForDataChannelOpen();
+        ct("handoff: data channel open");
+        await this.waitForFirstTurnBoundary();
+        ct("handoff: first-turn boundary reached");
+
+        const bufferedChunks = this.consumePreConnectBuffer();
+        this.flushPreConnectChunks(bufferedChunks);
+        ct(`handoff: flushed ${bufferedChunks.length} buffered chunks`);
+      } else {
+        this.stopPreConnectBuffering();
+      }
+
+      this.inputTrack.enabled = this.inputActive;
+      await transceiver.sender.replaceTrack(this.inputTrack);
+      ct(`mic: track attached (inputActive=${this.inputActive})`);
 
       // Setup audio analyser for visualization
       this.setupAudioAnalyser();
@@ -464,6 +524,8 @@ export class RealtimeVoiceSession {
     if (this.isBufferingPreConnect) return;
     this.isBufferingPreConnect = true;
     this.preConnectBuffer = [];
+    this.preConnectObservedSpeech = false;
+    this.preConnectLastSpeechAt = Date.now();
 
     try {
       const ctx = new AudioContext({ sampleRate: 24000 }); // OpenAI Realtime expects 24kHz
@@ -477,10 +539,18 @@ export class RealtimeVoiceSession {
       processor.onaudioprocess = (e) => {
         if (!this.isBufferingPreConnect) return;
         const float32 = e.inputBuffer.getChannelData(0);
+        let sumSquares = 0;
         // Convert to 16-bit PCM then base64 (matching OpenAI's input_audio_buffer.append format)
         const int16 = new Int16Array(float32.length);
         for (let i = 0; i < float32.length; i++) {
-          int16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32767)));
+          const sample = float32[i];
+          sumSquares += sample * sample;
+          int16[i] = Math.max(-32768, Math.min(32767, Math.round(sample * 32767)));
+        }
+        const rms = Math.sqrt(sumSquares / Math.max(1, float32.length));
+        if (rms >= PRECONNECT_SPEECH_RMS_THRESHOLD) {
+          this.preConnectObservedSpeech = true;
+          this.preConnectLastSpeechAt = Date.now();
         }
         const bytes = new Uint8Array(int16.buffer);
         let binary = "";
@@ -516,11 +586,16 @@ export class RealtimeVoiceSession {
     }
   }
 
-  /** Flush buffered pre-connect audio into the Realtime API via the data channel. */
-  private flushPreConnectBuffer() {
-    if (this.preConnectBuffer.length === 0) return;
+  private consumePreConnectBuffer(): string[] {
     const chunks = this.preConnectBuffer;
+    this.stopPreConnectBuffering();
     this.preConnectBuffer = [];
+    return chunks;
+  }
+
+  /** Flush buffered pre-connect audio into the Realtime API via the data channel. */
+  private flushPreConnectChunks(chunks: string[]) {
+    if (chunks.length === 0) return;
     console.log(`[VoiceRTC:connect] flushing ${chunks.length} pre-connect audio chunks`);
     for (const chunk of chunks) {
       this.sendEvent({
@@ -530,14 +605,62 @@ export class RealtimeVoiceSession {
     }
   }
 
+  private initDataChannelOpenLatch() {
+    this.dataChannelOpenPromise = new Promise<void>((resolve) => {
+      this.resolveDataChannelOpenPromise = resolve;
+    });
+  }
+
+  private markDataChannelOpen() {
+    if (this.resolveDataChannelOpenPromise) {
+      this.resolveDataChannelOpenPromise();
+      this.resolveDataChannelOpenPromise = null;
+    }
+  }
+
+  private async waitForDataChannelOpen(): Promise<void> {
+    if (this.dc?.readyState === "open") return;
+    if (!this.dataChannelOpenPromise) {
+      this.initDataChannelOpenLatch();
+    }
+    const latch = this.dataChannelOpenPromise!;
+    await Promise.race([
+      latch,
+      new Promise<never>((_, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Timed out waiting for data channel to open"));
+        }, DATA_CHANNEL_OPEN_TIMEOUT_MS);
+        latch.finally(() => clearTimeout(timeout));
+      }),
+    ]);
+  }
+
+  private async waitForFirstTurnBoundary(): Promise<void> {
+    if (!this.isBufferingPreConnect || this.preConnectBuffer.length === 0) return;
+    if (!this.preConnectObservedSpeech) return;
+
+    const startedAt = Date.now();
+    while (!this.destroyed && this.isBufferingPreConnect) {
+      const now = Date.now();
+      const elapsed = now - startedAt;
+      const silenceFor = now - this.preConnectLastSpeechAt;
+
+      if (this.preConnectObservedSpeech && silenceFor >= PRECONNECT_SILENCE_MS) {
+        return;
+      }
+      if (elapsed >= PRECONNECT_BOUNDARY_MAX_WAIT_MS) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, PRECONNECT_BOUNDARY_POLL_MS));
+    }
+  }
+
   private setupDataChannel() {
     if (!this.dc) return;
 
     this.dc.onopen = () => {
       console.log("[RealtimeVoice] data channel open");
-      // Flush any audio captured while waiting for the connection
-      this.stopPreConnectBuffering();
-      this.flushPreConnectBuffer();
+      this.markDataChannelOpen();
     };
 
     this.dc.onmessage = (event) => {
@@ -767,6 +890,7 @@ export class RealtimeVoiceSession {
       this.localStream.getTracks().forEach((t) => t.stop());
       this.localStream = null;
     }
+    this.inputTrack = null;
 
     if (this.audioElement) {
       this.audioElement.pause();
@@ -783,5 +907,9 @@ export class RealtimeVoiceSession {
     this.assistantTranscriptBuffer = "";
     this.stopPreConnectBuffering();
     this.preConnectBuffer = [];
+    this.preConnectObservedSpeech = false;
+    this.preConnectLastSpeechAt = 0;
+    this.dataChannelOpenPromise = null;
+    this.resolveDataChannelOpenPromise = null;
   }
 }
