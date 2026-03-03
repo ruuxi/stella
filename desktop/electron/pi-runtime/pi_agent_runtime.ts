@@ -95,6 +95,8 @@ type BaseRunOptions = {
   stellaHome: string;
   proxyBaseUrl: string;
   proxyToken: string;
+  /** Returns the current auth token (may be refreshed since turn start). */
+  getProxyToken?: () => string;
   store: JsonlRuntimeStore;
   abortSignal?: AbortSignal;
 };
@@ -394,7 +396,7 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
     },
     convertToLlm: (messages) => messages.filter((msg) =>
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
-    getApiKey: () => opts.proxyToken,
+    getApiKey: () => (opts.getProxyToken ?? (() => opts.proxyToken))(),
   });
 
   if (opts.abortSignal?.aborted) {
@@ -632,7 +634,7 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
     },
     convertToLlm: (messages) => messages.filter((msg) =>
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
-    getApiKey: () => opts.proxyToken,
+    getApiKey: () => (opts.getProxyToken ?? (() => opts.proxyToken))(),
   });
 
   const abortHandler = () => agent.abort();
