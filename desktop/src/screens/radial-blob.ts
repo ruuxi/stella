@@ -382,10 +382,22 @@ export function startOpen(
   if (animFrame !== null) cancelAnimationFrame(animFrame)
   const start = performance.now()
   let hasFadedIn = false
+  let frameCount = 0
 
   const tick = (now: number) => {
     const s = (now - start) / 1000
-    
+    frameCount++
+
+    // DEBUG: log container position + window position for first 5 frames
+    if (frameCount <= 5) {
+      const shell = document.querySelector('.radial-shell') as HTMLElement | null
+      const canvas = blobGL?.gl.canvas as HTMLCanvasElement | undefined
+      if (shell) {
+        const rect = shell.getBoundingClientRect()
+        console.log(`[blob:frame${frameCount}] t=${(s * 1000).toFixed(1)}ms shell=(${rect.left.toFixed(1)},${rect.top.toFixed(1)}) win=(${window.screenX},${window.screenY}) innerSize=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio} canvasSize=${canvas?.width}x${canvas?.height}`)
+      }
+    }
+
     // Trigger fade-in halfway through the animation precisely on the rAF thread
     if (!hasFadedIn && s * 1000 >= 180) {
       hasFadedIn = true
