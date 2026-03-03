@@ -377,12 +377,21 @@ export function startOpen(
   selIdxRef: { current: number },
   colorsRef: { current: BlobColors },
   onComplete: () => void,
+  onFadeIn?: () => void,
 ) {
   if (animFrame !== null) cancelAnimationFrame(animFrame)
   const start = performance.now()
+  let hasFadedIn = false
 
   const tick = (now: number) => {
     const s = (now - start) / 1000
+    
+    // Trigger fade-in halfway through the animation precisely on the rAF thread
+    if (!hasFadedIn && s * 1000 >= 180) {
+      hasFadedIn = true
+      if (onFadeIn) onFadeIn()
+    }
+
     const progress = springEase(s)
     const leadP = springEase(s + 0.035)
     const lagP = springEase(s - 0.020)
