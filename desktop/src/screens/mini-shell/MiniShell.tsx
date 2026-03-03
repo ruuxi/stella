@@ -6,7 +6,11 @@ import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
 import { VoiceOverlay } from "../../components/VoiceOverlay";
 
-export const MiniShell = () => {
+type MiniShellProps = {
+  onPreviewVisibilityChange?: (visible: boolean) => void;
+};
+
+export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
   const { setWindow } = useUiState();
 
   const {
@@ -37,6 +41,11 @@ export const MiniShell = () => {
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
 
+  useEffect(() => {
+    onPreviewVisibilityChange?.(previewIndex !== null);
+    return () => onPreviewVisibilityChange?.(false);
+  }, [onPreviewVisibilityChange, previewIndex]);
+
   const handleVoiceTranscript = useCallback(
     (text: string) => {
       setMessage((prev) => (prev ? prev + " " + text : text));
@@ -62,7 +71,7 @@ export const MiniShell = () => {
 
   return (
     <div
-      className={`raycast-shell${shellVisible ? " is-visible" : ""}`}
+      className={`raycast-shell${shellVisible ? " is-visible" : ""}${previewIndex !== null ? " has-preview" : ""}`}
       onClick={handleShellClick}
     >
       <div className="raycast-panel">
@@ -140,8 +149,14 @@ export const MiniShell = () => {
 
       {previewIndex !== null &&
         chatContext?.regionScreenshots?.[previewIndex] && (
-          <div className="raycast-screenshot-overlay">
-            <div className="raycast-screenshot-preview-container">
+          <div
+            className="raycast-screenshot-overlay"
+            onClick={() => setPreviewIndex(null)}
+          >
+            <div
+              className="raycast-screenshot-preview-container"
+              onClick={(e) => e.stopPropagation()}
+            >
               <img
                 src={chatContext.regionScreenshots[previewIndex].dataUrl}
                 className="raycast-screenshot-preview"
@@ -150,7 +165,11 @@ export const MiniShell = () => {
               <button
                 type="button"
                 className="raycast-screenshot-close"
-                onClick={() => setPreviewIndex(null)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setPreviewIndex(null);
+                }}
                 aria-label="Close preview"
               >
                 &times;

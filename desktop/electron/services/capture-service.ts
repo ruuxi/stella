@@ -1,13 +1,6 @@
 import { desktopCapturer, screen, type BrowserWindow, type Display } from 'electron'
 import { captureChatContext, type ChatContext } from '../chat-context.js'
-import { hideModifierOverlay } from '../modifier-overlay.js'
-import {
-  createRegionCaptureWindow,
-  getRegionCaptureWindow,
-  hideRegionCaptureWindow,
-  showRegionCaptureWindow,
-} from '../region-capture-window.js'
-import { hideRadialWindow } from '../radial-window.js'
+import { globalShortcut } from 'electron'
 import type {
   RegionCaptureResult,
   RegionSelection,
@@ -27,6 +20,14 @@ type CaptureServiceOptions = {
   concealMiniWindowForCapture: () => boolean
   restoreMiniWindowAfterCapture: () => void
   updateUiState: (partial: Partial<UiState>) => void
+  hideRadial: () => void
+  hideModifierBlock: () => void
+  /** Start region capture in the overlay window */
+  startRegionCapture: () => void
+  /** End region capture in the overlay window */
+  endRegionCapture: () => void
+  /** Get the overlay window bounds (for coordinate conversion) */
+  getOverlayBounds: () => { x: number; y: number; width: number; height: number } | null
 }
 
 export class CaptureService {
@@ -48,7 +49,7 @@ export class CaptureService {
   constructor(private readonly options: CaptureServiceOptions) {}
 
   createRegionCaptureWindow() {
-    createRegionCaptureWindow()
+    // No-op: overlay window is always alive and handles region capture
   }
 
   emptyContext(): ChatContext {
@@ -314,7 +315,8 @@ export class CaptureService {
   private resetRegionCapture() {
     this.pendingRegionCaptureResolve = null
     this.pendingRegionCapturePromise = null
-    hideRegionCaptureWindow()
+    try { globalShortcut.unregister('Escape') } catch {}
+    this.options.endRegionCapture()
   }
 
   async startRegionCapture() {
@@ -322,9 +324,13 @@ export class CaptureService {
       return this.pendingRegionCapturePromise
     }
 
-    await showRegionCaptureWindow(() => {
+    // Register global Escape shortcut as fallback (transparent overlays can miss keyboard events)
+    globalShortcut.register('Escape', () => {
       this.cancelRegionCapture()
     })
+
+    // Show region capture in the overlay
+    this.options.startRegionCapture()
 
     this.pendingRegionCapturePromise = new Promise<RegionCaptureResult | null>((resolve) => {
       this.pendingRegionCaptureResolve = resolve
@@ -340,16 +346,16 @@ export class CaptureService {
     }
 
     const resolve = this.pendingRegionCaptureResolve
-    hideRegionCaptureWindow()
-    hideRadialWindow()
-    hideModifierOverlay()
+    this.options.endRegionCapture()
+    this.options.hideRadial()
+    this.options.hideModifierBlock()
     const miniWasConcealed = this.options.concealMiniWindowForCapture()
 
     let screenshot: ScreenshotCapture | null = null
     try {
       await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
 
-      const regionBounds = getRegionCaptureWindow()?.getBounds()
+      const regionBounds = this.options.getOverlayBounds()
       const globalX = (regionBounds?.x ?? 0) + selection.x
       const globalY = (regionBounds?.y ?? 0) + selection.y
       const centerX = globalX + selection.width / 2
@@ -385,7 +391,7 @@ export class CaptureService {
   }
 
   async getRegionWindowCapture(point: { x: number; y: number }) {
-    const regionBounds = getRegionCaptureWindow()?.getBounds()
+    const regionBounds = this.options.getOverlayBounds()
     if (!regionBounds) return null
 
     const dipX = regionBounds.x + point.x
@@ -417,16 +423,16 @@ export class CaptureService {
     }
 
     const resolve = this.pendingRegionCaptureResolve
-    hideRegionCaptureWindow()
-    hideRadialWindow()
-    hideModifierOverlay()
+    this.options.endRegionCapture()
+    this.options.hideRadial()
+    this.options.hideModifierBlock()
     const miniWasConcealed = this.options.concealMiniWindowForCapture()
 
     let capture: Awaited<ReturnType<typeof captureWindowScreenshot>> = null
     try {
       await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
 
-      const regionBounds = getRegionCaptureWindow()?.getBounds()
+      const regionBounds = this.options.getOverlayBounds()
       let capturePoint = { x: point.x, y: point.y }
       if (regionBounds) {
         const dipX = regionBounds.x + point.x
@@ -469,9 +475,9 @@ export class CaptureService {
       x: Math.round(cursorDip.x * scaleFactor),
       y: Math.round(cursorDip.y * scaleFactor),
     }
-    hideRadialWindow()
-    hideModifierOverlay()
-    hideRegionCaptureWindow()
+    this.options.hideRadial()
+    this.options.hideModifierBlock()
+    this.options.endRegionCapture()
     const miniWasConcealed = this.options.concealMiniWindowForCapture()
 
     try {

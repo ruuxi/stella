@@ -65,7 +65,8 @@
   height: 44px;
   padding: 0 12px;
   border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  -webkit-app-region: drag;
+  /* No -webkit-app-region: drag — overlay uses custom drag via OverlayRoot */
+  cursor: grab;
   flex-shrink: 0;
   position: relative;
 }
@@ -75,7 +76,7 @@
   left: 14px;
   display: flex;
   align-items: center;
-  -webkit-app-region: no-drag;
+  /* drag handled by OverlayRoot custom handler */
 }
 
 .mini-titlebar-left .stella-animation-container {
@@ -110,7 +111,7 @@
   right: 12px;
   display: flex;
   align-items: center;
-  -webkit-app-region: no-drag;
+  /* drag handled by OverlayRoot custom handler */
 }
 
 .mini-titlebar-action {
@@ -538,10 +539,12 @@
   align-items: center;
   justify-content: center;
   z-index: 9999;
+  pointer-events: auto;
 }
 
 .raycast-screenshot-preview-container {
   position: relative;
+  pointer-events: auto;
 }
 
 .raycast-screenshot-preview {
@@ -571,6 +574,10 @@
 
 .raycast-screenshot-close:hover {
   transform: scale(1.1);
+}
+
+.raycast-shell.has-preview .raycast-panel {
+  pointer-events: none;
 }
 
 /* ========= Dark mode ========= */

@@ -16,6 +16,7 @@
   cursor: crosshair;
   user-select: none;
   -webkit-app-region: no-drag;
+  background: rgba(0, 0, 0, 0.01);
 }
 
 .region-capture-dim {

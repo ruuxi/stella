@@ -335,6 +335,55 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLastSelfModFeature: () =>
     ipcRenderer.invoke('selfmod:lastFeature'),
 
+  // ─── Unified Overlay IPC ──────────────────────────────────────────────
+  overlaySetInteractive: (interactive: boolean) =>
+    ipcRenderer.send('overlay:setInteractive', interactive),
+  onOverlayModifierBlock: (callback: (active: boolean) => void) => {
+    const handler = (_event: IpcRendererEvent, active: boolean) => { callback(active) }
+    ipcRenderer.on('overlay:modifierBlock', handler)
+    return () => { ipcRenderer.removeListener('overlay:modifierBlock', handler) }
+  },
+  onOverlayStartRegionCapture: (callback: () => void) => {
+    const handler = () => { callback() }
+    ipcRenderer.on('overlay:startRegionCapture', handler)
+    return () => { ipcRenderer.removeListener('overlay:startRegionCapture', handler) }
+  },
+  onOverlayEndRegionCapture: (callback: () => void) => {
+    const handler = () => { callback() }
+    ipcRenderer.on('overlay:endRegionCapture', handler)
+    return () => { ipcRenderer.removeListener('overlay:endRegionCapture', handler) }
+  },
+  onOverlayShowMini: (callback: (data: { x: number; y: number }) => void) => {
+    const handler = (_event: IpcRendererEvent, data: { x: number; y: number }) => { callback(data) }
+    ipcRenderer.on('overlay:showMini', handler)
+    return () => { ipcRenderer.removeListener('overlay:showMini', handler) }
+  },
+  onOverlayHideMini: (callback: () => void) => {
+    const handler = () => { callback() }
+    ipcRenderer.on('overlay:hideMini', handler)
+    return () => { ipcRenderer.removeListener('overlay:hideMini', handler) }
+  },
+  onOverlayRestoreMini: (callback: () => void) => {
+    const handler = () => { callback() }
+    ipcRenderer.on('overlay:restoreMini', handler)
+    return () => { ipcRenderer.removeListener('overlay:restoreMini', handler) }
+  },
+  onOverlayShowVoice: (callback: (data: { x: number; y: number; mode: 'stt' | 'realtime' }) => void) => {
+    const handler = (_event: IpcRendererEvent, data: { x: number; y: number; mode: 'stt' | 'realtime' }) => { callback(data) }
+    ipcRenderer.on('overlay:showVoice', handler)
+    return () => { ipcRenderer.removeListener('overlay:showVoice', handler) }
+  },
+  onOverlayHideVoice: (callback: () => void) => {
+    const handler = () => { callback() }
+    ipcRenderer.on('overlay:hideVoice', handler)
+    return () => { ipcRenderer.removeListener('overlay:hideVoice', handler) }
+  },
+  onOverlayDisplayChange: (callback: (data: { origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }) => void) => {
+    const handler = (_event: IpcRendererEvent, data: { origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }) => { callback(data) }
+    ipcRenderer.on('overlay:displayChange', handler)
+    return () => { ipcRenderer.removeListener('overlay:displayChange', handler) }
+  },
+
   // App reload (used by recovery page)
   appReload: () => ipcRenderer.send('app:reload'),
   hardResetLocalState: () => ipcRenderer.invoke('app:hardResetLocalState') as Promise<{ ok: boolean }>,

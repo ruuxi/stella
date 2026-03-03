@@ -103,8 +103,11 @@ export function VoiceOverlay({ onTranscript }: VoiceOverlayProps) {
 
   // Only run voice logic in the active window — both full and mini mount VoiceOverlay,
   // but state.window tells us which one is currently visible.
+  // The overlay window hosts the mini shell, so treat "overlay" as "mini".
   const windowType = useWindowType();
-  const isActiveWindow = state.window === windowType;
+  const isActiveWindow =
+    state.window === windowType ||
+    (windowType === "overlay" && state.window === "mini");
 
   // Swatch refs for 5 theme colors
   const darkRef = useRef<HTMLSpanElement>(null);
