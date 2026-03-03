@@ -1,21 +1,14 @@
 import { useEffect } from "react";
-import { useAction, useConvexAuth } from "convex/react";
 import { getConvexToken } from "@/services/auth-token";
-import { api } from "@/convex/api";
+import { authClient } from "@/lib/auth-client";
 
-const PROXY_TOKEN_REFRESH_MS = 3 * 60 * 1000;
-
-const buildProxyRunId = () => {
-  const suffix =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  return `desktop:proxy:${suffix}`;
-};
+const TOKEN_REFRESH_MS = 3 * 60 * 1000;
+const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;
 
 export const AuthTokenBridge = () => {
-  const { isAuthenticated } = useConvexAuth();
-  const mintProxyToken = useAction(api["agent/mint_proxy_token"].mintProxyToken);
+  const session = authClient.useSession();
+  const hasSession = Boolean(session.data);
+  const isSessionPending = Boolean(session.isPending);
 
   useEffect(() => {
     const electronApi = window.electronAPI;
@@ -23,45 +16,66 @@ export const AuthTokenBridge = () => {
       return undefined;
     }
 
-    if (!isAuthenticated) {
+    // Avoid clearing host auth while BetterAuth session lookup is still in-flight.
+    if (isSessionPending) {
+      return undefined;
+    }
+
+    if (!hasSession) {
       void electronApi.setAuthState({ authenticated: false });
       return undefined;
     }
 
     let cancelled = false;
+    let refreshInterval: ReturnType<typeof setInterval> | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimers = () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+    };
+
     const syncToken = async () => {
-      try {
-        const minted = await mintProxyToken({
-          agentType: "orchestrator",
-          runId: buildProxyRunId(),
-          platform: window.electronAPI?.platform,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        });
-        if (cancelled) return;
-        void electronApi.setAuthState({
-          authenticated: true,
-          token: minted?.proxyToken?.token ?? undefined,
-        });
+      const token = (await getConvexToken()) ?? undefined;
+      if (cancelled) return;
+
+      if (token) {
+        if (retryTimer) {
+          clearTimeout(retryTimer);
+          retryTimer = null;
+        }
+        void electronApi.setAuthState({ authenticated: true, token });
+        if (!refreshInterval) {
+          refreshInterval = setInterval(() => {
+            void syncToken();
+          }, TOKEN_REFRESH_MS);
+        }
         return;
-      } catch {
-        // Fall back to Convex JWT mode when proxy-token minting is unavailable.
       }
 
-      const token = await getConvexToken();
-      if (cancelled) return;
-      void electronApi.setAuthState({ authenticated: true, token: token ?? undefined });
+      // No token yet: keep host in unauthenticated state and retry quickly.
+      void electronApi.setAuthState({ authenticated: false });
+      if (!retryTimer) {
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          void syncToken();
+        }, TOKEN_BOOTSTRAP_RETRY_MS);
+      }
     };
 
     void syncToken();
-    const interval = setInterval(() => {
-      void syncToken();
-    }, PROXY_TOKEN_REFRESH_MS);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearTimers();
     };
-  }, [isAuthenticated, mintProxyToken]);
+  }, [hasSession, isSessionPending]);
 
   useEffect(() => {
     const electronApi = window.electronAPI;
@@ -70,7 +84,6 @@ export const AuthTokenBridge = () => {
     }
 
     return () => {
-      // Ensure the host clears auth when this bridge unmounts.
       void electronApi.setAuthState({ authenticated: false });
     };
   }, []);

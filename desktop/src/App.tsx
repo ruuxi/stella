@@ -1,7 +1,6 @@
 import { Suspense, lazy, useMemo } from 'react'
 import { useUiState } from './app/state/ui-state'
 import { getElectronApi } from './services/electron'
-import { Authenticated } from 'convex/react'
 import { AuthTokenBridge } from './app/AuthTokenBridge'
 import { CloudSyncBridge } from './app/CloudSyncBridge'
 import { AutoAnonAuth } from './app/AutoAnonAuth'
@@ -84,10 +83,8 @@ function App() {
         <>
           <AuthDeepLinkHandler />
           <AutoAnonAuth />
-          <Authenticated>
-            <AuthTokenBridge />
-            <CloudSyncBridge />
-          </Authenticated>
+          <AuthTokenBridge />
+          <CloudSyncBridge />
         </>
       ) : null}
       <Suspense fallback={shellFallback}>{shell}</Suspense>

@@ -133,15 +133,21 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
         return { _id: localEvent._id }
       }
 
-      const event = await convexAppendEvent({
-        conversationId: args.conversationId as never,
-        type: args.type,
-        deviceId: args.deviceId,
-        requestId: args.requestId,
-        targetDeviceId: args.targetDeviceId,
-        payload: args.payload,
-      })
-      return event as AppendedEventResponse | null
+      try {
+        const event = await convexAppendEvent({
+          conversationId: args.conversationId as never,
+          type: args.type,
+          deviceId: args.deviceId,
+          requestId: args.requestId,
+          targetDeviceId: args.targetDeviceId,
+          payload: args.payload,
+        })
+        return event as AppendedEventResponse | null
+      } catch (error) {
+        // Keep local orchestration responsive even when cloud sync is unavailable.
+        console.warn("[chat-store] Cloud append failed, using local event only", error)
+        return { _id: localEvent._id }
+      }
     },
     [convexAppendEvent, isLocalStorage],
   )
