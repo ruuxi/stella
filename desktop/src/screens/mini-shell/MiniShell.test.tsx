@@ -110,10 +110,48 @@ describe("MiniShell", () => {
     expect(screen.getByAltText("Screenshot preview")).toBeTruthy();
   });
 
+  it("closes screenshot preview when close button is pressed", () => {
+    const setPreviewIndex = vi.fn();
+    contextCaptureOverrides = {
+      chatContext: {
+        window: null,
+        regionScreenshots: [
+          { dataUrl: "data:image/png;base64,abc", width: 100, height: 100 },
+        ],
+      },
+      previewIndex: 0,
+      setPreviewIndex,
+    };
+    render(<MiniShell />);
+    fireEvent.click(screen.getByLabelText("Close preview"));
+    expect(setPreviewIndex).toHaveBeenCalledWith(null);
+  });
+
   it("has is-visible class when shellVisible", () => {
     contextCaptureOverrides = { shellVisible: true };
     const { container } = render(<MiniShell />);
     const shell = container.querySelector(".raycast-shell")!;
     expect(shell.classList.contains("is-visible")).toBe(true);
+  });
+
+  it("notifies preview visibility changes", () => {
+    const onPreviewVisibilityChange = vi.fn();
+    contextCaptureOverrides = {
+      chatContext: {
+        window: null,
+        regionScreenshots: [
+          { dataUrl: "data:image/png;base64,abc", width: 100, height: 100 },
+        ],
+      },
+      previewIndex: 0,
+    };
+
+    const { unmount } = render(
+      <MiniShell onPreviewVisibilityChange={onPreviewVisibilityChange} />,
+    );
+
+    expect(onPreviewVisibilityChange).toHaveBeenCalledWith(true);
+    unmount();
+    expect(onPreviewVisibilityChange).toHaveBeenCalledWith(false);
   });
 });

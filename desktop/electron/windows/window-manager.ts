@@ -1,10 +1,10 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, screen } from 'electron'
 import { FullWindowController } from './full-window.js'
-import { MiniWindowController } from './mini-window.js'
 import type { UiState } from '../types.js'
 import type { WorkspaceService } from '../services/workspace-service.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
 import type { MiniBridgeService } from '../services/mini-bridge-service.js'
+import type { OverlayWindowController } from '../overlay-window.js'
 
 type ChatContextSyncBridge = {
   getChatContextVersion: () => number
@@ -27,11 +27,26 @@ type WindowManagerOptions = {
   chatContextSyncBridge: ChatContextSyncBridge
   onDeactivateVoiceModes: () => void
   onUpdateUiState: (partial: Partial<UiState>) => void
+  getOverlayController: () => OverlayWindowController | null
+}
+
+const MINI_SHELL_ANIM_MS = 140
+
+const miniSize = {
+  width: 480,
+  height: 700,
 }
 
 export class WindowManager {
   private readonly fullWindowController: FullWindowController
-  private readonly miniWindowController: MiniWindowController
+
+  // Mini shell state (now managed via overlay window)
+  private miniVisible = false
+  private miniConcealedForCapture = false
+  private pendingMiniShowTimer: NodeJS.Timeout | null = null
+  private miniShowRequestId = 0
+  private miniVisibilityEpoch = 0
+  private pendingMiniOpacityHideTimer: NodeJS.Timeout | null = null
 
   constructor(private readonly options: WindowManagerOptions) {
     this.fullWindowController = new FullWindowController({
@@ -54,19 +69,6 @@ export class WindowManager {
         options.miniBridgeService.onFullWindowUnavailable('Full window unavailable')
       },
     })
-
-    this.miniWindowController = new MiniWindowController({
-      electronDir: options.electronDir,
-      preloadPath: options.preloadPath,
-      sessionPartition: options.sessionPartition,
-      isDev: options.isDev,
-      getDevServerUrl: options.getDevServerUrl,
-      setupExternalLinkHandlers: (window) => options.externalLinkService.setupExternalLinkHandlers(window),
-      isQuitting: options.isQuitting,
-      onCloseRequested: () => {
-        options.onDeactivateVoiceModes()
-      },
-    })
   }
 
   createFullWindow() {
@@ -78,21 +80,17 @@ export class WindowManager {
     return fullWindow
   }
 
-  createMiniWindow() {
-    return this.miniWindowController.create()
-  }
-
   createInitialWindows() {
     this.createFullWindow()
-    this.createMiniWindow()
   }
 
   getFullWindow() {
     return this.fullWindowController.getWindow()
   }
 
+  /** Returns the overlay window (which now hosts the mini shell). */
   getMiniWindow() {
-    return this.miniWindowController.getWindow()
+    return this.options.getOverlayController()?.getWindow() ?? null
   }
 
   getAllWindows() {
@@ -100,27 +98,94 @@ export class WindowManager {
   }
 
   isMiniShowing() {
-    return this.miniWindowController.isMiniShowing()
+    return this.miniVisible
+  }
+
+  /** Compute mini shell position near the cursor, clamped to work area. */
+  private computeMiniPosition(): { x: number; y: number } {
+    const cursor = screen.getCursorScreenPoint()
+    const display = screen.getDisplayNearestPoint(cursor)
+    const wa = display.workArea
+    const gap = 16
+
+    let targetX = cursor.x + gap
+    let targetY = cursor.y - Math.round(miniSize.height / 3)
+
+    if (targetX + miniSize.width > wa.x + wa.width) {
+      targetX = cursor.x - miniSize.width - gap
+    }
+
+    targetX = Math.max(wa.x, Math.min(targetX, wa.x + wa.width - miniSize.width))
+    targetY = Math.max(wa.y, Math.min(targetY, wa.y + wa.height - miniSize.height))
+
+    return { x: targetX, y: targetY }
   }
 
   hideMiniWindow(animate = true) {
-    this.miniWindowController.hideWindow(animate)
+    const overlay = this.options.getOverlayController()
+    if (!overlay) return
+
+    const hideEpoch = ++this.miniVisibilityEpoch
+    this.miniVisible = false
+    this.miniConcealedForCapture = false
+
+    if (this.pendingMiniOpacityHideTimer) {
+      clearTimeout(this.pendingMiniOpacityHideTimer)
+      this.pendingMiniOpacityHideTimer = null
+    }
+
+    // Send visibility=false to overlay renderer (triggers MiniShell hide animation)
+    overlay.getWindow()?.webContents.send('mini:visibility', { visible: false })
+    overlay.getWindow()?.setIgnoreMouseEvents(true, { forward: true })
+    overlay.getWindow()?.setFocusable(false)
+
+    if (!animate) {
+      return
+    }
+
+    // After the CSS animation completes, ensure click-through
+    this.pendingMiniOpacityHideTimer = setTimeout(() => {
+      if (hideEpoch !== this.miniVisibilityEpoch) return
+      this.pendingMiniOpacityHideTimer = null
+    }, MINI_SHELL_ANIM_MS)
   }
 
   hasPendingMiniShow() {
-    return this.miniWindowController.hasPendingShow()
+    return Boolean(this.pendingMiniShowTimer)
   }
 
-  positionMiniWindow() {
-    this.miniWindowController.positionWindow()
+  cancelPendingShow() {
+    if (this.pendingMiniShowTimer) {
+      clearTimeout(this.pendingMiniShowTimer)
+      this.pendingMiniShowTimer = null
+    }
   }
 
   concealMiniWindowForCapture() {
-    return this.miniWindowController.concealMiniWindowForCapture()
+    if (!this.miniVisible || this.miniConcealedForCapture) {
+      return false
+    }
+
+    if (this.pendingMiniOpacityHideTimer) {
+      clearTimeout(this.pendingMiniOpacityHideTimer)
+      this.pendingMiniOpacityHideTimer = null
+    }
+
+    this.miniConcealedForCapture = true
+    const overlay = this.options.getOverlayController()
+    overlay?.concealMiniForCapture()
+    return true
   }
 
   restoreMiniWindowAfterCapture() {
-    this.miniWindowController.restoreMiniWindowAfterCapture()
+    if (!this.miniVisible || !this.miniConcealedForCapture) {
+      return
+    }
+
+    this.miniVisibilityEpoch += 1
+    this.miniConcealedForCapture = false
+    const overlay = this.options.getOverlayController()
+    overlay?.restoreMiniAfterCapture()
   }
 
   showWindow(target: 'full' | 'mini') {
@@ -128,22 +193,67 @@ export class WindowManager {
       if (!this.options.isAppReady()) {
         return
       }
-      this.miniWindowController.showWindow({
-        getChatContextVersion: this.options.chatContextSyncBridge.getChatContextVersion,
-        getLastBroadcastChatContextVersion: this.options.chatContextSyncBridge.getLastBroadcastChatContextVersion,
-        broadcastChatContext: this.options.chatContextSyncBridge.broadcastChatContext,
-        waitForMiniChatContext: this.options.chatContextSyncBridge.waitForMiniChatContext,
-        onPreReveal: () => {
+
+      const overlay = this.options.getOverlayController()
+      if (!overlay?.getWindow()) return
+
+      if (this.pendingMiniOpacityHideTimer) {
+        clearTimeout(this.pendingMiniOpacityHideTimer)
+        this.pendingMiniOpacityHideTimer = null
+      }
+      this.miniVisibilityEpoch += 1
+
+      // If already showing and not concealed, just reposition and refresh context
+      if (this.isMiniShowing() && !this.miniConcealedForCapture) {
+        const pos = this.computeMiniPosition()
+        const bridge = this.options.chatContextSyncBridge
+        if (bridge.getLastBroadcastChatContextVersion() !== bridge.getChatContextVersion()) {
+          bridge.broadcastChatContext()
+        }
+        overlay.showMini(pos.x, pos.y)
+        overlay.getWindow()?.webContents.send('mini:visibility', { visible: true })
+        this.options.onUpdateUiState({ window: 'mini' })
+        return
+      }
+
+      const requestId = ++this.miniShowRequestId
+      const bridge = this.options.chatContextSyncBridge
+      if (bridge.getLastBroadcastChatContextVersion() !== bridge.getChatContextVersion()) {
+        bridge.broadcastChatContext()
+      }
+
+      const pos = this.computeMiniPosition()
+
+      if (this.pendingMiniShowTimer) {
+        clearTimeout(this.pendingMiniShowTimer)
+      }
+      this.pendingMiniShowTimer = setTimeout(() => {
+        this.pendingMiniShowTimer = null
+        const versionToWait = bridge.getChatContextVersion()
+        void (async () => {
+          // Hide full window before revealing mini
           this.getFullWindow()?.hide()
-        },
-        onShowCommitted: () => {
+
+          // Position and show the mini shell in the overlay
+          overlay.showMini(pos.x, pos.y)
+
+          await bridge.waitForMiniChatContext(versionToWait)
+
+          if (requestId !== this.miniShowRequestId) {
+            return
+          }
+
+          this.miniVisible = true
+          this.miniConcealedForCapture = false
+          overlay.getWindow()?.webContents.send('mini:visibility', { visible: true })
           this.options.onUpdateUiState({ window: 'mini' })
-        },
-      })
+        })()
+      }, 0)
       return
     }
 
-    this.miniWindowController.cancelPendingShow()
+    // target === 'full'
+    this.cancelPendingShow()
     const fullWindow = this.createFullWindow()
     if (fullWindow.isMinimized()) {
       fullWindow.restore()

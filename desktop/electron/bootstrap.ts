@@ -17,11 +17,11 @@ import { fileURLToPath } from 'url'
 import type { ChatContext } from './chat-context.js'
 import { getDevServerUrl } from './dev-url.js'
 import { registerAllIpcHandlers } from './ipc/ipc-registry.js'
-import { createModifierOverlay, destroyModifierOverlay, hideModifierOverlay, showModifierOverlay, showModifierOverlayPreemptive } from './modifier-overlay.js'
+import { OverlayWindowController } from './overlay-window.js'
 import { MouseHookManager } from './mouse-hook.js'
 import type { PiHostRunner } from './pi-host-runner.js'
 import { createPiHostRunner } from './pi-runtime/runner.js'
-import { calculateSelectedWedge, createRadialWindow, getRadialWindow, hideRadialWindow, showRadialWindow, updateRadialCursor, type RadialWedge } from './radial-window.js'
+import { calculateSelectedWedge, type RadialWedge } from './radial-wedge.js'
 import { cleanupSelectedTextProcess, getSelectedText, initSelectedTextProcess } from './selected-text.js'
 import { AuthService } from './services/auth-service.js'
 import { CaptureService } from './services/capture-service.js'
@@ -65,6 +65,7 @@ export const bootstrapMainProcess = () => {
   let resumeWakeWordTimer: ReturnType<typeof setTimeout> | null = null
   let mouseHook: MouseHookManager | null = null
   let windowManager: WindowManager | null = null
+  let overlayController: OverlayWindowController | null = null
 
   // Gesture-local radial state; capture internals live in CaptureService.
   let radialSelectionCommitted = false
@@ -118,6 +119,11 @@ export const bootstrapMainProcess = () => {
       windowManager?.restoreMiniWindowAfterCapture()
     },
     updateUiState,
+    hideRadial: () => overlayController?.hideRadial(),
+    hideModifierBlock: () => overlayController?.hideModifierBlock(),
+    startRegionCapture: () => overlayController?.startRegionCapture(),
+    endRegionCapture: () => overlayController?.endRegionCapture(),
+    getOverlayBounds: () => overlayController?.getWindow()?.getBounds() ?? null,
   })
 
   const broadcastAuthCallback = (url: string) => {
@@ -387,8 +393,8 @@ export const bootstrapMainProcess = () => {
         captureService.commitStagedRadialContext(radialContextBeforeGesture)
         captureService.cancelRadialContextCapture()
         updateUiState({ mode: 'chat' })
-        hideRadialWindow()
-        hideModifierOverlay()
+        overlayController?.hideRadial()
+        overlayController?.hideModifierBlock()
         const miniWasConcealed = windowManager?.concealMiniWindowForCapture() ?? false
         const regionCapture = await captureService.startRegionCapture()
         if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
@@ -439,7 +445,7 @@ export const bootstrapMainProcess = () => {
     mouseHook = new MouseHookManager({
       onModifierDown: () => {
         if (process.platform === 'darwin') {
-          showModifierOverlayPreemptive()
+          overlayController?.showModifierBlockPreemptive()
         }
       },
       onModifierUp: () => {
@@ -460,7 +466,7 @@ export const bootstrapMainProcess = () => {
         }
         if (process.platform === 'darwin') {
           if (!mouseHook?.isRadialActive()) {
-            hideModifierOverlay()
+            overlayController?.hideModifierBlock()
           }
         }
       },
@@ -496,8 +502,8 @@ export const bootstrapMainProcess = () => {
         }
 
         radialSelectionCommitted = false
-        showRadialWindow(x, y)
-        showModifierOverlay()
+        overlayController?.showRadial(x, y)
+        overlayController?.showModifierBlock()
         captureService.captureRadialContext(x, y, radialContextBeforeGesture)
       },
       onRadialHide: () => {
@@ -520,26 +526,22 @@ export const bootstrapMainProcess = () => {
           }
         }
         radialSelectionCommitted = false
-        hideRadialWindow()
-        hideModifierOverlay()
+        overlayController?.hideRadial()
+        overlayController?.hideModifierBlock()
       },
       onMouseMove: (x: number, y: number) => {
-        updateRadialCursor(x, y)
+        overlayController?.updateRadialCursor(x, y)
       },
-      onMouseUp: (x: number, y: number) => {
-        const display = screen.getDisplayNearestPoint({ x, y })
-        const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
-        const cursorX = x / scaleFactor
-        const cursorY = y / scaleFactor
-
-        const radialWin = getRadialWindow()
-        if (!radialWin) {
+      onMouseUp: (_x: number, _y: number) => {
+        const radialBounds = overlayController?.getRadialBounds()
+        if (!radialBounds) {
           return
         }
 
-        const bounds = radialWin.getBounds()
-        const relativeX = cursorX - bounds.x
-        const relativeY = cursorY - bounds.y
+        // Use Electron's DIP cursor position (uiohook reports physical pixels on Windows)
+        const cursorDip = screen.getCursorScreenPoint()
+        const relativeX = cursorDip.x - radialBounds.x
+        const relativeY = cursorDip.y - radialBounds.y
         const wedge = calculateSelectedWedge(
           relativeX,
           relativeY,
@@ -657,6 +659,13 @@ export const bootstrapMainProcess = () => {
 
     await initializePiHostRunner()
 
+    // Create the unified overlay window first (mini shell now lives here)
+    overlayController = new OverlayWindowController({
+      preloadPath: path.join(__dirname, 'preload.js'),
+      sessionPartition: STELLA_SESSION_PARTITION,
+    })
+    overlayController.create()
+
     windowManager = new WindowManager({
       electronDir: __dirname,
       preloadPath: path.join(__dirname, 'preload.js'),
@@ -676,12 +685,10 @@ export const bootstrapMainProcess = () => {
       },
       onDeactivateVoiceModes: deactivateVoiceModes,
       onUpdateUiState: updateUiState,
+      getOverlayController: () => overlayController,
     })
 
     windowManager.createInitialWindows()
-    createRadialWindow()
-    captureService.createRegionCaptureWindow()
-    createModifierOverlay()
 
     registerAllIpcHandlers({
       ui: {
@@ -767,7 +774,7 @@ export const bootstrapMainProcess = () => {
     }
     bridgeManager.stopAll()
     cleanupSelectedTextProcess()
-    destroyModifierOverlay()
+    overlayController?.destroy()
   })
 
   app.on('will-quit', () => {
