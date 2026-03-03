@@ -1,43 +1,12 @@
 import { BrowserWindow, ipcMain, screen } from 'electron'
 import path from 'path'
-import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import { getDevServerUrl } from './dev-url.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const require = createRequire(import.meta.url)
 
 const isDev = process.env.NODE_ENV === 'development'
-
-/**
- * Disable DWM window transition animations on Windows.
- * Prevents the OS compositor from applying a slide/fade animation when
- * the overlay window is shown after being hidden, which causes the
- * radial dial to visually appear at the wrong position before settling.
- */
-function disableDwmTransitions(win: BrowserWindow) {
-  if (process.platform !== 'win32') return
-  try {
-    const koffi = require('koffi')
-    const dwmapi = koffi.load('dwmapi.dll')
-    const DwmSetWindowAttribute = dwmapi.func(
-      'long __stdcall DwmSetWindowAttribute(uintptr hwnd, uint32 attr, void *pvAttr, uint32 cbAttr)',
-    )
-    const handleBuf = win.getNativeWindowHandle()
-    const hwnd =
-      handleBuf.length >= 8
-        ? Number(handleBuf.readBigUInt64LE(0))
-        : handleBuf.readUInt32LE(0)
-    const DWMWA_TRANSITIONS_FORCEDISABLED = 3
-    const value = Buffer.alloc(4)
-    value.writeUInt32LE(1) // TRUE
-    const hr = DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, value, 4)
-    console.log(`[overlay] DwmSetWindowAttribute DWMWA_TRANSITIONS_FORCEDISABLED → HRESULT ${hr}`)
-  } catch (err) {
-    console.warn('[overlay] disableDwmTransitions failed:', err)
-  }
-}
 
 /**
  * Compute the bounding rectangle that spans all displays (in DIP coordinates).
@@ -151,14 +120,6 @@ export class OverlayWindowController {
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
     this.window.setIgnoreMouseEvents(true, { forward: true })
-    disableDwmTransitions(this.window)
-
-    // DEBUG: pipe overlay renderer console logs to main process stdout
-    this.window.webContents.on('console-message', (_event, _level, message) => {
-      if (message.startsWith('[blob:') || message.startsWith('[radial')) {
-        console.log(`[overlay-renderer] ${message}`)
-      }
-    })
 
     // Once content has loaded, show the window at opacity 0 so it's
     // already "visible" to the OS compositor. This avoids the positional
@@ -213,23 +174,12 @@ export class OverlayWindowController {
     if (!this.window) return
     const bounds = getAllDisplaysBounds()
     this.overlayOrigin = { x: bounds.x, y: bounds.y }
-    // Only call setBounds when bounds actually changed — redundant
-    // setBounds on Windows triggers a compositor reposition that causes
-    // a visible positional shift on the first frame after show.
-    const current = this.window.getBounds()
-    if (
-      current.x !== bounds.x ||
-      current.y !== bounds.y ||
-      current.width !== bounds.width ||
-      current.height !== bounds.height
-    ) {
-      this.window.setBounds(bounds)
-      // Notify renderer of new origin so it can reposition components
-      this.window.webContents.send('overlay:displayChange', {
-        origin: this.overlayOrigin,
-        bounds,
-      })
-    }
+    this.window.setBounds(bounds)
+    // Notify renderer of new origin so it can reposition components
+    this.window.webContents.send('overlay:displayChange', {
+      origin: this.overlayOrigin,
+      bounds,
+    })
   }
 
   // ─── Show/hide lifecycle ────────────────────────────────────────────
@@ -335,7 +285,6 @@ export class OverlayWindowController {
 
     this.activeRadial = true
 
-    const wasVisible = this.window.isVisible()
     this.showOverlay({ inactive: true })
     // Use Electron's DIP cursor position for accurate positioning.
     // uiohook/mouse_block report physical pixels on Windows, but Electron APIs use DIP.
@@ -354,10 +303,6 @@ export class OverlayWindowController {
     const localX = screenDipX - this.overlayOrigin.x
     const localY = screenDipY - this.overlayOrigin.y
     this.window.setIgnoreMouseEvents(false)
-
-    // DEBUG: log positioning chain
-    const winBounds = this.window.getBounds()
-    console.log(`[radial:show] wasVisible=${wasVisible} physIn=(${physX},${physY}) cursorDip=(${cursorDip.x},${cursorDip.y}) overlayOrigin=(${this.overlayOrigin.x},${this.overlayOrigin.y}) winBounds=(${winBounds.x},${winBounds.y},${winBounds.width}x${winBounds.height}) local=(${localX},${localY})`)
 
     // Send position + cursor data to overlay renderer
     this.window.webContents.send('radial:show', {
