@@ -43,8 +43,43 @@ type CachedToken = {
   expiresAt?: number;
 };
 
+type VoiceRuntimeState = {
+  activeSession: { disconnect: () => Promise<void> } | null;
+  onPreWarm?: (conversationId: string) => void;
+  onPrefetch?: () => void;
+  preWarmUnsubscribe?: () => void;
+  prefetchUnsubscribe?: () => void;
+};
+
+const VOICE_RUNTIME_STATE_KEY = "__stellaRealtimeVoiceRuntimeState";
+
+const getVoiceRuntimeState = (): VoiceRuntimeState => {
+  const root = globalThis as typeof globalThis & {
+    [VOICE_RUNTIME_STATE_KEY]?: VoiceRuntimeState;
+  };
+  if (!root[VOICE_RUNTIME_STATE_KEY]) {
+    root[VOICE_RUNTIME_STATE_KEY] = {
+      activeSession: null,
+    };
+  }
+  return root[VOICE_RUNTIME_STATE_KEY];
+};
+
 let cachedToken: CachedToken | null = null;
 const CONVEX_CONVERSATION_ID_PATTERN = /^[a-z][a-z0-9]+$/;
+const PRECONNECT_BUFFER_CHUNK_LIMIT = 36; // ~3s at 24kHz with 2048-sample chunks
+
+const RTC_CONFIGURATION: RTCConfiguration = {
+  // Pre-gather one ICE candidate batch to shorten negotiation time.
+  iceCandidatePoolSize: 1,
+};
+
+const VOICE_MIC_CONSTRAINTS: MediaTrackConstraints = {
+  channelCount: 1,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
 
 const toConvexConversationId = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -104,7 +139,12 @@ let preWarmConvId: string | null = null;
  * handler so the token fetch + mic + SDP pipeline begins before React renders.
  */
 export function preWarmVoiceSession(conversationId: string): void {
-  if (preWarmedSession) return;
+  if (preWarmedSession) {
+    if (preWarmConvId === conversationId) return;
+    void preWarmedSession.disconnect();
+    preWarmedSession = null;
+    preWarmConvId = null;
+  }
   const t0 = performance.now();
   console.log("[VoiceRTC:renderer] t+0ms pre-warm IPC received");
   const session = new RealtimeVoiceSession();
@@ -128,7 +168,13 @@ export function preWarmVoiceSession(conversationId: string): void {
 export function claimPreWarmedSession(
   conversationId: string
 ): RealtimeVoiceSession | null {
-  if (!preWarmedSession || preWarmConvId !== conversationId) return null;
+  if (!preWarmedSession) return null;
+  if (preWarmConvId !== conversationId) {
+    void preWarmedSession.disconnect();
+    preWarmedSession = null;
+    preWarmConvId = null;
+    return null;
+  }
   const session = preWarmedSession;
   preWarmedSession = null;
   preWarmConvId = null;
@@ -138,18 +184,28 @@ export function claimPreWarmedSession(
 
 // Register IPC listeners for main process triggers
 if (typeof window !== "undefined") {
+  const runtime = getVoiceRuntimeState();
+  runtime.onPreWarm = (conversationId: string) => {
+    preWarmVoiceSession(conversationId);
+  };
+  runtime.onPrefetch = () => {
+    void prefetchToken();
+  };
+
   const api = (window as { electronAPI?: {
     onVoiceRtcPreWarm?: (cb: (id: string) => void) => () => void;
     onVoiceRtcPrefetchToken?: (cb: () => void) => () => void;
   } }).electronAPI;
-  if (api?.onVoiceRtcPreWarm) {
-    api.onVoiceRtcPreWarm((conversationId: string) => {
-      preWarmVoiceSession(conversationId);
+
+  if (api?.onVoiceRtcPreWarm && !runtime.preWarmUnsubscribe) {
+    runtime.preWarmUnsubscribe = api.onVoiceRtcPreWarm((conversationId: string) => {
+      runtime.onPreWarm?.(conversationId);
     });
   }
-  if (api?.onVoiceRtcPrefetchToken) {
-    api.onVoiceRtcPrefetchToken(() => {
-      void prefetchToken();
+
+  if (api?.onVoiceRtcPrefetchToken && !runtime.prefetchUnsubscribe) {
+    runtime.prefetchUnsubscribe = api.onVoiceRtcPrefetchToken(() => {
+      runtime.onPrefetch?.();
     });
   }
 }
@@ -241,6 +297,12 @@ export class RealtimeVoiceSession {
     conversationId: string,
     prefetchedToken?: CachedToken,
   ): Promise<void> {
+    const runtime = getVoiceRuntimeState();
+    if (runtime.activeSession && runtime.activeSession !== this) {
+      await runtime.activeSession.disconnect().catch(() => {});
+    }
+    runtime.activeSession = this;
+
     if (this._state !== "idle") {
       throw new Error(`Cannot connect in state: ${this._state}`);
     }
@@ -275,7 +337,9 @@ export class RealtimeVoiceSession {
       // Start pre-connect buffering as soon as mic is available so user speech
       // during SDP negotiation is captured and flushed when the channel opens.
       ct("mic: requesting getUserMedia");
-      const micPromise = navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      const micPromise = navigator.mediaDevices.getUserMedia({
+        audio: VOICE_MIC_CONSTRAINTS,
+      }).then((stream) => {
         if (!this.destroyed) {
           ct("mic: acquired — starting pre-connect buffer");
           this.startPreConnectBuffering(stream);
@@ -285,7 +349,7 @@ export class RealtimeVoiceSession {
       micPromise.catch(() => {});
 
       // C) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
-      this.pc = new RTCPeerConnection();
+      this.pc = new RTCPeerConnection(RTC_CONFIGURATION);
       const transceiver = this.pc.addTransceiver("audio", { direction: "sendrecv" });
 
       this.dc = this.pc.createDataChannel("oai-events");
@@ -363,6 +427,10 @@ export class RealtimeVoiceSession {
       if (this.destroyed) return;
       console.error("[RealtimeVoice] connect failed:", err);
       this.cleanup();
+      const runtime = getVoiceRuntimeState();
+      if (runtime.activeSession === this) {
+        runtime.activeSession = null;
+      }
       this.setState("error", (err as Error).message);
       throw err;
     }
@@ -373,6 +441,10 @@ export class RealtimeVoiceSession {
     this.trace("DISCONNECT", "session ending");
     this.dumpTrace();
     this.destroyed = true;
+    const runtime = getVoiceRuntimeState();
+    if (runtime.activeSession === this) {
+      runtime.activeSession = null;
+    }
     this.setState("disconnecting");
     this.cleanup();
     this.setState("idle");
@@ -399,7 +471,7 @@ export class RealtimeVoiceSession {
       const source = ctx.createMediaStreamSource(micStream);
 
       // ScriptProcessorNode to capture raw PCM (deprecated but universally supported)
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      const processor = ctx.createScriptProcessor(2048, 1, 1);
       this.preConnectRecorder = processor;
 
       processor.onaudioprocess = (e) => {
@@ -414,6 +486,10 @@ export class RealtimeVoiceSession {
         let binary = "";
         for (let i = 0; i < bytes.length; i++) {
           binary += String.fromCharCode(bytes[i]);
+        }
+        if (this.preConnectBuffer.length >= PRECONNECT_BUFFER_CHUNK_LIMIT) {
+          // Keep the freshest speech to avoid large stale-audio backlogs.
+          this.preConnectBuffer.shift();
         }
         this.preConnectBuffer.push(btoa(binary));
       };
