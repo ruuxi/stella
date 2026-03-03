@@ -29,6 +29,7 @@ import { useScrollManagement } from "./use-full-shell";
 import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
 import { useReturnDetection, formatDuration } from "../../hooks/use-return-detection";
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
+import { MiniBridgeRelay } from "./MiniBridgeRelay";
 
 const SettingsDialog = lazy(() => import("./SettingsView"));
 const AuthDialog = lazy(() => import("../../app/AuthDialog").then(m => ({ default: m.AuthDialog })));
@@ -461,6 +462,15 @@ export const FullShell = () => {
     <div className="window-shell full">
       <TitleBar />
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
+      <MiniBridgeRelay
+        conversationId={activeConversationId}
+        events={events}
+        streamingText={streamingText}
+        reasoningText={reasoningText}
+        isStreaming={isStreaming}
+        pendingUserMessageId={pendingUserMessageId}
+        sendMessage={sendMessage}
+      />
 
       <div className="full-body">
         {appReady ? (
