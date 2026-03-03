@@ -74,6 +74,24 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
   })
 
+  ipcMain.on('voice:persistTranscript', (_event, payload: {
+    conversationId: string;
+    role: 'user' | 'assistant';
+    text: string;
+  }) => {
+    const piHostRunner = options.getPiHostRunner()
+    if (!piHostRunner) return
+    try {
+      piHostRunner.appendThreadMessage({
+        conversationId: payload.conversationId,
+        role: payload.role,
+        content: payload.text,
+      })
+    } catch (err) {
+      console.warn('[voice:persistTranscript] Failed to persist:', err)
+    }
+  })
+
   ipcMain.handle('voice:orchestratorChat', async (_event, payload: { conversationId: string; message: string }) => {
     const piHostRunner = options.getPiHostRunner()
     if (!piHostRunner) {

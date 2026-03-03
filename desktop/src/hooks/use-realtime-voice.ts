@@ -7,6 +7,8 @@ import {
 } from "../services/realtime-voice";
 import { useUiState } from "../app/state/ui-state";
 import { useWindowType } from "./use-window-type";
+import { useChatStore } from "../app/state/chat-store";
+import { getOrCreateDeviceId } from "../services/device";
 
 interface UseRealtimeVoiceResult {
   analyserRef: React.RefObject<AnalyserNode | null>;
@@ -20,6 +22,7 @@ const RETRY_MAX_MS = 60_000;
 
 export function useRealtimeVoice(): UseRealtimeVoiceResult {
   const { state } = useUiState();
+  const chatStore = useChatStore();
   const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
 
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -28,11 +31,25 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryAttemptRef = useRef(0);
+  const deviceIdRef = useRef<string | null>(null);
   const windowType = useWindowType();
   const isSessionOwnerWindow = windowType === "overlay" || state.window === windowType;
   const conversationId = state.conversationId ?? "voice-rtc";
   const conversationIdRef = useRef<string>(conversationId);
   const inputActiveRef = useRef<boolean>(state.isVoiceRtcActive);
+  const appendEventRef = useRef(chatStore.appendEvent);
+
+  // Keep appendEvent ref current without re-triggering effects
+  useEffect(() => {
+    appendEventRef.current = chatStore.appendEvent;
+  }, [chatStore.appendEvent]);
+
+  // Resolve deviceId once on mount
+  useEffect(() => {
+    void getOrCreateDeviceId().then((id) => {
+      deviceIdRef.current = id;
+    });
+  }, []);
 
   useEffect(() => {
     conversationIdRef.current = conversationId;
@@ -96,6 +113,37 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
       }, delayMs);
     };
 
+    const persistTranscript = (role: "user" | "assistant", text: string) => {
+      const cid = conversationIdRef.current;
+      if (!cid) return;
+
+      // 1. Persist to JSONL store (orchestrator context) via IPC
+      try {
+        window.electronAPI?.persistVoiceTranscript?.({
+          conversationId: cid,
+          role,
+          text,
+        });
+      } catch (err) {
+        console.warn("[useRealtimeVoice] Failed to persist voice transcript to JSONL:", err);
+      }
+
+      // 2. Persist to localStorage (UI display)
+      const type = role === "user" ? "user_message" : "assistant_message";
+      const payload: Record<string, unknown> = { text, source: "voice" };
+      const args: Parameters<typeof appendEventRef.current>[0] = {
+        conversationId: cid,
+        type,
+        payload,
+        ...(role === "user" && deviceIdRef.current
+          ? { deviceId: deviceIdRef.current }
+          : {}),
+      };
+      appendEventRef.current(args).catch((err) => {
+        console.warn("[useRealtimeVoice] Failed to persist voice transcript to local store:", err);
+      });
+    };
+
     const attachSession = (session: RealtimeVoiceSession) => {
       sessionRef.current = session;
       session.setConversationId(conversationIdRef.current);
@@ -103,15 +151,25 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
 
       unsubscribeRef.current = session.on((event: VoiceSessionEvent) => {
         if (aborted) return;
-        if (event.type !== "state-change") return;
-        setSessionState(event.state);
-        analyserRef.current = session.getAnalyser();
-        if (event.state === "connected") {
-          retryAttemptRef.current = 0;
-          scheduleRotate();
-        } else if (event.state === "error") {
-          clearRotateTimer();
-          scheduleRetry();
+
+        if (event.type === "state-change") {
+          setSessionState(event.state);
+          analyserRef.current = session.getAnalyser();
+          if (event.state === "connected") {
+            retryAttemptRef.current = 0;
+            scheduleRotate();
+          } else if (event.state === "error") {
+            clearRotateTimer();
+            scheduleRetry();
+          }
+          return;
+        }
+
+        // Persist finalized voice transcripts as conversation events
+        if (event.type === "user-transcript" && event.isFinal && event.text) {
+          persistTranscript("user", event.text);
+        } else if (event.type === "assistant-transcript" && event.isFinal && event.text) {
+          persistTranscript("assistant", event.text);
         }
       });
     };
