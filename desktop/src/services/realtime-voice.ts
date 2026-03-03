@@ -113,9 +113,8 @@ async function prefetchToken(): Promise<void> {
     // Only cache if token has >10s of remaining validity
     if (!data.expiresAt || (data.expiresAt * 1000 - Date.now()) < 10_000) return;
     cachedToken = data;
-    console.log("[RealtimeVoice] token pre-fetched");
-  } catch {
-    // Silent — pre-fetch is best-effort
+  } catch (err) {
+    console.debug("[realtime-voice] Token pre-fetch failed:", (err as Error).message);
   }
 }
 
@@ -128,7 +127,6 @@ function consumeCachedToken(): CachedToken | null {
   // Discard if no expiry info or <5s remaining (not enough for SDP exchange)
   if (!t.expiresAt) return null;
   if (t.expiresAt * 1000 - Date.now() < TOKEN_MIN_REMAINING_MS) return null;
-  console.log("[RealtimeVoice] using cached token");
   return t;
 }
 
@@ -155,15 +153,11 @@ export function preWarmVoiceSession(conversationId: string): void {
     preWarmedSession = null;
     preWarmConvId = null;
   }
-  const t0 = performance.now();
-  console.log("[VoiceRTC:renderer] t+0ms pre-warm IPC received");
   const session = new RealtimeVoiceSession();
   preWarmedSession = session;
   preWarmConvId = conversationId;
   const token = consumeCachedToken() ?? undefined;
-  console.log(`[VoiceRTC:renderer] t+${(performance.now() - t0).toFixed(0)}ms token=${token ? 'cached' : 'will-fetch'}, connecting...`);
-  session.connect(conversationId, token).catch((err) => {
-    console.error("[RealtimeVoice] pre-warm failed:", err);
+  session.connect(conversationId, token).catch(() => {
     if (preWarmedSession === session) {
       preWarmedSession = null;
       preWarmConvId = null;
@@ -188,12 +182,15 @@ export function claimPreWarmedSession(
   const session = preWarmedSession;
   preWarmedSession = null;
   preWarmConvId = null;
-  console.log("[RealtimeVoice] claimed pre-warmed session");
   return session;
 }
 
-// Register IPC listeners for main process triggers
-if (typeof window !== "undefined") {
+let ipcInitialized = false;
+
+export function initRealtimeVoiceIpc(): void {
+  if (ipcInitialized || typeof window === "undefined") return;
+  ipcInitialized = true;
+
   const runtime = getVoiceRuntimeState();
   runtime.onPreWarm = (conversationId: string) => {
     preWarmVoiceSession(conversationId);
@@ -202,19 +199,16 @@ if (typeof window !== "undefined") {
     void prefetchToken();
   };
 
-  const api = (window as { electronAPI?: {
-    onVoiceRtcPreWarm?: (cb: (id: string) => void) => () => void;
-    onVoiceRtcPrefetchToken?: (cb: () => void) => () => void;
-  } }).electronAPI;
+  const api = window.electronAPI;
 
-  if (api?.onVoiceRtcPreWarm && !runtime.preWarmUnsubscribe) {
-    runtime.preWarmUnsubscribe = api.onVoiceRtcPreWarm((conversationId: string) => {
+  if (api?.voice.onRtcPreWarm && !runtime.preWarmUnsubscribe) {
+    runtime.preWarmUnsubscribe = api.voice.onRtcPreWarm((conversationId: string) => {
       runtime.onPreWarm?.(conversationId);
     });
   }
 
-  if (api?.onVoiceRtcPrefetchToken && !runtime.prefetchUnsubscribe) {
-    runtime.prefetchUnsubscribe = api.onVoiceRtcPrefetchToken(() => {
+  if (api?.voice.onRtcPrefetchToken && !runtime.prefetchUnsubscribe) {
+    runtime.prefetchUnsubscribe = api.voice.onRtcPrefetchToken(() => {
       runtime.onPrefetch?.();
     });
   }
@@ -263,18 +257,11 @@ export class RealtimeVoiceSession {
       this.traceLog.shift();
     }
     this.traceLog.push({ seq: this.traceSeq, time: Date.now(), event, detail });
-    console.log(`[VoiceTrace] #${this.traceSeq} ${event}: ${detail}`);
   }
 
-  /** Dump the full conversation trace to console for debugging. */
-  dumpTrace() {
-    console.log("\n[VoiceTrace] ═══ FULL CONVERSATION TRACE ═══");
-    const startTime = this.traceLog[0]?.time ?? 0;
-    for (const entry of this.traceLog) {
-      const elapsed = ((entry.time - startTime) / 1000).toFixed(1).padStart(6);
-      console.log(`  #${String(entry.seq).padStart(3)}  +${elapsed}s  [${entry.event}]  ${entry.detail}`);
-    }
-    console.log("[VoiceTrace] ═══ END TRACE ═══\n");
+  /** Return the full conversation trace for debugging. */
+  dumpTrace(): Array<{ seq: number; time: number; event: string; detail: string }> {
+    return [...this.traceLog];
   }
 
   get state(): VoiceSessionState {
@@ -316,7 +303,7 @@ export class RealtimeVoiceSession {
       try {
         listener(event);
       } catch (err) {
-        console.error("[RealtimeVoice] listener error:", err);
+        console.debug("[realtime-voice] Listener error:", (err as Error).message);
       }
     }
   }
@@ -336,7 +323,9 @@ export class RealtimeVoiceSession {
   ): Promise<void> {
     const runtime = getVoiceRuntimeState();
     if (runtime.activeSession && runtime.activeSession !== this) {
-      await runtime.activeSession.disconnect().catch(() => {});
+      await runtime.activeSession.disconnect().catch((err) => {
+        console.debug('[RealtimeVoice] Previous session disconnect failed:', (err as Error).message);
+      });
     }
     runtime.activeSession = this;
 
@@ -345,18 +334,14 @@ export class RealtimeVoiceSession {
     }
     this.conversationId = conversationId;
     this.setState("connecting");
-    const ct0 = performance.now();
-    const ct = (label: string) => console.log(`[VoiceRTC:connect] +${(performance.now() - ct0).toFixed(0)}ms ${label}`);
 
     try {
       // ── Phase 1: Start ALL work in parallel ────────────────────────
-      ct("phase1: starting parallel work");
 
       // A) Use pre-fetched token if available, otherwise fetch inline
       const keyPromise = prefetchedToken
-        ? (ct("token: using prefetched"), Promise.resolve(prefetchedToken))
+        ? Promise.resolve(prefetchedToken)
         : (async () => {
-        ct("token: fetching inline...");
         const { endpoint, headers } = await createServiceRequest("/api/voice/session");
         const res = await fetch(endpoint, {
           method: "POST",
@@ -373,17 +358,17 @@ export class RealtimeVoiceSession {
       // B) Acquire microphone (runs in parallel, awaited later)
       // Start pre-connect buffering as soon as mic is available so user speech
       // during SDP negotiation is captured and flushed when the channel opens.
-      ct("mic: requesting getUserMedia");
       const micPromise = navigator.mediaDevices.getUserMedia({
         audio: VOICE_MIC_CONSTRAINTS,
       }).then((stream) => {
         if (!this.destroyed && this.inputActive) {
-          ct("mic: acquired — starting pre-connect buffer");
           this.startPreConnectBuffering(stream);
         }
         return stream;
       });
-      micPromise.catch(() => {});
+      micPromise.catch((err) => {
+        console.debug('[RealtimeVoice] Mic access failed (non-blocking):', (err as Error).message);
+      });
 
       // C) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
       this.pc = new RTCPeerConnection(RTC_CONFIGURATION);
@@ -397,24 +382,20 @@ export class RealtimeVoiceSession {
         if (this.destroyed) return;
         const remoteStream = event.streams[0];
         if (remoteStream) {
-          ct("ontrack: remote audio stream received");
           this.setupAudioPlayback(remoteStream);
         }
       };
 
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
-      ct("sdp: local offer created");
       if (this.destroyed) { this.cleanup(); return; }
 
       // ── Phase 2: SDP exchange — needs token, NOT mic ───────────────
       const keyResult = await keyPromise;
-      ct("token: resolved");
       if (this.destroyed) { this.cleanup(); return; }
 
       const { clientSecret, model } = keyResult;
 
-      ct("sdp: sending to OpenAI");
       const sdpResponse = await fetch(
         `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
         {
@@ -426,7 +407,6 @@ export class RealtimeVoiceSession {
           body: offer.sdp,
         }
       );
-      ct("sdp: OpenAI responded");
       if (this.destroyed) { this.cleanup(); return; }
 
       if (!sdpResponse.ok) {
@@ -440,12 +420,10 @@ export class RealtimeVoiceSession {
         type: "answer",
         sdp: answerSdp,
       });
-      ct("sdp: remote description set");
       if (this.destroyed) { this.cleanup(); return; }
 
       // ── Phase 3: Attach mic track (likely already resolved) ────────
       const micStream = await micPromise;
-      ct("mic: acquired");
       if (this.destroyed) {
         micStream.getTracks().forEach((t) => t.stop());
         this.cleanup();
@@ -462,30 +440,24 @@ export class RealtimeVoiceSession {
           this.startPreConnectBuffering(micStream);
         }
         await this.waitForDataChannelOpen();
-        ct("handoff: data channel open");
         await this.waitForFirstTurnBoundary();
-        ct("handoff: first-turn boundary reached");
 
         const bufferedChunks = this.consumePreConnectBuffer();
         this.flushPreConnectChunks(bufferedChunks);
-        ct(`handoff: flushed ${bufferedChunks.length} buffered chunks`);
       } else {
         this.stopPreConnectBuffering();
       }
 
       this.inputTrack.enabled = this.inputActive;
       await transceiver.sender.replaceTrack(this.inputTrack);
-      ct(`mic: track attached (inputActive=${this.inputActive})`);
 
       // Setup audio analyser for visualization
       this.setupAudioAnalyser();
 
-      ct("DONE — session connected");
       this.trace("CONNECTED", `conv=${conversationId} prefetched=${!!prefetchedToken}`);
       this.setState("connected");
     } catch (err) {
       if (this.destroyed) return;
-      console.error("[RealtimeVoice] connect failed:", err);
       this.cleanup();
       const runtime = getVoiceRuntimeState();
       if (runtime.activeSession === this) {
@@ -566,9 +538,8 @@ export class RealtimeVoiceSession {
 
       source.connect(processor);
       processor.connect(ctx.destination); // required for ScriptProcessorNode to fire
-      console.log(`[VoiceRTC:connect] pre-connect buffering started`);
     } catch (err) {
-      console.error("[VoiceRTC:connect] pre-connect buffering failed:", err);
+      console.debug("[realtime-voice] Pre-connect buffering setup failed:", (err as Error).message);
       this.isBufferingPreConnect = false;
     }
   }
@@ -581,7 +552,9 @@ export class RealtimeVoiceSession {
       this.preConnectRecorder = null;
     }
     if (this.preConnectCtx) {
-      this.preConnectCtx.close().catch(() => {});
+      this.preConnectCtx.close().catch((err) => {
+        console.debug('[RealtimeVoice] Pre-connect audio context close failed:', (err as Error).message);
+      });
       this.preConnectCtx = null;
     }
   }
@@ -596,7 +569,6 @@ export class RealtimeVoiceSession {
   /** Flush buffered pre-connect audio into the Realtime API via the data channel. */
   private flushPreConnectChunks(chunks: string[]) {
     if (chunks.length === 0) return;
-    console.log(`[VoiceRTC:connect] flushing ${chunks.length} pre-connect audio chunks`);
     for (const chunk of chunks) {
       this.sendEvent({
         type: "input_audio_buffer.append",
@@ -659,7 +631,6 @@ export class RealtimeVoiceSession {
     if (!this.dc) return;
 
     this.dc.onopen = () => {
-      console.log("[RealtimeVoice] data channel open");
       this.markDataChannelOpen();
     };
 
@@ -668,21 +639,19 @@ export class RealtimeVoiceSession {
         const data = JSON.parse(event.data);
         this.handleServerEvent(data);
       } catch (err) {
-        console.error("[RealtimeVoice] failed to parse data channel message:", err);
+        console.debug("[realtime-voice] Failed to parse data channel message:", (err as Error).message);
       }
     };
 
     this.dc.onclose = () => {
-      console.log("[RealtimeVoice] data channel closed");
       if (this._state === "connected") {
         this.cleanup();
         this.setState("error", "Connection lost");
       }
     };
 
-    this.dc.onerror = (event) => {
-      console.error("[RealtimeVoice] data channel error:", event);
-    };
+    this.dc.onerror = () => {};
+
   }
 
   private setupAudioPlayback(stream: MediaStream) {
@@ -695,8 +664,7 @@ export class RealtimeVoiceSession {
     this.audioElement.srcObject = stream;
     this.audioElement.autoplay = true;
     this.audioElement.play().catch((err) => {
-      if (this.destroyed) return;
-      console.error("[RealtimeVoice] audio play failed:", err);
+      console.debug('[RealtimeVoice] Audio playback failed:', (err as Error).message);
     });
   }
 
@@ -709,7 +677,7 @@ export class RealtimeVoiceSession {
       const source = this.audioContext.createMediaStreamSource(this.localStream);
       source.connect(this.analyser);
     } catch (err) {
-      console.error("[RealtimeVoice] analyser setup failed:", err);
+      console.debug("[realtime-voice] Analyser setup failed:", (err as Error).message);
     }
   }
 
@@ -805,11 +773,9 @@ export class RealtimeVoiceSession {
         this.emit({ type: "speaking-end" });
         break;
 
-      case "error": {
-        const errorObj = event.error as { message?: string } | undefined;
-        console.error("[RealtimeVoice] server error:", errorObj);
+      case "error":
         break;
-      }
+
 
       default:
         break;
@@ -828,7 +794,8 @@ export class RealtimeVoiceSession {
     let args: Record<string, unknown>;
     try {
       args = JSON.parse(argsStr || "{}");
-    } catch {
+    } catch (err) {
+      console.debug("[realtime-voice] Failed to parse tool arguments:", (err as Error).message);
       args = {};
     }
 
@@ -839,10 +806,10 @@ export class RealtimeVoiceSession {
       if (name === "orchestrator_chat") {
         const message = (args.message as string) ?? "";
         const api = window.electronAPI;
-        if (!api?.voiceOrchestratorChat) {
+        if (!api?.voice.orchestratorChat) {
           result = "Error: Electron API not available";
         } else {
-          result = await api.voiceOrchestratorChat({
+          result = await api.voice.orchestratorChat({
             conversationId: this.conversationId ?? "voice-rtc",
             message,
           });
@@ -899,7 +866,9 @@ export class RealtimeVoiceSession {
     }
 
     if (this.audioContext) {
-      this.audioContext.close().catch(() => {});
+      this.audioContext.close().catch((err) => {
+        console.debug('[RealtimeVoice] Audio context close failed:', (err as Error).message);
+      });
       this.audioContext = null;
       this.analyser = null;
     }

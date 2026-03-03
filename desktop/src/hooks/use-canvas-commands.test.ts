@@ -26,7 +26,7 @@ describe("useCanvasCommands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.electronAPI = {
-      shellKillByPort: vi.fn().mockResolvedValue(undefined),
+      system: { shellKillByPort: vi.fn().mockResolvedValue(undefined) },
     } as unknown as typeof window.electronAPI;
   });
 
@@ -106,7 +106,7 @@ describe("useCanvasCommands", () => {
 
     renderHook(() => useCanvasCommands(events));
 
-    expect(window.electronAPI?.shellKillByPort).toHaveBeenCalledWith(4173);
+    expect(window.electronAPI?.system.shellKillByPort).toHaveBeenCalledWith(4173);
     expect(closeCanvas).toHaveBeenCalledTimes(1);
   });
 
@@ -129,7 +129,7 @@ describe("useCanvasCommands", () => {
 
     renderHook(() => useCanvasCommands(events));
 
-    expect(window.electronAPI?.shellKillByPort).not.toHaveBeenCalled();
+    expect(window.electronAPI?.system.shellKillByPort).not.toHaveBeenCalled();
     expect(closeCanvas).toHaveBeenCalledTimes(1);
   });
 

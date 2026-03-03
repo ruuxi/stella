@@ -1,12 +1,13 @@
 import { memo } from "react";
-import type { Attachment, ChannelEnvelope, TaskItem } from "../../hooks/use-conversation-events";
+import type { Attachment, ChannelEnvelope, TaskItem } from "../../lib/event-transforms";
 import { WorkingIndicator } from "../../components/chat/WorkingIndicator";
 import { TaskIndicator } from "../../components/chat/TaskIndicator";
 import { Markdown } from "../../components/chat/Markdown";
 import { ReasoningSection } from "../../components/chat/ReasoningSection";
 import { SelfModUndoButton } from "../../components/chat/SelfModUndoButton";
 import type { SelfModApplied } from "../../components/chat/SelfModUndoButton";
-import type { EventRecord, MessagePayload } from "../../hooks/use-conversation-events";
+import type { EventRecord } from "../../hooks/use-conversation-events";
+import type { MessagePayload } from "../../lib/event-transforms";
 import { sanitizeAttachmentImageUrl } from "@/lib/url-safety";
 
 export type TurnViewModel = {
@@ -27,15 +28,6 @@ export type StreamingTurnProps = {
   pendingUserMessageId?: string | null;
   runningTasks: TaskItem[];
   runningTool?: string;
-};
-
-// eslint-disable-next-line react-refresh/only-export-components
-export const getEventText = (event: EventRecord): string => {
-  if (event.payload && typeof event.payload === "object") {
-    const payload = event.payload as MessagePayload;
-    return payload.text ?? payload.content ?? payload.message ?? "";
-  }
-  return "";
 };
 
 // eslint-disable-next-line react-refresh/only-export-components

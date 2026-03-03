@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import type { StellaAnimationHandle } from "../../components/ascii-creature/StellaAnimation";
 import { ChatColumn } from "./ChatColumn";
+import type { ChatColumnProps } from "./ChatColumn";
 
 vi.mock("../ConversationEvents", () => ({
   ConversationEvents: () => <div data-testid="conversation-events" />,
@@ -24,46 +25,58 @@ vi.mock("../../hooks/use-command-suggestions", () => ({
   useCommandSuggestions: () => [],
 }));
 
-function makeProps(overrides: Partial<Parameters<typeof ChatColumn>[0]> = {}) {
+function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
   return {
     events: [],
-    streamingText: "",
-    reasoningText: "",
-    isStreaming: false,
-    pendingUserMessageId: null,
-    selfModMap: {},
-    message: "",
-    setMessage: vi.fn(),
-    chatContext: null,
-    setChatContext: vi.fn(),
-    selectedText: null,
-    setSelectedText: vi.fn(),
-    scrollContainerRef: React.createRef<HTMLDivElement>(),
-    handleScroll: vi.fn(),
-    showScrollButton: false,
-    scrollToBottom: vi.fn(),
+    streaming: {
+      text: "",
+      reasoningText: "",
+      isStreaming: false,
+      pendingUserMessageId: null,
+      selfModMap: {},
+      ...overrides.streaming,
+    },
+    composer: {
+      message: "",
+      setMessage: vi.fn(),
+      chatContext: null,
+      setChatContext: vi.fn(),
+      selectedText: null,
+      setSelectedText: vi.fn(),
+      canSubmit: true,
+      onSend: vi.fn(),
+      ...overrides.composer,
+    },
+    scroll: {
+      containerRef: React.createRef<HTMLDivElement>(),
+      handleScroll: vi.fn(),
+      showScrollButton: false,
+      scrollToBottom: vi.fn(),
+      ...overrides.scroll,
+    },
+    onboarding: {
+      done: true,
+      exiting: false,
+      isAuthenticated: true,
+      hasExpanded: false,
+      splitMode: false,
+      key: 0,
+      stellaAnimationRef: React.createRef<StellaAnimationHandle | null>(),
+      triggerFlash: vi.fn(),
+      startBirthAnimation: vi.fn(),
+      completeOnboarding: vi.fn(),
+      handleEnterSplit: vi.fn(),
+      onDiscoveryConfirm: vi.fn(),
+      ...overrides.onboarding,
+    },
     conversationId: null,
-    onboardingDone: true,
-    onboardingExiting: false,
-    isAuthenticated: true,
-    canSubmit: true,
-    onSend: vi.fn(),
-    hasExpanded: false,
-    splitMode: false,
-    onboardingKey: 0,
-    stellaAnimationRef: React.createRef<StellaAnimationHandle | null>(),
-    triggerFlash: vi.fn(),
-    startBirthAnimation: vi.fn(),
-    completeOnboarding: vi.fn(),
-    handleEnterSplit: vi.fn(),
-    onDiscoveryConfirm: vi.fn(),
     ...overrides,
   };
 }
 
 describe("ChatColumn", () => {
   it("shows OnboardingView when onboardingDone=false", () => {
-    render(<ChatColumn {...makeProps({ onboardingDone: false })} />);
+    render(<ChatColumn {...makeProps({ onboarding: { ...makeProps().onboarding, done: false } })} />);
     expect(screen.getByTestId("onboarding-view")).toBeTruthy();
     expect(screen.queryByTestId("conversation-events")).toBeNull();
   });
@@ -71,7 +84,7 @@ describe("ChatColumn", () => {
   it("shows ConversationEvents when authenticated + onboardingDone", () => {
     render(
       <ChatColumn
-        {...makeProps({ isAuthenticated: true, onboardingDone: true })}
+        {...makeProps({ onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true } })}
       />,
     );
     expect(screen.getByTestId("conversation-events")).toBeTruthy();
@@ -81,7 +94,7 @@ describe("ChatColumn", () => {
   it("shows ConversationEvents when unauthenticated + onboardingDone", () => {
     render(
       <ChatColumn
-        {...makeProps({ isAuthenticated: false, onboardingDone: true })}
+        {...makeProps({ onboarding: { ...makeProps().onboarding, isAuthenticated: false, done: true } })}
       />,
     );
     expect(screen.getByTestId("conversation-events")).toBeTruthy();
@@ -91,14 +104,14 @@ describe("ChatColumn", () => {
   it("shows Composer when authenticated + onboardingDone", () => {
     render(
       <ChatColumn
-        {...makeProps({ isAuthenticated: true, onboardingDone: true })}
+        {...makeProps({ onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true } })}
       />,
     );
     expect(screen.getByTestId("composer")).toBeTruthy();
   });
 
   it("shows Composer when unauthenticated after onboarding", () => {
-    render(<ChatColumn {...makeProps({ isAuthenticated: false })} />);
+    render(<ChatColumn {...makeProps({ onboarding: { ...makeProps().onboarding, isAuthenticated: false } })} />);
     expect(screen.getByTestId("composer")).toBeTruthy();
   });
 
@@ -107,9 +120,8 @@ describe("ChatColumn", () => {
     render(
       <ChatColumn
         {...makeProps({
-          showScrollButton: true,
-          isAuthenticated: true,
-          onboardingDone: true,
+          scroll: { ...makeProps().scroll, showScrollButton: true },
+          onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true },
           events,
         })}
       />,
@@ -121,9 +133,8 @@ describe("ChatColumn", () => {
     render(
       <ChatColumn
         {...makeProps({
-          showScrollButton: true,
-          isAuthenticated: false,
-          onboardingDone: true,
+          scroll: { ...makeProps().scroll, showScrollButton: true },
+          onboarding: { ...makeProps().onboarding, isAuthenticated: false, done: true },
         })}
       />,
     );
@@ -136,11 +147,9 @@ describe("ChatColumn", () => {
     render(
       <ChatColumn
         {...makeProps({
-          showScrollButton: true,
-          isAuthenticated: true,
-          onboardingDone: true,
+          scroll: { ...makeProps().scroll, showScrollButton: true, scrollToBottom },
+          onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true },
           events,
-          scrollToBottom,
         })}
       />,
     );

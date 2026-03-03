@@ -63,12 +63,14 @@ describe("useMiniChat", () => {
       configurable: true,
       writable: true,
       value: {
-        miniBridgeRequest: mockMiniBridgeRequest,
-        onMiniBridgeUpdate: (callback: (update: MiniBridgeUpdate) => void) => {
-          onUpdateHandler = callback;
-          return () => {
-            onUpdateHandler = null;
-          };
+        mini: {
+          request: mockMiniBridgeRequest,
+          onUpdate: (callback: (update: MiniBridgeUpdate) => void) => {
+            onUpdateHandler = callback;
+            return () => {
+              onUpdateHandler = null;
+            };
+          },
         },
       },
     });

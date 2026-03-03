@@ -55,7 +55,7 @@ describe("RegionCapture", () => {
 
   it("submits click for small selection (< 6px)", () => {
     const submitRegionClick = vi.fn();
-    ((window as unknown as Record<string, unknown>)).electronAPI = { submitRegionClick };
+    ((window as unknown as Record<string, unknown>)).electronAPI = { capture: { submitRegionClick } };
 
     const { container } = render(<RegionCapture />);
     const root = container.querySelector(".region-capture-root")!;
@@ -69,7 +69,7 @@ describe("RegionCapture", () => {
 
   it("submits region selection for large drag (>= 6px)", () => {
     const submitRegionSelection = vi.fn();
-    ((window as unknown as Record<string, unknown>)).electronAPI = { submitRegionSelection };
+    ((window as unknown as Record<string, unknown>)).electronAPI = { capture: { submitRegionSelection } };
 
     const { container } = render(<RegionCapture />);
     const root = container.querySelector(".region-capture-root")!;
@@ -82,23 +82,23 @@ describe("RegionCapture", () => {
   });
 
   it("cancels on Escape key", () => {
-    const cancelRegionCapture = vi.fn();
-    ((window as unknown as Record<string, unknown>)).electronAPI = { cancelRegionCapture };
+    const cancelRegion = vi.fn();
+    ((window as unknown as Record<string, unknown>)).electronAPI = { capture: { cancelRegion } };
 
     render(<RegionCapture />);
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(cancelRegionCapture).toHaveBeenCalled();
+    expect(cancelRegion).toHaveBeenCalled();
   });
 
   it("cancels on right-click (context menu)", () => {
-    const cancelRegionCapture = vi.fn();
-    ((window as unknown as Record<string, unknown>)).electronAPI = { cancelRegionCapture };
+    const cancelRegion = vi.fn();
+    ((window as unknown as Record<string, unknown>)).electronAPI = { capture: { cancelRegion } };
 
     const { container } = render(<RegionCapture />);
     const root = container.querySelector(".region-capture-root")!;
 
     fireEvent.contextMenu(root);
-    expect(cancelRegionCapture).toHaveBeenCalled();
+    expect(cancelRegion).toHaveBeenCalled();
   });
 });

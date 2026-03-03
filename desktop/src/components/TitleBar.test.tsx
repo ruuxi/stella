@@ -39,7 +39,7 @@ describe("TitleBar", () => {
   it("renders window controls on non-mac platform", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBar />, { wrapper });
@@ -52,7 +52,7 @@ describe("TitleBar", () => {
   it("renders mac-style title bar on darwin", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "darwin",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     const { container } = render(<TitleBar />, { wrapper });
@@ -63,42 +63,39 @@ describe("TitleBar", () => {
   });
 
   it("calls minimize on button click", () => {
-    const minimizeWindow = vi.fn();
+    const minimize = vi.fn();
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      minimizeWindow,
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { minimize, isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBar />, { wrapper });
     fireEvent.click(screen.getByLabelText("Minimize"));
-    expect(minimizeWindow).toHaveBeenCalled();
+    expect(minimize).toHaveBeenCalled();
   });
 
   it("calls maximize on button click", () => {
-    const maximizeWindow = vi.fn();
+    const maximize = vi.fn();
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      maximizeWindow,
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { maximize, isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBar />, { wrapper });
     fireEvent.click(screen.getByLabelText("Maximize"));
-    expect(maximizeWindow).toHaveBeenCalled();
+    expect(maximize).toHaveBeenCalled();
   });
 
   it("calls close on button click", () => {
-    const closeWindow = vi.fn();
+    const close = vi.fn();
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      closeWindow,
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { close, isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBar />, { wrapper });
     fireEvent.click(screen.getByLabelText("Close"));
-    expect(closeWindow).toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
   });
 
   it("renders without electronAPI", () => {
@@ -110,8 +107,7 @@ describe("TitleBar", () => {
   it("shows Restore label when maximized", async () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      isMaximized: vi.fn().mockResolvedValue(true),
-      maximizeWindow: vi.fn(),
+      window: { isMaximized: vi.fn().mockResolvedValue(true), maximize: vi.fn() },
     };
 
     await act(async () => {
@@ -124,7 +120,7 @@ describe("TitleBar", () => {
   it("shows canvas title when canvas is open (win32)", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBarWithCanvas name="my-panel" title="My Panel" />);
@@ -134,7 +130,7 @@ describe("TitleBar", () => {
   it("shows canvas name as fallback when title is not set (win32)", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBarWithCanvas name="chart-view" />);
@@ -144,7 +140,7 @@ describe("TitleBar", () => {
   it("shows canvas title on mac", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "darwin",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBarWithCanvas name="panel" title="Mac Panel" />);
@@ -154,7 +150,7 @@ describe("TitleBar", () => {
   it("does not show canvas label when canvas is not open", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     const { container } = render(<TitleBar />, { wrapper });
@@ -164,7 +160,7 @@ describe("TitleBar", () => {
   it("has a drag region on both platforms", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     const { container } = render(<TitleBar />, { wrapper });
@@ -174,7 +170,7 @@ describe("TitleBar", () => {
   it("has title-bar-close class on close button", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBar />, { wrapper });
@@ -185,7 +181,7 @@ describe("TitleBar", () => {
   it("renders linux layout same as windows", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "linux",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     render(<TitleBar />, { wrapper });
@@ -195,7 +191,7 @@ describe("TitleBar", () => {
   });
 
   it("toggles maximize/restore state after clicking maximize", async () => {
-    const maximizeWindow = vi.fn();
+    const maximize = vi.fn();
     // First call: initial useEffect check. Second call: after maximize button click (setTimeout 50ms).
     const isMaximizedMock = vi
       .fn()
@@ -204,8 +200,7 @@ describe("TitleBar", () => {
 
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
-      maximizeWindow,
-      isMaximized: isMaximizedMock,
+      window: { maximize, isMaximized: isMaximizedMock },
     };
 
     await act(async () => {
@@ -229,7 +224,7 @@ describe("TitleBar", () => {
   it("mac title bar does not render controls", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "darwin",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     const { container } = render(<TitleBar />, { wrapper });
@@ -239,7 +234,7 @@ describe("TitleBar", () => {
   it("renders drag region on mac", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "darwin",
-      isMaximized: vi.fn().mockResolvedValue(false),
+      window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     const { container } = render(<TitleBar />, { wrapper });

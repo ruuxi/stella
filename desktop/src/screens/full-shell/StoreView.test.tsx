@@ -1219,7 +1219,7 @@ describe("Skill install with electronAPI", () => {
     vi.clearAllMocks();
   });
 
-  it("calls electronAPI.storeInstallSkill for skill type packages", async () => {
+  it("calls electronAPI.store.installSkill for skill type packages", async () => {
     const mockInstall = vi.fn().mockResolvedValue(undefined);
     const mockStoreInstallSkill = vi.fn().mockResolvedValue(undefined);
     mockUseMutation((mutationPath: unknown) => {
@@ -1228,7 +1228,7 @@ describe("Skill install with electronAPI", () => {
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      storeInstallSkill: mockStoreInstallSkill,
+      store: { installSkill: mockStoreInstallSkill },
     };
 
     const pkg1 = makePkg({ packageId: "feat", downloads: 99 });
@@ -1274,7 +1274,7 @@ describe("Skill install with electronAPI", () => {
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      storeInstallSkill: vi.fn(),
+      store: { installSkill: vi.fn() },
     };
 
     const pkg1 = makePkg({ packageId: "feat", downloads: 99 });
@@ -1320,7 +1320,7 @@ describe("Theme install/uninstall", () => {
     vi.clearAllMocks();
   });
 
-  it("calls electronAPI.storeInstallTheme and registerTheme for theme type", async () => {
+  it("calls electronAPI.store.installTheme and registerTheme for theme type", async () => {
     const { registerTheme } = await import("@/theme/themes");
     const mockInstall = vi.fn().mockResolvedValue(undefined);
     const mockStoreInstallTheme = vi.fn().mockResolvedValue(undefined);
@@ -1330,7 +1330,7 @@ describe("Theme install/uninstall", () => {
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      storeInstallTheme: mockStoreInstallTheme,
+      store: { installTheme: mockStoreInstallTheme },
     };
 
     const completePalette = {
@@ -1397,7 +1397,7 @@ describe("Theme install/uninstall", () => {
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      storeUninstall: vi.fn().mockResolvedValue(undefined),
+      store: { uninstall: vi.fn().mockResolvedValue(undefined) },
     };
 
     const themePkg = makePkg({

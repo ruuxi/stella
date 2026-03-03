@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import type { DiscoveryCategory } from "../components/onboarding/use-onboarding-state";
 
 type Replacement = { pattern: RegExp; replacement: string };
-type DiscoveryCategory = "browsing_bookmarks" | "dev_environment" | "apps_system" | "messages_notes";
 
 const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
 const DISCOVERY_CATEGORIES_CHANGED_EVENT = "stella:discovery-categories-changed";
@@ -31,7 +31,7 @@ async function loadReplacements(): Promise<Replacement[]> {
 
   loadPromise = (async () => {
     try {
-      const map = await window.electronAPI?.getIdentityMap?.();
+      const map = await window.electronAPI?.system.getIdentityMap?.();
       if (!map?.mappings?.length) {
         cachedReplacements = [];
         return [];
@@ -56,7 +56,7 @@ async function loadReplacements(): Promise<Replacement[]> {
       }));
       return cachedReplacements;
     } catch (err) {
-      console.warn("Failed to load identity map for depseudonymization:", err);
+      console.debug("[depseudonymize] Failed to load identity map:", (err as Error).message);
       cachedReplacements = [];
       return [];
     }

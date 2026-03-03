@@ -14,7 +14,7 @@ import {
   readFileSafe,
   truncate,
 } from "./tools-utils.js";
-import { isBlockedPath } from "./command_safety.js";
+import { isBlockedPath } from "./command-safety.js";
 
 export const handleGlob = async (args: Record<string, unknown>): Promise<ToolResult> => {
   const pattern = String(args.pattern ?? "");

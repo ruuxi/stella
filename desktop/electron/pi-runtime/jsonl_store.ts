@@ -292,8 +292,7 @@ export class JsonlRuntimeStore {
       `);
 
       return db;
-    } catch (error) {
-      console.warn("[pi-runtime-store] Failed to initialize SQLite index:", error);
+    } catch {
       return null;
     }
   }
@@ -323,8 +322,8 @@ export class JsonlRuntimeStore {
       this.syncAllThreadFilesFromJsonl();
       this.syncAllRunFilesFromJsonl();
       this.syncMemoriesFromJsonl();
-    } catch (error) {
-      console.warn("[pi-runtime-store] SQLite catch-up failed:", error);
+    } catch {
+      // SQLite catch-up failed; will fall back to JSONL reads.
     }
   }
 
@@ -583,9 +582,8 @@ export class JsonlRuntimeStore {
     try {
       this.insertThreadMessage(message);
       this.threadNeedsResync.delete(message.conversationId);
-    } catch (error) {
+    } catch {
       this.threadNeedsResync.add(message.conversationId);
-      console.warn("[pi-runtime-store] Failed to mirror thread message to SQLite:", error);
     }
   }
 
@@ -599,8 +597,7 @@ export class JsonlRuntimeStore {
       try {
         this.syncSingleConversationFromJsonl(conversationId);
         this.threadNeedsResync.delete(conversationId);
-      } catch (error) {
-        console.warn("[pi-runtime-store] Thread catch-up failed, falling back to JSONL:", error);
+      } catch {
         return this.loadThreadMessagesFromJsonl(conversationId, normalizedLimit);
       }
     }
@@ -627,8 +624,7 @@ export class JsonlRuntimeStore {
         content: row.content,
         ...(row.toolCallId ? { toolCallId: row.toolCallId } : {}),
       }));
-    } catch (error) {
-      console.warn("[pi-runtime-store] Failed to load thread messages from SQLite:", error);
+    } catch {
       return this.loadThreadMessagesFromJsonl(conversationId, normalizedLimit);
     }
   }
@@ -655,8 +651,8 @@ export class JsonlRuntimeStore {
     if (!this.db) return;
     try {
       this.insertRunEvent(event);
-    } catch (error) {
-      console.warn("[pi-runtime-store] Failed to mirror run event to SQLite:", error);
+    } catch {
+      // Failed to mirror run event to SQLite; JSONL remains the source of truth.
     }
   }
 
@@ -678,9 +674,8 @@ export class JsonlRuntimeStore {
     try {
       this.insertMemory(entry);
       this.memoryNeedsResync = false;
-    } catch (error) {
+    } catch {
       this.memoryNeedsResync = true;
-      console.warn("[pi-runtime-store] Failed to mirror memory to SQLite:", error);
     }
   }
 
@@ -695,8 +690,7 @@ export class JsonlRuntimeStore {
     if (this.memoryNeedsResync) {
       try {
         this.syncMemoriesFromJsonl();
-      } catch (error) {
-        console.warn("[pi-runtime-store] Memory catch-up failed, falling back to JSONL:", error);
+      } catch {
         return this.recallMemoriesFromJsonl(query, limit);
       }
     }
@@ -735,8 +729,7 @@ export class JsonlRuntimeStore {
       }));
       const scored = scoreMemoryMatches(query, normalizedRows);
       return scored.slice(0, limit).map((entry) => entry.row);
-    } catch (error) {
-      console.warn("[pi-runtime-store] Failed to query memories from SQLite:", error);
+    } catch {
       return this.recallMemoriesFromJsonl(query, limit);
     }
   }

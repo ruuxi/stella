@@ -32,7 +32,7 @@ export function ComposerContextRow({
             aria-label="Remove screenshot"
             onClick={(event) => {
               event.stopPropagation();
-              window.electronAPI?.removeScreenshot?.(index);
+              window.electronAPI?.capture.removeScreenshot?.(index);
               setChatContext((prev) => {
                 if (!prev) return prev;
                 const next = [...(prev.regionScreenshots ?? [])];

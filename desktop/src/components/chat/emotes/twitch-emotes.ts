@@ -701,9 +701,9 @@ const createLookup = (records: Map<string, TwitchEmoteRecord>): TwitchEmoteLooku
   );
 };
 
-export const loadEmojiEmoteLookup = async (): Promise<ReadonlyMap<string, string>> => {
+export const loadEmojiEmoteLookup = (): Promise<ReadonlyMap<string, string>> => {
   if (inMemoryEmojiLookup && inMemoryEmojiLookup.expiresAt > Date.now()) {
-    return inMemoryEmojiLookup.map;
+    return Promise.resolve(inMemoryEmojiLookup.map);
   }
 
   if (!inFlightEmojiLookup) {

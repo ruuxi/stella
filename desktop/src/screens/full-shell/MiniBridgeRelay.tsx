@@ -74,7 +74,7 @@ export function MiniBridgeRelay({
   }, [sendMessage]);
 
   useEffect(() => {
-    window.electronAPI?.pushMiniBridgeUpdate?.({
+    window.electronAPI?.mini.pushUpdate?.({
       type: "snapshot",
       snapshot,
     });
@@ -82,12 +82,12 @@ export function MiniBridgeRelay({
 
   useEffect(() => {
     const api = window.electronAPI;
-    if (!api?.onMiniBridgeRequest || !api.respondMiniBridge) {
+    if (!api?.mini.onRequest || !api.mini.respond) {
       return;
     }
 
     const reply = (requestId: string, response: MiniBridgeResponse) => {
-      api.respondMiniBridge({ requestId, response });
+      api.mini.respond({ requestId, response });
     };
 
     const handleRequest = async (envelope: MiniBridgeRequestEnvelope) => {
@@ -135,8 +135,8 @@ export function MiniBridgeRelay({
       }
     };
 
-    const unsubscribe = api.onMiniBridgeRequest(handleRequest);
-    api.miniBridgeReady?.();
+    const unsubscribe = api.mini.onRequest(handleRequest);
+    api.mini.ready?.();
     return unsubscribe;
   }, []);
 

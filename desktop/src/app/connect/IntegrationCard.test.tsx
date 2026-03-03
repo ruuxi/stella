@@ -62,8 +62,10 @@ describe("IntegrationCard", () => {
     });
 
     window.electronAPI = {
-      bridgeStop: vi.fn().mockResolvedValue({ ok: true }),
-      bridgeStatus: vi.fn().mockResolvedValue({ running: true }),
+      system: {
+        bridgeStop: vi.fn().mockResolvedValue({ ok: true }),
+        bridgeStatus: vi.fn().mockResolvedValue({ running: true }),
+      },
     } as unknown as typeof window.electronAPI;
   });
 
@@ -147,7 +149,7 @@ describe("IntegrationCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
     await waitFor(() => {
-      expect(window.electronAPI?.bridgeStop).toHaveBeenCalledWith({ provider: "signal" });
+      expect(window.electronAPI?.system.bridgeStop).toHaveBeenCalledWith({ provider: "signal" });
     });
     expect(actionFn).toHaveBeenCalledWith({ provider: "signal" });
     expect(mutationFn).toHaveBeenCalledWith({ provider: "signal" });

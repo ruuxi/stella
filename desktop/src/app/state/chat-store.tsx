@@ -53,7 +53,7 @@ type ChatStoreContextValue = {
   appendEvent: (args: AppendEventArgs) => Promise<AppendedEventResponse | null>
   appendAgentEvent: (args: AppendAgentEventArgs) => void
   uploadAttachments: (args: UploadAttachmentsArgs) => Promise<UploadedAttachment[]>
-  buildHistory: (conversationId: string, max?: number) => LocalHistoryMessage[] | undefined
+  buildHistory: (conversationId: string) => LocalHistoryMessage[] | undefined
 }
 
 // --- Context ---
@@ -71,8 +71,8 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const [syncMode, setSyncMode] = useState<'on' | 'off'>('on')
   useEffect(() => {
     const read = () => {
-      if (typeof window !== 'undefined' && window.electronAPI?.getLocalSyncMode) {
-        void window.electronAPI.getLocalSyncMode().then((mode) => {
+      if (typeof window !== 'undefined' && window.electronAPI?.system.getLocalSyncMode) {
+        void window.electronAPI.system.getLocalSyncMode().then((mode) => {
           setSyncMode(mode === 'off' ? 'off' : 'on')
         })
       }
@@ -135,7 +135,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
 
       try {
         const event = await convexAppendEvent({
-          conversationId: args.conversationId as never,
+          conversationId: args.conversationId,
           type: args.type,
           deviceId: args.deviceId,
           requestId: args.requestId,
@@ -144,8 +144,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
         })
         return event as AppendedEventResponse | null
       } catch (error) {
-        // Keep local orchestration responsive even when cloud sync is unavailable.
-        console.warn("[chat-store] Cloud append failed, using local event only", error)
+        console.debug('[chat-store] cloud append failed, using local fallback:', (error as Error).message)
         return { _id: localEvent._id }
       }
     },
@@ -203,7 +202,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
         deviceId: args.deviceId,
         createAttachment: async (createArgs) => {
           const attachment = await createAttachmentAction({
-            conversationId: createArgs.conversationId as never,
+            conversationId: createArgs.conversationId,
             deviceId: createArgs.deviceId,
             dataUrl: createArgs.dataUrl,
           })
@@ -215,7 +214,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const buildHistory = useCallback(
-    (conversationId: string, _max?: number): LocalHistoryMessage[] | undefined => {
+    (conversationId: string): LocalHistoryMessage[] | undefined => {
       // Always build from local events — both modes write to localStorage
       // so the desktop runtime always has message history available.
       return buildLocalHistoryMessages(conversationId)

@@ -5,11 +5,11 @@ import { render, screen, act, waitFor } from "@testing-library/react";
 // a module with a default export. The vi.mock factory replaces the entire
 // import() result, so the lazy() wrapper will resolve with these components.
 vi.mock("./panels/DJStudioDemo", () => ({
-  default: () => <div data-testid="dj-studio-demo">DJ Studio Demo</div>,
+  DJStudio: () => <div data-testid="dj-studio-demo">DJ Studio Demo</div>,
 }));
 
 vi.mock("./panels/WeatherStationDemo", () => ({
-  default: () => (
+  WeatherStation: () => (
     <div data-testid="weather-station-demo">Weather Station Demo</div>
   ),
 }));

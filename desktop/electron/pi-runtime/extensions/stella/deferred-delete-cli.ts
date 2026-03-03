@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
-import { trashPathsForDeferredDelete } from "./deferred_delete.js";
+import { trashPathsForDeferredDelete } from "./deferred-delete.js";
 
 type DeleteArgs = {
   force: boolean;

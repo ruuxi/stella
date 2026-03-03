@@ -10,8 +10,8 @@ export const captureScreenshot = async (
   point?: { x: number; y: number }
 ): Promise<ScreenshotCapture | null> => {
   const api = getElectronApi();
-  if (!api?.captureScreenshot) {
+  if (!api?.capture.screenshot) {
     return null;
   }
-  return await api.captureScreenshot(point);
+  return await api.capture.screenshot(point);
 };

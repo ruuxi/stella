@@ -85,8 +85,8 @@ export class WorkspaceService {
       if (!fsSync.existsSync(pagesDir)) {
         fsSync.mkdirSync(pagesDir, { recursive: true })
       }
-    } catch {
-      // noop
+    } catch (err) {
+      console.debug('[workspace] Failed to create pages directory:', err)
     }
 
     try {
@@ -98,8 +98,8 @@ export class WorkspaceService {
           try {
             const panels = await this.listWorkspacePanels()
             mainWindow.webContents.send('workspace:panelsChanged', panels)
-          } catch {
-            // noop
+          } catch (err) {
+            console.debug('[workspace] Failed to refresh panels:', err)
           }
         }, 300)
       })

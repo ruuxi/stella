@@ -15,30 +15,26 @@ type ColorMode = "light" | "dark" | "system";
 type GradientMode = "soft" | "crisp";
 type GradientColor = "relative" | "strong";
 
-interface ThemeContextValue {
-  // Current theme
+// ─── Stable read-only context (rarely changes) ────────────────────────────
+
+interface ThemeReadValue {
   theme: Theme;
   themeId: string;
-  setTheme: (id: string) => void;
-
-  // Color mode
   colorMode: ColorMode;
-  setColorMode: (mode: ColorMode) => void;
   resolvedColorMode: "light" | "dark";
-
-  // Gradient settings
   gradientMode: GradientMode;
-  setGradientMode: (mode: GradientMode) => void;
   gradientColor: GradientColor;
-  setGradientColor: (color: GradientColor) => void;
-
-  // Current colors (resolved based on color mode)
   colors: ThemeColors;
-
-  // All available themes
   themes: Theme[];
+}
 
-  // Preview functions (for hover preview like Aura)
+// ─── Control context (mutators + preview, only used by ThemePicker/Onboarding) ─
+
+interface ThemeControlValue {
+  setTheme: (id: string) => void;
+  setColorMode: (mode: ColorMode) => void;
+  setGradientMode: (mode: GradientMode) => void;
+  setGradientColor: (color: GradientColor) => void;
   previewTheme: (id: string) => void;
   cancelThemePreview: () => void;
   previewGradientMode: (mode: GradientMode) => void;
@@ -48,7 +44,8 @@ interface ThemeContextValue {
   cancelPreview: () => void;
 }
 
-const ThemeContext = createContext<ThemeContextValue | null>(null);
+const ThemeReadContext = createContext<ThemeReadValue | null>(null);
+const ThemeControlContext = createContext<ThemeControlValue | null>(null);
 
 const THEME_STORAGE_KEY = "stella-theme-id";
 const COLOR_MODE_STORAGE_KEY = "stella-color-mode";
@@ -63,14 +60,10 @@ function getSystemColorMode(): "light" | "dark" {
 function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
   const root = document.documentElement;
 
-  // Apply color mode class
   root.classList.toggle("dark", isDark);
-
-  // Set color scheme and text blend mode (Aura-style)
   root.style.setProperty("color-scheme", isDark ? "dark" : "light");
   root.style.setProperty("--text-mix-blend-mode", isDark ? "plus-lighter" : "multiply");
 
-  // Apply theme colors as CSS custom properties
   root.style.setProperty("--background", colors.background);
   root.style.setProperty("--foreground", colors.foreground);
   root.style.setProperty("--card", colors.card);
@@ -91,13 +84,11 @@ function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
   root.style.setProperty("--input", colors.border);
   root.style.setProperty("--ring", colors.interactive);
 
-  // Spinner colors based on theme status colors
   root.style.setProperty("--spinner-color-1", colors.interactive);
   root.style.setProperty("--spinner-color-2", colors.success);
   root.style.setProperty("--spinner-color-3", colors.warning);
   root.style.setProperty("--spinner-color-4", colors.info);
 
-  // Generate derived gradient tokens using OKLCH color scales (matching Aura)
   const gradientTokens = generateGradientTokens(
     {
       primary: colors.primary,
@@ -109,257 +100,205 @@ function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
     isDark
   );
 
-  // Apply gradient tokens matching Aura's naming for consistent appearance
   root.style.setProperty("--text-interactive-base", gradientTokens.textInteractive);
   root.style.setProperty("--surface-info-strong", gradientTokens.surfaceInfoStrong);
   root.style.setProperty("--surface-success-strong", gradientTokens.surfaceSuccessStrong);
   root.style.setProperty("--surface-warning-strong", gradientTokens.surfaceWarningStrong);
   root.style.setProperty("--surface-brand-base", gradientTokens.surfaceBrandBase);
-
-  // Also set background-base for Aura compatibility
   root.style.setProperty("--background-base", colors.background);
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [themeId, setThemeId] = useState<string>(() => {
-    if (typeof window === "undefined") return defaultTheme.id;
-    return localStorage.getItem(THEME_STORAGE_KEY) ?? defaultTheme.id;
-  });
+// ─── Persistence helpers ─────────────────────────────────────────────────
 
-  const [colorMode, setColorModeState] = useState<ColorMode>(() => {
-    if (typeof window === "undefined") return "light";
-    return (localStorage.getItem(COLOR_MODE_STORAGE_KEY) as ColorMode) ?? "light";
-  });
+function readStorage<T extends string>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  return (localStorage.getItem(key) as T) ?? fallback;
+}
 
-  const [gradientMode, setGradientModeState] = useState<GradientMode>(() => {
-    if (typeof window === "undefined") return "soft";
-    return (localStorage.getItem(GRADIENT_MODE_STORAGE_KEY) as GradientMode) ?? "soft";
-  });
+function persistAndBroadcast(key: string, value: string) {
+  localStorage.setItem(key, value);
+  if (typeof window !== "undefined" && window.electronAPI) {
+    window.electronAPI.theme.broadcast(key, value);
+  }
+}
 
-  const [gradientColor, setGradientColorState] = useState<GradientColor>(() => {
-    if (typeof window === "undefined") return "strong";
-    return (localStorage.getItem(GRADIENT_COLOR_STORAGE_KEY) as GradientColor) ?? "strong";
-  });
+// ─── useThemePersistence — localStorage + IPC sync ───────────────────────
 
+interface PersistedThemeState {
+  themeId: string;
+  colorMode: ColorMode;
+  gradientMode: GradientMode;
+  gradientColor: GradientColor;
+  systemMode: "light" | "dark";
+  setThemeId: (id: string) => void;
+  setColorMode: (mode: ColorMode) => void;
+  setGradientMode: (mode: GradientMode) => void;
+  setGradientColor: (color: GradientColor) => void;
+}
+
+function useThemePersistence(
+  clearPreviews: () => void,
+): PersistedThemeState {
+  const [themeId, setThemeIdRaw] = useState(() => readStorage(THEME_STORAGE_KEY, defaultTheme.id));
+  const [colorMode, setColorModeRaw] = useState(() => readStorage<ColorMode>(COLOR_MODE_STORAGE_KEY, "light"));
+  const [gradientMode, setGradientModeRaw] = useState(() => readStorage<GradientMode>(GRADIENT_MODE_STORAGE_KEY, "soft"));
+  const [gradientColor, setGradientColorRaw] = useState(() => readStorage<GradientColor>(GRADIENT_COLOR_STORAGE_KEY, "strong"));
   const [systemMode, setSystemMode] = useState<"light" | "dark">(getSystemColorMode);
 
-  // Preview state (for hover preview like Aura)
-  const [previewThemeId, setPreviewThemeId] = useState<string | null>(null);
-  const [previewGradientModeState, setPreviewGradientModeState] = useState<GradientMode | null>(null);
-  const [previewGradientColorState, setPreviewGradientColorState] = useState<GradientColor | null>(null);
-
-  // Use preview values if set, otherwise use actual values
-  const activeThemeId = previewThemeId ?? themeId;
-  const theme = getThemeById(activeThemeId) ?? defaultTheme;
-
-  const resolvedColorMode = colorMode === "system" ? systemMode : colorMode;
-
-  const colors = resolvedColorMode === "dark" ? theme.dark : theme.light;
-
-  // Load installed themes from ~/.stella/themes/ on mount
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return;
-    if (!window.electronAPI.listInstalledThemes) return;
-    window.electronAPI.listInstalledThemes().then((installed) => {
+    if (!window.electronAPI.theme.listInstalled) return;
+    window.electronAPI.theme.listInstalled().then((installed) => {
       if (Array.isArray(installed)) {
-        for (const t of installed) {
-          registerTheme(t);
-        }
+        for (const t of installed) registerTheme(t);
       }
-    }).catch(() => {
-      // Ignore — themes dir may not exist yet
+    }).catch((err) => {
+      console.debug('[theme] Failed to load installed themes:', (err as Error).message);
     });
   }, []);
 
-  // Listen for system color scheme changes
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = (e: MediaQueryListEvent) => {
-      setSystemMode(e.matches ? "dark" : "light");
-    };
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => setSystemMode(e.matches ? "dark" : "light");
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
-  // Listen for theme changes from other windows via IPC (Electron multi-window sync)
   useEffect(() => {
-    if (typeof window === "undefined" || !window.electronAPI) {
-      return;
-    }
-    const unsubscribe = window.electronAPI.onThemeChange((_event, data) => {
-      if (data.key === THEME_STORAGE_KEY) {
-        setThemeId(data.value);
-        setPreviewThemeId(null);
-      } else if (data.key === COLOR_MODE_STORAGE_KEY) {
-        setColorModeState(data.value as ColorMode);
-      } else if (data.key === GRADIENT_MODE_STORAGE_KEY) {
-        setGradientModeState(data.value as GradientMode);
-        setPreviewGradientModeState(null);
-      } else if (data.key === GRADIENT_COLOR_STORAGE_KEY) {
-        setGradientColorState(data.value as GradientColor);
-        setPreviewGradientColorState(null);
-      }
+    if (typeof window === "undefined" || !window.electronAPI) return;
+    return window.electronAPI.theme.onChange((_event, data) => {
+      if (data.key === THEME_STORAGE_KEY) { setThemeIdRaw(data.value); clearPreviews(); }
+      else if (data.key === COLOR_MODE_STORAGE_KEY) setColorModeRaw(data.value as ColorMode);
+      else if (data.key === GRADIENT_MODE_STORAGE_KEY) { setGradientModeRaw(data.value as GradientMode); clearPreviews(); }
+      else if (data.key === GRADIENT_COLOR_STORAGE_KEY) { setGradientColorRaw(data.value as GradientColor); clearPreviews(); }
     });
-    return unsubscribe;
-  }, []);
+  }, [clearPreviews]);
 
-  // Also listen for localStorage changes (for browser compatibility)
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === THEME_STORAGE_KEY && e.newValue) {
-        setThemeId(e.newValue);
-        setPreviewThemeId(null);
-      } else if (e.key === COLOR_MODE_STORAGE_KEY && e.newValue) {
-        setColorModeState(e.newValue as ColorMode);
-      } else if (e.key === GRADIENT_MODE_STORAGE_KEY && e.newValue) {
-        setGradientModeState(e.newValue as GradientMode);
-        setPreviewGradientModeState(null);
-      } else if (e.key === GRADIENT_COLOR_STORAGE_KEY && e.newValue) {
-        setGradientColorState(e.newValue as GradientColor);
-        setPreviewGradientColorState(null);
-      }
+    const handler = (e: StorageEvent) => {
+      if (e.key === THEME_STORAGE_KEY && e.newValue) { setThemeIdRaw(e.newValue); clearPreviews(); }
+      else if (e.key === COLOR_MODE_STORAGE_KEY && e.newValue) setColorModeRaw(e.newValue as ColorMode);
+      else if (e.key === GRADIENT_MODE_STORAGE_KEY && e.newValue) { setGradientModeRaw(e.newValue as GradientMode); clearPreviews(); }
+      else if (e.key === GRADIENT_COLOR_STORAGE_KEY && e.newValue) { setGradientColorRaw(e.newValue as GradientColor); clearPreviews(); }
     };
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, [clearPreviews]);
+
+  const setThemeId = useCallback((id: string) => { setThemeIdRaw(id); persistAndBroadcast(THEME_STORAGE_KEY, id); }, []);
+  const setColorMode = useCallback((mode: ColorMode) => { setColorModeRaw(mode); persistAndBroadcast(COLOR_MODE_STORAGE_KEY, mode); }, []);
+  const setGradientMode = useCallback((mode: GradientMode) => { setGradientModeRaw(mode); persistAndBroadcast(GRADIENT_MODE_STORAGE_KEY, mode); }, []);
+  const setGradientColor = useCallback((color: GradientColor) => { setGradientColorRaw(color); persistAndBroadcast(GRADIENT_COLOR_STORAGE_KEY, color); }, []);
+
+  return { themeId, colorMode, gradientMode, gradientColor, systemMode, setThemeId, setColorMode, setGradientMode, setGradientColor };
+}
+
+// ─── useThemePreview — temporary preview state ───────────────────────────
+
+interface ThemePreviewState {
+  previewThemeId: string | null;
+  previewGradientMode: GradientMode | null;
+  previewGradientColor: GradientColor | null;
+  setPreviewTheme: (id: string) => void;
+  cancelThemePreview: () => void;
+  setPreviewGradientMode: (mode: GradientMode) => void;
+  cancelGradientModePreview: () => void;
+  setPreviewGradientColor: (color: GradientColor) => void;
+  cancelGradientColorPreview: () => void;
+  clearAll: () => void;
+}
+
+function useThemePreview(): ThemePreviewState {
+  const [previewThemeId, setPreviewThemeId] = useState<string | null>(null);
+  const [previewGradientMode, setPreviewGradientModeRaw] = useState<GradientMode | null>(null);
+  const [previewGradientColor, setPreviewGradientColorRaw] = useState<GradientColor | null>(null);
+
+  const setPreviewTheme = useCallback((id: string) => { if (getThemeById(id)) setPreviewThemeId(id); }, []);
+  const cancelThemePreview = useCallback(() => setPreviewThemeId(null), []);
+  const setPreviewGradientMode = useCallback((mode: GradientMode) => setPreviewGradientModeRaw(mode), []);
+  const cancelGradientModePreview = useCallback(() => setPreviewGradientModeRaw(null), []);
+  const setPreviewGradientColor = useCallback((color: GradientColor) => setPreviewGradientColorRaw(color), []);
+  const cancelGradientColorPreview = useCallback(() => setPreviewGradientColorRaw(null), []);
+  const clearAll = useCallback(() => {
+    setPreviewThemeId(null);
+    setPreviewGradientModeRaw(null);
+    setPreviewGradientColorRaw(null);
   }, []);
 
-  // Apply theme to document (responds to both actual and preview changes)
+  return {
+    previewThemeId, previewGradientMode, previewGradientColor,
+    setPreviewTheme, cancelThemePreview,
+    setPreviewGradientMode, cancelGradientModePreview,
+    setPreviewGradientColor, cancelGradientColorPreview,
+    clearAll,
+  };
+}
+
+// ─── ThemeProvider ───────────────────────────────────────────────────────
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const preview = useThemePreview();
+  const persisted = useThemePersistence(preview.clearAll);
+
+  const activeThemeId = preview.previewThemeId ?? persisted.themeId;
+  const theme = getThemeById(activeThemeId) ?? defaultTheme;
+  const resolvedColorMode = persisted.colorMode === "system" ? persisted.systemMode : persisted.colorMode;
+  const colors = resolvedColorMode === "dark" ? theme.dark : theme.light;
+  const effectiveGradientMode = preview.previewGradientMode ?? persisted.gradientMode;
+  const effectiveGradientColor = preview.previewGradientColor ?? persisted.gradientColor;
+
   useEffect(() => {
     applyThemeToDocument(colors, resolvedColorMode === "dark");
   }, [colors, resolvedColorMode]);
 
-  const setTheme = useCallback((id: string) => {
-    setThemeId(id);
-    setPreviewThemeId(null);
-    localStorage.setItem(THEME_STORAGE_KEY, id);
-    // Broadcast to other windows via IPC (Electron)
-    if (typeof window !== "undefined" && window.electronAPI) {
-      window.electronAPI.broadcastThemeChange(THEME_STORAGE_KEY, id);
-    }
-  }, []);
-
-  const setColorMode = useCallback((mode: ColorMode) => {
-    setColorModeState(mode);
-    localStorage.setItem(COLOR_MODE_STORAGE_KEY, mode);
-    // Broadcast to other windows via IPC (Electron)
-    if (typeof window !== "undefined" && window.electronAPI) {
-      window.electronAPI.broadcastThemeChange(COLOR_MODE_STORAGE_KEY, mode);
-    }
-  }, []);
-
-  const setGradientMode = useCallback((mode: GradientMode) => {
-    setGradientModeState(mode);
-    setPreviewGradientModeState(null);
-    localStorage.setItem(GRADIENT_MODE_STORAGE_KEY, mode);
-    // Broadcast to other windows via IPC (Electron)
-    if (typeof window !== "undefined" && window.electronAPI) {
-      window.electronAPI.broadcastThemeChange(GRADIENT_MODE_STORAGE_KEY, mode);
-    }
-  }, []);
-
-  const setGradientColor = useCallback((color: GradientColor) => {
-    setGradientColorState(color);
-    setPreviewGradientColorState(null);
-    localStorage.setItem(GRADIENT_COLOR_STORAGE_KEY, color);
-    // Broadcast to other windows via IPC (Electron)
-    if (typeof window !== "undefined" && window.electronAPI) {
-      window.electronAPI.broadcastThemeChange(GRADIENT_COLOR_STORAGE_KEY, color);
-    }
-  }, []);
-
-  // Preview functions (like Aura)
-  const previewTheme = useCallback((id: string) => {
-    const previewThemeObj = getThemeById(id);
-    if (previewThemeObj) {
-      setPreviewThemeId(id);
-    }
-  }, []);
-
-  const cancelThemePreview = useCallback(() => {
-    setPreviewThemeId(null);
-  }, []);
-
-  const previewGradientMode = useCallback((mode: GradientMode) => {
-    setPreviewGradientModeState(mode);
-  }, []);
-
-  const cancelGradientModePreview = useCallback(() => {
-    setPreviewGradientModeState(null);
-  }, []);
-
-  const previewGradientColor = useCallback((color: GradientColor) => {
-    setPreviewGradientColorState(color);
-  }, []);
-
-  const cancelGradientColorPreview = useCallback(() => {
-    setPreviewGradientColorState(null);
-  }, []);
-
-  const cancelPreview = useCallback(() => {
-    setPreviewThemeId(null);
-    setPreviewGradientModeState(null);
-    setPreviewGradientColorState(null);
-  }, []);
-
-  const effectiveGradientMode = previewGradientModeState ?? gradientMode;
-  const effectiveGradientColor = previewGradientColorState ?? gradientColor;
-
-  const value = useMemo<ThemeContextValue>(
+  const readValue = useMemo<ThemeReadValue>(
     () => ({
-      theme,
-      themeId,
-      setTheme,
-      colorMode,
-      setColorMode,
-      resolvedColorMode,
-      gradientMode: effectiveGradientMode,
-      setGradientMode,
-      gradientColor: effectiveGradientColor,
-      setGradientColor,
-      colors,
-      themes,
-      previewTheme,
-      cancelThemePreview,
-      previewGradientMode,
-      cancelGradientModePreview,
-      previewGradientColor,
-      cancelGradientColorPreview,
-      cancelPreview,
+      theme, themeId: persisted.themeId, colorMode: persisted.colorMode, resolvedColorMode,
+      gradientMode: effectiveGradientMode, gradientColor: effectiveGradientColor, colors, themes,
     }),
-    [
-      theme,
-      themeId,
-      setTheme,
-      colorMode,
-      setColorMode,
-      resolvedColorMode,
-      effectiveGradientMode,
-      setGradientMode,
-      effectiveGradientColor,
-      setGradientColor,
-      colors,
-      themes,
-      previewTheme,
-      cancelThemePreview,
-      previewGradientMode,
-      cancelGradientModePreview,
-      previewGradientColor,
-      cancelGradientColorPreview,
-      cancelPreview,
-    ],
+    [theme, persisted.themeId, persisted.colorMode, resolvedColorMode, effectiveGradientMode, effectiveGradientColor, colors],
+  );
+
+  const controlValue = useMemo<ThemeControlValue>(
+    () => ({
+      setTheme: (id: string) => { persisted.setThemeId(id); preview.cancelThemePreview(); },
+      setColorMode: persisted.setColorMode,
+      setGradientMode: (mode: GradientMode) => { persisted.setGradientMode(mode); preview.cancelGradientModePreview(); },
+      setGradientColor: (color: GradientColor) => { persisted.setGradientColor(color); preview.cancelGradientColorPreview(); },
+      previewTheme: preview.setPreviewTheme,
+      cancelThemePreview: preview.cancelThemePreview,
+      previewGradientMode: preview.setPreviewGradientMode,
+      cancelGradientModePreview: preview.cancelGradientModePreview,
+      previewGradientColor: preview.setPreviewGradientColor,
+      cancelGradientColorPreview: preview.cancelGradientColorPreview,
+      cancelPreview: preview.clearAll,
+    }),
+    [persisted, preview],
   );
 
   return (
-    <ThemeContext.Provider value={value}>
-      {children}
-    </ThemeContext.Provider>
+    <ThemeReadContext.Provider value={readValue}>
+      <ThemeControlContext.Provider value={controlValue}>
+        {children}
+      </ThemeControlContext.Provider>
+    </ThemeReadContext.Provider>
   );
 }
 
-export function useTheme() {
-  const context = useContext(ThemeContext);
+/** Read-only theme values. Most components should use this. */
+export function useTheme(): ThemeReadValue {
+  const context = useContext(ThemeReadContext);
   if (!context) {
     throw new Error("useTheme must be used within a ThemeProvider");
+  }
+  return context;
+}
+
+/** Theme mutation and preview controls. Only used by theme pickers. */
+export function useThemeControl(): ThemeControlValue {
+  const context = useContext(ThemeControlContext);
+  if (!context) {
+    throw new Error("useThemeControl must be used within a ThemeProvider");
   }
   return context;
 }

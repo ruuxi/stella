@@ -100,7 +100,6 @@ export class StreamServer {
             // Allow connections with no origin (non-browser clients like CLI tools)
             // Reject connections from web pages (which always have an origin)
             if (origin && !origin.startsWith('file://')) {
-              console.log(`[StreamServer] Rejected connection from origin: ${origin}`);
               return false;
             }
             return true;
@@ -112,13 +111,10 @@ export class StreamServer {
         });
 
         this.wss.on('error', (error) => {
-          console.error('[StreamServer] WebSocket error:', error);
           reject(error);
         });
 
         this.wss.on('listening', () => {
-          console.log(`[StreamServer] Listening on port ${this.port}`);
-
           // Set up the screencast frame callback
           setScreencastFrameCallback((frame) => {
             this.broadcastFrame(frame);
@@ -165,7 +161,6 @@ export class StreamServer {
    * Handle a new WebSocket connection
    */
   private handleConnection(ws: WebSocket): void {
-    console.log('[StreamServer] Client connected');
     this.clients.add(ws);
 
     // Send initial status
@@ -174,7 +169,6 @@ export class StreamServer {
     // Start screencasting if this is the first client
     if (this.clients.size === 1 && !this.isScreencasting) {
       this.startScreencast().catch((error) => {
-        console.error('[StreamServer] Failed to start screencast:', error);
         this.sendError(ws, error.message);
       });
     }
@@ -184,26 +178,22 @@ export class StreamServer {
       try {
         const message = JSON.parse(data.toString()) as StreamMessage;
         this.handleMessage(message, ws);
-      } catch (error) {
-        console.error('[StreamServer] Failed to parse message:', error);
+      } catch {
+        // Failed to parse message
       }
     });
 
     // Handle client disconnect
     ws.on('close', () => {
-      console.log('[StreamServer] Client disconnected');
       this.clients.delete(ws);
 
       // Stop screencasting if no more clients
       if (this.clients.size === 0 && this.isScreencasting) {
-        this.stopScreencast().catch((error) => {
-          console.error('[StreamServer] Failed to stop screencast:', error);
-        });
+        this.stopScreencast().catch(() => {});
       }
     });
 
-    ws.on('error', (error) => {
-      console.error('[StreamServer] Client error:', error);
+    ws.on('error', () => {
       this.clients.delete(ws);
     });
   }

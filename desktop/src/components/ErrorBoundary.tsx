@@ -17,9 +17,9 @@ export class ErrorBoundary extends Component<Props, State> {
   handleRevert = async () => {
     this.setState({ reverting: true });
     try {
-      const featureId = await window.electronAPI?.getLastSelfModFeature();
+      const featureId = await window.electronAPI?.agent.getLastSelfModFeature();
       if (featureId) {
-        await window.electronAPI?.selfModRevert(featureId);
+        await window.electronAPI?.agent.selfModRevert(featureId);
       }
       window.location.reload();
     } catch (err) {

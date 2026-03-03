@@ -88,17 +88,17 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         content: payload.text,
       })
     } catch (err) {
-      console.warn('[voice:persistTranscript] Failed to persist:', err)
+      console.debug('[voice] transcript persistence failed (best-effort):', (err as Error).message)
     }
   })
 
   ipcMain.handle('voice:orchestratorChat', async (_event, payload: { conversationId: string; message: string }) => {
     const piHostRunner = options.getPiHostRunner()
     if (!piHostRunner) {
-      return 'Error: Pi runtime not initialized'
+      throw new Error('Pi runtime not initialized')
     }
 
-    return new Promise<string>((resolve) => {
+    return new Promise<string>((resolve, reject) => {
       let fullText = ''
       piHostRunner.handleLocalChat(
         {
@@ -118,11 +118,11 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
             resolve((ev.finalText ?? fullText) || 'Done.')
           },
           onError: (ev) => {
-            resolve(`Error: ${ev.error ?? 'Unknown error'}`)
+            reject(new Error(ev.error ?? 'Unknown error'))
           },
         },
       ).catch((err) => {
-        resolve(`Error: ${(err as Error).message}`)
+        reject(err instanceof Error ? err : new Error(String(err)))
       })
     })
   })

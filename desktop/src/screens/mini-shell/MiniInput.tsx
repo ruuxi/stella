@@ -84,7 +84,7 @@ export const MiniInput = ({
                 aria-label="Remove screenshot"
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.electronAPI?.removeScreenshot?.(index);
+                  window.electronAPI?.capture.removeScreenshot?.(index);
                   setChatContext((prev) => {
                     if (!prev) return prev;
                     const next = [...(prev.regionScreenshots ?? [])];
@@ -161,7 +161,7 @@ export const MiniInput = ({
               if (previewIndex !== null) {
                 setPreviewIndex(null);
               } else {
-                window.electronAPI?.closeWindow?.();
+                window.electronAPI?.window.close?.();
               }
             }
           }}

@@ -23,8 +23,8 @@ describe("synthesizeCoreMemory", () => {
       welcomeMessage: "welcome!",
       suggestions: [{ category: "skill", title: "Test", description: "Desc", prompt: "prompt" }],
     };
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify(mockResult), { status: 200 })
+    vi.mocked(fetch).mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(mockResult), { status: 200 }))
     );
 
     const result = await synthesizeCoreMemory("test signals");
@@ -42,8 +42,8 @@ describe("synthesizeCoreMemory", () => {
   });
 
   it("sends formattedSignals in request body", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ coreMemory: "", welcomeMessage: "" }), { status: 200 })
+    vi.mocked(fetch).mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ coreMemory: "", welcomeMessage: "" }), { status: 200 }))
     );
 
     await synthesizeCoreMemory("my signals data");
@@ -58,8 +58,8 @@ describe("synthesizeCoreMemory", () => {
 
   it("constructs URL using VITE_CONVEX_HTTP_URL when available", async () => {
     import.meta.env.VITE_CONVEX_HTTP_URL = "https://custom.site.example";
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ coreMemory: "", welcomeMessage: "" }), { status: 200 })
+    vi.mocked(fetch).mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ coreMemory: "", welcomeMessage: "" }), { status: 200 }))
     );
 
     await synthesizeCoreMemory("signals");

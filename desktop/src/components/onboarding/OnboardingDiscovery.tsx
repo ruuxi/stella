@@ -36,7 +36,7 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
           <span>Some options require Full Disk Access</span>
           <button
             className="onboarding-fda-link"
-            onClick={() => window.electronAPI?.openFullDiskAccess?.()}
+            onClick={() => window.electronAPI?.system.openFullDiskAccess?.()}
           >
             Open Preferences
           </button>

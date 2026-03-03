@@ -48,19 +48,15 @@ const findHelperPath = (): string | null => {
  */
 export const startMouseBlock = (callback: MouseBlockCallback): boolean => {
   if (process.platform !== 'win32') {
-    console.log('[mouse-block] Not on Windows, skipping')
     return false
   }
 
   if (helperProcess) {
-    console.log('[mouse-block] Already running')
     return isReady
   }
 
   const helperPath = findHelperPath()
   if (!helperPath) {
-    console.warn('[mouse-block] Helper executable not found')
-    console.warn('[mouse-block] Build it with: cl /O2 mouse_block.cpp /link user32.lib')
     return false
   }
 
@@ -83,7 +79,6 @@ export const startMouseBlock = (callback: MouseBlockCallback): boolean => {
 
         if (cmd === 'READY') {
           isReady = true
-          console.log('[mouse-block] Helper ready')
         } else if (cmd === 'DOWN' && parts.length >= 3) {
           const x = parseInt(parts[1], 10)
           const y = parseInt(parts[2], 10)
@@ -93,31 +88,28 @@ export const startMouseBlock = (callback: MouseBlockCallback): boolean => {
           const y = parseInt(parts[2], 10)
           currentCallback?.('up', x, y)
         } else if (cmd === 'EXIT') {
-          console.log('[mouse-block] Helper exited cleanly')
+          // Helper exited cleanly
         }
       }
     })
 
-    helperProcess.stderr?.on('data', (data: string) => {
-      console.error('[mouse-block] Helper error:', data.trim())
+    helperProcess.stderr?.on('data', () => {
+      // Helper stderr output ignored
     })
 
-    helperProcess.on('exit', (code) => {
-      console.log('[mouse-block] Helper exited with code:', code)
+    helperProcess.on('exit', () => {
       helperProcess = null
       isReady = false
     })
 
-    helperProcess.on('error', (error) => {
-      console.error('[mouse-block] Helper spawn error:', error)
+    helperProcess.on('error', () => {
       helperProcess = null
       isReady = false
     })
 
     // Wait briefly for READY signal
     return true // Will be ready shortly
-  } catch (error) {
-    console.error('[mouse-block] Failed to start helper:', error)
+  } catch {
     return false
   }
 }
@@ -136,8 +128,7 @@ export const stopMouseBlock = (): boolean => {
     isReady = false
     currentCallback = null
     return true
-  } catch (error) {
-    console.error('[mouse-block] Failed to stop helper:', error)
+  } catch {
     return false
   }
 }

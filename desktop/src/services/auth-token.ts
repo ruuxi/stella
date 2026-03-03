@@ -26,7 +26,9 @@ export async function getConvexToken(): Promise<string | null> {
   }
 
   try {
-    const result = await (authClient as any).convex.token();
+    // convexClient() plugin adds .convex.token() but isn't reflected in the base type
+    const convex = (authClient as unknown as { convex: { token(): Promise<{ data?: { token?: string } }> } }).convex;
+    const result = await convex.token();
     const token: string | undefined = result?.data?.token;
     if (!token) {
       cachedToken = null;
@@ -40,13 +42,14 @@ export async function getConvexToken(): Promise<string | null> {
       const payload = JSON.parse(atob(token.split(".")[1]));
       const expMs = (payload.exp ?? 0) * 1000;
       tokenExpiresAt = expMs - REFRESH_MARGIN_MS;
-    } catch {
-      // Fallback: 4-minute cache if we can't parse
+    } catch (err) {
+      console.debug("[auth-token] JWT parse failed, using 4-minute cache:", (err as Error).message);
       tokenExpiresAt = Date.now() + 4 * 60 * 1000;
     }
 
     return token;
-  } catch {
+  } catch (err) {
+    console.debug("[auth-token] token fetch failed:", (err as Error).message);
     cachedToken = null;
     tokenExpiresAt = 0;
     return null;

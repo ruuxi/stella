@@ -19,10 +19,11 @@ export const CredentialRequestLayer = () => {
   const apiHandle = useMemo(() => getElectronApi(), []);
 
   useEffect(() => {
-    if (!apiHandle?.onCredentialRequest) {
+    const systemApi = apiHandle?.system;
+    if (!systemApi?.onCredentialRequest) {
       return;
     }
-    const unsubscribe = apiHandle.onCredentialRequest((_event, data) => {
+    const unsubscribe = systemApi.onCredentialRequest((_event, data) => {
       setPending(data);
     });
     return () => unsubscribe();
@@ -38,7 +39,7 @@ export const CredentialRequestLayer = () => {
     });
     const secretId = (result as { secretId: string }).secretId;
 
-    await apiHandle?.submitCredential?.({
+    await apiHandle?.system.submitCredential?.({
       requestId: pending.requestId,
       secretId,
       provider: pending.provider,
@@ -49,7 +50,7 @@ export const CredentialRequestLayer = () => {
 
   const handleCancel = async () => {
     if (!pending) return;
-    await apiHandle?.cancelCredential?.({ requestId: pending.requestId });
+    await apiHandle?.system.cancelCredential?.({ requestId: pending.requestId });
     setPending(null);
   };
 

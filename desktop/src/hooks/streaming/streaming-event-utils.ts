@@ -1,4 +1,4 @@
-import type { EventRecord } from "../use-conversation-events";
+import type { EventRecord } from "../../lib/event-transforms";
 
 export type AppendedEventResponse = {
   _id?: string;

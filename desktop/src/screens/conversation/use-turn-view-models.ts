@@ -1,18 +1,16 @@
 import { useMemo, useDeferredValue } from "react";
-import type {
-  EventRecord,
-  MessagePayload,
-} from "../../hooks/use-conversation-events";
+import type { EventRecord } from "../../hooks/use-conversation-events";
+import type { MessagePayload } from "../../lib/event-transforms";
 import {
   groupEventsIntoTurns,
   getCurrentRunningTool,
   getRunningTasks,
-} from "../../hooks/use-conversation-events";
+  getEventText,
+} from "../../lib/event-transforms";
 import { useDepseudonymize } from "../../hooks/use-depseudonymize";
 import { isOrchestratorChatMessagePayload } from "../../components/chat/emotes/message-source";
 import {
   type TurnViewModel,
-  getEventText,
   getAttachments,
   getChannelEnvelope,
 } from "./MessageTurn";

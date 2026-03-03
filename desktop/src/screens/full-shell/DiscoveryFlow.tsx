@@ -9,15 +9,9 @@ import { getOrCreateDeviceId } from "../../services/device";
 import { synthesizeCoreMemory } from "../../services/synthesis";
 import { selectDefaultSkills } from "../../services/skill-selection";
 import { useChatStore } from "../../app/state/chat-store";
-
-type DiscoveryCategory =
-  | "browsing_bookmarks"
-  | "dev_environment"
-  | "apps_system"
-  | "messages_notes";
+import type { DiscoveryCategory } from "../../components/onboarding/use-onboarding-state";
 
 const BROWSER_SELECTION_KEY = "stella-selected-browser";
-
 
 const withBrowserDiscoveryCategory = (
   categories: DiscoveryCategory[],
@@ -65,12 +59,12 @@ export function useDiscoveryFlow({
 
     const run = async () => {
       try {
-        const exists = await window.electronAPI?.checkCoreMemoryExists?.();
+        const exists = await window.electronAPI?.browser.checkCoreMemoryExists?.();
         if (exists) {
           return;
         }
 
-        const result = await window.electronAPI?.collectAllSignals?.({
+        const result = await window.electronAPI?.browser.collectAllSignals?.({
           categories: discoveryCategories,
         });
 
@@ -82,7 +76,7 @@ export function useDiscoveryFlow({
         if (!synthesisResult.coreMemory) return;
 
         const writeCoreMemoryPromise =
-          window.electronAPI?.writeCoreMemory?.(synthesisResult.coreMemory) ??
+          window.electronAPI?.browser.writeCoreMemory?.(synthesisResult.coreMemory) ??
           Promise.resolve();
 
         const syncCoreMemoryPromise = isAuthenticated
@@ -147,8 +141,8 @@ export function useDiscoveryFlow({
               coreMemory: synthesisResult.coreMemory,
               targetDeviceId: deviceId,
               force: isLocalStorage,
-            }).catch((error) => {
-              console.warn("[DiscoveryFlow] Dashboard generation trigger failed:", error);
+            }).catch(() => {
+              // Silent fail - dashboard generation is non-critical
             });
           }
         }

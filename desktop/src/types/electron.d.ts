@@ -1,8 +1,11 @@
 import type { UiState, WindowMode } from './ui'
 import type { Theme } from '../theme/themes/types'
+import type { AgentStreamEvent } from '../hooks/streaming/streaming-types'
+import type { DiscoveryCategory } from '../components/onboarding/use-onboarding-state'
 
 export type RadialWedge = 'capture' | 'chat' | 'full' | 'voice' | 'auto' | 'dismiss'
 
+/** Must stay in sync with electron/chat-context.ts (source of truth). */
 export type ChatContext = {
   window: {
     title: string
@@ -174,11 +177,7 @@ export type AllUserSignals = {
   apps: DiscoveredApp[]
 }
 
-export type DiscoveryCategory =
-  | "browsing_bookmarks"
-  | "dev_environment"
-  | "apps_system"
-  | "messages_notes"
+export type { DiscoveryCategory } from '../components/onboarding/use-onboarding-state'
 
 export type AllUserSignalsResult = {
   data: AllUserSignals | null
@@ -187,201 +186,11 @@ export type AllUserSignalsResult = {
   error?: string
 }
 
-export type ElectronApi = {
-  platform: string
-  
-  // Window controls for custom title bar
-  minimizeWindow: () => void
-  maximizeWindow: () => void
-  closeWindow: () => void
-  isMaximized: () => Promise<boolean>
-  
-  getUiState: () => Promise<UiState>
-  setUiState: (partial: Partial<UiState>) => Promise<UiState>
-  onUiState: (callback: (state: UiState) => void) => () => void
-  showWindow: (target: WindowMode) => void
-  captureScreenshot: (point?: { x: number; y: number }) => Promise<{
-    dataUrl: string
-    width: number
-    height: number
-  } | null>
-  getChatContext: () => Promise<ChatContext | null>
-  onChatContext: (callback: (payload: ChatContext | null | ChatContextUpdate) => void) => () => void
-  ackChatContext: (payload: { version: number }) => void
-  miniBridgeRequest: (request: MiniBridgeRequest) => Promise<MiniBridgeResponse>
-  onMiniBridgeUpdate: (callback: (update: MiniBridgeUpdate) => void) => () => void
-  onMiniBridgeRequest: (callback: (envelope: MiniBridgeRequestEnvelope) => void) => () => void
-  respondMiniBridge: (envelope: MiniBridgeResponseEnvelope) => void
-  miniBridgeReady: () => void
-  pushMiniBridgeUpdate: (update: MiniBridgeUpdate) => void
-  onMiniVisibility: (callback: (visible: boolean) => void) => () => void
-  onDismissPreview: (callback: () => void) => () => void
-  getDeviceId: () => Promise<string | null>
-  configurePiRuntime: (config: { convexUrl?: string; convexSiteUrl?: string }) => Promise<{ deviceId: string | null }>
-  setAuthState: (payload: { authenticated: boolean; token?: string }) => Promise<{ ok: boolean }>
-  setCloudSyncEnabled: (payload: { enabled: boolean }) => Promise<{ ok: boolean }>
-  onAuthCallback: (callback: (data: { url: string }) => void) => () => void
-  // App readiness gate (controls radial menu + mini shell)
-  setAppReady: (ready: boolean) => void
-  // Radial dial events
-  onRadialShow: (
-    callback: (event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number }) => void
-  ) => () => void
-  onRadialHide: (callback: () => void) => () => void
-  onRadialCursor: (
-    callback: (event: unknown, data: { x: number; y: number; centerX: number; centerY: number }) => void
-  ) => () => void
-  radialAnimDone: () => void
-  submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) => void
-  submitRegionClick: (point: { x: number; y: number }) => void
-  getWindowCapture: (point: { x: number; y: number }) => Promise<{
-    bounds: { x: number; y: number; width: number; height: number };
-    thumbnail: string;
-  } | null>
-  cancelRegionCapture: () => void
-  onRegionReset: (callback: () => void) => () => void
-  removeScreenshot: (index: number) => void
-  // Theme sync across windows
-  onThemeChange: (callback: (event: unknown, data: { key: string; value: string }) => void) => () => void
-  broadcastThemeChange: (key: string, value: string) => void
-  onCredentialRequest: (
-    callback: (
-      event: unknown,
-      data: { requestId: string; provider: string; label?: string; description?: string; placeholder?: string }
-    ) => void
-  ) => () => void
-  submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) => Promise<{ ok: boolean; error?: string }>
-  cancelCredential: (payload: { requestId: string }) => Promise<{ ok: boolean; error?: string }>
-  // Browser data collection for core memory
-  checkCoreMemoryExists: () => Promise<boolean>
-  collectBrowserData: () => Promise<BrowserDataResult>
-  detectPreferredBrowser: () => Promise<PreferredBrowserProfile>
-  listBrowserProfiles: (browserType: string) => Promise<BrowserProfile[]>
-  writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
-  listWorkspacePanels: () => Promise<Array<{ name: string; title: string }>>
-  onWorkspacePanelsChanged?: (callback: (panels: Array<{ name: string; title: string }>) => void) => () => void
-  // Comprehensive user signal collection (browser + dev projects + shell + apps)
-  collectAllSignals: (options?: { categories?: string[] }) => Promise<AllUserSignalsResult>
-  // Identity map for pseudonymization
-  getIdentityMap: () => Promise<{ version: number; mappings: { real: { name: string; identifier: string }; alias: { name: string; identifier: string }; source: string }[] }>
-  depseudonymize: (text: string) => Promise<string>
-  // System preferences (macOS FDA)
-  openFullDiskAccess: () => void
-  // Open URL in user's default browser
-  openExternal: (url: string) => void
+// ---------------------------------------------------------------------------
+// Agent Types
+// ---------------------------------------------------------------------------
 
-  // Voice Transcript
-  submitVoiceTranscript: (transcript: string) => void
-  setVoiceShortcut: (shortcut: string) => void
-  onVoiceTranscript: (callback: (transcript: string) => void) => () => void
-
-  // Voice-to-Voice (Realtime API)
-  persistVoiceTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) => void
-  voiceOrchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
-  setVoiceRtcShortcut: (shortcut: string) => void
-  onVoiceRtcPreWarm: (callback: (conversationId: string) => void) => () => void
-  onVoiceRtcPrefetchToken: (callback: () => void) => () => void
-
-  // Store package management
-  storeInstallSkill: (payload: {
-    packageId: string
-    skillId: string
-    name: string
-    markdown: string
-    agentTypes?: string[]
-    tags?: string[]
-  }) => Promise<{ installed: boolean; path?: string }>
-  storeInstallTheme: (payload: {
-    packageId: string
-    themeId: string
-    name: string
-    light: Record<string, string>
-    dark: Record<string, string>
-  }) => Promise<{ installed: boolean; themeId?: string }>
-  storeInstallCanvas: (payload: {
-    packageId: string
-    workspaceId?: string
-    name: string
-    dependencies?: Record<string, string>
-    source?: string
-  }) => Promise<{ installed: boolean; workspaceId?: string; path?: string }>
-  storeUninstall: (payload: {
-    packageId: string
-    type: string
-    localId: string
-  }) => Promise<{ uninstalled: boolean; requiresRevert?: boolean; note?: string }>
-
-  // Theme loading from installed themes
-  listInstalledThemes: () => Promise<Theme[]>
-
-  // Bridge manager
-  bridgeDeploy: (payload: {
-    provider: string; code: string; env: Record<string, string>; dependencies: string
-  }) => Promise<{ ok: boolean; error?: string }>
-  bridgeStart: (payload: { provider: string }) => Promise<{ ok: boolean; error?: string }>
-  bridgeStop: (payload: { provider: string }) => Promise<{ ok: boolean }>
-  bridgeStatus: (payload: { provider: string }) => Promise<{ running: boolean }>
-
-  shellKillByPort: (port: number) => Promise<void>
-
-  // ─── Local Agent Runtime ────────────────────────────────────────────────
-  agentHealthCheck: () => Promise<AgentHealth | null>
-  getActiveAgentRun: () => Promise<{ runId: string; conversationId: string } | null>
-  startAgentChat: (payload: {
-    conversationId: string
-    userMessageId: string
-    userPrompt: string
-    agentType?: string
-    storageMode?: "cloud" | "local"
-  }) => Promise<{ runId: string }>
-  cancelAgentChat: (runId: string) => void
-  resumeAgentStream: (payload: {
-    runId: string
-    lastSeq: number
-  }) => Promise<{
-    events: AgentStreamIpcEvent[]
-    exhausted: boolean
-  }>
-  onAgentStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
-
-  // ─── Unified Overlay ────────────────────────────────────────────────
-  overlaySetInteractive: (interactive: boolean) => void
-  onOverlayModifierBlock: (callback: (active: boolean) => void) => () => void
-  onOverlayStartRegionCapture: (callback: () => void) => () => void
-  onOverlayEndRegionCapture: (callback: () => void) => () => void
-  onOverlayShowMini: (callback: (data: { x: number; y: number }) => void) => () => void
-  onOverlayHideMini: (callback: () => void) => () => void
-  onOverlayRestoreMini?: (callback: () => void) => () => void
-  onOverlayShowVoice: (callback: (data: { x: number; y: number; mode: 'stt' | 'realtime' }) => void) => () => void
-  onOverlayHideVoice: (callback: () => void) => () => void
-  onOverlayDisplayChange: (callback: (data: { origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }) => void) => () => void
-
-  // Self-mod revert (used by undo button and crash recovery)
-  selfModRevert: (featureId: string, steps?: number) => Promise<unknown>
-  getLastSelfModFeature: () => Promise<string | null>
-
-  // App reload (used by recovery page)
-  appReload: () => void
-  hardResetLocalState: () => Promise<{ ok: boolean }>
-
-  getLocalSyncMode: () => Promise<string>
-  setLocalSyncMode: (mode: string) => Promise<void>
-}
-
-export type AgentStreamIpcEvent = {
-  type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end'
-  runId: string
-  seq: number
-  chunk?: string
-  toolCallId?: string
-  toolName?: string
-  resultPreview?: string
-  error?: string
-  fatal?: boolean
-  finalText?: string
-  persisted?: boolean
-  selfModApplied?: { featureId: string; files: string[]; batchIndex: number }
-}
+export type AgentStreamIpcEvent = AgentStreamEvent
 
 export type AgentHealth =
   | {
@@ -394,6 +203,212 @@ export type AgentHealth =
       reason?: string
       engine?: string
     }
+
+// ---------------------------------------------------------------------------
+// Namespaced API sub-types
+// ---------------------------------------------------------------------------
+
+export type ElectronWindowApi = {
+  minimize: () => void
+  maximize: () => void
+  close: () => void
+  isMaximized: () => Promise<boolean>
+  show: (target: WindowMode) => void
+}
+
+export type ElectronUiApi = {
+  getState: () => Promise<UiState>
+  setState: (partial: Partial<UiState>) => Promise<UiState>
+  onState: (callback: (state: UiState) => void) => () => void
+  setAppReady: (ready: boolean) => void
+  reload: () => void
+  hardReset: () => Promise<{ ok: boolean }>
+}
+
+export type ElectronCaptureApi = {
+  getContext: () => Promise<ChatContext | null>
+  onContext: (callback: (payload: ChatContext | null | ChatContextUpdate) => void) => () => void
+  ackContext: (payload: { version: number }) => void
+  screenshot: (point?: { x: number; y: number }) => Promise<{
+    dataUrl: string
+    width: number
+    height: number
+  } | null>
+  removeScreenshot: (index: number) => void
+  submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) => void
+  submitRegionClick: (point: { x: number; y: number }) => void
+  getWindowCapture: (point: { x: number; y: number }) => Promise<{
+    bounds: { x: number; y: number; width: number; height: number };
+    thumbnail: string;
+  } | null>
+  cancelRegion: () => void
+  onRegionReset: (callback: () => void) => () => void
+}
+
+export type ElectronRadialApi = {
+  onShow: (
+    callback: (event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number }) => void
+  ) => () => void
+  onHide: (callback: () => void) => () => void
+  animDone: () => void
+  onCursor: (
+    callback: (event: unknown, data: { x: number; y: number; centerX: number; centerY: number }) => void
+  ) => () => void
+}
+
+export type ElectronOverlayApi = {
+  setInteractive: (interactive: boolean) => void
+  onModifierBlock: (callback: (active: boolean) => void) => () => void
+  onStartRegionCapture: (callback: () => void) => () => void
+  onEndRegionCapture: (callback: () => void) => () => void
+  onShowMini: (callback: (data: { x: number; y: number }) => void) => () => void
+  onHideMini: (callback: () => void) => () => void
+  onRestoreMini?: (callback: () => void) => () => void
+  onShowVoice: (callback: (data: { x: number; y: number; mode: 'stt' | 'realtime' }) => void) => () => void
+  onHideVoice: (callback: () => void) => () => void
+  onDisplayChange: (callback: (data: { origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }) => void) => () => void
+}
+
+export type ElectronMiniApi = {
+  onVisibility: (callback: (visible: boolean) => void) => () => void
+  onDismissPreview: (callback: () => void) => () => void
+  request: (request: MiniBridgeRequest) => Promise<MiniBridgeResponse>
+  onUpdate: (callback: (update: MiniBridgeUpdate) => void) => () => void
+  onRequest: (callback: (envelope: MiniBridgeRequestEnvelope) => void) => () => void
+  respond: (envelope: MiniBridgeResponseEnvelope) => void
+  ready: () => void
+  pushUpdate: (update: MiniBridgeUpdate) => void
+}
+
+export type ElectronThemeApi = {
+  onChange: (callback: (event: unknown, data: { key: string; value: string }) => void) => () => void
+  broadcast: (key: string, value: string) => void
+  listInstalled: () => Promise<Theme[]>
+}
+
+export type ElectronVoiceApi = {
+  submitTranscript: (transcript: string) => void
+  setShortcut: (shortcut: string) => void
+  onTranscript: (callback: (transcript: string) => void) => () => void
+  persistTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) => void
+  orchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
+  setRtcShortcut: (shortcut: string) => void
+  onRtcPreWarm: (callback: (conversationId: string) => void) => () => void
+  onRtcPrefetchToken: (callback: () => void) => () => void
+}
+
+export type ElectronAgentApi = {
+  healthCheck: () => Promise<AgentHealth | null>
+  getActiveRun: () => Promise<{ runId: string; conversationId: string } | null>
+  startChat: (payload: {
+    conversationId: string
+    userMessageId: string
+    userPrompt: string
+    agentType?: string
+    storageMode?: "cloud" | "local"
+  }) => Promise<{ runId: string }>
+  cancelChat: (runId: string) => void
+  resumeStream: (payload: {
+    runId: string
+    lastSeq: number
+  }) => Promise<{
+    events: AgentStreamIpcEvent[]
+    exhausted: boolean
+  }>
+  onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
+  selfModRevert: (featureId: string, steps?: number) => Promise<unknown>
+  getLastSelfModFeature: () => Promise<string | null>
+}
+
+export type ElectronStoreApi = {
+  installSkill: (payload: {
+    packageId: string
+    skillId: string
+    name: string
+    markdown: string
+    agentTypes?: string[]
+    tags?: string[]
+  }) => Promise<{ installed: boolean; path?: string }>
+  installTheme: (payload: {
+    packageId: string
+    themeId: string
+    name: string
+    light: Record<string, string>
+    dark: Record<string, string>
+  }) => Promise<{ installed: boolean; themeId?: string }>
+  installCanvas: (payload: {
+    packageId: string
+    workspaceId?: string
+    name: string
+    dependencies?: Record<string, string>
+    source?: string
+  }) => Promise<{ installed: boolean; workspaceId?: string; path?: string }>
+  uninstall: (payload: {
+    packageId: string
+    type: string
+    localId: string
+  }) => Promise<{ uninstalled: boolean; requiresRevert?: boolean; note?: string }>
+}
+
+export type ElectronSystemApi = {
+  getDeviceId: () => Promise<string | null>
+  configurePiRuntime: (config: { convexUrl?: string; convexSiteUrl?: string }) => Promise<{ deviceId: string | null }>
+  setAuthState: (payload: { authenticated: boolean; token?: string }) => Promise<{ ok: boolean }>
+  setCloudSyncEnabled: (payload: { enabled: boolean }) => Promise<{ ok: boolean }>
+  onAuthCallback: (callback: (data: { url: string }) => void) => () => void
+  openFullDiskAccess: () => void
+  openExternal: (url: string) => void
+  shellKillByPort: (port: number) => Promise<void>
+  getLocalSyncMode: () => Promise<string>
+  setLocalSyncMode: (mode: string) => Promise<void>
+  onCredentialRequest: (
+    callback: (
+      event: unknown,
+      data: { requestId: string; provider: string; label?: string; description?: string; placeholder?: string }
+    ) => void
+  ) => () => void
+  submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) => Promise<{ ok: boolean; error?: string }>
+  cancelCredential: (payload: { requestId: string }) => Promise<{ ok: boolean; error?: string }>
+  getIdentityMap: () => Promise<{ version: number; mappings: { real: { name: string; identifier: string }; alias: { name: string; identifier: string }; source: string }[] }>
+  depseudonymize: (text: string) => Promise<string>
+  bridgeDeploy: (payload: {
+    provider: string; code: string; env: Record<string, string>; dependencies: string
+  }) => Promise<{ ok: boolean; error?: string }>
+  bridgeStart: (payload: { provider: string }) => Promise<{ ok: boolean; error?: string }>
+  bridgeStop: (payload: { provider: string }) => Promise<{ ok: boolean }>
+  bridgeStatus: (payload: { provider: string }) => Promise<{ running: boolean }>
+}
+
+export type ElectronBrowserApi = {
+  checkCoreMemoryExists: () => Promise<boolean>
+  collectData: () => Promise<BrowserDataResult>
+  detectPreferred: () => Promise<PreferredBrowserProfile>
+  listProfiles: (browserType: string) => Promise<BrowserProfile[]>
+  writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
+  collectAllSignals: (options?: { categories?: string[] }) => Promise<AllUserSignalsResult>
+  listWorkspacePanels: () => Promise<Array<{ name: string; title: string }>>
+  onWorkspacePanelsChanged: (callback: (panels: Array<{ name: string; title: string }>) => void) => () => void
+}
+
+// ---------------------------------------------------------------------------
+// Main ElectronApi — composed from namespaced sub-types
+// ---------------------------------------------------------------------------
+
+export type ElectronApi = {
+  platform: string
+  window: ElectronWindowApi
+  ui: ElectronUiApi
+  capture: ElectronCaptureApi
+  radial: ElectronRadialApi
+  overlay: ElectronOverlayApi
+  mini: ElectronMiniApi
+  theme: ElectronThemeApi
+  voice: ElectronVoiceApi
+  agent: ElectronAgentApi
+  store: ElectronStoreApi
+  system: ElectronSystemApi
+  browser: ElectronBrowserApi
+}
 
 declare global {
   interface Window {

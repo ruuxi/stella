@@ -11,6 +11,7 @@ import { useRafStringAccumulator } from "./use-raf-state";
 import { getPlatform } from "../utils/platform";
 import { getOrCreateDeviceId } from "../services/device";
 import type { EventRecord } from "./use-conversation-events";
+import { getEventText } from "../lib/event-transforms";
 import type { AgentHealth, ChatContext } from "../types/electron";
 import {
   findQueuedFollowUp,
@@ -88,26 +89,16 @@ const resolveAgentNotReadyToast = (
 };
 
 const trySyncHostToken = async (): Promise<boolean> => {
-  if (!window.electronAPI?.setAuthState) return false;
+  if (!window.electronAPI?.system.setAuthState) return false;
   try {
     const { getConvexToken } = await import("../services/auth-token");
     const token = await getConvexToken();
     if (!token) return false;
-    await window.electronAPI.setAuthState({ authenticated: true, token });
+    await window.electronAPI.system.setAuthState({ authenticated: true, token });
     return true;
   } catch (error) {
-    console.warn("[chat] Failed to sync host auth token", error);
     return false;
   }
-};
-
-const getUserEventText = (event: EventRecord): string => {
-  if (!event.payload || typeof event.payload !== "object") return "";
-  const payload = event.payload as { text?: unknown; content?: unknown; message?: unknown };
-  if (typeof payload.text === "string" && payload.text.trim()) return payload.text;
-  if (typeof payload.content === "string" && payload.content.trim()) return payload.content;
-  if (typeof payload.message === "string" && payload.message.trim()) return payload.message;
-  return "";
 };
 
 export function useStreamingChat({
@@ -178,8 +169,8 @@ export function useStreamingChat({
     streamAbortRef.current = null;
 
     // Cancel local agent stream if active
-    if (localRunIdRef.current && window.electronAPI?.cancelAgentChat) {
-      window.electronAPI.cancelAgentChat(localRunIdRef.current);
+    if (localRunIdRef.current && window.electronAPI?.agent.cancelChat) {
+      window.electronAPI.agent.cancelChat(localRunIdRef.current);
       localRunIdRef.current = null;
       localSeqRef.current = 0;
     }
@@ -280,16 +271,16 @@ export function useStreamingChat({
     ) => {
       if (!activeConversationId || !window.electronAPI) return;
 
-      const cleanup = window.electronAPI.onAgentStream((event) => {
-        handleAgentEvent(event as AgentStreamEvent, runIdCounter, {
+      const cleanup = window.electronAPI.agent.onStream((event) => {
+        handleAgentEvent(event, runIdCounter, {
           userMessageId: args.userMessageId,
         });
       });
 
       agentStreamCleanupRef.current = cleanup;
 
-      window.electronAPI
-        .startAgentChat({
+      window.electronAPI.agent
+        .startChat({
           conversationId: activeConversationId,
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
@@ -302,7 +293,7 @@ export function useStreamingChat({
         })
         .catch((error) => {
           if (runIdCounter !== streamRunIdRef.current) return;
-          console.error("Failed to start local agent chat:", error);
+          console.error("Failed to start local agent chat:", (error as Error).message);
           if (isOrchestratorBusyError(error)) {
             showToast({
               title: "Stella is finishing your previous request",
@@ -352,13 +343,13 @@ export function useStreamingChat({
       }
 
       // Desktop is always the orchestrator — no HTTP fallback
-      if (!window.electronAPI?.agentHealthCheck) {
+      if (!window.electronAPI?.agent.healthCheck) {
         console.error("[chat] Local agent not available (no electronAPI)");
         showToast({ title: "Stella agent is not running", variant: "error" });
         resetStreamingState(runId);
         return;
       }
-      void window.electronAPI.agentHealthCheck().then(async (health) => {
+      void window.electronAPI.agent.healthCheck().then(async (health) => {
         if (runId !== streamRunIdRef.current) return;
 
         let nextHealth = health;
@@ -369,8 +360,8 @@ export function useStreamingChat({
         if (!nextHealth?.ready && isTokenReadinessIssue(reason)) {
           const synced = await trySyncHostToken();
           if (runId !== streamRunIdRef.current) return;
-          if (synced && window.electronAPI?.agentHealthCheck) {
-            nextHealth = await window.electronAPI.agentHealthCheck();
+          if (synced && window.electronAPI?.agent.healthCheck) {
+            nextHealth = await window.electronAPI.agent.healthCheck();
             if (runId !== streamRunIdRef.current) return;
             reason = getAgentHealthReason(nextHealth);
           }
@@ -391,7 +382,7 @@ export function useStreamingChat({
         startLocalStream(args, runId);
       }).catch((err) => {
         if (runId !== streamRunIdRef.current) return;
-        console.error("[chat] Local agent health check error:", err);
+        console.error("[chat] Local agent health check error:", (err as Error).message);
         showToast({ title: "Stella agent is not responding", variant: "error" });
         resetStreamingState(runId);
       });
@@ -408,16 +399,20 @@ export function useStreamingChat({
   useResumeAgentRun({
     activeConversationId,
     isStreaming,
-    streamRunIdRef,
-    localRunIdRef,
-    localSeqRef,
-    agentStreamCleanupRef,
-    resetStreamingText,
-    resetReasoningText,
-    resetStreamingState,
-    setIsStreaming,
-    setPendingUserMessageId,
-    handleAgentEvent,
+    refs: {
+      streamRunIdRef,
+      localRunIdRef,
+      localSeqRef,
+      agentStreamCleanupRef,
+    },
+    actions: {
+      resetStreamingText,
+      resetReasoningText,
+      resetStreamingState,
+      setIsStreaming,
+      setPendingUserMessageId,
+      handleAgentEvent,
+    },
   });
 
   // ---- Internal effects: sync and follow-up queue ----
@@ -450,7 +445,7 @@ export function useStreamingChat({
     // Use microtask to avoid double-fire edge case
     void Promise.resolve().then(() => {
       if (cancelled) return;
-      const userPrompt = getUserEventText(queued.event);
+      const userPrompt = getEventText(queued.event);
       if (!userPrompt) return;
       startStream({
         userMessageId: queued.event._id,

@@ -28,7 +28,11 @@ export const SPLIT_STEP_ORDER: Phase[] = [
   "browser", "memory", "creation", "voice", "theme", "personality",
 ];
 
-export type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
+export type DiscoveryCategory =
+  | "browsing_bookmarks"
+  | "dev_environment"
+  | "apps_system"
+  | "messages_notes";
 
 export const DISCOVERY_CATEGORIES: {
   id: DiscoveryCategory;

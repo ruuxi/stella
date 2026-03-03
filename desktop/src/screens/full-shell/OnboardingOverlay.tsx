@@ -10,11 +10,10 @@ import {
   StellaAnimation,
   type StellaAnimationHandle,
 } from "../../components/StellaAnimation";
-import { OnboardingStep1, useOnboardingState } from "../../components/Onboarding";
+import { OnboardingStep1, useOnboardingState } from "../../components/onboarding/Onboarding";
+import type { DiscoveryCategory } from "../../components/onboarding/use-onboarding-state";
 
 const CREATURE_INITIAL_SIZE = 0.22;
-
-type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
 
 export type OnboardingOverlayProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
@@ -37,11 +36,11 @@ const clearLocalBrowserState = async () => {
 
   try {
     localStorage.clear();
-  } catch {}
+  } catch { /* best-effort browser state cleanup */ }
 
   try {
     sessionStorage.clear();
-  } catch {}
+  } catch { /* best-effort browser state cleanup */ }
 
   if (typeof indexedDB !== "undefined" && typeof indexedDB.databases === "function") {
     try {
@@ -50,20 +49,20 @@ const clearLocalBrowserState = async () => {
         .map((database) => database.name)
         .filter((name): name is string => typeof name === "string" && name.length > 0);
       await Promise.all(names.map(deleteIndexedDatabase));
-    } catch {}
+    } catch { /* best-effort browser state cleanup */ }
   }
 
   if (typeof caches !== "undefined") {
     try {
       const cacheNames = await caches.keys();
       await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
-    } catch {}
+    } catch { /* best-effort browser state cleanup */ }
   }
 };
 
 const clearLocalRuntimeState = async () => {
   await clearLocalBrowserState();
-  await window.electronAPI?.hardResetLocalState?.();
+  await window.electronAPI?.ui.hardReset?.();
 };
 
 // eslint-disable-next-line react-refresh/only-export-components

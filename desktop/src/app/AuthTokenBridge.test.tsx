@@ -25,7 +25,7 @@ describe("AuthTokenBridge", () => {
     mockUseSession.mockReturnValue({ data: { id: "user-1" }, isPending: false });
     mockGetConvexToken.mockResolvedValue("test-jwt-token");
     ((window as unknown as Record<string, unknown>)).electronAPI = {
-      setAuthState: mockSetAuthState,
+      system: { setAuthState: mockSetAuthState },
       platform: "win32",
     };
   });
@@ -100,7 +100,7 @@ describe("AuthTokenBridge", () => {
   });
 
   it("does not call setAuthState when setAuthState method is missing", async () => {
-    ((window as unknown as Record<string, unknown>)).electronAPI = {};
+    ((window as unknown as Record<string, unknown>)).electronAPI = { system: {} };
     await act(async () => {
       render(<AuthTokenBridge />);
     });

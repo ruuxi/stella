@@ -9,6 +9,7 @@ import { Spinner } from '@/components/spinner'
 import type { OnboardingDemo } from '@/components/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/types/ui'
 import { HomeView } from '@/views/home/HomeView'
+import { getLocalhostPort } from '@/lib/utils'
 
 const PanelRenderer = lazy(() => import('@/components/canvas/renderers/panel'))
 const AppframeRenderer = lazy(() => import('@/components/canvas/renderers/appframe'))
@@ -17,18 +18,6 @@ const OnboardingCanvas = lazy(() =>
   import('@/components/onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
 )
 
-/** Extract port from a localhost URL, or null if not localhost. */
-const getLocalhostPort = (url?: string): number | null => {
-  if (!url) return null
-  try {
-    const parsed = new URL(url)
-    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-      const port = parseInt(parsed.port, 10)
-      return Number.isFinite(port) ? port : null
-    }
-  } catch { /* ignore */ }
-  return null
-}
 
 type WorkspaceAreaProps = {
   view: ViewType
@@ -53,7 +42,7 @@ export function WorkspaceArea({
   const handleCloseCanvas = useCallback(() => {
     const port = getLocalhostPort(canvas?.url)
     if (port) {
-      window.electronAPI?.shellKillByPort(port)
+      window.electronAPI?.system.shellKillByPort(port)
     }
     closeCanvas()
   }, [canvas, closeCanvas])

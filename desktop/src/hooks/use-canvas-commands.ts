@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useWorkspace } from '@/app/state/workspace-state'
 import { useUiState } from '@/app/state/ui-state'
+import { getLocalhostPort } from '@/lib/utils'
 import type { EventRecord } from './use-conversation-events'
 
 type CanvasCommandPayload = {
@@ -29,19 +30,6 @@ const isSafeCanvasUrl = (value?: string): boolean => {
   } catch {
     return false
   }
-}
-
-/** Extract port from a localhost URL, or null if not localhost. */
-const getLocalhostPort = (url?: string): number | null => {
-  if (!url) return null
-  try {
-    const parsed = new URL(url)
-    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-      const port = parseInt(parsed.port, 10)
-      return Number.isFinite(port) ? port : null
-    }
-  } catch { /* ignore */ }
-  return null
 }
 
 /**
@@ -89,7 +77,7 @@ export const useCanvasCommands = (events: EventRecord[]) => {
           // Kill dev server shell if canvas had a localhost URL
           const port = getLocalhostPort(state.canvas?.url)
           if (port) {
-            window.electronAPI?.shellKillByPort(port)
+            window.electronAPI?.system.shellKillByPort(port)
           }
           closeCanvas()
           setView('home')

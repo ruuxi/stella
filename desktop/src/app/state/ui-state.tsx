@@ -32,8 +32,8 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
       return
     }
 
-    api
-      .getUiState()
+    api.ui
+      .getState()
       .then((nextState) => {
         setState(nextState)
       })
@@ -41,7 +41,7 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
         setState(defaultState)
       })
 
-    const unsubscribe = api.onUiState((nextState) => {
+    const unsubscribe = api.ui.onState((nextState) => {
       setState(nextState)
     })
 
@@ -54,7 +54,7 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
     setState((prev) => ({ ...prev, ...partial }))
     const api = getElectronApi()
     if (api) {
-      void api.setUiState(partial)
+      void api.ui.setState(partial)
     }
   }, [])
 
@@ -89,7 +89,7 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
       }
       const api = getElectronApi()
       if (api) {
-        api.showWindow(windowMode)
+        api.window.show(windowMode)
       }
     },
     [updateState],

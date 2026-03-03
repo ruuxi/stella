@@ -9,7 +9,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
-import type { SafariData, BookmarkEntry } from "./discovery_types.js";
+import type { SafariData, BookmarkEntry } from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.log("[safari-data]", ...args);
 

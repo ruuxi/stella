@@ -50,7 +50,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     if (!shellVisible) {
       return;
     }
-    return window.electronAPI?.onVoiceTranscript?.((transcript) => {
+    return window.electronAPI?.voice.onTranscript?.((transcript) => {
       setMessage((prev) => (prev ? prev + ' ' + transcript : transcript));
     });
   }, [setMessage, shellVisible]);
@@ -99,7 +99,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
             <button
               className="mini-titlebar-action"
               type="button"
-              onClick={() => window.electronAPI?.closeWindow?.()}
+              onClick={() => window.electronAPI?.window.close?.()}
               title="Close"
             >
               <svg

@@ -8,8 +8,8 @@ import {
   getCodexLocalMaxConcurrency,
   getGeneralAgentEngine,
   getModelOverride,
-} from "./extensions/stella/local_preferences.js";
-import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./extensions/stella/local_task_manager.js";
+} from "./extensions/stella/local-preferences.js";
+import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./extensions/stella/local-task-manager.js";
 import type { ToolContext } from "./extensions/stella/tools-types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import {

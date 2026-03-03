@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import DJStudio from "./DJStudioDemo";
+import { DJStudio } from "./DJStudioDemo";
 
 /* ── Mock AudioContext ── */
 

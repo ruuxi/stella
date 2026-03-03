@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, type Dispatch } from "react";
+import { MINI_SHELL_SIZE } from "@/constants/layout";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "./mini-shell/MiniShell";
@@ -17,25 +18,29 @@ import { VoiceOverlay } from "../components/VoiceOverlay";
  */
 
 type OverlayState = {
-  /** Whether context-menu blocking is active (replaces modifier overlay) */
   modifierBlock: boolean;
-  /** Whether the radial dial is visible (driven by radial:show/hide IPC) */
   radialVisible: boolean;
-  /** Screen position for the radial container (DIP coords) */
   radialPosition: { x: number; y: number } | null;
-  /** Whether region capture mode is active */
   regionCaptureActive: boolean;
-  /** Whether the mini shell is visible */
   miniVisible: boolean;
-  /** Whether screenshot preview modal is open inside mini shell */
   miniPreviewVisible: boolean;
-  /** Position for the mini shell (screen coords relative to overlay origin) */
   miniPosition: { x: number; y: number } | null;
-  /** Whether standalone voice overlay is visible */
   voiceVisible: boolean;
-  /** Position for standalone voice overlay */
   voicePosition: { x: number; y: number } | null;
 };
+
+type OverlayAction =
+  | { type: "radial:show"; position?: { x: number; y: number } }
+  | { type: "radial:hide" }
+  | { type: "modifier"; active: boolean }
+  | { type: "region"; active: boolean }
+  | { type: "mini:show"; position: { x: number; y: number } }
+  | { type: "mini:hide" }
+  | { type: "mini:restore" }
+  | { type: "mini:position"; position: { x: number; y: number } }
+  | { type: "mini:preview"; visible: boolean }
+  | { type: "voice:show"; position: { x: number; y: number } }
+  | { type: "voice:hide" };
 
 const initialState: OverlayState = {
   modifierBlock: false,
@@ -49,28 +54,167 @@ const initialState: OverlayState = {
   voicePosition: null,
 };
 
-const MINI_SHELL_SIZE = {
-  width: 480,
-  height: 700,
-} as const;
+function overlayReducer(state: OverlayState, action: OverlayAction): OverlayState {
+  switch (action.type) {
+    case "radial:show":
+      return { ...state, radialVisible: true, ...(action.position ? { radialPosition: action.position } : {}) };
+    case "radial:hide":
+      return { ...state, radialVisible: false };
+    case "modifier":
+      return { ...state, modifierBlock: action.active };
+    case "region":
+      return { ...state, regionCaptureActive: action.active };
+    case "mini:show":
+      return { ...state, miniVisible: true, miniPosition: action.position };
+    case "mini:hide":
+      return { ...state, miniVisible: false };
+    case "mini:restore":
+      return { ...state, miniVisible: true };
+    case "mini:position":
+      return { ...state, miniPosition: action.position };
+    case "mini:preview":
+      return state.miniPreviewVisible === action.visible ? state : { ...state, miniPreviewVisible: action.visible };
+    case "voice:show":
+      return { ...state, voiceVisible: true, voicePosition: action.position };
+    case "voice:hide":
+      return { ...state, voiceVisible: false };
+    default:
+      return state;
+  }
+}
 
 const VOICE_PILL_SIZE = {
   width: 148,
   height: 36,
 } as const;
 
-export function OverlayRoot() {
-  const [state, setState] = useState<OverlayState>(initialState);
-  const interactiveRef = useRef(false);
-  const miniRef = useRef<HTMLDivElement>(null);
-  const radialRef = useRef<HTMLDivElement>(null);
-  const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
+// ---------------------------------------------------------------------------
+// Hook: useOverlayIPC
+// Consolidates ALL IPC subscription effects (radial show/hide, modifier block,
+// region capture, mini show/hide/restore, voice show/hide) into a single hook.
+// Also handles context-menu suppression when modifier block is active.
+// ---------------------------------------------------------------------------
+function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean) {
+  // Radial dial positioning (driven by radial:show/hide IPC).
+  // The RadialDial component handles its own animation state via these same
+  // IPC channels. OverlayRoot additionally tracks visibility and position
+  // to control the container element's CSS and hit-testing.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
 
-  // Mini shell drag (custom, replaces -webkit-app-region: drag)
-  // The mini shell is inside the overlay, so -webkit-app-region: drag would
-  // move the entire fullscreen overlay. Instead, we mutate the DOM directly
-  // during drag (to avoid re-rendering the entire tree on every mousemove)
-  // and commit the final position to React state on mouseup.
+    // radial:show includes extra screenX/screenY for container positioning
+    const cleanupShow = api.radial.onShow(
+      (_event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number; screenX?: number; screenY?: number }) => {
+        if (typeof data.screenX === "number" && typeof data.screenY === "number") {
+          dispatch({ type: "radial:show", position: { x: data.screenX!, y: data.screenY! } });
+        } else {
+          dispatch({ type: "radial:show" });
+        }
+      },
+    );
+    const cleanupHide = api.radial.onHide(() => {
+      // Do not immediately set radialVisible=false. The RadialDial plays a
+      // close animation and calls radialAnimDone. We hide after a short delay
+      // to let the animation complete.
+      setTimeout(() => {
+        dispatch({ type: "radial:hide" });
+      }, 300);
+    });
+
+    return () => {
+      cleanupShow();
+      cleanupHide();
+    };
+  }, [dispatch]);
+
+  // Modifier block (context-menu suppression).
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanup = api.overlay.onModifierBlock?.((active: boolean) => {
+      dispatch({ type: "modifier", active });
+    });
+    return () => cleanup?.();
+  }, [dispatch]);
+
+  // Block native context menu when modifier block is active
+  useEffect(() => {
+    if (!modifierBlock) return;
+    const handler = (e: Event) => e.preventDefault();
+    document.addEventListener("contextmenu", handler, true);
+    return () => document.removeEventListener("contextmenu", handler, true);
+  }, [modifierBlock]);
+
+  // Region capture.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanupStart = api.overlay.onStartRegionCapture?.(() => {
+      dispatch({ type: "region", active: true });
+    });
+    const cleanupEnd = api.overlay.onEndRegionCapture?.(() => {
+      dispatch({ type: "region", active: false });
+    });
+    return () => {
+      cleanupStart?.();
+      cleanupEnd?.();
+    };
+  }, [dispatch]);
+
+  // Mini shell visibility.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanup = api.overlay.onShowMini?.((data: { x: number; y: number }) => {
+      dispatch({ type: "mini:show", position: { x: data.x, y: data.y } });
+    });
+    const cleanupHide = api.overlay.onHideMini?.(() => {
+      dispatch({ type: "mini:hide" });
+    });
+    const cleanupRestore = api.overlay.onRestoreMini?.(() => {
+      dispatch({ type: "mini:restore" });
+    });
+    return () => {
+      cleanup?.();
+      cleanupHide?.();
+      cleanupRestore?.();
+    };
+  }, [dispatch]);
+
+  // Standalone voice overlay visibility/position.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanupShow = api.overlay.onShowVoice?.((data: { x: number; y: number; mode: "stt" | "realtime" }) => {
+      dispatch({ type: "voice:show", position: { x: data.x, y: data.y } });
+    });
+    const cleanupHide = api.overlay.onHideVoice?.(() => {
+      dispatch({ type: "voice:hide" });
+    });
+
+    return () => {
+      cleanupShow?.();
+      cleanupHide?.();
+    };
+  }, [dispatch]);
+}
+
+// ---------------------------------------------------------------------------
+// Hook: useMiniDrag
+// Extracts mini shell drag mechanics (mousedown handler + mousemove/mouseup
+// effect). The mini shell lives inside a fullscreen overlay, so
+// -webkit-app-region: drag would move the entire window. Instead we mutate
+// the DOM directly during drag and commit the final position on mouseup.
+// ---------------------------------------------------------------------------
+function useMiniDrag(
+  miniRef: React.RefObject<HTMLDivElement | null>,
+  dispatch: Dispatch<OverlayAction>,
+) {
   const miniDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
   const handleMiniTitlebarMouseDown = useCallback((e: React.MouseEvent) => {
@@ -89,7 +233,7 @@ export function OverlayRoot() {
       origX: parseInt(el.style.left, 10) || 0,
       origY: parseInt(el.style.top, 10) || 0,
     };
-  }, []);
+  }, [miniRef]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -105,7 +249,7 @@ export function OverlayRoot() {
         // Commit final position to React state
         const x = parseInt(miniRef.current.style.left, 10) || 0;
         const y = parseInt(miniRef.current.style.top, 10) || 0;
-        setState((prev) => ({ ...prev, miniPosition: { x, y } }));
+        dispatch({ type: "mini:position", position: { x, y } });
       }
       miniDragRef.current = null;
     };
@@ -115,145 +259,22 @@ export function OverlayRoot() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, []);
+  }, [miniRef, dispatch]);
 
-  // Radial dial positioning (driven by radial:show/hide IPC).
-  // The RadialDial component handles its own animation state via these same
-  // IPC channels. OverlayRoot additionally tracks visibility and position
-  // to control the container element's CSS and hit-testing.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
+  return { handleMiniTitlebarMouseDown };
+}
 
-    // radial:show includes extra screenX/screenY for container positioning
-    const cleanupShow = api.onRadialShow(
-      (_event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number; screenX?: number; screenY?: number }) => {
-        if (typeof data.screenX === "number" && typeof data.screenY === "number") {
-          setState((prev) => ({
-            ...prev,
-            radialVisible: true,
-            radialPosition: { x: data.screenX!, y: data.screenY! },
-          }));
-        } else {
-          setState((prev) => ({ ...prev, radialVisible: true }));
-        }
-      },
-    );
-    const cleanupHide = api.onRadialHide(() => {
-      // Do not immediately set radialVisible=false. The RadialDial plays a
-      // close animation and calls radialAnimDone. We hide after a short delay
-      // to let the animation complete.
-      setTimeout(() => {
-        setState((prev) => ({ ...prev, radialVisible: false }));
-      }, 300);
-    });
-
-    return () => {
-      cleanupShow();
-      cleanupHide();
-    };
-  }, []);
-
-  // Modifier block (context-menu suppression).
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanup = api.onOverlayModifierBlock?.((active: boolean) => {
-      setState((prev) => ({ ...prev, modifierBlock: active }));
-    });
-    return () => cleanup?.();
-  }, []);
-
-  // Block native context menu when modifier block is active
-  useEffect(() => {
-    if (!state.modifierBlock) return;
-    const handler = (e: Event) => e.preventDefault();
-    document.addEventListener("contextmenu", handler, true);
-    return () => document.removeEventListener("contextmenu", handler, true);
-  }, [state.modifierBlock]);
-
-  // Region capture.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupStart = api.onOverlayStartRegionCapture?.(() => {
-      setState((prev) => ({ ...prev, regionCaptureActive: true }));
-    });
-    const cleanupEnd = api.onOverlayEndRegionCapture?.(() => {
-      setState((prev) => ({ ...prev, regionCaptureActive: false }));
-    });
-    return () => {
-      cleanupStart?.();
-      cleanupEnd?.();
-    };
-  }, []);
-
-  // Mini shell visibility.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanup = api.onOverlayShowMini?.((data: { x: number; y: number }) => {
-      setState((prev) => ({
-        ...prev,
-        miniVisible: true,
-        miniPosition: { x: data.x, y: data.y },
-      }));
-    });
-    const cleanupHide = api.onOverlayHideMini?.(() => {
-      setState((prev) => ({ ...prev, miniVisible: false }));
-    });
-    const cleanupRestore = api.onOverlayRestoreMini?.(() => {
-      setState((prev) => ({ ...prev, miniVisible: true }));
-    });
-    return () => {
-      cleanup?.();
-      cleanupHide?.();
-      cleanupRestore?.();
-    };
-  }, []);
-
-  const handleMiniPreviewVisibilityChange = useCallback((visible: boolean) => {
-    setState((prev) =>
-      prev.miniPreviewVisible === visible ? prev : { ...prev, miniPreviewVisible: visible },
-    );
-  }, []);
-
-  const handleVoiceTranscript = useCallback((transcript: string) => {
-    window.electronAPI?.submitVoiceTranscript?.(transcript);
-  }, []);
-
-  // Standalone voice overlay visibility/position.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.onOverlayShowVoice?.((data: { x: number; y: number; mode: "stt" | "realtime" }) => {
-      setState((prev) => ({
-        ...prev,
-        voiceVisible: true,
-        voicePosition: { x: data.x, y: data.y },
-      }));
-    });
-    const cleanupHide = api.onOverlayHideVoice?.(() => {
-      setState((prev) => ({ ...prev, voiceVisible: false }));
-    });
-
-    return () => {
-      cleanupShow?.();
-      cleanupHide?.();
-    };
-  }, []);
-
-  // Hit-testing: toggle setIgnoreMouseEvents.
-  const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
-    if (interactiveRef.current === shouldBeInteractive) return;
-    interactiveRef.current = shouldBeInteractive;
-    window.electronAPI?.overlaySetInteractive?.(shouldBeInteractive);
-  }, []);
-
+// ---------------------------------------------------------------------------
+// Hook: useOverlayHitTesting
+// Manages the overlay's setIgnoreMouseEvents toggle based on which overlay
+// subsystems are currently active and whether the cursor is over an
+// interactive region.
+// ---------------------------------------------------------------------------
+function useOverlayHitTesting(
+  state: OverlayState,
+  miniRef: React.RefObject<HTMLDivElement | null>,
+  updateInteractive: (shouldBeInteractive: boolean) => void,
+) {
   useEffect(() => {
     // When region capture is active, the entire overlay must be interactive
     if (state.regionCaptureActive) {
@@ -323,10 +344,10 @@ export function OverlayRoot() {
     state.miniVisible,
     state.voiceVisible,
     state.voicePosition,
+    miniRef,
     updateInteractive,
   ]);
 
-  // When nothing is active, ensure we're click-through
   useEffect(() => {
     const anythingActive =
       state.modifierBlock ||
@@ -340,6 +361,41 @@ export function OverlayRoot() {
       updateInteractive(false);
     }
   }, [state, updateInteractive]);
+}
+
+// ---------------------------------------------------------------------------
+// Component: OverlayRoot
+// Composes the hooks above and renders the overlay subsystem JSX.
+// ---------------------------------------------------------------------------
+export function OverlayRoot() {
+  const [state, dispatch] = useReducer(overlayReducer, initialState);
+  const interactiveRef = useRef(false);
+  const miniRef = useRef<HTMLDivElement>(null);
+  const radialRef = useRef<HTMLDivElement>(null);
+  const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
+
+  // Wire up all IPC subscriptions (radial, modifier, region, mini, voice)
+  useOverlayIPC(dispatch, state.modifierBlock);
+
+  // Mini shell drag mechanics
+  const { handleMiniTitlebarMouseDown } = useMiniDrag(miniRef, dispatch);
+
+  // Interactivity / hit-testing management
+  const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
+    if (interactiveRef.current === shouldBeInteractive) return;
+    interactiveRef.current = shouldBeInteractive;
+    window.electronAPI?.overlay.setInteractive?.(shouldBeInteractive);
+  }, []);
+
+  useOverlayHitTesting(state, miniRef, updateInteractive);
+
+  const handleMiniPreviewVisibilityChange = useCallback((visible: boolean) => {
+    dispatch({ type: "mini:preview", visible });
+  }, []);
+
+  const handleVoiceTranscript = useCallback((transcript: string) => {
+    window.electronAPI?.voice.submitTranscript?.(transcript);
+  }, []);
 
   return (
     <div

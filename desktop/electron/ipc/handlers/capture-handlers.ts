@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import type { CaptureService } from '../../services/capture-service.js'
 import type { RegionSelection } from '../../types.js'
 import type { WindowManager } from '../../windows/window-manager.js'
@@ -6,6 +6,7 @@ import type { WindowManager } from '../../windows/window-manager.js'
 type CaptureHandlersOptions = {
   captureService: CaptureService
   windowManager: WindowManager
+  assertPrivilegedSender: (event: IpcMainEvent | IpcMainInvokeEvent, channel: string) => boolean
 }
 
 export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
@@ -47,7 +48,10 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     await options.captureService.handleRegionClick(point)
   })
 
-  ipcMain.handle('screenshot:capture', async (_event, point?: { x: number; y: number }) => {
+  ipcMain.handle('screenshot:capture', async (event, point?: { x: number; y: number }) => {
+    if (!options.assertPrivilegedSender(event, 'screenshot:capture')) {
+      throw new Error('Blocked untrusted request.')
+    }
     return options.captureService.captureScreenshot(point)
   })
 }

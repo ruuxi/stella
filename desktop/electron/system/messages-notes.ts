@@ -7,7 +7,7 @@ import type {
   GroupChat,
   NoteFolder,
   CalendarSummary,
-} from "./discovery_types.js";
+} from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.log("[messages-notes]", ...args);
 
