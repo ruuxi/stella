@@ -5,6 +5,9 @@ type TableName = "conversations" | "threads" | "thread_messages";
 
 type Row = Record<string, unknown> & { _id: string };
 
+/** Type-safe access to Convex internal mutation handler for testing */
+type InternalHandler = { _handler: (ctx: unknown, args: Record<string, unknown>) => Promise<unknown> };
+
 class InMemoryDb {
   private tables: Record<TableName, Map<string, Row>> = {
     conversations: new Map(),
@@ -32,14 +35,14 @@ class InMemoryDb {
     const table = this.tableForId.get(id);
     if (!table) return null;
     const row = this.tables[table].get(id);
-    return row ? ({ ...row } as any) : null;
+    return row ? { ...row } : null;
   }
 
   async insert(table: TableName, doc: Record<string, unknown>) {
     const id = `${table}:${++this.counters[table]}`;
     this.tables[table].set(id, { _id: id, ...doc });
     this.tableForId.set(id, table);
-    return id as any;
+    return id as unknown;
   }
 
   async patch(id: string, patch: Record<string, unknown>) {
@@ -62,7 +65,7 @@ class InMemoryDb {
     const db = this;
 
     return {
-      withIndex: (_indexName: string, cb: (q: { eq: (field: string, value: unknown) => any }) => unknown) => {
+      withIndex: (_indexName: string, cb: (q: { eq: (field: string, value: unknown) => unknown }) => unknown) => {
         const q = {
           eq(field: string, value: unknown) {
             filters.push({ field, value });
@@ -78,7 +81,7 @@ class InMemoryDb {
             if (table === "thread_messages") {
               rows.sort((a, b) => Number(a.ordinal ?? 0) - Number(b.ordinal ?? 0));
             }
-            return rows.map((row) => ({ ...row })) as any;
+            return rows.map((row) => ({ ...row }));
           },
         };
       },
@@ -90,7 +93,7 @@ class InMemoryDb {
   }
 }
 
-const makeCtx = (db: InMemoryDb) => ({ db }) as any;
+const makeCtx = (db: InMemoryDb) => ({ db } as unknown);
 
 describe("thread compaction rollover", () => {
   test("main-thread finalize rolls forward to a new active Main thread with retained tail", async () => {
@@ -127,23 +130,23 @@ describe("thread compaction rollover", () => {
       });
     }
 
-    await (finalizeThreadCompaction as any)._handler(makeCtx(db), {
+    await (finalizeThreadCompaction as unknown as InternalHandler)._handler(makeCtx(db), {
       threadId: "threads:1",
       keepFromOrdinal: 4,
       summary: "new-summary",
     });
 
-    const conversation = (await db.get("conversations:1")) as any;
+    const conversation = (await db.get("conversations:1"));
     expect(conversation.activeThreadId).not.toBe("threads:1");
 
-    const oldThread = (await db.get("threads:1")) as any;
+    const oldThread = (await db.get("threads:1"));
     expect(oldThread.status).toBe("archived");
     expect(oldThread.summary).toBe("new-summary");
     expect(oldThread.messageCount).toBe(0);
     expect(oldThread.totalTokenEstimate).toBe(0);
 
     const newThreadId = conversation.activeThreadId as string;
-    const newThread = (await db.get(newThreadId)) as any;
+    const newThread = (await db.get(newThreadId));
     expect(newThread.name).toBe("Main");
     expect(newThread.status).toBe("active");
     expect(newThread.summary).toBe("new-summary");
@@ -196,19 +199,19 @@ describe("thread compaction rollover", () => {
       });
     }
 
-    await (finalizeThreadCompaction as any)._handler(makeCtx(db), {
+    await (finalizeThreadCompaction as unknown as InternalHandler)._handler(makeCtx(db), {
       threadId: "threads:2",
       keepFromOrdinal: 2,
       summary: "research-summary",
     });
 
-    const thread = (await db.get("threads:2")) as any;
+    const thread = (await db.get("threads:2"));
     expect(thread.status).toBe("active");
     expect(thread.summary).toBe("research-summary");
     expect(thread.messageCount).toBe(2);
     expect(thread.totalTokenEstimate).toBe(2_000);
 
-    const conversation = (await db.get("conversations:1")) as any;
+    const conversation = (await db.get("conversations:1"));
     expect(conversation.activeThreadId).toBe("threads:99");
 
     const retained = db
@@ -264,16 +267,16 @@ describe("thread compaction rollover", () => {
       });
     }
 
-    await (finalizeThreadCompaction as any)._handler(makeCtx(db), {
+    await (finalizeThreadCompaction as unknown as InternalHandler)._handler(makeCtx(db), {
       threadId: "threads:1",
       keepFromOrdinal: 3,
       summary: "updated-summary",
     });
 
-    const conversation = (await db.get("conversations:1")) as any;
+    const conversation = (await db.get("conversations:1"));
     expect(conversation.activeThreadId).toBe("threads:99");
 
-    const thread = (await db.get("threads:1")) as any;
+    const thread = (await db.get("threads:1"));
     expect(thread.status).toBe("active");
     expect(thread.summary).toBe("updated-summary");
     expect(thread.messageCount).toBe(2);

@@ -1,7 +1,9 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage, processLinkCode } from "./utils";
+import { processIncomingMessage } from "./message_pipeline";
+import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
+import { base64UrlDecode } from "../lib/crypto_utils";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
@@ -11,6 +13,11 @@ import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "..
 // Google's public JWKs for chat service account
 const GOOGLE_CHAT_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/chat@system.gserviceaccount.com";
+
+const GOOGLE_JWT_EXPIRATION_SECONDS = 3600;
+const DEFAULT_TOKEN_LIFETIME_SECONDS = 3600;
+const TOKEN_REFRESH_BUFFER_MS = 60_000;
+const GOOGLE_CHAT_MAX_MESSAGE_CHARS = 4096;
 
 let cachedJwks: { keys: JsonWebKey[]; fetchedAt: number } | null = null;
 const JWKS_CACHE_MS = 60 * 60 * 1000; // 1 hour
@@ -26,16 +33,7 @@ async function fetchGoogleJwks(): Promise<JsonWebKey[]> {
   return data.keys;
 }
 
-function base64UrlDecode(str: string): Uint8Array {
-  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
+// base64UrlDecode imported from lib/crypto_utils
 
 export async function verifyGoogleChatJwt(
   authHeader: string,
@@ -99,7 +97,7 @@ let cachedGoogleToken: { token: string; expiresAt: number } | null = null;
  * Creates a self-signed JWT, exchanges it for an access token.
  */
 async function getGoogleAccessToken(): Promise<string> {
-  if (cachedGoogleToken && cachedGoogleToken.expiresAt > Date.now() + 60_000) {
+  if (cachedGoogleToken && cachedGoogleToken.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
     return cachedGoogleToken.token;
   }
 
@@ -116,7 +114,7 @@ async function getGoogleAccessToken(): Promise<string> {
     scope: "https://www.googleapis.com/auth/chat.bot",
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
-    exp: now + 3600,
+    exp: now + GOOGLE_JWT_EXPIRATION_SECONDS,
   };
 
   const encode = (obj: unknown) => {
@@ -177,7 +175,7 @@ async function getGoogleAccessToken(): Promise<string> {
   const expiresIn = Number(tokenData.expires_in);
   cachedGoogleToken = {
     token: tokenData.access_token,
-    expiresAt: Date.now() + ((Number.isFinite(expiresIn) ? expiresIn : 3600) - 60) * 1000,
+    expiresAt: Date.now() + ((Number.isFinite(expiresIn) ? expiresIn : DEFAULT_TOKEN_LIFETIME_SECONDS) - 60) * 1000,
   };
   return tokenData.access_token;
 }
@@ -186,7 +184,7 @@ const sendGoogleChatMessage = async (spaceName: string, text: string) => {
   try {
     const accessToken = await getGoogleAccessToken();
     // Google Chat message limit is 4096 chars
-    const maxLen = 4096;
+    const maxLen = GOOGLE_CHAT_MAX_MESSAGE_CHARS;
     const truncated = text.length > maxLen
       ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
       : text;
@@ -222,6 +220,7 @@ export const handleLinkCommand = internalAction({
     code: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const result = await processLinkCode({
       ctx,
@@ -260,6 +259,7 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 

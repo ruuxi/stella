@@ -4,9 +4,10 @@ import { internal } from "../_generated/api";
 const WEBHOOK_EVENT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export const rateLimitResponse = (retryAfterMs: number) =>
-  new Response("Too Many Requests", {
+  new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
     status: 429,
     headers: {
+      "Content-Type": "application/json",
       "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
     },
   });
@@ -19,7 +20,7 @@ export const consumeWebhookDedup = async (
   if (!key || key.trim().length === 0) {
     return true;
   }
-  const status = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+  const status = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
     scope: `${scope}_dedup`,
     key,
     limit: 1,
@@ -39,7 +40,7 @@ export const consumeWebhookRateLimit = async (
     blockMs: number;
   },
 ) =>
-  ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+  ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
     scope: args.scope,
     key: args.key,
     limit: args.limit,

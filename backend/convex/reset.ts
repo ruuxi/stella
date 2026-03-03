@@ -15,6 +15,7 @@ const BATCH = 500;
 
 export const resetAllUserData = action({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
 
@@ -53,6 +54,7 @@ export const resetAllUserData = action({
 
 export const _getConversationIds = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.array(v.id("conversations")),
   handler: async (ctx, { ownerId }) => {
     const conversations = await ctx.db
       .query("conversations")
@@ -64,6 +66,7 @@ export const _getConversationIds = internalQuery({
 
 export const _deleteConversationBatch = internalMutation({
   args: { conversationId: v.id("conversations") },
+  returns: v.boolean(),
   handler: async (ctx, { conversationId }) => {
     let deleted = 0;
 
@@ -127,6 +130,7 @@ export const _deleteConversationBatch = internalMutation({
 
 export const _deleteOwnerBatch = internalMutation({
   args: { ownerId: v.string() },
+  returns: v.boolean(),
   handler: async (ctx, { ownerId }) => {
     let totalDeleted = 0;
 

@@ -6,7 +6,8 @@ import {
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
-import { processIncomingMessage, processLinkCode } from "./utils";
+import { processIncomingMessage } from "./message_pipeline";
+import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
@@ -133,6 +134,7 @@ export async function verifyLinqSignature(
 
 export const getCachedChatId = internalQuery({
   args: { phoneNumber: v.string() },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("linq_chats")
@@ -147,6 +149,7 @@ export const cacheChatId = internalMutation({
     phoneNumber: v.string(),
     linqChatId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("linq_chats")
@@ -181,7 +184,6 @@ const sendLinqReply = async (
   text: string,
   incomingChatId?: string,
 ): Promise<void> => {
-  console.log("[linq] sendLinqReply called — to:", phoneNumber, "chatId:", incomingChatId, "text:", text.slice(0, 80));
   const fromNumber = process.env.LINQ_FROM_NUMBER;
   if (!fromNumber) {
     console.error("[linq] Missing LINQ_FROM_NUMBER — cannot send reply!");
@@ -235,6 +237,7 @@ export const handleStartCommand = internalAction({
     text: v.string(),
     incomingChatId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     // Extract 6-digit code from text like "link ABC123" or just "ABC123"
     const codeMatch = args.text.match(/\b([A-Z0-9]{6})\b/i);
@@ -281,9 +284,9 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
-    console.log("[linq] handleIncomingMessage called:", args.senderPhone, args.text.slice(0, 100));
     try {
       const result = await processIncomingMessage({
         ctx,
@@ -300,13 +303,10 @@ export const handleIncomingMessage = internalAction({
         },
       });
 
-      console.log("[linq] processIncomingMessage result:", result ? (result.deferred ? "deferred" : "got response") : "null (not linked)");
-
       if (result?.deferred) return null;
 
       if (!result) {
         if (!shouldRespond) return null;
-        console.log("[linq] Sending 'not linked' reply");
         await sendLinqReply(
           ctx,
           args.senderPhone,
@@ -317,7 +317,6 @@ export const handleIncomingMessage = internalAction({
       }
 
       if (!shouldRespond) return null;
-      console.log("[linq] Sending agent reply:", result.text.slice(0, 100));
       await sendLinqReply(ctx, args.senderPhone, result.text, args.incomingChatId);
     } catch (error) {
       console.error("[linq] Agent turn failed:", error);

@@ -33,8 +33,10 @@ import {
 import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
 import { isContextOverflowError } from "@stella/shared";
+import type { ModelMessage } from "@ai-sdk/provider-utils";
 import { PREFERRED_BROWSER_KEY } from "../data/preferences";
 import { BROWSER_AGENT_SAFARI_DENIED_REASON, SUBAGENT_TYPES } from "../lib/agent_constants";
+import { sleep } from "../lib/async";
 
 // Task without model field for client responses
 const taskClientValidator = v.object({
@@ -66,6 +68,9 @@ const DEFAULT_MAX_TASK_DEPTH = 2;
 const TASK_CANCEL_POLL_INTERVAL_MS = 2000;
 const TASK_CHECKIN_INTERVAL_MS = 10 * 60 * 1000;
 const PERSIST_CHUNK_DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const DELIVERY_RETRY_BACKOFF_MS = 5_000;
+const MAX_PERSIST_CHUNK_PAYLOAD_BYTES = 1_000_000;
+const MAX_SYNC_TASKS_QUERY_LIMIT = 1000;
 const ALLOWED_SUBAGENT_TYPES: Set<string> = new Set(SUBAGENT_TYPES);
 
 const usageSummaryValidator = v.object({
@@ -76,8 +81,6 @@ const usageSummaryValidator = v.object({
 
 const isSafariBrowserPreference = (value: string | null): boolean =>
   value?.trim().toLowerCase() === "safari";
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type TaskStatus = "running" | "completed" | "error" | "canceled";
 type RuntimeFinalTaskStatus = Exclude<TaskStatus, "running">;
@@ -150,15 +153,11 @@ const applyTaskCancellation = async (
 const loadTaskByExternalTaskId = async (
   ctx: QueryCtx,
   taskId: string,
-  source: "getOutputByExternalId" | "getOutputByExternalIdInternal",
 ): Promise<Doc<"tasks"> | null> => {
   try {
     return await ctx.db.get(taskId as Id<"tasks">);
-  } catch (error) {
-    console.warn(`[agent.tasks] ${source}: invalid external task id`, {
-      taskId,
-      error: (error as Error).message,
-    });
+  } catch {
+    // Invalid external task ID — return null to indicate not found
     return null;
   }
 };
@@ -238,8 +237,8 @@ const classifyBashCommand = (cmd: string): string => {
 const parseJson = (raw: string): unknown => {
   try {
     return JSON.parse(raw);
-  } catch (e) {
-    console.warn("[tasks] Failed to parse JSON in thread message:", e);
+  } catch {
+    // Not valid JSON — return as raw string
     return raw;
   }
 };
@@ -936,7 +935,7 @@ const executeSubagentRun = async (
           targetDeviceId: args.targetDeviceId,
         },
       ),
-      messages: messages as any[],
+      messages: messages as ModelMessage[],
       abortSignal: abortController.signal,
       onStepFinish: async ({ toolCalls }: { toolCalls?: Array<{ toolName: string; args?: unknown }> }) => {
         if (!toolCalls || toolCalls.length === 0) return;
@@ -961,8 +960,8 @@ const executeSubagentRun = async (
 
     const subagentStartTime = Date.now();
     const result = await generateTextWithFailover({
-      resolvedConfig: resolvedConfig as Record<string, unknown>,
-      fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+      resolvedConfig,
+      fallbackConfig: fallbackConfig ?? undefined,
       sharedArgs: generateTextSharedArgs as Record<string, unknown>,
     });
 
@@ -1154,6 +1153,11 @@ export const createTaskRecord = internalMutation({
     maxTaskDepth: v.optional(v.number()),
     commandId: v.optional(v.string()),
   },
+  returns: v.object({
+    taskId: v.id("tasks"),
+    taskDepth: v.number(),
+    maxTaskDepth: v.number(),
+  }),
   handler: async (ctx, args) => {
     const maxTaskDepth = Math.max(0, Math.floor(args.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH));
 
@@ -1203,6 +1207,11 @@ export const createRuntimeTask = mutation({
     commandId: v.optional(v.string()),
     maxTaskDepth: v.optional(v.number()),
   },
+  returns: v.object({
+    taskId: v.id("tasks"),
+    taskDepth: v.number(),
+    maxTaskDepth: v.number(),
+  }),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
 
@@ -1269,6 +1278,7 @@ export const completeRuntimeTask = mutation({
     result: v.optional(v.string()),
     error: v.optional(v.string()),
   },
+  returns: v.union(v.null(), taskClientValidator),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     if (!record) {
@@ -1322,6 +1332,7 @@ export const cancelRuntimeTask = mutation({
     taskId: v.id("tasks"),
     reason: v.optional(v.string()),
   },
+  returns: v.union(v.null(), taskClientValidator),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     if (!record) return null;
@@ -1340,6 +1351,7 @@ export const getRuntimeTaskById = query({
   args: {
     taskId: v.id("tasks"),
   },
+  returns: v.union(v.null(), taskClientValidator),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     if (!record) return null;
@@ -1355,6 +1367,10 @@ export const completeTaskRecord = internalMutation({
     result: v.optional(v.string()),
     error: v.optional(v.string()),
   },
+  returns: v.object({
+    applied: v.boolean(),
+    task: v.union(v.null(), taskClientValidator),
+  }),
   handler: async (ctx, args) => {
     if (!isTaskTerminalStatus(args.status)) {
       throw new ConvexError({
@@ -1404,6 +1420,10 @@ export const finalizeDeliveredTaskTurn = internalMutation({
     shouldResetReminderCounter: v.boolean(),
     turnOutputTokens: v.optional(v.number()),
   },
+  returns: v.object({
+    applied: v.boolean(),
+    assistantSaved: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) {
@@ -1503,6 +1523,7 @@ export const pushStatusUpdate = internalMutation({
     taskId: v.id("tasks"),
     text: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task || task.status !== "running") return null;
@@ -1545,6 +1566,7 @@ export const cancelTask = internalMutation({
     taskId: v.id("tasks"),
     reason: v.optional(v.string()),
   },
+  returns: v.union(v.null(), taskClientValidator),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     if (!record) return null;
@@ -1561,6 +1583,7 @@ export const cancelTaskInternal = internalMutation({
     taskId: v.id("tasks"),
     reason: v.optional(v.string()),
   },
+  returns: v.union(v.null(), taskClientValidator),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     if (!record) return null;
@@ -1575,6 +1598,7 @@ export const getTaskStatus = internalQuery({
   args: {
     taskId: v.id("tasks"),
   },
+  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     return record?.status ?? null;
@@ -1585,6 +1609,7 @@ export const isTaskDeliveryCompleted = internalQuery({
   args: {
     taskId: v.id("tasks"),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     return typeof record?.deliveryCompletedAt === "number";
@@ -1595,6 +1620,7 @@ export const getById = internalQuery({
   args: {
     taskId: v.id("tasks"),
   },
+  returns: v.union(v.null(), taskClientValidator),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.taskId);
     if (record) {
@@ -1608,12 +1634,9 @@ export const getOutputByExternalId = internalQuery({
   args: {
     taskId: v.string(),
   },
+  returns: v.union(v.null(), taskClientValidator),
   handler: async (ctx, args) => {
-    const record = await loadTaskByExternalTaskId(
-      ctx,
-      args.taskId,
-      "getOutputByExternalId",
-    );
+    const record = await loadTaskByExternalTaskId(ctx, args.taskId);
     if (record) {
       await requireConversationOwner(ctx, record.conversationId);
     }
@@ -1625,12 +1648,9 @@ export const getOutputByExternalIdInternal = internalQuery({
   args: {
     taskId: v.string(),
   },
+  returns: v.union(v.null(), taskClientValidator),
   handler: async (ctx, args) => {
-    const record = await loadTaskByExternalTaskId(
-      ctx,
-      args.taskId,
-      "getOutputByExternalIdInternal",
-    );
+    const record = await loadTaskByExternalTaskId(ctx, args.taskId);
     return toTaskClientOrNull(record);
   },
 });
@@ -1639,6 +1659,7 @@ export const listByConversation = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.array(taskClientValidator),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     const records = await ctx.db
@@ -1656,6 +1677,7 @@ export const listByConversationSince = internalQuery({
     afterUpdatedAt: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
+  returns: v.array(taskClientValidator),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
 
@@ -1664,7 +1686,7 @@ export const listByConversationSince = internalQuery({
       value: args.limit,
       defaultValue: 200,
       min: 1,
-      max: 1000,
+      max: MAX_SYNC_TASKS_QUERY_LIMIT,
     });
     const records = await ctx.db
       .query("tasks")
@@ -1682,6 +1704,10 @@ export const getConversationTaskHead = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.object({
+    latestUpdatedAt: v.number(),
+    latestTaskId: v.union(v.null(), v.id("tasks")),
+  }),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     const latest = await ctx.db
@@ -1714,6 +1740,7 @@ export const runSubagent = internalAction({
     systemPromptOverride: v.optional(v.string()),
     suppressDelivery: v.optional(v.boolean()),
   },
+  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const conversation: Doc<"conversations"> = await requireConversationOwnerAction(ctx, args.conversationId);
     if (!ALLOWED_SUBAGENT_TYPES.has(args.subagentType)) {
@@ -1875,6 +1902,7 @@ export const executeSubagent = internalAction({
     systemPromptOverride: v.optional(v.string()),
     suppressDelivery: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const resultText = await executeSubagentRun(ctx, {
       conversationId: args.conversationId,
@@ -1925,6 +1953,7 @@ export const taskCheckin = internalAction({
     targetDeviceId: v.optional(v.string()),
     taskId: v.id("tasks"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const status = await ctx.runQuery(internal.agent.tasks.getTaskStatus, {
       taskId: args.taskId,
@@ -1974,6 +2003,7 @@ export const deliverTaskResult = internalAction({
     ownerId: v.string(),
     deliveryAttempt: v.optional(v.number()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const alreadyDelivered = await ctx.runQuery(internal.agent.tasks.isTaskDeliveryCompleted, {
       taskId: args.taskId,
@@ -2058,13 +2088,12 @@ export const deliverTaskResult = internalAction({
           userMessageId: args.userMessageId,
           targetDeviceId: args.targetDeviceId,
         }),
-        messages: orchestratorTurn.messages as any[],
+        messages: orchestratorTurn.messages as ModelMessage[],
       };
 
       const genResult = await generateTextWithFailover({
-        resolvedConfig: resolvedConfig as Record<string, unknown>,
-        fallbackConfig:
-          (deliveryFallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+        resolvedConfig,
+        fallbackConfig: deliveryFallbackConfig ?? undefined,
         sharedArgs: deliverySharedArgs as Record<string, unknown>,
       });
 
@@ -2118,7 +2147,7 @@ export const deliverTaskResult = internalAction({
       const attempt = args.deliveryAttempt ?? 0;
       if (attempt < 2) {
         await ctx.scheduler.runAfter(
-          (attempt + 1) * 5_000,
+          (attempt + 1) * DELIVERY_RETRY_BACKOFF_MS,
           internal.agent.tasks.deliverTaskResult,
           {
             ...args,
@@ -2176,11 +2205,15 @@ export const batchPersistRunChunk = mutation({
       outputTokens: v.optional(v.number()),
     })),
   },
+  returns: v.object({
+    persisted: v.boolean(),
+    duplicate: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const conversation = await requireConversationOwner(ctx, args.conversationId);
     const ownerId = conversation.ownerId;
 
-    const dedupStatus = await ctx.runMutation(internal.channels.utils.consumeWebhookRateLimit, {
+    const dedupStatus = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
       scope: "persist_chunk_dedup",
       key: args.chunkKey,
       limit: 1,
@@ -2203,7 +2236,7 @@ export const batchPersistRunChunk = mutation({
 
     // Validate payload size (reject > 1MB)
     const payloadSize = JSON.stringify(args.events).length;
-    if (payloadSize > 1_000_000) {
+    if (payloadSize > MAX_PERSIST_CHUNK_PAYLOAD_BYTES) {
       throw new Error(`Chunk payload too large: ${payloadSize} bytes. Split into smaller chunks.`);
     }
 
@@ -2331,6 +2364,7 @@ export const hasFinalPersistChunk = internalQuery({
   args: {
     runId: v.string(),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const chunk = await ctx.db
       .query("persist_chunks")

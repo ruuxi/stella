@@ -2,22 +2,15 @@ import { internalAction } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { processIncomingMessage, processLinkCode } from "./utils";
+import { processIncomingMessage } from "./message_pipeline";
+import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
+import { constantTimeEqual } from "../lib/crypto_utils";
 
 // ---------------------------------------------------------------------------
 // Slack Signature Verification (HMAC-SHA256)
 // ---------------------------------------------------------------------------
-
-const constantTimeEqual = (a: string, b: string): boolean => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-};
 
 export async function verifySlackSignature(
   rawBody: string,
@@ -77,9 +70,11 @@ async function resolveSlackToken(
   return process.env.SLACK_BOT_TOKEN ?? null;
 }
 
+const SLACK_MAX_MESSAGE_CHARS = 40_000;
+
 const sendSlackMessage = async (channel: string, text: string, token: string) => {
   // Slack message limit is 40,000 chars
-  const maxLen = 40000;
+  const maxLen = SLACK_MAX_MESSAGE_CHARS;
   const truncated = text.length > maxLen
     ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
     : text;
@@ -115,6 +110,7 @@ export const handleLinkCommand = internalAction({
     displayName: v.optional(v.string()),
     teamId: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const token = await resolveSlackToken(ctx, args.teamId);
     if (!token) {
@@ -161,6 +157,7 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 

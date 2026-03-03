@@ -4,6 +4,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
 import { createBackendTools } from "../tools/backend";
+import { jsonValueValidator } from "../shared_validators";
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
 const ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS = new Set([
@@ -62,10 +63,11 @@ const executeBackendTool = async (
 export const executeTool = action({
   args: {
     toolName: v.string(),
-    toolArgs: v.optional(v.any()),
+    toolArgs: v.optional(jsonValueValidator),
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
   },
+  returns: v.string(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -92,6 +94,7 @@ export const recallMemories = action({
     source: v.optional(v.union(v.literal("memory"), v.literal("history"))),
     conversationId: v.optional(v.id("conversations")),
   },
+  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -113,6 +116,7 @@ export const saveMemory = action({
     content: v.string(),
     conversationId: v.optional(v.id("conversations")),
   },
+  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -133,6 +137,7 @@ export const webSearch = action({
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
   },
+  returns: v.string(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -154,6 +159,7 @@ export const webFetch = action({
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
   },
+  returns: v.string(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
@@ -172,6 +178,7 @@ export const activateSkill = action({
   args: {
     skillId: v.string(),
   },
+  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
     const skill = await ctx.runQuery(internal.data.skills.getSkillByIdInternal, {

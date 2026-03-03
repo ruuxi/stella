@@ -16,6 +16,28 @@ const buildSearchText = (
   tags: string[],
 ): string => `${name} ${description} ${tags.join(" ")}`;
 
+const storePackageDocValidator = v.object({
+  _id: v.id("store_packages"),
+  _creationTime: v.number(),
+  packageId: v.string(),
+  name: v.string(),
+  author: v.string(),
+  description: v.string(),
+  implementation: v.optional(v.string()),
+  type: packageTypeValidator,
+  modPayload: v.optional(jsonValueValidator),
+  version: v.string(),
+  tags: v.array(v.string()),
+  downloads: v.number(),
+  rating: v.optional(v.number()),
+  icon: v.optional(v.string()),
+  sourceUrl: v.optional(v.string()),
+  readme: v.optional(v.string()),
+  searchText: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
 /**
  * List packages, optionally filtered by type.
  * Sorted by downloads descending, paginated (take 50).
@@ -25,6 +47,7 @@ export const list = query({
     type: v.optional(packageTypeValidator),
     cursor: v.optional(v.string()),
   },
+  returns: v.array(storePackageDocValidator),
   handler: async (ctx, args) => {
     if (args.type) {
       const results = await ctx.db
@@ -53,6 +76,7 @@ export const search = query({
     query: v.string(),
     type: v.optional(packageTypeValidator),
   },
+  returns: v.array(storePackageDocValidator),
   handler: async (ctx, args) => {
     if (!args.query.trim()) {
       return [];
@@ -78,6 +102,7 @@ export const getByPackageId = query({
   args: {
     packageId: v.string(),
   },
+  returns: v.union(v.null(), storePackageDocValidator),
   handler: async (ctx, args) => {
     const result = await ctx.db
       .query("store_packages")
@@ -92,6 +117,7 @@ export const searchInternal = internalQuery({
     query: v.string(),
     type: v.optional(packageTypeValidator),
   },
+  returns: v.array(storePackageDocValidator),
   handler: async (ctx, args) => {
     if (!args.query.trim()) {
       return [];
@@ -113,6 +139,7 @@ export const getByPackageIdInternal = internalQuery({
   args: {
     packageId: v.string(),
   },
+  returns: v.union(v.null(), storePackageDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("store_packages")
@@ -131,6 +158,7 @@ export const install = mutation({
     packageId: v.string(),
     version: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     // Find the package
@@ -184,6 +212,7 @@ export const uninstall = mutation({
   args: {
     packageId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db
@@ -206,6 +235,14 @@ export const uninstall = mutation({
  */
 export const getInstalled = query({
   args: {},
+  returns: v.array(v.object({
+    _id: v.id("store_installs"),
+    _creationTime: v.number(),
+    ownerId: v.string(),
+    packageId: v.string(),
+    installedVersion: v.string(),
+    installedAt: v.number(),
+  })),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const results = await ctx.db
@@ -232,6 +269,7 @@ export const publishMod = internalMutation({
     tags: v.array(v.string()),
     modPayload: jsonValueValidator,
   },
+  returns: v.id("store_packages"),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("store_packages")

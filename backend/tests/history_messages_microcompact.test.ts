@@ -26,7 +26,7 @@ describe("history microcompact", () => {
       events.push(...makeToolPair(`req_${i}`));
     }
 
-    const result = eventsToHistoryMessages(events as any, {
+    const result = eventsToHistoryMessages(events as unknown as Parameters<typeof eventsToHistoryMessages>[0], {
       microcompact: {
         trigger: "auto",
         warningThresholdTokens: 1,
@@ -66,7 +66,7 @@ describe("history microcompact", () => {
       ...makeToolPair("req_3"),
     ];
 
-    const result = eventsToHistoryMessages(events as any, {
+    const result = eventsToHistoryMessages(events as unknown as Parameters<typeof eventsToHistoryMessages>[0], {
       microcompact: {
         trigger: "auto",
         warningThresholdTokens: 999_999,
@@ -85,7 +85,7 @@ describe("history microcompact", () => {
       events.push(...makeToolPair(`req_${i}`));
     }
 
-    const result = eventsToHistoryMessages(events as any, {
+    const result = eventsToHistoryMessages(events as unknown as Parameters<typeof eventsToHistoryMessages>[0], {
       microcompact: {
         trigger: "manual",
         keepTokens: 10_000,
@@ -103,7 +103,7 @@ describe("history microcompact", () => {
       events.push(...makeToolPair(`req_${i}`));
     }
 
-    const result = eventsToHistoryMessages(events as any, {
+    const result = eventsToHistoryMessages(events as unknown as Parameters<typeof eventsToHistoryMessages>[0], {
       microcompact: {
         trigger: "auto",
         warningThresholdTokens: 300_000,

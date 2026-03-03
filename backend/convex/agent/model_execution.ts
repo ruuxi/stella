@@ -1,8 +1,7 @@
-import { generateText, streamText } from "ai";
+import { generateText, streamText, type LanguageModelUsage } from "ai";
 import { withModelFailover, withModelFailoverAsync } from "./model_failover";
 import { toUsageSummary } from "./orchestrator_turn";
-
-type ModelConfigLike = Record<string, unknown>;
+import type { ResolvedModelConfig } from "./model_resolver";
 
 type ToolCallLike = {
   toolName?: string;
@@ -32,14 +31,14 @@ export function hasNoResponseInSteps(steps?: StepLike[]): boolean {
 }
 
 export function usageSummaryFromFinish(
-  usage: unknown,
-  totalUsage: unknown,
+  usage: LanguageModelUsage,
+  totalUsage: LanguageModelUsage,
 ): ReturnType<typeof toUsageSummary> {
   return toUsageSummary(totalUsage ?? usage);
 }
 
 export function usageSummaryFromUsage(
-  usage: unknown,
+  usage: LanguageModelUsage,
 ): ReturnType<typeof toUsageSummary> {
   return toUsageSummary(usage);
 }
@@ -59,7 +58,7 @@ export function createStreamExecutionLifecycle() {
         };
       }
     },
-    onFinish: ({ usage, totalUsage }: { usage: unknown; totalUsage: unknown }) => {
+    onFinish: ({ usage, totalUsage }: { usage: LanguageModelUsage; totalUsage: LanguageModelUsage }) => {
       state = {
         ...state,
         usageSummary: usageSummaryFromFinish(usage, totalUsage),
@@ -70,29 +69,29 @@ export function createStreamExecutionLifecycle() {
 }
 
 export function streamTextWithFailover(args: {
-  resolvedConfig: ModelConfigLike;
-  fallbackConfig?: ModelConfigLike | null;
+  resolvedConfig: ResolvedModelConfig;
+  fallbackConfig?: ResolvedModelConfig | null;
   sharedArgs: Record<string, unknown>;
 }) {
   const { resolvedConfig, fallbackConfig, sharedArgs } = args;
   return withModelFailover(
-    () => streamText({ ...(resolvedConfig as object), ...(sharedArgs as object) } as any),
+    () => streamText({ ...resolvedConfig, ...sharedArgs } as Parameters<typeof streamText>[0]),
     fallbackConfig
-      ? () => streamText({ ...(fallbackConfig as object), ...(sharedArgs as object) } as any)
+      ? () => streamText({ ...fallbackConfig, ...sharedArgs } as Parameters<typeof streamText>[0])
       : undefined,
   );
 }
 
 export async function generateTextWithFailover(args: {
-  resolvedConfig: ModelConfigLike;
-  fallbackConfig?: ModelConfigLike | null;
+  resolvedConfig: ResolvedModelConfig;
+  fallbackConfig?: ResolvedModelConfig | null;
   sharedArgs: Record<string, unknown>;
 }) {
   const { resolvedConfig, fallbackConfig, sharedArgs } = args;
   return await withModelFailoverAsync(
-    () => generateText({ ...(resolvedConfig as object), ...(sharedArgs as object) } as any),
+    () => generateText({ ...resolvedConfig, ...sharedArgs } as Parameters<typeof generateText>[0]),
     fallbackConfig
-      ? () => generateText({ ...(fallbackConfig as object), ...(sharedArgs as object) } as any)
+      ? () => generateText({ ...fallbackConfig, ...sharedArgs } as Parameters<typeof generateText>[0])
       : undefined,
   );
 }

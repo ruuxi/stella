@@ -12,6 +12,27 @@ import { requireUserId } from "../auth";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
 import { coerceStringArray } from "../lib/coerce";
 
+const skillDocValidator = v.object({
+  _id: v.id("skills"),
+  _creationTime: v.number(),
+  ownerId: v.optional(v.string()),
+  id: v.string(),
+  name: v.string(),
+  description: v.string(),
+  markdown: v.string(),
+  agentTypes: v.array(v.string()),
+  toolsAllowlist: v.optional(v.array(v.string())),
+  tags: v.optional(v.array(v.string())),
+  execution: v.optional(v.string()),
+  requiresSecrets: v.optional(v.array(v.string())),
+  publicIntegration: v.optional(v.boolean()),
+  secretMounts: secretMountsValidator,
+  version: v.number(),
+  source: v.string(),
+  enabled: v.boolean(),
+  updatedAt: v.number(),
+});
+
 type SecretMountSpec = {
   provider: string;
   label?: string;
@@ -202,6 +223,7 @@ export const upsertMany = mutation({
   args: {
     skills: v.array(skillImportValidator),
   },
+  returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     return await upsertManyHandler(ctx, args, ownerId);
@@ -213,6 +235,7 @@ export const upsertManyInternal = internalMutation({
     ownerId: v.optional(v.string()),
     skills: v.array(skillImportValidator),
   },
+  returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
     const ownerId = args.ownerId ?? BUILTIN_OWNER_ID;
     return await upsertManyHandler(ctx, args, ownerId);
@@ -267,6 +290,7 @@ export const listEnabledSkills = internalQuery({
   args: {
     agentType: v.string(),
   },
+  returns: v.array(skillDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     return await listEnabledSkillsHandler(ctx, { ...args, ownerId });
@@ -278,6 +302,7 @@ export const listEnabledSkillsInternal = internalQuery({
     agentType: v.string(),
     ownerId: v.optional(v.string()),
   },
+  returns: v.array(skillDocValidator),
   handler: async (ctx, args) => {
     return await listEnabledSkillsHandler(ctx, args);
   },
@@ -316,6 +341,7 @@ export const getSkillById = internalQuery({
   args: {
     skillId: v.string(),
   },
+  returns: v.union(v.null(), skillDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     return await getSkillByIdHandler(ctx, { ...args, ownerId });
@@ -327,6 +353,7 @@ export const getSkillByIdInternal = internalQuery({
     skillId: v.string(),
     ownerId: v.optional(v.string()),
   },
+  returns: v.union(v.null(), skillDocValidator),
   handler: async (ctx, args) => {
     return await getSkillByIdHandler(ctx, args);
   },
@@ -334,6 +361,7 @@ export const getSkillByIdInternal = internalQuery({
 
 export const listSkills = internalQuery({
   args: {},
+  returns: v.array(skillDocValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const [builtinSkills, ownerSkills] = await Promise.all([
@@ -365,6 +393,14 @@ export const listAllSkillsForSelection = internalQuery({
   args: {
     ownerId: v.string(),
   },
+  returns: v.array(
+    v.object({
+      id: v.string(),
+      name: v.string(),
+      description: v.string(),
+      tags: v.optional(v.array(v.string())),
+    }),
+  ),
   handler: async (ctx, args) => {
     const [builtinSkills, ownerSkills] = await Promise.all([
       ctx.db
@@ -406,6 +442,7 @@ export const enableSelectedSkills = internalMutation({
     ownerId: v.string(),
     skillIds: v.array(v.string()),
   },
+  returns: v.object({ enabled: v.number(), disabled: v.number() }),
   handler: async (ctx, args) => {
     const now = Date.now();
     let enabled = 0;
@@ -529,6 +566,7 @@ export const enableSelectedSkills = internalMutation({
 
 export const ensureBuiltinSkills = internalMutation({
   args: {},
+  returns: v.object({ ok: v.boolean() }),
   handler: async (ctx) => {
     for (const skill of BUILTIN_SKILLS) {
       await upsertSkill(ctx, BUILTIN_OWNER_ID, {

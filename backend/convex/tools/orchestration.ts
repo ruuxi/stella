@@ -9,7 +9,7 @@ import { type ToolOptions } from "./types";
 import { SUBAGENT_TYPES } from "../lib/agent_constants";
 const subagentTypeSchema = z.enum(SUBAGENT_TYPES);
 
-const formatTaskResult = (task: {
+type TaskResultLike = {
   _id: Id<"tasks">;
   conversationId: Id<"conversations">;
   status: string;
@@ -18,7 +18,9 @@ const formatTaskResult = (task: {
   statusUpdates?: Array<{ text: string; timestamp: number }>;
   createdAt: number;
   completedAt?: number;
-}) => {
+};
+
+const formatTaskResult = (task: TaskResultLike) => {
   const duration = (task.completedAt ?? Date.now()) - task.createdAt;
   if (task.status === "completed") {
     return `Task completed.\nTask ID: ${task._id}\nDuration: ${duration}ms\n\n--- Result ---\n${
@@ -129,7 +131,7 @@ const createTaskTools = (
         if (!record || record.conversationId !== conversationId) {
           return `Task not found: ${args.task_id}`;
         }
-        return formatTaskResult(record as any);
+        return formatTaskResult(record as TaskResultLike);
       } catch {
         return `Failed to load task: ${args.task_id}`;
       }
@@ -167,7 +169,7 @@ const createTaskTools = (
       if (!record || record.conversationId !== conversationId) {
         return `Task not found: ${args.task_id}`;
       }
-      return formatTaskResult(record as any);
+      return formatTaskResult(record as TaskResultLike);
     },
   });
 

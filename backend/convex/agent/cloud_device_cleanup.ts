@@ -26,6 +26,12 @@ export const cleanupInactive = internalAction({
     nowMs: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
+  returns: v.object({
+    checked: v.number(),
+    deletedRecords: v.number(),
+    deletedSprites: v.number(),
+    failedDeletes: v.number(),
+  }),
   handler: async (ctx, args): Promise<InactiveCleanupResult> => {
     const nowMs = args.nowMs ?? Date.now();
     const cutoffMs = nowMs - INACTIVITY_RETENTION_MS;
