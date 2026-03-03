@@ -27,7 +27,9 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
 
     // Only the active window should create a session — state.window tracks which
     // window is visible, so the hidden window skips session creation entirely.
-    if (state.window !== windowType) return;
+    // The overlay window hosts the mini shell, so treat "overlay" as "mini".
+    const isActive = state.window === windowType || (windowType === "overlay" && state.window === "mini");
+    if (!isActive) return;
 
     // Disconnect any zombie session from a previous StrictMode mount
     if (sessionRef.current) {

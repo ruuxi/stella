@@ -1,35 +1,24 @@
 import type { BrowserWindow } from 'electron'
 import path from 'path'
 
-export type WindowLoadMode = 'full' | 'mini' | 'voice'
+export type WindowLoadMode = 'full' | 'overlay'
 
 const getWindowEntryFile = (windowMode: WindowLoadMode) => {
   switch (windowMode) {
-    case 'mini':
-      return 'mini.html'
+    case 'overlay':
+      return 'overlay.html'
     case 'full':
-      return 'index.html'
-    case 'voice':
-      return 'index.html'
     default:
       return 'index.html'
   }
 }
 
 export const getDevUrl = (windowMode: WindowLoadMode, getDevServerUrl: () => string) => {
-  const url = new URL(getWindowEntryFile(windowMode), `${getDevServerUrl()}/`)
-  if (windowMode === 'voice') {
-    url.searchParams.set('window', 'voice')
-  }
-  return url.toString()
+  return new URL(getWindowEntryFile(windowMode), `${getDevServerUrl()}/`).toString()
 }
 
 const getFileTarget = (electronDir: string, windowMode: WindowLoadMode) => {
-  const filePath = path.join(electronDir, `../dist/${getWindowEntryFile(windowMode)}`)
-  if (windowMode === 'voice') {
-    return { filePath, query: { window: 'voice' as const } }
-  }
-  return { filePath }
+  return { filePath: path.join(electronDir, `../dist/${getWindowEntryFile(windowMode)}`) }
 }
 
 export const loadWindow = (
@@ -47,9 +36,5 @@ export const loadWindow = (
   }
 
   const target = getFileTarget(options.electronDir, options.mode)
-  if ('query' in target) {
-    window.loadFile(target.filePath, { query: target.query })
-    return
-  }
   window.loadFile(target.filePath)
 }

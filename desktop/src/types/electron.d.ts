@@ -343,6 +343,18 @@ export type ElectronApi = {
   }>
   onAgentStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
 
+  // ─── Unified Overlay ────────────────────────────────────────────────
+  overlaySetInteractive: (interactive: boolean) => void
+  onOverlayModifierBlock: (callback: (active: boolean) => void) => () => void
+  onOverlayStartRegionCapture: (callback: () => void) => () => void
+  onOverlayEndRegionCapture: (callback: () => void) => () => void
+  onOverlayShowMini: (callback: (data: { x: number; y: number }) => void) => () => void
+  onOverlayHideMini: (callback: () => void) => () => void
+  onOverlayRestoreMini?: (callback: () => void) => () => void
+  onOverlayShowVoice: (callback: (data: { x: number; y: number; mode: 'stt' | 'realtime' }) => void) => () => void
+  onOverlayHideVoice: (callback: () => void) => () => void
+  onOverlayDisplayChange: (callback: (data: { origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }) => void) => () => void
+
   // Self-mod revert (used by undo button and crash recovery)
   selfModRevert: (featureId: string, steps?: number) => Promise<unknown>
   getLastSelfModFeature: () => Promise<string | null>

@@ -96,9 +96,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
-        mini: path.resolve(__dirname, 'mini.html'),
-        radial: path.resolve(__dirname, 'radial.html'),
-        region: path.resolve(__dirname, 'region.html'),
+        overlay: path.resolve(__dirname, 'overlay.html'),
       },
       output: {
         manualChunks(id) {
