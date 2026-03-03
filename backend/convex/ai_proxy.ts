@@ -579,10 +579,10 @@ function resolveProviderUpstream(provider: string, apiKey?: string): string | nu
 /** Headers that should NOT be forwarded to the upstream */
 const STRIP_REQUEST_HEADERS = new Set([
   "host",
-  "x-proxy-token",
   "x-provider",
   "x-original-path",
   "x-model-id",
+  "x-agent-type",
   "connection",
   "transfer-encoding",
 ]);
@@ -662,27 +662,18 @@ function sanitizePathSuffix(pathSuffix: string): string | null {
 }
 
 export const llmProxy = httpAction(async (ctx, request) => {
-  // 1. Authenticate via proxy token
-  const proxyToken = request.headers.get("X-Proxy-Token")?.trim();
-  if (!proxyToken) {
+  // 1. Authenticate via Convex JWT
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
     return new Response(
-      JSON.stringify({ error: "Missing X-Proxy-Token header" }),
+      JSON.stringify({ error: "Unauthorized" }),
       { status: 401, headers: { "Content-Type": "application/json" } },
     );
   }
 
-  const tokenResult = await ctx.runQuery(internal.ai_proxy_data.validateProxyToken, {
-    token: proxyToken,
-  });
-
-  if (!tokenResult.valid) {
-    return new Response(
-      JSON.stringify({ error: `Authentication failed: ${tokenResult.reason}` }),
-      { status: 401, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  const { ownerId, agentType, isAnonymous } = tokenResult;
+  const ownerId = identity.subject;
+  const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
+  const agentType = request.headers.get("X-Agent-Type")?.trim() || "orchestrator";
 
   // 2. Parse provider and path from headers.
   // Unknown providers are routed through OpenRouter using the model string.
@@ -699,7 +690,8 @@ export const llmProxy = httpAction(async (ctx, request) => {
     ? requestedProvider
     : "openrouter";
 
-  const originalPath = request.headers.get("X-Original-Path")?.trim();
+  const url = new URL(request.url);
+  const originalPath = request.headers.get("X-Original-Path")?.trim() || url.pathname.replace(/^\/api\/ai\/llm-proxy/, "");
   if (!originalPath) {
     return new Response(
       JSON.stringify({ error: "Missing X-Original-Path header" }),
@@ -823,15 +815,16 @@ export const llmProxy = httpAction(async (ctx, request) => {
   }
 
   if (!apiKey) {
-    // Last resort: use AI gateway — forward to its provider-compatible endpoint
+    // Last resort: route through Vercel AI Gateway using the platform key.
+    // The request body must contain a provider-prefixed model id
+    // (e.g. "anthropic/claude-sonnet-4-6") so the gateway can route it.
     const gatewayKey = process.env.AI_GATEWAY_API_KEY;
     if (gatewayKey) {
-      // Gateway passthrough not supported for raw proxy — the local agent
-      // runtime should use createGateway() directly via gatewayApiKey instead.
-      return new Response(
-        JSON.stringify({ error: "Use gateway mode. Raw proxy requires a provider API key." }),
-        { status: 503, headers: { "Content-Type": "application/json" } },
-      );
+      // The Vercel gateway base already includes /v1, and sanitizedPath
+      // also starts with /v1 (from the OpenAI SDK). Strip the duplicate.
+      const gatewayBase = STATIC_PROVIDER_UPSTREAMS.vercel.replace(/\/v1$/, "");
+      const gatewayUpstream = `${gatewayBase}${sanitizedPath}`;
+      return await forwardRequest(ctx, request, gatewayUpstream, "vercel", gatewayKey, ownerId, agentType, modelId);
     }
     return new Response(
       JSON.stringify({ error: "No API key available for provider" }),
