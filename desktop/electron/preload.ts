@@ -225,6 +225,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setVoiceShortcut: (shortcut: string) => ipcRenderer.send('voice:setShortcut', shortcut),
 
   // Voice-to-Voice (Realtime API)
+  persistVoiceTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) =>
+    ipcRenderer.send('voice:persistTranscript', payload),
   voiceOrchestratorChat: (payload: { conversationId: string; message: string }) =>
     ipcRenderer.invoke('voice:orchestratorChat', payload) as Promise<string>,
   setVoiceRtcShortcut: (shortcut: string) => ipcRenderer.send('voice-rtc:setShortcut', shortcut),

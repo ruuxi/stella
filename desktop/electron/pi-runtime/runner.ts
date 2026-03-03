@@ -488,5 +488,12 @@ export const createPiHostRunner = ({
     getActiveOrchestratorRun,
     getLastAppliedFeatureId: () => lastAppliedFeatureId,
     recoverCrashedRuns,
+    appendThreadMessage: (args: {
+      conversationId: string;
+      role: "user" | "assistant";
+      content: string;
+    }) => {
+      store.appendThreadMessage({ ...args, timestamp: Date.now() });
+    },
   };
 };
