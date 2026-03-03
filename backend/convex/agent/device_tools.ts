@@ -4,12 +4,12 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import {
-  DEVICE_TOOL_NAMES,
   type DeviceToolName as SharedDeviceToolName,
   getDangerousCommandReason,
   TOOL_SCHEMAS,
   TOOL_DESCRIPTIONS,
 } from "@stella/shared";
+import { sleep } from "../lib/async";
 
 /**
  * Sanitize tool names to comply with AI provider constraints.
@@ -36,8 +36,6 @@ export type DeviceToolContext = {
 
 const TOOL_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 750;
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const formatTruncationNote = (value: unknown): string | null => {
   if (!value || typeof value !== "object") return null;
@@ -100,6 +98,7 @@ const formatToolResult = (toolName: string, payload: unknown) => {
         : result ?? payload;
     return JSON.stringify(body, null, 2);
   } catch {
+    // best-effort: fall back to plain text if result is not JSON-serializable
     return truncationNote
       ? `Tool ${toolName} completed.\n\n${truncationNote}`
       : `Tool ${toolName} completed.`;
@@ -142,8 +141,8 @@ export const executeDeviceTool = async (
         conversationId: context.conversationId,
         requestId,
       });
-    } catch {
-      // Best-effort cleanup only.
+    } catch (err) {
+      console.warn("[device_tools] Ephemeral cleanup failed:", err);
     }
   };
 
@@ -184,8 +183,8 @@ export const executeDeviceTool = async (
               targetDeviceId: context.targetDeviceId,
             },
           });
-        } catch {
-          // Best-effort: timeout reporting should not fail tool execution.
+        } catch (err) {
+          console.warn("[device_tools] Timeout reporting failed:", err);
         }
       }
       return `ERROR: ${error}`;

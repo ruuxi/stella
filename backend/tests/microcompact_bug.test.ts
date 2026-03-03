@@ -18,7 +18,7 @@ describe("history microcompact bug", () => {
       ...makeToolPair("req_protected4", 100),
     ];
 
-    const result = eventsToHistoryMessages(events as any, {
+    const result = eventsToHistoryMessages(events as unknown as Parameters<typeof eventsToHistoryMessages>[0], {
       microcompact: {
         trigger: "auto",
         warningThresholdTokens: 1, // Always trigger if we save > 20k

@@ -1,10 +1,10 @@
+import { sleep } from "./async";
+
 type RetryFetchOptions = {
   attempts?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const parseRetryAfterMs = (headerValue: string | null): number | null => {
   if (!headerValue) return null;

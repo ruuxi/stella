@@ -34,6 +34,7 @@ export const generateSuggestions = internalAction({
     conversationId: v.id("conversations"),
     ownerId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     // 1. Load command catalog
     const catalog = await ctx.runQuery(internal.data.commands.listCatalog, {});
@@ -120,7 +121,13 @@ export const generateSuggestions = internalAction({
         payload: { suggestions },
       });
     } catch (error) {
-      console.error("Suggestion generation failed:", (error as Error).message);
+      // Suggestions are non-critical — log and return null rather than
+      // propagating the error to avoid disrupting the main conversation flow.
+      console.error(
+        "Suggestion generation failed:",
+        error instanceof Error ? error.stack ?? error.message : String(error),
+      );
+      return null;
     }
 
     return null;

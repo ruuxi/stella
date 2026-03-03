@@ -1,0 +1,36 @@
+import { describe, test, expect } from "bun:test";
+import * as fs from "fs";
+
+const source = fs.readFileSync("convex/data/skills.ts", "utf-8");
+
+describe("skills module structure", () => {
+  test("uses BUILTIN_SKILLS from prompts", () => {
+    expect(source).toContain("BUILTIN_SKILLS");
+  });
+
+  test("uses BUILTIN_OWNER_ID for builtin skills", () => {
+    expect(source).toContain("BUILTIN_OWNER_ID");
+  });
+
+  test("defines skill doc validator", () => {
+    expect(source).toContain("skillDocValidator");
+  });
+
+  test("exports upsertMany for skill import", () => {
+    expect(source).toContain("export const upsertMany =");
+  });
+
+  test("exports skill listing queries", () => {
+    // Check for list/get exports
+    const hasListExport = source.includes("export const list") || source.includes("export const getSkill");
+    expect(hasListExport).toBe(true);
+  });
+
+  test("uses requireUserId for auth", () => {
+    expect(source).toContain("requireUserId");
+  });
+
+  test("supports skill secret mounts", () => {
+    expect(source).toContain("secretMounts");
+  });
+});

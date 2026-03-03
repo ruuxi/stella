@@ -21,23 +21,26 @@ describe("memory + compaction regressions", () => {
     expect(source).toContain("export const finalizeThreadCompaction = internalMutation");
     expect(source).toContain("internal.data.threads.finalizeThreadCompaction");
     expect(source).not.toContain("ctx.runMutation(internal.data.threads.deleteMessagesBefore");
-    expect(source).not.toContain("ctx.runMutation(internal.data.threads.patchThreadAfterCompaction");
+    expect(source).not.toContain("patchThreadAfterCompaction");
     expect(source).not.toContain("ctx.runMutation(internal.conversations.setActiveThreadId");
   });
 
   test("orchestrator turn preparation is shared by chat and task-delivery paths", () => {
-    const httpSource = readBackendFile("convex/http.ts");
+    const turnSource = readBackendFile("convex/agent/orchestrator_turn.ts");
     const taskSource = readBackendFile("convex/agent/tasks.ts");
-    expect(httpSource).toContain("prepareOrchestratorTurn");
+    const automationSource = readBackendFile("convex/automation/runner.ts");
+    expect(turnSource).toContain("export const prepareOrchestratorTurn");
+    expect(turnSource).toContain("export const finalizeOrchestratorTurn");
     expect(taskSource).toContain("prepareOrchestratorTurn");
-    expect(httpSource).toContain("finalizeOrchestratorTurn");
     expect(taskSource).toContain("finalizeDeliveredTaskTurn");
+    expect(automationSource).toContain("prepareOrchestratorTurn");
+    expect(automationSource).toContain("finalizeOrchestratorTurn");
   });
 
   test("shared orchestrator core marks reminders independently from assistant text persistence", () => {
     const source = readBackendFile("convex/agent/orchestrator_turn.ts");
     expect(source).toMatch(
-      /const persistAssistantMessage[\s\S]*?if \(args\.persistThreadFirst\)[\s\S]*?if \(\n\s*args\.reminderState\.shouldInjectDynamicReminder[\s\S]*?markOrchestratorReminderSeen/,
+      /const persistAssistantMessage[\s\S]*?if \(args\.persistThreadFirst\)[\s\S]*?if \(args\.reminderState\.shouldInjectDynamicReminder\)[\s\S]*?updateReminderTokenCounter/,
     );
   });
 
@@ -48,7 +51,7 @@ describe("memory + compaction regressions", () => {
   });
 
   test("channel inbound user events are not duplicated into prompt history", () => {
-    const source = readBackendFile("convex/channels/utils.ts");
+    const source = readBackendFile("convex/channels/message_pipeline.ts");
     expect(source).toMatch(/const userMessageId =[\s\S]*appendInboundUserMessage/);
     expect(source).toContain("userMessageId: userMessageId ?? undefined");
   });

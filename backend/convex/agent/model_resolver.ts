@@ -21,8 +21,8 @@ import { getModelConfig } from "./model";
 import {
   extractProvider,
   extractModelName,
-  getProviderSecretKey,
 } from "@stella/shared";
+import { getUserProviderKey, resolveByokApiKey } from "../lib/provider_keys";
 
 export type ResolvedModelConfig = {
   model: string | LanguageModel;
@@ -30,24 +30,6 @@ export type ResolvedModelConfig = {
   maxOutputTokens?: number;
   providerOptions?: ProviderOptions;
 };
-
-function parseJsonObject(value: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function asNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
 
 /** Create a direct provider model instance for BYOK */
 function createProviderModel(modelString: string, apiKey: string): LanguageModel | null {
@@ -190,21 +172,6 @@ function filterGatewayOptions(
   return Object.keys(rest).length > 0 ? (rest as ProviderOptions) : undefined;
 }
 
-/** Map provider prefix to secrets provider key (uses shared registry) */
-const providerToSecretKey = getProviderSecretKey;
-
-/** Helper to look up a user's decrypted key for a given provider */
-async function getUserKey(
-  ctx: { runQuery: ActionCtx["runQuery"] },
-  ownerId: string,
-  provider: string,
-): Promise<string | null> {
-  return await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
-    ownerId,
-    provider,
-  });
-}
-
 type ByokResolution = {
   model: string | LanguageModel;
   usedByok: boolean;
@@ -218,31 +185,25 @@ async function resolveModelViaByokChain(
 ): Promise<ByokResolution> {
   const provider = extractProvider(modelString);
 
-  // 1. Direct provider key
-  if (provider) {
-    const secretKey = providerToSecretKey(provider);
-    if (secretKey) {
-      const apiKey = await getUserKey(ctx, ownerId, secretKey);
-      if (apiKey) {
-        const directModel = createProviderModel(modelString, apiKey);
-        if (directModel) {
-          return { model: directModel, usedByok: true };
-        }
-      }
+  // 1. Direct provider key + OpenRouter fallback (shared BYOK chain)
+  const byok = await resolveByokApiKey(ctx, ownerId, provider ?? "");
+  if (byok) {
+    if (byok.source === "openrouter") {
+      return { model: createOpenRouterModel(modelString, byok.apiKey), usedByok: true };
+    }
+    const directModel = createProviderModel(modelString, byok.apiKey);
+    if (directModel) {
+      return { model: directModel, usedByok: true };
+    }
+    // Direct provider model unusable (node-only provider or missing env) — try OpenRouter
+    const openrouterKey = await getUserProviderKey(ctx, ownerId, "llm:openrouter");
+    if (openrouterKey) {
+      return { model: createOpenRouterModel(modelString, openrouterKey), usedByok: true };
     }
   }
 
-  // 2. OpenRouter fallback
-  const openrouterKey = await getUserKey(ctx, ownerId, "llm:openrouter");
-  if (openrouterKey) {
-    return {
-      model: createOpenRouterModel(modelString, openrouterKey),
-      usedByok: true,
-    };
-  }
-
-  // 3. User's own Vercel AI Gateway key
-  const gatewayKey = await getUserKey(ctx, ownerId, "llm:gateway");
+  // 2. User's own Vercel AI Gateway key
+  const gatewayKey = await getUserProviderKey(ctx, ownerId, "llm:gateway");
   if (gatewayKey) {
     return {
       model: createGatewayModel(modelString, gatewayKey),
@@ -250,7 +211,7 @@ async function resolveModelViaByokChain(
     };
   }
 
-  // 4. No BYOK — return model string (platform gateway will resolve it)
+  // 3. No BYOK — return model string (platform gateway will resolve it)
   return { model: modelString, usedByok: false };
 }
 

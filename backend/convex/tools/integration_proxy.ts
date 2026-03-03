@@ -24,6 +24,8 @@ export const execute = action({
     }),
     responseType: v.optional(v.string()),
   },
+  // Dynamic return: response shape depends on HTTP result (error/data with arbitrary JSON payload)
+  returns: jsonValueValidator,
   handler: async (ctx, args) => {
     await requireUserId(ctx);
 

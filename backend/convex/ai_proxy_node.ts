@@ -3,28 +3,7 @@
 import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { GoogleAuth } from "google-auth-library";
-
-function parseJsonObject(value: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function asNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function withoutTrailingSlash(url: string): string {
-  return url.replace(/\/+$/, "");
-}
+import { parseJsonObject, asNonEmptyString, withoutTrailingSlash } from "./lib/json";
 
 async function resolveGoogleVertexToken(apiKey: string): Promise<string> {
   const parsed = parseJsonObject(apiKey);
@@ -90,7 +69,7 @@ export const resolveNodeAuthHeaders = internalAction({
     provider: v.string(),
     apiKey: v.string(),
   },
-  returns: v.any(),
+  returns: v.record(v.string(), v.string()),
   handler: async (_ctx, { provider, apiKey }) => {
     switch (provider) {
       case "google-vertex":

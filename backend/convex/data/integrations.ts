@@ -1,10 +1,34 @@
 import { mutation, internalMutation, internalQuery } from "../_generated/server";
-import { v } from "convex/values";
+import type { QueryCtx } from "../_generated/server";
+import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
 import { jsonObjectValidator } from "../shared_validators";
 
+const publicIntegrationDocValidator = v.object({
+  _id: v.id("integrations_public"),
+  _creationTime: v.number(),
+  id: v.string(),
+  provider: v.string(),
+  enabled: v.boolean(),
+  usagePolicy: v.string(),
+  updatedAt: v.number(),
+});
+
+const userIntegrationDocValidator = v.object({
+  _id: v.id("user_integrations"),
+  _creationTime: v.number(),
+  ownerId: v.string(),
+  provider: v.string(),
+  mode: v.string(),
+  externalId: v.optional(v.string()),
+  config: jsonObjectValidator,
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
 export const listPublicIntegrations = internalQuery({
   args: {},
+  returns: v.array(publicIntegrationDocValidator),
   handler: async (ctx) => {
     return await ctx.db.query("integrations_public").take(200);
   },
@@ -17,6 +41,7 @@ export const upsertPublicIntegration = internalMutation({
     enabled: v.boolean(),
     usagePolicy: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("integrations_public")
@@ -90,13 +115,14 @@ const parseSlackState = (
 
 export const createSlackInstallUrl = mutation({
   args: {},
+  returns: v.object({ url: v.string(), expiresAt: v.number() }),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const clientId = process.env.SLACK_CLIENT_ID;
     const convexSiteUrl = process.env.CONVEX_SITE_URL;
 
     if (!clientId || !convexSiteUrl) {
-      throw new Error("Missing Slack OAuth configuration");
+      throw new ConvexError({ code: "INTERNAL_ERROR", message: "Slack OAuth is not configured" });
     }
 
     const now = Date.now();
@@ -147,6 +173,7 @@ export const consumeSlackOAuthState = internalMutation({
   args: {
     state: v.string(),
   },
+  returns: v.union(v.null(), v.object({ ownerId: v.string() })),
   handler: async (ctx, args) => {
     const prefs = await ctx.db
       .query("user_preferences")
@@ -194,10 +221,10 @@ export const consumeSlackOAuthState = internalMutation({
   },
 });
 
-const getPublicIntegrationByIdHandler = async (ctx: { db: any }, args: { id: string }) => {
+const getPublicIntegrationByIdHandler = async (ctx: Pick<QueryCtx, "db">, args: { id: string }) => {
   const record = await ctx.db
     .query("integrations_public")
-    .withIndex("by_integration_id", (q: any) => q.eq("id", args.id))
+    .withIndex("by_integration_id", (q) => q.eq("id", args.id))
     .unique();
   if (!record || !record.enabled) {
     return null;
@@ -229,6 +256,7 @@ export const getPublicIntegrationById = internalQuery({
 
 export const listUserIntegrations = internalQuery({
   args: {},
+  returns: v.array(userIntegrationDocValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     return await ctx.db
@@ -246,6 +274,7 @@ export const upsertUserIntegration = internalMutation({
     externalId: v.optional(v.string()),
     config: jsonObjectValidator,
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db

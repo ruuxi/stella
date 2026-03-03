@@ -7,10 +7,24 @@ import {
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 
+const eventEmbeddingDocValidator = v.object({
+  _id: v.id("event_embeddings"),
+  _creationTime: v.number(),
+  ownerId: v.string(),
+  conversationId: v.id("conversations"),
+  eventId: v.id("events"),
+  type: v.union(v.literal("user_message"), v.literal("assistant_message")),
+  content: v.string(),
+  timestamp: v.number(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
 export const getByEventId = internalQuery({
   args: {
     eventId: v.id("events"),
   },
+  returns: v.union(v.null(), eventEmbeddingDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("event_embeddings")
@@ -23,6 +37,7 @@ export const getEmbeddingsByIds = internalQuery({
   args: {
     ids: v.array(v.id("event_embeddings")),
   },
+  returns: v.array(eventEmbeddingDocValidator),
   handler: async (ctx, args) => {
     const docs = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
     return docs.filter((doc): doc is NonNullable<typeof doc> => !!doc);
@@ -38,6 +53,7 @@ export const upsertEventEmbedding = internalMutation({
     content: v.string(),
     timestamp: v.number(),
   },
+  returns: v.id("event_embeddings"),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("event_embeddings")
@@ -75,6 +91,7 @@ export const searchByContent = internalQuery({
     limit: v.number(),
     conversationId: v.optional(v.id("conversations")),
   },
+  returns: v.array(eventEmbeddingDocValidator),
   handler: async (ctx, args) => {
     const normalizedQuery = args.query.trim();
     if (!normalizedQuery) return [];
@@ -96,6 +113,7 @@ export const indexEventForSemanticSearch = internalAction({
   args: {
     eventId: v.id("events"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const event = await ctx.runQuery(internal.events.getById, {
       id: args.eventId,

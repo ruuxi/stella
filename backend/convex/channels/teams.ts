@@ -1,7 +1,9 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage, processLinkCode } from "./utils";
+import { processIncomingMessage } from "./message_pipeline";
+import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
+import { base64UrlDecode } from "../lib/crypto_utils";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
 // ---------------------------------------------------------------------------
@@ -15,16 +17,7 @@ let cachedOpenIdConfig: { jwks_uri: string; fetchedAt: number } | null = null;
 let cachedJwks: { keys: JsonWebKey[]; fetchedAt: number } | null = null;
 const CACHE_MS = 60 * 60 * 1000; // 1 hour
 
-function base64UrlDecode(str: string): Uint8Array {
-  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
+// base64UrlDecode imported from lib/crypto_utils
 
 async function fetchBotFrameworkJwks(): Promise<JsonWebKey[]> {
   if (cachedJwks && Date.now() - cachedJwks.fetchedAt < CACHE_MS) {
@@ -106,10 +99,13 @@ export async function verifyTeamsToken(
 // Teams Bot Framework API Helpers
 // ---------------------------------------------------------------------------
 
+const TOKEN_REFRESH_BUFFER_MS = 60_000;
+const TEAMS_MAX_MESSAGE_CHARS = 28_000;
+
 let cachedBotToken: { token: string; expiresAt: number } | null = null;
 
 async function getTeamsBotToken(): Promise<string> {
-  if (cachedBotToken && cachedBotToken.expiresAt > Date.now() + 60000) {
+  if (cachedBotToken && cachedBotToken.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
     return cachedBotToken.token;
   }
 
@@ -151,7 +147,7 @@ const sendTeamsMessage = async (
   try {
     const token = await getTeamsBotToken();
     // Teams message limit is ~28,000 chars for text
-    const maxLen = 28000;
+    const maxLen = TEAMS_MAX_MESSAGE_CHARS;
     const truncated = text.length > maxLen
       ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
       : text;
@@ -194,6 +190,7 @@ export const handleLinkCommand = internalAction({
     code: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const result = await processLinkCode({
       ctx,
@@ -234,6 +231,7 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 

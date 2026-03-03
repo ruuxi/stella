@@ -3,7 +3,7 @@ import { action, internalAction } from "../_generated/server";
 import { ConvexError, Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { requireUserId } from "../auth";
+import { requireConversationOwnerAction, requireUserId } from "../auth";
 import { getModelConfig } from "./model";
 import {
   GENERAL_AGENT_ENGINE_KEY,
@@ -426,18 +426,9 @@ export const fetchAgentContextForRuntime = action({
   args: fetchAgentContextRuntimeArgs,
   returns: agentContextResultValidator,
   handler: async (ctx, args): Promise<AgentContextResult> => {
-    const ownerId = await requireUserId(ctx);
-    const conversation = await ctx.runQuery(internal.conversations.getById, {
-      id: args.conversationId,
-    });
-    if (!conversation || conversation.ownerId !== ownerId) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Conversation not found",
-      });
-    }
+    const conversation = await requireConversationOwnerAction(ctx, args.conversationId);
     return await fetchAgentContextForOwner(ctx, {
-      ownerId,
+      ownerId: conversation.ownerId,
       conversationId: args.conversationId,
       agentType: args.agentType,
       runId: args.runId,

@@ -1,6 +1,21 @@
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 
+const selfModFeatureDocValidator = v.object({
+  _id: v.id("self_mod_features"),
+  _creationTime: v.number(),
+  featureId: v.string(),
+  ownerId: v.string(),
+  conversationId: v.id("conversations"),
+  name: v.string(),
+  description: v.optional(v.string()),
+  status: v.string(),
+  batchCount: v.number(),
+  files: v.array(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
 export const create = internalMutation({
   args: {
     featureId: v.string(),
@@ -9,6 +24,7 @@ export const create = internalMutation({
     name: v.string(),
     description: v.optional(v.string()),
   },
+  returns: v.id("self_mod_features"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("self_mod_features", {
@@ -33,6 +49,7 @@ export const update = internalMutation({
     batchCount: v.optional(v.number()),
     files: v.optional(v.array(v.string())),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("self_mod_features")
@@ -55,6 +72,7 @@ export const listForConversation = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.array(selfModFeatureDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("self_mod_features")
@@ -70,6 +88,7 @@ export const listForOwner = internalQuery({
   args: {
     ownerId: v.string(),
   },
+  returns: v.array(selfModFeatureDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("self_mod_features")
@@ -83,6 +102,7 @@ export const getByFeatureId = internalQuery({
   args: {
     featureId: v.string(),
   },
+  returns: v.union(v.null(), selfModFeatureDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("self_mod_features")

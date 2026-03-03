@@ -1,9 +1,10 @@
 import { Cron } from "croner";
 import { mutation, internalAction, internalMutation, internalQuery } from "../_generated/server";
-import { v } from "convex/values";
+import type { MutationCtx } from "../_generated/server";
+import { v, ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { requireUserId } from "../auth";
+import { requireConversationOwner, requireUserId } from "../auth";
 import {
   claimAndScheduleSingleRun,
   claimRunIfAvailable,
@@ -21,6 +22,7 @@ import {
 
 const STUCK_RUN_MS = DEFAULT_STUCK_RUN_MS;
 const MAX_PREVIEW_CHARS = 800;
+const DISABLED_CRON_FAR_FUTURE_MS = 365 * 24 * 60 * 60 * 1000;
 
 type CronSchedule =
   | { kind: "at"; atMs: number }
@@ -47,7 +49,75 @@ const cronPatchValidator = v.object({
   deleteAfterRun: v.optional(v.boolean()),
 });
 
-const cronJobValidator = v.object({
+function truncatePreview(value: string) {
+  if (value.length <= MAX_PREVIEW_CHARS) {
+    return value;
+  }
+  return `${value.slice(0, MAX_PREVIEW_CHARS)}...`;
+}
+
+function assertValidSchedule(schedule: unknown): CronSchedule {
+  if (!schedule || typeof schedule !== "object") {
+    throw new ConvexError({ code: "INVALID_ARGUMENT", message: "schedule must be an object" });
+  }
+  const record = schedule as Record<string, unknown>;
+  const kind = String(record.kind ?? "").trim();
+  if (kind === "at") {
+    const atMs = Number(record.atMs);
+    if (!Number.isFinite(atMs) || atMs <= 0) {
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'schedule.kind="at" requires atMs (epoch ms)' });
+    }
+    return { kind: "at" as const, atMs };
+  }
+  if (kind === "every") {
+    const everyMs = Number(record.everyMs);
+    if (!Number.isFinite(everyMs) || everyMs <= 0) {
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'schedule.kind="every" requires everyMs (>0)' });
+    }
+    const anchorRaw = record.anchorMs;
+    const anchorMs =
+      typeof anchorRaw === "number" && Number.isFinite(anchorRaw) ? anchorRaw : undefined;
+    return { kind: "every" as const, everyMs, anchorMs };
+  }
+  if (kind === "cron") {
+    const expr = typeof record.expr === "string" ? record.expr.trim() : "";
+    if (!expr) {
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'schedule.kind="cron" requires expr' });
+    }
+    const tz = typeof record.tz === "string" ? record.tz.trim() : undefined;
+    return { kind: "cron" as const, expr, tz };
+  }
+  throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'schedule.kind must be "at", "every", or "cron"' });
+}
+
+function assertValidPayload(payload: unknown): CronPayload {
+  if (!payload || typeof payload !== "object") {
+    throw new ConvexError({ code: "INVALID_ARGUMENT", message: "payload must be an object" });
+  }
+  const record = payload as Record<string, unknown>;
+  const kind = String(record.kind ?? "").trim();
+  if (kind === "systemEvent") {
+    const text = typeof record.text === "string" ? record.text.trim() : "";
+    if (!text) {
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'payload.kind="systemEvent" requires text' });
+    }
+    const agentType = typeof record.agentType === "string" ? record.agentType.trim() : undefined;
+    const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
+    return { kind: "systemEvent" as const, text, agentType, deliver };
+  }
+  if (kind === "agentTurn") {
+    const message = typeof record.message === "string" ? record.message.trim() : "";
+    if (!message) {
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'payload.kind="agentTurn" requires message' });
+    }
+    const agentType = typeof record.agentType === "string" ? record.agentType.trim() : undefined;
+    const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
+    return { kind: "agentTurn" as const, message, agentType, deliver };
+  }
+  throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'payload.kind must be "systemEvent" or "agentTurn"' });
+}
+
+const cronJobDocValidator = v.object({
   _id: v.id("cron_jobs"),
   _creationTime: v.number(),
   ownerId: v.string(),
@@ -70,74 +140,6 @@ const cronJobValidator = v.object({
   createdAt: v.number(),
   updatedAt: v.number(),
 });
-
-function truncatePreview(value: string) {
-  if (value.length <= MAX_PREVIEW_CHARS) {
-    return value;
-  }
-  return `${value.slice(0, MAX_PREVIEW_CHARS)}...`;
-}
-
-function assertValidSchedule(schedule: unknown): CronSchedule {
-  if (!schedule || typeof schedule !== "object") {
-    throw new Error("schedule must be an object");
-  }
-  const record = schedule as Record<string, unknown>;
-  const kind = String(record.kind ?? "").trim();
-  if (kind === "at") {
-    const atMs = Number(record.atMs);
-    if (!Number.isFinite(atMs) || atMs <= 0) {
-      throw new Error('schedule.kind="at" requires atMs (epoch ms)');
-    }
-    return { kind: "at" as const, atMs };
-  }
-  if (kind === "every") {
-    const everyMs = Number(record.everyMs);
-    if (!Number.isFinite(everyMs) || everyMs <= 0) {
-      throw new Error('schedule.kind="every" requires everyMs (>0)');
-    }
-    const anchorRaw = record.anchorMs;
-    const anchorMs =
-      typeof anchorRaw === "number" && Number.isFinite(anchorRaw) ? anchorRaw : undefined;
-    return { kind: "every" as const, everyMs, anchorMs };
-  }
-  if (kind === "cron") {
-    const expr = typeof record.expr === "string" ? record.expr.trim() : "";
-    if (!expr) {
-      throw new Error('schedule.kind="cron" requires expr');
-    }
-    const tz = typeof record.tz === "string" ? record.tz.trim() : undefined;
-    return { kind: "cron" as const, expr, tz };
-  }
-  throw new Error('schedule.kind must be "at", "every", or "cron"');
-}
-
-function assertValidPayload(payload: unknown): CronPayload {
-  if (!payload || typeof payload !== "object") {
-    throw new Error("payload must be an object");
-  }
-  const record = payload as Record<string, unknown>;
-  const kind = String(record.kind ?? "").trim();
-  if (kind === "systemEvent") {
-    const text = typeof record.text === "string" ? record.text.trim() : "";
-    if (!text) {
-      throw new Error('payload.kind="systemEvent" requires text');
-    }
-    const agentType = typeof record.agentType === "string" ? record.agentType.trim() : undefined;
-    const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
-    return { kind: "systemEvent" as const, text, agentType, deliver };
-  }
-  if (kind === "agentTurn") {
-    const message = typeof record.message === "string" ? record.message.trim() : "";
-    if (!message) {
-      throw new Error('payload.kind="agentTurn" requires message');
-    }
-    const agentType = typeof record.agentType === "string" ? record.agentType.trim() : undefined;
-    const deliver = typeof record.deliver === "boolean" ? record.deliver : undefined;
-    return { kind: "agentTurn" as const, message, agentType, deliver };
-  }
-  throw new Error('payload.kind must be "systemEvent" or "agentTurn"');
-}
 
 const sanitizeCronJobForReturn = <T extends { payload: unknown } | null>(
   job: T,
@@ -191,6 +193,7 @@ async function cancelScheduledRun(
 
 export const list = internalQuery({
   args: {},
+  returns: v.array(cronJobDocValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const jobs = await ctx.db
@@ -213,30 +216,31 @@ export const add = internalMutation({
     enabled: v.optional(v.boolean()),
     deleteAfterRun: v.optional(v.boolean()),
   },
+  returns: v.union(v.null(), cronJobDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const schedule = assertValidSchedule(args.schedule);
     const payload = assertValidPayload(args.payload);
     const sessionTarget = args.sessionTarget.trim();
     if (sessionTarget !== "main" && sessionTarget !== "isolated") {
-      throw new Error('sessionTarget must be "main" or "isolated"');
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'sessionTarget must be "main" or "isolated"' });
     }
     if (sessionTarget === "main" && payload.kind !== "systemEvent") {
-      throw new Error('sessionTarget="main" requires payload.kind="systemEvent"');
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'sessionTarget="main" requires payload.kind="systemEvent"' });
     }
     if (sessionTarget === "isolated" && payload.kind !== "agentTurn") {
-      throw new Error('sessionTarget="isolated" requires payload.kind="agentTurn"');
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'sessionTarget="isolated" requires payload.kind="agentTurn"' });
     }
 
     const conversationId = await resolveOwnedConversationId(ctx, ownerId, args.conversationId);
     if (!conversationId) {
-      throw new Error("No conversation available for cron job.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "No conversation available for cron job." });
     }
 
     const now = Date.now();
     const nextRunAtMs = computeNextRunAtMs(schedule, now);
     if (!nextRunAtMs) {
-      throw new Error("Unable to compute next run for schedule.");
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "Unable to compute next run for schedule." });
     }
     const enabled = args.enabled ?? true;
 
@@ -282,9 +286,12 @@ export const update = internalMutation({
     jobId: v.id("cron_jobs"),
     patch: cronPatchValidator,
   },
+  returns: v.union(v.null(), cronJobDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
+    // Intentional silent null return: cron job ownership mismatch should not
+    // throw because internal callers may race with job deletion/reassignment.
     if (!job || job.ownerId !== ownerId) {
       return null;
     }
@@ -302,13 +309,13 @@ export const update = internalMutation({
     const sessionTargetRaw = patch.sessionTarget ?? job.sessionTarget;
     const sessionTarget = typeof sessionTargetRaw === "string" ? sessionTargetRaw.trim() : "";
     if (sessionTarget !== "main" && sessionTarget !== "isolated") {
-      throw new Error('sessionTarget must be "main" or "isolated"');
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'sessionTarget must be "main" or "isolated"' });
     }
     if (sessionTarget === "main" && payload.kind !== "systemEvent") {
-      throw new Error('sessionTarget="main" requires payload.kind="systemEvent"');
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'sessionTarget="main" requires payload.kind="systemEvent"' });
     }
     if (sessionTarget === "isolated" && payload.kind !== "agentTurn") {
-      throw new Error('sessionTarget="isolated" requires payload.kind="agentTurn"');
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'sessionTarget="isolated" requires payload.kind="agentTurn"' });
     }
 
     const conversationId =
@@ -316,7 +323,7 @@ export const update = internalMutation({
         ? await resolveOwnedConversationId(ctx, ownerId, patch.conversationId as Id<"conversations">)
         : job.conversationId;
     if (!conversationId) {
-      throw new Error("No conversation available for cron job.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "No conversation available for cron job." });
     }
 
     const enabled =
@@ -325,7 +332,7 @@ export const update = internalMutation({
     const now = Date.now();
     const nextRunAtMs = computeNextRunAtMs(schedule, now);
     if (!nextRunAtMs) {
-      throw new Error("Unable to compute next run for schedule.");
+      throw new ConvexError({ code: "INVALID_ARGUMENT", message: "Unable to compute next run for schedule." });
     }
 
     // Cancel old scheduled run
@@ -366,9 +373,12 @@ export const remove = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
+    // Intentional silent null return: cron job ownership mismatch should not
+    // throw because internal callers may race with job deletion/reassignment.
     if (!job || job.ownerId !== ownerId) {
       return null;
     }
@@ -378,10 +388,15 @@ export const remove = internalMutation({
   },
 });
 
+/**
+ * Delete a cron job by ID. Skips ownership check because it is only called
+ * from `execute` after the job has already been ownership-verified.
+ */
 export const deleteJob = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (job) {
@@ -396,9 +411,12 @@ export const run = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
+  returns: v.union(v.null(), cronJobDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
+    // Intentional silent null return: cron job ownership mismatch should not
+    // throw because internal callers may race with job deletion/reassignment.
     if (!job || job.ownerId !== ownerId) {
       return null;
     }
@@ -439,6 +457,7 @@ export const getById = internalQuery({
   args: {
     id: v.id("cron_jobs"),
   },
+  returns: v.union(v.null(), cronJobDocValidator),
   handler: async (ctx, args) => {
     return sanitizeCronJobForReturn(await ctx.db.get(args.id));
   },
@@ -450,6 +469,7 @@ export const markRunning = internalMutation({
     runningAtMs: v.number(),
     expectedRunningAtMs: v.optional(v.number()),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     return await claimRunIfAvailable({
       ctx,
@@ -477,6 +497,7 @@ export const finishRun = internalMutation({
     lastOutputPreview: v.optional(v.string()),
     enabled: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.id);
     if (!job) {
@@ -522,6 +543,7 @@ export const execute = internalAction({
     jobId: v.id("cron_jobs"),
     forced: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const job = await ctx.runQuery(internal.scheduling.cron_jobs.getById, { id: args.jobId });
     if (!job || (!job.enabled && !args.forced)) {
@@ -652,7 +674,7 @@ export const execute = internalAction({
             // completeCronTurnResult will delete the job if deleteAfterRun.
             // Keep runningAtMs set (omit from args) so the claim guard blocks
             // overlapping runs; the stuck-run timeout handles desktop crashes.
-            const farFuture = now + 365 * 24 * 60 * 60 * 1000;
+            const farFuture = now + DISABLED_CRON_FAR_FUTURE_MS;
             await ctx.runMutation(internal.scheduling.cron_jobs.finishRun, {
               id: job._id,
               nextRunAtMs: farFuture,
@@ -674,7 +696,7 @@ export const execute = internalAction({
           return null;
         }
 
-        const result = await runAgentTurnWithFallback({
+        const { result } = await runAgentTurnWithFallback({
           ctx,
           conversationId,
           prompt,
@@ -697,7 +719,7 @@ export const execute = internalAction({
     const shouldDisable =
       scheduleResolved.kind === "at" && status === "ok" && job.deleteAfterRun !== true;
     const safeNextRunAtMs = nextRunAtMs ?? now + 60_000;
-    const disabledNextRunAtMs = now + 365 * 24 * 60 * 60 * 1000;
+    const disabledNextRunAtMs = now + DISABLED_CRON_FAR_FUTURE_MS;
     const persistedOutputPreview =
       syncMode === "off"
         ? undefined
@@ -757,7 +779,7 @@ export const execute = internalAction({
 type CompleteCronTurnStatus = "ok" | "error";
 
 async function completeCronTurnResultCore(
-  ctx: { db: any },
+  ctx: Pick<MutationCtx, "db">,
   args: {
     requestId: string;
     text: string;
@@ -773,23 +795,23 @@ async function completeCronTurnResultCore(
 
   const request = await ctx.db
     .query("events")
-    .withIndex("by_requestId", (q: any) => q.eq("requestId", args.requestId))
+    .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
     .first();
   if (!request || request.type !== "remote_turn_request") {
-    throw new Error("Invalid or missing remote_turn_request");
+    throw new ConvexError({ code: "INVALID_ARGUMENT", message: "Invalid or missing remote_turn_request" });
   }
   if (request.conversationId !== args.conversationId) {
-    throw new Error("Conversation mismatch");
+    throw new ConvexError({ code: "INVALID_ARGUMENT", message: "Conversation mismatch" });
   }
 
   const reqPayload = request.payload as Record<string, unknown>;
   if (reqPayload.source !== "cron") {
-    throw new Error("Request is not a cron remote turn");
+    throw new ConvexError({ code: "INVALID_ARGUMENT", message: "Request is not a cron remote turn" });
   }
 
   const fulfilled = await ctx.db
     .query("events")
-    .withIndex("by_requestId", (q: any) =>
+    .withIndex("by_requestId", (q) =>
       q.eq("requestId", `fulfilled:${args.requestId}`),
     )
     .first();
@@ -797,7 +819,7 @@ async function completeCronTurnResultCore(
 
   const claimed = await ctx.db
     .query("events")
-    .withIndex("by_requestId", (q: any) =>
+    .withIndex("by_requestId", (q) =>
       q.eq("requestId", `claimed:${args.requestId}`),
     )
     .first();
@@ -889,13 +911,7 @@ export const completeCronTurnResult = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-
-    // Verify conversation ownership
-    const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation || conversation.ownerId !== userId) {
-      throw new Error("Not authorized");
-    }
+    await requireConversationOwner(ctx, args.conversationId);
 
     await completeCronTurnResultCore(ctx, {
       requestId: args.requestId,

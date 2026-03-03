@@ -17,8 +17,8 @@ export const executeStream = async ({ ctx, agentType, ownerId, sharedArgs, useFa
     : null;
   
   return streamTextWithFailover({
-    resolvedConfig: resolvedConfig as Record<string, unknown>,
-    fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+    resolvedConfig,
+    fallbackConfig: fallbackConfig ?? undefined,
     sharedArgs,
   });
 };
@@ -30,8 +30,8 @@ export const executeGenerate = async ({ ctx, agentType, ownerId, sharedArgs, use
     : null;
   
   return generateTextWithFailover({
-    resolvedConfig: resolvedConfig as Record<string, unknown>,
-    fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+    resolvedConfig,
+    fallbackConfig: fallbackConfig ?? undefined,
     sharedArgs,
   });
 };

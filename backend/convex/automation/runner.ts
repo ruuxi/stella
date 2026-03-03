@@ -1,3 +1,4 @@
+import type { ModelMessage } from "@ai-sdk/provider-utils";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -38,6 +39,12 @@ type RunAgentTurnArgs = {
   transient?: boolean;
 };
 
+/**
+ * Module-level cache for ensureBuiltins. In Convex's serverless environment,
+ * cold starts reset this state — that's fine because the fallback (re-running
+ * ensureBuiltins) is idempotent and safe. The cache simply avoids redundant
+ * DB writes within the same warm instance.
+ */
 const BUILTIN_ENSURE_CACHE_TTL_MS = 5 * 60 * 1000;
 let builtinEnsurePromise: Promise<void> | null = null;
 let builtinEnsureSucceededAt = 0;
@@ -82,7 +89,7 @@ export async function runAgentTurn({
   const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
   const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId).catch(() => null);
   let promptBuild: Awaited<ReturnType<typeof buildSystemPrompt>>;
-  let requestMessages: any[];
+  let requestMessages: ModelMessage[];
   let orchestratorTurn: Awaited<ReturnType<typeof prepareOrchestratorTurn>> | null = null;
 
   if (agentType === "orchestrator") {
@@ -121,7 +128,7 @@ export async function runAgentTurn({
       },
     });
     promptBuild = orchestratorTurn.promptBuild;
-    requestMessages = orchestratorTurn.messages as any[];
+    requestMessages = orchestratorTurn.messages as ModelMessage[];
   } else {
     promptBuild = await buildSystemPrompt(ctx, agentType, {
       ownerId: resolvedOwnerId,
@@ -179,8 +186,8 @@ export async function runAgentTurn({
 
   const runnerStartTime = Date.now();
   const result = await streamTextWithFailover({
-    resolvedConfig: resolvedConfig as Record<string, unknown>,
-    fallbackConfig: (fallbackConfig ?? undefined) as Record<string, unknown> | undefined,
+    resolvedConfig,
+    fallbackConfig: fallbackConfig ?? undefined,
     sharedArgs: runnerSharedArgs as Record<string, unknown>,
   });
 

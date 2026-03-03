@@ -25,12 +25,10 @@ export const validateAgainstSchema = (
       }
     }
     const properties = isPlainObject(schema.properties) ? schema.properties : {};
-    for (const [key, propSchema] of Object.entries(properties)) {
+    for (const [key, rawPropSchema] of Object.entries(properties)) {
       if (!(key in value)) continue;
-      const propType =
-        propSchema && typeof propSchema === "object" && typeof (propSchema as any).type === "string"
-          ? String((propSchema as any).type)
-          : undefined;
+      const prop = isPlainObject(rawPropSchema) ? rawPropSchema : {};
+      const propType = typeof prop.type === "string" ? prop.type : undefined;
       const propValue = (value as Record<string, unknown>)[key];
       if (propType === "string" && typeof propValue !== "string") {
         return { ok: false, reason: `Field ${key} must be a string.` };
@@ -44,29 +42,20 @@ export const validateAgainstSchema = (
       if (propType === "array" && !Array.isArray(propValue)) {
         return { ok: false, reason: `Field ${key} must be an array.` };
       }
-      if (
-        propSchema &&
-        typeof propSchema === "object" &&
-        Array.isArray((propSchema as any).enum) &&
-        !(propSchema as any).enum.includes(propValue)
-      ) {
+      if (Array.isArray(prop.enum) && !prop.enum.includes(propValue)) {
         return { ok: false, reason: `Field ${key} must be one of the allowed enum values.` };
       }
       if (
-        propSchema &&
-        typeof propSchema === "object" &&
-        typeof (propSchema as any).maxLength === "number" &&
+        typeof prop.maxLength === "number" &&
         typeof propValue === "string" &&
-        propValue.length > (propSchema as any).maxLength
+        propValue.length > prop.maxLength
       ) {
         return { ok: false, reason: `Field ${key} exceeds maxLength.` };
       }
       if (
-        propSchema &&
-        typeof propSchema === "object" &&
-        typeof (propSchema as any).maxItems === "number" &&
+        typeof prop.maxItems === "number" &&
         Array.isArray(propValue) &&
-        propValue.length > (propSchema as any).maxItems
+        propValue.length > prop.maxItems
       ) {
         return { ok: false, reason: `Field ${key} exceeds maxItems.` };
       }

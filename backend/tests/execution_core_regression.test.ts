@@ -15,7 +15,8 @@ describe("execution core regressions", () => {
     const tasksSource = readBackendFile("convex/agent/tasks.ts");
 
     expect(automationRunner).toContain('from "../agent/model_execution"');
-    expect(httpSource).toContain('from "./agent/model_execution"');
+    // http.ts no longer imports model_execution directly — it delegates through ai_proxy
+    expect(httpSource).toContain('from "./ai_proxy"');
     expect(invokeSource).toContain('from "./execution"');
     expect(executionSource).toContain('from "./model_execution"');
     expect(tasksSource).toContain('from "./model_execution"');

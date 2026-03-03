@@ -5,7 +5,7 @@ import { internal, components } from "./_generated/api";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { requireConversationOwner, requireUserId } from "./auth";
+import { requireConversationOwner, requireUserId, tryLoadOwnedConversation } from "./auth";
 import { jsonValueValidator, optionalChannelEnvelopeValidator } from "./shared_validators";
 import { normalizeOptionalInt } from "./lib/number_utils";
 import { asPlainObjectRecord } from "./lib/object_utils";
@@ -52,6 +52,15 @@ const localSyncMessageValidator = v.object({
 
 const DEFAULT_EPHEMERAL_EVENT_TTL_MS = 30 * 60 * 1000;
 
+const PAGINATION_PAGE_SIZE = 1000;
+const MAX_EVENTS_QUERY_LIMIT = 2000;
+const MAX_SYNC_EVENTS_QUERY_LIMIT = 1000;
+const MAX_CONTEXT_TOKENS = 120_000;
+const MIN_SCAN_LIMIT = 240;
+const MAX_SCAN_LIMIT = 2400;
+const APPEND_EVENT_RATE = { rate: 100, period: 10_000 } as const;
+const IMPORT_CHUNK_RATE = { rate: 30, period: 10_000 } as const;
+
 const normalizeEphemeralEventTtlMs = (ttlMs?: number) => {
   if (typeof ttlMs !== "number" || !Number.isFinite(ttlMs)) {
     return DEFAULT_EPHEMERAL_EVENT_TTL_MS;
@@ -90,6 +99,7 @@ const sanitizeEventForRead = <T extends { type: string; payload: Value } | null>
 
 export const countByConversation = internalQuery({
   args: { conversationId: v.id("conversations") },
+  returns: v.number(),
   handler: async (ctx, args) => {
     let total = 0;
     let cursor: string | null = null;
@@ -100,7 +110,7 @@ export const countByConversation = internalQuery({
         .withIndex("by_conversationId_and_timestamp", (q) =>
           q.eq("conversationId", args.conversationId),
         )
-        .paginate({ cursor, numItems: 1000 });
+        .paginate({ cursor, numItems: PAGINATION_PAGE_SIZE });
       total += page.page.length;
       if (page.isDone) {
         break;
@@ -119,6 +129,7 @@ export const listOlderMessages = internalQuery({
     afterTimestamp: v.optional(v.number()),
     limit: v.number(),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const afterTs = args.afterTimestamp ?? 0;
     // Use by_conversation_type index for efficient type-scoped queries.
@@ -147,11 +158,7 @@ export const listOlderMessages = internalQuery({
         .take(args.limit),
     ]);
 
-    return [...userMessages, ...assistantMessages]
-      .sort(
-        (a, b) =>
-          a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
-      )
+    return orderEventsChronologically([...userMessages, ...assistantMessages])
       .slice(0, args.limit);
   },
 });
@@ -163,6 +170,7 @@ export const listMessagesInWindow = internalQuery({
     endTimestamp: v.number(),
     limit: v.optional(v.number()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     if (args.endTimestamp <= args.startTimestamp) {
       return [];
@@ -172,7 +180,7 @@ export const listMessagesInWindow = internalQuery({
       value: args.limit,
       defaultValue: 400,
       min: 1,
-      max: 2000,
+      max: MAX_EVENTS_QUERY_LIMIT,
     });
 
     const types = ["user_message", "assistant_message", "task_completed"] as const;
@@ -192,17 +200,13 @@ export const listMessagesInWindow = internalQuery({
       ),
     );
 
-    return perType
-      .flat()
-      .sort(
-        (a, b) =>
-          a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
-      )
+    return orderEventsChronologically(perType.flat())
       .slice(0, limit);
   },
 });
 export const getById = internalQuery({
   args: { id: v.id("events") },
+  returns: v.union(v.null(), eventValidator),
   handler: async (ctx, args) => {
     return sanitizeEventForRead(await ctx.db.get(args.id));
   },
@@ -215,12 +219,14 @@ export const listRecentMessages = internalQuery({
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const requestedLimit = args.limit ?? 20;
     if (requestedLimit <= 0) {
       return [];
     }
     const limit = Math.min(Math.floor(requestedLimit), 100);
+    // 3x overfetch: we query 2 type-specific indexes and merge, so ~1/2 of rows match per type
     const take = Math.min(Math.max(limit * 3, 50), 200);
 
     const [userEvents, assistantEvents] = await Promise.all([
@@ -249,10 +255,7 @@ export const listRecentMessages = internalQuery({
       combined = combined.filter((event) => event._id !== args.excludeEventId);
     }
 
-    combined.sort(
-      (a, b) =>
-        a.timestamp - b.timestamp || String(a._id).localeCompare(String(b._id)),
-    );
+    combined = orderEventsChronologically(combined);
 
     if (combined.length > limit) {
       combined = combined.slice(-limit);
@@ -396,12 +399,14 @@ export const listRecentContextEvents = internalQuery({
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const requestedLimit = args.limit ?? 20;
     if (requestedLimit <= 0) {
       return [];
     }
     const limit = Math.min(Math.floor(requestedLimit), 120);
+    // 8x overfetch: context events include many non-message types (tool calls, task events, etc.) that get filtered
     const take = Math.min(Math.max(limit * 8, 80), 800);
     let events = await fetchRecentConversationEvents(ctx, {
       conversationId: args.conversationId,
@@ -428,6 +433,7 @@ export const listSessionContextEvents = internalQuery({
     contextAgentType: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const limit = normalizeOptionalInt({
       value: args.limit,
@@ -458,16 +464,17 @@ export const listRecentContextEventsByTokens = internalQuery({
     includeOperationalEvents: v.optional(v.boolean()),
     contextAgentType: v.optional(v.string()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const maxTokens = Math.min(
       Math.max(Math.floor(args.maxTokens ?? 24_000), 1),
-      120_000,
+      MAX_CONTEXT_TOKENS,
     );
     // Approximate how many recent rows we may need to cover maxTokens.
     // Clamp for predictable query cost.
     const scanLimit = Math.min(
-      Math.max(Math.ceil(maxTokens / 6), 240),
-      2400,
+      Math.max(Math.ceil(maxTokens / 6), MIN_SCAN_LIMIT),
+      MAX_SCAN_LIMIT,
     );
     const events = await fetchRecentConversationEvents(ctx, {
       conversationId: args.conversationId,
@@ -491,9 +498,9 @@ export const listRecentContextEventsByTokens = internalQuery({
         }),
     });
 
-    orderEventsChronologically(selectedNewestFirst);
+    const sorted = orderEventsChronologically(selectedNewestFirst);
 
-    return selectedNewestFirst.map((event) => sanitizeEventForRead(event));
+    return sorted.map((event) => sanitizeEventForRead(event));
   },
 });
 
@@ -501,6 +508,7 @@ export const getLatestDeviceIdForConversation = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const event = await ctx.db
       .query("events")
@@ -521,6 +529,7 @@ export const saveAssistantMessage = internalMutation({
     userMessageId: v.optional(v.id("events")),
     usage: v.optional(usageSummaryValidator),
   },
+  returns: v.id("events"),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
     const eventId = await ctx.db.insert("events", {
@@ -554,6 +563,7 @@ export const enqueueToolRequest = internalMutation({
     ephemeral: v.optional(v.boolean()),
     ttlMs: v.optional(v.number()),
   },
+  returns: v.union(v.null(), eventValidator),
   handler: async (ctx, args) => {
     const timestamp = Date.now();
     const isEphemeral = args.ephemeral === true;
@@ -590,6 +600,7 @@ export const getToolResultByRequestId = internalQuery({
     requestId: v.string(),
     deviceId: v.optional(v.string()),
   },
+  returns: v.union(v.null(), eventValidator),
   handler: async (ctx, args) => {
     const results = await ctx.db
       .query("events")
@@ -615,8 +626,9 @@ export const getToolResult = query({
     requestId: v.string(),
     deviceId: v.optional(v.string()),
   },
+  returns: v.union(v.null(), eventValidator),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    await requireUserId(ctx);
     const results = await ctx.db
       .query("events")
       .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
@@ -637,8 +649,8 @@ export const getToolResult = query({
       return null;
     }
 
-    const conversation = await ctx.db.get(match.conversationId);
-    if (!conversation || conversation.ownerId !== ownerId) {
+    const conversation = await tryLoadOwnedConversation(ctx, match.conversationId);
+    if (!conversation) {
       return null;
     }
 
@@ -651,6 +663,7 @@ export const deleteEventsByRequestId = internalMutation({
     conversationId: v.id("conversations"),
     requestId: v.string(),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
     let deleted = 0;
     while (true) {
@@ -687,16 +700,11 @@ export const purgeExpiredEphemeralToolEvents = internalMutation({
     limit: v.optional(v.number()),
     maxBatches: v.optional(v.number()),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
-    const nowMs = typeof args.nowMs === "number" ? args.nowMs : Date.now();
-    const limit =
-      typeof args.limit === "number" && Number.isFinite(args.limit)
-        ? Math.max(1, Math.min(5_000, Math.floor(args.limit)))
-        : 500;
-    const maxBatches =
-      typeof args.maxBatches === "number" && Number.isFinite(args.maxBatches)
-        ? Math.max(1, Math.min(50, Math.floor(args.maxBatches)))
-        : 10;
+    const nowMs = args.nowMs ?? Date.now();
+    const limit = normalizeOptionalInt({ value: args.limit, defaultValue: 500, min: 1, max: 5_000 });
+    const maxBatches = normalizeOptionalInt({ value: args.maxBatches, defaultValue: 10, min: 1, max: 50 });
 
     let deleted = 0;
     for (let i = 0; i < maxBatches; i += 1) {
@@ -802,7 +810,7 @@ const resolveAppendEventPayload = (args: AppendEventArgs) => {
   }
 
   if (args.type === "user_message") {
-    const text = (args.payload as any)?.text;
+    const text = (args.payload as Record<string, unknown>)?.text;
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new ConvexError({
         code: "INVALID_ARGUMENT",
@@ -900,12 +908,13 @@ export const appendEvent = mutation({
     ephemeral: v.optional(v.boolean()),
     expiresAt: v.optional(v.number()),
   },
+  returns: v.union(v.null(), eventValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
 
     const status = await rateLimiter.limit(ctx, "appendEvent", {
       key: ownerId,
-      config: { kind: "fixed window", rate: 100, period: 10000 },
+      config: { kind: "fixed window", ...APPEND_EVENT_RATE },
     });
     if (!status.ok) {
       throw new ConvexError({
@@ -924,12 +933,13 @@ export const importLocalMessagesChunk = mutation({
     conversationId: v.id("conversations"),
     messages: v.array(localSyncMessageValidator),
   },
+  returns: v.object({ imported: v.number(), skipped: v.number() }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
 
     const status = await rateLimiter.limit(ctx, "importLocalMessagesChunk", {
       key: ownerId,
-      config: { kind: "fixed window", rate: 30, period: 10000 },
+      config: { kind: "fixed window", ...IMPORT_CHUNK_RATE },
     });
     if (!status.ok) {
       throw new ConvexError({
@@ -1006,6 +1016,7 @@ export const appendInternalEvent = internalMutation({
     ephemeral: v.optional(v.boolean()),
     expiresAt: v.optional(v.number()),
   },
+  returns: v.union(v.null(), eventValidator),
   handler: async (ctx, args) => {
     return await appendEventCore(ctx, args);
   },
@@ -1016,6 +1027,19 @@ export const listEvents = query({
     conversationId: v.id("conversations"),
     paginationOpts: paginationOptsValidator,
   },
+  returns: v.object({
+    page: v.array(eventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(
+      v.union(
+        v.literal("SplitRecommended"),
+        v.literal("SplitRequired"),
+        v.null(),
+      ),
+    ),
+  }),
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
     const page = await ctx.db
@@ -1038,13 +1062,14 @@ export const listEventsSince = internalQuery({
     afterTimestamp: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
+  returns: v.array(eventValidator),
   handler: async (ctx, args) => {
     const afterTimestamp = args.afterTimestamp ?? 0;
     const limit = normalizeOptionalInt({
       value: args.limit,
       defaultValue: 400,
       min: 1,
-      max: 1000,
+      max: MAX_SYNC_EVENTS_QUERY_LIMIT,
     });
 
     const events = await ctx.db
@@ -1059,12 +1084,14 @@ export const listEventsSince = internalQuery({
   },
 });
 
-// listEventsForSession removed
-
 export const getConversationEventHead = internalQuery({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.object({
+    latestTimestamp: v.number(),
+    latestEventId: v.union(v.null(), v.id("events")),
+  }),
   handler: async (ctx, args) => {
     const latest = await ctx.db
       .query("events")
@@ -1081,20 +1108,26 @@ export const getConversationEventHead = internalQuery({
 
 
 
-export const subscribeToolRequestsForDevice = query({
-  args: {
-    deviceId: v.string(),
-    since: v.number(),
-    limit: v.optional(v.number()),
-  },
-  returns: v.array(eventValidator),
-  handler: async (ctx, args) => {
+/**
+ * Factory for device-subscription query handlers.
+ * All three subscribe-for-device queries share identical logic — they differ
+ * only in the event-type filter string and the default/max limit values.
+ */
+function deviceSubscriptionHandler(opts: {
+  eventType: string;
+  defaultLimit: number;
+  maxLimit: number;
+}) {
+  return async (
+    ctx: QueryCtx,
+    args: { deviceId: string; since: number; limit?: number },
+  ) => {
     const ownerId = await requireUserId(ctx);
     const maxItems = normalizeOptionalInt({
       value: args.limit,
-      defaultValue: 20,
+      defaultValue: opts.defaultLimit,
       min: 1,
-      max: 100,
+      max: opts.maxLimit,
     });
 
     const events = await ctx.db
@@ -1109,7 +1142,7 @@ export const subscribeToolRequestsForDevice = query({
     const filtered: Infer<typeof eventValidator>[] = [];
 
     for (const event of events) {
-      if (event.type !== "tool_request") continue;
+      if (event.type !== opts.eventType) continue;
 
       const key = String(event.conversationId);
       let owned = ownershipCache.get(key);
@@ -1125,54 +1158,33 @@ export const subscribeToolRequestsForDevice = query({
     }
 
     return filtered;
-  },
+  };
+}
+
+const deviceSubscriptionArgs = {
+  deviceId: v.string(),
+  since: v.number(),
+  limit: v.optional(v.number()),
+};
+
+export const subscribeToolRequestsForDevice = query({
+  args: deviceSubscriptionArgs,
+  returns: v.array(eventValidator),
+  handler: deviceSubscriptionHandler({
+    eventType: "tool_request",
+    defaultLimit: 20,
+    maxLimit: 100,
+  }),
 });
 
 export const subscribeRemoteTurnRequestsForDevice = query({
-  args: {
-    deviceId: v.string(),
-    since: v.number(),
-    limit: v.optional(v.number()),
-  },
+  args: deviceSubscriptionArgs,
   returns: v.array(eventValidator),
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    const maxItems = normalizeOptionalInt({
-      value: args.limit,
-      defaultValue: 10,
-      min: 1,
-      max: 50,
-    });
-
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_targetDeviceId_and_timestamp", (q) =>
-        q.eq("targetDeviceId", args.deviceId).gte("timestamp", args.since),
-      )
-      .order("desc")
-      .take(maxItems * 3);
-
-    const ownershipCache = new Map<string, boolean>();
-    const filtered: Infer<typeof eventValidator>[] = [];
-
-    for (const event of events) {
-      if (event.type !== "remote_turn_request") continue;
-
-      const key = String(event.conversationId);
-      let owned = ownershipCache.get(key);
-      if (owned === undefined) {
-        const conversation = await ctx.db.get(event.conversationId);
-        owned = Boolean(conversation && conversation.ownerId === ownerId);
-        ownershipCache.set(key, owned);
-      }
-      if (!owned) continue;
-
-      filtered.push(event);
-      if (filtered.length >= maxItems) break;
-    }
-
-    return filtered;
-  },
+  handler: deviceSubscriptionHandler({
+    eventType: "remote_turn_request",
+    defaultLimit: 10,
+    maxLimit: 50,
+  }),
 });
 
 /** Public query — used by the local device runner for cross-restart dedup. */
@@ -1206,49 +1218,12 @@ export const getRemoteTurnFulfilled = internalQuery({
 });
 
 export const subscribeDashboardGenRequestsForDevice = query({
-  args: {
-    deviceId: v.string(),
-    since: v.number(),
-    limit: v.optional(v.number()),
-  },
+  args: deviceSubscriptionArgs,
   returns: v.array(eventValidator),
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    const maxItems = normalizeOptionalInt({
-      value: args.limit,
-      defaultValue: 10,
-      min: 1,
-      max: 50,
-    });
-
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_targetDeviceId_and_timestamp", (q) =>
-        q.eq("targetDeviceId", args.deviceId).gte("timestamp", args.since),
-      )
-      .order("desc")
-      .take(maxItems * 3);
-
-    const ownershipCache = new Map<string, boolean>();
-    const filtered: Infer<typeof eventValidator>[] = [];
-
-    for (const event of events) {
-      if (event.type !== "dashboard_generation_request") continue;
-
-      const key = String(event.conversationId);
-      let owned = ownershipCache.get(key);
-      if (owned === undefined) {
-        const conversation = await ctx.db.get(event.conversationId);
-        owned = Boolean(conversation && conversation.ownerId === ownerId);
-        ownershipCache.set(key, owned);
-      }
-      if (!owned) continue;
-
-      filtered.push(event);
-      if (filtered.length >= maxItems) break;
-    }
-
-    return filtered;
-  },
+  handler: deviceSubscriptionHandler({
+    eventType: "dashboard_generation_request",
+    defaultLimit: 10,
+    maxLimit: 50,
+  }),
 });
 

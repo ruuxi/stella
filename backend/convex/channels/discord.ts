@@ -1,19 +1,13 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { processIncomingMessage, processLinkCode } from "./utils";
+import { processIncomingMessage } from "./message_pipeline";
+import { processLinkCode } from "./link_codes";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
+import { hexToUint8Array } from "../lib/crypto_utils";
 
 // ---------------------------------------------------------------------------
 // Ed25519 Signature Verification (Discord Interactions Endpoint)
 // ---------------------------------------------------------------------------
-
-const hexToUint8Array = (hex: string): Uint8Array => {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
-  }
-  return bytes;
-};
 
 const DISCORD_SIGNATURE_MAX_SKEW_SECONDS = 5 * 60;
 
@@ -82,12 +76,14 @@ const discordApi = async (
   });
 };
 
+const DISCORD_MAX_MESSAGE_CHARS = 2000;
+
 const editInteractionResponse = async (
   applicationId: string,
   interactionToken: string,
   content: string,
 ) => {
-  const maxLen = 2000;
+  const maxLen = DISCORD_MAX_MESSAGE_CHARS;
   const truncated =
     content.length > maxLen
       ? content.slice(0, maxLen - 20) + "\n\n... (truncated)"
@@ -123,6 +119,7 @@ export const handleLinkCommand = internalAction({
     codeArg: v.string(),
     displayName: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const result = await processLinkCode({
       ctx,
@@ -179,6 +176,7 @@ export const handleAskCommand = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 
@@ -237,6 +235,7 @@ export const handleAskCommand = internalAction({
 
 export const registerCommands = internalAction({
   args: {},
+  returns: v.object({ ok: v.boolean(), commandCount: v.number() }),
   handler: async () => {
     const applicationId = process.env.DISCORD_APPLICATION_ID;
     if (!applicationId) {
@@ -302,7 +301,6 @@ export const registerCommands = internalAction({
 
     const result = await res.json();
     const commandCount = Array.isArray(result) ? result.length : 0;
-    console.log("[discord] Commands registered:", { ok: true, commandCount });
     return { ok: true, commandCount };
   },
 });

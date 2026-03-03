@@ -10,7 +10,7 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { requireUserId } from "../auth";
+import { requireUserId, tryLoadOwnedConversation } from "../auth";
 import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
 import {
@@ -221,6 +221,10 @@ export const createThread = internalMutation({
     conversationId: v.id("conversations"),
     name: v.string(),
   },
+  returns: v.object({
+    threadId: v.id("threads"),
+    evictedThreadName: v.union(v.null(), v.string()),
+  }),
   handler: async (ctx, args) => {
     const conversation = await loadConversationForOwner(
       ctx,
@@ -275,12 +279,40 @@ export const createThread = internalMutation({
 // getThreadByName
 // ---------------------------------------------------------------------------
 
+const threadDocValidator = v.object({
+  _id: v.id("threads"),
+  _creationTime: v.number(),
+  conversationId: v.id("conversations"),
+  name: v.string(),
+  status: v.string(),
+  summary: v.optional(v.string()),
+  messageCount: v.number(),
+  totalTokenEstimate: v.number(),
+  createdAt: v.number(),
+  lastUsedAt: v.number(),
+  resurfacedAt: v.optional(v.number()),
+  closedAt: v.optional(v.number()),
+});
+
+const threadMessageDocValidator = v.object({
+  _id: v.id("thread_messages"),
+  _creationTime: v.number(),
+  threadId: v.id("threads"),
+  ordinal: v.number(),
+  role: v.string(),
+  content: v.string(),
+  toolCallId: v.optional(v.string()),
+  tokenEstimate: v.optional(v.number()),
+  createdAt: v.number(),
+});
+
 export const getThreadByName = internalQuery({
   args: {
     ownerId: v.string(),
     conversationId: v.id("conversations"),
     name: v.string(),
   },
+  returns: v.union(v.null(), threadDocValidator),
   handler: async (ctx, args) => {
     const conversation = await loadConversationForOwner(
       ctx,
@@ -321,6 +353,7 @@ export const getThreadById = internalQuery({
   args: {
     threadId: v.id("threads"),
   },
+  returns: v.union(v.null(), threadDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.threadId);
   },
@@ -335,6 +368,7 @@ export const listActiveThreads = internalQuery({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
   },
+  returns: v.array(threadDocValidator),
   handler: async (ctx, args) => {
     const conversation = await loadConversationForOwner(
       ctx,
@@ -366,6 +400,7 @@ export const touchThread = internalMutation({
     ownerId: v.string(),
     threadId: v.id("threads"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
@@ -381,6 +416,7 @@ export const activateThread = internalMutation({
     ownerId: v.string(),
     threadId: v.id("threads"),
   },
+  returns: v.union(v.null(), threadDocValidator),
   handler: async (ctx, args) => {
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) {
@@ -403,6 +439,7 @@ export const closeThread = internalMutation({
     ownerId: v.string(),
     threadId: v.id("threads"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) return null;
@@ -423,6 +460,7 @@ export const loadThreadMessages = internalQuery({
   args: {
     threadId: v.id("threads"),
   },
+  returns: v.array(threadMessageDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("thread_messages")
@@ -450,6 +488,7 @@ export const saveThreadMessages = internalMutation({
       }),
     ),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     if (args.messages.length === 0) return null;
 
@@ -506,6 +545,7 @@ export const deleteMessagesBefore = internalMutation({
     threadId: v.id("threads"),
     beforeOrdinal: v.number(),
   },
+  returns: v.number(),
   handler: async (ctx, args) => {
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) return 0;
@@ -538,6 +578,7 @@ export const compactThread = internalAction({
     threadId: v.id("threads"),
     force: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     // 1. Load thread metadata
     const thread = await ctx.runQuery(internal.data.threads.getThreadById, {
@@ -584,11 +625,12 @@ export const compactThread = internalAction({
     const hasPreviousSummary = Boolean(thread.summary && thread.summary.trim().length > 0);
     const config = getModelConfig("thread_compaction_summary");
 
-    let baseSummary = hasPreviousSummary ? thread.summary!.trim() : "";
+    const previousSummary = thread.summary?.trim() ?? "";
+    let baseSummary = hasPreviousSummary ? previousSummary : "";
     if (oldText.trim().length > 0) {
       const promptBody = [
         `<conversation>\n${oldText}\n</conversation>`,
-        hasPreviousSummary ? `<previous-summary>\n${thread.summary!.trim()}\n</previous-summary>` : "",
+        hasPreviousSummary ? `<previous-summary>\n${previousSummary}\n</previous-summary>` : "",
         hasPreviousSummary ? THREAD_COMPACTION_UPDATE_PROMPT : THREAD_COMPACTION_PROMPT,
       ]
         .filter((part) => part.length > 0)
@@ -637,6 +679,7 @@ export const finalizeThreadCompaction = internalMutation({
     keepFromOrdinal: v.number(),
     summary: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     const thread = await ctx.db.get(args.threadId);
@@ -730,32 +773,11 @@ export const finalizeThreadCompaction = internalMutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// patchThreadAfterCompaction (helper mutation for compactThread)
-// ---------------------------------------------------------------------------
-
-export const patchThreadAfterCompaction = internalMutation({
-  args: {
-    threadId: v.id("threads"),
-    summary: v.string(),
-    messageCount: v.number(),
-    totalTokenEstimate: v.number(),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.threadId, {
-      summary: args.summary,
-      messageCount: args.messageCount,
-      totalTokenEstimate: args.totalTokenEstimate,
-      lastUsedAt: Date.now(),
-    });
-    return null;
-  },
-});
-
 export const sweepThreadLifecycle = internalMutation({
   args: {
     now: v.optional(v.number()),
   },
+  returns: v.object({ idled: v.number(), archived: v.number() }),
   handler: async (ctx, args) => {
     const now = args.now ?? Date.now();
     const idleCutoff = now - THREAD_IDLE_AFTER_MS;
@@ -822,13 +844,33 @@ export const loadThreadMessagesForRuntime = query({
   args: {
     threadId: v.id("threads"),
   },
+  returns: v.union(
+    v.null(),
+    v.object({
+      thread: v.object({
+        _id: v.id("threads"),
+        name: v.string(),
+        status: v.string(),
+        summary: v.optional(v.string()),
+        totalTokenEstimate: v.number(),
+        messageCount: v.number(),
+      }),
+      messages: v.array(
+        v.object({
+          role: v.string(),
+          content: v.string(),
+          ordinal: v.number(),
+          tokenEstimate: v.optional(v.number()),
+        }),
+      ),
+    }),
+  ),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
     const thread = await ctx.db.get(args.threadId);
     if (!thread) return null;
-    // Verify ownership via the conversation
-    const conversation = await ctx.db.get(thread.conversationId);
-    if (!conversation || conversation.ownerId !== userId) return null;
+    // Verify ownership via the conversation (silent null for missing/unauthorized)
+    const conversation = await tryLoadOwnedConversation(ctx, thread.conversationId);
+    if (!conversation) return null;
 
     const messages = await ctx.db
       .query("thread_messages")
@@ -863,12 +905,13 @@ export const applyCompactionForRuntime = mutation({
     keepFromOrdinal: v.number(),
     summary: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
     const thread = await ctx.db.get(args.threadId);
     if (!thread) return null;
-    const conversation = await ctx.db.get(thread.conversationId);
-    if (!conversation || conversation.ownerId !== userId) return null;
+    // Verify ownership via the conversation (silent null for missing/unauthorized)
+    const conversation = await tryLoadOwnedConversation(ctx, thread.conversationId);
+    if (!conversation) return null;
 
     // Delegate to the existing internal finalization
     await ctx.runMutation(internal.data.threads.finalizeThreadCompaction, {

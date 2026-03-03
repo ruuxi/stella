@@ -70,3 +70,49 @@ export const preflightCorsResponse = (request: Request): Response =>
     status: 204,
     headers: getCorsHeaders(request.headers.get("origin")),
   });
+
+export const jsonResponse = (
+  data: unknown,
+  status: number = 200,
+  origin?: string | null,
+): Response => {
+  const response = new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+  return origin !== undefined ? withCors(response, origin) : response;
+};
+
+export const errorResponse = (
+  status: number,
+  message: string,
+  origin?: string | null,
+): Response => jsonResponse({ error: message }, status, origin);
+
+/**
+ * Wraps an HTTP handler with automatic CORS rejection checking and origin extraction.
+ * The handler receives the origin already extracted and its response is automatically
+ * returned as-is (the handler is responsible for calling withCors/jsonResponse/errorResponse
+ * with the origin).
+ */
+export const handleCorsRequest = async (
+  request: Request,
+  handler: (origin: string | null) => Promise<Response>,
+): Promise<Response> => {
+  const rejection = rejectDisallowedCorsOrigin(request);
+  if (rejection) return rejection;
+  const origin = request.headers.get("origin");
+  return handler(origin);
+};
+
+/**
+ * Standard CORS preflight handler for use by route modules.
+ * Import `httpAction` from `../_generated/server` in each module and wrap this.
+ */
+export const corsPreflightHandler = async (
+  request: Request,
+): Promise<Response> => {
+  const rejection = rejectDisallowedCorsOrigin(request);
+  if (rejection) return rejection;
+  return preflightCorsResponse(request);
+};

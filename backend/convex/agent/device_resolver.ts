@@ -37,6 +37,7 @@ const verifyHeartbeatSignature = async (args: {
       message.buffer as ArrayBuffer,
     );
   } catch {
+    // best-effort: treat malformed or unsupported keys as verification failure
     return false;
   }
 };
@@ -56,6 +57,7 @@ export const heartbeat = mutation({
     signature: v.string(),
     publicKey: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const now = Date.now();
@@ -117,6 +119,7 @@ export const heartbeat = mutation({
  */
 export const goOffline = mutation({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const ownerId = await requireSensitiveUserId(ctx);
     const device = await ctx.db
@@ -142,6 +145,9 @@ export const goOffline = mutation({
  */
 export const resolveExecutionTarget = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.object({
+    targetDeviceId: v.union(v.null(), v.string()),
+  }),
   handler: async (ctx, args): Promise<{
     targetDeviceId: string | null;
   }> => {
@@ -163,6 +169,9 @@ export const resolveExecutionTarget = internalQuery({
  */
 export const getDeviceStatus = internalQuery({
   args: { ownerId: v.string() },
+  returns: v.object({
+    localOnline: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const device = await ctx.db
       .query("devices")
