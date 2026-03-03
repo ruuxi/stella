@@ -186,13 +186,6 @@ export function RadialDial() {
       setContentVisible(false)
 
       if (blobReady.current) {
-        // DEBUG: log state at IPC arrival (before animation starts)
-        const shell = document.querySelector('.radial-shell') as HTMLElement | null
-        if (shell) {
-          const rect = shell.getBoundingClientRect()
-          console.log(`[radial:ipc-arrive] shell=(${rect.left.toFixed(1)},${rect.top.toFixed(1)}) style.left=${shell.style.left} style.top=${shell.style.top} win=(${window.screenX},${window.screenY})`)
-        }
-
         setPhase('opening')
         phaseRef.current = 'opening'
 
