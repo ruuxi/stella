@@ -264,10 +264,6 @@ const agentContextResultValidator = v.object({
     toolCallId: v.optional(v.string()),
   }))),
   activeThreadId: v.optional(v.string()),
-  proxyToken: v.object({
-    token: v.string(),
-    expiresAt: v.number(),
-  }),
   gatewayApiKey: v.optional(v.string()),
   generalAgentEngine: v.optional(v.union(
     v.literal("default"),
@@ -400,13 +396,6 @@ const fetchAgentContextForOwner = async (
     }
   }
 
-  // 5. Mint a proxy token for this run
-  const proxyToken = await ctx.runMutation(internal.ai_proxy_data.mintProxyToken, {
-    ownerId: args.ownerId,
-    agentType: args.agentType,
-    runId: args.runId,
-  });
-
   return {
     systemPrompt: promptBuild.systemPrompt,
     dynamicContext: promptBuild.dynamicContext,
@@ -419,7 +408,6 @@ const fetchAgentContextForOwner = async (
     coreMemory,
     threadHistory,
     activeThreadId,
-    proxyToken,
     gatewayApiKey: process.env.AI_GATEWAY_API_KEY,
     generalAgentEngine,
     codexLocalMaxConcurrency,
@@ -522,12 +510,6 @@ export const fetchLocalAgentContextForRuntime = action({
       // Skip if unavailable
     }
 
-    const proxyToken = await ctx.runMutation(internal.ai_proxy_data.mintProxyToken, {
-      ownerId,
-      agentType: args.agentType,
-      runId: args.runId,
-    });
-
     return {
       systemPrompt: promptBuild.systemPrompt,
       dynamicContext: promptBuild.dynamicContext,
@@ -540,7 +522,6 @@ export const fetchLocalAgentContextForRuntime = action({
       coreMemory,
       threadHistory: undefined,
       activeThreadId: undefined,
-      proxyToken,
       gatewayApiKey: process.env.AI_GATEWAY_API_KEY,
       generalAgentEngine,
       codexLocalMaxConcurrency,

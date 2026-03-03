@@ -799,8 +799,8 @@ http.route({ path: "/api/ai/search", method: "OPTIONS", handler: proxyOptionsHan
 http.route({ path: "/api/ai/search", method: "POST", handler: proxySearch });
 
 // Transparent LLM reverse proxy for local agent runtime
-http.route({ path: "/api/ai/llm-proxy", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ path: "/api/ai/llm-proxy", method: "POST", handler: llmProxy });
+http.route({ pathPrefix: "/api/ai/llm-proxy/", method: "OPTIONS", handler: proxyOptionsHandler });
+http.route({ pathPrefix: "/api/ai/llm-proxy/", method: "POST", handler: llmProxy });
 
 // ---------------------------------------------------------------------------
 // Music Generation — API Key Endpoint

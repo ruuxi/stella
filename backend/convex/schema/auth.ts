@@ -36,19 +36,4 @@ export const authSchema = {
     minIssuedAtSec: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_ownerId", ["ownerId"]),
-
-  proxy_tokens: defineTable({
-    ownerId: v.string(),
-    token: v.string(),
-    agentType: v.string(),
-    runId: v.string(),
-    audience: v.string(),
-    expiresAt: v.number(),
-    revoked: v.boolean(),
-    createdAt: v.number(),
-    isAnonymous: v.optional(v.boolean()),
-  })
-    .index("by_token", ["token"])
-    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
-    .index("by_expiresAt", ["expiresAt"]),
 };
