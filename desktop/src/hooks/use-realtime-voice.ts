@@ -20,15 +20,17 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sessionRef = useRef<RealtimeVoiceSession | null>(null);
+  const conversationIdRef = useRef<string>("voice-rtc");
   const windowType = useWindowType();
+  const isActiveWindow = windowType === "overlay" || state.window === windowType;
+  const shouldRunSession = state.isVoiceRtcActive && isActiveWindow;
 
   useEffect(() => {
-    if (!state.isVoiceRtcActive) return;
+    conversationIdRef.current = state.conversationId ?? "voice-rtc";
+  }, [state.conversationId]);
 
-    // Standalone realtime voice is owned by the overlay renderer.
-    // Keep legacy state.window gating as a fallback for non-overlay mounts.
-    const isActive = windowType === "overlay" || state.window === windowType;
-    if (!isActive) return;
+  useEffect(() => {
+    if (!shouldRunSession) return;
 
     // Disconnect any zombie session from a previous StrictMode mount
     if (sessionRef.current) {
@@ -37,7 +39,7 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     }
 
     let aborted = false;
-    const conversationId = state.conversationId ?? "voice-rtc";
+    const conversationId = conversationIdRef.current;
 
     // Try to claim a pre-warmed session (started from IPC before React rendered)
     const preWarmed = claimPreWarmedSession(conversationId);
@@ -55,10 +57,13 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
 
     if (preWarmed) {
       // Session is already connecting/connected; sync current state.
-      setSessionState(session.state);
-      if (session.state === "connected") {
-        analyserRef.current = session.getAnalyser();
-      }
+      queueMicrotask(() => {
+        if (aborted) return;
+        setSessionState(session.state);
+        if (session.state === "connected") {
+          analyserRef.current = session.getAnalyser();
+        }
+      });
     } else {
       // No pre-warm; connect normally.
       session.connect(conversationId).catch((err) => {
@@ -76,7 +81,7 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
       sessionRef.current = null;
       setSessionState("idle");
     };
-  }, [state.isVoiceRtcActive, state.conversationId, state.window, windowType]);
+  }, [shouldRunSession, windowType]);
 
   return {
     analyserRef,
