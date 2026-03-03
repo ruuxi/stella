@@ -917,7 +917,13 @@ http.route({
       return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
     }
 
-    type VoiceSessionBody = { conversationId?: string; voice?: string; model?: string };
+    type VoiceSessionBody = {
+      conversationId?: string;
+      voice?: string;
+      model?: string;
+      turnDetection?: "semantic_vad" | "server_vad";
+      turnEagerness?: "low" | "medium" | "high";
+    };
     let body: VoiceSessionBody | null = null;
     try {
       body = (await request.json()) as VoiceSessionBody;
@@ -943,19 +949,59 @@ http.route({
       }
     }
 
-    // Resolve OpenAI API key: BYOK first, then platform key
-    let openaiApiKey: string | null = null;
-    try {
-      openaiApiKey = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
-        ownerId,
-        provider: "llm:openai",
-      });
-    } catch {
-      // BYOK lookup failed — fall through to platform key
-    }
-    if (!openaiApiKey) {
-      openaiApiKey = process.env.OPENAI_API_KEY ?? null;
-    }
+    const resolveOpenAiApiKey = async (): Promise<string | null> => {
+      try {
+        const byok = await ctx.runQuery(internal.data.secrets.getDecryptedLlmKey, {
+          ownerId,
+          provider: "llm:openai",
+        });
+        if (byok) return byok;
+      } catch {
+        // BYOK lookup failed — fall through to platform key
+      }
+      return process.env.OPENAI_API_KEY ?? null;
+    };
+
+    const resolveDeviceStatus = async (): Promise<string | undefined> => {
+      try {
+        const deviceResult = await ctx.runQuery(
+          internal.agent.device_resolver.getDeviceStatus,
+          { ownerId },
+        );
+        const lines = ["# Device Status"];
+        lines.push(`- Local device: ${deviceResult.localOnline ? "online" : "offline"}`);
+        return lines.join("\n");
+      } catch {
+        return undefined;
+      }
+    };
+
+    const resolveActiveThreads = async (): Promise<string | undefined> => {
+      if (!convexConversationId) return undefined;
+      try {
+        const threads = await ctx.runQuery(internal.data.threads.listActiveThreads, {
+          ownerId,
+          conversationId: convexConversationId,
+        });
+        const subagentThreads = (threads as Array<{ _id: string; name: string; messageCount: number }>)
+          .filter((t) => t.name !== "Main");
+        if (subagentThreads.length === 0) return undefined;
+        const lines = ["# Active Threads"];
+        for (const t of subagentThreads.slice(0, 10)) {
+          lines.push(`- ${t.name} (id: ${t._id}, ${t.messageCount} messages)`);
+        }
+        return lines.join("\n");
+      } catch {
+        return undefined;
+      }
+    };
+
+    const [openaiApiKey, deviceStatus, activeThreads] = await Promise.all([
+      resolveOpenAiApiKey(),
+      resolveDeviceStatus(),
+      resolveActiveThreads(),
+    ]);
+
     if (!openaiApiKey) {
       return withCors(
         new Response(
@@ -967,52 +1013,16 @@ http.route({
     }
 
     // Build voice session instructions with dynamic context
-    const { buildVoiceSessionInstructions } = await import("./prompts/voice_orchestrator");
-    const { getVoiceToolSchemas } = await import("./tools/voice_schemas");
+    const [
+      { buildVoiceSessionInstructions },
+      { getVoiceToolSchemas },
+    ] = await Promise.all([
+      import("./prompts/voice_orchestrator"),
+      import("./tools/voice_schemas"),
+    ]);
 
-    // Fetch dynamic context for the instructions
-    let deviceStatus: string | undefined;
-    let activeThreads: string | undefined;
     let coreMemory: string | undefined;
-    let userName: string | undefined;
-
-    try {
-      const deviceResult = await ctx.runQuery(
-        internal.agent.device_resolver.getDeviceStatus,
-        { ownerId },
-      );
-      const lines = ["# Device Status"];
-      lines.push(`- Local device: ${deviceResult.localOnline ? "online" : "offline"}`);
-      deviceStatus = lines.join("\n");
-    } catch {
-      // Skip device status
-    }
-
-    try {
-      if (!convexConversationId) throw new Error("skip");
-      const threads = await ctx.runQuery(internal.data.threads.listActiveThreads, {
-        ownerId,
-        conversationId: convexConversationId,
-      });
-      const subagentThreads = (threads as Array<{ _id: string; name: string; messageCount: number }>)
-        .filter((t) => t.name !== "Main");
-      if (subagentThreads.length > 0) {
-        const lines = ["# Active Threads"];
-        for (const t of subagentThreads.slice(0, 10)) {
-          lines.push(`- ${t.name} (id: ${t._id}, ${t.messageCount} messages)`);
-        }
-        activeThreads = lines.join("\n");
-      }
-    } catch {
-      // Skip threads
-    }
-
-    // Get user profile name if available
-    try {
-      userName = identity.name ?? identity.nickname ?? undefined;
-    } catch {
-      // Skip
-    }
+    const userName = identity.name ?? identity.nickname ?? undefined;
 
     const instructions = buildVoiceSessionInstructions({
       userName,
@@ -1027,6 +1037,24 @@ http.route({
     const voice = body.voice ?? "marin";
 
     // Request ephemeral client secret from OpenAI
+    const turnDetection =
+      body?.turnDetection === "semantic_vad"
+        ? {
+            type: "semantic_vad",
+            eagerness: body.turnEagerness ?? "high",
+            create_response: true,
+            interrupt_response: true,
+          }
+        : {
+            type: "server_vad",
+            // Faster end-of-turn detection profile.
+            threshold: 0.5,
+            prefix_padding_ms: 120,
+            silence_duration_ms: 220,
+            create_response: true,
+            interrupt_response: true,
+          };
+
     const sessionConfig = {
       model,
       voice,
@@ -1035,12 +1063,7 @@ http.route({
       input_audio_transcription: {
         model: "gpt-4o-transcribe",
       },
-      turn_detection: {
-        type: "semantic_vad",
-        eagerness: "medium",
-        create_response: true,
-        interrupt_response: true,
-      },
+      turn_detection: turnDetection,
     };
 
     try {
