@@ -206,8 +206,6 @@ export async function gracefulShutdown(
 ): Promise<void> {
   if (!isBrowserRunning(browser)) return;
 
-  console.log(`[UserBrowser] Shutting down ${browser.name}...`);
-
   if (process.platform === 'win32') {
     // Graceful close on Windows (no /F flag)
     try {
@@ -254,14 +252,12 @@ export async function gracefulShutdown(
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (!isBrowserRunning(browser)) {
-      console.log(`[UserBrowser] ${browser.name} shut down successfully`);
       return;
     }
     await new Promise((r) => setTimeout(r, 500));
   }
 
   // If still running after timeout, force kill
-  console.log(`[UserBrowser] ${browser.name} didn't shut down gracefully, force killing...`);
   try {
     if (process.platform === 'win32') {
       execSync(`taskkill /F /IM ${browser.processName}.exe`, {
@@ -295,8 +291,6 @@ export async function relaunchForExtensionBridge(
     );
   }
 
-  console.log(`[UserBrowser] Detected ${detected.name} at ${detected.executablePath}`);
-
   // Shut down existing browser
   await gracefulShutdown(detected);
   // Wait for profile lock release
@@ -315,7 +309,6 @@ export async function relaunchForExtensionBridge(
     ...extraArgs,
   ];
 
-  console.log(`[UserBrowser] Relaunching ${detected.name} with flags:`, args);
   const child = spawn(detected.executablePath, args, {
     stdio: 'ignore',
     detached: true,
@@ -326,7 +319,6 @@ export async function relaunchForExtensionBridge(
   const start = Date.now();
   while (Date.now() - start < 15000) {
     if (isBrowserRunning(detected)) {
-      console.log(`[UserBrowser] ${detected.name} is running`);
       return detected;
     }
     await new Promise((r) => setTimeout(r, 500));

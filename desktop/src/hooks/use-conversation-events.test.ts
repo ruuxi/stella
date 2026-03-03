@@ -15,7 +15,7 @@ import {
   isTaskProgress,
   extractToolTitle,
   type EventRecord,
-} from "./use-conversation-events";
+} from "../lib/event-transforms";
 
 // Helper to create mock events
 const createEvent = (

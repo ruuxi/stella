@@ -213,7 +213,7 @@ export function useStoreInstallationActions({
             "agentTypes",
             16,
           );
-          await window.electronAPI.storeInstallSkill({
+          await window.electronAPI.store.installSkill({
             packageId: safePackageId,
             skillId: safePackageId,
             name: safeName,
@@ -230,7 +230,7 @@ export function useStoreInstallationActions({
             const darkRecord = sanitizeThemePalette(payload.dark, "dark");
             const light = toThemeColors(lightRecord, "light");
             const dark = toThemeColors(darkRecord, "dark");
-            await window.electronAPI.storeInstallTheme({
+            await window.electronAPI.store.installTheme({
               packageId: safePackageId,
               themeId: safePackageId,
               name: safeName,
@@ -255,7 +255,7 @@ export function useStoreInstallationActions({
             typeof payload?.workspaceName === "string" ? payload.workspaceName : pkg.name,
             "workspaceName",
           );
-          await window.electronAPI.storeInstallCanvas({
+          await window.electronAPI.store.installCanvas({
             packageId: safePackageId,
             workspaceId: safeWorkspaceId,
             name: safeName,
@@ -292,7 +292,7 @@ export function useStoreInstallationActions({
           );
         } else if (window.electronAPI) {
           const safePackageId = sanitizeStoreId(pkg.packageId, "packageId");
-          await window.electronAPI.storeUninstall({
+          await window.electronAPI.store.uninstall({
             packageId: safePackageId,
             type: sanitizePackageType(pkg.type),
             localId: safePackageId,

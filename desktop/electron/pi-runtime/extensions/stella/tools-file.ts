@@ -13,7 +13,7 @@ import {
   readFileSafe,
   formatWithLineNumbers,
 } from "./tools-utils.js";
-import { isBlockedPath } from "./command_safety.js";
+import { isBlockedPath } from "./command-safety.js";
 import {
   stageFile,
   readStaged,

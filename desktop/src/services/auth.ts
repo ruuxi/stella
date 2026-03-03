@@ -11,7 +11,7 @@ export const secureSignOut = async (
     try {
       await convexClient.mutation(api.auth.revokeActiveSessions, {});
     } catch (error) {
-      console.warn("[auth] Failed to revoke active sessions before sign-out", error);
+      console.debug('[auth] Session revocation failed (best-effort):', (error as Error).message);
     }
   }
   await authClient.signOut();

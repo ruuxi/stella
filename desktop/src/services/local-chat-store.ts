@@ -1,4 +1,4 @@
-import type { EventRecord } from "../hooks/use-conversation-events";
+import { type EventRecord, getEventText } from "../lib/event-transforms";
 import {
   eventsToHistoryMessages,
   selectRecentByTokenBudget,
@@ -110,7 +110,8 @@ const readStore = (): LocalStore => {
     _cachedStore = store;
     _cacheRaw = raw;
     return store;
-  } catch {
+  } catch (err) {
+    console.debug("[local-chat-store] Failed to parse store:", (err as Error).message);
     return createEmptyStore();
   }
 };
@@ -132,7 +133,8 @@ const readSyncCheckpoints = (): LocalSyncCheckpoints => {
     const parsed = JSON.parse(raw) as LocalSyncCheckpoints | null;
     if (!parsed || typeof parsed !== "object") return {};
     return parsed;
-  } catch {
+  } catch (err) {
+    console.debug("[local-chat-store] Failed to parse sync checkpoints:", (err as Error).message);
     return {};
   }
 };
@@ -152,20 +154,6 @@ const ensureConversation = (store: LocalStore, conversationId: string) => {
   };
   store.conversations[conversationId] = created;
   return created;
-};
-
-const getEventText = (event: EventRecord): string | null => {
-  const payload = event.payload;
-  if (!payload || typeof payload !== "object") return null;
-  const text = payload as {
-    text?: unknown;
-    content?: unknown;
-    message?: unknown;
-  };
-  if (typeof text.text === "string" && text.text.trim().length > 0) return text.text;
-  if (typeof text.content === "string" && text.content.trim().length > 0) return text.content;
-  if (typeof text.message === "string" && text.message.trim().length > 0) return text.message;
-  return null;
 };
 
 const sortEventsAscending = (events: EventRecord[]) =>
@@ -249,12 +237,10 @@ const DEFAULT_WARNING_THRESHOLD_TOKENS = 170_000;
  * Build history messages using the same pipeline as the cloud/server-side path:
  * token-budgeted event selection, tool call/result formatting, and micro-compaction.
  *
- * The `_maxMessages` parameter is kept for call-site backward compat but is not used;
- * selection is now token-budget-based (default 24 000 tokens, matching the backend).
+ * Selection is token-budget-based (default 24 000 tokens, matching the backend).
  */
 export const buildLocalHistoryMessages = (
   conversationId: string,
-  _maxMessages = 50,
 ): LocalHistoryMessage[] => {
   // Fetch a generous window of raw events
   const events = listLocalEvents(conversationId, 800);

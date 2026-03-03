@@ -39,7 +39,7 @@ export const initSelectedTextProcess = (): void => {
     if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
       const result = outputBuffer.slice(startIdx + MARKER_START.length, endIdx).trim()
       if (result) {
-        console.log('[selected-text] Got result:', result.substring(0, 50) + '...')
+        console.debug('[selected-text] Got result:', result.substring(0, 50) + '...')
       }
       outputBuffer = outputBuffer.slice(endIdx + MARKER_END.length)
       
@@ -51,7 +51,7 @@ export const initSelectedTextProcess = (): void => {
   })
 
   psProcess.on('exit', (code) => {
-    console.log('[selected-text] PowerShell process exited with code:', code)
+    console.debug('[selected-text] PowerShell process exited with code:', code)
     psProcess = null
     psReady = false
     if (pendingResolve) {

@@ -1,10 +1,11 @@
 import { app, BrowserWindow, screen } from 'electron'
+import { MINI_SHELL_SIZE } from '../layout-constants.js'
 import { FullWindowController } from './full-window.js'
 import type { UiState } from '../types.js'
 import type { WorkspaceService } from '../services/workspace-service.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
 import type { MiniBridgeService } from '../services/mini-bridge-service.js'
-import type { OverlayWindowController } from '../overlay-window.js'
+import type { OverlayWindowController } from './overlay-window.js'
 
 type ChatContextSyncBridge = {
   getChatContextVersion: () => number
@@ -32,10 +33,7 @@ type WindowManagerOptions = {
 
 const MINI_SHELL_ANIM_MS = 140
 
-const miniSize = {
-  width: 480,
-  height: 700,
-}
+const miniSize = MINI_SHELL_SIZE
 
 export class WindowManager {
   private readonly fullWindowController: FullWindowController

@@ -8,388 +8,233 @@ import type {
   MiniBridgeUpdate,
 } from './mini-bridge.js'
 
+// ---------------------------------------------------------------------------
+// IPC listener helpers — eliminate boilerplate for the 3 common patterns.
+// ---------------------------------------------------------------------------
+
+/** Subscribe to an IPC channel, stripping the IpcRendererEvent and forwarding data. */
+const onIpc = <T>(channel: string) =>
+  (callback: (data: T) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, data: T) => callback(data)
+    ipcRenderer.on(channel, handler)
+    return () => { ipcRenderer.removeListener(channel, handler) }
+  }
+
+/** Subscribe to an IPC channel that sends no payload. */
+const onIpcSignal = (channel: string) =>
+  (callback: () => void): (() => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(channel, handler)
+    return () => { ipcRenderer.removeListener(channel, handler) }
+  }
+
+/** Subscribe to an IPC channel, forwarding both the event and payload. */
+const onIpcWithEvent = <T>(channel: string) =>
+  (callback: (event: IpcRendererEvent, data: T) => void): (() => void) => {
+    ipcRenderer.on(channel, callback)
+    return () => { ipcRenderer.removeListener(channel, callback) }
+  }
+
+// ---------------------------------------------------------------------------
+
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
-  
-  // Window controls for custom title bar
-  minimizeWindow: () => ipcRenderer.send('window:minimize'),
-  maximizeWindow: () => ipcRenderer.send('window:maximize'),
-  closeWindow: () => ipcRenderer.send('window:close'),
-  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
-  
-  getUiState: () => ipcRenderer.invoke('ui:getState'),
-  setUiState: (partial: unknown) => ipcRenderer.invoke('ui:setState', partial),
-  onUiState: (callback: (state: unknown) => void) => {
-    const handler = (_event: IpcRendererEvent, state: unknown) => {
-      callback(state)
-    }
-    ipcRenderer.on('ui:state', handler)
-    return () => {
-      ipcRenderer.removeListener('ui:state', handler)
-    }
-  },
-  showWindow: (target: 'mini' | 'full') => ipcRenderer.send('window:show', target),
-  captureScreenshot: (point?: { x: number; y: number }) =>
-    ipcRenderer.invoke('screenshot:capture', point),
-  getChatContext: () => ipcRenderer.invoke('chatContext:get'),
-  // Renderer acks that it has applied a particular chat context version. Used to avoid flashing stale frames on show.
-  ackChatContext: (payload: { version: number }) => ipcRenderer.send('chatContext:ack', payload),
-  onMiniVisibility: (callback: (visible: boolean) => void) => {
-    const handler = (_event: IpcRendererEvent, data: { visible?: unknown }) => {
-      callback(Boolean(data?.visible))
-    }
-    ipcRenderer.on('mini:visibility', handler)
-    return () => {
-      ipcRenderer.removeListener('mini:visibility', handler)
-    }
-  },
-  onDismissPreview: (callback: () => void) => {
-    ipcRenderer.on('mini:dismissPreview', callback)
-    return () => {
-      ipcRenderer.removeListener('mini:dismissPreview', callback)
-    }
-  },
-  onChatContext: (callback: (context: unknown) => void) => {
-    const handler = (_event: IpcRendererEvent, context: unknown) => {
-      callback(context)
-    }
-    ipcRenderer.on('chatContext:updated', handler)
-    return () => {
-      ipcRenderer.removeListener('chatContext:updated', handler)
-    }
-  },
-  miniBridgeRequest: (request: MiniBridgeRequest) =>
-    ipcRenderer.invoke('miniBridge:request', request) as Promise<MiniBridgeResponse>,
-  onMiniBridgeUpdate: (callback: (update: MiniBridgeUpdate) => void) => {
-    const handler = (_event: IpcRendererEvent, update: MiniBridgeUpdate) => {
-      callback(update)
-    }
-    ipcRenderer.on('miniBridge:update', handler)
-    return () => {
-      ipcRenderer.removeListener('miniBridge:update', handler)
-    }
-  },
-  onMiniBridgeRequest: (callback: (envelope: MiniBridgeRequestEnvelope) => void) => {
-    const handler = (_event: IpcRendererEvent, envelope: MiniBridgeRequestEnvelope) => {
-      callback(envelope)
-    }
-    ipcRenderer.on('miniBridge:request', handler)
-    return () => {
-      ipcRenderer.removeListener('miniBridge:request', handler)
-    }
-  },
-  respondMiniBridge: (envelope: MiniBridgeResponseEnvelope) => {
-    ipcRenderer.send('miniBridge:response', envelope)
-  },
-  miniBridgeReady: () => {
-    ipcRenderer.send('miniBridge:ready')
-  },
-  pushMiniBridgeUpdate: (update: MiniBridgeUpdate) => {
-    ipcRenderer.send('miniBridge:update', update)
-  },
-  getDeviceId: () => ipcRenderer.invoke('device:getId'),
-  configurePiRuntime: (config: { convexUrl?: string; convexSiteUrl?: string }) =>
-    ipcRenderer.invoke('host:configurePiRuntime', config),
-  setAuthState: (payload: { authenticated: boolean; token?: string }) => ipcRenderer.invoke('auth:setState', payload),
-  setCloudSyncEnabled: (payload: { enabled: boolean }) => ipcRenderer.invoke('host:setCloudSyncEnabled', payload),
-  onAuthCallback: (callback: (data: { url: string }) => void) => {
-    const handler = (_event: IpcRendererEvent, data: { url: string }) => {
-      callback(data)
-    }
-    ipcRenderer.on('auth:callback', handler)
-    return () => {
-      ipcRenderer.removeListener('auth:callback', handler)
-    }
+
+  window: {
+    minimize: () => ipcRenderer.send('window:minimize'),
+    maximize: () => ipcRenderer.send('window:maximize'),
+    close: () => ipcRenderer.send('window:close'),
+    isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+    show: (target: 'mini' | 'full') => ipcRenderer.send('window:show', target),
   },
 
-  // App readiness gate (controls radial menu + mini shell)
-  setAppReady: (ready: boolean) => ipcRenderer.send('app:setReady', ready),
-
-  // Radial dial events
-  onRadialShow: (
-    callback: (
-      event: IpcRendererEvent,
-      data: { centerX: number; centerY: number; x?: number; y?: number }
-    ) => void
-  ) => {
-    const handler = (
-      event: IpcRendererEvent,
-      data: { centerX: number; centerY: number; x?: number; y?: number }
-    ) => {
-      callback(event, data)
-    }
-    ipcRenderer.on('radial:show', handler)
-    return () => {
-      ipcRenderer.removeListener('radial:show', handler)
-    }
-  },
-  onRadialHide: (callback: () => void) => {
-    const handler = () => {
-      callback()
-    }
-    ipcRenderer.on('radial:hide', handler)
-    return () => {
-      ipcRenderer.removeListener('radial:hide', handler)
-    }
-  },
-  radialAnimDone: () => ipcRenderer.send('radial:animDone'),
-  onRadialCursor: (
-    callback: (event: IpcRendererEvent, data: { x: number; y: number; centerX: number; centerY: number }) => void
-  ) => {
-    const handler = (event: IpcRendererEvent, data: { x: number; y: number; centerX: number; centerY: number }) => {
-      callback(event, data)
-    }
-    ipcRenderer.on('radial:cursor', handler)
-    return () => {
-      ipcRenderer.removeListener('radial:cursor', handler)
-    }
-  },
-  submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) =>
-    ipcRenderer.send('region:select', payload),
-  submitRegionClick: (point: { x: number; y: number }) =>
-    ipcRenderer.send('region:click', point),
-  getWindowCapture: (point: { x: number; y: number }) =>
-    ipcRenderer.invoke('region:getWindowCapture', point) as Promise<{
-      bounds: { x: number; y: number; width: number; height: number };
-      thumbnail: string;
-    } | null>,
-  cancelRegionCapture: () => ipcRenderer.send('region:cancel'),
-  onRegionReset: (callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on('region:reset', handler)
-    return () => { ipcRenderer.removeListener('region:reset', handler) }
-  },
-  removeScreenshot: (index: number) => ipcRenderer.send('chatContext:removeScreenshot', index),
-
-  // Theme sync across windows
-  onThemeChange: (callback: (event: IpcRendererEvent, data: { key: string; value: string }) => void) => {
-    const handler = (event: IpcRendererEvent, data: { key: string; value: string }) => {
-      callback(event, data)
-    }
-    ipcRenderer.on('theme:change', handler)
-    return () => {
-      ipcRenderer.removeListener('theme:change', handler)
-    }
-  },
-  broadcastThemeChange: (key: string, value: string) => ipcRenderer.send('theme:broadcast', { key, value }),
-
-  onCredentialRequest: (
-    callback: (event: IpcRendererEvent, data: { requestId: string; provider: string; label?: string; description?: string; placeholder?: string }) => void,
-  ) => {
-    const handler = (
-      event: IpcRendererEvent,
-      data: { requestId: string; provider: string; label?: string; description?: string; placeholder?: string },
-    ) => {
-      callback(event, data)
-    }
-    ipcRenderer.on('credential:request', handler)
-    return () => {
-      ipcRenderer.removeListener('credential:request', handler)
-    }
-  },
-  submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) =>
-    ipcRenderer.invoke('credential:submit', payload),
-  cancelCredential: (payload: { requestId: string }) =>
-    ipcRenderer.invoke('credential:cancel', payload),
-
-  // Browser data collection for core memory
-  checkCoreMemoryExists: () => ipcRenderer.invoke('browserData:exists'),
-  collectBrowserData: () => ipcRenderer.invoke('browserData:collect'),
-  detectPreferredBrowser: () => ipcRenderer.invoke('browserData:detectPreferredBrowser'),
-  listBrowserProfiles: (browserType: string) => ipcRenderer.invoke('browserData:listProfiles', browserType),
-  writeCoreMemory: (content: string) => ipcRenderer.invoke('browserData:writeCoreMemory', content),
-  listWorkspacePanels: () =>
-    ipcRenderer.invoke('workspace:listPanels') as Promise<Array<{ name: string; title: string }>>,
-  onWorkspacePanelsChanged: (callback: (panels: Array<{ name: string; title: string }>) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, panels: Array<{ name: string; title: string }>) => callback(panels)
-    ipcRenderer.on('workspace:panelsChanged', handler)
-    return () => { ipcRenderer.removeListener('workspace:panelsChanged', handler) }
+  ui: {
+    getState: () => ipcRenderer.invoke('ui:getState'),
+    setState: (partial: Record<string, unknown>) => ipcRenderer.invoke('ui:setState', partial),
+    onState: onIpc<Record<string, unknown>>('ui:state'),
+    setAppReady: (ready: boolean) => ipcRenderer.send('app:setReady', ready),
+    reload: () => ipcRenderer.send('app:reload'),
+    hardReset: () => ipcRenderer.invoke('app:hardResetLocalState') as Promise<{ ok: boolean }>,
   },
 
-  // Comprehensive user signal collection (browser + dev projects + shell + apps)
-  collectAllSignals: (options?: { categories?: string[] }) =>
-    ipcRenderer.invoke('signals:collectAll', options),
-
-  // Identity map for pseudonymization
-  getIdentityMap: () => ipcRenderer.invoke('identity:getMap'),
-  depseudonymize: (text: string) => ipcRenderer.invoke('identity:depseudonymize', text),
-
-  // System preferences (macOS FDA)
-  openFullDiskAccess: () => ipcRenderer.send('system:openFullDiskAccess'),
-
-  // Open URL in user's default browser
-  openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
-
-  // Voice Transcript
-  submitVoiceTranscript: (transcript: string) => ipcRenderer.send('voice:transcript', transcript),
-  setVoiceShortcut: (shortcut: string) => ipcRenderer.send('voice:setShortcut', shortcut),
-
-  // Voice-to-Voice (Realtime API)
-  persistVoiceTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) =>
-    ipcRenderer.send('voice:persistTranscript', payload),
-  voiceOrchestratorChat: (payload: { conversationId: string; message: string }) =>
-    ipcRenderer.invoke('voice:orchestratorChat', payload) as Promise<string>,
-  setVoiceRtcShortcut: (shortcut: string) => ipcRenderer.send('voice-rtc:setShortcut', shortcut),
-  onVoiceRtcPreWarm: (callback: (conversationId: string) => void) => {
-    const handler = (_event: IpcRendererEvent, conversationId: string) => { callback(conversationId) }
-    ipcRenderer.on('voice-rtc:pre-warm', handler)
-    return () => { ipcRenderer.removeListener('voice-rtc:pre-warm', handler) }
-  },
-  onVoiceRtcPrefetchToken: (callback: () => void) => {
-    const handler = () => { callback() }
-    ipcRenderer.on('voice-rtc:prefetch-token', handler)
-    return () => { ipcRenderer.removeListener('voice-rtc:prefetch-token', handler) }
-  },
-  onVoiceTranscript: (callback: (transcript: string) => void) => {
-    const handler = (_event: IpcRendererEvent, transcript: string) => {
-      callback(transcript)
-    }
-    ipcRenderer.on('voice:transcript', handler)
-    return () => {
-      ipcRenderer.removeListener('voice:transcript', handler)
-    }
+  capture: {
+    getContext: () => ipcRenderer.invoke('chatContext:get'),
+    onContext: onIpc<Record<string, unknown> | null>('chatContext:updated'),
+    ackContext: (payload: { version: number }) => ipcRenderer.send('chatContext:ack', payload),
+    screenshot: (point?: { x: number; y: number }) =>
+      ipcRenderer.invoke('screenshot:capture', point),
+    removeScreenshot: (index: number) => ipcRenderer.send('chatContext:removeScreenshot', index),
+    submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) =>
+      ipcRenderer.send('region:select', payload),
+    submitRegionClick: (point: { x: number; y: number }) =>
+      ipcRenderer.send('region:click', point),
+    getWindowCapture: (point: { x: number; y: number }) =>
+      ipcRenderer.invoke('region:getWindowCapture', point) as Promise<{
+        bounds: { x: number; y: number; width: number; height: number };
+        thumbnail: string;
+      } | null>,
+    cancelRegion: () => ipcRenderer.send('region:cancel'),
+    onRegionReset: onIpcSignal('region:reset'),
   },
 
-  // Store package management
-  storeInstallSkill: (payload: {
-    packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]
-  }) => ipcRenderer.invoke('store:installSkill', payload),
-  storeInstallTheme: (payload: {
-    packageId: string; themeId: string; name: string; light: Record<string, string>; dark: Record<string, string>
-  }) => ipcRenderer.invoke('store:installTheme', payload),
-  storeInstallCanvas: (payload: {
-    packageId: string; workspaceId?: string; name: string; dependencies?: Record<string, string>; source?: string
-  }) => ipcRenderer.invoke('store:installCanvas', payload),
-  storeUninstall: (payload: {
-    packageId: string; type: string; localId: string
-  }) => ipcRenderer.invoke('store:uninstall', payload),
-
-  // Theme loading from installed themes
-  listInstalledThemes: () => ipcRenderer.invoke('theme:listInstalled'),
-
-  // Bridge manager
-  bridgeDeploy: (payload: {
-    provider: string; code: string; env: Record<string, string>; dependencies: string
-  }) => ipcRenderer.invoke('bridge:deploy', payload),
-  bridgeStart: (payload: { provider: string }) => ipcRenderer.invoke('bridge:start', payload),
-  bridgeStop: (payload: { provider: string }) => ipcRenderer.invoke('bridge:stop', payload),
-  bridgeStatus: (payload: { provider: string }) => ipcRenderer.invoke('bridge:status', payload),
-
-  shellKillByPort: (port: number) => ipcRenderer.invoke('shell:killByPort', { port }),
-
-  // ─── Local Agent Runtime IPC ──────────────────────────────────────────────
-  agentHealthCheck: () => ipcRenderer.invoke('agent:healthCheck') as Promise<{ ready: true; runnerVersion: string } | null>,
-  getActiveAgentRun: () =>
-    ipcRenderer.invoke('agent:getActiveRun') as Promise<{ runId: string; conversationId: string } | null>,
-
-  startAgentChat: (payload: {
-    conversationId: string;
-    userMessageId: string;
-    userPrompt: string;
-    agentType?: string;
-    storageMode?: 'cloud' | 'local';
-  }) => ipcRenderer.invoke('agent:startChat', payload) as Promise<{ runId: string }>,
-
-  cancelAgentChat: (runId: string) => ipcRenderer.send('agent:cancelChat', runId),
-  resumeAgentStream: (payload: { runId: string; lastSeq: number }) =>
-    ipcRenderer.invoke('agent:resume', payload) as Promise<{
-      events: Array<{
-        type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';
-        runId: string;
-        seq: number;
-        chunk?: string;
-        toolCallId?: string;
-        toolName?: string;
-        resultPreview?: string;
-        error?: string;
-        fatal?: boolean;
-        finalText?: string;
-        persisted?: boolean;
-      }>;
-      exhausted: boolean;
-    }>,
-
-  onAgentStream: (callback: (event: {
-    type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';
-    runId: string;
-    seq: number;
-    chunk?: string;
-    toolCallId?: string;
-    toolName?: string;
-    resultPreview?: string;
-    error?: string;
-    fatal?: boolean;
-    finalText?: string;
-    persisted?: boolean;
-  }) => void) => {
-    const handler = (_ipc: IpcRendererEvent, data: unknown) => {
-      callback(data as Parameters<typeof callback>[0])
-    }
-    ipcRenderer.on('agent:event', handler)
-    return () => {
-      ipcRenderer.removeListener('agent:event', handler)
-    }
+  radial: {
+    onShow: onIpcWithEvent<{ centerX: number; centerY: number; x?: number; y?: number }>('radial:show'),
+    onHide: onIpcSignal('radial:hide'),
+    animDone: () => ipcRenderer.send('radial:animDone'),
+    onCursor: onIpcWithEvent<{ x: number; y: number; centerX: number; centerY: number }>('radial:cursor'),
   },
 
-  // Self-mod revert
-  selfModRevert: (featureId: string, steps?: number) =>
-    ipcRenderer.invoke('selfmod:revert', { featureId, steps }),
-  getLastSelfModFeature: () =>
-    ipcRenderer.invoke('selfmod:lastFeature'),
-
-  // ─── Unified Overlay IPC ──────────────────────────────────────────────
-  overlaySetInteractive: (interactive: boolean) =>
-    ipcRenderer.send('overlay:setInteractive', interactive),
-  onOverlayModifierBlock: (callback: (active: boolean) => void) => {
-    const handler = (_event: IpcRendererEvent, active: boolean) => { callback(active) }
-    ipcRenderer.on('overlay:modifierBlock', handler)
-    return () => { ipcRenderer.removeListener('overlay:modifierBlock', handler) }
-  },
-  onOverlayStartRegionCapture: (callback: () => void) => {
-    const handler = () => { callback() }
-    ipcRenderer.on('overlay:startRegionCapture', handler)
-    return () => { ipcRenderer.removeListener('overlay:startRegionCapture', handler) }
-  },
-  onOverlayEndRegionCapture: (callback: () => void) => {
-    const handler = () => { callback() }
-    ipcRenderer.on('overlay:endRegionCapture', handler)
-    return () => { ipcRenderer.removeListener('overlay:endRegionCapture', handler) }
-  },
-  onOverlayShowMini: (callback: (data: { x: number; y: number }) => void) => {
-    const handler = (_event: IpcRendererEvent, data: { x: number; y: number }) => { callback(data) }
-    ipcRenderer.on('overlay:showMini', handler)
-    return () => { ipcRenderer.removeListener('overlay:showMini', handler) }
-  },
-  onOverlayHideMini: (callback: () => void) => {
-    const handler = () => { callback() }
-    ipcRenderer.on('overlay:hideMini', handler)
-    return () => { ipcRenderer.removeListener('overlay:hideMini', handler) }
-  },
-  onOverlayRestoreMini: (callback: () => void) => {
-    const handler = () => { callback() }
-    ipcRenderer.on('overlay:restoreMini', handler)
-    return () => { ipcRenderer.removeListener('overlay:restoreMini', handler) }
-  },
-  onOverlayShowVoice: (callback: (data: { x: number; y: number; mode: 'stt' | 'realtime' }) => void) => {
-    const handler = (_event: IpcRendererEvent, data: { x: number; y: number; mode: 'stt' | 'realtime' }) => { callback(data) }
-    ipcRenderer.on('overlay:showVoice', handler)
-    return () => { ipcRenderer.removeListener('overlay:showVoice', handler) }
-  },
-  onOverlayHideVoice: (callback: () => void) => {
-    const handler = () => { callback() }
-    ipcRenderer.on('overlay:hideVoice', handler)
-    return () => { ipcRenderer.removeListener('overlay:hideVoice', handler) }
-  },
-  onOverlayDisplayChange: (callback: (data: { origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }) => void) => {
-    const handler = (_event: IpcRendererEvent, data: { origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }) => { callback(data) }
-    ipcRenderer.on('overlay:displayChange', handler)
-    return () => { ipcRenderer.removeListener('overlay:displayChange', handler) }
+  overlay: {
+    setInteractive: (interactive: boolean) =>
+      ipcRenderer.send('overlay:setInteractive', interactive),
+    onModifierBlock: onIpc<boolean>('overlay:modifierBlock'),
+    onStartRegionCapture: onIpcSignal('overlay:startRegionCapture'),
+    onEndRegionCapture: onIpcSignal('overlay:endRegionCapture'),
+    onShowMini: onIpc<{ x: number; y: number }>('overlay:showMini'),
+    onHideMini: onIpcSignal('overlay:hideMini'),
+    onRestoreMini: onIpcSignal('overlay:restoreMini'),
+    onShowVoice: onIpc<{ x: number; y: number; mode: 'stt' | 'realtime' }>('overlay:showVoice'),
+    onHideVoice: onIpcSignal('overlay:hideVoice'),
+    onDisplayChange: onIpc<{ origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }>('overlay:displayChange'),
   },
 
-  // App reload (used by recovery page)
-  appReload: () => ipcRenderer.send('app:reload'),
-  hardResetLocalState: () => ipcRenderer.invoke('app:hardResetLocalState') as Promise<{ ok: boolean }>,
+  mini: {
+    onVisibility: (callback: (visible: boolean) => void) => {
+      const handler = (_event: IpcRendererEvent, data: { visible?: boolean }) => {
+        callback(Boolean(data?.visible))
+      }
+      ipcRenderer.on('mini:visibility', handler)
+      return () => { ipcRenderer.removeListener('mini:visibility', handler) }
+    },
+    onDismissPreview: onIpcSignal('mini:dismissPreview'),
+    request: (request: MiniBridgeRequest) =>
+      ipcRenderer.invoke('miniBridge:request', request) as Promise<MiniBridgeResponse>,
+    onUpdate: onIpc<MiniBridgeUpdate>('miniBridge:update'),
+    onRequest: onIpc<MiniBridgeRequestEnvelope>('miniBridge:request'),
+    respond: (envelope: MiniBridgeResponseEnvelope) => ipcRenderer.send('miniBridge:response', envelope),
+    ready: () => ipcRenderer.send('miniBridge:ready'),
+    pushUpdate: (update: MiniBridgeUpdate) => ipcRenderer.send('miniBridge:update', update),
+  },
 
-  getLocalSyncMode: () => ipcRenderer.invoke('preferences:getSyncMode') as Promise<string>,
-  setLocalSyncMode: (mode: string) => ipcRenderer.invoke('preferences:setSyncMode', mode),
+  theme: {
+    onChange: onIpcWithEvent<{ key: string; value: string }>('theme:change'),
+    broadcast: (key: string, value: string) => ipcRenderer.send('theme:broadcast', { key, value }),
+    listInstalled: () => ipcRenderer.invoke('theme:listInstalled'),
+  },
+
+  voice: {
+    submitTranscript: (transcript: string) => ipcRenderer.send('voice:transcript', transcript),
+    setShortcut: (shortcut: string) => ipcRenderer.send('voice:setShortcut', shortcut),
+    onTranscript: onIpc<string>('voice:transcript'),
+    persistTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) =>
+      ipcRenderer.send('voice:persistTranscript', payload),
+    orchestratorChat: (payload: { conversationId: string; message: string }) =>
+      ipcRenderer.invoke('voice:orchestratorChat', payload) as Promise<string>,
+    setRtcShortcut: (shortcut: string) => ipcRenderer.send('voice-rtc:setShortcut', shortcut),
+    onRtcPreWarm: onIpc<string>('voice-rtc:pre-warm'),
+    onRtcPrefetchToken: onIpcSignal('voice-rtc:prefetch-token'),
+  },
+
+  agent: {
+    healthCheck: () => ipcRenderer.invoke('agent:healthCheck') as Promise<{ ready: true; runnerVersion: string } | null>,
+    getActiveRun: () =>
+      ipcRenderer.invoke('agent:getActiveRun') as Promise<{ runId: string; conversationId: string } | null>,
+    startChat: (payload: {
+      conversationId: string;
+      userMessageId: string;
+      userPrompt: string;
+      agentType?: string;
+      storageMode?: 'cloud' | 'local';
+    }) => ipcRenderer.invoke('agent:startChat', payload) as Promise<{ runId: string }>,
+    cancelChat: (runId: string) => ipcRenderer.send('agent:cancelChat', runId),
+    resumeStream: (payload: { runId: string; lastSeq: number }) =>
+      ipcRenderer.invoke('agent:resume', payload) as Promise<{
+        events: Array<{
+          type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';
+          runId: string;
+          seq: number;
+          chunk?: string;
+          toolCallId?: string;
+          toolName?: string;
+          resultPreview?: string;
+          error?: string;
+          fatal?: boolean;
+          finalText?: string;
+          persisted?: boolean;
+        }>;
+        exhausted: boolean;
+      }>,
+    onStream: onIpc<{
+      type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';
+      runId: string;
+      seq: number;
+      chunk?: string;
+      toolCallId?: string;
+      toolName?: string;
+      resultPreview?: string;
+      error?: string;
+      fatal?: boolean;
+      finalText?: string;
+      persisted?: boolean;
+    }>('agent:event'),
+    selfModRevert: (featureId: string, steps?: number) =>
+      ipcRenderer.invoke('selfmod:revert', { featureId, steps }),
+    getLastSelfModFeature: () =>
+      ipcRenderer.invoke('selfmod:lastFeature'),
+  },
+
+  store: {
+    installSkill: (payload: {
+      packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]
+    }) => ipcRenderer.invoke('store:installSkill', payload),
+    installTheme: (payload: {
+      packageId: string; themeId: string; name: string; light: Record<string, string>; dark: Record<string, string>
+    }) => ipcRenderer.invoke('store:installTheme', payload),
+    installCanvas: (payload: {
+      packageId: string; workspaceId?: string; name: string; dependencies?: Record<string, string>; source?: string
+    }) => ipcRenderer.invoke('store:installCanvas', payload),
+    uninstall: (payload: {
+      packageId: string; type: string; localId: string
+    }) => ipcRenderer.invoke('store:uninstall', payload),
+  },
+
+  system: {
+    getDeviceId: () => ipcRenderer.invoke('device:getId'),
+    configurePiRuntime: (config: { convexUrl?: string; convexSiteUrl?: string }) =>
+      ipcRenderer.invoke('host:configurePiRuntime', config),
+    setAuthState: (payload: { authenticated: boolean; token?: string }) => ipcRenderer.invoke('auth:setState', payload),
+    setCloudSyncEnabled: (payload: { enabled: boolean }) => ipcRenderer.invoke('host:setCloudSyncEnabled', payload),
+    onAuthCallback: onIpc<{ url: string }>('auth:callback'),
+    openFullDiskAccess: () => ipcRenderer.send('system:openFullDiskAccess'),
+    openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
+    shellKillByPort: (port: number) => ipcRenderer.invoke('shell:killByPort', { port }),
+    getLocalSyncMode: () => ipcRenderer.invoke('preferences:getSyncMode') as Promise<string>,
+    setLocalSyncMode: (mode: string) => ipcRenderer.invoke('preferences:setSyncMode', mode),
+    onCredentialRequest: onIpcWithEvent<{ requestId: string; provider: string; label?: string; description?: string; placeholder?: string }>('credential:request'),
+    submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) =>
+      ipcRenderer.invoke('credential:submit', payload),
+    cancelCredential: (payload: { requestId: string }) =>
+      ipcRenderer.invoke('credential:cancel', payload),
+    getIdentityMap: () => ipcRenderer.invoke('identity:getMap'),
+    depseudonymize: (text: string) => ipcRenderer.invoke('identity:depseudonymize', text),
+    bridgeDeploy: (payload: {
+      provider: string; code: string; env: Record<string, string>; dependencies: string
+    }) => ipcRenderer.invoke('bridge:deploy', payload),
+    bridgeStart: (payload: { provider: string }) => ipcRenderer.invoke('bridge:start', payload),
+    bridgeStop: (payload: { provider: string }) => ipcRenderer.invoke('bridge:stop', payload),
+    bridgeStatus: (payload: { provider: string }) => ipcRenderer.invoke('bridge:status', payload),
+  },
+
+  browser: {
+    checkCoreMemoryExists: () => ipcRenderer.invoke('browserData:exists'),
+    collectData: () => ipcRenderer.invoke('browserData:collect'),
+    detectPreferred: () => ipcRenderer.invoke('browserData:detectPreferredBrowser'),
+    listProfiles: (browserType: string) => ipcRenderer.invoke('browserData:listProfiles', browserType),
+    writeCoreMemory: (content: string) => ipcRenderer.invoke('browserData:writeCoreMemory', content),
+    collectAllSignals: (options?: { categories?: string[] }) =>
+      ipcRenderer.invoke('signals:collectAll', options),
+    listWorkspacePanels: () =>
+      ipcRenderer.invoke('workspace:listPanels') as Promise<Array<{ name: string; title: string }>>,
+    onWorkspacePanelsChanged: onIpc<Array<{ name: string; title: string }>>('workspace:panelsChanged'),
+  },
 })

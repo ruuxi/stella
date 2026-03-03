@@ -12,17 +12,17 @@ export function useContextCapture() {
     const electronApi = getElectronApi();
     if (!electronApi) return;
 
-    const unsubscribeVisibility = electronApi.onMiniVisibility((visible) => {
+    const unsubscribeVisibility = electronApi.mini.onVisibility((visible) => {
       setShellVisible(visible);
     });
 
-    const unsubscribeDismissPreview = electronApi.onDismissPreview(() => {
+    const unsubscribeDismissPreview = electronApi.mini.onDismissPreview(() => {
       setPreviewIndex(null);
     });
 
     // Fetch initial context
-    electronApi
-      .getChatContext()
+    electronApi.capture
+      .getContext()
       .then((context) => {
         if (!context) return;
         setChatContext(context);
@@ -33,8 +33,8 @@ export function useContextCapture() {
       });
 
     // Subscribe to context updates
-    if (!electronApi.onChatContext) return;
-    const unsubscribe = electronApi.onChatContext((payload) => {
+    if (!electronApi.capture.onContext) return;
+    const unsubscribe = electronApi.capture.onContext((payload) => {
       let context: ChatContext | null = null;
       let version: number | null = null;
 
@@ -52,7 +52,7 @@ export function useContextCapture() {
       if (version !== null) {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            window.electronAPI?.ackChatContext?.({ version });
+            window.electronAPI?.capture.ackContext?.({ version });
           });
         });
       }

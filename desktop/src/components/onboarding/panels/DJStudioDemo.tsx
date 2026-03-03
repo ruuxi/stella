@@ -568,7 +568,7 @@ const css = `
 
 /* ── Main Component ── */
 
-export default function DJStudio() {
+export function DJStudio() {
   const [tracks, setTracks] = useState<Track[]>(() => loadPreset(PRESETS[0]));
   const [activePreset, setActivePreset] = useState(0);
   const [playing, setPlaying] = useState(false);

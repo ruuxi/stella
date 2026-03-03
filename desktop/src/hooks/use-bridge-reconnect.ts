@@ -15,12 +15,18 @@ export function useBridgeAutoReconnect() {
   const whatsappSession = useQuery(api.channels.bridge.getBridgeStatus, { provider: "whatsapp" });
   const signalSession = useQuery(api.channels.bridge.getBridgeStatus, { provider: "signal" });
 
+  const sessionsByProvider: Record<BridgeProvider, typeof whatsappSession> = {
+    whatsapp: whatsappSession,
+    signal: signalSession,
+  };
+
   useEffect(() => {
+    let cancelled = false;
     const electronApi = window.electronAPI;
     if (!electronApi) return;
 
     for (const provider of BRIDGE_PROVIDERS) {
-      const session = provider === "whatsapp" ? whatsappSession : signalSession;
+      const session = sessionsByProvider[provider];
       if (!session) continue;
 
       const sessionMode = (session as Record<string, unknown>).mode as string | undefined;
@@ -32,7 +38,8 @@ export function useBridgeAutoReconnect() {
       if (status === "connected" || status === "awaiting_auth" || status === "initializing") {
         if (reconnectingRef.current.has(provider)) continue;
 
-        electronApi.bridgeStatus({ provider }).then(async (result) => {
+        electronApi.system.bridgeStatus({ provider }).then(async (result) => {
+          if (cancelled) return;
           if (result.running) return;
           if (reconnectingRef.current.has(provider)) return;
 
@@ -40,7 +47,8 @@ export function useBridgeAutoReconnect() {
           try {
             await deployAndStartLocalBridge(provider, getBridgeBundle);
           } catch (err) {
-            console.error(`[bridge-reconnect] Failed to restart ${provider}:`, err);
+            if (cancelled) return;
+            console.error(`[bridge-reconnect] Failed to restart ${provider}:`, (err as Error).message);
           } finally {
             reconnectingRef.current.delete(provider);
           }
@@ -49,8 +57,15 @@ export function useBridgeAutoReconnect() {
 
       // If session is stopped/error and local, clean up any orphaned process
       if (status === "stopped" || status === "error") {
-        electronApi.bridgeStop({ provider }).catch(() => {});
+        electronApi.system.bridgeStop({ provider }).catch((err) => {
+          if (cancelled) return;
+          console.debug(`[bridge-reconnect] Failed to stop orphaned ${provider} process:`, (err as Error).message);
+        });
       }
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [whatsappSession, signalSession, getBridgeBundle]);
 }

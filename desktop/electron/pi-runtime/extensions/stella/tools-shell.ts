@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord } from "./tools-types.js";
 import type { SecretFileMountHandle } from "./tools-utils.js";
 import { removeSecretFile, truncate, writeSecretFile } from "./tools-utils.js";
-import { isDangerousCommand } from "./command_safety.js";
+import { isDangerousCommand } from "./command-safety.js";
 
 export type ShellState = {
   shells: Map<string, ShellRecord>;
@@ -34,11 +34,11 @@ export const createShellState = (
 });
 
 const deferredDeleteHelperPath = (() => {
-  const jsPath = fileURLToPath(new URL("./deferred_delete_cli.js", import.meta.url));
+  const jsPath = fileURLToPath(new URL("./deferred-delete-cli.js", import.meta.url));
   if (existsSync(jsPath)) {
     return jsPath;
   }
-  const tsPath = fileURLToPath(new URL("./deferred_delete_cli.ts", import.meta.url));
+  const tsPath = fileURLToPath(new URL("./deferred-delete-cli.ts", import.meta.url));
   if (existsSync(tsPath)) {
     return tsPath;
   }

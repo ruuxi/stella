@@ -9,7 +9,6 @@ import { useWorkspace } from "../../app/state/workspace-state";
 import { useTheme } from "../../theme/theme-context";
 import { useConversationEvents } from "../../hooks/use-conversation-events";
 import { useCanvasCommands } from "../../hooks/use-canvas-commands";
-import { getElectronApi } from "../../services/electron";
 import { secureSignOut } from "../../services/auth";
 import { ShiftingGradient } from "../../components/background/ShiftingGradient";
 import { TitleBar } from "../../components/TitleBar";
@@ -18,11 +17,10 @@ import { WorkspaceArea } from "../../components/workspace/WorkspaceArea";
 import { HeaderTabBar } from "../../components/header/HeaderTabBar";
 import { FloatingOrb, type FloatingOrbHandle } from "../../components/orb/FloatingOrb";
 import { useOrbMessage } from "../../hooks/use-orb-message";
-import type { ChatContext, ChatContextUpdate } from "../../types/electron";
 
 import { ChatColumn } from "./ChatColumn";
+import type { ChatColumnProps } from "./ChatColumn";
 import { useOnboardingOverlay } from "./OnboardingOverlay";
-import type { OnboardingDemo } from "../../components/onboarding/OnboardingCanvas";
 import { useDiscoveryFlow } from "./DiscoveryFlow";
 import { useStreamingChat } from "../../hooks/use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
@@ -31,40 +29,17 @@ import { useReturnDetection, formatDuration } from "../../hooks/use-return-detec
 import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
 import { MiniBridgeRelay } from "./MiniBridgeRelay";
 
+import {
+  useLocalWorkspacePanels,
+  useChatContextSync,
+  useDemoAnimation,
+  useDialogManager,
+  type PersonalPage,
+} from "./hooks";
+
 const SettingsDialog = lazy(() => import("./SettingsView"));
 const AuthDialog = lazy(() => import("../../app/AuthDialog").then(m => ({ default: m.AuthDialog })));
-const ConnectDialog = lazy(() => import("../../app/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
-
-type PersonalPage = {
-  pageId: string;
-  panelName: string;
-  title: string;
-  order: number;
-};
-
-type LocalWorkspacePanel = {
-  name: string;
-  title: string;
-};
-
-const LOCAL_PANEL_PAGE_PREFIX = "local_panel:";
-const LOCAL_PANELS_POLL_INTERVAL_MS = 3_000;
-
-const arePanelListsEqual = (
-  left: LocalWorkspacePanel[],
-  right: LocalWorkspacePanel[],
-) => {
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (
-      left[index]?.name !== right[index]?.name ||
-      left[index]?.title !== right[index]?.title
-    ) {
-      return false;
-    }
-  }
-  return true;
-};
+const ConnectDialog = lazy(() => import("../../app/connect/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -76,93 +51,14 @@ export const FullShell = () => {
   const isNearBottomRef = useRef(true);
 
   const [message, setMessage] = useState("");
-  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
-  const [selectedText, setSelectedText] = useState<string | null>(null);
-  const [authDialogOpen, setAuthDialogOpen] = useState(false);
-  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
-  const [localWorkspacePanels, setLocalWorkspacePanels] = useState<
-    LocalWorkspacePanel[]
-  >([]);
 
   useBridgeAutoReconnect();
 
   const onboarding = useOnboardingOverlay();
-
-  useEffect(() => {
-    const electronApi = getElectronApi();
-    if (!electronApi?.listWorkspacePanels) {
-      return;
-    }
-
-    let cancelled = false;
-    const normalizePanels = (result: unknown) => {
-      return (Array.isArray(result) ? result : [])
-        .filter(
-          (panel): panel is LocalWorkspacePanel =>
-            Boolean(
-              panel &&
-                typeof panel.name === "string" &&
-                typeof panel.title === "string",
-            ),
-        )
-        .map((panel) => ({
-          name: panel.name.trim(),
-          title: panel.title.trim() || panel.name.trim(),
-        }))
-        .filter((panel) => panel.name.length > 0);
-    };
-
-    const applyPanels = (normalized: LocalWorkspacePanel[]) => {
-      if (!cancelled) {
-        setLocalWorkspacePanels((previous) =>
-          arePanelListsEqual(previous, normalized) ? previous : normalized,
-        );
-      }
-    };
-
-    const loadPanels = async () => {
-      try {
-        const result = await electronApi.listWorkspacePanels();
-        if (cancelled) return;
-        applyPanels(normalizePanels(result));
-      } catch (error) {
-        if (!cancelled) {
-          console.warn("[FullShell] Failed to load local workspace pages", error);
-        }
-      }
-    };
-
-    void loadPanels();
-
-    // Prefer file watcher over polling when available
-    const unsubscribe = electronApi.onWorkspacePanelsChanged?.((panels) => {
-      applyPanels(normalizePanels(panels));
-    });
-
-    // Fallback to polling only if watcher is unavailable
-    let intervalId: number | undefined;
-    if (!unsubscribe) {
-      intervalId = window.setInterval(() => {
-        void loadPanels();
-      }, LOCAL_PANELS_POLL_INTERVAL_MS);
-    }
-
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-      if (intervalId !== undefined) window.clearInterval(intervalId);
-    };
-  }, []);
-
-  const personalPages = useMemo<PersonalPage[]>(() => {
-    return localWorkspacePanels.map((panel, index) => ({
-      pageId: `${LOCAL_PANEL_PAGE_PREFIX}${panel.name}`,
-      panelName: panel.name,
-      title: panel.title,
-      order: index,
-    }));
-  }, [localWorkspacePanels]);
+  const { personalPages } = useLocalWorkspacePanels();
+  const { chatContext, setChatContext, selectedText, setSelectedText } = useChatContextSync();
+  const { activeDemo, demoClosing, handleDemoChange } = useDemoAnimation();
+  const { activeDialog, setActiveDialog } = useDialogManager();
 
   const handleTabSelect = useCallback(
     (view: "home" | "store" | "app" | "chat", page?: PersonalPage) => {
@@ -175,28 +71,6 @@ export const FullShell = () => {
     },
     [openCanvas, setView],
   );
-
-  const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
-  const [demoClosing, setDemoClosing] = useState(false);
-  const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleDemoChange = useCallback((demo: OnboardingDemo) => {
-    if (demo) {
-      if (demoCloseTimerRef.current) {
-        clearTimeout(demoCloseTimerRef.current);
-        demoCloseTimerRef.current = null;
-      }
-      setDemoClosing(false);
-      setActiveDemo(demo);
-    } else {
-      setActiveDemo(null);
-      setDemoClosing(true);
-      demoCloseTimerRef.current = setTimeout(() => {
-        setDemoClosing(false);
-        demoCloseTimerRef.current = null;
-      }, 400);
-    }
-  }, []);
 
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     conversationId: activeConversationId,
@@ -260,48 +134,15 @@ export const FullShell = () => {
   );
 
   useEffect(() => {
-    window.electronAPI?.setAppReady?.(onboarding.onboardingDone);
+    window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
   }, [onboarding.onboardingDone]);
 
   useEffect(() => {
-    const unsubscribe = window.electronAPI?.onVoiceTranscript?.((transcript) => {
+    const unsubscribe = window.electronAPI?.voice.onTranscript?.((transcript) => {
       handleVoiceTranscript(transcript);
     });
     return () => unsubscribe?.();
   }, [handleVoiceTranscript]);
-
-  useEffect(() => {
-    const electronApi = getElectronApi();
-    if (!electronApi) return;
-
-    electronApi
-      .getChatContext?.()
-      .then((context) => {
-        if (!context) return;
-        setChatContext(context);
-        setSelectedText(context.selectedText ?? null);
-      })
-      .catch((error) => {
-        console.warn("Failed to load chat context", error);
-      });
-
-    if (!electronApi.onChatContext) return;
-
-    const unsubscribe = electronApi.onChatContext((payload) => {
-      let context: ChatContext | null = null;
-      if (payload && typeof payload === "object" && "context" in payload) {
-        context = (payload as ChatContextUpdate).context ?? null;
-      } else {
-        context = (payload as ChatContext | null) ?? null;
-      }
-      setChatContext(context);
-      setSelectedText(context?.selectedText ?? null);
-    });
-
-    return () => {
-      unsubscribe?.();
-    };
-  }, []);
 
   useCanvasCommands(events);
 
@@ -333,7 +174,7 @@ export const FullShell = () => {
         setChatContext(null);
       },
     });
-  }, [message, selectedText, chatContext, sendMessage]);
+  }, [message, selectedText, chatContext, sendMessage, setSelectedText, setChatContext]);
 
   const handleCommandSelect = useCallback(
     (suggestion: CommandSuggestion) => {
@@ -379,41 +220,49 @@ export const FullShell = () => {
 
   const appReady = onboarding.onboardingDone;
 
-  const chatColumnProps = useMemo(() => ({
+  const chatColumnProps = useMemo<ChatColumnProps>(() => ({
     events,
-    streamingText,
-    reasoningText,
-    isStreaming,
-    pendingUserMessageId,
-    selfModMap,
-    message,
-    setMessage,
-    chatContext,
-    setChatContext,
-    selectedText,
-    setSelectedText,
-    scrollContainerRef,
-    handleScroll,
-    showScrollButton,
-    scrollToBottom,
+    streaming: {
+      text: streamingText,
+      reasoningText,
+      isStreaming,
+      pendingUserMessageId,
+      selfModMap,
+    },
+    composer: {
+      message,
+      setMessage,
+      chatContext,
+      setChatContext,
+      selectedText,
+      setSelectedText,
+      canSubmit,
+      onSend: handleSend,
+    },
+    scroll: {
+      containerRef: scrollContainerRef,
+      handleScroll,
+      showScrollButton,
+      scrollToBottom,
+    },
+    onboarding: {
+      done: onboarding.onboardingDone,
+      exiting: onboarding.onboardingExiting,
+      isAuthenticated: onboarding.isAuthenticated,
+      hasExpanded: onboarding.hasExpanded,
+      splitMode: onboarding.splitMode,
+      hasDiscoverySelections: onboarding.hasDiscoverySelections,
+      key: onboarding.onboardingKey,
+      stellaAnimationRef: onboarding.stellaAnimationRef,
+      triggerFlash: onboarding.triggerFlash,
+      startBirthAnimation: onboarding.startBirthAnimation,
+      completeOnboarding: onboarding.completeOnboarding,
+      handleEnterSplit: onboarding.handleEnterSplit,
+      onDiscoveryConfirm: handleDiscoveryConfirm,
+      onSelectionChange: onboarding.setHasDiscoverySelections,
+      onDemoChange: handleDemoChange,
+    },
     conversationId: activeConversationId,
-    onboardingDone: onboarding.onboardingDone,
-    onboardingExiting: onboarding.onboardingExiting,
-    isAuthenticated: onboarding.isAuthenticated,
-    canSubmit,
-    onSend: handleSend,
-    hasExpanded: onboarding.hasExpanded,
-    splitMode: onboarding.splitMode,
-    hasDiscoverySelections: onboarding.hasDiscoverySelections,
-    onboardingKey: onboarding.onboardingKey,
-    stellaAnimationRef: onboarding.stellaAnimationRef,
-    triggerFlash: onboarding.triggerFlash,
-    startBirthAnimation: onboarding.startBirthAnimation,
-    completeOnboarding: onboarding.completeOnboarding,
-    handleEnterSplit: onboarding.handleEnterSplit,
-    onDiscoveryConfirm: handleDiscoveryConfirm,
-    onSelectionChange: onboarding.setHasDiscoverySelections,
-    onDemoChange: handleDemoChange,
     onCommandSelect: handleCommandSelect,
   }), [
     events,
@@ -424,7 +273,9 @@ export const FullShell = () => {
     selfModMap,
     message,
     chatContext,
+    setChatContext,
     selectedText,
+    setSelectedText,
     scrollContainerRef,
     handleScroll,
     showScrollButton,
@@ -482,9 +333,9 @@ export const FullShell = () => {
         {appReady ? (
           <>
             <Sidebar
-              onSignIn={() => setAuthDialogOpen(true)}
-              onConnect={() => setConnectDialogOpen(true)}
-              onSettings={() => setSettingsDialogOpen(true)}
+              onSignIn={() => setActiveDialog("auth")}
+              onConnect={() => setActiveDialog("connect")}
+              onSettings={() => setActiveDialog("settings")}
               onStore={() => setView(state.view === 'store' ? 'home' : 'store')}
               onHome={() => setView('home')}
               storeActive={state.view === 'store'}
@@ -527,26 +378,26 @@ export const FullShell = () => {
         )}
       </div>
 
-      {authDialogOpen && (
+      {activeDialog === "auth" && (
         <Suspense fallback={null}>
-          <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
+          <AuthDialog open onOpenChange={(open) => { if (!open) setActiveDialog(null); }} />
         </Suspense>
       )}
-      {connectDialogOpen && (
+      {activeDialog === "connect" && (
         <Suspense fallback={null}>
           <ConnectDialog
-            open={connectDialogOpen}
-            onOpenChange={setConnectDialogOpen}
+            open
+            onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
           />
         </Suspense>
       )}
-      {settingsDialogOpen && (
+      {activeDialog === "settings" && (
         <Suspense fallback={null}>
           <SettingsDialog
-            open={settingsDialogOpen}
-            onOpenChange={setSettingsDialogOpen}
+            open
+            onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
             onSignOut={() => {
-              setSettingsDialogOpen(false);
+              setActiveDialog(null);
               void secureSignOut();
             }}
           />

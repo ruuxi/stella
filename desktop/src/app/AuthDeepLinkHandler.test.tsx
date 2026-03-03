@@ -23,9 +23,11 @@ describe("AuthDeepLinkHandler", () => {
     mockGetSession.mockResolvedValue({});
 
     ((window as unknown as Record<string, unknown>)).electronAPI = {
-      onAuthCallback: (cb: (data: { url: string }) => Promise<void>) => {
-        authCallback = cb;
-        return unsubscribeSpy;
+      system: {
+        onAuthCallback: (cb: (data: { url: string }) => Promise<void>) => {
+          authCallback = cb;
+          return unsubscribeSpy;
+        },
       },
     };
   });
@@ -112,7 +114,7 @@ describe("AuthDeepLinkHandler", () => {
   });
 
   it("does not register callback when onAuthCallback is missing", () => {
-    ((window as unknown as Record<string, unknown>)).electronAPI = {};
+    ((window as unknown as Record<string, unknown>)).electronAPI = { system: {} };
     render(<AuthDeepLinkHandler />);
     expect(authCallback).toBeNull();
   });

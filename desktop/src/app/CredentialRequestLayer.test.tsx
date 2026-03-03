@@ -69,14 +69,16 @@ describe("CredentialRequestLayer", () => {
     capturedOnCancel = undefined;
 
     mockElectronApi = {
-      onCredentialRequest: (cb: (_event: unknown, data: PendingCredentialRequest) => void) => {
-        credentialCallback = cb;
-        return () => {
-          credentialCallback = null;
-        };
+      system: {
+        onCredentialRequest: (cb: (_event: unknown, data: PendingCredentialRequest) => void) => {
+          credentialCallback = cb;
+          return () => {
+            credentialCallback = null;
+          };
+        },
+        submitCredential: mockSubmitCredential,
+        cancelCredential: mockCancelCredential,
       },
-      submitCredential: mockSubmitCredential,
-      cancelCredential: mockCancelCredential,
     };
     mockCreateSecret.mockResolvedValue({ secretId: "secret-123" });
   });
@@ -164,7 +166,7 @@ describe("CredentialRequestLayer", () => {
   });
 
   it("does not crash when onCredentialRequest is not available", () => {
-    mockElectronApi = {};
+    mockElectronApi = { system: {} };
     render(<CredentialRequestLayer />);
     expect(screen.getByTestId("credential-modal")).toHaveAttribute("data-open", "false");
   });
@@ -172,7 +174,7 @@ describe("CredentialRequestLayer", () => {
   it("unsubscribes from credential request on unmount", () => {
     const unsubscribe = vi.fn();
     mockElectronApi = {
-      onCredentialRequest: () => unsubscribe,
+      system: { onCredentialRequest: () => unsubscribe },
     };
 
     const { unmount } = render(<CredentialRequestLayer />);

@@ -3,7 +3,7 @@
  */
 
 import type { BrowserData } from "./browser-data.js";
-import type { DiscoveryCategory } from "./discovery_types.js";
+import type { DiscoveryCategory } from "./discovery-types.js";
 
 // ---------------------------------------------------------------------------
 // Dev Projects

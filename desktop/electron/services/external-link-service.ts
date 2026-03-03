@@ -107,16 +107,14 @@ export class ExternalLinkService {
     if (this.isTrustedRendererUrl(senderUrl)) {
       return true
     }
-    console.warn(`[security] Blocked privileged IPC "${channel}" from untrusted sender: ${senderUrl || '(unknown)'}`)
+    console.warn(`[security] Blocked untrusted IPC call to ${channel} from ${senderUrl}`)
     return false
   }
 
   setupExternalLinkHandlers(window: BrowserWindow) {
     window.webContents.setWindowOpenHandler(({ url }) => {
       if (!this.isAppUrl(url)) {
-        if (!this.openSafeExternalUrl(url)) {
-          console.warn(`[security] Blocked unsafe external navigation request: ${url}`)
-        }
+        this.openSafeExternalUrl(url)
       }
       return { action: 'deny' }
     })
@@ -124,9 +122,7 @@ export class ExternalLinkService {
     window.webContents.on('will-navigate', (event, url) => {
       if (!this.isAppUrl(url)) {
         event.preventDefault()
-        if (!this.openSafeExternalUrl(url)) {
-          console.warn(`[security] Blocked unsafe external in-app navigation: ${url}`)
-        }
+        this.openSafeExternalUrl(url)
       }
     })
   }

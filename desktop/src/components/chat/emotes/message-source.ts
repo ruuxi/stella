@@ -1,4 +1,4 @@
-import type { MessagePayload } from "@/hooks/use-conversation-events";
+import type { MessagePayload } from "@/lib/event-transforms";
 
 const EXCLUDED_SOURCES = new Set(["heartbeat", "cron"]);
 

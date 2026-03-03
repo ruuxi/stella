@@ -102,15 +102,19 @@ describe("UiStateProvider + useUiState", () => {
   it("setWindow calls showWindow on electron API", () => {
     const mockShowWindow = vi.fn();
     ((window as unknown as Record<string, unknown>)).electronAPI = {
-      getUiState: vi.fn().mockResolvedValue({
-        mode: "chat",
-        window: "full",
-        view: "chat",
-        conversationId: null,
-      }),
-      onUiState: vi.fn().mockReturnValue(() => {}),
-      setUiState: vi.fn(),
-      showWindow: mockShowWindow,
+      ui: {
+        getState: vi.fn().mockResolvedValue({
+          mode: "chat",
+          window: "full",
+          view: "chat",
+          conversationId: null,
+        }),
+        onState: vi.fn().mockReturnValue(() => {}),
+        setState: vi.fn(),
+      },
+      window: {
+        show: mockShowWindow,
+      },
     };
 
     const { result } = renderHook(() => useUiState(), { wrapper });

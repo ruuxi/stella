@@ -17,7 +17,7 @@ import {
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 import { InlineAuth } from "../InlineAuth";
-import { useTheme } from "../../theme/theme-context";
+import { useTheme, useThemeControl } from "../../theme/theme-context";
 import { getPlatform } from "@/utils/platform";
 import "../Onboarding.css";
 import "../../styles/selfmod-demo.css";
@@ -222,20 +222,16 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   }, [phase]);
 
   // Theme (inline)
+  const { themeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
   const {
-    themeId,
-    themes,
     setTheme,
-    colorMode,
     setColorMode,
     previewTheme,
     cancelThemePreview,
     cancelPreview,
-    gradientMode,
     setGradientMode,
-    gradientColor,
     setGradientColor,
-  } = useTheme();
+  } = useThemeControl();
 
   const clearTimeoutRef = useCallback(() => {
     if (timeoutRef.current) {
@@ -301,7 +297,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
     const detectBrowser = async () => {
       try {
-        const detected = await window.electronAPI?.detectPreferredBrowser?.();
+        const detected = await window.electronAPI?.browser.detectPreferred?.();
         if (cancelled || !detected?.browser) return;
 
         const supportedBrowserIds = new Set(BROWSERS.map((browser) => browser.id));
@@ -334,7 +330,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
     const loadProfiles = async () => {
       try {
-        const profiles = await window.electronAPI?.listBrowserProfiles?.(selectedBrowser);
+        const profiles = await window.electronAPI?.browser.listProfiles?.(selectedBrowser);
         if (!cancelled && profiles) {
           setAvailableProfiles(profiles);
           setSelectedProfile(profiles.length > 0 ? profiles[0].id : null);
@@ -786,7 +782,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   onClick={() => {
                     const finalShortcut = platform === "darwin" ? "CommandOrControl+Shift+V" : "CommandOrControl+Shift+V"
                     localStorage.setItem("stella-voice-shortcut", finalShortcut)
-                    window.electronAPI?.setVoiceShortcut?.(finalShortcut)
+                    window.electronAPI?.voice.setShortcut?.(finalShortcut)
                     nextSplitStep()
                   }}
                 >

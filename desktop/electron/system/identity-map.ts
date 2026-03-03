@@ -11,8 +11,8 @@ import { createHash } from "crypto";
 import type {
   IdentityMap,
   IdentityMappingSource,
-} from "./discovery_types.js";
-import { protectValue, unprotectValue } from "./protected_storage.js";
+} from "./discovery-types.js";
+import { protectValue, unprotectValue } from "./protected-storage.js";
 
 const log = (...args: unknown[]) => console.log("[identity-map]", ...args);
 const IDENTITY_NAME_SCOPE = "identity-map-real-name";

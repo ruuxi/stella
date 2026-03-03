@@ -46,16 +46,22 @@ vi.mock("../../theme/theme-context", () => ({
       { id: "carbon", name: "Carbon" },
       { id: "glacier", name: "Glacier" },
     ],
-    setTheme: vi.fn(),
     colorMode: "dark",
+    gradientMode: "shift",
+    gradientColor: "theme",
+  })),
+  useThemeControl: vi.fn(() => ({
+    setTheme: vi.fn(),
     setColorMode: vi.fn(),
     previewTheme: vi.fn(),
     cancelThemePreview: vi.fn(),
     cancelPreview: vi.fn(),
-    gradientMode: "shift",
     setGradientMode: vi.fn(),
-    gradientColor: "theme",
     setGradientColor: vi.fn(),
+    previewGradientMode: vi.fn(),
+    cancelGradientModePreview: vi.fn(),
+    previewGradientColor: vi.fn(),
+    cancelGradientColorPreview: vi.fn(),
   })),
 }));
 
@@ -104,8 +110,14 @@ beforeEach(() => {
   // Mock electronAPI
   (window as any).electronAPI = {
     platform: "win32",
-    detectPreferredBrowser: vi.fn().mockResolvedValue(null),
-    listBrowserProfiles: vi.fn().mockResolvedValue([]),
+    browser: {
+      detectPreferred: vi.fn().mockResolvedValue(null),
+      listProfiles: vi.fn().mockResolvedValue([]),
+    },
+    voice: {
+      setShortcut: vi.fn(),
+      setRtcShortcut: vi.fn(),
+    },
   };
 
   return () => {
@@ -319,11 +331,11 @@ describe("OnboardingStep1", () => {
     });
 
     it("re-runs browser detection when browser access is disabled and re-enabled", async () => {
-      const detectPreferredBrowser = vi
+      const detectPreferred = vi
         .fn()
         .mockResolvedValueOnce({ browser: "chrome" })
         .mockResolvedValueOnce({ browser: "edge" });
-      (window as any).electronAPI.detectPreferredBrowser = detectPreferredBrowser;
+      (window as any).electronAPI.browser.detectPreferred = detectPreferred;
 
       goToBrowser();
       const browserButton = screen.getByRole("button", { name: /Your browser/i });
@@ -333,7 +345,7 @@ describe("OnboardingStep1", () => {
         await Promise.resolve();
         await Promise.resolve();
       });
-      expect(detectPreferredBrowser).toHaveBeenCalledTimes(1);
+      expect(detectPreferred).toHaveBeenCalledTimes(1);
 
       fireEvent.click(browserButton); // disable
       fireEvent.click(browserButton); // re-enable -> detect again
@@ -341,7 +353,7 @@ describe("OnboardingStep1", () => {
         await Promise.resolve();
         await Promise.resolve();
       });
-      expect(detectPreferredBrowser).toHaveBeenCalledTimes(2);
+      expect(detectPreferred).toHaveBeenCalledTimes(2);
     });
 
     it("renders Continue button for discovery confirmation", () => {

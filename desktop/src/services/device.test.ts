@@ -24,7 +24,7 @@ describe("device service", () => {
     it("returns cached id from electron API when available", async () => {
       const mockGetDeviceId = vi.fn().mockResolvedValue("electron-device-123");
       ((window as unknown as Record<string, unknown>)).electronAPI = {
-        getDeviceId: mockGetDeviceId,
+        system: { getDeviceId: mockGetDeviceId },
       };
 
       const { getOrCreateDeviceId } = await import("./device");
@@ -36,7 +36,7 @@ describe("device service", () => {
     it("falls back to localStorage when electron API fails", async () => {
       const mockGetDeviceId = vi.fn().mockRejectedValue(new Error("fail"));
       ((window as unknown as Record<string, unknown>)).electronAPI = {
-        getDeviceId: mockGetDeviceId,
+        system: { getDeviceId: mockGetDeviceId },
       };
       localStorage.setItem("Stella.deviceId", "local-device-456");
 
@@ -48,7 +48,7 @@ describe("device service", () => {
     it("falls back to localStorage when electron API returns falsy", async () => {
       const mockGetDeviceId = vi.fn().mockResolvedValue(null);
       ((window as unknown as Record<string, unknown>)).electronAPI = {
-        getDeviceId: mockGetDeviceId,
+        system: { getDeviceId: mockGetDeviceId },
       };
       localStorage.setItem("Stella.deviceId", "stored-id");
 

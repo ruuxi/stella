@@ -1,6 +1,6 @@
 export type UiMode = 'chat' | 'voice'
 
-export type WindowMode = 'full' | 'mini' | 'voice'
+export type WindowMode = 'full' | 'mini'
 
 export type ViewType = 'home' | 'store' | 'app' | 'chat'
 

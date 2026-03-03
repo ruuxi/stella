@@ -70,14 +70,14 @@
       revertBtn.textContent = 'Reverting...';
       status.textContent = '';
       try {
-        const featureId = await window.electronAPI?.getLastSelfModFeature();
+        const featureId = await window.electronAPI?.agent.getLastSelfModFeature();
         if (featureId) {
-          await window.electronAPI?.selfModRevert(featureId);
+          await window.electronAPI?.agent.selfModRevert(featureId);
           status.textContent = 'Changes reverted. Restarting...';
         } else {
           status.textContent = 'No recent changes to undo. Restarting...';
         }
-        setTimeout(() => window.electronAPI?.appReload(), 500);
+        setTimeout(() => window.electronAPI?.ui.reload(), 500);
       } catch (err) {
         status.textContent = 'Revert failed. Try restarting instead.';
         revertBtn.disabled = false;
@@ -86,7 +86,7 @@
     });
 
     restartBtn.addEventListener('click', () => {
-      window.electronAPI?.appReload();
+      window.electronAPI?.ui.reload();
     });
   </script>
 </body>

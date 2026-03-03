@@ -3,15 +3,19 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 // --- Mocks ---
 
-const mockCancelRegionCapture = vi.fn();
+const mockCancelRegion = vi.fn();
 const mockSubmitRegionClick = vi.fn();
 const mockSubmitRegionSelection = vi.fn();
 const mockRunVacuumEffect = vi.fn().mockResolvedValue(undefined);
 
-const mockElectronApi: Record<string, unknown> = {
-  cancelRegionCapture: mockCancelRegionCapture,
+const mockCaptureApi: Record<string, unknown> = {
+  cancelRegion: mockCancelRegion,
   submitRegionClick: mockSubmitRegionClick,
   submitRegionSelection: mockSubmitRegionSelection,
+};
+
+const mockElectronApi: Record<string, unknown> = {
+  capture: mockCaptureApi,
 };
 
 vi.mock("../services/electron", () => ({
@@ -29,7 +33,7 @@ import { RegionCapture } from "../screens/RegionCapture";
 describe("RegionCapture", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockElectronApi.getWindowCapture = undefined;
+    mockCaptureApi.getWindowCapture = undefined;
   });
 
   it("renders the capture overlay", () => {
@@ -121,7 +125,7 @@ describe("RegionCapture", () => {
       bounds: { x: 80, y: 80, width: 120, height: 90 },
       thumbnail: "data:image/png;base64,ZmFrZQ==",
     });
-    mockElectronApi.getWindowCapture = getWindowCapture;
+    mockCaptureApi.getWindowCapture = getWindowCapture;
 
     const { container } = render(<RegionCapture />);
     const root = container.querySelector(".region-capture-root")!;
@@ -160,7 +164,7 @@ describe("RegionCapture", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
 
-    expect(mockCancelRegionCapture).toHaveBeenCalled();
+    expect(mockCancelRegion).toHaveBeenCalled();
   });
 
   it("cancels on right-click (context menu)", () => {
@@ -169,7 +173,7 @@ describe("RegionCapture", () => {
 
     fireEvent.contextMenu(root);
 
-    expect(mockCancelRegionCapture).toHaveBeenCalled();
+    expect(mockCancelRegion).toHaveBeenCalled();
   });
 
   it("clears selection on contextMenu during drag", () => {

@@ -1,12 +1,14 @@
 import type { WindowInfo } from './window-capture.js'
 
+/** Must stay in sync with src/types/ui.ts (source of truth for renderer). */
 export type UiMode = 'chat' | 'voice'
-export type WindowMode = 'full' | 'mini' | 'voice'
+export type WindowMode = 'full' | 'mini'
+export type ViewType = 'home' | 'store' | 'app' | 'chat'
 
 export type UiState = {
   mode: UiMode
   window: WindowMode
-  view: 'chat' | 'store'
+  view: ViewType
   conversationId: string | null
   isVoiceActive: boolean
   isVoiceRtcActive: boolean

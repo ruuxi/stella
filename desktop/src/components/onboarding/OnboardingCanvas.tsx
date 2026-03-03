@@ -1,8 +1,14 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import { Spinner } from "../spinner";
 
-const DJStudioDemo = lazy(() => import("./panels/DJStudioDemo"));
-const WeatherStationDemo = lazy(() => import("./panels/WeatherStationDemo"));
+const DJStudioDemo = lazy(() =>
+  import("./panels/DJStudioDemo").then((m) => ({ default: m.DJStudio })),
+);
+const WeatherStationDemo = lazy(() =>
+  import("./panels/WeatherStationDemo").then((m) => ({
+    default: m.WeatherStation,
+  })),
+);
 
 export type OnboardingDemo = "dj-studio" | "weather-station" | null;
 

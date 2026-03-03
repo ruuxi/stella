@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import type { EventRecord, Attachment } from "../../hooks/use-conversation-events";
+import type { EventRecord } from "../../hooks/use-conversation-events";
+import type { Attachment } from "../../lib/event-transforms";
 
 vi.mock("./WorkingIndicator", () => ({
   WorkingIndicator: (props: Record<string, unknown>) => (

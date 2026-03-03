@@ -12,22 +12,27 @@ import { captureWindowScreenshot } from '../window-capture.js'
 
 const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
 
-type CaptureServiceOptions = {
+export type CaptureWindowBridge = {
   getAllWindows: () => BrowserWindow[]
   getMiniWindow: () => BrowserWindow | null
   isMiniShowing: () => boolean
   showWindow: (target: 'full' | 'mini') => void
   concealMiniWindowForCapture: () => boolean
   restoreMiniWindowAfterCapture: () => void
-  updateUiState: (partial: Partial<UiState>) => void
+}
+
+export type CaptureOverlayBridge = {
   hideRadial: () => void
   hideModifierBlock: () => void
-  /** Start region capture in the overlay window */
   startRegionCapture: () => void
-  /** End region capture in the overlay window */
   endRegionCapture: () => void
-  /** Get the overlay window bounds (for coordinate conversion) */
   getOverlayBounds: () => { x: number; y: number; width: number; height: number } | null
+}
+
+type CaptureServiceOptions = {
+  window: CaptureWindowBridge
+  overlay: CaptureOverlayBridge
+  updateUiState: (partial: Partial<UiState>) => void
 }
 
 export class CaptureService {
@@ -47,10 +52,6 @@ export class CaptureService {
   private pendingRegionCapturePromise: Promise<RegionCaptureResult | null> | null = null
 
   constructor(private readonly options: CaptureServiceOptions) {}
-
-  createRegionCaptureWindow() {
-    // No-op: overlay window is always alive and handles region capture
-  }
 
   emptyContext(): ChatContext {
     return {
@@ -79,7 +80,7 @@ export class CaptureService {
   }
 
   broadcastChatContext() {
-    for (const window of this.options.getAllWindows()) {
+    for (const window of this.options.window.getAllWindows()) {
       window.webContents.send('chatContext:updated', {
         context: this.pendingChatContext,
         version: this.chatContextVersion,
@@ -89,7 +90,7 @@ export class CaptureService {
   }
 
   async waitForMiniChatContext(version: number, timeoutMs = 250) {
-    if (!this.options.getMiniWindow()) {
+    if (!this.options.window.getMiniWindow()) {
       return
     }
     if (this.lastMiniChatContextAckVersion >= version) {
@@ -134,6 +135,19 @@ export class CaptureService {
       clearTimeout(this.pendingMiniChatContextAck.timeout)
       this.pendingMiniChatContextAck.resolve()
       this.pendingMiniChatContextAck = null
+    }
+  }
+
+  /** Preserves region screenshots but resets everything else to null. */
+  clearTransientContext(): void {
+    const current = this.pendingChatContext
+    if (current?.regionScreenshots?.length) {
+      this.setPendingChatContext({
+        ...this.emptyContext(),
+        regionScreenshots: current.regionScreenshots,
+      })
+    } else {
+      this.setPendingChatContext(null)
     }
   }
 
@@ -183,7 +197,7 @@ export class CaptureService {
     this.stagedRadialChatContext = null
     this.radialContextShouldCommit = false
 
-    if (this.options.isMiniShowing()) {
+    if (this.options.window.isMiniShowing()) {
       this.broadcastChatContext()
     }
   }
@@ -312,11 +326,47 @@ export class CaptureService {
     }
   }
 
+  /**
+   * Hides overlay components, conceals the mini window, waits for the
+   * compositor, runs `fn`, then restores the mini window. Centralises the
+   * capture-preparation pattern shared by every capture path.
+   */
+  private async withCaptureContext<T>(fn: () => Promise<T>): Promise<T> {
+    this.options.overlay.hideRadial()
+    this.options.overlay.hideModifierBlock()
+    this.options.overlay.endRegionCapture()
+    const miniWasConcealed = this.options.window.concealMiniWindowForCapture()
+
+    try {
+      await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
+      return await fn()
+    } finally {
+      if (miniWasConcealed) {
+        this.options.window.restoreMiniWindowAfterCapture()
+      }
+    }
+  }
+
+  /** Converts an overlay-relative point to native screen coordinates. */
+  private toScreenPoint(overlayRelative: { x: number; y: number }): { x: number; y: number } {
+    const regionBounds = this.options.overlay.getOverlayBounds()
+    if (!regionBounds) return overlayRelative
+
+    const dipX = regionBounds.x + overlayRelative.x
+    const dipY = regionBounds.y + overlayRelative.y
+    const display = screen.getDisplayNearestPoint({ x: dipX, y: dipY })
+    const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
+    return {
+      x: Math.round(dipX * scaleFactor),
+      y: Math.round(dipY * scaleFactor),
+    }
+  }
+
   private resetRegionCapture() {
     this.pendingRegionCaptureResolve = null
     this.pendingRegionCapturePromise = null
     try { globalShortcut.unregister('Escape') } catch {}
-    this.options.endRegionCapture()
+    this.options.overlay.endRegionCapture()
   }
 
   async startRegionCapture() {
@@ -324,13 +374,11 @@ export class CaptureService {
       return this.pendingRegionCapturePromise
     }
 
-    // Register global Escape shortcut as fallback (transparent overlays can miss keyboard events)
     globalShortcut.register('Escape', () => {
       this.cancelRegionCapture()
     })
 
-    // Show region capture in the overlay
-    this.options.startRegionCapture()
+    this.options.overlay.startRegionCapture()
 
     this.pendingRegionCapturePromise = new Promise<RegionCaptureResult | null>((resolve) => {
       this.pendingRegionCaptureResolve = resolve
@@ -346,37 +394,26 @@ export class CaptureService {
     }
 
     const resolve = this.pendingRegionCaptureResolve
-    this.options.endRegionCapture()
-    this.options.hideRadial()
-    this.options.hideModifierBlock()
-    const miniWasConcealed = this.options.concealMiniWindowForCapture()
-
     let screenshot: ScreenshotCapture | null = null
+
     try {
-      await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
+      screenshot = await this.withCaptureContext(async () => {
+        const regionBounds = this.options.overlay.getOverlayBounds()
+        const globalX = (regionBounds?.x ?? 0) + selection.x
+        const globalY = (regionBounds?.y ?? 0) + selection.y
+        const centerX = globalX + selection.width / 2
+        const centerY = globalY + selection.height / 2
+        const display = screen.getDisplayNearestPoint({ x: centerX, y: centerY })
 
-      const regionBounds = this.options.getOverlayBounds()
-      const globalX = (regionBounds?.x ?? 0) + selection.x
-      const globalY = (regionBounds?.y ?? 0) + selection.y
-      const centerX = globalX + selection.width / 2
-      const centerY = globalY + selection.height / 2
-      const display = screen.getDisplayNearestPoint({ x: centerX, y: centerY })
-
-      const displayRelativeSelection = {
-        x: globalX - display.bounds.x,
-        y: globalY - display.bounds.y,
-        width: selection.width,
-        height: selection.height,
-      }
-
-      screenshot = await this.captureRegionScreenshot(display, displayRelativeSelection)
+        return this.captureRegionScreenshot(display, {
+          x: globalX - display.bounds.x,
+          y: globalY - display.bounds.y,
+          width: selection.width,
+          height: selection.height,
+        })
+      })
     } catch (error) {
-      console.warn('Failed to capture selected region', error)
-      screenshot = null
-    } finally {
-      if (miniWasConcealed) {
-        this.options.restoreMiniWindowAfterCapture()
-      }
+      console.debug('[capture] region capture failed:', (error as Error).message)
     }
 
     resolve({ screenshot, window: null })
@@ -391,7 +428,7 @@ export class CaptureService {
   }
 
   async getRegionWindowCapture(point: { x: number; y: number }) {
-    const regionBounds = this.options.getOverlayBounds()
+    const regionBounds = this.options.overlay.getOverlayBounds()
     if (!regionBounds) return null
 
     const dipX = regionBounds.x + point.x
@@ -423,40 +460,15 @@ export class CaptureService {
     }
 
     const resolve = this.pendingRegionCaptureResolve
-    this.options.endRegionCapture()
-    this.options.hideRadial()
-    this.options.hideModifierBlock()
-    const miniWasConcealed = this.options.concealMiniWindowForCapture()
-
     let capture: Awaited<ReturnType<typeof captureWindowScreenshot>> = null
+
     try {
-      await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
-
-      const regionBounds = this.options.getOverlayBounds()
-      let capturePoint = { x: point.x, y: point.y }
-      if (regionBounds) {
-        const dipX = regionBounds.x + point.x
-        const dipY = regionBounds.y + point.y
-        const clickDisplay = screen.getDisplayNearestPoint({ x: dipX, y: dipY })
-        const scaleFactor = process.platform === 'darwin' ? 1 : (clickDisplay.scaleFactor ?? 1)
-        capturePoint = {
-          x: Math.round(dipX * scaleFactor),
-          y: Math.round(dipY * scaleFactor),
-        }
-      }
-
-      capture = await captureWindowScreenshot(
-        capturePoint.x,
-        capturePoint.y,
-        { excludePids: [process.pid] },
-      )
+      capture = await this.withCaptureContext(async () => {
+        const capturePoint = this.toScreenPoint(point)
+        return captureWindowScreenshot(capturePoint.x, capturePoint.y, { excludePids: [process.pid] })
+      })
     } catch (error) {
-      console.warn('Failed to capture window at point', error)
-      capture = null
-    } finally {
-      if (miniWasConcealed) {
-        this.options.restoreMiniWindowAfterCapture()
-      }
+      console.debug('[capture] window capture at point failed:', (error as Error).message)
     }
 
     resolve({
@@ -475,13 +487,8 @@ export class CaptureService {
       x: Math.round(cursorDip.x * scaleFactor),
       y: Math.round(cursorDip.y * scaleFactor),
     }
-    this.options.hideRadial()
-    this.options.hideModifierBlock()
-    this.options.endRegionCapture()
-    const miniWasConcealed = this.options.concealMiniWindowForCapture()
 
-    try {
-      await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
+    return this.withCaptureContext(async () => {
       const windowCapture = await captureWindowScreenshot(
         capturePoint.x,
         capturePoint.y,
@@ -490,11 +497,7 @@ export class CaptureService {
       if (windowCapture?.screenshot) {
         return windowCapture.screenshot
       }
-      return await this.captureDisplayScreenshot(display)
-    } finally {
-      if (miniWasConcealed) {
-        this.options.restoreMiniWindowAfterCapture()
-      }
-    }
+      return this.captureDisplayScreenshot(display)
+    })
   }
 }

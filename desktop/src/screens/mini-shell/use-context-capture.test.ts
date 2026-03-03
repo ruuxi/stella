@@ -70,10 +70,14 @@ describe("useContextCapture", () => {
       };
 
       const mockApi = {
-        getChatContext: vi.fn().mockResolvedValue(mockContext),
-        onChatContext: vi.fn(() => vi.fn()),
-        onMiniVisibility: vi.fn(() => vi.fn()),
-        onDismissPreview: vi.fn(() => vi.fn()),
+        capture: {
+          getContext: vi.fn().mockResolvedValue(mockContext),
+          onContext: vi.fn(() => vi.fn()),
+        },
+        mini: {
+          onVisibility: vi.fn(() => vi.fn()),
+          onDismissPreview: vi.fn(() => vi.fn()),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 
@@ -90,10 +94,14 @@ describe("useContextCapture", () => {
 
     it("handles getChatContext returning null", async () => {
       const mockApi = {
-        getChatContext: vi.fn().mockResolvedValue(null),
-        onChatContext: vi.fn(() => vi.fn()),
-        onMiniVisibility: vi.fn(() => vi.fn()),
-        onDismissPreview: vi.fn(() => vi.fn()),
+        capture: {
+          getContext: vi.fn().mockResolvedValue(null),
+          onContext: vi.fn(() => vi.fn()),
+        },
+        mini: {
+          onVisibility: vi.fn(() => vi.fn()),
+          onDismissPreview: vi.fn(() => vi.fn()),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 
@@ -110,10 +118,14 @@ describe("useContextCapture", () => {
     it("handles getChatContext error gracefully", async () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const mockApi = {
-        getChatContext: vi.fn().mockRejectedValue(new Error("fail")),
-        onChatContext: vi.fn(() => vi.fn()),
-        onMiniVisibility: vi.fn(() => vi.fn()),
-        onDismissPreview: vi.fn(() => vi.fn()),
+        capture: {
+          getContext: vi.fn().mockRejectedValue(new Error("fail")),
+          onContext: vi.fn(() => vi.fn()),
+        },
+        mini: {
+          onVisibility: vi.fn(() => vi.fn()),
+          onDismissPreview: vi.fn(() => vi.fn()),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 
@@ -135,13 +147,17 @@ describe("useContextCapture", () => {
       let visibilityCallback: ((visible: boolean) => void) | null = null;
 
       const mockApi = {
-        getChatContext: vi.fn().mockResolvedValue(null),
-        onChatContext: vi.fn(() => vi.fn()),
-        onMiniVisibility: vi.fn((cb: (visible: boolean) => void) => {
-          visibilityCallback = cb;
-          return vi.fn();
-        }),
-        onDismissPreview: vi.fn(() => vi.fn()),
+        capture: {
+          getContext: vi.fn().mockResolvedValue(null),
+          onContext: vi.fn(() => vi.fn()),
+        },
+        mini: {
+          onVisibility: vi.fn((cb: (visible: boolean) => void) => {
+            visibilityCallback = cb;
+            return vi.fn();
+          }),
+          onDismissPreview: vi.fn(() => vi.fn()),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 
@@ -166,13 +182,17 @@ describe("useContextCapture", () => {
       let dismissCallback: (() => void) | null = null;
 
       const mockApi = {
-        getChatContext: vi.fn().mockResolvedValue(null),
-        onChatContext: vi.fn(() => vi.fn()),
-        onMiniVisibility: vi.fn(() => vi.fn()),
-        onDismissPreview: vi.fn((cb: () => void) => {
-          dismissCallback = cb;
-          return vi.fn();
-        }),
+        capture: {
+          getContext: vi.fn().mockResolvedValue(null),
+          onContext: vi.fn(() => vi.fn()),
+        },
+        mini: {
+          onVisibility: vi.fn(() => vi.fn()),
+          onDismissPreview: vi.fn((cb: () => void) => {
+            dismissCallback = cb;
+            return vi.fn();
+          }),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 
@@ -195,13 +215,17 @@ describe("useContextCapture", () => {
       let contextCallback: ((payload: unknown) => void) | null = null;
 
       const mockApi = {
-        getChatContext: vi.fn().mockResolvedValue(null),
-        onChatContext: vi.fn((cb: (payload: unknown) => void) => {
-          contextCallback = cb;
-          return vi.fn();
-        }),
-        onMiniVisibility: vi.fn(() => vi.fn()),
-        onDismissPreview: vi.fn(() => vi.fn()),
+        capture: {
+          getContext: vi.fn().mockResolvedValue(null),
+          onContext: vi.fn((cb: (payload: unknown) => void) => {
+            contextCallback = cb;
+            return vi.fn();
+          }),
+        },
+        mini: {
+          onVisibility: vi.fn(() => vi.fn()),
+          onDismissPreview: vi.fn(() => vi.fn()),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 
@@ -228,13 +252,17 @@ describe("useContextCapture", () => {
       let contextCallback: ((payload: unknown) => void) | null = null;
 
       const mockApi = {
-        getChatContext: vi.fn().mockResolvedValue(null),
-        onChatContext: vi.fn((cb: (payload: unknown) => void) => {
-          contextCallback = cb;
-          return vi.fn();
-        }),
-        onMiniVisibility: vi.fn(() => vi.fn()),
-        onDismissPreview: vi.fn(() => vi.fn()),
+        capture: {
+          getContext: vi.fn().mockResolvedValue(null),
+          onContext: vi.fn((cb: (payload: unknown) => void) => {
+            contextCallback = cb;
+            return vi.fn();
+          }),
+        },
+        mini: {
+          onVisibility: vi.fn(() => vi.fn()),
+          onDismissPreview: vi.fn(() => vi.fn()),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 
@@ -257,13 +285,17 @@ describe("useContextCapture", () => {
       let contextCallback: ((payload: unknown) => void) | null = null;
 
       const mockApi = {
-        getChatContext: vi.fn().mockResolvedValue(null),
-        onChatContext: vi.fn((cb: (payload: unknown) => void) => {
-          contextCallback = cb;
-          return vi.fn();
-        }),
-        onMiniVisibility: vi.fn(() => vi.fn()),
-        onDismissPreview: vi.fn(() => vi.fn()),
+        capture: {
+          getContext: vi.fn().mockResolvedValue(null),
+          onContext: vi.fn((cb: (payload: unknown) => void) => {
+            contextCallback = cb;
+            return vi.fn();
+          }),
+        },
+        mini: {
+          onVisibility: vi.fn(() => vi.fn()),
+          onDismissPreview: vi.fn(() => vi.fn()),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 
@@ -283,10 +315,14 @@ describe("useContextCapture", () => {
       const unsubDismiss = vi.fn();
 
       const mockApi = {
-        getChatContext: vi.fn().mockResolvedValue(null),
-        onChatContext: vi.fn(() => unsubContext),
-        onMiniVisibility: vi.fn(() => unsubVisibility),
-        onDismissPreview: vi.fn(() => unsubDismiss),
+        capture: {
+          getContext: vi.fn().mockResolvedValue(null),
+          onContext: vi.fn(() => unsubContext),
+        },
+        mini: {
+          onVisibility: vi.fn(() => unsubVisibility),
+          onDismissPreview: vi.fn(() => unsubDismiss),
+        },
       };
       mockGetElectronApi.mockReturnValue(mockApi);
 

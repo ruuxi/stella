@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import React from "react";
 import type { TurnViewModel } from "./MessageTurn";
-import type { TaskItem } from "../../hooks/use-conversation-events";
+import type { TaskItem } from "../../lib/event-transforms";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 // Mock useTurnViewModels — we control what it returns per test

@@ -113,7 +113,6 @@ export class MiniBridgeService {
 
   handleReadySignal(senderWindow: BrowserWindow | null, fullWindow: BrowserWindow | null) {
     if (!senderWindow || senderWindow !== fullWindow) {
-      console.warn('[miniBridge] Ignoring ready signal from non-full window sender')
       return
     }
 
@@ -127,7 +126,6 @@ export class MiniBridgeService {
     envelope: MiniBridgeResponseEnvelope,
   ) {
     if (!senderWindow || senderWindow !== fullWindow) {
-      console.warn('[miniBridge] Ignoring response from non-full window sender')
       return
     }
 
@@ -145,7 +143,6 @@ export class MiniBridgeService {
     update: MiniBridgeUpdate,
   ) {
     if (!senderWindow || senderWindow !== fullWindow) {
-      console.warn('[miniBridge] Ignoring update from non-full window sender')
       return
     }
     if (!miniWindow || miniWindow.isDestroyed()) {

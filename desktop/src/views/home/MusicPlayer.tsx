@@ -5,7 +5,7 @@ import Mic from "lucide-react/dist/esm/icons/mic"
 import MicOff from "lucide-react/dist/esm/icons/mic-off"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { DashboardCard } from "./DashboardCard"
-import { preloadLyriaMusic, useLyriaMusic } from "@/services/use-lyria-music"
+import { preloadLyriaMusic, useLyriaMusic } from "@/hooks/use-lyria-music"
 import type { MusicMood } from "@/services/lyria-music"
 
 const MOODS: MusicMood[] = ["Auto", "Focus", "Calm", "Energy", "Sleep", "Lo-fi"]

@@ -1,8 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { ThemeProvider, useTheme } from "./theme-context";
+import { ThemeProvider, useTheme, useThemeControl } from "./theme-context";
 import type { ThemeColors } from "./themes";
+
+/** Combines read + control hooks for tests that need both. */
+function useThemeCombined() {
+  return { ...useTheme(), ...useThemeControl() };
+}
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <ThemeProvider>{children}</ThemeProvider>
@@ -34,20 +39,20 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("provides default theme (carbonfox)", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
     expect(result.current.themeId).toBe("carbonfox");
     expect(result.current.theme.id).toBe("carbonfox");
   });
 
   it("resolves colors based on color mode", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
     // Default colorMode is "light"
     expect(result.current.resolvedColorMode).toBe("light");
     expect(result.current.colors).toBe(result.current.theme.light);
   });
 
   it("setTheme changes the active theme", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setTheme("dracula");
@@ -59,7 +64,7 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("setColorMode persists to localStorage", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setColorMode("dark");
@@ -71,7 +76,7 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("setGradientMode persists to localStorage", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setGradientMode("crisp");
@@ -82,7 +87,7 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("setGradientColor persists to localStorage", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setGradientColor("relative");
@@ -98,7 +103,7 @@ describe("ThemeProvider + useTheme", () => {
     localStorage.setItem("stella-gradient-mode", "crisp");
     localStorage.setItem("stella-gradient-color", "relative");
 
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     expect(result.current.themeId).toBe("nord");
     expect(result.current.colorMode).toBe("dark");
@@ -109,14 +114,14 @@ describe("ThemeProvider + useTheme", () => {
   it("falls back to default if localStorage theme id is invalid", () => {
     localStorage.setItem("stella-theme-id", "nonexistent-theme");
 
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
     // Falls back to defaultTheme since getThemeById returns undefined
     expect(result.current.theme.id).toBe("carbonfox");
   });
 
   describe("preview functions", () => {
     it("previewTheme shows preview colors without persisting", () => {
-      const { result } = renderHook(() => useTheme(), { wrapper });
+      const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
       act(() => {
         result.current.previewTheme("dracula");
@@ -130,7 +135,7 @@ describe("ThemeProvider + useTheme", () => {
     });
 
     it("cancelThemePreview reverts to actual theme", () => {
-      const { result } = renderHook(() => useTheme(), { wrapper });
+      const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
       act(() => {
         result.current.previewTheme("dracula");
@@ -144,7 +149,7 @@ describe("ThemeProvider + useTheme", () => {
     });
 
     it("previewTheme with invalid id is ignored", () => {
-      const { result } = renderHook(() => useTheme(), { wrapper });
+      const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
       act(() => {
         result.current.previewTheme("nonexistent");
@@ -155,7 +160,7 @@ describe("ThemeProvider + useTheme", () => {
     });
 
     it("cancelPreview clears all preview states", () => {
-      const { result } = renderHook(() => useTheme(), { wrapper });
+      const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
       act(() => {
         result.current.previewTheme("dracula");
@@ -173,7 +178,7 @@ describe("ThemeProvider + useTheme", () => {
     });
 
     it("previewGradientMode shows preview without persisting", () => {
-      const { result } = renderHook(() => useTheme(), { wrapper });
+      const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
       act(() => {
         result.current.previewGradientMode("crisp");
@@ -184,7 +189,7 @@ describe("ThemeProvider + useTheme", () => {
     });
 
     it("cancelGradientModePreview reverts", () => {
-      const { result } = renderHook(() => useTheme(), { wrapper });
+      const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
       act(() => {
         result.current.previewGradientMode("crisp");
@@ -197,7 +202,7 @@ describe("ThemeProvider + useTheme", () => {
     });
 
     it("previewGradientColor shows preview without persisting", () => {
-      const { result } = renderHook(() => useTheme(), { wrapper });
+      const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
       act(() => {
         result.current.previewGradientColor("relative");
@@ -208,7 +213,7 @@ describe("ThemeProvider + useTheme", () => {
     });
 
     it("cancelGradientColorPreview reverts", () => {
-      const { result } = renderHook(() => useTheme(), { wrapper });
+      const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
       act(() => {
         result.current.previewGradientColor("relative");
@@ -222,13 +227,13 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("exposes themes array", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
     expect(Array.isArray(result.current.themes)).toBe(true);
     expect(result.current.themes.length).toBeGreaterThanOrEqual(15);
   });
 
   it("dark mode resolves to dark colors", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setColorMode("dark");
@@ -238,7 +243,7 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("setTheme clears preview", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.previewTheme("dracula");
@@ -254,80 +259,88 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("broadcasts theme change to electronAPI when setting theme", () => {
-    const broadcastThemeChange = vi.fn();
+    const broadcast = vi.fn();
     (window as unknown as Record<string, unknown>).electronAPI = {
-      broadcastThemeChange,
-      onThemeChange: vi.fn(() => vi.fn()),
-      listInstalledThemes: vi.fn(() => Promise.resolve([])),
+      theme: {
+        broadcast,
+        onChange: vi.fn(() => vi.fn()),
+        listInstalled: vi.fn(() => Promise.resolve([])),
+      },
     };
 
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setTheme("dracula");
     });
 
-    expect(broadcastThemeChange).toHaveBeenCalledWith(
+    expect(broadcast).toHaveBeenCalledWith(
       "stella-theme-id",
       "dracula",
     );
   });
 
   it("broadcasts color mode change to electronAPI", () => {
-    const broadcastThemeChange = vi.fn();
+    const broadcast = vi.fn();
     (window as unknown as Record<string, unknown>).electronAPI = {
-      broadcastThemeChange,
-      onThemeChange: vi.fn(() => vi.fn()),
-      listInstalledThemes: vi.fn(() => Promise.resolve([])),
+      theme: {
+        broadcast,
+        onChange: vi.fn(() => vi.fn()),
+        listInstalled: vi.fn(() => Promise.resolve([])),
+      },
     };
 
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setColorMode("dark");
     });
 
-    expect(broadcastThemeChange).toHaveBeenCalledWith(
+    expect(broadcast).toHaveBeenCalledWith(
       "stella-color-mode",
       "dark",
     );
   });
 
   it("broadcasts gradient mode change to electronAPI", () => {
-    const broadcastThemeChange = vi.fn();
+    const broadcast = vi.fn();
     (window as unknown as Record<string, unknown>).electronAPI = {
-      broadcastThemeChange,
-      onThemeChange: vi.fn(() => vi.fn()),
-      listInstalledThemes: vi.fn(() => Promise.resolve([])),
+      theme: {
+        broadcast,
+        onChange: vi.fn(() => vi.fn()),
+        listInstalled: vi.fn(() => Promise.resolve([])),
+      },
     };
 
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setGradientMode("crisp");
     });
 
-    expect(broadcastThemeChange).toHaveBeenCalledWith(
+    expect(broadcast).toHaveBeenCalledWith(
       "stella-gradient-mode",
       "crisp",
     );
   });
 
   it("broadcasts gradient color change to electronAPI", () => {
-    const broadcastThemeChange = vi.fn();
+    const broadcast = vi.fn();
     (window as unknown as Record<string, unknown>).electronAPI = {
-      broadcastThemeChange,
-      onThemeChange: vi.fn(() => vi.fn()),
-      listInstalledThemes: vi.fn(() => Promise.resolve([])),
+      theme: {
+        broadcast,
+        onChange: vi.fn(() => vi.fn()),
+        listInstalled: vi.fn(() => Promise.resolve([])),
+      },
     };
 
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setGradientColor("relative");
     });
 
-    expect(broadcastThemeChange).toHaveBeenCalledWith(
+    expect(broadcast).toHaveBeenCalledWith(
       "stella-gradient-color",
       "relative",
     );
@@ -340,54 +353,60 @@ describe("ThemeProvider + useTheme", () => {
       light: {} as ThemeColors,
       dark: {} as ThemeColors,
     };
-    const listInstalledThemes = vi.fn(() => Promise.resolve([fakeTheme]));
+    const listInstalled = vi.fn(() => Promise.resolve([fakeTheme]));
     (window as unknown as Record<string, unknown>).electronAPI = {
-      listInstalledThemes,
-      onThemeChange: vi.fn(() => vi.fn()),
-      broadcastThemeChange: vi.fn(),
+      theme: {
+        listInstalled,
+        onChange: vi.fn(() => vi.fn()),
+        broadcast: vi.fn(),
+      },
     };
 
-    renderHook(() => useTheme(), { wrapper });
+    renderHook(() => useThemeCombined(), { wrapper });
 
     await vi.waitFor(() => {
-      expect(listInstalledThemes).toHaveBeenCalled();
+      expect(listInstalled).toHaveBeenCalled();
     });
   });
 
   it("ignores errors when loading installed themes", async () => {
-    const listInstalledThemes = vi.fn(() =>
+    const listInstalled = vi.fn(() =>
       Promise.reject(new Error("no dir")),
     );
     (window as unknown as Record<string, unknown>).electronAPI = {
-      listInstalledThemes,
-      onThemeChange: vi.fn(() => vi.fn()),
-      broadcastThemeChange: vi.fn(),
+      theme: {
+        listInstalled,
+        onChange: vi.fn(() => vi.fn()),
+        broadcast: vi.fn(),
+      },
     };
 
     // Should not throw
-    renderHook(() => useTheme(), { wrapper });
+    renderHook(() => useThemeCombined(), { wrapper });
 
     await vi.waitFor(() => {
-      expect(listInstalledThemes).toHaveBeenCalled();
+      expect(listInstalled).toHaveBeenCalled();
     });
   });
 
   it("responds to IPC theme change events", () => {
     let ipcCallback: ((event: unknown, data: { key: string; value: string }) => void) | null = null;
-    const onThemeChange = vi.fn((cb: (event: unknown, data: { key: string; value: string }) => void) => {
+    const onChange = vi.fn((cb: (event: unknown, data: { key: string; value: string }) => void) => {
       ipcCallback = cb;
       return vi.fn(); // unsubscribe
     });
 
     (window as unknown as Record<string, unknown>).electronAPI = {
-      onThemeChange,
-      broadcastThemeChange: vi.fn(),
-      listInstalledThemes: vi.fn(() => Promise.resolve([])),
+      theme: {
+        onChange,
+        broadcast: vi.fn(),
+        listInstalled: vi.fn(() => Promise.resolve([])),
+      },
     };
 
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
-    expect(onThemeChange).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalled();
 
     // Simulate theme change from another window
     act(() => {
@@ -415,7 +434,7 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("responds to localStorage storage events", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       window.dispatchEvent(
@@ -459,7 +478,7 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("ignores storage events with null newValue", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       window.dispatchEvent(
@@ -475,7 +494,7 @@ describe("ThemeProvider + useTheme", () => {
 
   it("resolves system color mode when colorMode is 'system'", () => {
     // matchMedia returns matches: false (light), so system mode is "light"
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setColorMode("system");
@@ -500,7 +519,7 @@ describe("ThemeProvider + useTheme", () => {
       })),
     });
 
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.setColorMode("system");
@@ -510,7 +529,7 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("setGradientMode clears preview state", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.previewGradientMode("crisp");
@@ -525,7 +544,7 @@ describe("ThemeProvider + useTheme", () => {
   });
 
   it("setGradientColor clears preview state", () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
+    const { result } = renderHook(() => useThemeCombined(), { wrapper });
 
     act(() => {
       result.current.previewGradientColor("relative");

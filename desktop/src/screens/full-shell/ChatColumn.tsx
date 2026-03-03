@@ -12,41 +12,42 @@ import type { EventRecord } from "../../hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "../../components/StellaAnimation";
 import type { ChatContext } from "../../types/electron";
 import type { SelfModAppliedData } from "../../hooks/use-streaming-chat";
+import type { DiscoveryCategory } from "../../components/onboarding/use-onboarding-state";
 
-type DiscoveryCategory = "dev_environment" | "apps_system" | "messages_notes";
-
-type ChatColumnProps = {
-  events: EventRecord[];
-
-  streamingText: string;
+export type StreamingState = {
+  text: string;
   reasoningText: string;
   isStreaming: boolean;
   pendingUserMessageId: string | null;
   selfModMap: Record<string, SelfModAppliedData>;
+};
 
+export type ComposerState = {
   message: string;
   setMessage: (message: string) => void;
   chatContext: ChatContext | null;
   setChatContext: React.Dispatch<React.SetStateAction<ChatContext | null>>;
   selectedText: string | null;
   setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
+  canSubmit: boolean;
+  onSend: () => void;
+};
 
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+export type ScrollState = {
+  containerRef: React.RefObject<HTMLDivElement | null>;
   handleScroll: () => void;
   showScrollButton: boolean;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
+};
 
-  conversationId: string | null;
-  onboardingDone: boolean;
-  onboardingExiting: boolean;
+export type OnboardingState = {
+  done: boolean;
+  exiting: boolean;
   isAuthenticated: boolean;
-  canSubmit: boolean;
-  onSend: () => void;
-
   hasExpanded: boolean;
   splitMode: boolean;
   hasDiscoverySelections?: boolean;
-  onboardingKey: number;
+  key: number;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   triggerFlash: () => void;
   startBirthAnimation: () => void;
@@ -55,68 +56,49 @@ type ChatColumnProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
   onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
+};
+
+export type ChatColumnProps = {
+  events: EventRecord[];
+  streaming: StreamingState;
+  composer: ComposerState;
+  scroll: ScrollState;
+  onboarding: OnboardingState;
+  conversationId: string | null;
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
 };
 
 export const ChatColumn = memo(function ChatColumn({
   events,
-  streamingText,
-  reasoningText,
-  isStreaming,
-  pendingUserMessageId,
-  selfModMap,
-  message,
-  setMessage,
-  chatContext,
-  setChatContext,
-  selectedText,
-  setSelectedText,
-  scrollContainerRef,
-  handleScroll,
-  showScrollButton,
-  scrollToBottom,
+  streaming,
+  composer,
+  scroll,
+  onboarding,
   conversationId,
-  onboardingDone,
-  onboardingExiting,
-  isAuthenticated,
-  canSubmit,
-  onSend,
-  hasExpanded,
-  splitMode,
-  hasDiscoverySelections,
-  onboardingKey,
-  stellaAnimationRef,
-  triggerFlash,
-  startBirthAnimation,
-  completeOnboarding,
-  handleEnterSplit,
-  onDiscoveryConfirm,
-  onSelectionChange,
-  onDemoChange,
   onCommandSelect,
 }: ChatColumnProps) {
-  const suggestions = useCommandSuggestions(events, isStreaming);
-  const showConversation = onboardingDone;
+  const suggestions = useCommandSuggestions(events, streaming.isStreaming);
+  const showConversation = onboarding.done;
 
   return (
     <div className="full-body-main">
       <div
         className="session-content"
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
+        ref={scroll.containerRef}
+        onScroll={scroll.handleScroll}
       >
         {showConversation ? (
           <div className="session-messages">
             <ConversationEvents
               events={events}
-              streamingText={streamingText}
-              reasoningText={reasoningText}
-              isStreaming={isStreaming}
-              pendingUserMessageId={pendingUserMessageId}
-              selfModMap={selfModMap}
-              scrollContainerRef={scrollContainerRef}
+              streamingText={streaming.text}
+              reasoningText={streaming.reasoningText}
+              isStreaming={streaming.isStreaming}
+              pendingUserMessageId={streaming.pendingUserMessageId}
+              selfModMap={streaming.selfModMap}
+              scrollContainerRef={scroll.containerRef}
             />
-            {!isStreaming && suggestions.length > 0 && onCommandSelect && (
+            {!streaming.isStreaming && suggestions.length > 0 && onCommandSelect && (
               <CommandChips
                 suggestions={suggestions}
                 onSelect={onCommandSelect}
@@ -125,29 +107,29 @@ export const ChatColumn = memo(function ChatColumn({
           </div>
         ) : (
           <OnboardingView
-            hasExpanded={hasExpanded}
-            onboardingDone={onboardingDone}
-            onboardingExiting={onboardingExiting}
-            isAuthenticated={isAuthenticated}
-            splitMode={splitMode}
-            hasDiscoverySelections={hasDiscoverySelections}
-            stellaAnimationRef={stellaAnimationRef}
-            onboardingKey={onboardingKey}
-            triggerFlash={triggerFlash}
-            startBirthAnimation={startBirthAnimation}
-            completeOnboarding={completeOnboarding}
-            handleEnterSplit={handleEnterSplit}
-            onDiscoveryConfirm={onDiscoveryConfirm}
-            onSelectionChange={onSelectionChange}
-            onDemoChange={onDemoChange}
+            hasExpanded={onboarding.hasExpanded}
+            onboardingDone={onboarding.done}
+            onboardingExiting={onboarding.exiting}
+            isAuthenticated={onboarding.isAuthenticated}
+            splitMode={onboarding.splitMode}
+            hasDiscoverySelections={onboarding.hasDiscoverySelections}
+            stellaAnimationRef={onboarding.stellaAnimationRef}
+            onboardingKey={onboarding.key}
+            triggerFlash={onboarding.triggerFlash}
+            startBirthAnimation={onboarding.startBirthAnimation}
+            completeOnboarding={onboarding.completeOnboarding}
+            handleEnterSplit={onboarding.handleEnterSplit}
+            onDiscoveryConfirm={onboarding.onDiscoveryConfirm}
+            onSelectionChange={onboarding.onSelectionChange}
+            onDemoChange={onboarding.onDemoChange}
           />
         )}
       </div>
 
-      {showScrollButton && showConversation && (
+      {scroll.showScrollButton && showConversation && (
         <button
           className="scroll-to-bottom"
-          onClick={() => scrollToBottom("smooth")}
+          onClick={() => scroll.scrollToBottom("smooth")}
           aria-label="Scroll to bottom"
         >
           <svg
@@ -164,18 +146,18 @@ export const ChatColumn = memo(function ChatColumn({
       )}
 
       {showConversation && (
-        <div className={onboardingExiting ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
+        <div className={onboarding.exiting ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
           <Composer
-            message={message}
-            setMessage={setMessage}
-            chatContext={chatContext}
-            setChatContext={setChatContext}
-            selectedText={selectedText}
-            setSelectedText={setSelectedText}
-            isStreaming={isStreaming}
-            canSubmit={canSubmit}
+            message={composer.message}
+            setMessage={composer.setMessage}
+            chatContext={composer.chatContext}
+            setChatContext={composer.setChatContext}
+            selectedText={composer.selectedText}
+            setSelectedText={composer.setSelectedText}
+            isStreaming={streaming.isStreaming}
+            canSubmit={composer.canSubmit}
             conversationId={conversationId}
-            onSend={onSend}
+            onSend={composer.onSend}
           />
         </div>
       )}

@@ -42,8 +42,7 @@ describe("useBridgeAutoReconnect", () => {
     const bridgeStatus = vi.fn().mockResolvedValue({ running: false });
     const bridgeStop = vi.fn().mockResolvedValue({ ok: true });
     window.electronAPI = {
-      bridgeStatus,
-      bridgeStop,
+      system: { bridgeStatus, bridgeStop },
     } as unknown as typeof window.electronAPI;
 
     mockDeployAndStartLocalBridge.mockResolvedValue(true);
@@ -70,8 +69,7 @@ describe("useBridgeAutoReconnect", () => {
     const bridgeStatus = vi.fn().mockResolvedValue({ running: true });
     const bridgeStop = vi.fn().mockResolvedValue({ ok: true });
     window.electronAPI = {
-      bridgeStatus,
-      bridgeStop,
+      system: { bridgeStatus, bridgeStop },
     } as unknown as typeof window.electronAPI;
 
     renderHook(() => useBridgeAutoReconnect());
@@ -96,8 +94,7 @@ describe("useBridgeAutoReconnect", () => {
     const bridgeStatus = vi.fn().mockResolvedValue({ running: false });
     const bridgeStop = vi.fn().mockResolvedValue({ ok: true });
     window.electronAPI = {
-      bridgeStatus,
-      bridgeStop,
+      system: { bridgeStatus, bridgeStop },
     } as unknown as typeof window.electronAPI;
 
     renderHook(() => useBridgeAutoReconnect());
@@ -119,8 +116,7 @@ describe("useBridgeAutoReconnect", () => {
     const bridgeStatus = vi.fn().mockResolvedValue({ running: false });
     const bridgeStop = vi.fn().mockResolvedValue({ ok: true });
     window.electronAPI = {
-      bridgeStatus,
-      bridgeStop,
+      system: { bridgeStatus, bridgeStop },
     } as unknown as typeof window.electronAPI;
 
     renderHook(() => useBridgeAutoReconnect());

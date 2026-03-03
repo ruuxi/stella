@@ -71,11 +71,12 @@ const sanitizeSensitiveData = (
   return output;
 };
 
-// Logging
-export const log = (...args: unknown[]) =>
-  console.log("[tools]", ...args.map((entry) => sanitizeSensitiveData(entry)));
-export const logError = (...args: unknown[]) =>
-  console.error("[tools]", ...args.map((entry) => sanitizeSensitiveData(entry)));
+export const log = (..._args: unknown[]) => {
+  /* logging removed — use structured telemetry instead */
+};
+export const logError = (..._args: unknown[]) => {
+  /* error logging removed — use structured telemetry instead */
+};
 
 export const sanitizeForLogs = (value: unknown) => sanitizeSensitiveData(value);
 

@@ -52,10 +52,10 @@ import { handleAskUser, handleRequestCredential, type UserToolsConfig } from "./
 import {
   handleSelfModRevert,
   handleSelfModPackage,
-} from "./tools_self_mod.js";
+} from "./tools-self-mod.js";
 import {
   handleManagePackage,
-} from "./tools_store.js";
+} from "./tools-store.js";
 
 // Re-export types for external consumers
 export type { ToolContext, ToolResult };

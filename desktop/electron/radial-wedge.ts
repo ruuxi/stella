@@ -1,6 +1,5 @@
 /**
- * Radial dial wedge calculation — shared between overlay controller and bootstrap.
- * Extracted from radial-window.ts to avoid loading the old window module.
+ * Radial dial wedge calculation — shared between overlay controller and gesture service.
  */
 
 export const RADIAL_WEDGES = ['capture', 'chat', 'full', 'voice', 'auto'] as const

@@ -20,9 +20,9 @@ function injectRevertButton(overlay: Element) {
     revertBtn.disabled = true;
     revertBtn.textContent = "Reverting...";
     try {
-      const featureId = await window.electronAPI?.getLastSelfModFeature();
+      const featureId = await window.electronAPI?.agent.getLastSelfModFeature();
       if (featureId) {
-        await window.electronAPI?.selfModRevert(featureId);
+        await window.electronAPI?.agent.selfModRevert(featureId);
       }
       window.location.reload();
     } catch {

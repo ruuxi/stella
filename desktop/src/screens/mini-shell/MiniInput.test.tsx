@@ -73,15 +73,15 @@ describe("MiniInput", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
-  it("calls window.electronAPI.closeWindow on Escape", () => {
-    const closeWindow = vi.fn();
-    ((window as unknown as Record<string, unknown>)).electronAPI = { closeWindow };
+  it("calls window.electronAPI.window.close on Escape", () => {
+    const close = vi.fn();
+    ((window as unknown as Record<string, unknown>)).electronAPI = { window: { close } };
 
     render(<MiniInput {...defaultProps()} />);
     const input = screen.getByPlaceholderText("Ask for follow-up changes");
 
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(closeWindow).toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
   });
 
   it("send button is disabled when no message, selectedText, or screenshots", () => {
@@ -174,7 +174,7 @@ describe("MiniInput", () => {
   it("removes a screenshot when clicking remove button", () => {
     const setChatContext = vi.fn();
     const removeScreenshot = vi.fn();
-    (window as unknown as Record<string, unknown>).electronAPI = { removeScreenshot };
+    (window as unknown as Record<string, unknown>).electronAPI = { capture: { removeScreenshot } };
 
     const chatContext: ChatContext = {
       window: null,
@@ -291,10 +291,10 @@ describe("MiniInput", () => {
     ).toBeTruthy();
   });
 
-  it("Escape with previewIndex set calls setPreviewIndex(null) instead of closeWindow", () => {
+  it("Escape with previewIndex set calls setPreviewIndex(null) instead of window.close", () => {
     const setPreviewIndex = vi.fn();
-    const closeWindow = vi.fn();
-    (window as unknown as Record<string, unknown>).electronAPI = { closeWindow };
+    const close = vi.fn();
+    (window as unknown as Record<string, unknown>).electronAPI = { window: { close } };
 
     render(
       <MiniInput
@@ -308,7 +308,7 @@ describe("MiniInput", () => {
     const input = screen.getByPlaceholderText("Ask for follow-up changes");
     fireEvent.keyDown(input, { key: "Escape" });
     expect(setPreviewIndex).toHaveBeenCalledWith(null);
-    expect(closeWindow).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
   });
 
   it("send button is enabled when there is a message", () => {
@@ -409,7 +409,7 @@ describe("MiniInput", () => {
   it("screenshot remove updater handles null prev", () => {
     const setChatContext = vi.fn();
     const removeScreenshot = vi.fn();
-    (window as unknown as Record<string, unknown>).electronAPI = { removeScreenshot };
+    (window as unknown as Record<string, unknown>).electronAPI = { capture: { removeScreenshot } };
     const chatContext: ChatContext = {
       window: null,
       regionScreenshots: [

@@ -13,23 +13,23 @@ export const TitleBar = () => {
     : null;
 
   useEffect(() => {
-    window.electronAPI?.isMaximized?.().then(setIsMaximized);
+    window.electronAPI?.window.isMaximized?.().then(setIsMaximized);
   }, []);
 
   const handleMinimize = () => {
-    window.electronAPI?.minimizeWindow?.();
+    window.electronAPI?.window.minimize?.();
   };
 
   const handleMaximize = async () => {
-    window.electronAPI?.maximizeWindow?.();
+    window.electronAPI?.window.maximize?.();
     setTimeout(async () => {
-      const maximized = await window.electronAPI?.isMaximized?.();
+      const maximized = await window.electronAPI?.window.isMaximized?.();
       setIsMaximized(maximized ?? false);
     }, 50);
   };
 
   const handleClose = () => {
-    window.electronAPI?.closeWindow?.();
+    window.electronAPI?.window.close?.();
   };
 
   // On macOS, we use native traffic lights, so only show drag region

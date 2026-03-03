@@ -1,29 +1,12 @@
 import { cn } from "@/lib/utils";
 import { Spinner } from "../spinner";
-import type { TaskItem } from "../../hooks/use-conversation-events";
+import type { TaskItem } from "../../lib/event-transforms";
+import { getAgentLabel } from "./agent-labels";
 
 interface TaskIndicatorProps {
   tasks: TaskItem[];
   className?: string;
 }
-
-// Get a friendly label for agent types
-const getAgentLabel = (agentType: string): string => {
-  switch (agentType) {
-    case "general":
-      return "Working";
-    case "explore":
-      return "Exploring";
-    case "browser":
-      return "Browsing";
-    case "self_mod":
-      return "Modifying";
-    case "orchestrator":
-      return "Coordinating";
-    default:
-      return agentType;
-  }
-};
 
 export function TaskIndicator({ tasks, className }: TaskIndicatorProps) {
   // Only show running tasks

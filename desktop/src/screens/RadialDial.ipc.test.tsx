@@ -70,18 +70,20 @@ describe("RadialDial IPC handlers", () => {
 
     (window as any).electronAPI = {
       platform: "win32",
-      onRadialShow: vi.fn((cb: Function) => {
-        showCallback = cb;
-        return cleanupShow;
-      }),
-      onRadialHide: vi.fn((cb: Function) => {
-        hideCallback = cb;
-        return cleanupHide;
-      }),
-      onRadialCursor: vi.fn((cb: Function) => {
-        cursorCallback = cb;
-        return cleanupCursor;
-      }),
+      radial: {
+        onShow: vi.fn((cb: Function) => {
+          showCallback = cb;
+          return cleanupShow;
+        }),
+        onHide: vi.fn((cb: Function) => {
+          hideCallback = cb;
+          return cleanupHide;
+        }),
+        onCursor: vi.fn((cb: Function) => {
+          cursorCallback = cb;
+          return cleanupCursor;
+        }),
+      },
     };
   });
 
@@ -104,14 +106,14 @@ describe("RadialDial IPC handlers", () => {
   it("registers IPC listeners on mount when electronAPI is available", () => {
     render(<RadialDial />);
 
-    expect(window.electronAPI!.onRadialShow).toHaveBeenCalledTimes(1);
-    expect(window.electronAPI!.onRadialHide).toHaveBeenCalledTimes(1);
-    expect(window.electronAPI!.onRadialCursor).toHaveBeenCalledTimes(1);
+    expect(window.electronAPI!.radial.onShow).toHaveBeenCalledTimes(1);
+    expect(window.electronAPI!.radial.onHide).toHaveBeenCalledTimes(1);
+    expect(window.electronAPI!.radial.onCursor).toHaveBeenCalledTimes(1);
 
     // Each should have been called with a function (the handler)
-    expect(typeof (window.electronAPI!.onRadialShow as any).mock.calls[0][0]).toBe("function");
-    expect(typeof (window.electronAPI!.onRadialHide as any).mock.calls[0][0]).toBe("function");
-    expect(typeof (window.electronAPI!.onRadialCursor as any).mock.calls[0][0]).toBe("function");
+    expect(typeof (window.electronAPI!.radial.onShow as any).mock.calls[0][0]).toBe("function");
+    expect(typeof (window.electronAPI!.radial.onHide as any).mock.calls[0][0]).toBe("function");
+    expect(typeof (window.electronAPI!.radial.onCursor as any).mock.calls[0][0]).toBe("function");
   });
 
   // ----------------------------------------------------------------
@@ -400,18 +402,20 @@ describe("toRgba color conversion", () => {
 
     (window as any).electronAPI = {
       platform: "win32",
-      onRadialShow: vi.fn((cb: Function) => {
-        showCallback = cb;
-        return cleanupShow;
-      }),
-      onRadialHide: vi.fn((cb: Function) => {
-        hideCallback = cb;
-        return cleanupHide;
-      }),
-      onRadialCursor: vi.fn((cb: Function) => {
-        cursorCallback = cb;
-        return cleanupCursor;
-      }),
+      radial: {
+        onShow: vi.fn((cb: Function) => {
+          showCallback = cb;
+          return cleanupShow;
+        }),
+        onHide: vi.fn((cb: Function) => {
+          hideCallback = cb;
+          return cleanupHide;
+        }),
+        onCursor: vi.fn((cb: Function) => {
+          cursorCallback = cb;
+          return cleanupCursor;
+        }),
+      },
     };
   });
 

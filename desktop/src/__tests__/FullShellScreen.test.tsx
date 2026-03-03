@@ -170,7 +170,7 @@ vi.mock("../app/AuthDialog", () => ({
     open ? <div data-testid="auth-dialog" /> : null,
 }));
 
-vi.mock("../app/ConnectDialog", () => ({
+vi.mock("../app/connect/ConnectDialog", () => ({
   ConnectDialog: ({ open }: any) =>
     open ? <div data-testid="connect-dialog" /> : null,
 }));
@@ -387,7 +387,8 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     );
 
     vi.mocked(getElectronApi).mockReturnValue({
-      listWorkspacePanels,
+      browser: { listWorkspacePanels },
+      capture: { getContext: vi.fn().mockResolvedValue(null), onContext: vi.fn(() => vi.fn()) },
     } as any);
 
     render(<FullShell />);

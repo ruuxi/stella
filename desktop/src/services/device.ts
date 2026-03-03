@@ -29,18 +29,18 @@ const generateFallbackDeviceId = () => {
 export const configurePiRuntime = async () => {
   const api = getElectronApi();
   const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
-  const convexSiteUrl = import.meta.env.VITE_CONVEX_SITE_URL as string | undefined;
-  if (!api?.configurePiRuntime || !convexUrl) {
+  if (!api?.system?.configurePiRuntime || !convexUrl) {
     return;
   }
+  const convexSiteUrl = import.meta.env.VITE_CONVEX_SITE_URL as string | undefined;
   try {
-    const response = await api.configurePiRuntime({ convexUrl, convexSiteUrl });
+    const response = await api.system.configurePiRuntime({ convexUrl, convexSiteUrl });
     if (response?.deviceId) {
       cachedDeviceId = response.deviceId;
       writeLocalDeviceId(response.deviceId);
     }
-  } catch {
-    // Ignore configuration failures; the renderer can still function locally.
+  } catch (err) {
+    console.debug("[device] configurePiRuntime failed:", (err as Error).message);
   }
 };
 
@@ -50,16 +50,16 @@ export const getOrCreateDeviceId = async () => {
   }
 
   const api = getElectronApi();
-  if (api?.getDeviceId) {
+  if (api?.system?.getDeviceId) {
     try {
-      const fromHost = await api.getDeviceId();
+      const fromHost = await api.system.getDeviceId();
       if (fromHost) {
         cachedDeviceId = fromHost;
         writeLocalDeviceId(fromHost);
         return fromHost;
       }
-    } catch {
-      // Fall through to local fallback.
+    } catch (err) {
+      console.debug("[device] getDeviceId from host failed:", (err as Error).message);
     }
   }
 

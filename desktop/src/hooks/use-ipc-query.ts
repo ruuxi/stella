@@ -25,7 +25,7 @@ export function useIpcQuery<TData>({
   const sequenceRef = useRef(0);
 
   const runQuery = useCallback(async () => {
-    if (!enabled || !request || !window.electronAPI?.miniBridgeRequest) {
+    if (!enabled || !request || !window.electronAPI?.mini.request) {
       return;
     }
 
@@ -35,7 +35,7 @@ export function useIpcQuery<TData>({
     setError(null);
 
     try {
-      const response = await window.electronAPI.miniBridgeRequest(request);
+      const response = await window.electronAPI.mini.request(request);
       if (sequenceRef.current !== seq) {
         return;
       }
