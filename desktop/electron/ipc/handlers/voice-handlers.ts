@@ -9,6 +9,7 @@ type VoiceHandlersOptions = {
   windowManager: WindowManager
   broadcastUiState: () => void
   scheduleResumeWakeWord: () => void
+  syncVoiceOverlay: () => void
   getPiHostRunner: () => PiHostRunner | null
 }
 
@@ -20,16 +21,12 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     if (!options.getAppReady()) return
     options.uiState.isVoiceActive = !options.uiState.isVoiceActive
     if (options.uiState.isVoiceActive) {
+      options.uiState.isVoiceRtcActive = false
       options.uiState.mode = 'voice'
-      const fullWindow = options.windowManager.getFullWindow()
-      const target = fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()
-        ? 'full' as const
-        : 'mini' as const
-      options.uiState.window = target
-      options.windowManager.showWindow(target)
     } else {
       options.scheduleResumeWakeWord()
     }
+    options.syncVoiceOverlay()
     options.broadcastUiState()
   }
 
@@ -38,15 +35,11 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     options.uiState.isVoiceRtcActive = !options.uiState.isVoiceRtcActive
     if (options.uiState.isVoiceRtcActive) {
       options.uiState.isVoiceActive = false
-      const fullWindow = options.windowManager.getFullWindow()
-      const target = fullWindow && fullWindow.isVisible() && !fullWindow.isMinimized()
-        ? 'full' as const
-        : 'mini' as const
-      options.uiState.window = target
-      options.windowManager.showWindow(target)
+      options.uiState.mode = 'voice'
     } else {
       options.scheduleResumeWakeWord()
     }
+    options.syncVoiceOverlay()
     options.broadcastUiState()
   }
 
@@ -72,10 +65,12 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   ipcMain.on('voice:transcript', (_event, transcript: string) => {
     const miniWindow = options.windowManager.getMiniWindow()
     const fullWindow = options.windowManager.getFullWindow()
-    for (const win of options.windowManager.getAllWindows()) {
-      if (win === miniWindow || win === fullWindow) {
-        win.webContents.send('voice:transcript', transcript)
-      }
+    const preferredWindow = options.uiState.window === 'mini'
+      ? (miniWindow ?? fullWindow)
+      : (fullWindow ?? miniWindow)
+
+    if (preferredWindow && !preferredWindow.isDestroyed()) {
+      preferredWindow.webContents.send('voice:transcript', transcript)
     }
   })
 

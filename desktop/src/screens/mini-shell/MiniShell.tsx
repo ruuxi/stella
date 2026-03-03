@@ -1,10 +1,9 @@
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { useUiState } from "../../app/state/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
-import { VoiceOverlay } from "../../components/VoiceOverlay";
 
 type MiniShellProps = {
   onPreviewVisibilityChange?: (visible: boolean) => void;
@@ -46,13 +45,6 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     onPreviewVisibilityChange?.(previewIndex !== null);
     return () => onPreviewVisibilityChange?.(false);
   }, [onPreviewVisibilityChange, previewIndex]);
-
-  const handleVoiceTranscript = useCallback(
-    (text: string) => {
-      setMessage((prev) => (prev ? prev + " " + text : text));
-    },
-    [setMessage],
-  );
 
   useEffect(() => {
     if (!shellVisible) {
@@ -148,8 +140,6 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
           onSend={() => void sendMessage()}
         />
       </div>
-
-      <VoiceOverlay onTranscript={handleVoiceTranscript} />
 
       {previewIndex !== null &&
         chatContext?.regionScreenshots?.[previewIndex] && (

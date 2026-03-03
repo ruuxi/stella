@@ -34,7 +34,6 @@ import { MiniBridgeRelay } from "./MiniBridgeRelay";
 const SettingsDialog = lazy(() => import("./SettingsView"));
 const AuthDialog = lazy(() => import("../../app/AuthDialog").then(m => ({ default: m.AuthDialog })));
 const ConnectDialog = lazy(() => import("../../app/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
-const VoiceOverlay = lazy(() => import("../../components/VoiceOverlay").then(m => ({ default: m.VoiceOverlay })));
 
 type PersonalPage = {
   pageId: string;
@@ -263,6 +262,13 @@ export const FullShell = () => {
   useEffect(() => {
     window.electronAPI?.setAppReady?.(onboarding.onboardingDone);
   }, [onboarding.onboardingDone]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onVoiceTranscript?.((transcript) => {
+      handleVoiceTranscript(transcript);
+    });
+    return () => unsubscribe?.();
+  }, [handleVoiceTranscript]);
 
   useEffect(() => {
     const electronApi = getElectronApi();
@@ -514,9 +520,6 @@ export const FullShell = () => {
                 onSend={handleOrbSend}
               />
 
-              <Suspense fallback={null}>
-                <VoiceOverlay onTranscript={handleVoiceTranscript} />
-              </Suspense>
             </div>
           </>
         ) : (

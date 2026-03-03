@@ -25,10 +25,9 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   useEffect(() => {
     if (!state.isVoiceRtcActive) return;
 
-    // Only the active window should create a session — state.window tracks which
-    // window is visible, so the hidden window skips session creation entirely.
-    // The overlay window hosts the mini shell, so treat "overlay" as "mini".
-    const isActive = state.window === windowType || (windowType === "overlay" && state.window === "mini");
+    // Standalone realtime voice is owned by the overlay renderer.
+    // Keep legacy state.window gating as a fallback for non-overlay mounts.
+    const isActive = windowType === "overlay" || state.window === windowType;
     if (!isActive) return;
 
     // Disconnect any zombie session from a previous StrictMode mount
@@ -43,7 +42,7 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     // Try to claim a pre-warmed session (started from IPC before React rendered)
     const preWarmed = claimPreWarmedSession(conversationId);
     const session = preWarmed ?? new RealtimeVoiceSession();
-    console.log(`[VoiceRTC:hook] effect fired — preWarmed=${!!preWarmed} window=${windowType}`);
+    console.log(`[VoiceRTC:hook] effect fired - preWarmed=${!!preWarmed} window=${windowType}`);
     sessionRef.current = session;
 
     const unsubscribe = session.on((event: VoiceSessionEvent) => {
@@ -55,13 +54,13 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     });
 
     if (preWarmed) {
-      // Session is already connecting/connected — sync current state
+      // Session is already connecting/connected; sync current state.
       setSessionState(session.state);
       if (session.state === "connected") {
         analyserRef.current = session.getAnalyser();
       }
     } else {
-      // No pre-warm — connect normally
+      // No pre-warm; connect normally.
       session.connect(conversationId).catch((err) => {
         if (aborted) return;
         console.error("[useRealtimeVoice] Failed to connect:", err);
