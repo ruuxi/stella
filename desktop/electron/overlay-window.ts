@@ -264,6 +264,7 @@ export class OverlayWindowController {
 
     this.activeRadial = true
 
+    this.showOverlay({ inactive: true })
     // Use Electron's DIP cursor position for accurate positioning.
     // uiohook/mouse_block report physical pixels on Windows, but Electron APIs use DIP.
     const cursorDip = screen.getCursorScreenPoint()
@@ -280,9 +281,6 @@ export class OverlayWindowController {
     // Convert screen DIP → overlay-local for CSS positioning
     const localX = screenDipX - this.overlayOrigin.x
     const localY = screenDipY - this.overlayOrigin.y
-
-    // Show and make interactive
-    this.showOverlay({ inactive: true })
     this.window.setIgnoreMouseEvents(false)
 
     // Send position + cursor data to overlay renderer
