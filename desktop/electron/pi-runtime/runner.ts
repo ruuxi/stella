@@ -275,6 +275,7 @@ export const createPiHostRunner = ({
         stellaHome: StellaHome,
         proxyBaseUrl: proxy.baseUrl,
         proxyToken: proxy.token,
+        getProxyToken: () => proxyToken?.trim() || proxy.token,
         store,
         abortSignal,
         onProgress,
@@ -424,6 +425,7 @@ export const createPiHostRunner = ({
       stellaHome: StellaHome,
       proxyBaseUrl: proxy.baseUrl,
       proxyToken: proxy.token,
+      getProxyToken: () => proxyToken?.trim() || proxy.token,
       store,
       abortSignal: abortController.signal,
     }).catch((error) => {
