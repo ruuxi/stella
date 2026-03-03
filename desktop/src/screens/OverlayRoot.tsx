@@ -351,17 +351,22 @@ export function OverlayRoot() {
         overflow: "hidden",
       }}
     >
-      {/* Radial Dial: always mounted; visibility is managed via IPC. */}
+      {/* Radial Dial: always mounted; visibility is managed via IPC.
+          When not visible, position off-screen so the compositor's stale
+          backing-store frame doesn't flash at the old position when the
+          overlay window transitions from hidden → visible. */}
       <div
         ref={radialRef}
         className="radial-shell"
         style={{
           position: "absolute",
-          left: state.radialPosition?.x ?? 0,
-          top: state.radialPosition?.y ?? 0,
+          left: state.radialVisible ? (state.radialPosition?.x ?? 0) : -9999,
+          top: state.radialVisible ? (state.radialPosition?.y ?? 0) : -9999,
           width: 280,
           height: 280,
           pointerEvents: state.radialVisible ? "auto" : "none",
+          // DEBUG: visible border to track if the container itself moves
+          border: state.radialVisible ? "2px solid red" : "none",
         }}
       >
         <RadialDial />

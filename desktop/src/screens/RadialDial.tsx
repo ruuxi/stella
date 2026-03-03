@@ -186,12 +186,19 @@ export function RadialDial() {
       setContentVisible(false)
 
       if (blobReady.current) {
+        // DEBUG: log state at IPC arrival (before animation starts)
+        const shell = document.querySelector('.radial-shell') as HTMLElement | null
+        if (shell) {
+          const rect = shell.getBoundingClientRect()
+          console.log(`[radial:ipc-arrive] shell=(${rect.left.toFixed(1)},${rect.top.toFixed(1)}) style.left=${shell.style.left} style.top=${shell.style.top} win=(${window.screenX},${window.screenY})`)
+        }
+
         setPhase('opening')
         phaseRef.current = 'opening'
 
         startOpen(
-          selectedIdxRef, 
-          colorsRef, 
+          selectedIdxRef,
+          colorsRef,
           () => {
             if (visibleRef.current) {
               setPhase('open')
@@ -240,7 +247,14 @@ export function RadialDial() {
           setPhase('hidden')
           phaseRef.current = 'hidden'
           setContentVisible(false)
-          window.electronAPI?.radialAnimDone?.()
+          // Wait one frame for React to commit opacity:0 to the DOM
+          // before signaling the main process to hide the window.
+          // Otherwise the compositor's backing-store snapshot still
+          // contains content at the old position, causing a visible
+          // flash when the window is next shown.
+          requestAnimationFrame(() => {
+            window.electronAPI?.radialAnimDone?.()
+          })
         })
       } else {
         cancelAnimation()
@@ -295,7 +309,7 @@ export function RadialDial() {
       <div
         className={`radial-dial-frame${contentVisible ? ' radial-dial-frame--visible' : ''}`}
         style={{
-          opacity: contentVisible ? 1 : 0.0001,
+          opacity: contentVisible ? 1 : 0,
           willChange: 'opacity, transform',
           transition: phase === 'closing'
             ? 'opacity 0.1s ease-in'
