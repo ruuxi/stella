@@ -124,13 +124,15 @@ const createProxyModel = (
   modelName: string | undefined,
   proxyBaseUrl: string,
   proxyToken: string,
+  agentType: string,
 ): Model<"openai-completions"> => {
   const { provider, modelId } = parseModel(modelName);
   const baseUrl = proxyBaseUrl.replace(/\/+$/, "");
 
+  const fullModelId = `${provider}/${modelId}`;
   return {
-    id: modelId,
-    name: `${provider}/${modelId}`,
+    id: fullModelId,
+    name: fullModelId,
     api: "openai-completions",
     provider,
     baseUrl,
@@ -145,9 +147,9 @@ const createProxyModel = (
     contextWindow: 256_000,
     maxTokens: 16_384,
     headers: {
-      "X-Proxy-Token": proxyToken,
       "X-Provider": provider,
-      "X-Model-Id": modelId,
+      "X-Model-Id": fullModelId,
+      "X-Agent-Type": agentType,
     },
     compat: {
       supportsStrictMode: false,
@@ -370,7 +372,7 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
       .map((entry) => ({ role: entry.role, content: entry.content })) ??
     [];
 
-  const model = createProxyModel(opts.agentContext.model, opts.proxyBaseUrl, opts.proxyToken);
+  const model = createProxyModel(opts.agentContext.model, opts.proxyBaseUrl, opts.proxyToken, opts.agentType);
   const tools = createPiTools({
     runId,
     conversationId: opts.conversationId,
@@ -601,7 +603,7 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
     }
   }
 
-  const model = createProxyModel(opts.agentContext.model, opts.proxyBaseUrl, opts.proxyToken);
+  const model = createProxyModel(opts.agentContext.model, opts.proxyBaseUrl, opts.proxyToken, opts.agentType);
   const tools = createPiTools({
     runId,
     conversationId: opts.conversationId,

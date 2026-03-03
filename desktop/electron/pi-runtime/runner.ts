@@ -24,7 +24,7 @@ import {
   type PiToolStartEvent,
 } from "./pi_agent_runtime.js";
 
-const DEFAULT_MODEL = "openai/gpt-4.1-mini";
+const DEFAULT_MODEL = "anthropic/claude-sonnet-4-6";
 const DEFAULT_MAX_TASK_DEPTH = 8;
 const DEFAULT_ORCHESTRATOR_PROMPT =
   "You are Stella's orchestrator. Delegate specialized work with TaskCreate/Task, monitor with TaskOutput, and keep work non-blocking by default. " +
@@ -118,7 +118,7 @@ const sanitizeProxyBase = (value: string | null): string | null => {
   if (normalized.includes("/llm-proxy/")) {
     return normalized;
   }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/llm-proxy/v1`;
+  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/llm-proxy/v1`;
 };
 
 const readCoreMemory = (stellaHome: string): string | undefined => {

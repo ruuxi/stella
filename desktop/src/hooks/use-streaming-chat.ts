@@ -11,7 +11,7 @@ import { useRafStringAccumulator } from "./use-raf-state";
 import { getPlatform } from "../utils/platform";
 import { getOrCreateDeviceId } from "../services/device";
 import type { EventRecord } from "./use-conversation-events";
-import type { ChatContext } from "../types/electron";
+import type { AgentHealth, ChatContext } from "../types/electron";
 import {
   findQueuedFollowUp,
   toEventId,
@@ -41,17 +41,64 @@ type UseStreamingChatOptions = {
   events: EventRecord[];
 };
 
+const toErrorMessage = (error: unknown): string => {
+  if (typeof error === "string") return error;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return "";
+};
+
 const isOrchestratorBusyError = (error: unknown): boolean => {
-  const message =
-    typeof error === "string"
-      ? error
-      : typeof error === "object" &&
-          error !== null &&
-          "message" in error &&
-          typeof (error as { message?: unknown }).message === "string"
-        ? (error as { message: string }).message
-        : "";
-  return message.toLowerCase().includes("orchestrator is already running");
+  return toErrorMessage(error).toLowerCase().includes("orchestrator is already running");
+};
+
+const getAgentHealthReason = (health: AgentHealth | null | undefined): string | null => {
+  if (!health || health.ready) return null;
+  if (typeof health.reason === "string" && health.reason.trim()) {
+    return health.reason.trim();
+  }
+  return null;
+};
+
+const isTokenReadinessIssue = (reason: string | null): boolean => {
+  if (!reason) return false;
+  const normalized = reason.toLowerCase();
+  return normalized.includes("token") || normalized.includes("auth");
+};
+
+const resolveAgentNotReadyToast = (
+  reason: string | null,
+): { title: string; description?: string } => {
+  if (!reason) {
+    return { title: "Stella is still starting up", description: "Please try again in a moment." };
+  }
+  if (isTokenReadinessIssue(reason)) {
+    return { title: "Sign-in is still syncing", description: "Please wait a few seconds and try again." };
+  }
+  if (reason.toLowerCase().includes("proxy url")) {
+    return { title: "Stella setup is incomplete", description: "Please restart Stella and try again." };
+  }
+  return { title: "Stella is still starting up", description: "Please try again in a moment." };
+};
+
+const trySyncHostToken = async (): Promise<boolean> => {
+  if (!window.electronAPI?.setAuthState) return false;
+  try {
+    const { getConvexToken } = await import("../services/auth-token");
+    const token = await getConvexToken();
+    if (!token) return false;
+    await window.electronAPI.setAuthState({ authenticated: true, token });
+    return true;
+  } catch (error) {
+    console.warn("[chat] Failed to sync host auth token", error);
+    return false;
+  }
 };
 
 const getUserEventText = (event: EventRecord): string => {
@@ -257,9 +304,20 @@ export function useStreamingChat({
           if (runIdCounter !== streamRunIdRef.current) return;
           console.error("Failed to start local agent chat:", error);
           if (isOrchestratorBusyError(error)) {
+            showToast({
+              title: "Stella is finishing your previous request",
+              description: "Try sending your next message in a moment.",
+              variant: "loading",
+            });
             resetStreamingState(runIdCounter);
             return;
           }
+          const message = toErrorMessage(error);
+          showToast({
+            title: "Stella couldn't start this reply",
+            description: message || "Please try again.",
+            variant: "error",
+          });
           resetStreamingState(runIdCounter);
         });
     },
@@ -300,14 +358,36 @@ export function useStreamingChat({
         resetStreamingState(runId);
         return;
       }
-      void window.electronAPI.agentHealthCheck().then((health) => {
+      void window.electronAPI.agentHealthCheck().then(async (health) => {
         if (runId !== streamRunIdRef.current) return;
-        if (!health?.ready) {
-          console.error("[chat] Local agent health check failed:", health);
-          showToast({ title: "Stella agent is starting up — try again in a moment", variant: "error" });
+
+        let nextHealth = health;
+        let reason = getAgentHealthReason(nextHealth);
+
+        // Token setup can race with the first user message in anonymous mode.
+        // Try one immediate token sync + recheck before failing the send.
+        if (!nextHealth?.ready && isTokenReadinessIssue(reason)) {
+          const synced = await trySyncHostToken();
+          if (runId !== streamRunIdRef.current) return;
+          if (synced && window.electronAPI?.agentHealthCheck) {
+            nextHealth = await window.electronAPI.agentHealthCheck();
+            if (runId !== streamRunIdRef.current) return;
+            reason = getAgentHealthReason(nextHealth);
+          }
+        }
+
+        if (!nextHealth?.ready) {
+          console.error("[chat] Local agent health check failed:", nextHealth);
+          const toast = resolveAgentNotReadyToast(reason);
+          showToast({
+            title: toast.title,
+            description: toast.description,
+            variant: "error",
+          });
           resetStreamingState(runId);
           return;
         }
+
         startLocalStream(args, runId);
       }).catch((err) => {
         if (runId !== streamRunIdRef.current) return;
