@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "./mini-shell/MiniShell";
+import { VoiceOverlay } from "../components/VoiceOverlay";
 
 /**
  * OverlayRoot manages the unified transparent overlay window.
@@ -30,6 +31,10 @@ type OverlayState = {
   miniPreviewVisible: boolean;
   /** Position for the mini shell (screen coords relative to overlay origin) */
   miniPosition: { x: number; y: number } | null;
+  /** Whether standalone voice overlay is visible */
+  voiceVisible: boolean;
+  /** Position for standalone voice overlay */
+  voicePosition: { x: number; y: number } | null;
 };
 
 const initialState: OverlayState = {
@@ -40,11 +45,18 @@ const initialState: OverlayState = {
   miniVisible: false,
   miniPreviewVisible: false,
   miniPosition: null,
+  voiceVisible: false,
+  voicePosition: null,
 };
 
 const MINI_SHELL_SIZE = {
   width: 480,
   height: 700,
+} as const;
+
+const VOICE_PILL_SIZE = {
+  width: 148,
+  height: 36,
 } as const;
 
 export function OverlayRoot() {
@@ -54,7 +66,7 @@ export function OverlayRoot() {
   const radialRef = useRef<HTMLDivElement>(null);
   const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
 
-  // ─── Mini shell drag (custom, replaces -webkit-app-region: drag) ────
+  // Mini shell drag (custom, replaces -webkit-app-region: drag)
   // The mini shell is inside the overlay, so -webkit-app-region: drag would
   // move the entire fullscreen overlay. Instead, we mutate the DOM directly
   // during drag (to avoid re-rendering the entire tree on every mousemove)
@@ -84,7 +96,7 @@ export function OverlayRoot() {
       if (!miniDragRef.current || !miniRef.current) return;
       const dx = e.clientX - miniDragRef.current.startX;
       const dy = e.clientY - miniDragRef.current.startY;
-      // Direct DOM mutation — no React re-render
+      // Direct DOM mutation with no React re-render.
       miniRef.current.style.left = `${miniDragRef.current.origX + dx}px`;
       miniRef.current.style.top = `${miniDragRef.current.origY + dy}px`;
     };
@@ -105,7 +117,7 @@ export function OverlayRoot() {
     };
   }, []);
 
-  // ─── Radial Dial positioning (driven by radial:show/hide IPC) ────────
+  // Radial dial positioning (driven by radial:show/hide IPC).
   // The RadialDial component handles its own animation state via these same
   // IPC channels. OverlayRoot additionally tracks visibility and position
   // to control the container element's CSS and hit-testing.
@@ -128,7 +140,7 @@ export function OverlayRoot() {
       },
     );
     const cleanupHide = api.onRadialHide(() => {
-      // Don't immediately set radialVisible=false — the RadialDial plays a
+      // Do not immediately set radialVisible=false. The RadialDial plays a
       // close animation and calls radialAnimDone. We hide after a short delay
       // to let the animation complete.
       setTimeout(() => {
@@ -142,7 +154,7 @@ export function OverlayRoot() {
     };
   }, []);
 
-  // ─── Modifier Block (context-menu suppression) ─────────────────────
+  // Modifier block (context-menu suppression).
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -161,7 +173,7 @@ export function OverlayRoot() {
     return () => document.removeEventListener("contextmenu", handler, true);
   }, [state.modifierBlock]);
 
-  // ─── Region Capture ────────────────────────────────────────────────
+  // Region capture.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -178,7 +190,7 @@ export function OverlayRoot() {
     };
   }, []);
 
-  // ─── Mini Shell visibility ─────────────────────────────────────────
+  // Mini shell visibility.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -235,7 +247,7 @@ export function OverlayRoot() {
     };
   }, []);
 
-  // ─── Hit-testing: toggle setIgnoreMouseEvents ──────────────────────
+  // Hit-testing: toggle setIgnoreMouseEvents.
   const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
     if (interactiveRef.current === shouldBeInteractive) return;
     interactiveRef.current = shouldBeInteractive;
@@ -266,25 +278,39 @@ export function OverlayRoot() {
       return;
     }
 
-    // For mini shell: check if cursor is over it via mousemove
-    if (!state.miniVisible) {
+    // For mini shell and standalone voice: only interactive when cursor is
+    // over an active interactive region.
+    if (!state.miniVisible && !state.voiceVisible) {
       updateInteractive(false);
       return;
     }
 
     const handleMouseMove = (e: MouseEvent) => {
-      const miniEl = miniRef.current;
-      if (!miniEl) {
-        updateInteractive(false);
-        return;
+      let isOverMini = false;
+      if (state.miniVisible) {
+        const miniEl = miniRef.current;
+        if (miniEl) {
+          const rect = miniEl.getBoundingClientRect();
+          isOverMini =
+            e.clientX >= rect.left &&
+            e.clientX <= rect.right &&
+            e.clientY >= rect.top &&
+            e.clientY <= rect.bottom;
+        }
       }
-      const rect = miniEl.getBoundingClientRect();
-      const isOver =
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom;
-      updateInteractive(isOver);
+
+      let isOverVoice = false;
+      if (state.voiceVisible && state.voicePosition) {
+        const left = state.voicePosition.x - VOICE_PILL_SIZE.width / 2;
+        const top = state.voicePosition.y - VOICE_PILL_SIZE.height / 2;
+        isOverVoice =
+          e.clientX >= left &&
+          e.clientX <= left + VOICE_PILL_SIZE.width &&
+          e.clientY >= top &&
+          e.clientY <= top + VOICE_PILL_SIZE.height;
+      }
+
+      updateInteractive(isOverMini || isOverVoice);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -295,6 +321,8 @@ export function OverlayRoot() {
     state.modifierBlock,
     state.radialVisible,
     state.miniVisible,
+    state.voiceVisible,
+    state.voicePosition,
     updateInteractive,
   ]);
 
@@ -305,7 +333,8 @@ export function OverlayRoot() {
       state.radialVisible ||
       state.regionCaptureActive ||
       state.miniPreviewVisible ||
-      state.miniVisible;
+      state.miniVisible ||
+      state.voiceVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -322,7 +351,7 @@ export function OverlayRoot() {
         overflow: "hidden",
       }}
     >
-      {/* Radial Dial — always mounted (manages its own visibility via IPC) */}
+      {/* Radial Dial: always mounted; visibility is managed via IPC. */}
       <div
         ref={radialRef}
         className="radial-shell"
@@ -338,14 +367,14 @@ export function OverlayRoot() {
         <RadialDial />
       </div>
 
-      {/* Region Capture — mounted only when active */}
+      {/* Region capture: mounted only when active. */}
       {state.regionCaptureActive && (
         <div style={{ position: "absolute", inset: 0, pointerEvents: "auto" }}>
           <RegionCapture />
         </div>
       )}
 
-      {/* Mini Shell — always mounted for context sync, visibility via CSS */}
+      {/* Mini shell: always mounted for context sync, visibility via CSS. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
         ref={miniRef}
@@ -364,7 +393,18 @@ export function OverlayRoot() {
         <MiniShell onPreviewVisibilityChange={handleMiniPreviewVisibilityChange} />
       </div>
 
-      {/* Voice Overlay — display-only, no pointer events */}
+      {state.voiceVisible && state.voicePosition && (
+        <VoiceOverlay
+          onTranscript={handleVoiceTranscript}
+          style={{
+            position: "absolute",
+            left: state.voicePosition.x,
+            top: state.voicePosition.y,
+            bottom: "auto",
+            transform: "translate(-50%, -50%)",
+          }}
+        />
+      )}
     </div>
   );
 }
