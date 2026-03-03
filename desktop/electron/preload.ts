@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
+import type {
+  MiniBridgeRequest,
+  MiniBridgeRequestEnvelope,
+  MiniBridgeResponse,
+  MiniBridgeResponseEnvelope,
+  MiniBridgeUpdate,
+} from './mini-bridge.js'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
@@ -50,6 +57,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => {
       ipcRenderer.removeListener('chatContext:updated', handler)
     }
+  },
+  miniBridgeRequest: (request: MiniBridgeRequest) =>
+    ipcRenderer.invoke('miniBridge:request', request) as Promise<MiniBridgeResponse>,
+  onMiniBridgeUpdate: (callback: (update: MiniBridgeUpdate) => void) => {
+    const handler = (_event: IpcRendererEvent, update: MiniBridgeUpdate) => {
+      callback(update)
+    }
+    ipcRenderer.on('miniBridge:update', handler)
+    return () => {
+      ipcRenderer.removeListener('miniBridge:update', handler)
+    }
+  },
+  onMiniBridgeRequest: (callback: (envelope: MiniBridgeRequestEnvelope) => void) => {
+    const handler = (_event: IpcRendererEvent, envelope: MiniBridgeRequestEnvelope) => {
+      callback(envelope)
+    }
+    ipcRenderer.on('miniBridge:request', handler)
+    return () => {
+      ipcRenderer.removeListener('miniBridge:request', handler)
+    }
+  },
+  respondMiniBridge: (envelope: MiniBridgeResponseEnvelope) => {
+    ipcRenderer.send('miniBridge:response', envelope)
+  },
+  miniBridgeReady: () => {
+    ipcRenderer.send('miniBridge:ready')
+  },
+  pushMiniBridgeUpdate: (update: MiniBridgeUpdate) => {
+    ipcRenderer.send('miniBridge:update', update)
   },
   getDeviceId: () => ipcRenderer.invoke('device:getId'),
   configurePiRuntime: (config: { convexUrl?: string; convexSiteUrl?: string }) =>

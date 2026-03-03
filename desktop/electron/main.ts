@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, session, shell, globalShortcut, webContents, type Display, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { randomUUID } from 'crypto'
 import { MouseHookManager } from './mouse-hook.js'
 import {
   createRadialWindow,
@@ -58,6 +59,12 @@ import {
   handleUninstallPackage,
 } from './pi-runtime/extensions/stella/tools_store.js'
 import * as bridgeManager from './system/bridge_manager.js'
+import type {
+  MiniBridgeRequest,
+  MiniBridgeResponse,
+  MiniBridgeResponseEnvelope,
+  MiniBridgeUpdate,
+} from './mini-bridge.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -190,6 +197,17 @@ const pendingCredentialRequests = new Map<
     timeout: NodeJS.Timeout
   }
 >()
+const MINI_BRIDGE_REQUEST_TIMEOUT_MS = 15_000
+const pendingMiniBridgeRequests = new Map<
+  string,
+  {
+    resolve: (value: MiniBridgeResponse) => void
+    reject: (reason?: Error) => void
+    timeout: NodeJS.Timeout
+  }
+>()
+const queuedMiniBridgeRequests = new Map<string, MiniBridgeRequest>()
+let fullMiniBridgeReady = false
 
 const emptyContext = (): ChatContext => ({
   window: null,
@@ -442,6 +460,55 @@ const broadcastUiState = () => {
   }
 }
 
+const resolveMiniBridgeRequest = (requestId: string, response: MiniBridgeResponse) => {
+  const pending = pendingMiniBridgeRequests.get(requestId)
+  if (!pending) {
+    return
+  }
+  clearTimeout(pending.timeout)
+  pendingMiniBridgeRequests.delete(requestId)
+  queuedMiniBridgeRequests.delete(requestId)
+  pending.resolve(response)
+}
+
+const rejectMiniBridgeRequest = (requestId: string, error: Error) => {
+  const pending = pendingMiniBridgeRequests.get(requestId)
+  if (!pending) {
+    return
+  }
+  clearTimeout(pending.timeout)
+  pendingMiniBridgeRequests.delete(requestId)
+  queuedMiniBridgeRequests.delete(requestId)
+  pending.reject(error)
+}
+
+const rejectAllMiniBridgeRequests = (reason: string) => {
+  for (const [requestId, pending] of pendingMiniBridgeRequests) {
+    clearTimeout(pending.timeout)
+    pending.reject(new Error(reason))
+    pendingMiniBridgeRequests.delete(requestId)
+  }
+  queuedMiniBridgeRequests.clear()
+}
+
+const flushQueuedMiniBridgeRequests = () => {
+  if (!fullMiniBridgeReady || !fullWindow || fullWindow.isDestroyed()) {
+    return
+  }
+  if (fullWindow.webContents.isLoadingMainFrame()) {
+    return
+  }
+
+  for (const [requestId, request] of queuedMiniBridgeRequests) {
+    if (!pendingMiniBridgeRequests.has(requestId)) {
+      queuedMiniBridgeRequests.delete(requestId)
+      continue
+    }
+    fullWindow.webContents.send('miniBridge:request', { requestId, request })
+    queuedMiniBridgeRequests.delete(requestId)
+  }
+}
+
 const deactivateVoiceModes = () => {
   if (!uiState.isVoiceActive && !uiState.isVoiceRtcActive) {
     return false
@@ -516,16 +583,34 @@ const updateUiState = (partial: Partial<UiState>) => {
   broadcastUiState()
 }
 
+const getWindowEntryFile = (windowMode: WindowMode) => {
+  switch (windowMode) {
+    case 'mini':
+      return 'mini.html'
+    case 'full':
+      return 'index.html'
+    case 'voice':
+      return 'index.html'
+    default:
+      return 'index.html'
+  }
+}
+
 const getDevUrl = (windowMode: WindowMode) => {
-  const url = new URL(getDevServerUrl())
-  url.searchParams.set('window', windowMode)
+  const url = new URL(getWindowEntryFile(windowMode), `${getDevServerUrl()}/`)
+  if (windowMode === 'voice') {
+    url.searchParams.set('window', 'voice')
+  }
   return url.toString()
 }
 
-const getFileTarget = (windowMode: WindowMode) => ({
-  filePath: path.join(__dirname, '../dist/index.html'),
-  query: { window: windowMode },
-})
+const getFileTarget = (windowMode: WindowMode) => {
+  const filePath = path.join(__dirname, `../dist/${getWindowEntryFile(windowMode)}`)
+  if (windowMode === 'voice') {
+    return { filePath, query: { window: 'voice' as const } }
+  }
+  return { filePath }
+}
 
 const parseUrl = (value: string) => {
   try {
@@ -946,7 +1031,11 @@ const loadWindow = (window: BrowserWindow, windowMode: WindowMode) => {
   }
 
   const target = getFileTarget(windowMode)
-  window.loadFile(target.filePath, { query: target.query })
+  if ('query' in target) {
+    window.loadFile(target.filePath, { query: target.query })
+    return
+  }
+  window.loadFile(target.filePath)
 }
 
 const createFullWindow = () => {
@@ -972,14 +1061,21 @@ const createFullWindow = () => {
   })
 
   setupExternalLinkHandlers(fullWindow)
+  fullMiniBridgeReady = false
   loadWindow(fullWindow, 'full')
   if (isDev) {
     fullWindow.webContents.openDevTools()
   }
 
+  fullWindow.webContents.on('did-start-loading', () => {
+    fullMiniBridgeReady = false
+  })
+
   // Crash recovery: load static recovery page if renderer process crashes
   fullWindow.webContents.on('render-process-gone', (_event, details) => {
     console.error('Renderer process gone:', details.reason)
+    fullMiniBridgeReady = false
+    rejectAllMiniBridgeRequests('Full window renderer crashed')
     if (fullWindow && !fullWindow.isDestroyed()) {
       fullWindow.loadFile(path.join(__dirname, 'recovery.html'))
     }
@@ -987,6 +1083,8 @@ const createFullWindow = () => {
 
   fullWindow.on('closed', () => {
     stopWorkspacePanelWatcher()
+    fullMiniBridgeReady = false
+    rejectAllMiniBridgeRequests('Full window unavailable')
     fullWindow = null
   })
 
@@ -2297,6 +2395,73 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('chatContext:get', () => getChatContextSnapshot())
+
+  ipcMain.handle('miniBridge:request', async (event, request: MiniBridgeRequest) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!senderWindow || senderWindow !== miniWindow) {
+      throw new Error('miniBridge requests are only allowed from mini window')
+    }
+
+    const fullTarget = fullWindow
+    if (!fullTarget || fullTarget.isDestroyed()) {
+      throw new Error('Full window is unavailable')
+    }
+
+    const requestId = randomUUID()
+
+    return await new Promise<MiniBridgeResponse>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        rejectMiniBridgeRequest(requestId, new Error('miniBridge request timed out'))
+      }, MINI_BRIDGE_REQUEST_TIMEOUT_MS)
+
+      pendingMiniBridgeRequests.set(requestId, { resolve, reject, timeout })
+      if (fullTarget.isDestroyed()) {
+        rejectMiniBridgeRequest(requestId, new Error('Full window is unavailable'))
+        return
+      }
+
+      queuedMiniBridgeRequests.set(requestId, request)
+      flushQueuedMiniBridgeRequests()
+    })
+  })
+
+  ipcMain.on('miniBridge:ready', (event) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!senderWindow || senderWindow !== fullWindow) {
+      console.warn('[miniBridge] Ignoring ready signal from non-full window sender')
+      return
+    }
+
+    fullMiniBridgeReady = true
+    flushQueuedMiniBridgeRequests()
+  })
+
+  ipcMain.on('miniBridge:response', (event, envelope: MiniBridgeResponseEnvelope) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!senderWindow || senderWindow !== fullWindow) {
+      console.warn('[miniBridge] Ignoring response from non-full window sender')
+      return
+    }
+
+    const requestId = typeof envelope?.requestId === 'string' ? envelope.requestId : null
+    if (!requestId) {
+      return
+    }
+    const response = envelope.response
+    resolveMiniBridgeRequest(requestId, response)
+  })
+
+  ipcMain.on('miniBridge:update', (event, update: MiniBridgeUpdate) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!senderWindow || senderWindow !== fullWindow) {
+      console.warn('[miniBridge] Ignoring update from non-full window sender')
+      return
+    }
+    if (!miniWindow || miniWindow.isDestroyed()) {
+      return
+    }
+    miniWindow.webContents.send('miniBridge:update', update)
+  })
 
   ipcMain.on('chatContext:removeScreenshot', (_event, index: number) => {
     if (!pendingChatContext?.regionScreenshots) return

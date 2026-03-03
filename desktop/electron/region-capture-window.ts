@@ -13,15 +13,10 @@ let contentReady = false
 let onEscapeCancel: (() => void) | null = null
 
 const getDevUrl = () => {
-  const url = new URL(getDevServerUrl())
-  url.searchParams.set('window', 'region')
-  return url.toString()
+  return new URL('region.html', `${getDevServerUrl()}/`).toString()
 }
 
-const getFileTarget = () => ({
-  filePath: path.join(__dirname, '../dist/index.html'),
-  query: { window: 'region' },
-})
+const getFileTarget = () => path.join(__dirname, '../dist/region.html')
 
 export const createRegionCaptureWindow = () => {
   if (regionWindow) return regionWindow
@@ -57,8 +52,7 @@ export const createRegionCaptureWindow = () => {
   if (isDev) {
     regionWindow.loadURL(getDevUrl())
   } else {
-    const target = getFileTarget()
-    regionWindow.loadFile(target.filePath, { query: target.query })
+    regionWindow.loadFile(getFileTarget())
   }
 
   regionWindow.on('closed', () => {

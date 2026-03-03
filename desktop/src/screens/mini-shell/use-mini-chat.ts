@@ -1,14 +1,21 @@
-/**
- * Mini-shell chat hook — thin composition layer over the shared
- * useStreamingChat hook. Owns mini-shell-specific UI state (message,
- * expanded) and derives events internally.
- */
-
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUiState } from "../../app/state/ui-state";
-import { useConversationEvents } from "../../hooks/use-conversation-events";
-import { useStreamingChat } from "../../hooks/use-streaming-chat";
-import type { ChatContext } from "../../types/electron";
+import { useIpcQuery } from "../../hooks/use-ipc-query";
+import type {
+  ChatContext,
+  MiniBridgeResponse,
+  MiniBridgeSnapshot,
+} from "../../types/electron";
+import type { EventRecord } from "../../hooks/use-conversation-events";
+
+const createEmptySnapshot = (conversationId: string | null): MiniBridgeSnapshot => ({
+  conversationId,
+  events: [],
+  streamingText: "",
+  reasoningText: "",
+  isStreaming: false,
+  pendingUserMessageId: null,
+});
 
 export function useMiniChat(opts: {
   chatContext: ChatContext | null;
@@ -20,51 +27,136 @@ export function useMiniChat(opts: {
   const { state } = useUiState();
   const activeConversationId = state.conversationId;
 
-  // ---- Events subscription ----
-  const events = useConversationEvents(activeConversationId ?? undefined);
+  const [message, setMessage] = useState("");
+  const [snapshot, setSnapshot] = useState<MiniBridgeSnapshot>(() =>
+    createEmptySnapshot(activeConversationId ?? null),
+  );
+  const snapshotRequest = useMemo(
+    () => ({
+      type: "query:snapshot" as const,
+      conversationId: activeConversationId ?? null,
+    }),
+    [activeConversationId],
+  );
+  const selectSnapshot = useCallback((response: MiniBridgeResponse) => {
+    if (response.type !== "query:snapshot") {
+      return null;
+    }
+    return response.snapshot;
+  }, []);
 
-  // ---- Shared streaming engine ----
   const {
-    streamingText,
-    reasoningText,
-    isStreaming,
-    pendingUserMessageId,
-    selfModMap,
-    sendMessage: sendMessageCore,
-  } = useStreamingChat({
-    conversationId: activeConversationId,
-    events,
+    data: initialSnapshot,
+    loading: isLoadingSnapshot,
+    error: snapshotError,
+    refetch,
+  } = useIpcQuery<MiniBridgeSnapshot>({
+    enabled: true,
+    request: snapshotRequest,
+    select: selectSnapshot,
   });
 
-  // ---- Mini-shell UI state ----
-  const [message, setMessage] = useState("");
-  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    setSnapshot((prev) => {
+      const nextConversationId = activeConversationId ?? null;
+      if (prev.conversationId === nextConversationId) {
+        return prev;
+      }
+      return createEmptySnapshot(nextConversationId);
+    });
+  }, [activeConversationId]);
 
-  // ---- No-arg sendMessage wrapper ----
+  useEffect(() => {
+    if (!initialSnapshot) {
+      return;
+    }
+    setSnapshot(initialSnapshot);
+  }, [initialSnapshot]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onMiniBridgeUpdate?.((update) => {
+      if (update.type !== "snapshot") {
+        return;
+      }
+
+      if (
+        activeConversationId &&
+        update.snapshot.conversationId !== activeConversationId
+      ) {
+        return;
+      }
+
+      setSnapshot(update.snapshot);
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [activeConversationId]);
+
   const sendMessage = useCallback(async () => {
-    await sendMessageCore({
+    if (!window.electronAPI?.miniBridgeRequest || !activeConversationId) {
+      return;
+    }
+
+    const trimmedMessage = message.trim();
+    const hasContext =
+      Boolean(selectedText) ||
+      Boolean(chatContext?.window) ||
+      Boolean(chatContext?.regionScreenshots?.length);
+
+    if (!trimmedMessage && !hasContext) {
+      return;
+    }
+
+    const response = await window.electronAPI.miniBridgeRequest({
+      type: "mutation:sendMessage",
+      conversationId: activeConversationId,
       text: message,
       selectedText,
       chatContext,
-      onClear: () => {
-        setMessage("");
-        setSelectedText(null);
-        setChatContext(null);
-        setExpanded(true);
-      },
     });
-  }, [message, selectedText, chatContext, sendMessageCore, setSelectedText, setChatContext]);
+
+    if (response.type === "error") {
+      console.error("[miniBridge] sendMessage failed:", response.message);
+      return;
+    }
+
+    if (response.type === "mutation:sendMessage" && response.accepted) {
+      setMessage("");
+      setSelectedText(null);
+      setChatContext(null);
+      void refetch();
+    }
+  }, [
+    activeConversationId,
+    chatContext,
+    message,
+    refetch,
+    selectedText,
+    setChatContext,
+    setSelectedText,
+  ]);
+
+  const events = useMemo(
+    () => (snapshot.events as unknown as EventRecord[]),
+    [snapshot.events],
+  );
+
+  useEffect(() => {
+    if (!snapshotError) {
+      return;
+    }
+    console.warn("[miniBridge] snapshot query failed:", snapshotError);
+  }, [snapshotError]);
 
   return {
     message,
     setMessage,
-    streamingText,
-    reasoningText,
-    isStreaming,
-    pendingUserMessageId,
-    selfModMap,
-    expanded,
-    setExpanded,
+    streamingText: snapshot.streamingText,
+    reasoningText: snapshot.reasoningText,
+    isStreaming: snapshot.isStreaming || isLoadingSnapshot,
+    pendingUserMessageId: snapshot.pendingUserMessageId,
     events,
     sendMessage,
   };

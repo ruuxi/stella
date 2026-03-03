@@ -24,6 +24,68 @@ export type ChatContextUpdate = {
   version: number
 }
 
+export type MiniBridgeEventRecord = {
+  _id: string
+  timestamp: number
+  type: string
+  deviceId?: string
+  requestId?: string
+  targetDeviceId?: string
+  payload?: Record<string, unknown>
+  channelEnvelope?: Record<string, unknown>
+}
+
+export type MiniBridgeSnapshot = {
+  conversationId: string | null
+  events: MiniBridgeEventRecord[]
+  streamingText: string
+  reasoningText: string
+  isStreaming: boolean
+  pendingUserMessageId: string | null
+}
+
+export type MiniBridgeRequest =
+  | {
+      type: 'query:snapshot'
+      conversationId: string | null
+    }
+  | {
+      type: 'mutation:sendMessage'
+      conversationId: string
+      text: string
+      selectedText: string | null
+      chatContext: ChatContext | null
+    }
+
+export type MiniBridgeResponse =
+  | {
+      type: 'query:snapshot'
+      snapshot: MiniBridgeSnapshot
+    }
+  | {
+      type: 'mutation:sendMessage'
+      accepted: boolean
+    }
+  | {
+      type: 'error'
+      message: string
+    }
+
+export type MiniBridgeRequestEnvelope = {
+  requestId: string
+  request: MiniBridgeRequest
+}
+
+export type MiniBridgeResponseEnvelope = {
+  requestId: string
+  response: MiniBridgeResponse
+}
+
+export type MiniBridgeUpdate = {
+  type: 'snapshot'
+  snapshot: MiniBridgeSnapshot
+}
+
 // ---------------------------------------------------------------------------
 // Browser Data Types
 // ---------------------------------------------------------------------------
@@ -146,6 +208,12 @@ export type ElectronApi = {
   getChatContext: () => Promise<ChatContext | null>
   onChatContext: (callback: (payload: ChatContext | null | ChatContextUpdate) => void) => () => void
   ackChatContext: (payload: { version: number }) => void
+  miniBridgeRequest: (request: MiniBridgeRequest) => Promise<MiniBridgeResponse>
+  onMiniBridgeUpdate: (callback: (update: MiniBridgeUpdate) => void) => () => void
+  onMiniBridgeRequest: (callback: (envelope: MiniBridgeRequestEnvelope) => void) => () => void
+  respondMiniBridge: (envelope: MiniBridgeResponseEnvelope) => void
+  miniBridgeReady: () => void
+  pushMiniBridgeUpdate: (update: MiniBridgeUpdate) => void
   onMiniVisibility: (callback: (visible: boolean) => void) => () => void
   onDismissPreview: (callback: () => void) => () => void
   getDeviceId: () => Promise<string | null>
