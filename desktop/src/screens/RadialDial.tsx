@@ -31,7 +31,7 @@ const DEAD_ZONE_RADIUS = 30 // Center zone for "dismiss"
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
 // How long into the open animation before SVG content starts fading in
-const CONTENT_FADE_DELAY = 180 // ms
+// handled via rAF callback in startOpen
 
 const toRgba = (color: string, alpha: number): string => {
   const [r, g, b] = cssToVec3(color)
@@ -189,21 +189,23 @@ export function RadialDial() {
         setPhase('opening')
         phaseRef.current = 'opening'
 
-        // Fade in SVG content midway through the blob animation
-        contentTimerRef.current = setTimeout(() => {
-          contentTimerRef.current = null
-          if (visibleRef.current) {
-            setContentVisible(true)
+        startOpen(
+          selectedIdxRef, 
+          colorsRef, 
+          () => {
+            if (visibleRef.current) {
+              setPhase('open')
+              phaseRef.current = 'open'
+              setContentVisible(true)
+            }
+          },
+          // Trigger SVG content fade-in via the rAF loop, rather than a loose setTimeout
+          () => {
+            if (visibleRef.current) {
+              setContentVisible(true)
+            }
           }
-        }, CONTENT_FADE_DELAY)
-
-        startOpen(selectedIdxRef, colorsRef, () => {
-          if (visibleRef.current) {
-            setPhase('open')
-            phaseRef.current = 'open'
-            setContentVisible(true)
-          }
-        })
+        )
       } else {
         // Fallback: show immediately if WebGL unavailable
         setPhase('open')
@@ -274,8 +276,8 @@ export function RadialDial() {
     }
   }, [api, calculateWedge])
 
-  // Canvas visible during blob animation (opening/closing) and during the crossfade overlap
-  const showCanvas = phase === 'opening' || phase === 'closing'
+  // Canvas visible whenever the dial is not hidden to avoid compositor pops
+  const showCanvas = phase !== 'hidden'
 
   return (
     <div className="radial-dial-container">
@@ -293,13 +295,12 @@ export function RadialDial() {
       <div
         className={`radial-dial-frame${contentVisible ? ' radial-dial-frame--visible' : ''}`}
         style={{
-          opacity: contentVisible ? 1 : 0,
-          transition: phase === 'opening'
-            ? 'opacity 0.15s ease-out'
-            : phase === 'closing'
-              ? 'opacity 0.1s ease-in'
-              : 'none',
-          pointerEvents: phase === 'open' ? 'auto' : 'none',
+          opacity: contentVisible ? 1 : 0.0001,
+          willChange: 'opacity, transform',
+          transition: phase === 'closing'
+            ? 'opacity 0.1s ease-in'
+            : 'opacity 0.15s ease-out',
+          pointerEvents: phase === 'hidden' ? 'none' : 'auto',
         }}
       >
         <svg

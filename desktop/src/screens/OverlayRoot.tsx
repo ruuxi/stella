@@ -209,6 +209,32 @@ export function OverlayRoot() {
     );
   }, []);
 
+  const handleVoiceTranscript = useCallback((transcript: string) => {
+    window.electronAPI?.submitVoiceTranscript?.(transcript);
+  }, []);
+
+  // Standalone voice overlay visibility/position.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanupShow = api.onOverlayShowVoice?.((data: { x: number; y: number; mode: "stt" | "realtime" }) => {
+      setState((prev) => ({
+        ...prev,
+        voiceVisible: true,
+        voicePosition: { x: data.x, y: data.y },
+      }));
+    });
+    const cleanupHide = api.onOverlayHideVoice?.(() => {
+      setState((prev) => ({ ...prev, voiceVisible: false }));
+    });
+
+    return () => {
+      cleanupShow?.();
+      cleanupHide?.();
+    };
+  }, []);
+
   // ─── Hit-testing: toggle setIgnoreMouseEvents ──────────────────────
   const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
     if (interactiveRef.current === shouldBeInteractive) return;
