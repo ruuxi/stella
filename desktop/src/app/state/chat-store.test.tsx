@@ -169,6 +169,60 @@ describe("ChatStoreProvider", () => {
   // appendEvent
   // ----------------------------------------------------------------
   describe("appendEvent", () => {
+    it("returns cloud event id when cloud append succeeds", async () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: true,
+        isLoading: false,
+      });
+      mockUseQuery.mockReturnValue("connected");
+      mockConvexAppendEvent.mockResolvedValueOnce({ _id: "cloud-456" });
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      let response: unknown;
+      await act(async () => {
+        response = await result.current.appendEvent({
+          conversationId: "cloud-conv-1",
+          type: "user_message",
+          deviceId: "device-1",
+          payload: { text: "hello cloud" },
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalled();
+      expect(mockConvexAppendEvent).toHaveBeenCalled();
+      expect(response).toEqual({ _id: "cloud-456" });
+    });
+
+    it("falls back to local event id when cloud append fails", async () => {
+      mockUseConvexAuth.mockReturnValue({
+        isAuthenticated: true,
+        isLoading: false,
+      });
+      mockUseQuery.mockReturnValue("connected");
+      mockConvexAppendEvent.mockRejectedValueOnce(new Error("cloud down"));
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      let response: unknown;
+      await act(async () => {
+        response = await result.current.appendEvent({
+          conversationId: "cloud-conv-1",
+          type: "user_message",
+          deviceId: "device-1",
+          payload: { text: "hello fallback" },
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalled();
+      expect(mockConvexAppendEvent).toHaveBeenCalled();
+      expect(response).toEqual({ _id: "local-123" });
+      expect(warnSpy).toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
     it("calls appendLocalEvent in local mode", async () => {
       mockUseConvexAuth.mockReturnValue({
         isAuthenticated: false,

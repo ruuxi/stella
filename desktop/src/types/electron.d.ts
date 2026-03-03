@@ -324,7 +324,7 @@ export type ElectronApi = {
   shellKillByPort: (port: number) => Promise<void>
 
   // ─── Local Agent Runtime ────────────────────────────────────────────────
-  agentHealthCheck: () => Promise<{ ready: true; runnerVersion: string } | null>
+  agentHealthCheck: () => Promise<AgentHealth | null>
   getActiveAgentRun: () => Promise<{ runId: string; conversationId: string } | null>
   startAgentChat: (payload: {
     conversationId: string
@@ -369,6 +369,18 @@ export type AgentStreamIpcEvent = {
   persisted?: boolean
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number }
 }
+
+export type AgentHealth =
+  | {
+      ready: true
+      runnerVersion?: string
+      engine?: string
+    }
+  | {
+      ready: false
+      reason?: string
+      engine?: string
+    }
 
 declare global {
   interface Window {

@@ -8,7 +8,6 @@ vi.mock("convex/react", () => ({
   useQuery: vi.fn(),
   useMutation: vi.fn(),
   useAction: vi.fn(),
-  Authenticated: ({ children }: any) => <div data-testid="authenticated">{children}</div>,
 }));
 
 vi.mock("../app/state/ui-state", () => ({
@@ -95,7 +94,7 @@ describe("App", () => {
     expect(screen.getByTestId("auth-deep-link-handler")).toBeInTheDocument();
   });
 
-  it("renders AuthTokenBridge inside Authenticated", () => {
+  it("renders AuthTokenBridge for full app windows", () => {
     render(<App />);
     expect(screen.getByTestId("auth-token-bridge")).toBeInTheDocument();
   });
