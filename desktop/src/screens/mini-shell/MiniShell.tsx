@@ -33,6 +33,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     events,
     sendMessage,
   } = useMiniChat({
+    isActive: shellVisible || previewIndex !== null,
     chatContext,
     selectedText,
     setChatContext,
@@ -54,10 +55,13 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
   );
 
   useEffect(() => {
+    if (!shellVisible) {
+      return;
+    }
     return window.electronAPI?.onVoiceTranscript?.((transcript) => {
       setMessage((prev) => (prev ? prev + ' ' + transcript : transcript));
     });
-  }, [setMessage]);
+  }, [setMessage, shellVisible]);
 
   const windowTitle = chatContext?.window
     ? (chatContext.window.title || chatContext.window.app || null)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUiState } from "../../app/state/ui-state";
 import { useIpcQuery } from "../../hooks/use-ipc-query";
 import type {
@@ -18,12 +18,13 @@ const createEmptySnapshot = (conversationId: string | null): MiniBridgeSnapshot 
 });
 
 export function useMiniChat(opts: {
+  isActive?: boolean;
   chatContext: ChatContext | null;
   selectedText: string | null;
   setChatContext: React.Dispatch<React.SetStateAction<ChatContext | null>>;
   setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
-  const { chatContext, selectedText, setChatContext, setSelectedText } = opts;
+  const { isActive = true, chatContext, selectedText, setChatContext, setSelectedText } = opts;
   const { state } = useUiState();
   const activeConversationId = state.conversationId;
 
@@ -31,6 +32,7 @@ export function useMiniChat(opts: {
   const [snapshot, setSnapshot] = useState<MiniBridgeSnapshot>(() =>
     createEmptySnapshot(activeConversationId ?? null),
   );
+  const receivedLiveSnapshotRef = useRef(false);
   const snapshotRequest = useMemo(
     () => ({
       type: "query:snapshot" as const,
@@ -51,7 +53,7 @@ export function useMiniChat(opts: {
     error: snapshotError,
     refetch,
   } = useIpcQuery<MiniBridgeSnapshot>({
-    enabled: true,
+    enabled: isActive,
     request: snapshotRequest,
     select: selectSnapshot,
   });
@@ -64,16 +66,26 @@ export function useMiniChat(opts: {
       }
       return createEmptySnapshot(nextConversationId);
     });
+    receivedLiveSnapshotRef.current = false;
   }, [activeConversationId]);
 
   useEffect(() => {
     if (!initialSnapshot) {
       return;
     }
+
+    // Avoid clobbering fresher bridge updates with an older query response.
+    if (receivedLiveSnapshotRef.current) {
+      return;
+    }
+
     setSnapshot(initialSnapshot);
   }, [initialSnapshot]);
 
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
     const unsubscribe = window.electronAPI?.onMiniBridgeUpdate?.((update) => {
       if (update.type !== "snapshot") {
         return;
@@ -86,13 +98,14 @@ export function useMiniChat(opts: {
         return;
       }
 
+      receivedLiveSnapshotRef.current = true;
       setSnapshot(update.snapshot);
     });
 
     return () => {
       unsubscribe?.();
     };
-  }, [activeConversationId]);
+  }, [activeConversationId, isActive]);
 
   const sendMessage = useCallback(async () => {
     if (!window.electronAPI?.miniBridgeRequest || !activeConversationId) {
