@@ -280,13 +280,21 @@ export const listRecentGitFeatures = async (
   if (recent.length > 0) {
     const dirtyFiles = await listDirtyFiles(repoRoot);
     if (dirtyFiles.length > 0) {
+      // Collect all commit hashes across recent features, batch into one git call
+      const allHashes: string[] = [];
+      for (const feature of recent) {
+        const hashes = commitHashesByFeature.get(feature.featureId) ?? [];
+        allHashes.push(...hashes);
+      }
+
+      const filesByCommit = await getChangedFilesForCommits(repoRoot, allHashes);
+
       for (const feature of recent) {
         const touchedFiles = new Set<string>();
         const featureCommits = commitHashesByFeature.get(feature.featureId) ?? [];
         for (const commitHash of featureCommits) {
-          const commitFiles = await getChangedFilesForCommit(repoRoot, commitHash);
-          for (const file of commitFiles) {
-            touchedFiles.add(normalizeGitPath(file));
+          for (const file of filesByCommit.get(commitHash) ?? []) {
+            touchedFiles.add(file);
           }
         }
 
@@ -386,6 +394,36 @@ const getChangedFilesForCommit = async (
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+};
+
+/** Batch version: returns a map of commitHash → normalized file paths. */
+const getChangedFilesForCommits = async (
+  repoRoot: string,
+  commitHashes: string[],
+): Promise<Map<string, string[]>> => {
+  const result = new Map<string, string[]>();
+  if (commitHashes.length === 0) return result;
+
+  // Use a single git command with a separator-delimited format
+  const separator = "---COMMIT_BOUNDARY---";
+  const format = `${separator}%H`;
+  const output = await runGit(repoRoot, [
+    "show",
+    "--name-only",
+    `--pretty=format:${format}`,
+    ...commitHashes,
+  ]);
+
+  const blocks = output.split(separator).filter(Boolean);
+  for (const block of blocks) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) continue;
+    const hash = lines[0];
+    const files = lines.slice(1).map(normalizeGitPath);
+    result.set(hash, files);
+  }
+
+  return result;
 };
 
 export const detectSelfModAppliedSince = async (args: {
