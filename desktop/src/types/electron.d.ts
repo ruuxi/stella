@@ -192,6 +192,15 @@ export type AllUserSignalsResult = {
 
 export type AgentStreamIpcEvent = AgentStreamEvent
 
+export type SelfModFeatureSummary = {
+  featureId: string
+  name: string
+  description: string
+  latestCommit: string
+  latestTimestampMs: number
+  commitCount: number
+}
+
 export type AgentHealth =
   | {
       ready: true
@@ -316,8 +325,9 @@ export type ElectronAgentApi = {
     exhausted: boolean
   }>
   onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
-  selfModRevert: (featureId: string, steps?: number) => Promise<unknown>
+  selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>
   getLastSelfModFeature: () => Promise<string | null>
+  listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>
 }
 
 export type ElectronStoreApi = {

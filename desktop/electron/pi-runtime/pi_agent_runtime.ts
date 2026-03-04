@@ -4,6 +4,11 @@ import { Agent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent
 import type { Model } from "@mariozechner/pi-ai";
 import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS } from "@stella/shared";
 import {
+  detectSelfModAppliedSince,
+  getGitHead,
+  type SelfModAppliedPayload,
+} from "../self-mod/git.js";
+import {
   isClaudeCodeModel,
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
@@ -69,6 +74,7 @@ export type PiEndEvent = {
   seq: number;
   finalText: string;
   persisted: boolean;
+  selfModApplied?: SelfModAppliedPayload;
 };
 
 export type PiRunCallbacks = {
@@ -99,6 +105,7 @@ type BaseRunOptions = {
   getProxyToken?: () => string;
   store: JsonlRuntimeStore;
   abortSignal?: AbortSignal;
+  frontendRoot?: string;
 };
 
 type OrchestratorRunOptions = BaseRunOptions & {
@@ -368,6 +375,9 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
   const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
   let seq = 0;
   const nextSeq = () => ++seq;
+  const baselineHead = opts.frontendRoot
+    ? await getGitHead(opts.frontendRoot).catch(() => null)
+    : null;
 
   opts.store.recordRunEvent({
     timestamp: now(),
@@ -497,6 +507,12 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
       .reverse()
       .find((message) => message.role === "assistant");
     const finalText = extractAssistantText(latestAssistant);
+    const selfModApplied = opts.frontendRoot
+      ? await detectSelfModAppliedSince({
+          repoRoot: opts.frontendRoot,
+          sinceHead: baselineHead,
+        }).catch(() => null)
+      : null;
 
     if (finalText.trim()) {
       opts.store.appendThreadMessage({
@@ -516,6 +532,7 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
       seq: endSeq,
       type: "run_end",
       finalText,
+      ...(selfModApplied ? { selfModApplied } : {}),
     });
 
     opts.callbacks.onEnd({
@@ -523,6 +540,7 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
       seq: endSeq,
       finalText,
       persisted: true,
+      ...(selfModApplied ? { selfModApplied } : {}),
     });
 
     return runId;

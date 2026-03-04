@@ -1,6 +1,10 @@
-import path from 'path'
 import { ipcMain, webContents, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import type { PiHostRunner } from '../../pi-host-runner.js'
+import {
+  getLastGitFeatureId,
+  listRecentGitFeatures,
+  revertGitFeature,
+} from '../../self-mod/git.js'
 
 type AgentHandlersOptions = {
   getPiHostRunner: () => PiHostRunner | null
@@ -170,25 +174,32 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     }
   })
 
-  ipcMain.handle('selfmod:revert', async (event, payload: { featureId: string; steps?: number }) => {
+  ipcMain.handle('selfmod:revert', async (event, payload: { featureId?: string; steps?: number }) => {
     if (!options.assertPrivilegedSender(event, 'selfmod:revert')) {
       throw new Error('Blocked untrusted request.')
     }
-    if (!options.getPiHostRunner()) {
-      throw new Error('Pi runtime not available')
-    }
-    const { handleSelfModRevert } = await import('../../pi-runtime/extensions/stella/tools-self-mod.js')
-    const context = { conversationId: '', requestId: '', deviceId: '', agentType: 'user' as const }
-    return handleSelfModRevert(
-      { feature_id: payload.featureId, steps: payload.steps },
-      context,
-      path.join(options.frontendRoot),
-    )
+    return await revertGitFeature({
+      repoRoot: options.frontendRoot,
+      featureId: payload.featureId,
+      steps: payload.steps,
+    })
   })
 
-  ipcMain.handle('selfmod:lastFeature', async () => {
-    const piHostRunner = options.getPiHostRunner()
-    if (!piHostRunner) return null
-    return piHostRunner.getLastAppliedFeatureId()
+  ipcMain.handle('selfmod:lastFeature', async (event) => {
+    if (!options.assertPrivilegedSender(event, 'selfmod:lastFeature')) {
+      throw new Error('Blocked untrusted request.')
+    }
+    return await getLastGitFeatureId(options.frontendRoot)
+  })
+
+  ipcMain.handle('selfmod:recentFeatures', async (
+    event,
+    payload: { limit?: number } | undefined,
+  ) => {
+    if (!options.assertPrivilegedSender(event, 'selfmod:recentFeatures')) {
+      throw new Error('Blocked untrusted request.')
+    }
+    const limit = Number(payload?.limit ?? 8)
+    return await listRecentGitFeatures(options.frontendRoot, limit)
   })
 }
