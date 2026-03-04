@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useReducer, useRef, type Dispatch } from "react";
+import { useCallback, useEffect, useReducer, useRef, lazy, Suspense, type Dispatch } from "react";
 import { MINI_SHELL_SIZE } from "@/lib/layout";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "../shell/mini/MiniShell";
 import { VoiceOverlay } from "@/app/overlay/VoiceOverlay";
 import { MorphTransition } from "@/app/overlay/MorphTransition";
+
+const NiriDemo = lazy(() => import("@/app/niri/NiriDemo"));
 
 /**
  * OverlayRoot manages the unified transparent overlay window.
@@ -28,6 +30,7 @@ type OverlayState = {
   miniPosition: { x: number; y: number } | null;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
+  niriVisible: boolean;
 };
 
 type OverlayAction =
@@ -41,7 +44,9 @@ type OverlayAction =
   | { type: "mini:position"; position: { x: number; y: number } }
   | { type: "mini:preview"; visible: boolean }
   | { type: "voice:show"; position: { x: number; y: number } }
-  | { type: "voice:hide" };
+  | { type: "voice:hide" }
+  | { type: "niri:show" }
+  | { type: "niri:hide" };
 
 const initialState: OverlayState = {
   modifierBlock: false,
@@ -53,6 +58,7 @@ const initialState: OverlayState = {
   miniPosition: null,
   voiceVisible: false,
   voicePosition: null,
+  niriVisible: false,
 };
 
 function overlayReducer(state: OverlayState, action: OverlayAction): OverlayState {
@@ -79,6 +85,10 @@ function overlayReducer(state: OverlayState, action: OverlayAction): OverlayStat
       return { ...state, voiceVisible: true, voicePosition: action.position };
     case "voice:hide":
       return { ...state, voiceVisible: false };
+    case "niri:show":
+      return { ...state, niriVisible: true };
+    case "niri:hide":
+      return { ...state, niriVisible: false };
     default:
       return state;
   }
@@ -203,6 +213,23 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
       cleanupHide?.();
     };
   }, [dispatch]);
+
+  // Niri demo visibility.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanupShow = api.overlay.onShowNiri?.(() => {
+      dispatch({ type: "niri:show" });
+    });
+    const cleanupHide = api.overlay.onHideNiri?.(() => {
+      dispatch({ type: "niri:hide" });
+    });
+    return () => {
+      cleanupShow?.();
+      cleanupHide?.();
+    };
+  }, [dispatch]);
 }
 
 // ---------------------------------------------------------------------------
@@ -274,6 +301,7 @@ function useMiniDrag(
 function useOverlayHitTesting(
   state: OverlayState,
   miniRef: React.RefObject<HTMLDivElement | null>,
+  niriRef: React.RefObject<HTMLDivElement | null>,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
   useEffect(() => {
@@ -300,9 +328,9 @@ function useOverlayHitTesting(
       return;
     }
 
-    // For mini shell and standalone voice: only interactive when cursor is
-    // over an active interactive region.
-    if (!state.miniVisible && !state.voiceVisible) {
+    // For mini shell, standalone voice, and niri: only interactive when cursor
+    // is over an active interactive region.
+    if (!state.miniVisible && !state.voiceVisible && !state.niriVisible) {
       updateInteractive(false);
       return;
     }
@@ -332,12 +360,26 @@ function useOverlayHitTesting(
           e.clientY <= top + VOICE_PILL_SIZE.height;
       }
 
-      updateInteractive(isOverMini || isOverVoice);
+      let isOverNiri = false;
+      if (state.niriVisible) {
+        const niriEl = niriRef.current;
+        if (niriEl) {
+          const rect = niriEl.getBoundingClientRect();
+          isOverNiri =
+            e.clientX >= rect.left &&
+            e.clientX <= rect.right &&
+            e.clientY >= rect.top &&
+            e.clientY <= rect.bottom;
+        }
+      }
+
+      updateInteractive(isOverMini || isOverVoice || isOverNiri);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [
+    state.niriVisible,
     state.regionCaptureActive,
     state.miniPreviewVisible,
     state.modifierBlock,
@@ -346,6 +388,7 @@ function useOverlayHitTesting(
     state.voiceVisible,
     state.voicePosition,
     miniRef,
+    niriRef,
     updateInteractive,
   ]);
 
@@ -356,7 +399,8 @@ function useOverlayHitTesting(
       state.regionCaptureActive ||
       state.miniPreviewVisible ||
       state.miniVisible ||
-      state.voiceVisible;
+      state.voiceVisible ||
+      state.niriVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -373,6 +417,7 @@ export function OverlayRoot() {
   const interactiveRef = useRef(false);
   const miniRef = useRef<HTMLDivElement>(null);
   const radialRef = useRef<HTMLDivElement>(null);
+  const niriRef = useRef<HTMLDivElement>(null);
   const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
 
   // Wire up all IPC subscriptions (radial, modifier, region, mini, voice)
@@ -388,7 +433,7 @@ export function OverlayRoot() {
     window.electronAPI?.overlay.setInteractive?.(shouldBeInteractive);
   }, []);
 
-  useOverlayHitTesting(state, miniRef, updateInteractive);
+  useOverlayHitTesting(state, miniRef, niriRef, updateInteractive);
 
   const handleMiniPreviewVisibilityChange = useCallback((visible: boolean) => {
     dispatch({ type: "mini:preview", visible });
@@ -396,6 +441,10 @@ export function OverlayRoot() {
 
   const handleVoiceTranscript = useCallback((transcript: string) => {
     window.electronAPI?.voice.submitTranscript?.(transcript);
+  }, []);
+
+  const handleNiriClose = useCallback(() => {
+    window.electronAPI?.overlay.hideNiri?.();
   }, []);
 
   return (
@@ -468,6 +517,13 @@ export function OverlayRoot() {
       />
 
       <MorphTransition />
+
+      {/* Niri demo: mounted only when active */}
+      {state.niriVisible && (
+        <Suspense fallback={null}>
+          <NiriDemo onClose={handleNiriClose} panelRef={niriRef} />
+        </Suspense>
+      )}
     </div>
   );
 }

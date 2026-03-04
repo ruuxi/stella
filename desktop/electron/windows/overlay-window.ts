@@ -201,6 +201,7 @@ export class OverlayWindowController {
   private activeRegionCapture = false
   private activeMini = false
   private activeVoice = false
+  private activeNiri = false
 
   private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
@@ -214,10 +215,19 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
+  private readonly handleNiriRequest = () => {
+    this.showNiri()
+  }
+  private readonly handleNiriHideRequest = () => {
+    this.hideNiri()
+  }
+
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.on('radial:animDone', this.handleRadialAnimDone)
+    ipcMain.on('overlay:showNiri:request', this.handleNiriRequest)
+    ipcMain.on('overlay:hideNiri:request', this.handleNiriHideRequest)
   }
 
   getWindow() { return this.overlayWindow.getWindow() }
@@ -226,7 +236,7 @@ export class OverlayWindowController {
   create() { return this.overlayWindow.create() }
 
   private get isAnyActive() {
-    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph
+    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph || this.activeNiri
   }
 
   private hideOverlayIfIdle() {
@@ -386,6 +396,24 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
+  // ─── Niri Demo ─────────────────────────────────────────────────────────
+
+  showNiri() {
+    this.activeNiri = true
+    this.overlayWindow.show({ focus: true })
+    this.overlayWindow.setIgnoreMouseEvents(false)
+    this.overlayWindow.setFocusable(true)
+    this.overlayWindow.send('overlay:showNiri')
+  }
+
+  hideNiri() {
+    this.activeNiri = false
+    this.overlayWindow.send('overlay:hideNiri')
+    this.overlayWindow.setIgnoreMouseEvents(true)
+    this.overlayWindow.setFocusable(false)
+    this.hideOverlayIfIdle()
+  }
+
   // ─── Morph Transition (HMR Resume) ───────────────────────────────────
 
   private activeMorph = false
@@ -418,6 +446,8 @@ export class OverlayWindowController {
   destroy() {
     ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
+    ipcMain.removeListener('overlay:showNiri:request', this.handleNiriRequest)
+    ipcMain.removeListener('overlay:hideNiri:request', this.handleNiriHideRequest)
     this.overlayWindow.destroy()
   }
 }

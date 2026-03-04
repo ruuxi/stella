@@ -414,6 +414,12 @@ export const FullShell = () => {
           >
             Test UI
           </button>
+          <button
+            className="onboarding-reset"
+            onClick={() => window.electronAPI?.overlay.showNiri?.()}
+          >
+            Niri
+          </button>
         </div>
       )}
 
@@ -425,6 +431,7 @@ export const FullShell = () => {
           />
         </Suspense>
       )}
+
     </div>
   );
 };
