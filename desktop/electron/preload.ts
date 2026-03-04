@@ -161,6 +161,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           fatal?: boolean;
           finalText?: string;
           persisted?: boolean;
+          selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
         }>;
         exhausted: boolean;
       }>,
@@ -176,11 +177,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       fatal?: boolean;
       finalText?: string;
       persisted?: boolean;
+      selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
     }>('agent:event'),
-    selfModRevert: (featureId: string, steps?: number) =>
+    selfModRevert: (featureId?: string, steps?: number) =>
       ipcRenderer.invoke('selfmod:revert', { featureId, steps }),
     getLastSelfModFeature: () =>
       ipcRenderer.invoke('selfmod:lastFeature'),
+    listSelfModFeatures: (limit?: number) =>
+      ipcRenderer.invoke('selfmod:recentFeatures', { limit }) as Promise<Array<{
+        featureId: string;
+        name: string;
+        description: string;
+        latestCommit: string;
+        latestTimestampMs: number;
+        commitCount: number;
+      }>>,
   },
 
   store: {

@@ -294,7 +294,7 @@ export const handleUninstallPackage = async (
           result: {
             uninstalled: false,
             requiresRevert: true,
-            note: "Mod uninstall must be handled via SelfModRevert of the applied feature.",
+            note: "Mod uninstall must be handled by reverting the feature's Git commits.",
           },
         };
       }
@@ -338,7 +338,7 @@ export const handleManagePackage = async (
       case "mod":
         return {
           error:
-            "Mod install is not supported via ManagePackage. Delegate to Self-Mod and use SelfModInstallBlueprint.",
+            "Mod install is not supported via ManagePackage. Delegate to Self-Mod and use SelfModInstallBlueprint, then commit with a [feature:<id>] tag.",
         };
       default:
         return { error: `Unsupported install package type: ${type}` };

@@ -150,7 +150,6 @@ export const createPiHostRunner = ({
   let localTaskManager: LocalTaskManager | null = null;
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
-  let lastAppliedFeatureId: string | null = null;
   const activeRunAbortControllers = new Map<string, AbortController>();
 
   const skillsPath = path.join(StellaHome, "skills");
@@ -428,6 +427,7 @@ export const createPiHostRunner = ({
       getProxyToken: () => proxyToken?.trim() || proxy.token,
       store,
       abortSignal: abortController.signal,
+      frontendRoot,
     }).catch((error) => {
       cleanupRun();
       callbacks.onError({
@@ -486,7 +486,6 @@ export const createPiHostRunner = ({
     handleLocalChat,
     cancelLocalChat,
     getActiveOrchestratorRun,
-    getLastAppliedFeatureId: () => lastAppliedFeatureId,
     recoverCrashedRuns,
     appendThreadMessage: (args: {
       conversationId: string;

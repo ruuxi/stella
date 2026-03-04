@@ -28,6 +28,11 @@ type JsonlRunEvent = {
   error?: string;
   fatal?: boolean;
   finalText?: string;
+  selfModApplied?: {
+    featureId: string;
+    files: string[];
+    batchIndex: number;
+  };
 };
 
 type JsonlMemory = {

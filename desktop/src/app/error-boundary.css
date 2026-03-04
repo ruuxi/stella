@@ -32,6 +32,15 @@
   display: flex;
   gap: 12px;
   justify-content: center;
+  flex-wrap: wrap;
+}
+
+.error-boundary-feature-list {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
 }
 
 .error-boundary-btn {
