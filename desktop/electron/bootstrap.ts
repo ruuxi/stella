@@ -12,6 +12,7 @@ import { registerAllIpcHandlers } from './ipc/ipc-registry.js'
 import { OverlayWindowController } from './windows/overlay-window.js'
 import type { PiHostRunner } from './pi-host-runner.js'
 import { createPiHostRunner } from './pi-runtime/runner.js'
+import { ensureLastResortRecoveryScripts } from './self-mod/recovery-script.js'
 import { cleanupSelectedTextProcess, getSelectedText, initSelectedTextProcess } from './selected-text.js'
 import { AuthService } from './services/auth-service.js'
 import { CaptureService } from './services/capture-service.js'
@@ -142,6 +143,14 @@ export const bootstrapMainProcess = () => {
   const initializePiHostRunner = async () => {
     const stellaHome = await resolveStellaHome(app)
     stellaHomePath = stellaHome.homePath
+    try {
+      await ensureLastResortRecoveryScripts({
+        stellaHomePath: stellaHome.homePath,
+        frontendRoot: path.resolve(__dirname, '..'),
+      })
+    } catch (error) {
+      console.warn('[self-mod] Failed to write recovery scripts:', (error as Error).message)
+    }
     securityPolicyService.setSecurityPolicyPath(
       path.join(stellaHome.statePath, 'security_policy.json'),
     )

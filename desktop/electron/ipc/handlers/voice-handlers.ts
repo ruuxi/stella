@@ -114,6 +114,16 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
           },
           onToolStart: () => {},
           onToolEnd: () => {},
+          onSelfModHmrState: (state) => {
+            const miniWindow = options.windowManager.getMiniWindow()
+            const fullWindow = options.windowManager.getFullWindow()
+            const targetWindow = options.uiState.window === 'mini'
+              ? (miniWindow ?? fullWindow)
+              : (fullWindow ?? miniWindow)
+            if (targetWindow && !targetWindow.isDestroyed()) {
+              targetWindow.webContents.send('agent:selfModHmrState', state)
+            }
+          },
           onEnd: (ev) => {
             resolve((ev.finalText ?? fullText) || 'Done.')
           },

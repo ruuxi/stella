@@ -2,9 +2,20 @@ import fs from "fs"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig, type Plugin } from "vite"
+import { defineConfig, type ModuleNode, type Plugin } from "vite"
 
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
+const SELF_MOD_HMR_STATE_FILE = path.resolve(__dirname, '.stella-hmr-state.json')
+const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
+const PACKAGE_MANIFEST_BASENAMES = new Set([
+  'package.json',
+  'bun.lock',
+  'bun.lockb',
+  'package-lock.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'npm-shrinkwrap.json',
+])
 
 /** Writes the resolved dev server URL to .vite-dev-url so Electron can discover it. */
 function devServerUrl(): Plugin {
@@ -87,8 +98,166 @@ function workspacePanelServer(): Plugin {
   }
 }
 
+type PersistedSelfModHmrState = {
+  paused?: boolean
+  requiresFullReload?: boolean
+}
+
+const readPersistedSelfModHmrState = (): PersistedSelfModHmrState => {
+  try {
+    const raw = fs.readFileSync(SELF_MOD_HMR_STATE_FILE, 'utf-8')
+    const parsed = JSON.parse(raw) as PersistedSelfModHmrState
+    if (!parsed || typeof parsed !== 'object') {
+      return {}
+    }
+    return parsed
+  } catch {
+    return {}
+  }
+}
+
+const writePersistedSelfModHmrState = (state: PersistedSelfModHmrState) => {
+  fs.writeFileSync(
+    SELF_MOD_HMR_STATE_FILE,
+    JSON.stringify(
+      {
+        paused: Boolean(state.paused),
+        requiresFullReload: Boolean(state.requiresFullReload),
+        updatedAtMs: Date.now(),
+      },
+      null,
+      2,
+    ),
+  )
+}
+
+const isDependencyManifestFile = (filePath: string) =>
+  PACKAGE_MANIFEST_BASENAMES.has(path.basename(filePath))
+
+/**
+ * Pauses visible HMR during agent self-mod turns, then resumes updates in one flush.
+ * During pause we suppress client propagation (`handleHotUpdate -> []`) while Vite
+ * continues to transform and report compile errors in the background.
+ */
+function selfModHmrControl(): Plugin {
+  let paused = false
+  let requiresFullReload = false
+  const queuedModules = new Set<ModuleNode>()
+  const queuedFiles = new Set<string>()
+
+  const queueFile = (filePath: string, root: string) => {
+    const rel = path.relative(root, filePath).replace(/\\/g, '/')
+    queuedFiles.add(rel.startsWith('..') ? filePath.replace(/\\/g, '/') : rel)
+  }
+
+  const clearQueue = () => {
+    queuedModules.clear()
+    queuedFiles.clear()
+    requiresFullReload = false
+  }
+
+  return {
+    name: 'stella-self-mod-hmr-control',
+    enforce: 'post',
+    configureServer(server) {
+      const persisted = readPersistedSelfModHmrState()
+      paused = Boolean(persisted.paused)
+      requiresFullReload = Boolean(persisted.requiresFullReload)
+
+      const flushQueuedUpdates = async () => {
+        if (queuedModules.size === 0 && !requiresFullReload) {
+          return
+        }
+
+        if (requiresFullReload) {
+          server.ws.send({ type: 'full-reload', path: '*' })
+          clearQueue()
+          writePersistedSelfModHmrState({ paused, requiresFullReload })
+          return
+        }
+
+        let reloadFailed = false
+        for (const mod of queuedModules) {
+          try {
+            await server.reloadModule(mod)
+          } catch (error) {
+            console.error('[self-mod-hmr] Failed to reload queued module:', error)
+            reloadFailed = true
+            break
+          }
+        }
+
+        if (reloadFailed) {
+          server.ws.send({ type: 'full-reload', path: '*' })
+        }
+
+        clearQueue()
+        writePersistedSelfModHmrState({ paused, requiresFullReload })
+      }
+
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !req.url.startsWith(SELF_MOD_HMR_ENDPOINT_BASE)) {
+          return next()
+        }
+
+        const sendJson = (statusCode: number, payload: Record<string, unknown>) => {
+          res.statusCode = statusCode
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(payload))
+        }
+
+        const urlPath = req.url.split('?')[0] ?? req.url
+
+        if (req.method === 'GET' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/status`) {
+          sendJson(200, {
+            ok: true,
+            paused,
+            queuedFiles: queuedFiles.size,
+            requiresFullReload,
+          })
+          return
+        }
+
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/pause`) {
+          paused = true
+          writePersistedSelfModHmrState({ paused, requiresFullReload })
+          sendJson(200, { ok: true, paused })
+          return
+        }
+
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/resume`) {
+          paused = false
+          await flushQueuedUpdates()
+          writePersistedSelfModHmrState({ paused, requiresFullReload })
+          sendJson(200, { ok: true, paused })
+          return
+        }
+
+        sendJson(404, { ok: false, error: 'Not found' })
+      })
+    },
+    async handleHotUpdate(ctx) {
+      if (!paused) {
+        return
+      }
+
+      if (isDependencyManifestFile(ctx.file)) {
+        requiresFullReload = true
+      }
+
+      queueFile(ctx.file, ctx.server.config.root)
+      for (const mod of ctx.modules) {
+        queuedModules.add(mod)
+      }
+
+      writePersistedSelfModHmrState({ paused, requiresFullReload })
+      return []
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), devServerUrl(), workspacePanelServer()],
+  plugins: [react(), tailwindcss(), devServerUrl(), workspacePanelServer(), selfModHmrControl()],
   base: './',
   build: {
     outDir: 'dist',

@@ -199,6 +199,8 @@ export type SelfModFeatureSummary = {
   latestCommit: string
   latestTimestampMs: number
   commitCount: number
+  tainted?: boolean
+  taintedFiles?: string[]
 }
 
 export type AgentHealth =
@@ -325,6 +327,7 @@ export type ElectronAgentApi = {
     exhausted: boolean
   }>
   onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void
+  onSelfModHmrState: (callback: (event: { paused: boolean; message: string }) => void) => () => void
   selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>
   getLastSelfModFeature: () => Promise<string | null>
   listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>

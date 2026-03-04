@@ -17,6 +17,7 @@ dist-ssr
 *.local
 *.tsbuildinfo
 .vite-dev-url
+.stella-hmr-state.json
 
 # Editor directories and files
 .vscode/*

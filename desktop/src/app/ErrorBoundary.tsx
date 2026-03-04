@@ -6,6 +6,28 @@ type State = {
   hasError: boolean;
   revertingFeatureId: string | null;
   features: SelfModFeatureSummary[];
+  autoRepairStatus: "idle" | "running" | "failed";
+  autoRepairMessage: string;
+};
+
+const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
+
+const buildAutoRepairPrompt = (error: Error, componentStack: string) => {
+  const stack = componentStack.trim() || "(no component stack)";
+  return `A render crash happened in Stella's frontend.
+
+Please perform an automatic self-repair now:
+1. Find and fix the root cause in the frontend code.
+2. Keep behavior changes minimal and safe.
+3. Validate with frontend typecheck/tests when possible.
+4. If you make code changes, commit them with a stable [feature:auto-repair] tag.
+
+Crash details:
+- Error: ${error.name}: ${error.message}
+- Component stack:
+${stack}
+
+After fixing, return a concise summary of what you changed.`;
 };
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -13,6 +35,8 @@ export class ErrorBoundary extends Component<Props, State> {
     hasError: false,
     revertingFeatureId: null,
     features: [],
+    autoRepairStatus: "idle",
+    autoRepairMessage: "",
   };
 
   static getDerivedStateFromError(): Partial<State> {
@@ -22,6 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("ErrorBoundary caught:", error, info);
     void this.loadFeatures();
+    void this.startAutoRepair(error, info);
   }
 
   loadFeatures = async () => {
@@ -46,6 +71,83 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   };
 
+  startAutoRepair = async (error: Error, info: ErrorInfo) => {
+    if (this.state.autoRepairStatus === "running") {
+      return;
+    }
+
+    const api = window.electronAPI;
+    if (!api?.agent?.startChat || !api?.ui?.getState) {
+      this.setState({
+        autoRepairStatus: "failed",
+        autoRepairMessage: "Automatic repair is unavailable right now.",
+      });
+      return;
+    }
+
+    const signature = `${error.name}:${error.message}:${info.componentStack ?? ""}`.slice(0, 12_000);
+    const previousSignature = sessionStorage.getItem(AUTO_REPAIR_SIGNATURE_KEY);
+    if (previousSignature === signature) {
+      this.setState({
+        autoRepairStatus: "failed",
+        autoRepairMessage: "Automatic repair was already attempted for this crash.",
+      });
+      return;
+    }
+    sessionStorage.setItem(AUTO_REPAIR_SIGNATURE_KEY, signature);
+
+    this.setState({
+      autoRepairStatus: "running",
+      autoRepairMessage: "Stella is attempting an automatic repair.",
+    });
+
+    try {
+      const uiState = await api.ui.getState();
+      const conversationId =
+        typeof uiState?.conversationId === "string" && uiState.conversationId.trim()
+          ? uiState.conversationId
+          : null;
+      if (!conversationId) {
+        throw new Error("No active conversation for auto-repair.");
+      }
+
+      const userMessageId = `auto-repair-${Date.now()}`;
+      const prompt = buildAutoRepairPrompt(error, info.componentStack ?? "");
+
+      const { runId } = await api.agent.startChat({
+        conversationId,
+        userMessageId,
+        userPrompt: prompt,
+        agentType: "orchestrator",
+        storageMode: "local",
+      });
+
+      const unsubscribe = api.agent.onStream((event) => {
+        if (event.runId !== runId) return;
+
+        if (event.type === "end") {
+          unsubscribe();
+          window.location.reload();
+          return;
+        }
+
+        if (event.type === "error" && event.fatal) {
+          unsubscribe();
+          this.setState({
+            autoRepairStatus: "failed",
+            autoRepairMessage: "Automatic repair could not complete. You can undo recent updates below.",
+          });
+        }
+      });
+    } catch (repairError) {
+      console.error("ErrorBoundary auto-repair failed:", repairError);
+      this.setState({
+        autoRepairStatus: "failed",
+        autoRepairMessage: "Automatic repair could not start. You can undo recent updates below.",
+      });
+    }
+  };
+
   handleReload = () => {
     window.location.reload();
   };
@@ -61,6 +163,11 @@ export class ErrorBoundary extends Component<Props, State> {
             An unexpected error occurred. You can try undoing recent changes or
             reloading.
           </p>
+          {this.state.autoRepairStatus !== "idle" && (
+            <p className="error-boundary-status">
+              {this.state.autoRepairMessage}
+            </p>
+          )}
           {this.state.features.length > 0 && (
             <div className="error-boundary-feature-list">
               {this.state.features.map((feature) => {
@@ -72,7 +179,11 @@ export class ErrorBoundary extends Component<Props, State> {
                     onClick={() => this.handleRevert(feature.featureId)}
                     disabled={this.state.revertingFeatureId !== null}
                   >
-                    {isReverting ? "Reverting..." : `Undo ${feature.name}`}
+                    {isReverting
+                      ? "Reverting..."
+                      : feature.tainted
+                        ? `Undo ${feature.name} (external edits)`
+                        : `Undo ${feature.name}`}
                   </button>
                 );
               })}
