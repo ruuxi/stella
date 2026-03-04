@@ -8,8 +8,9 @@ import {
 } from "../services/realtime-voice";
 import { useUiState } from "../app/state/ui-state";
 import { useWindowType } from "./use-window-type";
-import { useChatStore } from "../app/state/chat-store";
+import { useOptionalChatStore } from "../app/state/chat-store";
 import { getOrCreateDeviceId } from "../services/device";
+import { appendLocalEvent } from "../services/local-chat-store";
 
 interface UseRealtimeVoiceResult {
   analyserRef: React.RefObject<AnalyserNode | null>;
@@ -20,6 +21,18 @@ interface UseRealtimeVoiceResult {
 const SESSION_ROTATE_MS = 55 * 60 * 1000;
 const RETRY_BASE_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
+
+const appendEventLocalFallback = async (args: {
+  conversationId: string;
+  type: string;
+  payload?: unknown;
+  deviceId?: string;
+  requestId?: string;
+  targetDeviceId?: string;
+}) => {
+  appendLocalEvent(args);
+  return null;
+};
 
 // ---------------------------------------------------------------------------
 // VoiceSessionManager — extracted session lifecycle logic (no React imports)
@@ -246,7 +259,7 @@ export class VoiceSessionManager {
 export function useRealtimeVoice(): UseRealtimeVoiceResult {
   initRealtimeVoiceIpc();
   const { state } = useUiState();
-  const chatStore = useChatStore();
+  const chatStore = useOptionalChatStore();
   const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
 
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -256,13 +269,13 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   const conversationId = state.conversationId ?? "voice-rtc";
   const conversationIdRef = useRef<string>(conversationId);
   const inputActiveRef = useRef<boolean>(state.isVoiceRtcActive);
-  const appendEventRef = useRef(chatStore.appendEvent);
+  const appendEventRef = useRef(chatStore?.appendEvent ?? appendEventLocalFallback);
   const managerRef = useRef<VoiceSessionManager | null>(null);
 
   // Keep appendEvent ref current without re-triggering effects
   useEffect(() => {
-    appendEventRef.current = chatStore.appendEvent;
-  }, [chatStore.appendEvent]);
+    appendEventRef.current = chatStore?.appendEvent ?? appendEventLocalFallback;
+  }, [chatStore]);
 
   // Resolve deviceId once on mount
   useEffect(() => {
