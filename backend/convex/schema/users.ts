@@ -11,22 +11,6 @@ export const usersSchema = {
     .index("by_ownerId_and_key", ["ownerId", "key"])
     .index("by_key", ["key"]),
 
-  self_mod_features: defineTable({
-    featureId: v.string(),
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    name: v.string(),
-    description: v.optional(v.string()),
-    status: v.string(),
-    batchCount: v.number(),
-    files: v.array(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
-    .index("by_conversationId_and_updatedAt", ["conversationId", "updatedAt"])
-    .index("by_featureId", ["featureId"]),
-
   linq_chats: defineTable({
     phoneNumber: v.string(),
     linqChatId: v.string(),

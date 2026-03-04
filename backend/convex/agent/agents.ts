@@ -134,8 +134,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "RecallMemories",
       "TaskCreate",
       "TaskOutput",
-      "SelfModRevert",
-      "SelfModPackage",
       "OpenCanvas",
       "CloseCanvas",
       "AskUserQuestion",

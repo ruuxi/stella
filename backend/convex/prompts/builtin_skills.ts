@@ -461,17 +461,17 @@ const BLUEPRINT_MANAGEMENT: BuiltinSkill = {
 ## Creating Blueprints (sharing your work)
 
 When the user wants to share a feature:
-1. Call \`SelfModPackage\` with:
-   - **description**: Clear, user-facing summary of what the feature does
-   - **implementation**: Detailed, developer-facing explanation of HOW you implemented it — which files you changed, what patterns you used, architectural decisions you made, and why. This is what another AI reads to re-implement the feature.
-2. The blueprint contains your reference code plus description and implementation notes
-3. Publish to the store if the user wants to share publicly
+1. Ensure the feature is committed in Git with a stable \`[feature:<id>]\` tag
+2. Prepare:
+   - **description**: clear user-facing summary of what the feature does
+   - **implementation**: developer-facing explanation of how it was built
+3. Use Stella's built-in export/share flow (host-managed) to publish the feature reference
 
 ## Installing Blueprints (implementing someone else's feature)
 
 1. Call \`SelfModInstallBlueprint(package_id)\` to fetch the blueprint
 2. Read the description, implementation notes, and reference files carefully
-3. Understand the **INTENT** — what the feature does and why the original author made specific choices
+3. Understand the **INTENT** - what the feature does and why the original author made specific choices
 4. Examine the current codebase before implementing:
    - Has the target component/file changed since the blueprint was created?
    - Are there better patterns available now?
@@ -480,17 +480,18 @@ When the user wants to share a feature:
    - **CSS variable overrides**: For pure style changes (colors, spacing, fonts)
    - **Component edits**: For structural changes to existing components
    - **New files**: For entirely new features or components
-6. Re-implement the feature fresh, adapting to the current codebase — use Write/Edit normally (changes are auto-staged and auto-applied)
-7. You are NOT copying files — you are understanding the blueprint and making engineering decisions about how to achieve the same result in the current codebase
-8. After the response completes, summarize what you did differently from the blueprint and why
+6. Re-implement the feature fresh, adapting to the current codebase using normal Write/Edit operations
+7. Commit your work with the same \`[feature:<id>]\` tag so history stays grouped
+8. Include \`package.json\` and lockfile changes in the same feature commit trail
+9. You are NOT copying files - you are understanding the blueprint and making engineering decisions about how to achieve the same result in the current codebase
+10. After the response completes, summarize what you did differently from the blueprint and why
 
 ## Safety
-- Always Read files before modifying — understand existing patterns
+- Always Read files before modifying - understand existing patterns
 - Before risky multi-file edits, run \`Bash("git stash push -u -m 'self-mod-prep'")\` if the working tree is dirty
 - Use error boundaries for complex new components
-- Prefer SelfModRevert over manual fixups when something goes wrong`,
+- When something breaks, use \`git revert\` on feature-tagged commits instead of ad-hoc manual undo`,
 };
-
 const SELF_MODIFICATION: BuiltinSkill = {
   id: "self-modification",
   name: "Self-Modification Guidelines",
@@ -502,12 +503,12 @@ const SELF_MODIFICATION: BuiltinSkill = {
   enabled: true,
   markdown: `# Self-Modification Guidelines
 
-You can modify Stella's own interface — UI components, styles, layouts, and the slot system.
+You can modify Stella's own interface - UI components, styles, layouts, and the slot system.
 
 ## How It Works
-- Writes to \`frontend/src/\` are **auto-staged** and **auto-applied** when your response ends.
-- Changes are applied atomically — the user sees a single HMR update.
-- Each response that modifies Stella files creates a revert point the user can undo.
+- Writes go directly to disk in \`frontend/src/\`.
+- Stella's self-mod flow pauses visible HMR during active edits, then resumes updates when edits complete.
+- Feature provenance and undo are Git-based; feature commits should use \`[feature:<id>]\` tags.
 
 ## Before Structural Changes
 Activate the **frontend-architecture** skill to load the full design system reference before:
@@ -516,22 +517,26 @@ Activate the **frontend-architecture** skill to load the full design system refe
 - Theme system modifications
 
 ## Best Practices
-- Read files before modifying — understand existing patterns
+- Read files before modifying - understand existing patterns
 - New CSS files MUST be imported in \`src/main.tsx\`
-- Use CSS custom properties for colors — never hardcode
+- Use CSS custom properties for colors - never hardcode
 - Use \`@/*\` import paths, never relative beyond one level
 - Component files are paired: \`.tsx\` + \`.css\`
 - After modifying files, run \`Bash("cd frontend && bunx tsc --noEmit --pretty 2>&1 | head -40")\` to catch type errors
+- Commit modifications with a stable \`[feature:<id>]\` tag in commit messages
+- Include dependency file updates (\`package.json\` + lockfile) in the same feature commit trail
 
 ## Constraints
 - Never modify backend code (Convex functions, prompts, tools)
 - Never expose API keys, secrets, or internal agent names in UI
-- Chat is the primary interface — always
-- Canvas in the right panel only — no pop-out windows
+- Chat is the primary interface - always
+- Canvas in the right panel only - no pop-out windows
 - Theme compatibility: CSS custom properties, never hardcoded colors
 
 ## Revert
-Use \`SelfModRevert(feature_id?, steps?)\` to undo applied changes if something goes wrong.`,
+Use Git revert flow for feature-tagged commits when something goes wrong:
+- Find commits: \`git log --grep "[feature:<id>]"\`
+- Revert commits: \`git revert --no-edit <commit_sha>\` (newest-first for multiple commits).`,
 };
 
 // ---------------------------------------------------------------------------
@@ -866,3 +871,4 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   BROWSER_ADVANCED_TOOLS,
   BROWSER_PATTERNS,
 ];
+
