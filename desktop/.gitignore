@@ -55,3 +55,8 @@ stella-browser/nul
 stella-browser/_bench_chain.js
 stella-browser/bun.lock
 coverage/
+
+# Build artifacts
+release/
+native/*.exe
+native/*.obj
