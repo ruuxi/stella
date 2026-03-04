@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { EventRecord } from "../../hooks/use-conversation-events";
-import type { SendMessageArgs } from "../../hooks/use-streaming-chat";
+import type { EventRecord } from "@/hooks/use-conversation-events";
+import type { SendMessageArgs } from "@/hooks/use-streaming-chat";
 import type {
   MiniBridgeRequestEnvelope,
   MiniBridgeResponse,
   MiniBridgeSnapshot,
-} from "../../types/electron";
+} from "@/types/electron";
 
 type MiniBridgeRelayProps = {
   conversationId: string | null;
@@ -142,3 +142,4 @@ export function MiniBridgeRelay({
 
   return null;
 }
+

@@ -33,7 +33,7 @@ vi.mock("convex/react", () => ({
 }));
 
 const mockSetView = vi.fn();
-vi.mock("../app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: vi.fn(() => ({
     state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
     setMode: vi.fn(),
@@ -48,7 +48,7 @@ const mockOpenCanvas = vi.fn();
 const mockCloseCanvas = vi.fn();
 const mockSetChatWidth = vi.fn();
 const mockSetChatOpen = vi.fn();
-vi.mock("../app/state/workspace-state", () => ({
+vi.mock("@/providers/workspace-state", () => ({
   useWorkspace: vi.fn(() => ({
     state: { canvas: null, chatWidth: 480, isChatOpen: true },
     openCanvas: mockOpenCanvas,
@@ -58,7 +58,7 @@ vi.mock("../app/state/workspace-state", () => ({
   })),
 }));
 
-vi.mock("../theme/theme-context", () => ({
+vi.mock("@/theme/theme-context", () => ({
   useTheme: vi.fn(() => ({
     theme: { id: "default", name: "Default" },
     themeId: "default",
@@ -86,43 +86,43 @@ vi.mock("../theme/theme-context", () => ({
   })),
 }));
 
-vi.mock("../hooks/use-conversation-events", () => ({
+vi.mock("@/hooks/use-conversation-events", () => ({
   useConversationEvents: (conversationId?: string) =>
     mockUseConversationEvents(conversationId),
 }));
 
-vi.mock("../hooks/use-canvas-commands", () => ({
+vi.mock("@/hooks/use-canvas-commands", () => ({
   useCanvasCommands: vi.fn(),
 }));
 
-vi.mock("../services/electron", () => ({
+vi.mock("@/services/electron", () => ({
   getElectronApi: vi.fn(() => undefined),
 }));
 
-vi.mock("../services/auth", () => ({
+vi.mock("@/services/auth", () => ({
   secureSignOut: vi.fn(),
 }));
 
-vi.mock("../services/device", () => ({
+vi.mock("@/services/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
-vi.mock("../hooks/use-bridge-reconnect", () => ({
+vi.mock("@/hooks/use-bridge-reconnect", () => ({
   useBridgeAutoReconnect: vi.fn(),
 }));
 
 // Sub-components
-vi.mock("../components/background/ShiftingGradient", () => ({
+vi.mock("@/app/shell/background/ShiftingGradient", () => ({
   ShiftingGradient: ({ mode, colorMode }: any) => (
     <div data-testid="shifting-gradient" data-mode={mode} data-color-mode={colorMode} />
   ),
 }));
 
-vi.mock("../components/TitleBar", () => ({
+vi.mock("@/app/shell/TitleBar", () => ({
   TitleBar: () => <div data-testid="title-bar" />,
 }));
 
-vi.mock("../components/Sidebar", () => ({
+vi.mock("@/app/sidebar/Sidebar", () => ({
   Sidebar: (props: any) => (
     <div data-testid="sidebar">
       <button data-testid="sidebar-store" onClick={props.onStore}>Store</button>
@@ -135,13 +135,13 @@ vi.mock("../components/Sidebar", () => ({
   ),
 }));
 
-vi.mock("../components/workspace/WorkspaceArea", () => ({
+vi.mock("@/app/canvas/WorkspaceArea", () => ({
   WorkspaceArea: (props: any) => (
     <div data-testid="workspace-area" data-view={props.view} />
   ),
 }));
 
-vi.mock("../components/header/HeaderTabBar", () => ({
+vi.mock("@/app/shell/HeaderTabBar", () => ({
   HeaderTabBar: (props: any) => (
     <div data-testid="header-tab-bar" data-view={props.activeView}>
       {(props.pages ?? []).map((page: any) => (
@@ -157,25 +157,25 @@ vi.mock("../components/header/HeaderTabBar", () => ({
   ),
 }));
 
-vi.mock("../components/orb/FloatingOrb", () => ({
+vi.mock("@/app/shell/FloatingOrb", () => ({
   FloatingOrb: () => <div data-testid="floating-orb" />,
 }));
 
-vi.mock("../hooks/use-orb-message", () => ({
+vi.mock("@/hooks/use-orb-message", () => ({
   useOrbMessage: () => ({ text: null, opacity: 0 }),
 }));
 
-vi.mock("../app/AuthDialog", () => ({
+vi.mock("@/app/auth/AuthDialog", () => ({
   AuthDialog: ({ open }: any) =>
     open ? <div data-testid="auth-dialog" /> : null,
 }));
 
-vi.mock("../app/connect/ConnectDialog", () => ({
+vi.mock("@/app/integrations/ConnectDialog", () => ({
   ConnectDialog: ({ open }: any) =>
     open ? <div data-testid="connect-dialog" /> : null,
 }));
 
-vi.mock("../screens/full-shell/SettingsView", () => ({
+vi.mock("@/app/settings/SettingsView", () => ({
   default: ({ open, onOpenChange, onSignOut }: any) =>
     open ? (
       <div data-testid="settings-dialog">
@@ -185,11 +185,11 @@ vi.mock("../screens/full-shell/SettingsView", () => ({
     ) : null,
 }));
 
-vi.mock("../screens/full-shell/ChatColumn", () => ({
+vi.mock("@/app/chat/ChatColumn", () => ({
   ChatColumn: () => <div data-testid="chat-column" />,
 }));
 
-vi.mock("../screens/full-shell/OnboardingOverlay", () => ({
+vi.mock("@/app/onboarding/OnboardingOverlay", () => ({
   useOnboardingOverlay: vi.fn(() => ({
     onboardingDone: true,
     onboardingExiting: false,
@@ -209,17 +209,17 @@ vi.mock("../screens/full-shell/OnboardingOverlay", () => ({
   })),
 }));
 
-vi.mock("../screens/full-shell/DiscoveryFlow", () => ({
+vi.mock("@/app/onboarding/DiscoveryFlow", () => ({
   useDiscoveryFlow: vi.fn(() => ({
     handleDiscoveryConfirm: vi.fn(),
   })),
 }));
 
-vi.mock("../hooks/use-streaming-chat", () => ({
+vi.mock("@/hooks/use-streaming-chat", () => ({
   useStreamingChat: (options: unknown) => mockUseStreamingChat(options),
 }));
 
-vi.mock("../screens/full-shell/use-full-shell", () => ({
+vi.mock("@/app/shell/use-full-shell", () => ({
   useScrollManagement: vi.fn(() => ({
     scrollContainerRef: createRef(),
     isNearBottom: true,
@@ -229,9 +229,9 @@ vi.mock("../screens/full-shell/use-full-shell", () => ({
   })),
 }));
 
-import { FullShell } from "../screens/full-shell/FullShell";
-import { useUiState } from "../app/state/ui-state";
-import { getElectronApi } from "../services/electron";
+import { FullShell } from "@/app/shell/FullShell";
+import { useUiState } from "@/providers/ui-state";
+import { getElectronApi } from "@/services/electron";
 
 // --- Tests ---
 
@@ -400,3 +400,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(mockSetView).toHaveBeenCalledWith("app");
   });
 });
+
+
+

@@ -1,4 +1,4 @@
-import { StellaAnimation } from "@/components/StellaAnimation"
+import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation"
 import { DashboardCard } from "./DashboardCard"
 
 function getGreeting(): string {
@@ -24,3 +24,4 @@ export function GenerativeCanvas() {
     </DashboardCard>
   )
 }
+

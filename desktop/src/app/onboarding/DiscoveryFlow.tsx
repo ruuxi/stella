@@ -4,12 +4,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction, useMutation } from "convex/react";
-import { api } from "../../convex/api";
-import { getOrCreateDeviceId } from "../../services/device";
-import { synthesizeCoreMemory } from "../../services/synthesis";
-import { selectDefaultSkills } from "../../services/skill-selection";
-import { useChatStore } from "../../app/state/chat-store";
-import type { DiscoveryCategory } from "../../components/onboarding/use-onboarding-state";
+import { api } from "@/convex/api";
+import { getOrCreateDeviceId } from "@/services/device";
+import { synthesizeCoreMemory } from "@/services/synthesis";
+import { selectDefaultSkills } from "@/services/skill-selection";
+import { useChatStore } from "@/providers/chat-store";
+import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
 
 const BROWSER_SELECTION_KEY = "stella-selected-browser";
 
@@ -168,3 +168,5 @@ export function useDiscoveryFlow({
     handleDiscoveryConfirm,
   };
 }
+
+

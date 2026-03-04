@@ -28,7 +28,7 @@ vi.mock("@/convex/api", () => ({
 }));
 
 const mockSetView = vi.fn();
-vi.mock("@/app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: () => ({ state: { view: "store" }, setView: mockSetView }),
 }));
 
@@ -1427,3 +1427,4 @@ describe("Theme install/uninstall", () => {
     delete (window as unknown as Record<string, unknown>).electronAPI;
   });
 });
+

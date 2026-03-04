@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
-import { Spinner } from "../spinner";
+import { Spinner } from "@/ui/spinner";
 
 const DJStudioDemo = lazy(() =>
   import("./panels/DJStudioDemo").then((m) => ({ default: m.DJStudio })),
@@ -60,3 +60,4 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({ activeDemo }
     </div>
   );
 };
+

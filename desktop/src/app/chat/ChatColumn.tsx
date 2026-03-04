@@ -3,16 +3,16 @@
  */
 
 import { memo } from "react";
-import { ConversationEvents } from "../ConversationEvents";
-import { OnboardingView } from "./OnboardingOverlay";
+import { ConversationEvents } from "./ConversationEvents";
+import { OnboardingView } from "../onboarding/OnboardingOverlay";
 import { Composer } from "./Composer";
-import { CommandChips } from "../../components/chat/CommandChips";
-import { useCommandSuggestions, type CommandSuggestion } from "../../hooks/use-command-suggestions";
-import type { EventRecord } from "../../hooks/use-conversation-events";
-import type { StellaAnimationHandle } from "../../components/StellaAnimation";
-import type { ChatContext } from "../../types/electron";
-import type { SelfModAppliedData } from "../../hooks/use-streaming-chat";
-import type { DiscoveryCategory } from "../../components/onboarding/use-onboarding-state";
+import { CommandChips } from "@/app/chat/CommandChips";
+import { useCommandSuggestions, type CommandSuggestion } from "@/hooks/use-command-suggestions";
+import type { EventRecord } from "@/hooks/use-conversation-events";
+import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
+import type { ChatContext } from "@/types/electron";
+import type { SelfModAppliedData } from "@/hooks/use-streaming-chat";
+import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
 
 export type StreamingState = {
   text: string;
@@ -164,3 +164,6 @@ export const ChatColumn = memo(function ChatColumn({
     </div>
   );
 });
+
+
+

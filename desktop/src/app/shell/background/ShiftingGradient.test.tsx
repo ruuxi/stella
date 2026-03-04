@@ -32,12 +32,12 @@ const mockThemeValues = {
   },
 };
 
-vi.mock("../../theme/theme-context", () => ({
+vi.mock("@/theme/theme-context", () => ({
   useTheme: () => mockThemeValues,
 }));
 
 // Mock generateGradientTokens to return predictable values
-vi.mock("../../theme/color", () => ({
+vi.mock("@/theme/color", () => ({
   generateGradientTokens: () => ({
     textInteractive: "#8b5cf6",
     surfaceInfoStrong: "#3b82f6",
@@ -343,3 +343,4 @@ describe("ShiftingGradient", () => {
     mockThemeValues.resolvedColorMode = "light";
   });
 });
+

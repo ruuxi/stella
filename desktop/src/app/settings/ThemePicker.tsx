@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
-import { useTheme, useThemeControl } from "../theme/theme-context";
-import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "./popover";
-import { Button } from "./button";
+import { useTheme, useThemeControl } from "@/theme/theme-context";
+import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "@/ui/popover";
+import { Button } from "@/ui/button";
 import { ChevronUp, Check } from "lucide-react";
 
 type ColorScheme = "light" | "dark" | "system";
@@ -178,3 +178,5 @@ export function ThemePicker({
     </Popover>
   );
 }
+
+

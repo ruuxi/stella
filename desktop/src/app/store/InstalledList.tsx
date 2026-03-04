@@ -3,7 +3,7 @@ import {
   type StorePackage,
   TYPE_GRADIENTS,
   TYPE_ICONS,
-} from "../constants";
+} from "./constants";
 
 interface InstalledListProps {
   installedRecords?: InstalledRecord[];
@@ -61,3 +61,4 @@ export function InstalledList({
     </div>
   );
 }
+

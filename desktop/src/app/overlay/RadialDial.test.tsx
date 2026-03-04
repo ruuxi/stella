@@ -4,16 +4,16 @@ import { render, screen } from "@testing-library/react";
 // ---------- Mocks ----------
 
 // Mock getElectronApi to return undefined (no API)
-vi.mock("../services/electron", () => ({
+vi.mock("@/services/electron", () => ({
   getElectronApi: () => undefined,
 }));
 
-vi.mock("../app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: () => ({ state: { isVoiceActive: false } }),
 }));
 
 // Mock useTheme to return fake colors
-vi.mock("../theme/theme-context", () => ({
+vi.mock("@/theme/theme-context", () => ({
   useTheme: () => ({
     colors: {
       interactive: "#ff0000",
@@ -27,17 +27,17 @@ vi.mock("../theme/theme-context", () => ({
 }));
 
 // Mock StellaAnimation as a simple div
-vi.mock("../components/StellaAnimation", () => ({
+vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
-vi.mock("../app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: () => ({ state: { isVoiceActive: false } }),
 }));
 
 // We need to test helper functions directly, so we import the module
 // and also mock hexToRgb at the color module level
-vi.mock("../theme/color", () => ({
+vi.mock("@/theme/color", () => ({
   hexToRgb: (hex: string) => {
     // Simple implementation for testing
     const h = hex.replace("#", "");
@@ -298,3 +298,6 @@ describe("RadialDial helper functions (via rendering)", () => {
     expect(stroke).toBe("rgba(51, 51, 51, 0.5)");
   });
 });
+
+
+

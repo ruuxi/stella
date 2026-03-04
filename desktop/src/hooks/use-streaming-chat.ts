@@ -8,19 +8,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRafStringAccumulator } from "./use-raf-state";
-import { getPlatform } from "../utils/platform";
-import { getOrCreateDeviceId } from "../services/device";
+import { getPlatform } from "@/lib/platform";
+import { getOrCreateDeviceId } from "@/services/device";
 import type { EventRecord } from "./use-conversation-events";
-import { getEventText } from "../lib/event-transforms";
-import type { AgentHealth, ChatContext } from "../types/electron";
+import { getEventText } from "@/lib/event-transforms";
+import type { AgentHealth, ChatContext } from "@/types/electron";
 import {
   findQueuedFollowUp,
   toEventId,
 } from "./streaming/streaming-event-utils";
-import { showToast } from "../components/toast";
+import { showToast } from "@/ui/toast";
 import { useResumeAgentRun } from "./use-resume-agent-run";
 import type { AgentStreamEvent, SelfModAppliedData } from "./streaming/streaming-types";
-import { useChatStore } from "../app/state/chat-store";
+import { useChatStore } from "@/providers/chat-store";
 
 export type { AgentStreamEvent, SelfModAppliedData } from "./streaming/streaming-types";
 
@@ -91,7 +91,7 @@ const resolveAgentNotReadyToast = (
 const trySyncHostToken = async (): Promise<boolean> => {
   if (!window.electronAPI?.system.setAuthState) return false;
   try {
-    const { getConvexToken } = await import("../services/auth-token");
+    const { getConvexToken } = await import("@/services/auth-token");
     const token = await getConvexToken();
     if (!token) return false;
     await window.electronAPI.system.setAuthState({ authenticated: true, token });
@@ -570,3 +570,5 @@ export function useStreamingChat({
     resetStreamingState,
   };
 }
+
+

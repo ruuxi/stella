@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, fireEvent, act, renderHook } from "@testing-library/react";
 import React from "react";
-import { OnboardingView, useOnboardingOverlay } from "./OnboardingOverlay";
+import { OnboardingView, useOnboardingOverlay } from "../onboarding/OnboardingOverlay";
 
 // ---------- Mocks ----------
 
-vi.mock("../../components/StellaAnimation", () => ({
+vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: React.forwardRef((_props: any, ref: any) => {
     React.useImperativeHandle(ref, () => ({
       triggerFlash: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock("../../components/StellaAnimation", () => ({
   }),
 }));
 
-vi.mock("../../components/onboarding/Onboarding", () => ({
+vi.mock("@/app/onboarding/Onboarding", () => ({
   OnboardingStep1: (props: any) => (
     <div data-testid="onboarding-step1">
       <button data-testid="complete-btn" onClick={props.onComplete}>
@@ -52,7 +52,7 @@ vi.mock("@/convex/api", () => ({
 
 // Re-import mock references for per-test overrides
 import { useConvexAuth } from "convex/react";
-import { useOnboardingState } from "../../components/onboarding/Onboarding";
+import { useOnboardingState } from "@/app/onboarding/Onboarding";
 
 const mockedUseConvexAuth = vi.mocked(useConvexAuth);
 const mockedUseOnboardingState = vi.mocked(useOnboardingState) as any;
@@ -459,3 +459,6 @@ describe("useOnboardingOverlay", () => {
     expect(result.current.hasDiscoverySelections).toBe(true);
   });
 });
+
+
+

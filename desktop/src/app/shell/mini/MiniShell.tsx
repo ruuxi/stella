@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useUiState } from "../../app/state/ui-state";
+import { useUiState } from "@/providers/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";
@@ -174,3 +174,5 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     </div>
   );
 };
+
+

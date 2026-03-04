@@ -5,7 +5,7 @@ import {
   TYPE_GRADIENTS,
   TYPE_ICONS,
   getAuthorColor,
-} from "../constants";
+} from "./constants";
 
 interface FeaturedHeroProps {
   featured: StorePackage;
@@ -124,3 +124,4 @@ export function FeaturedHero({
     </div>
   );
 }
+

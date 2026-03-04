@@ -1,11 +1,11 @@
 import { useCallback, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
-import { useUiState } from "@/app/state/ui-state";
-import { showToast } from "@/components/toast";
+import { useUiState } from "@/providers/ui-state";
+import { showToast } from "@/ui/toast";
 import { registerTheme, unregisterTheme } from "@/theme/themes";
 import type { ThemeColors } from "@/theme/themes/types";
-import type { StorePackage } from "../constants";
+import type { StorePackage } from "./constants";
 
 const STORE_ID_PATTERN = /^[a-zA-Z0-9._-]{1,80}$/;
 const STORE_TOKEN_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
@@ -324,3 +324,5 @@ export function useStoreInstallationActions({
     handleUninstall,
   };
 }
+
+

@@ -13,7 +13,7 @@ vi.mock("convex/react", () => ({
   useAction: vi.fn(() => vi.fn()),
 }));
 
-vi.mock("../services/device", () => ({
+vi.mock("@/services/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
@@ -22,7 +22,7 @@ const mockAppendAgentEvent = vi.fn();
 const mockUploadAttachments = vi.fn(() => Promise.resolve([]));
 const mockBuildHistory = vi.fn(() => undefined);
 
-vi.mock("../app/state/chat-store", () => ({
+vi.mock("@/providers/chat-store", () => ({
   useChatStore: vi.fn(() => ({
     storageMode: "cloud",
     isLocalStorage: false,
@@ -57,7 +57,7 @@ vi.mock("./use-raf-state", async () => {
 });
 
 import { useStreamingChat } from "./use-streaming-chat";
-import { getOrCreateDeviceId } from "../services/device";
+import { getOrCreateDeviceId } from "@/services/device";
 import type { EventRecord } from "./use-conversation-events";
 
 // ----------------------------------------------------------------
@@ -291,3 +291,5 @@ describe("useStreamingChat", () => {
     });
   });
 });
+
+

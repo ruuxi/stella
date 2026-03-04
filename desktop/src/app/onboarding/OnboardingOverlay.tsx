@@ -9,9 +9,9 @@ import { clearCachedToken } from "@/services/auth-token";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
-} from "../../components/StellaAnimation";
-import { OnboardingStep1, useOnboardingState } from "../../components/onboarding/Onboarding";
-import type { DiscoveryCategory } from "../../components/onboarding/use-onboarding-state";
+} from "@/app/shell/ascii-creature/StellaAnimation";
+import { OnboardingStep1, useOnboardingState } from "@/app/onboarding/Onboarding";
+import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
 
 const CREATURE_INITIAL_SIZE = 0.22;
 
@@ -235,3 +235,5 @@ export function OnboardingView({
     </div>
   );
 }
+
+

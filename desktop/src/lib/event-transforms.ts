@@ -1,4 +1,4 @@
-import type { StepItem } from "../components/steps-container";
+import type { StepItem } from "@/ui/steps-container";
 
 export type EventRecord = {
   _id: string;
@@ -402,3 +402,5 @@ export function getRunningTasks(events: EventRecord[]): TaskItem[] {
   const tasks = extractTasksFromEvents(events);
   return tasks.filter((t) => t.status === "running");
 }
+
+

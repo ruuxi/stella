@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { UiMode, UiState, ViewType, WindowMode } from '../../types/ui'
-import { getElectronApi } from '../../services/electron'
+import type { UiMode, UiState, ViewType, WindowMode } from '@/types/ui'
+import { getElectronApi } from '@/services/electron'
 
 type UiStateContextValue = {
   state: UiState
@@ -118,3 +118,5 @@ export const useUiState = () => {
   }
   return context
 }
+
+

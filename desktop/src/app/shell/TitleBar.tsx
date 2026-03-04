@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useWorkspace } from '@/app/state/workspace-state';
-import { getPlatform } from '@/utils/platform';
+import { useWorkspace } from '@/providers/workspace-state';
+import { getPlatform } from '@/lib/platform';
 
 export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -102,3 +102,4 @@ export const TitleBar = () => {
     </div>
   );
 };
+

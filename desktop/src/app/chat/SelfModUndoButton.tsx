@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { showToast } from "@/components/toast";
+import { showToast } from "@/ui/toast";
 
 export type SelfModApplied = {
   featureId: string;
@@ -60,3 +60,4 @@ export function SelfModUndoButton({
     </button>
   );
 }
+

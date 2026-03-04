@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WelcomeSuggestion } from "../services/synthesis";
+import type { WelcomeSuggestion } from "@/services/synthesis";
 import type { EventRecord } from "./use-conversation-events";
 import { useWelcomeSuggestions } from "./use-welcome-suggestions";
 
@@ -57,3 +57,4 @@ describe("useWelcomeSuggestions", () => {
     expect(useWelcomeSuggestions(events)).toEqual([]);
   });
 });
+

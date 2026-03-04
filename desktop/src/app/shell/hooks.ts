@@ -4,9 +4,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getElectronApi } from "../../services/electron";
-import type { ChatContext, ChatContextUpdate } from "../../types/electron";
-import type { OnboardingDemo } from "../../components/onboarding/OnboardingCanvas";
+import { getElectronApi } from "@/services/electron";
+import type { ChatContext, ChatContextUpdate } from "@/types/electron";
+import type { OnboardingDemo } from "@/app/onboarding/OnboardingCanvas";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -206,3 +206,6 @@ export function useDialogManager() {
   const [activeDialog, setActiveDialog] = useState<DialogType>(null);
   return { activeDialog, setActiveDialog };
 }
+
+
+

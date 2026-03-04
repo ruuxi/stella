@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
-import { Spinner } from "../spinner";
-import type { TaskItem } from "../../lib/event-transforms";
+import { Spinner } from "@/ui/spinner";
+import type { TaskItem } from "@/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
 
 interface TaskIndicatorProps {
@@ -34,3 +34,5 @@ export function TaskIndicator({ tasks, className }: TaskIndicatorProps) {
     </div>
   );
 }
+
+

@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { ChatContext } from "../../../types/electron";
+import type { ChatContext } from "@/types/electron";
 
 type ComposerContextRowProps = {
   chatContext: ChatContext | null;
@@ -94,4 +94,5 @@ export function ComposerContextRow({
     </div>
   );
 }
+
 

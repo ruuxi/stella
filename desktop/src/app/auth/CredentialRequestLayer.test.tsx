@@ -8,7 +8,7 @@ vi.mock("convex/react", () => ({
   useMutation: () => mockCreateSecret,
 }));
 
-vi.mock("../convex/api", () => ({
+vi.mock("@/convex/api", () => ({
   api: {
     data: {
       secrets: {
@@ -19,14 +19,14 @@ vi.mock("../convex/api", () => ({
 }));
 
 let mockElectronApi: Record<string, unknown> | undefined;
-vi.mock("../services/electron", () => ({
+vi.mock("@/services/electron", () => ({
   getElectronApi: () => mockElectronApi,
 }));
 
 let capturedOnSubmit: ((payload: { label: string; secret: string }) => Promise<void>) | undefined;
 let capturedOnCancel: (() => void) | undefined;
 
-vi.mock("../components/CredentialModal", () => ({
+vi.mock("@/app/integrations/CredentialModal", () => ({
   CredentialModal: ({
     open,
     provider,
@@ -182,3 +182,6 @@ describe("CredentialRequestLayer", () => {
     expect(unsubscribe).toHaveBeenCalled();
   });
 });
+
+
+

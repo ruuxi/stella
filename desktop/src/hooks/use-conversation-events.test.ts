@@ -15,7 +15,7 @@ import {
   isTaskProgress,
   extractToolTitle,
   type EventRecord,
-} from "../lib/event-transforms";
+} from "@/lib/event-transforms";
 
 // Helper to create mock events
 const createEvent = (
@@ -89,7 +89,7 @@ describe("Type Guards", () => {
 
 describe("extractToolTitle", () => {
   it("extracts filename from read path", () => {
-    const event = createToolRequest("read", { path: "/src/components/Button.tsx" });
+    const event = createToolRequest("read", { path: "/src/ui/Button.tsx" });
     expect(extractToolTitle(event)).toBe("Button.tsx");
   });
 
@@ -466,3 +466,5 @@ describe("Integration: Full conversation flow", () => {
     expect(getCurrentRunningTool(events)).toBe("write");
   });
 });
+
+

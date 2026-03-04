@@ -3,7 +3,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 
 let mockConversationId: string | null = "conv-123";
 
-vi.mock("../../app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: vi.fn(() => ({
     state: {
       get conversationId() {
@@ -18,7 +18,7 @@ import type {
   ChatContext,
   MiniBridgeRequest,
   MiniBridgeUpdate,
-} from "../../types/electron";
+} from "@/types/electron";
 
 function makeSnapshot(overrides?: Partial<MiniBridgeUpdate["snapshot"]>) {
   return {
@@ -162,3 +162,5 @@ describe("useMiniChat", () => {
     });
   });
 });
+
+

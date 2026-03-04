@@ -10,7 +10,7 @@ vi.mock("convex/react", () => ({
   useAction: vi.fn(),
 }));
 
-vi.mock("../app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: vi.fn(() => ({
     state: { mode: "chat", window: "full", view: "chat", conversationId: null },
     setMode: vi.fn(),
@@ -22,52 +22,52 @@ vi.mock("../app/state/ui-state", () => ({
 }));
 
 const mockGetElectronApi = vi.fn(() => undefined);
-vi.mock("../services/electron", () => ({
+vi.mock("@/services/electron", () => ({
   getElectronApi: () => mockGetElectronApi(),
 }));
 
-vi.mock("../app/AuthTokenBridge", () => ({
+vi.mock("@/app/auth/AuthTokenBridge", () => ({
   AuthTokenBridge: () => <div data-testid="auth-token-bridge" />,
 }));
 
-vi.mock("../app/CloudSyncBridge", () => ({
+vi.mock("@/services/CloudSyncBridge", () => ({
   CloudSyncBridge: () => <div data-testid="cloud-sync-bridge" />,
 }));
 
-vi.mock("../app/AuthDeepLinkHandler", () => ({
+vi.mock("@/app/auth/AuthDeepLinkHandler", () => ({
   AuthDeepLinkHandler: () => <div data-testid="auth-deep-link-handler" />,
 }));
 
-vi.mock("../app/AppBootstrap", () => ({
+vi.mock("@/app/AppBootstrap", () => ({
   AppBootstrap: () => <div data-testid="app-bootstrap" />,
 }));
 
-vi.mock("../app/state/chat-store", () => ({
+vi.mock("@/providers/chat-store", () => ({
   ChatStoreProvider: ({ children }: any) => <>{children}</>,
 }));
 
-vi.mock("../app/CredentialRequestLayer", () => ({
+vi.mock("@/app/auth/CredentialRequestLayer", () => ({
   CredentialRequestLayer: () => <div data-testid="credential-request-layer" />,
 }));
 
-vi.mock("../screens/full-shell/FullShell", () => ({
+vi.mock("@/app/shell/FullShell", () => ({
   FullShell: () => <div data-testid="full-shell" />,
 }));
 
-vi.mock("../screens/MiniShell", () => ({
+vi.mock("@/app/shell/mini/MiniShell", () => ({
   MiniShell: () => <div data-testid="mini-shell" />,
 }));
 
-vi.mock("../screens/RadialShell", () => ({
+vi.mock("@/app/overlay/RadialShell", () => ({
   RadialShell: () => <div data-testid="radial-shell" />,
 }));
 
-vi.mock("../screens/RegionCapture", () => ({
+vi.mock("@/app/overlay/RegionCapture", () => ({
   RegionCapture: () => <div data-testid="region-capture" />,
 }));
 
-import { App } from "../App";
-import { useUiState } from "../app/state/ui-state";
+import { App } from "./App";
+import { useUiState } from "@/providers/ui-state";
 
 // --- Tests ---
 
@@ -217,3 +217,7 @@ describe("getWindowType (tested indirectly)", () => {
     expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
   });
 });
+
+
+
+

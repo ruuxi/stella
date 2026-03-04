@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { useWorkspace } from '@/app/state/workspace-state'
-import { useUiState } from '@/app/state/ui-state'
+import { useWorkspace } from '@/providers/workspace-state'
+import { useUiState } from '@/providers/ui-state'
 import { getLocalhostPort } from '@/lib/utils'
 import type { EventRecord } from './use-conversation-events'
 
@@ -87,3 +87,4 @@ export const useCanvasCommands = (events: EventRecord[]) => {
     }
   }, [events, state.canvas, openCanvas, closeCanvas, setView])
 }
+

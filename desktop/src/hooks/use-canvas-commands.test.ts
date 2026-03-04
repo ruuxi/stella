@@ -6,11 +6,11 @@ import { useCanvasCommands } from "./use-canvas-commands";
 const mockUseCanvas = vi.fn();
 const mockSetView = vi.fn();
 
-vi.mock("@/app/state/workspace-state", () => ({
+vi.mock("@/providers/workspace-state", () => ({
   useWorkspace: () => mockUseCanvas(),
 }));
 
-vi.mock("@/app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: () => ({ setView: mockSetView }),
 }));
 
@@ -180,4 +180,5 @@ describe("useCanvasCommands", () => {
     expect(openCanvas).not.toHaveBeenCalled();
   });
 });
+
 

@@ -4,7 +4,7 @@ import { MiniShell } from "./MiniShell";
 
 const mockSetWindow = vi.fn();
 
-vi.mock("../../app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: () => ({ setWindow: mockSetWindow }),
 }));
 
@@ -48,11 +48,11 @@ vi.mock("./MiniOutput", () => ({
   MiniOutput: () => <div data-testid="mini-output" />,
 }));
 
-vi.mock("../../components/StellaAnimation", () => ({
+vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
-vi.mock("../../components/VoiceOverlay", () => ({
+vi.mock("@/app/overlay/VoiceOverlay", () => ({
   VoiceOverlay: () => null,
 }));
 
@@ -155,3 +155,5 @@ describe("MiniShell", () => {
     expect(onPreviewVisibilityChange).toHaveBeenCalledWith(false);
   });
 });
+
+
