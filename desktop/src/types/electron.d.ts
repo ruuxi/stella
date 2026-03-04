@@ -248,6 +248,7 @@ export type ElectronCaptureApi = {
   removeScreenshot: (index: number) => void
   submitRegionSelection: (payload: { x: number; y: number; width: number; height: number }) => void
   submitRegionClick: (point: { x: number; y: number }) => void
+  pageDataUrl: () => Promise<string | null>
   getWindowCapture: (point: { x: number; y: number }) => Promise<{
     bounds: { x: number; y: number; width: number; height: number };
     thumbnail: string;
@@ -278,6 +279,10 @@ export type ElectronOverlayApi = {
   onShowVoice: (callback: (data: { x: number; y: number; mode: 'stt' | 'realtime' }) => void) => () => void
   onHideVoice: (callback: () => void) => () => void
   onDisplayChange: (callback: (data: { origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }) => void) => () => void
+  onMorphForward: (callback: (data: { screenshotDataUrl: string; x: number; y: number; width: number; height: number }) => void) => () => void
+  onMorphReverse: (callback: (data: { screenshotDataUrl: string }) => void) => () => void
+  onMorphEnd: (callback: () => void) => () => void
+  morphDone: () => void
 }
 
 export type ElectronMiniApi = {
@@ -331,6 +336,8 @@ export type ElectronAgentApi = {
   selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>
   getLastSelfModFeature: () => Promise<string | null>
   listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>
+  triggerViteError: () => Promise<{ ok: boolean }>
+  fixViteError: () => Promise<{ ok: boolean }>
 }
 
 export type ElectronSystemApi = {

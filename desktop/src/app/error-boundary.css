@@ -15,6 +15,29 @@
   padding: 32px;
 }
 
+.error-boundary-comet-wrapper {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.error-boundary-comet {
+  position: absolute;
+  inset: 12px;
+  width: calc(100% - 24px);
+  height: calc(100% - 24px);
+}
+
+.error-boundary-logo {
+  position: relative;
+  width: 88px;
+  height: 88px;
+}
+
 .error-boundary-content h2 {
   margin: 0 0 8px;
   font-size: 20px;
@@ -34,47 +57,19 @@
   color: var(--text-base);
 }
 
+.error-boundary-feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.error-boundary-feature-btn {
+  width: 100%;
+}
+
 .error-boundary-actions {
   display: flex;
   gap: 12px;
   justify-content: center;
-  flex-wrap: wrap;
-}
-
-.error-boundary-feature-list {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin: 0 0 12px;
-}
-
-.error-boundary-btn {
-  padding: 8px 16px;
-  font-size: 13px;
-  border-radius: 8px;
-  border: 1px solid var(--border-base);
-  background: var(--surface-raised);
-  color: var(--text-strong);
-  cursor: pointer;
-  transition: background 150ms;
-}
-
-.error-boundary-btn:hover:not(:disabled) {
-  background: var(--surface-raised-hover);
-}
-
-.error-boundary-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.error-boundary-btn--primary {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  border-color: var(--primary);
-}
-
-.error-boundary-btn--primary:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--primary) 85%, var(--foreground));
 }

@@ -226,7 +226,7 @@ export class OverlayWindowController {
   create() { return this.overlayWindow.create() }
 
   private get isAnyActive() {
-    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice
+    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph
   }
 
   private hideOverlayIfIdle() {
@@ -383,6 +383,33 @@ export class OverlayWindowController {
   hideVoice() {
     this.activeVoice = false
     this.overlayWindow.send('overlay:hideVoice')
+    this.hideOverlayIfIdle()
+  }
+
+  // ─── Morph Transition (HMR Resume) ───────────────────────────────────
+
+  private activeMorph = false
+
+  startMorphForward(screenshotDataUrl: string, bounds: { x: number; y: number; width: number; height: number }) {
+    this.activeMorph = true
+    const origin = this.overlayWindow.getOverlayOrigin()
+    this.overlayWindow.show({ inactive: true })
+    this.overlayWindow.send('overlay:morphForward', {
+      screenshotDataUrl,
+      x: bounds.x - origin.x,
+      y: bounds.y - origin.y,
+      width: bounds.width,
+      height: bounds.height,
+    })
+  }
+
+  startMorphReverse(screenshotDataUrl: string) {
+    this.overlayWindow.send('overlay:morphReverse', { screenshotDataUrl })
+  }
+
+  endMorph() {
+    this.activeMorph = false
+    this.overlayWindow.send('overlay:morphEnd')
     this.hideOverlayIfIdle()
   }
 

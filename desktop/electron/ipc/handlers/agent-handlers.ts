@@ -1,16 +1,20 @@
 import { ipcMain, webContents, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { promises as fs } from 'fs'
+import path from 'path'
 import type { PiHostRunner } from '../../pi-host-runner.js'
 import {
   getLastGitFeatureId,
   listRecentGitFeatures,
   revertGitFeature,
 } from '../../self-mod/git.js'
+import type { HmrMorphOrchestrator } from '../../self-mod/hmr-morph.js'
 
 type AgentHandlersOptions = {
   getPiHostRunner: () => PiHostRunner | null
   isHostAuthAuthenticated: () => boolean
   frontendRoot: string
   assertPrivilegedSender: (event: IpcMainEvent | IpcMainInvokeEvent, channel: string) => boolean
+  hmrMorphOrchestrator?: HmrMorphOrchestrator | null
 }
 
 type AgentEventPayload = {
@@ -177,6 +181,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         }, 60_000)
       },
       onSelfModHmrState: (ev) => emitSelfModHmrState(ev, senderWebContentsId),
+      onHmrResume: options.hmrMorphOrchestrator
+        ? (resumeHmr) => options.hmrMorphOrchestrator!.runTransition({ resumeHmr })
+        : undefined,
     })
 
     agentRunOwners.set(result.runId, senderWebContentsId)
@@ -222,4 +229,27 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     const limit = Number(payload?.limit ?? 8)
     return await listRecentGitFeatures(options.frontendRoot, limit)
   })
+
+  // Dev-only: trigger/fix a Vite compile error for testing the error overlay
+  const TEST_BROKEN_FILE = path.join(options.frontendRoot, 'src', 'testing', '__vite_error_trigger.tsx')
+
+  ipcMain.handle('devtest:triggerViteError', async (event) => {
+    if (!options.assertPrivilegedSender(event, 'devtest:triggerViteError')) {
+      throw new Error('Blocked untrusted request.')
+    }
+    await fs.mkdir(path.dirname(TEST_BROKEN_FILE), { recursive: true })
+    await fs.writeFile(TEST_BROKEN_FILE, 'const x: number = {\n// deliberately broken syntax\n', 'utf-8')
+    return { ok: true }
+  })
+
+  ipcMain.handle('devtest:fixViteError', async (event) => {
+    if (!options.assertPrivilegedSender(event, 'devtest:fixViteError')) {
+      throw new Error('Blocked untrusted request.')
+    }
+    try {
+      await fs.unlink(TEST_BROKEN_FILE)
+    } catch {}
+    return { ok: true }
+  })
+
 }
