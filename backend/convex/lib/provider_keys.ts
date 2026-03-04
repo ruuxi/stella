@@ -84,6 +84,7 @@ export const PROVIDER_ENV_KEY_MAP: Record<string, string> = {
   "github-copilot-enterprise": "GITHUB_TOKEN",
   "sap-ai-core": "AICORE_SERVICE_KEY",
   opencode: "OPENCODE_API_KEY",
+  inception: "INCEPTION_API_KEY",
 };
 
 /**
