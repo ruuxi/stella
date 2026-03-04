@@ -61,7 +61,7 @@ export const FullShell = () => {
   const { activeDialog, setActiveDialog } = useDialogManager();
 
   const handleTabSelect = useCallback(
-    (view: "home" | "store" | "app" | "chat", page?: PersonalPage) => {
+    (view: "home" | "app" | "chat", page?: PersonalPage) => {
       if (view === "app" && page) {
         openCanvas({ name: page.panelName, title: page.title });
         setView("app");
@@ -301,8 +301,6 @@ export const FullShell = () => {
     handleCommandSelect,
   ]);
 
-  const handleStoreBack = useCallback(() => setView('home'), [setView]);
-
   const handleComposePrompt = useCallback((text: string) => {
     setView("home");
     setMessage(text);
@@ -336,9 +334,7 @@ export const FullShell = () => {
               onSignIn={() => setActiveDialog("auth")}
               onConnect={() => setActiveDialog("connect")}
               onSettings={() => setActiveDialog("settings")}
-              onStore={() => setView(state.view === 'store' ? 'home' : 'store')}
               onHome={() => setView('home')}
-              storeActive={state.view === 'store'}
             />
 
             <div className="content-area">
@@ -356,7 +352,6 @@ export const FullShell = () => {
                   view={state.view}
                   activeDemo={activeDemo}
                   demoClosing={demoClosing}
-                  onStoreBack={handleStoreBack}
                   onComposePrompt={handleComposePrompt}
                   conversationId={activeConversationId ?? undefined}
                 />

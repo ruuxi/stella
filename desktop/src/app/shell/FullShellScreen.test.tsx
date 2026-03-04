@@ -271,21 +271,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(screen.getByTestId("floating-orb")).toBeInTheDocument();
   });
 
-  it("passes store view to WorkspaceArea", async () => {
-    vi.mocked(useUiState).mockReturnValue({
-      state: { mode: "chat", window: "full", view: "store", conversationId: "conv-123" },
-      setMode: vi.fn(),
-      setView: mockSetView,
-      setConversationId: vi.fn(),
-      setWindow: vi.fn(),
-      updateState: vi.fn(),
-    } as any);
-
-    render(<FullShell />);
-    const workspace = screen.getByTestId("workspace-area");
-    expect(workspace).toHaveAttribute("data-view", "store");
-  });
-
   it("passes conversationId to useConversationEvents without source option", () => {
     render(<FullShell />);
     expect(mockUseConversationEvents).toHaveBeenCalledWith("conv-123");
@@ -301,27 +286,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     // storageMode is no longer passed — it comes from ChatStoreProvider
     const args = mockUseStreamingChat.mock.calls[0][0] as Record<string, unknown>;
     expect(args).not.toHaveProperty("storageMode");
-  });
-
-  it("toggles store view via sidebar onStore", () => {
-    render(<FullShell />);
-    fireEvent.click(screen.getByTestId("sidebar-store"));
-    expect(mockSetView).toHaveBeenCalledWith("store");
-  });
-
-  it("toggles back to home view via sidebar onStore when already in store", () => {
-    vi.mocked(useUiState).mockReturnValue({
-      state: { mode: "chat", window: "full", view: "store", conversationId: "conv-123" },
-      setMode: vi.fn(),
-      setView: mockSetView,
-      setConversationId: vi.fn(),
-      setWindow: vi.fn(),
-      updateState: vi.fn(),
-    } as any);
-
-    render(<FullShell />);
-    fireEvent.click(screen.getByTestId("sidebar-store"));
-    expect(mockSetView).toHaveBeenCalledWith("home");
   });
 
   it("opens auth dialog when sidebar sign-in is clicked", async () => {
@@ -346,20 +310,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-home"));
     expect(mockSetView).toHaveBeenCalledWith("home");
-  });
-
-  it("passes storeActive=true to Sidebar when view is store", () => {
-    vi.mocked(useUiState).mockReturnValue({
-      state: { mode: "chat", window: "full", view: "store", conversationId: "conv-123" },
-      setMode: vi.fn(),
-      setView: mockSetView,
-      setConversationId: vi.fn(),
-      setWindow: vi.fn(),
-      updateState: vi.fn(),
-    } as any);
-
-    render(<FullShell />);
-    expect(screen.getByTestId("store-active")).toBeInTheDocument();
   });
 
   it("routes stella:send-message events to sendMessage", () => {

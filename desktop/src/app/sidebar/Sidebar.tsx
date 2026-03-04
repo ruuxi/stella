@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { secureSignOut } from "@/services/auth";
 import { ThemePicker } from "../settings/ThemePicker";
-import LayoutGrid from "lucide-react/dist/esm/icons/layout-grid";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import User from "lucide-react/dist/esm/icons/user";
@@ -16,15 +15,12 @@ interface SidebarProps {
   onSignIn?: () => void;
   onConnect?: () => void;
   onSettings?: () => void;
-  onStore?: () => void;
   onHome?: () => void;
-  storeActive?: boolean;
 }
 
-type NavAction = "store" | "connect";
+type NavAction = "connect";
 
 const navItems: { action: NavAction; label: string; icon: ReactNode }[] = [
-  { action: "store", label: "App Store", icon: <LayoutGrid size={18} /> },
   { action: "connect", label: "Connect", icon: <Link2 size={18} /> },
 ];
 
@@ -67,12 +63,9 @@ export const Sidebar = ({
   onSignIn,
   onConnect,
   onSettings,
-  onStore,
   onHome,
-  storeActive,
 }: SidebarProps) => {
   const actionHandlers: Record<NavAction, (() => void) | undefined> = {
-    store: onStore,
     connect: onConnect,
   };
 
@@ -89,7 +82,7 @@ export const Sidebar = ({
         {navItems.map((item) => (
           <button
             key={item.action}
-            className={`sidebar-nav-item${item.action === "store" && storeActive ? " sidebar-nav-item--active" : ""}`}
+            className="sidebar-nav-item"
             type="button"
             onClick={actionHandlers[item.action]}
           >

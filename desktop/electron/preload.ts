@@ -194,21 +194,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       }>>,
   },
 
-  store: {
-    installSkill: (payload: {
-      packageId: string; skillId: string; name: string; markdown: string; agentTypes?: string[]; tags?: string[]
-    }) => ipcRenderer.invoke('store:installSkill', payload),
-    installTheme: (payload: {
-      packageId: string; themeId: string; name: string; light: Record<string, string>; dark: Record<string, string>
-    }) => ipcRenderer.invoke('store:installTheme', payload),
-    installCanvas: (payload: {
-      packageId: string; workspaceId?: string; name: string; dependencies?: Record<string, string>; source?: string
-    }) => ipcRenderer.invoke('store:installCanvas', payload),
-    uninstall: (payload: {
-      packageId: string; type: string; localId: string
-    }) => ipcRenderer.invoke('store:uninstall', payload),
-  },
-
   system: {
     getDeviceId: () => ipcRenderer.invoke('device:getId'),
     configurePiRuntime: (config: { convexUrl?: string; convexSiteUrl?: string }) =>

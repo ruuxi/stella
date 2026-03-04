@@ -38,10 +38,10 @@ describe("UiStateProvider + useUiState", () => {
     const { result } = renderHook(() => useUiState(), { wrapper });
 
     act(() => {
-      result.current.setView("store");
+      result.current.setView("app");
     });
 
-    expect(result.current.state.view).toBe("store");
+    expect(result.current.state.view).toBe("app");
   });
 
   it("setConversationId updates conversationId", () => {
@@ -130,11 +130,11 @@ describe("UiStateProvider + useUiState", () => {
     const { result } = renderHook(() => useUiState(), { wrapper });
 
     act(() => {
-      result.current.updateState({ mode: "voice", view: "store" });
+      result.current.updateState({ mode: "voice", view: "app" });
     });
 
     expect(result.current.state.mode).toBe("voice");
-    expect(result.current.state.view).toBe("store");
+    expect(result.current.state.view).toBe("app");
     // Other fields unchanged
     expect(result.current.state.window).toBe("full");
     expect(result.current.state.conversationId).toBeNull();
