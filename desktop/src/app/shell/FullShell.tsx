@@ -41,6 +41,7 @@ const SettingsDialog = lazy(() => import("../settings/SettingsView"));
 const AuthDialog = lazy(() => import("@/app/auth/AuthDialog").then(m => ({ default: m.AuthDialog })));
 const ConnectDialog = lazy(() => import("@/app/integrations/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
 const SelfModTestDialog = lazy(() => import("@/testing/SelfModTestDialog"));
+const MercuryTestDialog = lazy(() => import("@/testing/MercuryTestDialog"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -416,6 +417,12 @@ export const FullShell = () => {
           </button>
           <button
             className="onboarding-reset"
+            onClick={() => setActiveDialog("mercury")}
+          >
+            Mercury
+          </button>
+          <button
+            className="onboarding-reset"
             onClick={() => window.electronAPI?.overlay.showNiri?.()}
           >
             Niri
@@ -426,6 +433,15 @@ export const FullShell = () => {
       {isDev && activeDialog === "test" && (
         <Suspense fallback={null}>
           <SelfModTestDialog
+            open
+            onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
+          />
+        </Suspense>
+      )}
+
+      {isDev && activeDialog === "mercury" && (
+        <Suspense fallback={null}>
+          <MercuryTestDialog
             open
             onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
           />
