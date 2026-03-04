@@ -1,6 +1,6 @@
 /**
  * WorkspaceArea: Main content area that always occupies the center of the layout.
- * Shows HomeView (default), canvas/app content, store, or onboarding demos.
+ * Shows HomeView (default), canvas/app content, or onboarding demos.
  */
 
 import { lazy, Suspense, useCallback } from 'react'
@@ -13,7 +13,6 @@ import { getLocalhostPort } from '@/lib/utils'
 
 const PanelRenderer = lazy(() => import('@/app/canvas/renderers/panel'))
 const AppframeRenderer = lazy(() => import('@/app/canvas/renderers/appframe'))
-const StoreView = lazy(() => import('@/app/store/StoreView'))
 const OnboardingCanvas = lazy(() =>
   import('@/app/onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
 )
@@ -23,7 +22,6 @@ type WorkspaceAreaProps = {
   view: ViewType
   activeDemo: OnboardingDemo
   demoClosing: boolean
-  onStoreBack: () => void
   onComposePrompt: (text: string) => void
   conversationId?: string
 }
@@ -32,7 +30,6 @@ export function WorkspaceArea({
   view,
   activeDemo,
   demoClosing,
-  onStoreBack,
   onComposePrompt,
   conversationId,
 }: WorkspaceAreaProps) {
@@ -55,17 +52,6 @@ export function WorkspaceArea({
       <div className="workspace-area">
         <Suspense fallback={<div className="workspace-content workspace-content--full"><Spinner size="md" /></div>}>
           <OnboardingCanvas activeDemo={activeDemo} />
-        </Suspense>
-      </div>
-    )
-  }
-
-  // Store view
-  if (view === 'store') {
-    return (
-      <div className="workspace-area">
-        <Suspense fallback={<div className="workspace-content workspace-content--full" />}>
-          <StoreView onBack={onStoreBack} onComposePrompt={onComposePrompt} />
         </Suspense>
       </div>
     )

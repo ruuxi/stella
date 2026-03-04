@@ -52,7 +52,7 @@ import './app/integrations/credential-modal.css'
 import './app/canvas/workspace.css'
 import './app/chat/chat-panel.css'
 import './app/canvas/renderers/canvas-renderers.css'
-// store.css, settings.css, selfmod-demo.css: co-located with their lazy-loaded components
+// settings.css, selfmod-demo.css: co-located with their lazy-loaded components
 import './app/chat/selfmod-undo.css'
 import './app/chat/command-chips.css'
 import './app/chat/welcome-suggestions.css'
