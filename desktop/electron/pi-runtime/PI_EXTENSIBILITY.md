@@ -249,7 +249,7 @@ Stella composes a modular tool host:
 - Shell tools: `OpenApp`, `Bash`, `KillShell`, `ShellStatus`, `SkillBash`
 - State/task tools: `Task`, `TaskCreate`, `TaskCancel`, `TaskOutput`
 - User tools: `AskUserQuestion`, `RequestCredential`
-- Self-mod tools: `SelfModRevert`, `SelfModPackage`
+- Self-mod recovery is Git-based via Electron IPC (`selfmod:*`), not dedicated device tools
 - Package/store tool: `ManagePackage`
 - Placeholder media tool: `MediaGenerate` (not configured)
 
@@ -302,7 +302,7 @@ Storage shape:
 - Fallback to JSONL reads when index is unavailable/out-of-sync
 
 ### 2.8 Self-Modification Extensibility
-Stella file tools intercept frontend source edits and route them through self-mod staging:
+Stella file tools write directly to disk. Self-mod provenance and revert are handled through Git:
 
 - Writes/edits in frontend source paths can be staged per feature
 - Active feature tracking and auto-feature creation
@@ -401,3 +401,4 @@ Before shipping any extensibility change, verify:
 ---
 
 This is the complete extensibility surface currently present in the Pi runtime used by Stella.
+

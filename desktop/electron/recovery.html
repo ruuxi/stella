@@ -25,7 +25,8 @@
     }
     h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
     p { font-size: 14px; color: #999; line-height: 1.5; margin-bottom: 24px; }
-    .actions { display: flex; gap: 12px; justify-content: center; }
+    .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .feature-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
     button {
       padding: 8px 16px;
       font-size: 13px;
@@ -52,42 +53,73 @@
 <body>
   <div class="recovery">
     <h2>Stella ran into a problem</h2>
-    <p>The app encountered an unexpected error. You can try undoing recent changes or restart.</p>
+    <p>The app encountered an unexpected error. You can undo recent updates or restart.</p>
+    <div class="feature-actions" id="feature-actions"></div>
     <div class="actions">
-      <button class="btn-primary" id="revert-btn">Undo recent changes</button>
+      <button class="btn-primary" id="revert-btn">Undo latest update</button>
       <button class="btn-secondary" id="restart-btn">Restart</button>
     </div>
     <div class="status" id="status"></div>
   </div>
 
   <script>
+    const featureActions = document.getElementById('feature-actions');
     const revertBtn = document.getElementById('revert-btn');
     const restartBtn = document.getElementById('restart-btn');
     const status = document.getElementById('status');
 
-    revertBtn.addEventListener('click', async () => {
-      revertBtn.disabled = true;
-      revertBtn.textContent = 'Reverting...';
-      status.textContent = '';
+    const allButtons = [revertBtn, restartBtn];
+
+    const setBusy = (busy) => {
+      allButtons.forEach((button) => {
+        button.disabled = busy;
+      });
+    };
+
+    const runRevert = async (featureId) => {
+      setBusy(true);
+      status.textContent = 'Reverting...';
       try {
-        const featureId = await window.electronAPI?.agent.getLastSelfModFeature();
-        if (featureId) {
-          await window.electronAPI?.agent.selfModRevert(featureId);
-          status.textContent = 'Changes reverted. Restarting...';
-        } else {
-          status.textContent = 'No recent changes to undo. Restarting...';
-        }
+        await window.electronAPI?.agent.selfModRevert(featureId, 1);
+        status.textContent = 'Reverted. Restarting...';
         setTimeout(() => window.electronAPI?.ui.reload(), 500);
       } catch (err) {
         status.textContent = 'Revert failed. Try restarting instead.';
-        revertBtn.disabled = false;
-        revertBtn.textContent = 'Undo recent changes';
+        setBusy(false);
       }
+    };
+
+    revertBtn.addEventListener('click', () => {
+      void runRevert(undefined);
     });
+
+    const renderFeatureButtons = async () => {
+      try {
+        const features = await window.electronAPI?.agent.listSelfModFeatures(4);
+        if (!features || features.length === 0) {
+          return;
+        }
+        featureActions.innerHTML = '';
+        for (const feature of features) {
+          const btn = document.createElement('button');
+          btn.className = 'btn-secondary';
+          btn.textContent = `Undo ${feature.name}`;
+          btn.addEventListener('click', () => {
+            void runRevert(feature.featureId);
+          });
+          allButtons.push(btn);
+          featureActions.appendChild(btn);
+        }
+      } catch {
+        // Best effort.
+      }
+    };
 
     restartBtn.addEventListener('click', () => {
       window.electronAPI?.ui.reload();
     });
+
+    void renderFeatureButtons();
   </script>
 </body>
 </html>

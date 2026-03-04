@@ -1,10 +1,19 @@
 import { Component, type ReactNode, type ErrorInfo } from "react";
+import type { SelfModFeatureSummary } from "@/types/electron";
 
 type Props = { children: ReactNode };
-type State = { hasError: boolean; reverting: boolean };
+type State = {
+  hasError: boolean;
+  revertingFeatureId: string | null;
+  features: SelfModFeatureSummary[];
+};
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, reverting: false };
+  state: State = {
+    hasError: false,
+    revertingFeatureId: null,
+    features: [],
+  };
 
   static getDerivedStateFromError(): Partial<State> {
     return { hasError: true };
@@ -12,18 +21,27 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("ErrorBoundary caught:", error, info);
+    void this.loadFeatures();
   }
 
-  handleRevert = async () => {
-    this.setState({ reverting: true });
+  loadFeatures = async () => {
     try {
-      const featureId = await window.electronAPI?.agent.getLastSelfModFeature();
-      if (featureId) {
-        await window.electronAPI?.agent.selfModRevert(featureId);
-      }
+      const features = await window.electronAPI?.agent.listSelfModFeatures(5);
+      this.setState({ features: features ?? [] });
+    } catch (error) {
+      console.error("ErrorBoundary feature load failed:", error);
+      this.setState({ features: [] });
+    }
+  };
+
+  handleRevert = async (featureId?: string) => {
+    this.setState({ revertingFeatureId: featureId ?? "__latest__" });
+    try {
+      await window.electronAPI?.agent.selfModRevert(featureId, 1);
       window.location.reload();
     } catch (err) {
       console.error("ErrorBoundary revert failed:", err);
+      this.setState({ revertingFeatureId: null });
       window.location.reload();
     }
   };
@@ -43,13 +61,30 @@ export class ErrorBoundary extends Component<Props, State> {
             An unexpected error occurred. You can try undoing recent changes or
             reloading.
           </p>
+          {this.state.features.length > 0 && (
+            <div className="error-boundary-feature-list">
+              {this.state.features.map((feature) => {
+                const isReverting = this.state.revertingFeatureId === feature.featureId;
+                return (
+                  <button
+                    key={feature.featureId}
+                    className="error-boundary-btn"
+                    onClick={() => this.handleRevert(feature.featureId)}
+                    disabled={this.state.revertingFeatureId !== null}
+                  >
+                    {isReverting ? "Reverting..." : `Undo ${feature.name}`}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="error-boundary-actions">
             <button
               className="error-boundary-btn error-boundary-btn--primary"
-              onClick={this.handleRevert}
-              disabled={this.state.reverting}
+              onClick={() => this.handleRevert()}
+              disabled={this.state.revertingFeatureId !== null}
             >
-              {this.state.reverting ? "Reverting..." : "Undo recent changes"}
+              {this.state.revertingFeatureId === "__latest__" ? "Reverting..." : "Undo latest update"}
             </button>
             <button
               className="error-boundary-btn"

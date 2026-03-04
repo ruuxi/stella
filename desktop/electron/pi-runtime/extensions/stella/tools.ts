@@ -50,10 +50,6 @@ import {
 } from "./tools-state.js";
 import { handleAskUser, handleRequestCredential, type UserToolsConfig } from "./tools-user.js";
 import {
-  handleSelfModRevert,
-  handleSelfModPackage,
-} from "./tools-self-mod.js";
-import {
   handleManagePackage,
 } from "./tools-store.js";
 
@@ -69,7 +65,7 @@ export const createToolHost = ({
 }: ToolHostOptions) => {
   const stateRoot = path.join(StellaHome, "state");
 
-  // Configure file tools with frontend root for self-mod interception
+  // Configure file tools.
   setFileToolsConfig({ frontendRoot });
 
   // User tools config
@@ -141,7 +137,7 @@ export const createToolHost = ({
     string,
     (args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>
   > = {
-    // File tools (context passed for self-mod interception)
+    // File tools
     Read: (args, context) => handleRead(args, context),
     Write: (args, context) => handleWrite(args, context),
     Edit: (args, context) => handleEdit(args, context),
@@ -179,10 +175,6 @@ export const createToolHost = ({
 
     // Media tools (not yet implemented)
     MediaGenerate: async () => notConfigured("MediaGenerate"),
-
-    // Self-mod tools
-    SelfModRevert: (args, context) => handleSelfModRevert(args, context, frontendRoot),
-    SelfModPackage: (args, context) => handleSelfModPackage(args, context, frontendRoot),
 
     // Store tools
     ManagePackage: (args) => handleManagePackage(args),
