@@ -42,6 +42,7 @@ import './app/sidebar/sidebar.css'
 import './styles/app-base.css'
 import './app/shell/full-shell.layout.css'
 import './app/shell/full-shell.panels.css'
+import './app/shell/self-mod-overlay.css'
 import './app/chat/full-shell.chat.css'
 import './app/chat/full-shell.composer.css'
 import './app/shell/mini/mini-shell.css'
@@ -72,13 +73,13 @@ document.documentElement.dataset.stellaWindow = 'full'
 
 const appTree = (
   <ThemeProvider>
-    <ErrorBoundary>
-      <UiStateProvider>
-        <WorkspaceProvider>
+    <UiStateProvider>
+      <WorkspaceProvider>
+        <ErrorBoundary>
           <App />
-        </WorkspaceProvider>
-      </UiStateProvider>
-    </ErrorBoundary>
+        </ErrorBoundary>
+      </WorkspaceProvider>
+    </UiStateProvider>
   </ThemeProvider>
 )
 

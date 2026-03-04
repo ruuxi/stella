@@ -44,6 +44,8 @@ export type GitFeatureSummary = {
   latestCommit: string;
   latestTimestampMs: number;
   commitCount: number;
+  tainted?: boolean;
+  taintedFiles?: string[];
 };
 
 export type GitRevertResult = {
@@ -65,6 +67,9 @@ const humanizeFeatureId = (featureId: string): string =>
     .map((part) => part[0]?.toUpperCase() + part.slice(1))
     .join(" ")
     .trim() || featureId;
+
+const normalizeGitPath = (value: string): string =>
+  value.trim().replace(/\\/g, "/");
 
 const extractFeatureIds = (text: string): string[] => {
   FEATURE_TAG_REGEX.lastIndex = 0;
@@ -133,6 +138,17 @@ const parseGitLog = (raw: string): GitLogCommit[] => {
   return commits;
 };
 
+const parseStatusPath = (line: string): string | null => {
+  if (!line || line.length < 4) return null;
+  const rawPath = line.slice(3).trim();
+  if (!rawPath) return null;
+  const renameMarker = rawPath.lastIndexOf(" -> ");
+  if (renameMarker >= 0) {
+    return normalizeGitPath(rawPath.slice(renameMarker + 4));
+  }
+  return normalizeGitPath(rawPath);
+};
+
 const readFeatureIndex = async (): Promise<FeatureIndex> => {
   try {
     const raw = await fs.readFile(FEATURES_INDEX_PATH, "utf-8");
@@ -174,6 +190,20 @@ const listTaggedCommits = async (
   return parseGitLog(output);
 };
 
+const listDirtyFiles = async (repoRoot: string): Promise<string[]> => {
+  const output = await runGit(repoRoot, [
+    "-c",
+    "core.quotepath=false",
+    "status",
+    "--porcelain",
+  ]);
+  if (!output) return [];
+  return output
+    .split("\n")
+    .map((line) => parseStatusPath(line))
+    .filter((line): line is string => Boolean(line));
+};
+
 export const getGitHead = async (repoRoot: string): Promise<string | null> => {
   await assertGitRepository(repoRoot);
   const output = await runGit(repoRoot, ["rev-parse", "HEAD"]);
@@ -193,12 +223,17 @@ export const listRecentGitFeatures = async (
   };
 
   const byFeature = new Map<string, GitFeatureSummary>();
+  const commitHashesByFeature = new Map<string, string[]>();
 
   for (const commit of commits) {
     const featureIds = extractFeatureIds(`${commit.subject}\n${commit.body}`);
     if (featureIds.length === 0) continue;
 
     for (const featureId of featureIds) {
+      const hashes = commitHashesByFeature.get(featureId) ?? [];
+      hashes.push(commit.hash);
+      commitHashesByFeature.set(featureId, hashes);
+
       const existing = byFeature.get(featureId);
       if (!existing) {
         const indexEntry = index.features[featureId];
@@ -238,9 +273,33 @@ export const listRecentGitFeatures = async (
     await writeFeatureIndex(nextIndex);
   }
 
-  return Array.from(byFeature.values())
+  const recent = Array.from(byFeature.values())
     .sort((a, b) => b.latestTimestampMs - a.latestTimestampMs)
     .slice(0, Math.max(1, limit));
+
+  if (recent.length > 0) {
+    const dirtyFiles = await listDirtyFiles(repoRoot);
+    if (dirtyFiles.length > 0) {
+      for (const feature of recent) {
+        const touchedFiles = new Set<string>();
+        const featureCommits = commitHashesByFeature.get(feature.featureId) ?? [];
+        for (const commitHash of featureCommits) {
+          const commitFiles = await getChangedFilesForCommit(repoRoot, commitHash);
+          for (const file of commitFiles) {
+            touchedFiles.add(normalizeGitPath(file));
+          }
+        }
+
+        const taintedFiles = dirtyFiles.filter((file) => touchedFiles.has(file));
+        if (taintedFiles.length > 0) {
+          feature.tainted = true;
+          feature.taintedFiles = taintedFiles;
+        }
+      }
+    }
+  }
+
+  return recent;
 };
 
 export const getLastGitFeatureId = async (

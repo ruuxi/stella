@@ -4,8 +4,8 @@
   justify-content: center;
   width: 100vw;
   height: 100vh;
-  background: oklch(var(--bg));
-  color: oklch(var(--text));
+  background: var(--background);
+  color: var(--text-strong);
   font-family: var(--font-sans);
 }
 
@@ -24,8 +24,14 @@
 .error-boundary-content p {
   margin: 0 0 24px;
   font-size: 14px;
-  color: oklch(var(--text-secondary));
+  color: var(--text-weak);
   line-height: 1.5;
+}
+
+.error-boundary-status {
+  margin: -8px 0 16px;
+  font-size: 13px;
+  color: var(--text-base);
 }
 
 .error-boundary-actions {
@@ -47,15 +53,15 @@
   padding: 8px 16px;
   font-size: 13px;
   border-radius: 8px;
-  border: 1px solid oklch(var(--border));
-  background: oklch(var(--surface));
-  color: oklch(var(--text));
+  border: 1px solid var(--border-base);
+  background: var(--surface-raised);
+  color: var(--text-strong);
   cursor: pointer;
   transition: background 150ms;
 }
 
 .error-boundary-btn:hover:not(:disabled) {
-  background: oklch(var(--surface-hover));
+  background: var(--surface-raised-hover);
 }
 
 .error-boundary-btn:disabled {
@@ -64,11 +70,11 @@
 }
 
 .error-boundary-btn--primary {
-  background: oklch(var(--primary));
-  color: oklch(var(--on-primary));
-  border-color: oklch(var(--primary));
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
 }
 
 .error-boundary-btn--primary:hover:not(:disabled) {
-  background: oklch(var(--primary-hover));
+  background: color-mix(in oklab, var(--primary) 85%, var(--foreground));
 }

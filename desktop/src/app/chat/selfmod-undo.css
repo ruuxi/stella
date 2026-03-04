@@ -7,9 +7,9 @@
   font-size: 12px;
   line-height: 1.4;
   border-radius: 6px;
-  border: 1px solid oklch(var(--border));
-  background: oklch(var(--surface));
-  color: oklch(var(--text-secondary));
+  border: 1px solid var(--border-base);
+  background: var(--surface-raised);
+  color: var(--text-weak);
   cursor: pointer;
   transition:
     background 150ms,
@@ -17,8 +17,8 @@
 }
 
 .selfmod-undo-btn:hover:not(:disabled) {
-  background: oklch(var(--surface-hover));
-  color: oklch(var(--text));
+  background: var(--surface-raised-hover);
+  color: var(--text-strong);
 }
 
 .selfmod-undo-btn:disabled {
@@ -27,15 +27,15 @@
 }
 
 .selfmod-undo-btn[data-state="reverted"] {
-  color: oklch(var(--text-tertiary));
+  color: var(--text-weaker);
 }
 
 .selfmod-undo-spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid oklch(var(--border));
-  border-top-color: oklch(var(--text-secondary));
+  border: 2px solid var(--border-base);
+  border-top-color: var(--text-weak);
   border-radius: 50%;
   animation: selfmod-spin 600ms linear infinite;
 }

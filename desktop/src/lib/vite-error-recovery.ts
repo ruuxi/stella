@@ -9,6 +9,8 @@ type SelfModFeatureSummary = {
   latestCommit: string;
   latestTimestampMs: number;
   commitCount: number;
+  tainted?: boolean;
+  taintedFiles?: string[];
 };
 
 const createButton = (label: string, style: string) => {
@@ -63,7 +65,9 @@ async function injectRevertButton(overlay: Element) {
   if (features.length > 0) {
     for (const feature of features) {
       const btn = createButton(
-        `Undo ${feature.name}`,
+        feature.tainted
+          ? `Undo ${feature.name} (external edits)`
+          : `Undo ${feature.name}`,
         "padding:8px 14px;font-size:12px;border-radius:8px;border:1px solid #555;background:#333;color:#fff;cursor:pointer;",
       );
       btn.addEventListener("click", () => {

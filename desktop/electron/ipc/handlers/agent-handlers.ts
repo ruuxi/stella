@@ -28,6 +28,11 @@ type AgentEventPayload = {
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number }
 }
 
+type SelfModHmrStatePayload = {
+  paused: boolean
+  message: string
+}
+
 const AGENT_EVENT_BUFFER_LIMIT = 1000
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000
 
@@ -78,6 +83,20 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     const receiver = webContents.fromId(receiverId)
     if (receiver && !receiver.isDestroyed()) {
       receiver.send('agent:event', event)
+    }
+  }
+
+  const emitSelfModHmrState = (
+    payload: SelfModHmrStatePayload,
+    targetWebContentsId?: number,
+  ) => {
+    const receiverId = targetWebContentsId
+    if (receiverId == null) {
+      return
+    }
+    const receiver = webContents.fromId(receiverId)
+    if (receiver && !receiver.isDestroyed()) {
+      receiver.send('agent:selfModHmrState', payload)
     }
   }
 
@@ -157,6 +176,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           pruneAgentEventBuffers()
         }, 60_000)
       },
+      onSelfModHmrState: (ev) => emitSelfModHmrState(ev, senderWebContentsId),
     })
 
     agentRunOwners.set(result.runId, senderWebContentsId)

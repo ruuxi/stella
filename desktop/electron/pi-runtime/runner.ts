@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { getDevServerUrl } from "../dev-url.js";
+import { createSelfModHmrController } from "../self-mod/hmr.js";
 import { createToolHost } from "./extensions/stella/tools.js";
 import { loadAgentsFromHome } from "./extensions/stella/agents.js";
 import { loadSkillsFromHome } from "./extensions/stella/skills.js";
@@ -92,6 +94,7 @@ type AgentCallbacks = {
   onToolEnd: (event: PiToolEndEvent) => void;
   onError: (event: PiErrorEvent) => void;
   onEnd: (event: PiEndEvent) => void;
+  onSelfModHmrState?: (event: { paused: boolean; message: string }) => void;
 };
 
 type ParsedAgentLike = {
@@ -151,6 +154,12 @@ export const createPiHostRunner = ({
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
   const activeRunAbortControllers = new Map<string, AbortController>();
+  const activeRunHmrReleases = new Map<string, () => Promise<void>>();
+
+  const selfModHmrController = createSelfModHmrController({
+    getDevServerUrl,
+    enabled: process.env.NODE_ENV === "development",
+  });
 
   const skillsPath = path.join(StellaHome, "skills");
   const agentsPath = path.join(StellaHome, "agents");
@@ -333,6 +342,11 @@ export const createPiHostRunner = ({
       controller.abort();
     }
     activeRunAbortControllers.clear();
+    for (const release of activeRunHmrReleases.values()) {
+      void release();
+    }
+    activeRunHmrReleases.clear();
+    void selfModHmrController.forceResumeAll();
     toolHost.killAllShells();
     shutdownPiSubagentRuntimes();
   };
@@ -370,6 +384,7 @@ export const createPiHostRunner = ({
     const agentType = payload.agentType ?? "orchestrator";
     const userPrompt = payload.userPrompt.trim();
     const proxy = ensureProxyReady();
+    const updateMessage = "Stella is updating your interface.";
 
     if (!userPrompt) {
       throw new Error("Missing user prompt");
@@ -387,12 +402,43 @@ export const createPiHostRunner = ({
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
 
+    callbacks.onSelfModHmrState?.({
+      paused: true,
+      message: updateMessage,
+    });
+    const pauseApplied = await selfModHmrController.pause(runId);
+    if (!pauseApplied) {
+      console.warn("[self-mod-hmr] Pause endpoint unavailable; proceeding without HMR pause.");
+    }
+
+    let hmrReleased = false;
+    const releaseHmrPause = async () => {
+      if (hmrReleased) return;
+      hmrReleased = true;
+      activeRunHmrReleases.delete(runId);
+      try {
+        const resumeApplied = await selfModHmrController.resume(runId);
+        if (!resumeApplied) {
+          console.warn("[self-mod-hmr] Resume endpoint unavailable.");
+        }
+      } catch (error) {
+        console.warn("[self-mod-hmr] Failed to resume:", (error as Error).message);
+      } finally {
+        callbacks.onSelfModHmrState?.({
+          paused: false,
+          message: "",
+        });
+      }
+    };
+    activeRunHmrReleases.set(runId, releaseHmrPause);
+
     const cleanupRun = () => {
       activeRunAbortControllers.delete(runId);
       if (activeOrchestratorRunId === runId) {
         activeOrchestratorRunId = null;
         activeOrchestratorConversationId = null;
       }
+      void releaseHmrPause();
     };
 
     const runtimeCallbacks: PiRunCallbacks = {
@@ -446,6 +492,10 @@ export const createPiHostRunner = ({
     if (!controller) return;
     controller.abort();
     activeRunAbortControllers.delete(runId);
+    const release = activeRunHmrReleases.get(runId);
+    if (release) {
+      void release();
+    }
     if (activeOrchestratorRunId === runId) {
       activeOrchestratorRunId = null;
       activeOrchestratorConversationId = null;
