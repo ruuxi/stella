@@ -7,12 +7,14 @@ import { AutoAnonAuth } from './app/auth/AutoAnonAuth'
 import { AuthDeepLinkHandler } from './app/auth/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
 import { ChatStoreProvider } from './providers/chat-store'
-import { SelfModUpdateOverlay } from './app/shell/SelfModUpdateOverlay'
+import { SelfModUpdateOverlay, type SelfModOverlayPhase } from './app/shell/SelfModUpdateOverlay'
 
 type WindowType = 'full' | 'mini'
 const SELF_MOD_HMR_STORAGE_KEY = 'stella:self-mod-hmr-state'
 const AUTO_REPAIR_SIGNATURE_KEY = 'stella:auto-repair:last-signature'
 const SELF_MOD_HMR_STALE_MS = 120_000
+const SELF_MOD_HMR_RESUME_HOLD_MS = 850
+const SELF_MOD_HMR_RESUME_FADE_MS = 380
 const DEFAULT_SELF_MOD_MESSAGE = 'Stella is updating your interface.'
 const CredentialRequestLayer = lazy(() =>
   import('./app/auth/CredentialRequestLayer').then((module) => ({
@@ -32,11 +34,35 @@ function getWindowType(isElectron: boolean, windowParam: string | null, fallback
   return windowParam === 'mini' ? 'mini' : 'full'
 }
 
+type OverlayPhase = SelfModOverlayPhase | 'hidden'
+
 type PersistedSelfModHmrState = {
-  paused: boolean
+  phase: OverlayPhase
   message: string
   updatedAtMs: number
+  holdUntilMs: number
 }
+
+const createHiddenSelfModState = (): PersistedSelfModHmrState => ({
+  phase: 'hidden',
+  message: DEFAULT_SELF_MOD_MESSAGE,
+  updatedAtMs: 0,
+  holdUntilMs: 0,
+})
+
+const createActiveSelfModState = (message?: string): PersistedSelfModHmrState => ({
+  phase: 'active',
+  message: typeof message === 'string' && message.trim() ? message.trim() : DEFAULT_SELF_MOD_MESSAGE,
+  updatedAtMs: Date.now(),
+  holdUntilMs: 0,
+})
+
+const createHoldSelfModState = (message?: string): PersistedSelfModHmrState => ({
+  phase: 'hold',
+  message: typeof message === 'string' && message.trim() ? message.trim() : DEFAULT_SELF_MOD_MESSAGE,
+  updatedAtMs: Date.now(),
+  holdUntilMs: Date.now() + SELF_MOD_HMR_RESUME_HOLD_MS,
+})
 
 const readPersistedSelfModHmrState = (): PersistedSelfModHmrState | null => {
   if (typeof window === 'undefined') return null
@@ -45,13 +71,16 @@ const readPersistedSelfModHmrState = (): PersistedSelfModHmrState | null => {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<PersistedSelfModHmrState>
     if (!parsed || typeof parsed !== 'object') return null
+    const phase = parsed.phase
+    if (phase !== 'active' && phase !== 'hold' && phase !== 'fade' && phase !== 'hidden') return null
     return {
-      paused: Boolean(parsed.paused),
+      phase,
       message:
         typeof parsed.message === 'string' && parsed.message.trim()
           ? parsed.message.trim()
           : DEFAULT_SELF_MOD_MESSAGE,
       updatedAtMs: Number(parsed.updatedAtMs ?? 0),
+      holdUntilMs: Number(parsed.holdUntilMs ?? 0),
     }
   } catch {
     return null
@@ -64,14 +93,22 @@ function App() {
   const windowParam = useMemo(() => new URLSearchParams(window.location.search).get('window'), [])
   const isElectron = Boolean(api)
   const windowType = getWindowType(isElectron, windowParam, state.window)
-  const [selfModHmr, setSelfModHmr] = useState(() => {
+  const [selfModHmr, setSelfModHmr] = useState<PersistedSelfModHmrState>(() => {
     const persisted = readPersistedSelfModHmrState()
     if (!persisted) {
-      return { paused: false, message: DEFAULT_SELF_MOD_MESSAGE, updatedAtMs: 0 }
+      return createHiddenSelfModState()
     }
-    const fresh = Date.now() - persisted.updatedAtMs < SELF_MOD_HMR_STALE_MS
-    if (!persisted.paused || !fresh) {
-      return { paused: false, message: DEFAULT_SELF_MOD_MESSAGE, updatedAtMs: 0 }
+    if (persisted.phase === 'active') {
+      const fresh = Date.now() - persisted.updatedAtMs < SELF_MOD_HMR_STALE_MS
+      if (!fresh) {
+        return createHiddenSelfModState()
+      }
+    }
+    if (persisted.phase === 'hold' || persisted.phase === 'fade') {
+      const fresh = Date.now() - persisted.updatedAtMs < 10_000
+      if (!fresh) {
+        return createHiddenSelfModState()
+      }
     }
     return persisted
   })
@@ -87,13 +124,18 @@ function App() {
   useEffect(() => {
     if (!api?.agent.onSelfModHmrState) return
     const unsubscribe = api.agent.onSelfModHmrState((event) => {
-      setSelfModHmr({
-        paused: Boolean(event.paused),
-        message:
-          typeof event.message === 'string' && event.message.trim()
-            ? event.message.trim()
-            : DEFAULT_SELF_MOD_MESSAGE,
-        updatedAtMs: Date.now(),
+      const nextMessage =
+        typeof event.message === 'string' && event.message.trim()
+          ? event.message.trim()
+          : DEFAULT_SELF_MOD_MESSAGE
+      setSelfModHmr((prev) => {
+        if (event.paused) {
+          return createActiveSelfModState(nextMessage)
+        }
+        if (prev.phase === 'hidden') {
+          return prev
+        }
+        return createHoldSelfModState(prev.message || nextMessage)
       })
     })
     return () => unsubscribe()
@@ -107,12 +149,8 @@ function App() {
       .then((activeRun) => {
         if (cancelled || !activeRun) return
         setSelfModHmr((prev) => {
-          if (prev.paused) return prev
-          return {
-            paused: true,
-            message: DEFAULT_SELF_MOD_MESSAGE,
-            updatedAtMs: Date.now(),
-          }
+          if (prev.phase === 'active') return prev
+          return createActiveSelfModState(DEFAULT_SELF_MOD_MESSAGE)
         })
       })
       .catch(() => {
@@ -125,7 +163,7 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (!selfModHmr.paused) {
+    if (selfModHmr.phase === 'hidden') {
       window.sessionStorage.removeItem(SELF_MOD_HMR_STORAGE_KEY)
       return
     }
@@ -133,21 +171,68 @@ function App() {
   }, [selfModHmr])
 
   useEffect(() => {
-    if (!selfModHmr.paused) return
+    if (selfModHmr.phase !== 'active') return
     const remainingMs = SELF_MOD_HMR_STALE_MS - (Date.now() - selfModHmr.updatedAtMs)
     const timeoutMs = Math.max(5_000, remainingMs)
     const timer = window.setTimeout(() => {
-      setSelfModHmr((prev) => {
-        if (!prev.paused) return prev
-        return {
-          paused: false,
-          message: DEFAULT_SELF_MOD_MESSAGE,
-          updatedAtMs: Date.now(),
-        }
-      })
+      void api?.agent
+        .getActiveRun?.()
+        .then((activeRun) => {
+          setSelfModHmr((prev) => {
+            if (prev.phase !== 'active') return prev
+            if (activeRun) {
+              return {
+                ...prev,
+                updatedAtMs: Date.now(),
+              }
+            }
+            return createHoldSelfModState(prev.message)
+          })
+        })
+        .catch(() => {
+          setSelfModHmr((prev) => {
+            if (prev.phase !== 'active') return prev
+            return createHoldSelfModState(prev.message)
+          })
+        })
     }, timeoutMs)
     return () => window.clearTimeout(timer)
-  }, [selfModHmr.paused, selfModHmr.updatedAtMs])
+  }, [api, selfModHmr.phase, selfModHmr.updatedAtMs])
+
+  useEffect(() => {
+    if (selfModHmr.phase !== 'hold') return
+    const remainingMs = selfModHmr.holdUntilMs - Date.now()
+    const holdMs = Math.max(60, remainingMs)
+    const timer = window.setTimeout(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setSelfModHmr((prev) => {
+            if (prev.phase !== 'hold') return prev
+            return {
+              ...prev,
+              phase: 'fade',
+              updatedAtMs: Date.now(),
+            }
+          })
+        })
+      })
+    }, holdMs)
+    return () => window.clearTimeout(timer)
+  }, [selfModHmr.holdUntilMs, selfModHmr.phase])
+
+  useEffect(() => {
+    if (selfModHmr.phase !== 'fade') return
+    const timer = window.setTimeout(() => {
+      setSelfModHmr((prev) => {
+        if (prev.phase !== 'fade') return prev
+        return createHiddenSelfModState()
+      })
+    }, SELF_MOD_HMR_RESUME_FADE_MS)
+    return () => window.clearTimeout(timer)
+  }, [selfModHmr.phase])
+
+  const overlayPhase =
+    selfModHmr.phase === 'hidden' ? null : selfModHmr.phase === 'active' ? 'active' : selfModHmr.phase
 
   const shell = (
     <div className={`app window-${windowType}`}>
@@ -156,7 +241,8 @@ function App() {
         <CredentialRequestLayer />
         {windowType === 'mini' ? <MiniShell /> : <FullShell />}
         <SelfModUpdateOverlay
-          visible={selfModHmr.paused}
+          visible={overlayPhase !== null}
+          phase={overlayPhase ?? 'active'}
           message={selfModHmr.message || DEFAULT_SELF_MOD_MESSAGE}
         />
       </ChatStoreProvider>
@@ -175,5 +261,4 @@ function App() {
 }
 
 export { App }
-
 

@@ -4,6 +4,7 @@ import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "../shell/mini/MiniShell";
 import { VoiceOverlay } from "@/app/overlay/VoiceOverlay";
+import { MorphTransition } from "@/app/overlay/MorphTransition";
 
 /**
  * OverlayRoot manages the unified transparent overlay window.
@@ -465,6 +466,8 @@ export function OverlayRoot() {
             : undefined
         }
       />
+
+      <MorphTransition />
     </div>
   );
 }

@@ -18,6 +18,7 @@ dist-ssr
 *.tsbuildinfo
 .vite-dev-url
 .stella-hmr-state.json
+src/testing/__vite_error_trigger.tsx
 
 # Editor directories and files
 .vscode/*

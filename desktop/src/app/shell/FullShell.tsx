@@ -40,6 +40,7 @@ import {
 const SettingsDialog = lazy(() => import("../settings/SettingsView"));
 const AuthDialog = lazy(() => import("@/app/auth/AuthDialog").then(m => ({ default: m.AuthDialog })));
 const ConnectDialog = lazy(() => import("@/app/integrations/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
+const SelfModTestDialog = lazy(() => import("@/testing/SelfModTestDialog"));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -400,12 +401,29 @@ export const FullShell = () => {
       )}
 
       {isDev && (
-        <button
-          className="onboarding-reset"
-          onClick={onboarding.handleResetOnboarding}
-        >
-          Reset Onboarding
-        </button>
+        <div className="dev-controls">
+          <button
+            className="onboarding-reset"
+            onClick={onboarding.handleResetOnboarding}
+          >
+            Reset Onboarding
+          </button>
+          <button
+            className="onboarding-reset"
+            onClick={() => setActiveDialog("test")}
+          >
+            Test UI
+          </button>
+        </div>
+      )}
+
+      {isDev && activeDialog === "test" && (
+        <Suspense fallback={null}>
+          <SelfModTestDialog
+            open
+            onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
+          />
+        </Suspense>
       )}
     </div>
   );

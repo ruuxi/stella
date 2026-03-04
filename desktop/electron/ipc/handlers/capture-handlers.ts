@@ -54,4 +54,11 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     }
     return options.captureService.captureScreenshot(point)
   })
+
+  ipcMain.handle('capture:pageDataUrl', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return null
+    const image = await win.webContents.capturePage()
+    return image.toDataURL()
+  })
 }
