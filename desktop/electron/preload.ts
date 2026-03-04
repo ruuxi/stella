@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         thumbnail: string;
       } | null>,
     cancelRegion: () => ipcRenderer.send('region:cancel'),
+    pageDataUrl: () => ipcRenderer.invoke('capture:pageDataUrl') as Promise<string | null>,
     onRegionReset: onIpcSignal('region:reset'),
   },
 
@@ -96,6 +97,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onShowVoice: onIpc<{ x: number; y: number; mode: 'stt' | 'realtime' }>('overlay:showVoice'),
     onHideVoice: onIpcSignal('overlay:hideVoice'),
     onDisplayChange: onIpc<{ origin: { x: number; y: number }; bounds: { x: number; y: number; width: number; height: number } }>('overlay:displayChange'),
+    onMorphForward: onIpc<{ screenshotDataUrl: string; x: number; y: number; width: number; height: number }>('overlay:morphForward'),
+    onMorphReverse: onIpc<{ screenshotDataUrl: string }>('overlay:morphReverse'),
+    onMorphEnd: onIpcSignal('overlay:morphEnd'),
+    morphDone: () => ipcRenderer.send('overlay:morphDone'),
   },
 
   mini: {
@@ -195,6 +200,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         tainted?: boolean;
         taintedFiles?: string[];
       }>>,
+    triggerViteError: () => ipcRenderer.invoke('devtest:triggerViteError'),
+    fixViteError: () => ipcRenderer.invoke('devtest:fixViteError'),
   },
 
   system: {

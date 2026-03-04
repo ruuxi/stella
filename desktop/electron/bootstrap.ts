@@ -28,6 +28,7 @@ import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './system/device.
 import { resolveStellaHome } from './system/stella-home.js'
 import { initializeWakeWord } from './wake-word/initialize.js'
 import { WindowManager } from './windows/window-manager.js'
+import { createHmrMorphOrchestrator } from './self-mod/hmr-morph.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -282,6 +283,11 @@ export const bootstrapMainProcess = () => {
 
     windowManager.createInitialWindows()
 
+    const hmrMorphOrchestrator = createHmrMorphOrchestrator({
+      getFullWindow: () => windowManager?.getFullWindow() ?? null,
+      getOverlayController: () => overlayController,
+    })
+
     registerAllIpcHandlers({
       ui: {
         uiState: uiStateService.state,
@@ -326,6 +332,7 @@ export const bootstrapMainProcess = () => {
         frontendRoot: path.resolve(__dirname, '..'),
         assertPrivilegedSender: (event, channel) =>
           externalLinkService.assertPrivilegedSender(event, channel),
+        hmrMorphOrchestrator,
       },
       miniBridge: {
         miniBridgeService,

@@ -95,6 +95,7 @@ type AgentCallbacks = {
   onError: (event: PiErrorEvent) => void;
   onEnd: (event: PiEndEvent) => void;
   onSelfModHmrState?: (event: { paused: boolean; message: string }) => void;
+  onHmrResume?: (resumeHmr: () => Promise<void>) => Promise<void>;
 };
 
 type ParsedAgentLike = {
@@ -416,13 +417,24 @@ export const createPiHostRunner = ({
       if (hmrReleased) return;
       hmrReleased = true;
       activeRunHmrReleases.delete(runId);
-      try {
-        const resumeApplied = await selfModHmrController.resume(runId);
-        if (!resumeApplied) {
-          console.warn("[self-mod-hmr] Resume endpoint unavailable.");
+
+      const doResume = async () => {
+        try {
+          const resumeApplied = await selfModHmrController.resume(runId);
+          if (!resumeApplied) {
+            console.warn("[self-mod-hmr] Resume endpoint unavailable.");
+          }
+        } catch (error) {
+          console.warn("[self-mod-hmr] Failed to resume:", (error as Error).message);
         }
-      } catch (error) {
-        console.warn("[self-mod-hmr] Failed to resume:", (error as Error).message);
+      };
+
+      try {
+        if (callbacks.onHmrResume) {
+          await callbacks.onHmrResume(doResume);
+        } else {
+          await doResume();
+        }
       } finally {
         callbacks.onSelfModHmrState?.({
           paused: false,
