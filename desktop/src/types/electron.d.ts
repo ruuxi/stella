@@ -283,6 +283,10 @@ export type ElectronOverlayApi = {
   onMorphReverse: (callback: (data: { screenshotDataUrl: string }) => void) => () => void
   onMorphEnd: (callback: () => void) => () => void
   morphDone: () => void
+  onShowNiri: (callback: () => void) => () => void
+  onHideNiri: (callback: () => void) => () => void
+  showNiri: () => void
+  hideNiri: () => void
 }
 
 export type ElectronMiniApi = {

@@ -1,0 +1,1224 @@
+/* ============================================
+   NIRI WINDOW MANAGER DEMO
+   Full-screen overlay with scrollable tiling
+   ============================================ */
+
+/* ─── Backdrop (click-through scrim behind the panel) ── */
+
+.niri-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+/* ─── Root: floating draggable panel ─────────── */
+
+.niri-root {
+  position: absolute;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #d4d4d8;
+  user-select: none;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  animation: niri-panel-enter 0.25s ease;
+}
+
+@keyframes niri-panel-enter {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ─── Status Bar (transparent, floating pills) ── */
+
+.niri-statusbar {
+  height: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  background: transparent;
+  font-size: 12px;
+  gap: 8px;
+  cursor: grab;
+  -webkit-app-region: no-drag;
+}
+
+.niri-statusbar:active {
+  cursor: grabbing;
+}
+
+.niri-statusbar-left,
+.niri-statusbar-center,
+.niri-statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.niri-statusbar-left { flex: 1; }
+.niri-statusbar-center { flex: 0 0 auto; }
+.niri-statusbar-right { flex: 1; justify-content: flex-end; }
+
+/* Pill: the shared floating chip style for status bar items */
+.niri-statusbar-pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: #161622;
+
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  font-weight: 600;
+  color: #7c8aff;
+  white-space: nowrap;
+}
+
+.niri-statusbar-pill.subtle {
+  font-weight: 400;
+  color: #8888a0;
+}
+
+.niri-statusbar-pill.focused {
+  color: #d0d0e8;
+  font-weight: 500;
+}
+
+.niri-statusbar-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: #161622;
+
+  color: #8888a0;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.niri-statusbar-btn:hover {
+  background: #28283c;
+  color: #c0c0d0;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.niri-close-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: #161622;
+
+  color: #8888a0;
+  cursor: pointer;
+  font-size: 11px;
+  margin-left: 2px;
+  transition: all 0.15s ease;
+}
+
+.niri-close-btn:hover {
+  background: #3c1414;
+  color: #ff6b6b;
+  border-color: rgba(255, 80, 80, 0.2);
+}
+
+/* ─── Main Area ─────────────────────────────── */
+
+.niri-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Workspace Switcher ────────────────────── */
+
+.niri-workspace-switcher {
+  width: 40px;
+  min-width: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 6px;
+  background: transparent;
+}
+
+.niri-ws-dot {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: #161622;
+
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  gap: 1px;
+}
+
+.niri-ws-dot:hover {
+  background: #28283c;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.niri-ws-dot.active {
+  background: #32325a;
+  border-color: #5a5aff;
+  box-shadow: 0 0 8px rgba(90, 90, 255, 0.2);
+}
+
+.niri-ws-dot.empty {
+  opacity: 0.35;
+}
+
+.niri-ws-dot-indicator {
+  display: none;
+}
+
+.niri-ws-dot.active .niri-ws-dot-indicator {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #7c8aff;
+}
+
+.niri-ws-dot-count {
+  font-size: 9px;
+  color: #6a6a80;
+  line-height: 1;
+}
+
+.niri-ws-dot.active .niri-ws-dot-count {
+  color: #9a9aff;
+}
+
+/* ─── Strip Container ───────────────────────── */
+
+.niri-strip-container {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.niri-strip {
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.niri-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.niri-strip-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 100%;
+  height: 100%;
+}
+
+/* ─── Empty Workspace ───────────────────────── */
+
+.niri-empty-workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.niri-empty-text {
+  font-size: 18px;
+  color: #3a3a50;
+  font-weight: 500;
+}
+
+.niri-empty-hint {
+  font-size: 12px;
+  color: #2a2a40;
+}
+
+/* ─── Column ────────────────────────────────── */
+
+.niri-column {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  transition: transform 0.2s ease;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.niri-column.focused {
+  border-color: #4a4aff;
+  box-shadow: 0 0 16px rgba(74, 74, 255, 0.15);
+}
+
+.niri-column:not(.focused):hover {
+  border-color: #2a2a44;
+}
+
+/* ─── Window ────────────────────────────────── */
+
+.niri-window {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #18181f;
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.niri-window-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background: #1e1e28;
+  border-bottom: 1px solid #2a2a36;
+  flex-shrink: 0;
+}
+
+.niri-window-titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.niri-window-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a0a0b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.niri-column.focused .niri-window-title {
+  color: #d0d0e0;
+}
+
+.niri-window-titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.niri-window-btn {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #555568;
+  cursor: pointer;
+  font-size: 9px;
+  transition: all 0.1s ease;
+}
+
+.niri-window-btn:hover {
+  background: #ff4444;
+  color: #fff;
+}
+
+.niri-window-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a3a transparent;
+}
+
+.niri-window-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.niri-window-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.niri-window-content::-webkit-scrollbar-thumb {
+  background: #2a2a3a;
+  border-radius: 2px;
+}
+
+/* ─── Hints Bar ─────────────────────────────── */
+
+.niri-hints {
+  height: 28px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  background: transparent;
+  font-size: 10px;
+  color: #44445a;
+}
+
+.niri-hint-pill {
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #161622;
+
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: rgba(140, 140, 170, 0.7);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* ─── Launcher ──────────────────────────────── */
+
+.niri-launcher-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  animation: niri-fade-in 0.15s ease;
+}
+
+.niri-launcher {
+  background: #1a1a26;
+  border: 1px solid #2a2a40;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 380px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: niri-slide-up 0.2s ease;
+}
+
+.niri-launcher-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c0c0d8;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.niri-launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.niri-launcher-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  background: #16161e;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.niri-launcher-item:hover {
+  background: #222238;
+  border-color: #4a4a6a;
+  transform: translateY(-1px);
+}
+
+.niri-launcher-icon {
+  font-size: 24px;
+}
+
+.niri-launcher-label {
+  font-size: 11px;
+  color: #8888a0;
+  white-space: nowrap;
+}
+
+/* ─── Animations ────────────────────────────── */
+
+@keyframes niri-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes niri-slide-up {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ============================================
+   WINDOW CONTENT STYLES
+   ============================================ */
+
+/* ─── News Feed ─────────────────────────────── */
+
+.niri-content-news {
+  padding: 0;
+}
+
+.niri-news-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #2a2a36;
+  padding: 0 12px;
+}
+
+.niri-news-tab {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: #6a6a80;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.niri-news-tab:hover { color: #a0a0b8; }
+.niri-news-tab.active {
+  color: #7c8aff;
+  border-bottom-color: #7c8aff;
+}
+
+.niri-news-list {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.niri-news-item {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.niri-news-item:hover {
+  background: #1e1e2a;
+}
+
+.niri-news-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 4px;
+}
+
+.niri-news-category {
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.niri-news-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.niri-news-headline {
+  font-size: 12px;
+  font-weight: 500;
+  color: #c0c0d0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.niri-news-meta {
+  font-size: 10px;
+  color: #555568;
+  margin-top: 4px;
+}
+
+/* ─── Music Player ──────────────────────────── */
+
+.niri-content-music {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.niri-music-art {
+  width: 180px;
+  height: 180px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.niri-music-vinyl {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #1a1a2e, #2a2a4e, #1a1a2e, #0a0a1e, #1a1a2e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s ease;
+}
+
+.niri-music-vinyl[data-playing="true"] {
+  animation: niri-spin 4s linear infinite;
+}
+
+.niri-music-vinyl-inner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #0e0e1a;
+  border: 2px solid #2a2a3e;
+}
+
+@keyframes niri-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.niri-music-info {
+  text-align: center;
+}
+
+.niri-music-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e0e0f0;
+}
+
+.niri-music-artist {
+  font-size: 12px;
+  color: #6a6a80;
+  margin-top: 2px;
+}
+
+.niri-music-progress {
+  width: 100%;
+}
+
+.niri-music-progress-bar {
+  height: 3px;
+  background: #2a2a3a;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.niri-music-progress-fill {
+  height: 100%;
+  background: #7c8aff;
+  border-radius: 2px;
+  transition: width 0.2s linear;
+}
+
+.niri-music-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #555568;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.niri-music-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.niri-music-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #2a2a3a;
+  border-radius: 50%;
+  background: #1a1a24;
+  color: #a0a0b8;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.niri-music-btn:hover {
+  background: #252535;
+  border-color: #3a3a55;
+}
+
+.niri-music-btn.primary {
+  width: 44px;
+  height: 44px;
+  background: #7c8aff;
+  color: #fff;
+  border-color: #7c8aff;
+  font-size: 16px;
+}
+
+.niri-music-btn.primary:hover {
+  background: #6a78ff;
+}
+
+.niri-music-queue {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.niri-music-queue-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #555568;
+  margin-bottom: 6px;
+}
+
+.niri-music-queue-item {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #7a7a90;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.niri-music-queue-item:hover {
+  background: #1e1e2a;
+  color: #a0a0b8;
+}
+
+/* ─── AI Search ─────────────────────────────── */
+
+.niri-content-search {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.niri-search-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.niri-search-bar input {
+  flex: 1;
+  padding: 8px 12px;
+  background: #12121a;
+  border: 1px solid #2a2a3a;
+  border-radius: 6px;
+  color: #d0d0e0;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.niri-search-bar input:focus {
+  border-color: #5a5aff;
+}
+
+.niri-search-bar button {
+  padding: 8px 16px;
+  background: #7c8aff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.niri-search-bar button:hover {
+  background: #6a78ff;
+}
+
+.niri-search-ai-answer {
+  background: #14141e;
+  border: 1px solid #22223a;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.niri-search-ai-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #7c8aff;
+  margin-bottom: 8px;
+}
+
+.niri-search-ai-answer p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #b0b0c8;
+  margin: 0 0 8px;
+}
+
+.niri-search-ai-answer p:last-child {
+  margin-bottom: 0;
+}
+
+.niri-search-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.niri-search-source-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #555568;
+  margin-bottom: 2px;
+}
+
+.niri-search-source {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #7c8aff;
+  background: #14141e;
+  border: 1px solid #1e1e30;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.niri-search-source:hover {
+  background: #1a1a2a;
+  border-color: #2a2a44;
+}
+
+/* ─── Calendar ──────────────────────────────── */
+
+.niri-content-calendar {
+  padding: 12px;
+}
+
+.niri-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.niri-cal-month {
+  font-size: 15px;
+  font-weight: 600;
+  color: #d0d0e0;
+}
+
+.niri-cal-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.niri-cal-nav button {
+  padding: 3px 8px;
+  background: #1a1a24;
+  border: 1px solid #2a2a3a;
+  border-radius: 4px;
+  color: #8888a0;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+.niri-cal-nav button:hover {
+  background: #222230;
+  color: #b0b0c0;
+}
+
+.niri-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.niri-cal-weekdays span {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #555568;
+  padding: 4px 0;
+}
+
+.niri-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.niri-cal-day {
+  min-height: 54px;
+  padding: 3px;
+  background: #14141e;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.niri-cal-day.today {
+  background: #1a1a30;
+  border: 1px solid #3a3a66;
+}
+
+.niri-cal-day-num {
+  font-size: 11px;
+  color: #6a6a80;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.niri-cal-day.today .niri-cal-day-num {
+  color: #7c8aff;
+  font-weight: 600;
+}
+
+.niri-cal-event {
+  font-size: 8px;
+  color: #a0a0b8;
+  background: #252540;
+  border-radius: 2px;
+  padding: 1px 3px;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Game ──────────────────────────────────── */
+
+.niri-content-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+  height: 100%;
+}
+
+.niri-game-canvas {
+  display: block;
+  width: 100%;
+  flex: 1;
+  cursor: crosshair;
+  outline: none;
+}
+
+.niri-game-hint {
+  padding: 6px;
+  font-size: 10px;
+  color: #44445a;
+  text-align: center;
+  background: #12121a;
+  width: 100%;
+}
+
+/* ─── System Monitor ────────────────────────── */
+
+.niri-content-sysmon {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.niri-sysmon-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.niri-sysmon-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #8888a0;
+  margin-bottom: 4px;
+}
+
+.niri-sysmon-bar-track {
+  height: 6px;
+  background: #1a1a24;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.niri-sysmon-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.niri-sysmon-processes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.niri-sysmon-proc-header {
+  display: grid;
+  grid-template-columns: 1fr 60px 70px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #555568;
+  border-bottom: 1px solid #1e1e2a;
+}
+
+.niri-sysmon-proc-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 70px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #8888a0;
+  border-radius: 3px;
+}
+
+.niri-sysmon-proc-row:hover {
+  background: #1a1a24;
+}
+
+/* ─── Weather ───────────────────────────────── */
+
+.niri-content-weather {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.niri-weather-current {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.niri-weather-temp {
+  font-size: 48px;
+  font-weight: 300;
+  color: #e0e0f0;
+  line-height: 1;
+}
+
+.niri-weather-condition {
+  font-size: 14px;
+  font-weight: 500;
+  color: #b0b0c8;
+}
+
+.niri-weather-location {
+  font-size: 11px;
+  color: #6a6a80;
+  margin-top: 2px;
+}
+
+.niri-weather-details {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #555568;
+}
+
+.niri-weather-forecast {
+  display: flex;
+  gap: 4px;
+}
+
+.niri-weather-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  background: #14141e;
+  border-radius: 6px;
+}
+
+.niri-weather-day-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6a6a80;
+}
+
+.niri-weather-day-icon {
+  font-size: 20px;
+}
+
+.niri-weather-day-temps {
+  font-size: 10px;
+  color: #8888a0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Notes ─────────────────────────────────── */
+
+.niri-content-notes {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.niri-notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #2a2a36;
+  background: #1a1a24;
+}
+
+.niri-notes-btn {
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6a6a80;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.niri-notes-btn:hover {
+  background: #252535;
+  color: #a0a0b8;
+}
+
+.niri-notes-divider {
+  width: 1px;
+  height: 14px;
+  background: #2a2a36;
+  margin: 0 4px;
+}
+
+.niri-notes-editor {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: none;
+  color: #b0b0c8;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: "SF Mono", "Fira Code", monospace;
+  resize: none;
+  outline: none;
+}
+
+.niri-notes-footer {
+  padding: 4px 12px;
+  font-size: 10px;
+  color: #44445a;
+  border-top: 1px solid #1e1e2a;
+}
+
+/* ─── File Browser ──────────────────────────── */
+
+.niri-content-files {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.niri-files-toolbar {
+  padding: 6px 10px;
+  border-bottom: 1px solid #2a2a36;
+  background: #1a1a24;
+}
+
+.niri-files-path {
+  font-size: 11px;
+  color: #6a6a80;
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.niri-files-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.niri-files-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #8888a0;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.niri-files-item:hover {
+  background: #1a1a24;
+}
+
+.niri-files-item.selected {
+  background: #1e1e34;
+  color: #c0c0d8;
+}
+
+.niri-files-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.niri-files-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.niri-files-size {
+  font-size: 10px;
+  color: #44445a;
+  font-variant-numeric: tabular-nums;
+}

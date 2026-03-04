@@ -101,6 +101,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMorphReverse: onIpc<{ screenshotDataUrl: string }>('overlay:morphReverse'),
     onMorphEnd: onIpcSignal('overlay:morphEnd'),
     morphDone: () => ipcRenderer.send('overlay:morphDone'),
+    onShowNiri: onIpcSignal('overlay:showNiri'),
+    onHideNiri: onIpcSignal('overlay:hideNiri'),
+    showNiri: () => ipcRenderer.send('overlay:showNiri:request'),
+    hideNiri: () => ipcRenderer.send('overlay:hideNiri:request'),
   },
 
   mini: {
