@@ -38,25 +38,36 @@ export function createHmrMorphOrchestrator(deps: {
 
   const waitForMorphDone = (): Promise<void> => {
     return new Promise((resolve) => {
+      const handler = () => {
+        clearTimeout(timer);
+        resolve();
+      };
       const timer = setTimeout(() => {
-        ipcMain.removeAllListeners("overlay:morphDone");
+        ipcMain.removeListener("overlay:morphDone", handler);
         resolve();
       }, MORPH_DONE_TIMEOUT_MS);
 
-      ipcMain.once("overlay:morphDone", () => {
-        clearTimeout(timer);
-        resolve();
-      });
+      ipcMain.once("overlay:morphDone", handler);
     });
   };
 
   const waitForWindowLoad = (win: BrowserWindow): Promise<void> => {
     return new Promise((resolve) => {
-      const timer = setTimeout(resolve, 5000);
-      win.webContents.once("did-finish-load", () => {
+      let resolved = false;
+      const done = () => {
+        if (resolved) return;
+        resolved = true;
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        win.webContents.removeListener("did-finish-load", onLoad);
+        done();
+      }, 5000);
+      const onLoad = () => {
         clearTimeout(timer);
-        setTimeout(resolve, CAPTURE_SETTLE_DELAY_MS);
-      });
+        setTimeout(done, CAPTURE_SETTLE_DELAY_MS);
+      };
+      win.webContents.once("did-finish-load", onLoad);
     });
   };
 

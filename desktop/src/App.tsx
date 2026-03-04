@@ -43,6 +43,9 @@ type PersistedSelfModHmrState = {
   holdUntilMs: number
 }
 
+const normalizeSelfModMessage = (message?: string): string =>
+  typeof message === 'string' && message.trim() ? message.trim() : DEFAULT_SELF_MOD_MESSAGE
+
 const createHiddenSelfModState = (): PersistedSelfModHmrState => ({
   phase: 'hidden',
   message: DEFAULT_SELF_MOD_MESSAGE,
@@ -50,18 +53,14 @@ const createHiddenSelfModState = (): PersistedSelfModHmrState => ({
   holdUntilMs: 0,
 })
 
-const createActiveSelfModState = (message?: string): PersistedSelfModHmrState => ({
-  phase: 'active',
-  message: typeof message === 'string' && message.trim() ? message.trim() : DEFAULT_SELF_MOD_MESSAGE,
+const createSelfModState = (
+  phase: 'active' | 'hold',
+  message?: string,
+): PersistedSelfModHmrState => ({
+  phase,
+  message: normalizeSelfModMessage(message),
   updatedAtMs: Date.now(),
-  holdUntilMs: 0,
-})
-
-const createHoldSelfModState = (message?: string): PersistedSelfModHmrState => ({
-  phase: 'hold',
-  message: typeof message === 'string' && message.trim() ? message.trim() : DEFAULT_SELF_MOD_MESSAGE,
-  updatedAtMs: Date.now(),
-  holdUntilMs: Date.now() + SELF_MOD_HMR_RESUME_HOLD_MS,
+  holdUntilMs: phase === 'hold' ? Date.now() + SELF_MOD_HMR_RESUME_HOLD_MS : 0,
 })
 
 const readPersistedSelfModHmrState = (): PersistedSelfModHmrState | null => {
@@ -75,10 +74,7 @@ const readPersistedSelfModHmrState = (): PersistedSelfModHmrState | null => {
     if (phase !== 'active' && phase !== 'hold' && phase !== 'fade' && phase !== 'hidden') return null
     return {
       phase,
-      message:
-        typeof parsed.message === 'string' && parsed.message.trim()
-          ? parsed.message.trim()
-          : DEFAULT_SELF_MOD_MESSAGE,
+      message: normalizeSelfModMessage(parsed.message),
       updatedAtMs: Number(parsed.updatedAtMs ?? 0),
       holdUntilMs: Number(parsed.holdUntilMs ?? 0),
     }
@@ -124,18 +120,15 @@ function App() {
   useEffect(() => {
     if (!api?.agent.onSelfModHmrState) return
     const unsubscribe = api.agent.onSelfModHmrState((event) => {
-      const nextMessage =
-        typeof event.message === 'string' && event.message.trim()
-          ? event.message.trim()
-          : DEFAULT_SELF_MOD_MESSAGE
+      const nextMessage = normalizeSelfModMessage(event.message)
       setSelfModHmr((prev) => {
         if (event.paused) {
-          return createActiveSelfModState(nextMessage)
+          return createSelfModState('active', nextMessage)
         }
         if (prev.phase === 'hidden') {
           return prev
         }
-        return createHoldSelfModState(prev.message || nextMessage)
+        return createSelfModState('hold', prev.message || nextMessage)
       })
     })
     return () => unsubscribe()
@@ -150,7 +143,7 @@ function App() {
         if (cancelled || !activeRun) return
         setSelfModHmr((prev) => {
           if (prev.phase === 'active') return prev
-          return createActiveSelfModState(DEFAULT_SELF_MOD_MESSAGE)
+          return createSelfModState('active', DEFAULT_SELF_MOD_MESSAGE)
         })
       })
       .catch(() => {
@@ -186,13 +179,13 @@ function App() {
                 updatedAtMs: Date.now(),
               }
             }
-            return createHoldSelfModState(prev.message)
+            return createSelfModState('hold', prev.message)
           })
         })
         .catch(() => {
           setSelfModHmr((prev) => {
             if (prev.phase !== 'active') return prev
-            return createHoldSelfModState(prev.message)
+            return createSelfModState('hold', prev.message)
           })
         })
     }, timeoutMs)
@@ -231,8 +224,7 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [selfModHmr.phase])
 
-  const overlayPhase =
-    selfModHmr.phase === 'hidden' ? null : selfModHmr.phase === 'active' ? 'active' : selfModHmr.phase
+  const overlayPhase = selfModHmr.phase === 'hidden' ? null : selfModHmr.phase
 
   const shell = (
     <div className={`app window-${windowType}`}>

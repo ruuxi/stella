@@ -121,14 +121,18 @@ type GLContext = {
 
 type RGB = [number, number, number];
 
+let _colorCtx: CanvasRenderingContext2D | null = null;
+
 function parseRgbNormalized(color: string): RGB {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = color;
-  ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  if (!_colorCtx) {
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = 1;
+    _colorCtx = c.getContext("2d")!;
+  }
+  _colorCtx.fillStyle = color;
+  _colorCtx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = _colorCtx.getImageData(0, 0, 1, 1).data;
   return [r / 255, g / 255, b / 255];
 }
 
@@ -347,8 +351,7 @@ export function MorphTransition() {
 
     unsubs.push(
       api.onMorphReverse((data) => {
-        const img = new Image();
-        img.onload = () => {
+        void loadImage(data.screenshotDataUrl).then((img) => {
           reverseImgRef.current = img;
           const ctx = glCtxRef.current;
           if (!ctx) {
@@ -360,7 +363,7 @@ export function MorphTransition() {
           loadSecondTexture(ctx, img);
           setState((prev) => ({ ...prev, phase: "crossfading" }));
 
-          void tweenRef(mixRef, 1.0, CROSSFADE_MS).then(() => {
+          return tweenRef(mixRef, 1.0, CROSSFADE_MS).then(() => {
             setState((prev) => ({ ...prev, phase: "calming" }));
             return tweenRef(strengthRef, 0, CALM_DOWN_MS);
           }).then(() => {
@@ -374,13 +377,11 @@ export function MorphTransition() {
             }
             setState(IDLE_STATE);
           });
-        };
-        img.onerror = () => {
+        }).catch(() => {
           window.electronAPI?.overlay.morphDone();
           stopLoopRef.current?.();
           setState(IDLE_STATE);
-        };
-        img.src = data.screenshotDataUrl;
+        });
       }),
     );
 

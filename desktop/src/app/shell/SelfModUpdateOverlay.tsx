@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation";
 import { CometSpinner } from "@/ui/comet-spinner";
 
@@ -11,8 +10,6 @@ type SelfModUpdateOverlayProps = {
 };
 
 export const SelfModUpdateOverlay = ({ visible, phase, message }: SelfModUpdateOverlayProps) => {
-  const stellaRef = useRef(null);
-
   if (!visible) return null;
 
   return (
@@ -23,7 +20,7 @@ export const SelfModUpdateOverlay = ({ visible, phase, message }: SelfModUpdateO
             <CometSpinner />
           </div>
           <div className="selfmod-update-overlay__animation">
-            <StellaAnimation ref={stellaRef} width={28} height={28} maxDpr={1} frameSkip={1} />
+            <StellaAnimation width={28} height={28} maxDpr={1} frameSkip={1} />
           </div>
         </div>
         <p className="selfmod-update-overlay__message">{message}</p>
