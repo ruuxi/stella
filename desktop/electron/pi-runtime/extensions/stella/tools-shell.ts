@@ -86,6 +86,47 @@ const buildProtectedCommand = (command: string) => {
 __stella_dd() {
   ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_DEFERRED_DELETE_HELPER" "$@"
 }
+__stella_git_stage_feature_dependencies() {
+  local repo_root
+  repo_root="$(command git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -z "$repo_root" ]; then
+    return 0
+  fi
+  local dep_files=(
+    "$repo_root/package.json"
+    "$repo_root/bun.lock"
+    "$repo_root/bun.lockb"
+    "$repo_root/package-lock.json"
+    "$repo_root/pnpm-lock.yaml"
+    "$repo_root/yarn.lock"
+    "$repo_root/npm-shrinkwrap.json"
+  )
+  local existing_files=()
+  for dep_file in "\${dep_files[@]}"; do
+    if [ -f "$dep_file" ]; then
+      existing_files+=("$dep_file")
+    fi
+  done
+  if [ "\${#existing_files[@]}" -gt 0 ]; then
+    command git add -- "\${existing_files[@]}" >/dev/null 2>&1 || true
+  fi
+}
+git() {
+  if [ "$1" = "commit" ]; then
+    local has_feature_tag=0
+    for arg in "$@"; do
+      case "$arg" in
+        *"[feature:"*)
+          has_feature_tag=1
+          ;;
+      esac
+    done
+    if [ "$has_feature_tag" -eq 1 ]; then
+      __stella_git_stage_feature_dependencies
+    fi
+  fi
+  command git "$@"
+}
 rm() { __stella_dd delete "$PWD" rm "$@"; }
 rmdir() { __stella_dd delete "$PWD" rmdir "$@"; }
 unlink() { __stella_dd delete "$PWD" unlink "$@"; }
@@ -96,7 +137,7 @@ powershell() { __stella_dd powershell "$PWD" "$(type -P powershell || true)" "$@
 pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
 ${stellaBrowserBin ? `stella-browser() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;

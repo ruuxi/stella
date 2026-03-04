@@ -103,7 +103,9 @@
         for (const feature of features) {
           const btn = document.createElement('button');
           btn.className = 'btn-secondary';
-          btn.textContent = `Undo ${feature.name}`;
+          btn.textContent = feature.tainted
+            ? `Undo ${feature.name} (external edits)`
+            : `Undo ${feature.name}`;
           btn.addEventListener('click', () => {
             void runRevert(feature.featureId);
           });

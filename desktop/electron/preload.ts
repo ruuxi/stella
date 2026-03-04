@@ -179,6 +179,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       persisted?: boolean;
       selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
     }>('agent:event'),
+    onSelfModHmrState: onIpc<{ paused: boolean; message: string }>('agent:selfModHmrState'),
     selfModRevert: (featureId?: string, steps?: number) =>
       ipcRenderer.invoke('selfmod:revert', { featureId, steps }),
     getLastSelfModFeature: () =>
@@ -191,6 +192,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         latestCommit: string;
         latestTimestampMs: number;
         commitCount: number;
+        tainted?: boolean;
+        taintedFiles?: string[];
       }>>,
   },
 

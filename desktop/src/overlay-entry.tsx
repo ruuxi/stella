@@ -17,11 +17,11 @@ document.documentElement.dataset.stellaWindow = "overlay";
 
 createRoot(document.getElementById("root")!).render(
   <ThemeProvider>
-    <ErrorBoundary>
-      <UiStateProvider>
+    <UiStateProvider>
+      <ErrorBoundary>
         <OverlayRoot />
-      </UiStateProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </UiStateProvider>
   </ThemeProvider>,
 );
 

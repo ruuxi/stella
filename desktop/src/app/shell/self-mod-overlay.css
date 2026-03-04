@@ -1,0 +1,46 @@
+.selfmod-update-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklab, var(--background) 65%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.selfmod-update-overlay__card {
+  min-width: min(28rem, 88vw);
+  max-width: 90vw;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-base);
+  background: var(--surface-overlay);
+  box-shadow: 0 12px 30px color-mix(in oklab, #000 28%, transparent);
+}
+
+.selfmod-update-overlay__spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in oklab, var(--text-weaker) 45%, transparent);
+  border-top-color: var(--text-strong);
+  animation: selfmod-update-spin 0.9s linear infinite;
+}
+
+.selfmod-update-overlay__message {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+@keyframes selfmod-update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
