@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { useQuery, useMutation } from "convex/react";
-import SettingsDialog from "./SettingsView";
+import SettingsDialog from "../settings/SettingsView";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -38,7 +38,7 @@ vi.mock("@/convex/api", () => ({
   },
 }));
 
-vi.mock("../../hooks/use-model-catalog", () => ({
+vi.mock("@/hooks/use-model-catalog", () => ({
   useModelCatalog: vi.fn(() => ({
     models: [
       { id: "anthropic/claude-3", name: "Claude 3", provider: "anthropic" },
@@ -54,7 +54,7 @@ vi.mock("../../hooks/use-model-catalog", () => ({
 
 // Lightweight mock of the Radix-based Dialog components so that the dialog
 // content is rendered synchronously in jsdom when `open` is true.
-vi.mock("@/components/dialog", () => ({
+vi.mock("@/ui/dialog", () => ({
   Dialog: ({
     open,
     onOpenChange,
@@ -1070,3 +1070,6 @@ describe("SettingsPanel", () => {
     expect(panel).toBeTruthy();
   });
 });
+
+
+

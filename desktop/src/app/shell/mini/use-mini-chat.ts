@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useUiState } from "../../app/state/ui-state";
-import { useIpcQuery } from "../../hooks/use-ipc-query";
+import { useUiState } from "@/providers/ui-state";
+import { useIpcQuery } from "@/hooks/use-ipc-query";
 import type {
   ChatContext,
   MiniBridgeResponse,
   MiniBridgeSnapshot,
-} from "../../types/electron";
-import type { EventRecord } from "../../hooks/use-conversation-events";
+} from "@/types/electron";
+import type { EventRecord } from "@/hooks/use-conversation-events";
 
 const createEmptySnapshot = (conversationId: string | null): MiniBridgeSnapshot => ({
   conversationId,
@@ -173,3 +173,5 @@ export function useMiniChat(opts: {
     sendMessage,
   };
 }
+
+

@@ -1,13 +1,13 @@
 import { memo } from "react";
-import type { Attachment, ChannelEnvelope, TaskItem } from "../../lib/event-transforms";
-import { WorkingIndicator } from "../../components/chat/WorkingIndicator";
-import { TaskIndicator } from "../../components/chat/TaskIndicator";
-import { Markdown } from "../../components/chat/Markdown";
-import { ReasoningSection } from "../../components/chat/ReasoningSection";
-import { SelfModUndoButton } from "../../components/chat/SelfModUndoButton";
-import type { SelfModApplied } from "../../components/chat/SelfModUndoButton";
-import type { EventRecord } from "../../hooks/use-conversation-events";
-import type { MessagePayload } from "../../lib/event-transforms";
+import type { Attachment, ChannelEnvelope, TaskItem } from "@/lib/event-transforms";
+import { WorkingIndicator } from "@/app/chat/WorkingIndicator";
+import { TaskIndicator } from "@/app/chat/TaskIndicator";
+import { Markdown } from "@/app/chat/Markdown";
+import { ReasoningSection } from "@/app/chat/ReasoningSection";
+import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
+import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
+import type { EventRecord } from "@/hooks/use-conversation-events";
+import type { MessagePayload } from "@/lib/event-transforms";
 import { sanitizeAttachmentImageUrl } from "@/lib/url-safety";
 
 export type TurnViewModel = {
@@ -353,3 +353,5 @@ export const StreamingIndicator = memo(function StreamingIndicator({
     </div>
   );
 });
+
+

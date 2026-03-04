@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
-import { api } from "../convex/api";
-import { getElectronApi } from "../services/electron";
-import { CredentialModal } from "../components/CredentialModal";
+import { api } from "@/convex/api";
+import { getElectronApi } from "@/services/electron";
+import { CredentialModal } from "@/app/integrations/CredentialModal";
 
 export type PendingCredentialRequest = {
   requestId: string;
@@ -66,3 +66,6 @@ export const CredentialRequestLayer = () => {
     />
   );
 };
+
+
+

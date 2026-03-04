@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConversationEvents } from "../ConversationEvents";
-import type { EventRecord } from "../../hooks/use-conversation-events";
+import { ConversationEvents } from "@/app/chat/ConversationEvents";
+import type { EventRecord } from "@/hooks/use-conversation-events";
 
 type Props = {
   events: EventRecord[];
@@ -63,3 +63,5 @@ export const MiniOutput = ({
     </div>
   );
 };
+
+

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { getElectronApi } from "../services/electron";
+import { getElectronApi } from "@/services/electron";
 import { runVacuumEffect } from "./region-capture-vacuum";
 
 type Point = { x: number; y: number };
@@ -152,3 +152,4 @@ export function RegionCapture() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import type { CommandSuggestion } from '../../hooks/use-command-suggestions'
+import type { CommandSuggestion } from '@/hooks/use-command-suggestions'
 
 type CommandChipsProps = {
   suggestions: CommandSuggestion[]
@@ -23,3 +23,4 @@ export function CommandChips({ suggestions, onSelect }: CommandChipsProps) {
     </div>
   )
 }
+

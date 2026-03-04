@@ -1,24 +1,24 @@
 import { Suspense, lazy, useMemo } from 'react'
-import { useUiState } from './app/state/ui-state'
+import { useUiState } from './providers/ui-state'
 import { getElectronApi } from './services/electron'
-import { AuthTokenBridge } from './app/AuthTokenBridge'
-import { CloudSyncBridge } from './app/CloudSyncBridge'
-import { AutoAnonAuth } from './app/AutoAnonAuth'
-import { AuthDeepLinkHandler } from './app/AuthDeepLinkHandler'
+import { AuthTokenBridge } from './app/auth/AuthTokenBridge'
+import { CloudSyncBridge } from './services/CloudSyncBridge'
+import { AutoAnonAuth } from './app/auth/AutoAnonAuth'
+import { AuthDeepLinkHandler } from './app/auth/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
-import { ChatStoreProvider } from './app/state/chat-store'
+import { ChatStoreProvider } from './providers/chat-store'
 
 type WindowType = 'full' | 'mini'
 const CredentialRequestLayer = lazy(() =>
-  import('./app/CredentialRequestLayer').then((module) => ({
+  import('./app/auth/CredentialRequestLayer').then((module) => ({
     default: module.CredentialRequestLayer,
   })),
 )
 const FullShell = lazy(() =>
-  import('./screens/full-shell/FullShell').then((module) => ({ default: module.FullShell })),
+  import('./app/shell/FullShell').then((module) => ({ default: module.FullShell })),
 )
 const MiniShell = lazy(() =>
-  import('./screens/MiniShell').then((module) => ({ default: module.MiniShell })),
+  import('./app/shell/mini/MiniShell').then((module) => ({ default: module.MiniShell })),
 )
 function getWindowType(isElectron: boolean, windowParam: string | null, fallback: string): WindowType {
   if (!isElectron) {
@@ -55,3 +55,5 @@ function App() {
 }
 
 export { App }
+
+

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ChatContext } from "../../types/electron";
+import type { ChatContext } from "@/types/electron";
 
 type Props = {
   message: string;
@@ -224,3 +224,4 @@ export const MiniInput = ({
     </div>
   );
 };
+

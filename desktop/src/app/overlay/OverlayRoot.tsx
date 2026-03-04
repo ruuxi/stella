@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useReducer, useRef, type Dispatch } from "react";
-import { MINI_SHELL_SIZE } from "@/constants/layout";
+import { MINI_SHELL_SIZE } from "@/lib/layout";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
-import { MiniShell } from "./mini-shell/MiniShell";
-import { VoiceOverlay } from "../components/VoiceOverlay";
+import { MiniShell } from "../shell/mini/MiniShell";
+import { VoiceOverlay } from "@/app/overlay/VoiceOverlay";
 
 /**
  * OverlayRoot manages the unified transparent overlay window.
@@ -468,3 +468,7 @@ export function OverlayRoot() {
     </div>
   );
 }
+
+
+
+

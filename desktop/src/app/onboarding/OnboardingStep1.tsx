@@ -16,11 +16,11 @@ import {
 } from "./use-onboarding-state";
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
-import { InlineAuth } from "../InlineAuth";
-import { useTheme, useThemeControl } from "../../theme/theme-context";
-import { getPlatform } from "@/utils/platform";
-import "../Onboarding.css";
-import "../../styles/selfmod-demo.css";
+import { InlineAuth } from "../auth/InlineAuth";
+import { useTheme, useThemeControl } from "@/theme/theme-context";
+import { getPlatform } from "@/lib/platform";
+import "./Onboarding.css";
+import "@/app/onboarding/selfmod-demo.css";
 
 const FADE_OUT_MS = 400;
 const FADE_GAP_MS = 200;
@@ -906,3 +906,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     </div>
   );
 };
+
+
+
+

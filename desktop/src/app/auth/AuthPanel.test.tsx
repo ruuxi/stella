@@ -9,13 +9,13 @@ vi.mock("@/lib/auth-client", () => ({
   },
 }));
 
-vi.mock("@/components/button", () => ({
+vi.mock("@/ui/button", () => ({
   Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button {...props}>{children}</button>
   ),
 }));
 
-vi.mock("@/components/text-field", () => ({
+vi.mock("@/ui/text-field", () => ({
   TextField: ({
     label,
     value,
@@ -189,3 +189,4 @@ describe("AuthPanel", () => {
     });
   });
 });
+

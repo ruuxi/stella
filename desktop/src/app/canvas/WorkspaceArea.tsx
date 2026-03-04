@@ -4,18 +4,18 @@
  */
 
 import { lazy, Suspense, useCallback } from 'react'
-import { useWorkspace, type CanvasPayload } from '@/app/state/workspace-state'
-import { Spinner } from '@/components/spinner'
-import type { OnboardingDemo } from '@/components/onboarding/OnboardingCanvas'
+import { useWorkspace, type CanvasPayload } from '@/providers/workspace-state'
+import { Spinner } from '@/ui/spinner'
+import type { OnboardingDemo } from '@/app/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/types/ui'
-import { HomeView } from '@/views/home/HomeView'
+import { HomeView } from '@/app/home/HomeView'
 import { getLocalhostPort } from '@/lib/utils'
 
-const PanelRenderer = lazy(() => import('@/components/canvas/renderers/panel'))
-const AppframeRenderer = lazy(() => import('@/components/canvas/renderers/appframe'))
-const StoreView = lazy(() => import('@/screens/full-shell/StoreView'))
+const PanelRenderer = lazy(() => import('@/app/canvas/renderers/panel'))
+const AppframeRenderer = lazy(() => import('@/app/canvas/renderers/appframe'))
+const StoreView = lazy(() => import('@/app/store/StoreView'))
 const OnboardingCanvas = lazy(() =>
-  import('@/components/onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
+  import('@/app/onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
 )
 
 
@@ -118,3 +118,4 @@ function CanvasHeader({ canvas, onClose }: { canvas: CanvasPayload; onClose: () 
     </div>
   )
 }
+

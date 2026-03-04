@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { secureSignOut } from "@/services/auth";
-import { ThemePicker } from "./ThemePicker";
+import { ThemePicker } from "../settings/ThemePicker";
 import LayoutGrid from "lucide-react/dist/esm/icons/layout-grid";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import Settings from "lucide-react/dist/esm/icons/settings";
@@ -118,3 +118,4 @@ export const Sidebar = ({
     </aside>
   );
 };
+

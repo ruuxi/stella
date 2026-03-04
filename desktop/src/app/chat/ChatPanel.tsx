@@ -8,7 +8,7 @@ import {
   MAX_CHAT_WIDTH_RATIO,
   MIN_CHAT_WIDTH,
   useWorkspace,
-} from '@/app/state/workspace-state'
+} from '@/providers/workspace-state'
 
 const ANIM_DURATION = 350 // ms, matches CSS chat-slide-out duration
 
@@ -148,3 +148,4 @@ export function ChatPanel({ children }: { children: ReactNode }) {
     </div>
   )
 }
+

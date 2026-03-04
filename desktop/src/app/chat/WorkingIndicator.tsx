@@ -1,7 +1,7 @@
-import { Spinner } from "../spinner";
+import { Spinner } from "@/ui/spinner";
 import { cn } from "@/lib/utils";
 import { computeStatus } from "./status-utils";
-import type { TaskItem } from "../../lib/event-transforms";
+import type { TaskItem } from "@/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
 
 interface WorkingIndicatorProps {
@@ -48,3 +48,5 @@ export function WorkingIndicator({
     </div>
   );
 }
+
+

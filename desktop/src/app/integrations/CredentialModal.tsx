@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog } from "./dialog";
+import { Dialog } from "@/ui/dialog";
 
 export type CredentialModalProps = {
   open: boolean;
@@ -114,3 +114,4 @@ export const CredentialModal = ({
     </Dialog>
   );
 };
+

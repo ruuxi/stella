@@ -1,17 +1,17 @@
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import "./styles/overlays.css";
-import "./styles/mini-shell.css";
-import "./components/spinner.css";
-import "./components/voice-overlay.css";
-import "./components/code.css";
-import "./styles/full-shell.chat.css";
-import "./styles/indicators.css";
-import "./styles/selfmod-undo.css";
+import "./app/overlay/overlays.css";
+import "./app/shell/mini/mini-shell.css";
+import "./ui/spinner.css";
+import "./app/overlay/voice-overlay.css";
+import "./ui/code.css";
+import "./app/chat/full-shell.chat.css";
+import "./app/chat/indicators.css";
+import "./app/chat/selfmod-undo.css";
 import { ThemeProvider } from "./theme/theme-context";
-import { ErrorBoundary } from "./components/ErrorBoundary";
-import { UiStateProvider } from "./app/state/ui-state";
-import { OverlayRoot } from "./screens/OverlayRoot";
+import { ErrorBoundary } from "./app/ErrorBoundary";
+import { UiStateProvider } from "./providers/ui-state";
+import { OverlayRoot } from "./app/overlay/OverlayRoot";
 
 document.documentElement.dataset.stellaWindow = "overlay";
 
@@ -24,3 +24,5 @@ createRoot(document.getElementById("root")!).render(
     </ErrorBoundary>
   </ThemeProvider>,
 );
+
+

@@ -1,4 +1,4 @@
-import { type StorePackage, TYPE_GRADIENTS, TYPE_ICONS, getAuthorColor } from "../constants";
+import { type StorePackage, TYPE_GRADIENTS, TYPE_ICONS, getAuthorColor } from "./constants";
 
 interface PackageCardProps {
   pkg: StorePackage;
@@ -72,3 +72,4 @@ export function PackageCard({
     </div>
   );
 }
+

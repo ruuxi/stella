@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import type { DiscoveryCategory } from "../components/onboarding/use-onboarding-state";
+import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
 
 type Replacement = { pattern: RegExp; replacement: string };
 
@@ -145,3 +145,5 @@ export function useDepseudonymize(): (text: string) => string {
     [resolvedReplacements],
   );
 }
+
+

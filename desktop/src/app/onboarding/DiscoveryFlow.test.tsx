@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useDiscoveryFlow } from "./DiscoveryFlow";
+import { useDiscoveryFlow } from "../onboarding/DiscoveryFlow";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -34,11 +34,11 @@ const mockUseChatStore = vi.fn(() => ({
   buildHistory: vi.fn(),
 }));
 
-vi.mock("../../app/state/chat-store", () => ({
+vi.mock("@/providers/chat-store", () => ({
   useChatStore: () => mockUseChatStore(),
 }));
 
-vi.mock("../../convex/api", () => ({
+vi.mock("@/convex/api", () => ({
   api: {
     events: { appendEvent: "appendEvent" },
     data: { preferences: { setCoreMemory: "setCoreMemory" } },
@@ -49,17 +49,17 @@ vi.mock("../../convex/api", () => ({
   },
 }));
 
-vi.mock("../../services/device", () => ({
+vi.mock("@/services/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
-vi.mock("../../services/synthesis", () => ({
+vi.mock("@/services/synthesis", () => ({
   synthesizeCoreMemory: vi.fn(() =>
     Promise.resolve({ coreMemory: null }),
   ),
 }));
 
-vi.mock("../../services/skill-selection", () => ({
+vi.mock("@/services/skill-selection", () => ({
   selectDefaultSkills: vi.fn(() => Promise.resolve()),
 }));
 
@@ -243,7 +243,7 @@ describe("useDiscoveryFlow", () => {
 
   it("skips synthesis when core memory already exists", async () => {
     const { synthesizeCoreMemory } = await import(
-      "../../services/synthesis"
+      "@/services/synthesis"
     );
 
     (window as unknown as Record<string, unknown>).electronAPI = {
@@ -274,7 +274,7 @@ describe("useDiscoveryFlow", () => {
 
   it("skips synthesis when collectAllSignals returns error", async () => {
     const { synthesizeCoreMemory } = await import(
-      "../../services/synthesis"
+      "@/services/synthesis"
     );
 
     (window as unknown as Record<string, unknown>).electronAPI = {
@@ -304,9 +304,9 @@ describe("useDiscoveryFlow", () => {
 
   it("runs full synthesis flow and posts welcome message", async () => {
     const { synthesizeCoreMemory } = await import(
-      "../../services/synthesis"
+      "@/services/synthesis"
     );
-    const { getOrCreateDeviceId } = await import("../../services/device");
+    const { getOrCreateDeviceId } = await import("@/services/device");
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
       coreMemory: "User is a developer",
@@ -390,7 +390,7 @@ describe("useDiscoveryFlow", () => {
 
   it("posts welcome message without suggestions when suggestions are empty", async () => {
     const { synthesizeCoreMemory } = await import(
-      "../../services/synthesis"
+      "@/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
@@ -435,7 +435,7 @@ describe("useDiscoveryFlow", () => {
     setLocalMode(true);
 
     const { synthesizeCoreMemory } = await import(
-      "../../services/synthesis"
+      "@/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
@@ -477,7 +477,7 @@ describe("useDiscoveryFlow", () => {
     setLocalMode(false);
 
     const { synthesizeCoreMemory } = await import(
-      "../../services/synthesis"
+      "@/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
@@ -518,7 +518,7 @@ describe("useDiscoveryFlow", () => {
 
   it("skips welcome message when synthesizeCoreMemory returns no welcomeMessage", async () => {
     const { synthesizeCoreMemory } = await import(
-      "../../services/synthesis"
+      "@/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
@@ -580,7 +580,7 @@ describe("useDiscoveryFlow", () => {
 
   it("only runs synthesis once even when called multiple times (synthesizedRef guard)", async () => {
     const { synthesizeCoreMemory } = await import(
-      "../../services/synthesis"
+      "@/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValue({
@@ -624,3 +624,6 @@ describe("useDiscoveryFlow", () => {
     expect(synthesizeCoreMemory).toHaveBeenCalledTimes(1);
   });
 });
+
+
+

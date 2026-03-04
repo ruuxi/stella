@@ -1,4 +1,4 @@
-import type { ChatContext } from "../../../types/electron";
+import type { ChatContext } from "@/types/electron";
 
 export type ComposerContextState = {
   hasScreenshotContext: boolean;
@@ -51,4 +51,5 @@ export const resolveComposerPlaceholder = ({
   }
   return "Ask anything";
 };
+
 

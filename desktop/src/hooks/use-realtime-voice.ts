@@ -5,12 +5,12 @@ import {
   initRealtimeVoiceIpc,
   type VoiceSessionEvent,
   type VoiceSessionState,
-} from "../services/realtime-voice";
-import { useUiState } from "../app/state/ui-state";
+} from "@/services/realtime-voice";
+import { useUiState } from "@/providers/ui-state";
 import { useWindowType } from "./use-window-type";
-import { useOptionalChatStore } from "../app/state/chat-store";
-import { getOrCreateDeviceId } from "../services/device";
-import { appendLocalEvent } from "../services/local-chat-store";
+import { useOptionalChatStore } from "@/providers/chat-store";
+import { getOrCreateDeviceId } from "@/services/device";
+import { appendLocalEvent } from "@/services/local-chat-store";
 
 interface UseRealtimeVoiceResult {
   analyserRef: React.RefObject<AnalyserNode | null>;
@@ -324,3 +324,5 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     sessionState,
   };
 }
+
+

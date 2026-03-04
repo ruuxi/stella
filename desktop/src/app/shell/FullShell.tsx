@@ -4,30 +4,30 @@
  */
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useUiState } from "../../app/state/ui-state";
-import { useWorkspace } from "../../app/state/workspace-state";
-import { useTheme } from "../../theme/theme-context";
-import { useConversationEvents } from "../../hooks/use-conversation-events";
-import { useCanvasCommands } from "../../hooks/use-canvas-commands";
-import { secureSignOut } from "../../services/auth";
-import { ShiftingGradient } from "../../components/background/ShiftingGradient";
-import { TitleBar } from "../../components/TitleBar";
-import { Sidebar } from "../../components/Sidebar";
-import { WorkspaceArea } from "../../components/workspace/WorkspaceArea";
-import { HeaderTabBar } from "../../components/header/HeaderTabBar";
-import { FloatingOrb, type FloatingOrbHandle } from "../../components/orb/FloatingOrb";
-import { useOrbMessage } from "../../hooks/use-orb-message";
+import { useUiState } from "@/providers/ui-state";
+import { useWorkspace } from "@/providers/workspace-state";
+import { useTheme } from "@/theme/theme-context";
+import { useConversationEvents } from "@/hooks/use-conversation-events";
+import { useCanvasCommands } from "@/hooks/use-canvas-commands";
+import { secureSignOut } from "@/services/auth";
+import { ShiftingGradient } from "@/app/shell/background/ShiftingGradient";
+import { TitleBar } from "@/app/shell/TitleBar";
+import { Sidebar } from "@/app/sidebar/Sidebar";
+import { WorkspaceArea } from "@/app/canvas/WorkspaceArea";
+import { HeaderTabBar } from "@/app/shell/HeaderTabBar";
+import { FloatingOrb, type FloatingOrbHandle } from "@/app/shell/FloatingOrb";
+import { useOrbMessage } from "@/hooks/use-orb-message";
 
-import { ChatColumn } from "./ChatColumn";
-import type { ChatColumnProps } from "./ChatColumn";
-import { useOnboardingOverlay } from "./OnboardingOverlay";
-import { useDiscoveryFlow } from "./DiscoveryFlow";
-import { useStreamingChat } from "../../hooks/use-streaming-chat";
+import { ChatColumn } from "../chat/ChatColumn";
+import type { ChatColumnProps } from "../chat/ChatColumn";
+import { useOnboardingOverlay } from "../onboarding/OnboardingOverlay";
+import { useDiscoveryFlow } from "../onboarding/DiscoveryFlow";
+import { useStreamingChat } from "@/hooks/use-streaming-chat";
 import { useScrollManagement } from "./use-full-shell";
-import { useBridgeAutoReconnect } from "../../hooks/use-bridge-reconnect";
-import { useReturnDetection, formatDuration } from "../../hooks/use-return-detection";
-import type { CommandSuggestion } from "../../hooks/use-command-suggestions";
-import { MiniBridgeRelay } from "./MiniBridgeRelay";
+import { useBridgeAutoReconnect } from "@/hooks/use-bridge-reconnect";
+import { useReturnDetection, formatDuration } from "@/hooks/use-return-detection";
+import type { CommandSuggestion } from "@/hooks/use-command-suggestions";
+import { MiniBridgeRelay } from "@/services/MiniBridgeRelay";
 
 import {
   useLocalWorkspacePanels,
@@ -37,9 +37,9 @@ import {
   type PersonalPage,
 } from "./hooks";
 
-const SettingsDialog = lazy(() => import("./SettingsView"));
-const AuthDialog = lazy(() => import("../../app/AuthDialog").then(m => ({ default: m.AuthDialog })));
-const ConnectDialog = lazy(() => import("../../app/connect/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
+const SettingsDialog = lazy(() => import("../settings/SettingsView"));
+const AuthDialog = lazy(() => import("@/app/auth/AuthDialog").then(m => ({ default: m.AuthDialog })));
+const ConnectDialog = lazy(() => import("@/app/integrations/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -415,3 +415,6 @@ export const FullShell = () => {
     </div>
   );
 };
+
+
+

@@ -1,4 +1,4 @@
-import { type StoreUpdatePackage, TYPE_GRADIENTS, TYPE_ICONS } from "../constants";
+import { type StoreUpdatePackage, TYPE_GRADIENTS, TYPE_ICONS } from "./constants";
 
 interface UpdatesListProps {
   updates: StoreUpdatePackage[];
@@ -53,3 +53,4 @@ export function UpdatesList({
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import type { WelcomeSuggestion } from '../services/synthesis'
+import type { WelcomeSuggestion } from '@/services/synthesis'
 import type { EventRecord } from './use-conversation-events'
 
 /**
@@ -28,3 +28,4 @@ export const useWelcomeSuggestions = (
 
   return []
 }
+

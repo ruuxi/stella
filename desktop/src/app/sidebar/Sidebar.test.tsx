@@ -16,7 +16,7 @@ vi.mock("@/services/auth", () => ({
   secureSignOut: vi.fn(),
 }));
 
-vi.mock("./ThemePicker", () => ({
+vi.mock("../settings/ThemePicker", () => ({
   ThemePicker: () => <div data-testid="theme-picker" />,
 }));
 
@@ -71,3 +71,4 @@ describe("Sidebar", () => {
     expect(appStoreButton?.className).toContain("sidebar-nav-item--active");
   });
 });
+

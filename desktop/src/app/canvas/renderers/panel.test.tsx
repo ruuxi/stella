@@ -12,7 +12,7 @@ vi.mock("../CanvasErrorBoundary", () => ({
 }));
 
 // Mock spinner
-vi.mock("@/components/spinner", () => ({
+vi.mock("@/ui/spinner", () => ({
   Spinner: ({ size }: { size: string }) => (
     <div data-testid="spinner" data-size={size} />
   ),
@@ -124,3 +124,4 @@ describe("PanelRenderer", () => {
     expect(container.querySelector(".canvas-vite-loading")).toBeTruthy();
   });
 });
+

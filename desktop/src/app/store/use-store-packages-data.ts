@@ -6,7 +6,7 @@ import type {
   InstalledRecord,
   StorePackage,
   StoreUpdatePackage,
-} from "../constants";
+} from "./constants";
 
 interface UseStorePackagesDataOptions {
   category: CategoryTab;
@@ -113,3 +113,4 @@ export function useStorePackagesData({
     installedCount,
   };
 }
+

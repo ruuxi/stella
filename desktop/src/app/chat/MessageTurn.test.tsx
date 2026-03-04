@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EventRecord } from "../../hooks/use-conversation-events";
-import { getEventText } from "../../lib/event-transforms";
+import type { EventRecord } from "@/hooks/use-conversation-events";
+import { getEventText } from "@/lib/event-transforms";
 import {
   TurnItem,
   attachmentsEqual,
@@ -141,3 +141,4 @@ describe("TurnItem", () => {
     expect(screen.getByText("Attachment 1")).toBeInTheDocument();
   });
 });
+

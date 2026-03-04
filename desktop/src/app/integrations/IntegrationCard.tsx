@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/api";
-import { Button } from "@/components/button";
-import { showToast } from "@/components/toast";
+import { Button } from "@/ui/button";
+import { showToast } from "@/ui/toast";
 import type { Integration } from "./integration-configs";
 import {
   deployAndStartLocalBridge,
@@ -344,3 +344,4 @@ export function IntegrationDetailArea({
     </div>
   );
 }
+

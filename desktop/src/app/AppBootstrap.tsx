@@ -1,16 +1,16 @@
 import { useEffect } from "react";
 import { useConvexAuth, useMutation } from "convex/react";
-import { useUiState } from "./state/ui-state";
-import { api } from "../convex/api";
-import { useAccountMode } from "../hooks/use-account-mode";
-import { configurePiRuntime, getOrCreateDeviceId } from "../services/device";
+import { useUiState } from "../providers/ui-state";
+import { api } from "@/convex/api";
+import { useAccountMode } from "@/hooks/use-account-mode";
+import { configurePiRuntime, getOrCreateDeviceId } from "@/services/device";
 import {
   buildLocalSyncMessages,
   getLocalSyncCheckpoint,
   getOrCreateLocalConversationId,
   setLocalSyncCheckpoint,
   type LocalSyncMessage,
-} from "../services/local-chat-store";
+} from "@/services/local-chat-store";
 
 const LOCAL_SYNC_CHUNK_SIZE = 100;
 
@@ -131,3 +131,5 @@ export const AppBootstrap = () => {
 
   return null;
 };
+
+

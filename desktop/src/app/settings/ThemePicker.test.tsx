@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ThemeProvider } from "@/theme/theme-context";
-import { ThemePicker } from "./ThemePicker";
+import { ThemePicker } from "../settings/ThemePicker";
 
 beforeEach(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -219,3 +219,4 @@ describe("ThemePicker", () => {
     expect(checks.length).toBe(1);
   });
 });
+

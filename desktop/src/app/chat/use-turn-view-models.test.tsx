@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { EventRecord } from "../../hooks/use-conversation-events";
+import type { EventRecord } from "@/hooks/use-conversation-events";
 import { useTurnViewModels } from "./use-turn-view-models";
 
 const createEvent = (
@@ -89,3 +89,4 @@ describe("useTurnViewModels", () => {
     expect(result.current.processedStreamingText).toBe("draft");
   });
 });
+

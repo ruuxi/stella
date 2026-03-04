@@ -1,17 +1,17 @@
 import { useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../convex/api";
+import { api } from "@/convex/api";
 import {
   listLocalEvents,
   subscribeToLocalChatUpdates,
-} from "../services/local-chat-store";
-import type { StepItem } from "../components/steps-container";
-import { useChatStore } from "../app/state/chat-store";
+} from "@/services/local-chat-store";
+import type { StepItem } from "@/ui/steps-container";
+import { useChatStore } from "@/providers/chat-store";
 
-export type { EventRecord } from "../lib/event-transforms";
+export type { EventRecord } from "@/lib/event-transforms";
 
-import type { EventRecord, MessageTurn } from "../lib/event-transforms";
-import { extractStepsFromEvents, groupEventsIntoTurns } from "../lib/event-transforms";
+import type { EventRecord, MessageTurn } from "@/lib/event-transforms";
+import { extractStepsFromEvents, groupEventsIntoTurns } from "@/lib/event-transforms";
 
 export const useConversationEvents = (
   conversationId?: string,
@@ -58,3 +58,5 @@ export const useStepsFromEvents = (events: EventRecord[]): StepItem[] => {
 export const useMessageTurns = (events: EventRecord[]): MessageTurn[] => {
   return useMemo(() => groupEventsIntoTurns(events), [events]);
 };
+
+
