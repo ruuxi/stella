@@ -12,13 +12,13 @@ import { getElectronApi } from '@/services/electron'
 import type { RadialWedge } from '@/types/electron'
 import { useTheme } from '@/theme/theme-context'
 import { StellaAnimation } from '@/app/shell/ascii-creature/StellaAnimation'
+import { cssToVec3 } from '@/lib/color'
 import {
   initBlob,
   startOpen,
   startClose,
   cancelAnimation,
   destroyBlob,
-  cssToVec3,
   type BlobColors,
 } from './radial-blob'
 
