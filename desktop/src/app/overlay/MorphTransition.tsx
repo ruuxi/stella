@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { cssToVec3 } from "@/lib/color";
 
 type MorphPhase = "idle" | "rippling" | "crossfading" | "calming";
 
@@ -119,26 +120,9 @@ type GLContext = {
   mixLoc: WebGLUniformLocation | null;
 };
 
-type RGB = [number, number, number];
-
-let _colorCtx: CanvasRenderingContext2D | null = null;
-
-function parseRgbNormalized(color: string): RGB {
-  if (!_colorCtx) {
-    const c = document.createElement("canvas");
-    c.width = 1;
-    c.height = 1;
-    _colorCtx = c.getContext("2d")!;
-  }
-  _colorCtx.fillStyle = color;
-  _colorCtx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = _colorCtx.getImageData(0, 0, 1, 1).data;
-  return [r / 255, g / 255, b / 255];
-}
-
-function resolveThemeColor(varName: string, fallback: string): RGB {
+function resolveThemeColor(varName: string, fallback: string): [number, number, number] {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-  return parseRgbNormalized(raw || fallback);
+  return cssToVec3(raw || fallback);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

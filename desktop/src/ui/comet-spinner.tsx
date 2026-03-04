@@ -1,47 +1,12 @@
 import { useRef, useEffect, useMemo, useId } from "react";
+import { lerpRgb } from "@/lib/color";
+import { useSpinnerColors } from "@/hooks/use-theme-rgb";
 import "./comet-spinner.css";
 
 const CYCLE_DURATION_MS = 4000;
 const SEGMENTS = 60;
 
-const COLOR_VARS = [
-  "--spinner-color-1",
-  "--spinner-color-2",
-  "--spinner-color-3",
-  "--spinner-color-4",
-];
-
 type RGB = [number, number, number];
-
-let _colorCtx: CanvasRenderingContext2D | null = null;
-
-function parseRgb(color: string): RGB {
-  if (!_colorCtx) {
-    const c = document.createElement("canvas");
-    c.width = 1;
-    c.height = 1;
-    _colorCtx = c.getContext("2d")!;
-  }
-  _colorCtx.fillStyle = color;
-  _colorCtx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = _colorCtx.getImageData(0, 0, 1, 1).data;
-  return [r, g, b];
-}
-
-function lerpRgb(a: RGB, b: RGB, t: number): string {
-  const r = Math.round(a[0] + (b[0] - a[0]) * t);
-  const g = Math.round(a[1] + (b[1] - a[1]) * t);
-  const bl = Math.round(a[2] + (b[2] - a[2]) * t);
-  return `rgb(${r},${g},${bl})`;
-}
-
-function resolveThemeColors(): RGB[] {
-  const style = getComputedStyle(document.documentElement);
-  return COLOR_VARS.map((v) => {
-    const raw = style.getPropertyValue(v).trim();
-    return raw ? parseRgb(raw) : ([128, 128, 128] as RGB);
-  });
-}
 
 function interpolateColor(colors: RGB[], pos: number): string {
   const wrapped = ((pos % 1) + 1) % 1;
@@ -71,7 +36,13 @@ export function CometSpinner({
   const rawId = useId();
   const filterId = `comet-glow-${rawId.replace(/:/g, "")}`;
   const svgRef = useRef<SVGSVGElement>(null);
-  const colorsRef = useRef<RGB[]>(resolveThemeColors());
+
+  // Reactive theme colors via useTheme() — no MutationObserver needed
+  const spinnerColors = useSpinnerColors();
+  const colorsRef = useRef<RGB[]>(spinnerColors);
+  useEffect(() => {
+    colorsRef.current = spinnerColors;
+  }, [spinnerColors]);
 
   const segmentGeo = useMemo(() => {
     const half = size / 2;
@@ -105,18 +76,6 @@ export function CometSpinner({
       headY: half + r * Math.sin(-Math.PI / 2),
     };
   }, [size, arcSpan, headWidth]);
-
-  // Watch for theme changes — update ref only, no re-render needed
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      colorsRef.current = resolveThemeColors();
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "style", "data-theme"],
-    });
-    return () => observer.disconnect();
-  }, []);
 
   // rAF animation loop — direct DOM mutation, bypasses React reconciliation
   useEffect(() => {

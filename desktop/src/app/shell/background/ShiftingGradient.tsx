@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback, memo, type CSSProperties } from "react";
 import { useTheme } from "@/theme/theme-context";
 import { generateGradientTokens } from "@/theme/color";
+import { cssToRgb } from "@/lib/color";
 import { cn } from "@/lib/utils";
 
 type RGB = { r: number; g: number; b: number };
@@ -37,33 +38,14 @@ function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
-// Reusable canvas for color parsing (avoids creating DOM elements per call)
-let _colorCanvas: HTMLCanvasElement | null = null;
-let _colorCtx: CanvasRenderingContext2D | null = null;
-
 function parseColor(color: string): RGB | null {
   if (!color || color === "transparent") return null;
-
-  if (typeof document !== "undefined") {
-    try {
-      if (!_colorCanvas) {
-        _colorCanvas = document.createElement("canvas");
-        _colorCanvas.width = _colorCanvas.height = 1;
-        _colorCtx = _colorCanvas.getContext("2d", { willReadFrequently: true });
-      }
-      if (_colorCtx) {
-        _colorCtx.clearRect(0, 0, 1, 1);
-        _colorCtx.fillStyle = color;
-        _colorCtx.fillRect(0, 0, 1, 1);
-        const data = _colorCtx.getImageData(0, 0, 1, 1).data;
-        return { r: data[0], g: data[1], b: data[2] };
-      }
-    } catch {
-      // Fall through
-    }
+  try {
+    const [r, g, b] = cssToRgb(color);
+    return { r, g, b };
+  } catch {
+    return null;
   }
-
-  return null;
 }
 
 function mixRgb(a: RGB, b: RGB, t: number): RGB {
