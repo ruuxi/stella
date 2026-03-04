@@ -29,7 +29,6 @@ const filterTools = (
 const TRANSIENT_ALLOWED_TOOLS = new Set<string>([
   "WebSearch",
   "WebFetch",
-  "StoreSearch",
   "ListResources",
   "NoResponse",
 ]);

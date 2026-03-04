@@ -22,7 +22,6 @@ const ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS = new Set([
   "CronRun",
   "OpenCanvas",
   "CloseCanvas",
-  "StoreSearch",
   "GenerateApiSkill",
   "ListResources",
   "NoResponse",

@@ -8,22 +8,6 @@ const readBackendFile = (relativePath: string) =>
   readFileSync(path.join(backendRoot, relativePath), "utf-8");
 
 describe("security regressions", () => {
-  test("store package public APIs do not accept caller-supplied ownerId", () => {
-    const source = readBackendFile("convex/data/store_packages.ts");
-
-    // Use [^}]* instead of [\s\S]*? to stay within the args block and not
-    // cross into handler bodies or return validators.
-    expect(source).not.toMatch(
-      /export const install = mutation\(\{[\s\S]*?args:\s*\{[^}]*ownerId:\s*v\.string\(\)/,
-    );
-    expect(source).not.toMatch(
-      /export const uninstall = mutation\(\{[\s\S]*?args:\s*\{[^}]*ownerId:\s*v\.string\(\)/,
-    );
-    expect(source).not.toMatch(
-      /export const getInstalled = query\(\{[\s\S]*?args:\s*\{[^}]*ownerId:\s*v\.string\(\)/,
-    );
-  });
-
   test("public integration upsert is internal-only", () => {
     const source = readBackendFile("convex/data/integrations.ts");
     expect(source).toMatch(/export const upsertPublicIntegration = internalMutation\(/);

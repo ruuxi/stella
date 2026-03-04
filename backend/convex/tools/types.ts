@@ -30,7 +30,6 @@ export const BASE_TOOL_NAMES = [
   "RequestCredential",
   "SkillBash",
   "MediaGenerate",
-  "ManagePackage",
   // Backend tools (always available, server-side)
   "WebSearch",
   "WebFetch",
@@ -46,9 +45,7 @@ export const BASE_TOOL_NAMES = [
   "CronRun",
   "OpenCanvas",
   "CloseCanvas",
-  "StoreSearch",
   "GenerateApiSkill",
-  "SelfModInstallBlueprint",
   "ListResources",
   "NoResponse",
   // Orchestration tools

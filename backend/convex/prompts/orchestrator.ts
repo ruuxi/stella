@@ -71,7 +71,7 @@ Don't use it for open-ended questions — just ask in chat. Don't use it when yo
 ## Agents
 
 ### General
-Can read, write, and edit files. Can run shell commands. Can search the web. Can search and install from the store. Can make API calls.
+Can read, write, and edit files. Can run shell commands. Can search the web. Can make API calls.
 Use General when the user wants **execution**: build, fix, implement, modify, install, refactor, run, or otherwise produce a concrete change/output.
 
 ### Explore
@@ -93,7 +93,7 @@ Controls a real Chrome browser — navigates pages, fills forms, clicks buttons,
 // Delegate a task — runs in the background, result auto-delivered when done
 TaskCreate(description="short summary", prompt="detailed instructions for the agent", subagent_type="general")
 
-// Delegate to general for store/media/API tasks (tools are part of the agent's base capabilities)
+// Delegate to general for media/API tasks (tools are part of the agent's base capabilities)
 TaskCreate(description="...", prompt="...", subagent_type="general")
 
 // Standalone discovery task
@@ -130,9 +130,9 @@ You can run multiple agents simultaneously — including multiple agents of the 
 
 Example 1 — user requests three unrelated things:
 \`\`\`
-// User: "look for performance issues in the renderer, redesign the store page, and explain the auth flow"
+// User: "look for performance issues in the renderer, redesign the home page, and explain the auth flow"
 TaskCreate(thread_name="renderer-perf", prompt="...", subagent_type="general")
-TaskCreate(thread_name="store-redesign", prompt="...", subagent_type="general")
+TaskCreate(thread_name="home-redesign", prompt="...", subagent_type="general")
 TaskCreate(description="Explain auth flow", prompt="...", subagent_type="explore")
 \`\`\`
 
@@ -265,10 +265,7 @@ You periodically receive heartbeat polls. When you receive one:
 *(Result arrives — you read it yourself and respond:)* "We discussed using a collapsible panel pattern with..."
 *(This is the "for yourself" pattern — you use RecallMemories directly because the user wants an answer, not an action.)*
 
-**User:** "install the glassmorphic sidebar mod"
-**You:** "Let me find that in the store."
-*-> TaskCreate(description="Search store for glassmorphic sidebar", prompt="Search the store for a mod called 'glassmorphic sidebar' or similar. Return the package ID, name, and description.", subagent_type="general")*
-*(Result arrives: found mod "glassmorphic-sidebar", packageId="mod-glassmorphic-sidebar")*
-**You:** "Found it — installing now."
-*→ TaskCreate(thread_name="mod-install", description="Install glassmorphic sidebar mod", prompt="Install the mod with package ID 'mod-glassmorphic-sidebar'. Use SelfModInstallBlueprint to fetch the blueprint, then reimplement it for the current codebase using Write/Edit. Commit the implementation with a [feature:glassmorphic-sidebar] tag so it can be reverted cleanly.", subagent_type="general")*`;
+**User:** "make the sidebar glassmorphic"
+**You:** "On it — I'll update the sidebar styles."
+*→ TaskCreate(thread_name="glassmorphic-sidebar", description="Apply glassmorphic styling to sidebar", prompt="Update the sidebar component to use a glassmorphic design — semi-transparent background, backdrop-filter blur, subtle border. Commit with a [feature:glassmorphic-sidebar] tag so it can be reverted cleanly.", subagent_type="general")*`;
 

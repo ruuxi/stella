@@ -202,40 +202,6 @@ For multi-file apps that need their own npm dependencies, persistent state, or c
 \`CloseCanvas()\` — closes the canvas panel.`,
 };
 
-const STORE_MANAGEMENT: BuiltinSkill = {
-  id: "store-management",
-  name: "Store Search & Package Installation",
-  description:
-    "Search the app store and install packages (skills, themes, mini-apps).",
-  agentTypes: ["general"],
-  tags: ["store", "packages", "install"],
-  source: "builtin",
-  enabled: true,
-  markdown: `# Store Search & Package Installation
-
-## Searching
-\`StoreSearch(query, type?)\` — types: skill, mod, theme, canvas.
-
-Search proactively when the user asks for something that might exist as a package. Suggest packages conversationally — don't force installation.
-
-## Installing
-
-**Install any package (single tool)**:
-\`ManagePackage({ action: "install", package: { type: "...", ... } })\`
-
-- Skill install:
-\`ManagePackage({ action: "install", package: { type: "skill", packageId, skillId, name, markdown, agentTypes?, tags? } })\`
-- Theme install:
-\`ManagePackage({ action: "install", package: { type: "theme", packageId, themeId, name, light, dark } })\`
-- Mini-app install:
-\`ManagePackage({ action: "install", package: { type: "canvas", packageId, workspaceId?, name?, dependencies?, source? } })\`
-
-## Uninstalling
-\`ManagePackage({ action: "uninstall", package: { type, localId, packageId? } })\`
-- type: "skill" | "theme" | "canvas" | "mod"
-- localId: the local identifier (skillId, themeId, workspaceId, etc.)`,
-};
-
 const API_SKILL_GENERATION: BuiltinSkill = {
   id: "api-skill-generation",
   name: "API Skill Generation",
@@ -350,12 +316,12 @@ frontend/src/
 │       └── home-view.css       # Home view styles
 ├── components/
 │   ├── workspace/
-│   │   └── WorkspaceArea.tsx   # View router (home/store/app/onboarding)
+│   │   └── WorkspaceArea.tsx   # View router (home/app/onboarding)
 │   ├── canvas/
 │   │   ├── CanvasErrorBoundary.tsx # Error boundary for canvas renderers
 │   │   └── renderers/          # panel.tsx (Vite dynamic), appframe.tsx (iframe)
 │   ├── chat/                   # Message rendering (Markdown, TurnItem, etc.)
-│   ├── Sidebar.tsx             # Left navigation (Home, Store, Connect)
+│   ├── Sidebar.tsx             # Left navigation (Home, Connect)
 │   ├── ErrorBoundary.tsx       # App-level error boundary with revert
 │   ├── button.tsx / .css       # Button component (pattern for all primitives)
 │   └── ...                     # 30+ component files (each with paired .css)
@@ -388,10 +354,9 @@ frontend/src/
 \`\`\`
 
 ## View System
-The app uses a \`ViewType = 'home' | 'store' | 'app'\` to control what \`WorkspaceArea\` displays:
+The app uses a \`ViewType = 'home' | 'app'\` to control what \`WorkspaceArea\` displays:
 
 - **\`'home'\`** (default): Renders \`HomeView\` — built-in component at \`src/views/home/HomeView.tsx\` showing welcome suggestions, active tasks, and schedule. To customize the home screen, edit this file directly.
-- **\`'store'\`**: Renders \`StoreView\` for browsing/installing packages.
 - **\`'app'\`**: Renders a canvas app (set by \`OpenCanvas\` tool or \`canvas_command\` events). Routes by URL: if \`canvas.url\` → iframe (\`AppframeRenderer\`), otherwise → Vite dynamic import (\`PanelRenderer\`).
 
 \`WorkspaceArea.tsx\` handles the routing. \`use-canvas-commands.ts\` automatically sets view to \`'app'\` when a canvas opens, \`'home'\` when it closes.
@@ -402,7 +367,6 @@ The app uses a \`ViewType = 'home' | 'store' | 'app'\` to control what \`Workspa
 ├── Sidebar (left nav, ~240px)
 ├── WorkspaceArea (flex: 1)
 │   ├── HomeView (default — suggestions, tasks, schedule)
-│   ├── StoreView (when view === 'store')
 │   └── Canvas content (when view === 'app' && canvas active)
 └── ChatPanel (right side, collapsible)
     └── ChatColumn (messages + composer)
@@ -451,7 +415,7 @@ const BLUEPRINT_MANAGEMENT: BuiltinSkill = {
   id: "blueprint-management",
   name: "Blueprint Management",
   description:
-    "Create shareable blueprints from features, or install blueprints from the store. Activate before blueprint operations.",
+    "Create shareable blueprints from features. Activate before blueprint operations.",
   agentTypes: ["general"],
   tags: ["blueprint", "self-mod", "sharing"],
   source: "builtin",
@@ -466,25 +430,6 @@ When the user wants to share a feature:
    - **description**: clear user-facing summary of what the feature does
    - **implementation**: developer-facing explanation of how it was built
 3. Use Stella's built-in export/share flow (host-managed) to publish the feature reference
-
-## Installing Blueprints (implementing someone else's feature)
-
-1. Call \`SelfModInstallBlueprint(package_id)\` to fetch the blueprint
-2. Read the description, implementation notes, and reference files carefully
-3. Understand the **INTENT** - what the feature does and why the original author made specific choices
-4. Examine the current codebase before implementing:
-   - Has the target component/file changed since the blueprint was created?
-   - Are there better patterns available now?
-   - Will the changes interact with the current theme?
-5. Choose your approach based on what the feature needs:
-   - **CSS variable overrides**: For pure style changes (colors, spacing, fonts)
-   - **Component edits**: For structural changes to existing components
-   - **New files**: For entirely new features or components
-6. Re-implement the feature fresh, adapting to the current codebase using normal Write/Edit operations
-7. Commit your work with the same \`[feature:<id>]\` tag so history stays grouped
-8. Include \`package.json\` and lockfile changes in the same feature commit trail
-9. You are NOT copying files - you are understanding the blueprint and making engineering decisions about how to achieve the same result in the current codebase
-10. After the response completes, summarize what you did differently from the blueprint and why
 
 ## Safety
 - Always Read files before modifying - understand existing patterns
@@ -859,7 +804,6 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   SCHEDULING,
   // General agent
   WORKSPACE,
-  STORE_MANAGEMENT,
   API_SKILL_GENERATION,
   MEDIA_GENERATION,
   // Self-mod (now on general agent)
