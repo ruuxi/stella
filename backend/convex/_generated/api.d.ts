@@ -28,7 +28,6 @@ import type * as agent_model_resolver from "../agent/model_resolver.js";
 import type * as agent_orchestrator_prompt_context from "../agent/orchestrator_prompt_context.js";
 import type * as agent_orchestrator_turn from "../agent/orchestrator_turn.js";
 import type * as agent_prompt_builder from "../agent/prompt_builder.js";
-import type * as agent_self_mod_features from "../agent/self_mod_features.js";
 import type * as agent_suggestions from "../agent/suggestions.js";
 import type * as agent_tasks from "../agent/tasks.js";
 import type * as ai_proxy from "../ai_proxy.js";
@@ -166,7 +165,6 @@ declare const fullApi: ApiFromModules<{
   "agent/orchestrator_prompt_context": typeof agent_orchestrator_prompt_context;
   "agent/orchestrator_turn": typeof agent_orchestrator_turn;
   "agent/prompt_builder": typeof agent_prompt_builder;
-  "agent/self_mod_features": typeof agent_self_mod_features;
   "agent/suggestions": typeof agent_suggestions;
   "agent/tasks": typeof agent_tasks;
   ai_proxy: typeof ai_proxy;

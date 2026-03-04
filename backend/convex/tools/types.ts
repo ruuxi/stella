@@ -30,11 +30,6 @@ export const BASE_TOOL_NAMES = [
   "RequestCredential",
   "SkillBash",
   "MediaGenerate",
-  "SelfModStart",
-  "SelfModApply",
-  "SelfModRevert",
-  "SelfModStatus",
-  "SelfModPackage",
   "ManagePackage",
   // Backend tools (always available, server-side)
   "WebSearch",

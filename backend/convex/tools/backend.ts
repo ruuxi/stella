@@ -1038,7 +1038,7 @@ export const createBackendTools = (
         "Usage:\n" +
         "- Returns the blueprint's description, implementation notes, and reference files.\n" +
         "- You are NOT copying files — read the blueprint to understand the intent, then reimplement for the current codebase.\n" +
-        "- Use SelfModStart to create a feature, implement with Write/Edit, then SelfModApply.",
+        "- Implement with Write/Edit directly, then commit with a [feature:<id>] tag.",
       inputSchema: z.object({
         package_id: z.string().min(1).describe("The store package ID to install"),
       }),
@@ -1094,7 +1094,7 @@ export const createBackendTools = (
 
         parts.push("## Instructions");
         parts.push("Re-implement this feature for the current codebase. Read the reference files to understand what was done, then use Write/Edit to implement it your way.");
-        parts.push("Use SelfModStart to create a feature, then SelfModApply when done.");
+        parts.push("Commit completed changes with a [feature:<id>] tag when done.");
         parts.push("You are NOT copying files — understand the blueprint's intent and adapt to the current codebase.");
 
         return parts.join("\n");
@@ -1326,4 +1326,5 @@ export const createBackendTools = (
     }),
   };
 };
+
 
