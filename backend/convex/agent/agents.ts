@@ -126,8 +126,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "IntegrationRequest",
       "SkillBash",
       "ListResources",
-      "StoreSearch",
-      "ManagePackage",
       "GenerateApiSkill",
       "MediaGenerate",
       "ActivateSkill",

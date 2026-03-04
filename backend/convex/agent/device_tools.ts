@@ -278,10 +278,5 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       inputSchema: TOOL_SCHEMAS.MediaGenerate,
       execute: (args) => call("MediaGenerate", args),
     }),
-    ManagePackage: tool({
-      description: TOOL_DESCRIPTIONS.ManagePackage,
-      inputSchema: TOOL_SCHEMAS.ManagePackage,
-      execute: (args) => call("ManagePackage", args),
-    }),
   };
 };
