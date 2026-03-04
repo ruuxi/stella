@@ -133,6 +133,13 @@ function createProviderModel(modelString: string, apiKey: string): LanguageModel
       });
       return opencode(modelName);
     }
+    case "inception": {
+      const inception = createOpenAI({
+        apiKey,
+        baseURL: "https://api.inceptionlabs.ai/v1",
+      });
+      return inception(modelName);
+    }
     // Node-only providers — require "use node" runtime.
     // In V8 context, these fall through to OpenRouter/gateway via BYOK chain.
     // Direct SDK support is available via the llmProxy reverse proxy path.

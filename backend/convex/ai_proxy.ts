@@ -386,6 +386,7 @@ const STATIC_PROVIDER_UPSTREAMS: Record<string, string> = {
   "github-copilot": "https://api.githubcopilot.com",
   "github-copilot-enterprise": "https://api.githubcopilot.com",
   opencode: "https://opencode.ai/zen/v1",
+  inception: "https://api.inceptionlabs.ai",
 };
 
 const DYNAMIC_PROVIDER_IDS = new Set([
@@ -476,6 +477,7 @@ const STRIP_REQUEST_HEADERS = new Set([
   "x-agent-type",
   "connection",
   "transfer-encoding",
+  "content-length",
 ]);
 
 /** Build upstream-specific auth headers */
@@ -506,6 +508,7 @@ async function buildUpstreamAuthHeaders(
     case "github-copilot":
     case "github-copilot-enterprise":
     case "opencode":
+    case "inception":
       return {
         Authorization: `Bearer ${apiKey}`,
       };
@@ -710,7 +713,11 @@ async function forwardRequest(
     const responseHeaders: Record<string, string> = { ...corsHeaders };
     upstreamResponse.headers.forEach((value, key) => {
       const lower = key.toLowerCase();
-      if (lower !== "set-cookie" && lower !== "www-authenticate") {
+      if (
+        lower !== "set-cookie" &&
+        lower !== "www-authenticate" &&
+        !lower.startsWith("access-control-")
+      ) {
         responseHeaders[key] = value;
       }
     });
