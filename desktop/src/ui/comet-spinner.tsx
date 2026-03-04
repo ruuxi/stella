@@ -1,7 +1,8 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useMemo, useId } from "react";
 import "./comet-spinner.css";
 
 const CYCLE_DURATION_MS = 4000;
+const SEGMENTS = 60;
 
 const COLOR_VARS = [
   "--spinner-color-1",
@@ -12,14 +13,18 @@ const COLOR_VARS = [
 
 type RGB = [number, number, number];
 
+let _colorCtx: CanvasRenderingContext2D | null = null;
+
 function parseRgb(color: string): RGB {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = color;
-  ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  if (!_colorCtx) {
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = 1;
+    _colorCtx = c.getContext("2d")!;
+  }
+  _colorCtx.fillStyle = color;
+  _colorCtx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = _colorCtx.getImageData(0, 0, 1, 1).data;
   return [r, g, b];
 }
 
@@ -63,18 +68,48 @@ export function CometSpinner({
   headWidth = 4,
   className,
 }: CometSpinnerProps) {
-  const segments = 60;
-  const half = size / 2;
-  const r = half - 2;
+  const rawId = useId();
+  const filterId = `comet-glow-${rawId.replace(/:/g, "")}`;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const colorsRef = useRef<RGB[]>(resolveThemeColors());
 
-  const [colors, setColors] = useState<RGB[]>(() => resolveThemeColors());
-  const [time, setTime] = useState(0);
-  const rafRef = useRef(0);
-  const startRef = useRef(0);
+  const segmentGeo = useMemo(() => {
+    const half = size / 2;
+    const r = half - 2;
+    const geo: Array<{
+      x0: number; y0: number; x1: number; y1: number;
+      strokeWidth: number; baseOpacity: number; progress: number;
+    }> = [];
 
+    for (let i = 0; i < SEGMENTS; i++) {
+      const t0 = (i / SEGMENTS) * arcSpan;
+      const t1 = ((i + 1) / SEGMENTS) * arcSpan;
+      const angle0 = -Math.PI / 2 - t0 * 2 * Math.PI;
+      const angle1 = -Math.PI / 2 - t1 * 2 * Math.PI;
+      const progress = i / SEGMENTS;
+
+      geo.push({
+        x0: half + r * Math.cos(angle0),
+        y0: half + r * Math.sin(angle0),
+        x1: half + r * Math.cos(angle1),
+        y1: half + r * Math.sin(angle1),
+        strokeWidth: headWidth * (1 - progress),
+        baseOpacity: 1 - progress * 0.85,
+        progress,
+      });
+    }
+
+    return {
+      geo,
+      headX: half + r * Math.cos(-Math.PI / 2),
+      headY: half + r * Math.sin(-Math.PI / 2),
+    };
+  }, [size, arcSpan, headWidth]);
+
+  // Watch for theme changes — update ref only, no re-render needed
   useEffect(() => {
     const observer = new MutationObserver(() => {
-      setColors(resolveThemeColors());
+      colorsRef.current = resolveThemeColors();
     });
     observer.observe(document.documentElement, {
       attributes: true,
@@ -83,42 +118,44 @@ export function CometSpinner({
     return () => observer.disconnect();
   }, []);
 
-  const tick = useCallback(() => {
-    const elapsed = performance.now() - startRef.current;
-    setTime((elapsed % CYCLE_DURATION_MS) / CYCLE_DURATION_MS);
-    rafRef.current = requestAnimationFrame(tick);
-  }, []);
-
+  // rAF animation loop — direct DOM mutation, bypasses React reconciliation
   useEffect(() => {
-    startRef.current = performance.now();
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [tick]);
+    let raf = 0;
+    const start = performance.now();
+    const { geo } = segmentGeo;
 
-  const segmentGeo = [];
-  for (let i = 0; i < segments; i++) {
-    const t0 = (i / segments) * arcSpan;
-    const t1 = ((i + 1) / segments) * arcSpan;
-    const angle0 = -Math.PI / 2 - t0 * 2 * Math.PI;
-    const angle1 = -Math.PI / 2 - t1 * 2 * Math.PI;
-    const progress = i / segments;
+    const tick = () => {
+      const svg = svgRef.current;
+      if (!svg) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
 
-    segmentGeo.push({
-      x0: half + r * Math.cos(angle0),
-      y0: half + r * Math.sin(angle0),
-      x1: half + r * Math.cos(angle1),
-      y1: half + r * Math.sin(angle1),
-      strokeWidth: headWidth * (1 - progress),
-      baseOpacity: 1 - progress * 0.85,
-      progress,
-    });
-  }
+      const elapsed = performance.now() - start;
+      const time = (elapsed % CYCLE_DURATION_MS) / CYCLE_DURATION_MS;
+      const colors = colorsRef.current;
 
-  const headX = half + r * Math.cos(-Math.PI / 2);
-  const headY = half + r * Math.sin(-Math.PI / 2);
+      const lines = svg.querySelectorAll<SVGLineElement>("line");
+      for (let i = 0; i < lines.length; i++) {
+        const pos = time - geo[i].progress * 0.4;
+        lines[i].setAttribute("stroke", interpolateColor(colors, pos));
+      }
+
+      const circle = svg.querySelector<SVGCircleElement>("circle");
+      if (circle) {
+        circle.setAttribute("fill", interpolateColor(colors, time));
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [segmentGeo]);
 
   return (
     <svg
+      ref={svgRef}
       viewBox={`0 0 ${size} ${size}`}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -126,7 +163,7 @@ export function CometSpinner({
       style={{ animation: "selfmod-ring-spin 2s linear infinite" }}
     >
       <defs>
-        <filter id="comet-glow" x="-50%" y="-50%" width="200%" height="200%">
+        <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="3" result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
@@ -134,28 +171,23 @@ export function CometSpinner({
           </feMerge>
         </filter>
       </defs>
-      {segmentGeo.map((seg, i) => {
-        const pos = time - seg.progress * 0.4;
-        return (
-          <line
-            key={i}
-            x1={seg.x0}
-            y1={seg.y0}
-            x2={seg.x1}
-            y2={seg.y1}
-            stroke={interpolateColor(colors, pos)}
-            strokeWidth={seg.strokeWidth}
-            strokeLinecap="round"
-            opacity={seg.baseOpacity}
-          />
-        );
-      })}
+      {segmentGeo.geo.map((seg, i) => (
+        <line
+          key={i}
+          x1={seg.x0}
+          y1={seg.y0}
+          x2={seg.x1}
+          y2={seg.y1}
+          strokeWidth={seg.strokeWidth}
+          strokeLinecap="round"
+          opacity={seg.baseOpacity}
+        />
+      ))}
       <circle
-        cx={headX}
-        cy={headY}
+        cx={segmentGeo.headX}
+        cy={segmentGeo.headY}
         r={2.5}
-        fill={interpolateColor(colors, time)}
-        filter="url(#comet-glow)"
+        filter={`url(#${filterId})`}
       />
     </svg>
   );
