@@ -49,9 +49,6 @@ import {
   type StateContext,
 } from "./tools-state.js";
 import { handleAskUser, handleRequestCredential, type UserToolsConfig } from "./tools-user.js";
-import {
-  handleManagePackage,
-} from "./tools-store.js";
 
 // Re-export types for external consumers
 export type { ToolContext, ToolResult };
@@ -176,8 +173,6 @@ export const createToolHost = ({
     // Media tools (not yet implemented)
     MediaGenerate: async () => notConfigured("MediaGenerate"),
 
-    // Store tools
-    ManagePackage: (args) => handleManagePackage(args),
   };
 
   const executeTool = async (

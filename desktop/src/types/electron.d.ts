@@ -330,36 +330,6 @@ export type ElectronAgentApi = {
   listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>
 }
 
-export type ElectronStoreApi = {
-  installSkill: (payload: {
-    packageId: string
-    skillId: string
-    name: string
-    markdown: string
-    agentTypes?: string[]
-    tags?: string[]
-  }) => Promise<{ installed: boolean; path?: string }>
-  installTheme: (payload: {
-    packageId: string
-    themeId: string
-    name: string
-    light: Record<string, string>
-    dark: Record<string, string>
-  }) => Promise<{ installed: boolean; themeId?: string }>
-  installCanvas: (payload: {
-    packageId: string
-    workspaceId?: string
-    name: string
-    dependencies?: Record<string, string>
-    source?: string
-  }) => Promise<{ installed: boolean; workspaceId?: string; path?: string }>
-  uninstall: (payload: {
-    packageId: string
-    type: string
-    localId: string
-  }) => Promise<{ uninstalled: boolean; requiresRevert?: boolean; note?: string }>
-}
-
 export type ElectronSystemApi = {
   getDeviceId: () => Promise<string | null>
   configurePiRuntime: (config: { convexUrl?: string; convexSiteUrl?: string }) => Promise<{ deviceId: string | null }>
@@ -415,7 +385,6 @@ export type ElectronApi = {
   theme: ElectronThemeApi
   voice: ElectronVoiceApi
   agent: ElectronAgentApi
-  store: ElectronStoreApi
   system: ElectronSystemApi
   browser: ElectronBrowserApi
 }
