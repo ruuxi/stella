@@ -270,4 +270,5 @@ You periodically receive heartbeat polls. When you receive one:
 *-> TaskCreate(description="Search store for glassmorphic sidebar", prompt="Search the store for a mod called 'glassmorphic sidebar' or similar. Return the package ID, name, and description.", subagent_type="general")*
 *(Result arrives: found mod "glassmorphic-sidebar", packageId="mod-glassmorphic-sidebar")*
 **You:** "Found it — installing now."
-*→ TaskCreate(thread_name="mod-install", description="Install glassmorphic sidebar mod", prompt="Install the mod with package ID 'mod-glassmorphic-sidebar'. Use SelfModInstallBlueprint to fetch the blueprint, then reimplement it for the current codebase using Write/Edit. Changes to frontend/src/ are auto-staged and auto-applied.", subagent_type="general")*`;
+*→ TaskCreate(thread_name="mod-install", description="Install glassmorphic sidebar mod", prompt="Install the mod with package ID 'mod-glassmorphic-sidebar'. Use SelfModInstallBlueprint to fetch the blueprint, then reimplement it for the current codebase using Write/Edit. Commit the implementation with a [feature:glassmorphic-sidebar] tag so it can be reverted cleanly.", subagent_type="general")*`;
+

@@ -278,16 +278,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       inputSchema: TOOL_SCHEMAS.MediaGenerate,
       execute: (args) => call("MediaGenerate", args),
     }),
-    SelfModRevert: tool({
-      description: TOOL_DESCRIPTIONS.SelfModRevert,
-      inputSchema: TOOL_SCHEMAS.SelfModRevert,
-      execute: (args) => call("SelfModRevert", args),
-    }),
-    SelfModPackage: tool({
-      description: TOOL_DESCRIPTIONS.SelfModPackage,
-      inputSchema: TOOL_SCHEMAS.SelfModPackage,
-      execute: (args) => call("SelfModPackage", args),
-    }),
     ManagePackage: tool({
       description: TOOL_DESCRIPTIONS.ManagePackage,
       inputSchema: TOOL_SCHEMAS.ManagePackage,

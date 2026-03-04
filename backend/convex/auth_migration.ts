@@ -31,7 +31,6 @@ const OWNER_TABLES: Array<{
   { table: "secret_access_audit", index: "by_ownerId_and_createdAt" },
   { table: "user_integrations", index: "by_ownerId_and_updatedAt" },
   { table: "remote_computers", index: "by_ownerId_and_updatedAt" },
-  { table: "self_mod_features", index: "by_ownerId_and_updatedAt" },
   { table: "usage_logs", index: "by_ownerId_and_createdAt" },
   { table: "persist_chunks", index: "by_chunkKey" },
   { table: "store_installs", index: "by_ownerId_and_installedAt" },
