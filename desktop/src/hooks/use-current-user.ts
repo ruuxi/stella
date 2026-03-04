@@ -1,5 +1,5 @@
 import { useConvexAuth, useQuery } from "convex/react";
-import { api } from "../convex/api";
+import { api } from "@/convex/api";
 
 export type CurrentUser = {
   email?: string;
@@ -15,3 +15,4 @@ export function useCurrentUser(): { user: CurrentUser; isAuthenticated: boolean 
   ) as CurrentUser;
   return { user, isAuthenticated };
 }
+

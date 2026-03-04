@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
-import { StellaAnimation, type StellaAnimationHandle } from "@/components/StellaAnimation";
+import { StellaAnimation, type StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
 
 const ORB_POSITION_KEY = "stella:orb-position";
 const DEFAULT_OFFSET = { right: 32, bottom: 32 };
@@ -188,3 +188,4 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
     </div>
   );
 });
+

@@ -1,5 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
-import { useChatStore } from "../app/state/chat-store";
+import { useChatStore } from "@/providers/chat-store";
 import type { AgentStreamEvent } from "./streaming/streaming-types";
 
 /** Mutable refs shared with the streaming chat hook. */
@@ -124,3 +124,5 @@ export function useResumeAgentRun({
     setPendingUserMessageId,
   ]);
 }
+
+

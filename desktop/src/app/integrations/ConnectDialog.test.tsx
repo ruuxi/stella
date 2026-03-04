@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ConnectDialog } from "./ConnectDialog";
 import { INTEGRATIONS } from "./integration-configs";
 
-vi.mock("@/components/dialog", () => ({
+vi.mock("@/ui/dialog", () => ({
   Dialog: ({ open, onOpenChange, children }: { open: boolean; onOpenChange: (open: boolean) => void; children: React.ReactNode }) =>
     open ? (
       <div data-testid="dialog-root">
@@ -83,3 +83,4 @@ describe("ConnectDialog", () => {
     expect(screen.queryByTestId("detail-area")).toBeNull();
   });
 });
+

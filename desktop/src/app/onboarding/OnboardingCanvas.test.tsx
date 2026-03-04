@@ -15,7 +15,7 @@ vi.mock("./panels/WeatherStationDemo", () => ({
 }));
 
 // Mock the Spinner component
-vi.mock("../spinner", () => ({
+vi.mock("@/ui/spinner", () => ({
   Spinner: () => <div data-testid="spinner">Loading...</div>,
 }));
 
@@ -212,3 +212,4 @@ describe("OnboardingCanvas", () => {
     expect(canvas).not.toBeNull();
   });
 });
+

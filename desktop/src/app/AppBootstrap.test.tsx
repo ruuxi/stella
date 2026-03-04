@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AppBootstrap } from "./AppBootstrap";
 
 const mockSetConversationId = vi.fn();
-vi.mock("./state/ui-state", () => ({
+vi.mock("../providers/ui-state", () => ({
   useUiState: () => ({ setConversationId: mockSetConversationId }),
 }));
 
@@ -23,7 +23,7 @@ vi.mock("convex/react", () => ({
   useQuery: () => mockUseQuery(),
 }));
 
-vi.mock("../convex/api", () => ({
+vi.mock("@/convex/api", () => ({
   api: {
     conversations: {
       getOrCreateDefaultConversation: "getOrCreateDefaultConversation",
@@ -51,11 +51,11 @@ const mockBuildLocalSyncMessages = vi.fn(() => [] as Array<{
 }>);
 const mockGetLocalSyncCheckpoint = vi.fn((): string | null => null);
 const mockSetLocalSyncCheckpoint = vi.fn();
-vi.mock("../services/device", () => ({
+vi.mock("@/services/device", () => ({
   configurePiRuntime: () => mockConfigurePiRuntime(),
   getOrCreateDeviceId: () => mockGetOrCreateDeviceId(),
 }));
-vi.mock("../services/local-chat-store", () => ({
+vi.mock("@/services/local-chat-store", () => ({
   getOrCreateLocalConversationId: () => mockGetOrCreateLocalConversationId(),
   buildLocalSyncMessages: () => mockBuildLocalSyncMessages(),
   getLocalSyncCheckpoint: () => mockGetLocalSyncCheckpoint(),
@@ -292,3 +292,5 @@ describe("AppBootstrap", () => {
     });
   });
 });
+
+

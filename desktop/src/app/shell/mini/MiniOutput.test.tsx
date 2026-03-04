@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { MiniOutput } from "./MiniOutput";
 
-vi.mock("../ConversationEvents", () => ({
+vi.mock("@/app/chat/ConversationEvents", () => ({
   ConversationEvents: (props: Record<string, unknown>) => (
     <div data-testid="conversation-events" data-maxitems={props.maxItems} />
   ),
@@ -60,3 +60,4 @@ describe("MiniOutput", () => {
     expect(root.classList.contains("at-bottom")).toBe(true);
   });
 });
+

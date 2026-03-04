@@ -1,4 +1,4 @@
-import { type StorePackage, TYPE_GRADIENTS, TYPE_ICONS } from "../constants";
+import { type StorePackage, TYPE_GRADIENTS, TYPE_ICONS } from "./constants";
 
 interface PackageDetailProps {
   pkg?: StorePackage;
@@ -90,3 +90,4 @@ export function PackageDetail({
     </div>
   );
 }
+

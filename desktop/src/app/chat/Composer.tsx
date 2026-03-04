@@ -3,12 +3,12 @@
  */
 
 import { useRef, useState } from "react";
-import type { ChatContext } from "../../types/electron";
-import { ComposerContextRow } from "./composer/ComposerContextRow";
+import type { ChatContext } from "@/types/electron";
+import { ComposerContextRow } from "./ComposerContextRow";
 import {
   resolveComposerContextState,
   resolveComposerPlaceholder,
-} from "./composer/composer-context";
+} from "./composer-context";
 
 type ComposerProps = {
   message: string;
@@ -158,3 +158,5 @@ export function Composer({
     </div>
   );
 }
+
+

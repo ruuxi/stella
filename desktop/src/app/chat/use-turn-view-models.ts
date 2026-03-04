@@ -1,20 +1,20 @@
 import { useMemo, useDeferredValue } from "react";
-import type { EventRecord } from "../../hooks/use-conversation-events";
-import type { MessagePayload } from "../../lib/event-transforms";
+import type { EventRecord } from "@/hooks/use-conversation-events";
+import type { MessagePayload } from "@/lib/event-transforms";
 import {
   groupEventsIntoTurns,
   getCurrentRunningTool,
   getRunningTasks,
   getEventText,
-} from "../../lib/event-transforms";
-import { useDepseudonymize } from "../../hooks/use-depseudonymize";
-import { isOrchestratorChatMessagePayload } from "../../components/chat/emotes/message-source";
+} from "@/lib/event-transforms";
+import { useDepseudonymize } from "@/hooks/use-depseudonymize";
+import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
 import {
   type TurnViewModel,
   getAttachments,
   getChannelEnvelope,
 } from "./MessageTurn";
-import type { SelfModAppliedData } from "../../hooks/use-streaming-chat";
+import type { SelfModAppliedData } from "@/hooks/use-streaming-chat";
 
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   if (!event?.payload || typeof event.payload !== "object") {
@@ -155,3 +155,5 @@ export function useTurnViewModels(opts: {
     runningTasks,
   };
 }
+
+

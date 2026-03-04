@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import React from "react";
 import type { TurnViewModel } from "./MessageTurn";
-import type { TaskItem } from "../../lib/event-transforms";
+import type { TaskItem } from "@/lib/event-transforms";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 // Mock useTurnViewModels — we control what it returns per test
@@ -30,7 +30,7 @@ vi.mock("./MessageTurn", async () => {
 });
 
 // Mock TaskIndicator as a simple div
-vi.mock("../../components/chat/TaskIndicator", () => ({
+vi.mock("@/app/chat/TaskIndicator", () => ({
   TaskIndicator: ({ tasks }: { tasks: TaskItem[] }) => (
     <div data-testid="task-indicator">Tasks: {tasks.length}</div>
   ),
@@ -612,3 +612,5 @@ describe("ConversationEvents", () => {
     });
   });
 });
+
+

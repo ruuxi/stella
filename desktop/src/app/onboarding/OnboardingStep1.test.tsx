@@ -26,7 +26,7 @@ vi.mock("./OnboardingMockWindows", () => ({
   ),
 }));
 
-vi.mock("../InlineAuth", () => ({
+vi.mock("../auth/InlineAuth", () => ({
   InlineAuth: (props: any) => (
     <div data-testid="inline-auth">
       {props.onSkip ? (
@@ -38,7 +38,7 @@ vi.mock("../InlineAuth", () => ({
   ),
 }));
 
-vi.mock("../../theme/theme-context", () => ({
+vi.mock("@/theme/theme-context", () => ({
   useTheme: vi.fn(() => ({
     themeId: "oc1",
     themes: [
@@ -80,7 +80,7 @@ vi.mock("@/convex/api", () => ({
   },
 }));
 
-vi.mock("../../app/state/ui-state", () => ({
+vi.mock("@/providers/ui-state", () => ({
   useUiState: () => ({ state: { isVoiceActive: false }, updateState: vi.fn() }),
 }));
 
@@ -775,3 +775,6 @@ describe("OnboardingStep1", () => {
     });
   });
 });
+
+
+

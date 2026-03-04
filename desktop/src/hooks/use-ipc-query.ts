@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MiniBridgeRequest, MiniBridgeResponse } from "../types/electron";
+import type { MiniBridgeRequest, MiniBridgeResponse } from "@/types/electron";
 
 type UseIpcQueryOptions<TData> = {
   enabled?: boolean;
@@ -77,3 +77,4 @@ export function useIpcQuery<TData>({
     refetch: runQuery,
   };
 }
+

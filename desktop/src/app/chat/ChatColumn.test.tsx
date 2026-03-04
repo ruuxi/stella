@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
-import type { StellaAnimationHandle } from "../../components/ascii-creature/StellaAnimation";
-import { ChatColumn } from "./ChatColumn";
-import type { ChatColumnProps } from "./ChatColumn";
+import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
+import { ChatColumn } from "../chat/ChatColumn";
+import type { ChatColumnProps } from "../chat/ChatColumn";
 
-vi.mock("../ConversationEvents", () => ({
+vi.mock("./ConversationEvents", () => ({
   ConversationEvents: () => <div data-testid="conversation-events" />,
 }));
 
-vi.mock("./OnboardingOverlay", () => ({
+vi.mock("../onboarding/OnboardingOverlay", () => ({
   OnboardingView: () => <div data-testid="onboarding-view" />,
 }));
 
@@ -17,11 +17,11 @@ vi.mock("./Composer", () => ({
   Composer: () => <div data-testid="composer" />,
 }));
 
-vi.mock("../../components/chat/CommandChips", () => ({
+vi.mock("@/app/chat/CommandChips", () => ({
   CommandChips: () => <div data-testid="command-chips" />,
 }));
 
-vi.mock("../../hooks/use-command-suggestions", () => ({
+vi.mock("@/hooks/use-command-suggestions", () => ({
   useCommandSuggestions: () => [],
 }));
 
@@ -162,3 +162,6 @@ describe("ChatColumn", () => {
     expect(container.querySelector(".full-body-main")).toBeTruthy();
   });
 });
+
+
+

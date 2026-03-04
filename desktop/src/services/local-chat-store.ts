@@ -1,4 +1,4 @@
-import { type EventRecord, getEventText } from "../lib/event-transforms";
+import { type EventRecord, getEventText } from "@/lib/event-transforms";
 import {
   eventsToHistoryMessages,
   selectRecentByTokenBudget,
@@ -339,3 +339,4 @@ export const subscribeToLocalChatUpdates = (listener: () => void): (() => void) 
     window.removeEventListener("storage", onStorage);
   };
 };
+

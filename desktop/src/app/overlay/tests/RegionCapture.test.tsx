@@ -18,15 +18,15 @@ const mockElectronApi: Record<string, unknown> = {
   capture: mockCaptureApi,
 };
 
-vi.mock("../services/electron", () => ({
+vi.mock("@/services/electron", () => ({
   getElectronApi: () => mockElectronApi,
 }));
 
-vi.mock("../screens/region-capture-vacuum", () => ({
+vi.mock("@/app/overlay/region-capture-vacuum", () => ({
   runVacuumEffect: (...args: unknown[]) => mockRunVacuumEffect(...args),
 }));
 
-import { RegionCapture } from "../screens/RegionCapture";
+import { RegionCapture } from "@/app/overlay/RegionCapture";
 
 // --- Tests ---
 
@@ -222,3 +222,6 @@ describe("RegionCapture", () => {
     ).toBeInTheDocument();
   });
 });
+
+
+

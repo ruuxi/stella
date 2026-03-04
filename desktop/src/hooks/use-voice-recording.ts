@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { StreamingTranscribeSession } from "../services/speech-to-text";
+import type { StreamingTranscribeSession } from "@/services/speech-to-text";
 
 interface UseVoiceRecordingOptions {
   isActive: boolean;
@@ -13,12 +13,12 @@ interface UseVoiceRecordingResult {
 }
 
 const MAX_RECORDING_MS = 5 * 60 * 1000;
-let speechToTextModulePromise: Promise<typeof import("../services/speech-to-text")> | null =
+let speechToTextModulePromise: Promise<typeof import("@/services/speech-to-text")> | null =
   null;
 
 const loadSpeechToTextModule = () => {
   if (!speechToTextModulePromise) {
-    speechToTextModulePromise = import("../services/speech-to-text");
+    speechToTextModulePromise = import("@/services/speech-to-text");
   }
   return speechToTextModulePromise;
 };
@@ -154,3 +154,4 @@ export function useVoiceRecording({
 
   return { analyserRef, isRecording, isTranscribing };
 }
+

@@ -1,6 +1,6 @@
 import React from "react";
 import { type DiscoveryCategory, DISCOVERY_CATEGORIES } from "./use-onboarding-state";
-import { getPlatform } from "@/utils/platform";
+import { getPlatform } from "@/lib/platform";
 
 interface OnboardingDiscoveryProps {
   categoryStates: Record<DiscoveryCategory, boolean>;
@@ -45,3 +45,4 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
     </div>
   );
 };
+

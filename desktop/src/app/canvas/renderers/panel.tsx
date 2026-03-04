@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ComponentType } from 'react'
 import { CanvasErrorBoundary } from '../CanvasErrorBoundary'
-import { Spinner } from '@/components/spinner'
-import type { CanvasPayload } from '@/app/state/workspace-state'
+import { Spinner } from '@/ui/spinner'
+import type { CanvasPayload } from '@/providers/workspace-state'
 
 const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 const PANEL_IMPORT_ATTEMPTS = 3
@@ -90,13 +90,13 @@ const loadPanelComponent = async (
       // Try folder convention first (pages/{name}/index.tsx), then flat file ({name}.tsx)
       let mod: { default?: unknown } | undefined
       try {
-        mod = await import(/* @vite-ignore */ `/src/views/home/pages/${normalizedName}/index.tsx?t=${Date.now()}`)
+        mod = await import(/* @vite-ignore */ `/src/app/home/pages/${normalizedName}/index.tsx?t=${Date.now()}`)
       } catch {
         // Fall through to flat file.
       }
       if (!mod?.default) {
         const file = `${normalizedName}.tsx`
-        mod = await import(/* @vite-ignore */ `/src/views/home/pages/${file}?t=${Date.now()}`)
+        mod = await import(/* @vite-ignore */ `/src/app/home/pages/${file}?t=${Date.now()}`)
       }
 
       if (typeof mod?.default !== 'function') {
@@ -220,3 +220,5 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
 }
 
 export default PanelRenderer
+
+

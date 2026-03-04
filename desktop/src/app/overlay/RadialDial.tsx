@@ -7,11 +7,11 @@ import {
   type SVGProps
 } from 'react';
 import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
-import { RADIAL_SIZE } from '@/constants/layout'
-import { getElectronApi } from '../services/electron'
-import type { RadialWedge } from '../types/electron'
-import { useTheme } from '../theme/theme-context'
-import { StellaAnimation } from '../components/StellaAnimation'
+import { RADIAL_SIZE } from '@/lib/layout'
+import { getElectronApi } from '@/services/electron'
+import type { RadialWedge } from '@/types/electron'
+import { useTheme } from '@/theme/theme-context'
+import { StellaAnimation } from '@/app/shell/ascii-creature/StellaAnimation'
 import {
   initBlob,
   startOpen,
@@ -398,3 +398,6 @@ export function RadialDial() {
     </div>
   )
 }
+
+
+

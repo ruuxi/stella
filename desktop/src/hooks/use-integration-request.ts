@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { useAction } from 'convex/react'
-import { api } from '../convex/api'
+import { api } from '@/convex/api'
 
 type IntegrationRequestArgs = {
   provider: string
@@ -61,3 +61,4 @@ export const useIntegrationRequest = () => {
 
   return { execute, loading, error }
 }
+

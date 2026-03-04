@@ -23,20 +23,20 @@ vi.mock("convex/react", () => ({
   useQuery: (ref: unknown, args?: unknown) => mockUseQuery(ref, args),
 }));
 
-vi.mock("../app/state/chat-store", () => ({
+vi.mock("@/providers/chat-store", () => ({
   useChatStore: vi.fn(() => ({
     storageMode: mockStorageMode,
   })),
 }));
 
-vi.mock("../services/local-chat-store", () => ({
+vi.mock("@/services/local-chat-store", () => ({
   listLocalEvents: (conversationId: string, maxItems: number) =>
     mockListLocalEvents(conversationId, maxItems),
   subscribeToLocalChatUpdates: (listener: () => void) =>
     mockSubscribeToLocalChatUpdates(listener),
 }));
 
-vi.mock("../convex/api", () => ({
+vi.mock("@/convex/api", () => ({
   api: {
     events: {
       listEvents: "events:listEvents",
@@ -149,3 +149,5 @@ describe("useConversationEvents hook behavior", () => {
     expect(result.current.map((event) => event._id)).toEqual(["cloud-1"]);
   });
 });
+
+

@@ -7,19 +7,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useConvexAuth, useMutation, useAction } from 'convex/react'
-import { api } from '../../convex/api'
-import { useAccountMode } from '../../hooks/use-account-mode'
+import { api } from '@/convex/api'
+import { useAccountMode } from '@/hooks/use-account-mode'
 import {
   appendLocalEvent,
   buildLocalHistoryMessages,
   type LocalHistoryMessage,
   type LocalAppendEventArgs,
-} from '../../services/local-chat-store'
+} from '@/services/local-chat-store'
 import {
   uploadScreenshotAttachments,
   type UploadedAttachment,
-} from '../../hooks/streaming/attachment-upload'
-import type { AppendedEventResponse } from '../../hooks/streaming/streaming-event-utils'
+} from '@/hooks/streaming/attachment-upload'
+import type { AppendedEventResponse } from '@/hooks/streaming/streaming-event-utils'
 
 // --- Types ---
 
@@ -259,3 +259,4 @@ export const useChatStore = () => {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const useOptionalChatStore = () => useContext(ChatStoreContext)
+

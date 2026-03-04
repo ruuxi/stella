@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { getElectronApi } from "../../services/electron";
-import type { ChatContext, ChatContextUpdate } from "../../types/electron";
+import { getElectronApi } from "@/services/electron";
+import type { ChatContext, ChatContextUpdate } from "@/types/electron";
 
 export function useContextCapture() {
   const [chatContext, setChatContext] = useState<ChatContext | null>(null);
@@ -75,3 +75,5 @@ export function useContextCapture() {
     setPreviewIndex,
   };
 }
+
+

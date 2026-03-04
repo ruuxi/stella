@@ -19,7 +19,7 @@ beforeAll(() => {
 
 import { Accordion } from "./accordion";
 import { Collapsible } from "./collapsible";
-import { Dialog } from "./dialog";
+import { Dialog } from "@/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -36,7 +36,7 @@ import {
 } from "./dropdown-menu";
 import { HoverCard, HoverCardRoot, HoverCardTrigger, HoverCardContent } from "./hover-card";
 import { Icon } from "./icon";
-import { Popover } from "./popover";
+import { Popover } from "@/ui/popover";
 import { RadioGroup, RadioGroupItem } from "./radio-group";
 import { Select, SelectItem } from "./select";
 import { Slider } from "./slider";
@@ -784,3 +784,4 @@ describe("Tooltip", () => {
     expect(container.querySelector("[data-component='tooltip-trigger']")).toBeTruthy();
   });
 });
+

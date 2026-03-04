@@ -1,4 +1,4 @@
-import type { ElectronApi } from '../types/electron'
+import type { ElectronApi } from '@/types/electron'
 
 export const getElectronApi = (): ElectronApi | undefined => {
   if (typeof window === 'undefined') {
@@ -6,3 +6,4 @@ export const getElectronApi = (): ElectronApi | undefined => {
   }
   return window.electronAPI
 }
+

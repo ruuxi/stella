@@ -1,4 +1,4 @@
-import type { StorePage } from "../constants";
+import type { StorePage } from "./constants";
 
 interface StoreHeaderProps {
   page: StorePage;
@@ -63,3 +63,4 @@ export function StoreHeader({
     </div>
   );
 }
+

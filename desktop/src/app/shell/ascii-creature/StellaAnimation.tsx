@@ -1,5 +1,5 @@
 import React, { useEffect, useImperativeHandle, useRef } from "react";
-import "../StellaAnimation.css";
+import "./StellaAnimation.css";
 import {
   BIRTH_DURATION,
   FLASH_DURATION,

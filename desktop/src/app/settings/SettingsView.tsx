@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useAccountMode } from "@/hooks/use-account-mode";
-import { useModelCatalog } from "../../hooks/use-model-catalog";
+import { useModelCatalog } from "@/hooks/use-model-catalog";
 import {
   Dialog,
   DialogContent,
@@ -10,8 +10,8 @@ import {
   DialogTitle,
   DialogCloseButton,
   DialogBody,
-} from "@/components/dialog";
-import "../../styles/settings.css";
+} from "@/ui/dialog";
+import "@/app/settings/settings.css";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -684,3 +684,6 @@ export const SettingsDialog = ({ open, onOpenChange, onSignOut }: SettingsDialog
 };
 
 export default SettingsDialog;
+
+
+

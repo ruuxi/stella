@@ -1,4 +1,4 @@
-import type { WelcomeSuggestion } from '../../services/synthesis'
+import type { WelcomeSuggestion } from '@/services/synthesis'
 
 const CATEGORY_LABELS: Record<WelcomeSuggestion['category'], string> = {
   cron: 'Automation',
@@ -37,3 +37,4 @@ export function WelcomeSuggestions({ suggestions, onSelect }: WelcomeSuggestions
     </div>
   )
 }
+

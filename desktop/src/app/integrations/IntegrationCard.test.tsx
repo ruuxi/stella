@@ -15,7 +15,7 @@ vi.mock("convex/react", () => ({
   useAction: (...args: unknown[]) => mockUseAction(...args),
 }));
 
-vi.mock("@/components/toast", () => ({
+vi.mock("@/ui/toast", () => ({
   showToast: (...args: unknown[]) => mockShowToast(...args),
 }));
 
@@ -290,3 +290,4 @@ describe("IntegrationCard", () => {
     });
   });
 });
+

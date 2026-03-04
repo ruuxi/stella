@@ -1,15 +1,15 @@
 import { memo, useRef, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { EventRecord } from "../../hooks/use-conversation-events";
-import type { Attachment, TaskItem } from "../../lib/event-transforms";
+import type { EventRecord } from "@/hooks/use-conversation-events";
+import type { Attachment, TaskItem } from "@/lib/event-transforms";
 import {
   TurnItem,
   StreamingIndicator,
   type TurnViewModel,
 } from "./MessageTurn";
-import { TaskIndicator } from "../../components/chat/TaskIndicator";
+import { TaskIndicator } from "@/app/chat/TaskIndicator";
 import { useTurnViewModels } from "./use-turn-view-models";
-import type { SelfModAppliedData } from "../../hooks/use-streaming-chat";
+import type { SelfModAppliedData } from "@/hooks/use-streaming-chat";
 
 type Props = {
   events: EventRecord[];
@@ -317,3 +317,5 @@ export const ConversationEvents = memo(function ConversationEvents({
     </div>
   );
 });
+
+

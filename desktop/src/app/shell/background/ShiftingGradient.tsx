@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, memo, type CSSProperties } from "react";
-import { useTheme } from "../../theme/theme-context";
-import { generateGradientTokens } from "../../theme/color";
+import { useTheme } from "@/theme/theme-context";
+import { generateGradientTokens } from "@/theme/color";
 import { cn } from "@/lib/utils";
 
 type RGB = { r: number; g: number; b: number };
@@ -265,3 +265,4 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     </div>
   );
 });
+

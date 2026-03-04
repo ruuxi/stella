@@ -6,10 +6,10 @@ import {
   DialogTitle,
   DialogBody,
   DialogCloseButton,
-} from "@/components/dialog";
+} from "@/ui/dialog";
 import { INTEGRATIONS } from "./integration-configs";
 import { IntegrationGridCard, IntegrationDetailArea } from "./IntegrationCard";
-import "../ConnectDialog.css";
+import "./ConnectDialog.css";
 
 interface ConnectDialogProps {
   open: boolean;
@@ -68,3 +68,4 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
     </Dialog>
   );
 };
+

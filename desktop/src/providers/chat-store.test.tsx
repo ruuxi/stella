@@ -44,7 +44,7 @@ vi.mock("convex/react", () => ({
   useAction: (ref: unknown) => mockConvexAction(ref),
 }));
 
-vi.mock("../../convex/api", () => ({
+vi.mock("@/convex/api", () => ({
   api: {
     events: { appendEvent: "appendEvent", listEvents: "listEvents" },
     data: {
@@ -57,13 +57,13 @@ vi.mock("../../convex/api", () => ({
   },
 }));
 
-vi.mock("../../services/local-chat-store", () => ({
+vi.mock("@/services/local-chat-store", () => ({
   appendLocalEvent: (args: unknown) => mockAppendLocalEvent(args),
   buildLocalHistoryMessages: (conversationId: string) =>
     mockBuildLocalHistoryMessages(conversationId),
 }));
 
-vi.mock("../../hooks/streaming/attachment-upload", () => ({
+vi.mock("@/hooks/streaming/attachment-upload", () => ({
   uploadScreenshotAttachments: (args: unknown) =>
     mockUploadScreenshotAttachments(args),
 }));
@@ -415,3 +415,4 @@ describe("ChatStoreProvider", () => {
     });
   });
 });
+

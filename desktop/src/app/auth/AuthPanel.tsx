@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
-import { Button } from "@/components/button";
-import { TextField } from "@/components/text-field";
+import { Button } from "@/ui/button";
+import { TextField } from "@/ui/text-field";
 
 type Status = "idle" | "sending" | "sent" | "error";
 
@@ -110,3 +110,4 @@ export const AuthPanel = () => {
     </div>
   );
 };
+

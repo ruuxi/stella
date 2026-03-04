@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MiniInput } from "./MiniInput";
-import type { ChatContext } from "../../types/electron";
+import type { ChatContext } from "@/types/electron";
 
 function defaultProps(overrides: Partial<Parameters<typeof MiniInput>[0]> = {}) {
   return {
@@ -478,3 +478,4 @@ describe("MiniInput", () => {
     expect(onSend).toHaveBeenCalled();
   });
 });
+

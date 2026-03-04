@@ -1,5 +1,5 @@
 // Core UI Components
-export { Button, type ButtonProps } from "./button";
+export { Button, type ButtonProps } from "@/ui/button";
 export {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -49,7 +49,7 @@ export {
   DialogCloseButton,
   type DialogProps,
   type DialogContentProps,
-} from "./dialog";
+} from "@/ui/dialog";
 export {
   Popover,
   PopoverTrigger,
@@ -62,7 +62,7 @@ export {
   PopoverBody,
   PopoverClose,
   PopoverCloseButton,
-} from "./popover";
+} from "@/ui/popover";
 export { HoverCard, HoverCardRoot, HoverCardTrigger, HoverCardContent, type HoverCardProps } from "./hover-card";
 export { Tooltip, TooltipProvider, TooltipRoot, TooltipTrigger, TooltipPortal, TooltipContent, type TooltipProps, type TooltipContentProps } from "./tooltip";
 export { ToastProvider, useToast, showToast, setToastFn, type ToastOptions } from "./toast";
@@ -73,7 +73,7 @@ export { Avatar, type AvatarProps } from "./avatar";
 
 // Content Display Components
 export { Code, type CodeProps } from "./code";
-export { OnboardingStep1, useOnboardingState } from "./onboarding/Onboarding";
+export { OnboardingStep1, useOnboardingState } from "@/app/onboarding/Onboarding";
 export { ImagePreview, type ImagePreviewProps } from "./image-preview";
 export { Tag, type TagProps } from "./tag";
 export { ProgressCircle, type ProgressCircleProps } from "./progress-circle";
@@ -81,4 +81,5 @@ export { ProgressCircle, type ProgressCircleProps } from "./progress-circle";
 // Desktop-Specific Components
 export { Keybind, type KeybindProps } from "./keybind";
 export { ResizeHandle, type ResizeHandleProps } from "./resize-handle";
-export { TitleBar } from "./TitleBar";
+export { TitleBar } from "@/app/shell/TitleBar";
+

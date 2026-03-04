@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { useUiState } from "../app/state/ui-state";
-import { useVoiceRecording } from "../hooks/use-voice-recording";
-import { useRealtimeVoice } from "../hooks/use-realtime-voice";
-import { useWindowType } from "../hooks/use-window-type";
+import { useUiState } from "@/providers/ui-state";
+import { useVoiceRecording } from "@/hooks/use-voice-recording";
+import { useRealtimeVoice } from "@/hooks/use-realtime-voice";
+import { useWindowType } from "@/hooks/use-window-type";
 
 interface VoiceOverlayProps {
   onTranscript: (text: string) => void;
@@ -259,3 +259,5 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
     </div>
   );
 }
+
+

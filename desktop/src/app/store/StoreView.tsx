@@ -1,19 +1,19 @@
 import { useCallback, useState } from "react";
-import "../../styles/store.css";
-import { FeaturedHero } from "./store/components/FeaturedHero";
-import { InstalledList } from "./store/components/InstalledList";
-import { PackageCard } from "./store/components/PackageCard";
-import { PackageDetail } from "./store/components/PackageDetail";
-import { StoreHeader } from "./store/components/StoreHeader";
-import { UpdatesList } from "./store/components/UpdatesList";
+import "@/app/store/store.css";
+import { FeaturedHero } from "./FeaturedHero";
+import { InstalledList } from "./InstalledList";
+import { PackageCard } from "./PackageCard";
+import { PackageDetail } from "./PackageDetail";
+import { StoreHeader } from "./StoreHeader";
+import { UpdatesList } from "./UpdatesList";
 import {
   CATEGORY_TABS,
   type CategoryTab,
   type StorePage,
   type StoreViewProps,
-} from "./store/constants";
-import { useStoreInstallationActions } from "./store/hooks/use-store-installation-actions";
-import { useStorePackagesData } from "./store/hooks/use-store-packages-data";
+} from "./constants";
+import { useStoreInstallationActions } from "./use-store-installation-actions";
+import { useStorePackagesData } from "./use-store-packages-data";
 
 function StoreView({ onComposePrompt }: StoreViewProps) {
   const [page, setPage] = useState<StorePage>("browse");
@@ -155,3 +155,7 @@ function StoreView({ onComposePrompt }: StoreViewProps) {
 }
 
 export default StoreView;
+
+
+
+
