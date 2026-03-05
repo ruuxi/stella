@@ -128,6 +128,39 @@ describe("IntegrationCard", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows an error and hides Slack link when install URL is unsafe", async () => {
+    const generateCodeFn = vi.fn().mockResolvedValue({ code: "SLACK123" });
+    const createSlackInstallUrlFn = vi
+      .fn()
+      .mockResolvedValue({ url: "javascript:alert(1)" });
+    let mutationCalls = 0;
+
+    mockUseMutation.mockImplementation(() => {
+      mutationCalls += 1;
+      return mutationCalls % 2 === 1 ? generateCodeFn : createSlackInstallUrlFn;
+    });
+    mockUseQuery.mockReturnValue(null);
+
+    render(
+      <IntegrationDetailArea
+        integration={makeIntegration({
+          provider: "slack",
+          displayName: "Slack",
+          botLink: "https://slack.example/fallback",
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Received an invalid install link")).toBeInTheDocument();
+    });
+
+    expect(generateCodeFn).toHaveBeenCalledWith({ provider: "slack" });
+    expect(createSlackInstallUrlFn).toHaveBeenCalledWith({});
+    expect(screen.queryByRole("link", { name: /Find bot on Slack/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("SLACK123")).not.toBeInTheDocument();
+  });
+
   it("disconnects a connected bridge integration and shows success toast", async () => {
     const actionFn = vi.fn().mockResolvedValue(null);
     const mutationFn = vi.fn().mockResolvedValue(null);

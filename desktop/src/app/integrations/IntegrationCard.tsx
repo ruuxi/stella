@@ -10,6 +10,19 @@ import {
 } from "@/lib/bridge-local";
 import { sanitizeExternalLinkUrl } from "@/lib/url-safety";
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function isConnectedConnection(connection: unknown) {
+  return connection !== null && connection !== undefined;
+}
+
+function useIntegrationConnectionStatus(provider: string) {
+  const connection = useQuery(api.channels.utils.getConnection, { provider });
+  return isConnectedConnection(connection);
+}
+
 function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
   const setupBridge = useAction(api.channels.bridge_actions.setupBridge);
   const getBridgeBundle = useAction(api.channels.bridge_actions.getBridgeBundle);
@@ -38,7 +51,7 @@ function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
         }
         if (!cancelled) setError(null);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to start bridge");
+        if (!cancelled) setError(getErrorMessage(err, "Failed to start bridge"));
       }
     })();
 
@@ -115,52 +128,69 @@ function BotSetupView({
 
     let cancelled = false;
 
-    generateCode({ provider: integration.provider })
-      .then((result) => {
-        if (cancelled) return;
-        setCode(result.code);
-        setError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
+    const staticBotLink = sanitizeExternalLinkUrl(integration.botLink);
+
+    const loadBotSetup = async () => {
+      const codePromise = generateCode({ provider: integration.provider });
+      const botLinkPromise =
+        integration.provider === "slack"
+          ? createSlackInstallUrl({}).then((result) => {
+              const safeUrl = sanitizeExternalLinkUrl(result.url);
+              if (!safeUrl) {
+                throw new Error("Received an invalid install link");
+              }
+              return safeUrl;
+            })
+          : Promise.resolve(staticBotLink);
+
+      const [codeResult, botLinkResult] = await Promise.allSettled([
+        codePromise,
+        botLinkPromise,
+      ]);
+      if (cancelled) return;
+
+      if (codeResult.status === "fulfilled") {
+        setCode(codeResult.value.code);
+      } else {
         setCode(null);
-        setError(err instanceof Error ? err.message : "Failed to generate code");
-      });
+      }
+
+      if (botLinkResult.status === "fulfilled") {
+        setBotLink(botLinkResult.value);
+      } else {
+        setBotLink(integration.provider === "slack" ? null : staticBotLink);
+      }
+
+      if (codeResult.status === "rejected") {
+        setError(getErrorMessage(codeResult.reason, "Failed to generate code"));
+        return;
+      }
+
+      if (botLinkResult.status === "rejected") {
+        setError(
+          getErrorMessage(
+            botLinkResult.reason,
+            "Failed to prepare Slack install URL",
+          ),
+        );
+        return;
+      }
+
+      setError(null);
+    };
+
+    void loadBotSetup();
 
     return () => {
       cancelled = true;
     };
-  }, [isExpanded, integration.provider, generateCode]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (integration.provider !== "slack") {
-      setBotLink(sanitizeExternalLinkUrl(integration.botLink));
-      return;
-    }
-
-    let cancelled = false;
-    createSlackInstallUrl({})
-      .then((result) => {
-        if (cancelled) return;
-        const safeUrl = sanitizeExternalLinkUrl(result.url);
-        if (!safeUrl) {
-          setBotLink(null);
-          setError("Received an invalid install link");
-          return;
-        }
-        setBotLink(safeUrl);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setBotLink(null);
-        setError(err instanceof Error ? err.message : "Failed to prepare Slack install URL");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [createSlackInstallUrl, integration.botLink, integration.provider, isExpanded]);
+  }, [
+    createSlackInstallUrl,
+    generateCode,
+    integration.botLink,
+    integration.provider,
+    isExpanded,
+  ]);
 
   const handleCopy = useCallback(() => {
     if (code) {
@@ -283,10 +313,7 @@ export function IntegrationGridCard({
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const connection = useQuery(api.channels.utils.getConnection, {
-    provider: integration.provider,
-  });
-  const isConnected = connection !== null && connection !== undefined;
+  const isConnected = useIntegrationConnectionStatus(integration.provider);
 
   return (
     <button
@@ -310,10 +337,7 @@ export function IntegrationDetailArea({
 }: {
   integration: Integration;
 }) {
-  const connection = useQuery(api.channels.utils.getConnection, {
-    provider: integration.provider,
-  });
-  const isConnected = connection !== null && connection !== undefined;
+  const isConnected = useIntegrationConnectionStatus(integration.provider);
 
   const renderContent = () => {
     if (isConnected) {
