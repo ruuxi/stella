@@ -3,12 +3,9 @@ import { act, renderHook } from "@testing-library/react";
 import type { EventRecord } from "./use-conversation-events";
 
 let mockStorageMode: "local" | "cloud" = "local";
-const mockUseConvexAuth = vi.fn(() => ({
-  isAuthenticated: true,
-  isLoading: false,
-}));
-const mockUseQuery = vi.fn<(ref: unknown, args?: unknown) => unknown>(() => undefined);
+const mockUsePaginatedQuery = vi.fn<(ref: unknown, args?: unknown, options?: unknown) => unknown>(() => undefined);
 const mockListLocalEvents = vi.fn<(conversationId: string, maxItems: number) => EventRecord[]>(() => []);
+const mockGetLocalEventCount = vi.fn<(conversationId: string) => number>(() => 0);
 const mockUnsubscribe = vi.fn();
 let localUpdateListener: (() => void) | null = null;
 const mockSubscribeToLocalChatUpdates = vi.fn<(listener: () => void) => () => void>(
@@ -19,8 +16,8 @@ const mockSubscribeToLocalChatUpdates = vi.fn<(listener: () => void) => () => vo
 );
 
 vi.mock("convex/react", () => ({
-  useConvexAuth: () => mockUseConvexAuth(),
-  useQuery: (ref: unknown, args?: unknown) => mockUseQuery(ref, args),
+  usePaginatedQuery: (ref: unknown, args?: unknown, options?: unknown) =>
+    mockUsePaginatedQuery(ref, args, options),
 }));
 
 vi.mock("@/providers/chat-store", () => ({
@@ -30,6 +27,7 @@ vi.mock("@/providers/chat-store", () => ({
 }));
 
 vi.mock("@/services/local-chat-store", () => ({
+  getLocalEventCount: (conversationId: string) => mockGetLocalEventCount(conversationId),
   listLocalEvents: (conversationId: string, maxItems: number) =>
     mockListLocalEvents(conversationId, maxItems),
   subscribeToLocalChatUpdates: (listener: () => void) =>
@@ -44,7 +42,10 @@ vi.mock("@/convex/api", () => ({
   },
 }));
 
-import { useConversationEvents } from "./use-conversation-events";
+import {
+  useConversationEventFeed,
+  useConversationEvents,
+} from "./use-conversation-events";
 
 const makeEvent = (
   id: string,
@@ -58,16 +59,13 @@ const makeEvent = (
   ...(payload ? { payload } : {}),
 });
 
-describe("useConversationEvents hook behavior", () => {
+describe("useConversationEventFeed", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStorageMode = "local";
-    mockUseConvexAuth.mockReturnValue({
-      isAuthenticated: true,
-      isLoading: false,
-    });
-    mockUseQuery.mockReturnValue(undefined);
+    mockUsePaginatedQuery.mockReturnValue(undefined);
     mockListLocalEvents.mockReturnValue([]);
+    mockGetLocalEventCount.mockReturnValue(0);
     localUpdateListener = null;
   });
 
@@ -81,13 +79,18 @@ describe("useConversationEvents hook behavior", () => {
     ];
     let currentEvents = initialEvents;
     mockListLocalEvents.mockImplementation(() => currentEvents);
+    mockGetLocalEventCount.mockReturnValue(refreshedEvents.length);
 
-    const { result, unmount } = renderHook(() => useConversationEvents("conv-1"));
+    const { result, unmount } = renderHook(() => useConversationEventFeed("conv-1"));
 
-    expect(mockUseQuery).toHaveBeenCalledWith("events:listEvents", "skip");
+    expect(mockUsePaginatedQuery).toHaveBeenCalledWith(
+      "events:listEvents",
+      "skip",
+      { initialNumItems: 200 },
+    );
     expect(mockListLocalEvents).toHaveBeenCalledWith("conv-1", 200);
     expect(mockSubscribeToLocalChatUpdates).toHaveBeenCalledTimes(1);
-    expect(result.current).toEqual(initialEvents);
+    expect(result.current.events).toEqual(initialEvents);
 
     act(() => {
       currentEvents = refreshedEvents;
@@ -95,59 +98,109 @@ describe("useConversationEvents hook behavior", () => {
     });
 
     expect(mockListLocalEvents.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(result.current).toEqual(refreshedEvents);
+    expect(result.current.events).toEqual(refreshedEvents);
 
     unmount();
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("returns empty local events and skips subscription without a conversationId", () => {
-    const { result } = renderHook(() => useConversationEvents(undefined));
+  it("expands the local window when loading older history", () => {
+    const allEvents = Array.from({ length: 400 }, (_, index) =>
+      makeEvent(
+        `e-${index + 1}`,
+        index + 1,
+        index % 2 === 0 ? "user_message" : "assistant_message",
+        { text: `event ${index + 1}` },
+      ),
+    );
 
-    expect(result.current).toEqual([]);
-    expect(mockListLocalEvents).not.toHaveBeenCalled();
-    expect(mockSubscribeToLocalChatUpdates).not.toHaveBeenCalled();
+    mockListLocalEvents.mockImplementation((_conversationId, maxItems) =>
+      allEvents.slice(Math.max(0, allEvents.length - maxItems)),
+    );
+    mockGetLocalEventCount.mockReturnValue(allEvents.length);
+
+    const { result } = renderHook(() => useConversationEventFeed("conv-1"));
+
+    expect(result.current.events).toHaveLength(200);
+    expect(result.current.hasOlderEvents).toBe(true);
+
+    act(() => {
+      result.current.loadOlder();
+    });
+
+    expect(mockListLocalEvents).toHaveBeenLastCalledWith("conv-1", 400);
+    expect(result.current.events).toHaveLength(400);
+    expect(result.current.hasOlderEvents).toBe(false);
   });
 
-  it("uses cloud query results and returns events oldest-to-newest", () => {
+  it("uses cloud pagination results, exposes loading state, and requests older history", () => {
     mockStorageMode = "cloud";
-    mockUseQuery.mockReturnValue({
-      page: [
+    const loadMore = vi.fn();
+    mockUsePaginatedQuery.mockReturnValue({
+      results: [
         makeEvent("e-2", 2, "assistant_message", { text: "newest" }),
         makeEvent("e-1", 1, "user_message", { text: "oldest" }),
       ],
+      status: "CanLoadMore",
+      loadMore,
     });
 
-    const { result } = renderHook(() => useConversationEvents("conv-1"));
+    const { result } = renderHook(() => useConversationEventFeed("conv-1"));
 
-    expect(mockUseQuery).toHaveBeenCalledWith("events:listEvents", {
-      conversationId: "conv-1",
-      paginationOpts: { cursor: null, numItems: 200 },
+    expect(mockUsePaginatedQuery).toHaveBeenCalledWith(
+      "events:listEvents",
+      { conversationId: "conv-1" },
+      { initialNumItems: 200 },
+    );
+    expect(result.current.events.map((event) => event._id)).toEqual(["e-1", "e-2"]);
+    expect(result.current.hasOlderEvents).toBe(true);
+    expect(result.current.isInitialLoading).toBe(false);
+
+    act(() => {
+      result.current.loadOlder();
     });
-    expect(mockListLocalEvents).not.toHaveBeenCalled();
-    expect(mockSubscribeToLocalChatUpdates).not.toHaveBeenCalled();
-    expect(result.current.map((event) => event._id)).toEqual(["e-1", "e-2"]);
+
+    expect(loadMore).toHaveBeenCalledWith(200);
   });
 
-
-  it("cleans up local subscription when storage mode changes away from local", () => {
-    mockStorageMode = "local";
-    mockListLocalEvents.mockReturnValue([
-      makeEvent("local-1", 1, "user_message", { text: "local" }),
-    ]);
-    mockUseQuery.mockReturnValue({
-      page: [makeEvent("cloud-1", 2, "assistant_message", { text: "cloud" })],
+  it("marks the first cloud page as loading without showing an empty conversation state downstream", () => {
+    mockStorageMode = "cloud";
+    mockUsePaginatedQuery.mockReturnValue({
+      results: [],
+      status: "LoadingFirstPage",
+      loadMore: vi.fn(),
     });
 
-    const { result, rerender } = renderHook(() => useConversationEvents("conv-1"));
-    expect(result.current.map((event) => event._id)).toEqual(["local-1"]);
+    const { result } = renderHook(() => useConversationEventFeed("conv-1"));
 
-    mockStorageMode = "cloud";
-    rerender();
-
-    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
-    expect(result.current.map((event) => event._id)).toEqual(["cloud-1"]);
+    expect(result.current.events).toEqual([]);
+    expect(result.current.isInitialLoading).toBe(true);
+    expect(result.current.hasOlderEvents).toBe(false);
   });
 });
 
+describe("useConversationEvents", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorageMode = "cloud";
+    mockUsePaginatedQuery.mockReturnValue({
+      results: [
+        makeEvent("e-3", 3, "assistant_message", { text: "newest" }),
+        makeEvent("e-2", 2, "user_message", { text: "middle" }),
+        makeEvent("e-1", 1, "assistant_message", { text: "oldest" }),
+      ],
+      status: "Exhausted",
+      loadMore: vi.fn(),
+    });
+  });
 
+  it("preserves the simple array API for existing consumers", () => {
+    const { result } = renderHook(() => useConversationEvents("conv-1"));
+
+    expect(result.current.map((event) => event._id)).toEqual([
+      "e-1",
+      "e-2",
+      "e-3",
+    ]);
+  });
+});

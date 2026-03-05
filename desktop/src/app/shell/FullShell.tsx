@@ -7,7 +7,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useUiState } from "@/providers/ui-state";
 import { useWorkspace } from "@/providers/workspace-state";
 import { useTheme } from "@/theme/theme-context";
-import { useConversationEvents } from "@/hooks/use-conversation-events";
+import { useConversationEventFeed } from "@/hooks/use-conversation-events";
 import { useCanvasCommands } from "@/hooks/use-canvas-commands";
 import { secureSignOut } from "@/services/auth";
 import { ShiftingGradient } from "@/app/shell/background/ShiftingGradient";
@@ -114,7 +114,13 @@ export const FullShell = () => {
     conversationId: activeConversationId,
   });
 
-  const events = useConversationEvents(activeConversationId ?? undefined);
+  const {
+    events,
+    hasOlderEvents,
+    isLoadingOlder,
+    isInitialLoading,
+    loadOlder,
+  } = useConversationEventFeed(activeConversationId ?? undefined);
 
   const {
     streamingText,
@@ -163,11 +169,36 @@ export const FullShell = () => {
     showScrollButton,
     scrollToBottom,
     handleScroll,
-  } = useScrollManagement();
+    resetScrollState,
+  } = useScrollManagement({
+    itemCount: events.length,
+    hasOlderEvents,
+    isLoadingOlder,
+    onLoadOlder: loadOlder,
+  });
 
   useEffect(() => {
     isNearBottomRef.current = isNearBottom;
   }, [isNearBottom]);
+
+  useEffect(() => {
+    resetScrollState();
+    isNearBottomRef.current = true;
+    requestAnimationFrame(() => {
+      scrollToBottom("auto");
+    });
+  }, [activeConversationId, resetScrollState, scrollToBottom]);
+
+  useEffect(() => {
+    if (state.view !== "chat") {
+      return;
+    }
+    resetScrollState();
+    isNearBottomRef.current = true;
+    requestAnimationFrame(() => {
+      scrollToBottom("auto");
+    });
+  }, [state.view, resetScrollState, scrollToBottom]);
 
   const isOrbVisible = state.view !== "chat" && onboarding.onboardingDone;
   const orbMessage = useOrbMessage(events, isOrbVisible);
@@ -269,6 +300,11 @@ export const FullShell = () => {
       pendingUserMessageId,
       selfModMap,
     },
+    history: {
+      hasOlderEvents,
+      isLoadingOlder,
+      isInitialLoading,
+    },
     composer: {
       message,
       setMessage,
@@ -279,12 +315,10 @@ export const FullShell = () => {
       canSubmit,
       onSend: handleSend,
     },
-    scroll: {
-      containerRef: scrollContainerRef,
-      handleScroll,
-      showScrollButton,
-      scrollToBottom,
-    },
+    scrollContainerRef,
+    onScroll: handleScroll,
+    showScrollButton,
+    scrollToBottom,
     onboarding: {
       done: onboarding.onboardingDone,
       exiting: onboarding.onboardingExiting,
@@ -311,6 +345,9 @@ export const FullShell = () => {
     isStreaming,
     pendingUserMessageId,
     selfModMap,
+    hasOlderEvents,
+    isLoadingOlder,
+    isInitialLoading,
     message,
     chatContext,
     setChatContext,

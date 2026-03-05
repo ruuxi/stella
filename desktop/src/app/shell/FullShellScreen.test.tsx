@@ -5,9 +5,15 @@ import { createRef } from "react";
 // --- Mocks ---
 
 const mockSendMessage = vi.fn();
-const mockUseConversationEvents = vi.fn((conversationId?: string) => {
+const mockUseConversationEventFeed = vi.fn((conversationId?: string) => {
   void conversationId;
-  return [];
+  return {
+    events: [],
+    hasOlderEvents: false,
+    isLoadingOlder: false,
+    isInitialLoading: false,
+    loadOlder: vi.fn(),
+  };
 });
 const mockUseStreamingChat = vi.fn((options?: unknown) => {
   void options;
@@ -87,8 +93,8 @@ vi.mock("@/theme/theme-context", () => ({
 }));
 
 vi.mock("@/hooks/use-conversation-events", () => ({
-  useConversationEvents: (conversationId?: string) =>
-    mockUseConversationEvents(conversationId),
+  useConversationEventFeed: (conversationId?: string) =>
+    mockUseConversationEventFeed(conversationId),
 }));
 
 vi.mock("@/hooks/use-canvas-commands", () => ({
@@ -226,6 +232,7 @@ vi.mock("@/app/shell/use-full-shell", () => ({
     showScrollButton: false,
     scrollToBottom: vi.fn(),
     handleScroll: vi.fn(),
+    resetScrollState: vi.fn(),
   })),
 }));
 
@@ -271,9 +278,9 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(screen.getByTestId("floating-orb")).toBeInTheDocument();
   });
 
-  it("passes conversationId to useConversationEvents without source option", () => {
+  it("passes conversationId to useConversationEventFeed", () => {
     render(<FullShell />);
-    expect(mockUseConversationEvents).toHaveBeenCalledWith("conv-123");
+    expect(mockUseConversationEventFeed).toHaveBeenCalledWith("conv-123");
   });
 
   it("passes conversationId to useStreamingChat without storageMode", () => {

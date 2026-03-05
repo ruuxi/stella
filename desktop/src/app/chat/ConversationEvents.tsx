@@ -19,6 +19,9 @@ type Props = {
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   selfModMap?: Record<string, SelfModAppliedData>;
+  hasOlderEvents?: boolean;
+  isLoadingOlder?: boolean;
+  isLoadingHistory?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 };
@@ -247,6 +250,9 @@ export const ConversationEvents = memo(function ConversationEvents({
   isStreaming,
   pendingUserMessageId,
   selfModMap,
+  hasOlderEvents,
+  isLoadingOlder,
+  isLoadingHistory,
   onOpenAttachment,
   scrollContainerRef,
 }: Props) {
@@ -271,9 +277,27 @@ export const ConversationEvents = memo(function ConversationEvents({
   const shouldVirtualize =
     scrollContainerRef && turns.length >= VIRTUALIZATION_THRESHOLD;
 
+  if (isLoadingHistory && turns.length === 0 && !showStreaming) {
+    return (
+      <div className="event-list" data-loading-history="true">
+        <div className="event-history-status" role="status" aria-live="polite">
+          Loading conversation...
+        </div>
+        <div className="thread-placeholder" aria-hidden="true">
+          <div className="thread-line" />
+          <div className="thread-line short" />
+        </div>
+        <div className="thread-placeholder" aria-hidden="true">
+          <div className="thread-line short" />
+          <div className="thread-line" />
+        </div>
+      </div>
+    );
+  }
+
   if (turns.length === 0 && !showStreaming) {
     return (
-      <div className="event-list">
+      <div className="event-list" data-empty="true">
         <div className="event-empty">Start a conversation</div>
       </div>
     );
@@ -281,6 +305,11 @@ export const ConversationEvents = memo(function ConversationEvents({
 
   return (
     <div className="event-list">
+      {isLoadingOlder && hasOlderEvents && (
+        <div className="event-history-status" role="status" aria-live="polite">
+          Loading earlier messages...
+        </div>
+      )}
       {shouldVirtualize ? (
         <VirtualizedList
           turns={turns}
