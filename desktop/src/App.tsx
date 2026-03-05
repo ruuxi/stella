@@ -64,7 +64,6 @@ const createSelfModState = (
 })
 
 const readPersistedSelfModHmrState = (): PersistedSelfModHmrState | null => {
-  if (typeof window === 'undefined') return null
   try {
     const raw = window.sessionStorage.getItem(SELF_MOD_HMR_STORAGE_KEY)
     if (!raw) return null
@@ -110,7 +109,6 @@ function App() {
   })
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
     const timer = window.setTimeout(() => {
       window.sessionStorage.removeItem(AUTO_REPAIR_SIGNATURE_KEY)
     }, 20_000)
@@ -155,7 +153,6 @@ function App() {
   }, [api])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
     if (selfModHmr.phase === 'hidden') {
       window.sessionStorage.removeItem(SELF_MOD_HMR_STORAGE_KEY)
       return

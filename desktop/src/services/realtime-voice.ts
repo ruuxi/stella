@@ -208,7 +208,7 @@ export function claimPreWarmedSession(
 let ipcInitialized = false;
 
 export function initRealtimeVoiceIpc(): void {
-  if (ipcInitialized || typeof window === "undefined") return;
+  if (ipcInitialized) return;
   ipcInitialized = true;
 
   const runtime = getVoiceRuntimeState();
@@ -745,7 +745,7 @@ export class RealtimeVoiceSession {
       case "response.output_item.done": {
         const item = event.item as Record<string, unknown> | undefined;
         if (item?.type === "function_call") {
-          this.trace("TOOL_CALL", `${item.name}(${(item.arguments as string ?? "").slice(0, 200)})`);
+          this.trace("TOOL_CALL", `${item.name}(${String(item.arguments ?? "").slice(0, 200)})`);
           void this.handleFunctionCall(item);
         }
         break;

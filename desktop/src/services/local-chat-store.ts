@@ -74,12 +74,9 @@ const encodeBase32 = (value: number, length: number): string => {
 };
 
 const randomIndex = (max: number): number => {
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    const bytes = new Uint8Array(1);
-    crypto.getRandomValues(bytes);
-    return bytes[0] % max;
-  }
-  return Math.floor(Math.random() * max);
+  const bytes = new Uint8Array(1);
+  crypto.getRandomValues(bytes);
+  return bytes[0] % max;
 };
 
 const generateLocalId = () => {
@@ -320,10 +317,6 @@ export const setLocalSyncCheckpoint = (conversationId: string, localMessageId: s
 };
 
 export const subscribeToLocalChatUpdates = (listener: () => void): (() => void) => {
-  if (typeof window === "undefined") {
-    return () => {};
-  }
-
   const onCustomEvent = () => listener();
   const onStorage = (event: StorageEvent) => {
     if (event.key === STORE_KEY || event.key === DEFAULT_CONVERSATION_KEY) {

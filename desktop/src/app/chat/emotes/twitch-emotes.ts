@@ -135,7 +135,6 @@ let localManifestLoadAttempted = false;
 let localManifestRecords: Map<string, TwitchEmoteRecord> | null = null;
 
 const getStorage = () => {
-  if (typeof window === "undefined") return null;
   try {
     return window.localStorage;
   } catch {

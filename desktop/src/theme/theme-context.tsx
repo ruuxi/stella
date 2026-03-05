@@ -53,7 +53,6 @@ const GRADIENT_MODE_STORAGE_KEY = "stella-gradient-mode";
 const GRADIENT_COLOR_STORAGE_KEY = "stella-gradient-color";
 
 function getSystemColorMode(): "light" | "dark" {
-  if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -111,13 +110,12 @@ function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
 // ─── Persistence helpers ─────────────────────────────────────────────────
 
 function readStorage<T extends string>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
   return (localStorage.getItem(key) as T) ?? fallback;
 }
 
 function persistAndBroadcast(key: string, value: string) {
   localStorage.setItem(key, value);
-  if (typeof window !== "undefined" && window.electronAPI) {
+  if (window.electronAPI) {
     window.electronAPI.theme.broadcast(key, value);
   }
 }
@@ -146,7 +144,7 @@ function useThemePersistence(
   const [systemMode, setSystemMode] = useState<"light" | "dark">(getSystemColorMode);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.electronAPI) return;
+    if (!window.electronAPI) return;
     if (!window.electronAPI.theme.listInstalled) return;
     window.electronAPI.theme.listInstalled().then((installed) => {
       if (Array.isArray(installed)) {
@@ -165,7 +163,7 @@ function useThemePersistence(
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.electronAPI) return;
+    if (!window.electronAPI) return;
     return window.electronAPI.theme.onChange((_event, data) => {
       if (data.key === THEME_STORAGE_KEY) { setThemeIdRaw(data.value); clearPreviews(); }
       else if (data.key === COLOR_MODE_STORAGE_KEY) setColorModeRaw(data.value as ColorMode);
