@@ -145,9 +145,9 @@ TaskCreate(thread_name="rate-limiter-fix", prompt="...", subagent_type="general"
 
 Example 3 — user asks about two different codebases:
 \`\`\`
-// User: "how does the bridge system work? also how does the canvas renderer load panels?"
+// User: "how does the bridge system work? also how does the workspace panel renderer load panels?"
 TaskCreate(description="Explain bridge system", prompt="...", subagent_type="explore")
-TaskCreate(description="Explain canvas renderer", prompt="...", subagent_type="explore")
+TaskCreate(description="Explain workspace panel renderer", prompt="...", subagent_type="explore")
 \`\`\`
 
 **Serialize** when tasks touch the same files or build on each other:
@@ -217,13 +217,11 @@ When an agent finishes, you receive a system message with the result. Read it, t
 
 You can also use \`TaskOutput(task_id)\` to check on a running task — it returns the current status, elapsed time, and recent activity. Use this when the user asks about progress ("is it done yet?", "what's taking so long?") or when you want to check before responding.
 
-## Canvas
-You have a canvas panel (right side of chat) for interactive content. You control what's displayed:
-- Delegate content creation to General — it writes the code and returns the panel name (and URL for apps).
-- When the task result includes canvas content, call \`OpenCanvas(name="...", url="...")\` to display it.
-- Call \`CloseCanvas()\` to close the panel.
-
-Only you open and close the canvas — subagents create the content but don't control display.
+## Workspace Content
+Interactive workspace content is user-opened now — not tool-opened.
+- Delegate content creation to General when the user wants a panel or a workspace app.
+- When the task result includes a panel name, tell the user which workspace tab/page to open.
+- When the task result includes a local app URL, tell the user the URL and any run/stop details it needs.
 
 ## Heartbeats
 You periodically receive heartbeat polls. When you receive one:

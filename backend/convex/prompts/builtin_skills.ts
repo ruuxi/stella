@@ -141,7 +141,7 @@ const WORKSPACE: BuiltinSkill = {
   enabled: true,
   markdown: `# Workspace Panels & Apps
 
-Two ways to show interactive content in the canvas panel.
+Two ways to create interactive content for Stella's workspace surfaces.
 
 ## Panels (single-file TSX)
 
@@ -151,8 +151,7 @@ Vite compiles the file on demand — can import any installed frontend dep (reac
 ### Workflow
 1. Write the component:
    \`Write(file_path="frontend/workspace/panels/my-chart.tsx", content="...")\`
-2. Open canvas:
-   \`OpenCanvas(name="my-chart")\`
+2. Report the panel name so the user can find it in the workspace/home pages.
 
 ### Source Format
 Must export a default React component.
@@ -180,7 +179,7 @@ export default function Chart() {
 \`\`\`
 
 ### Updating a Panel
-Write to the same file again, then call OpenCanvas again — Vite recompiles on the fresh import.
+Write to the same file again, then report the panel name again — Vite recompiles the next time the user opens it from the workspace/home pages.
 
 ## Apps (full Vite+React projects)
 
@@ -191,15 +190,15 @@ For multi-file apps that need their own npm dependencies, persistent state, or c
 2. Add deps: \`Bash(command="cd ~/.stella/apps/my-app && bun add three @react-three/fiber")\`
 3. Edit files: Use Write/Edit on \`~/.stella/apps/my-app/src/App.tsx\` etc.
 4. Start dev server: \`Bash(command="cd ~/.stella/apps/my-app && bunx vite --port 5180", run_in_background=true)\`
-5. Show in canvas: \`OpenCanvas(name="my-app", url="http://localhost:5180")\`
+5. Report the local URL (for example \`http://localhost:5180\`) and any usage notes to the user.
 6. Stop server when done: Use \`KillShell(shell_id="<id>")\` with the shell ID from step 4.
 
 ### When to Use Panels vs Apps
 - **Panel**: Self-contained single file, quick prototypes, data visualization
 - **App**: Multi-file projects, npm dependencies (three.js, tone.js, etc.), persistent projects
 
-### Closing
-\`CloseCanvas()\` — closes the canvas panel.`,
+### Access
+Panels become available in the workspace/home pages after they are written; they are not auto-opened. Standalone apps should be reported with their local URL and run instructions.`,
 };
 
 const API_SKILL_GENERATION: BuiltinSkill = {
@@ -239,7 +238,7 @@ When the Browser agent detects auth material in an active session:
 
 
 ## Canvas Display
-Include \`canvasHint\` to suggest how to display results. The generated skill will include instructions for writing a panel TSX file and calling \`OpenCanvas(name="...")\`.`,
+Include \`canvasHint\` to suggest how to display results. The generated skill will include instructions for writing a panel TSX file and reporting the panel name to the user.`,
 };
 
 const MEDIA_GENERATION: BuiltinSkill = {
@@ -287,7 +286,7 @@ const FRONTEND_ARCHITECTURE: BuiltinSkill = {
   id: "frontend-architecture",
   name: "Frontend Architecture Reference",
   description:
-    "Full design system reference: directory structure, layout, CSS tokens, slot system, canvas system. Activate before structural changes.",
+    "Full design system reference: directory structure, layout, CSS tokens, slot system, workspace content system. Activate before structural changes.",
   agentTypes: ["general"],
   tags: ["architecture", "design-system", "reference"],
   source: "builtin",
@@ -309,7 +308,7 @@ frontend/src/
 ├── App.tsx                     # Window router (full/mini/radial/region)
 ├── app/state/
 │   ├── ui-state.tsx            # UiStateProvider (mode, window, view, conversationId)
-│   └── workspace-state.tsx     # WorkspaceProvider (canvas, chatWidth, isChatOpen)
+│   └── workspace-state.tsx     # WorkspaceProvider (active panel, chatWidth, isChatOpen)
 ├── views/
 │   └── home/
 │       ├── HomeView.tsx        # Default home screen (suggestions, tasks, schedule)
@@ -318,7 +317,7 @@ frontend/src/
 │   ├── workspace/
 │   │   └── WorkspaceArea.tsx   # View router (home/app/onboarding)
 │   ├── canvas/
-│   │   ├── CanvasErrorBoundary.tsx # Error boundary for canvas renderers
+│   │   ├── WorkspaceErrorBoundary.tsx # Error boundary for workspace panel renderers
 │   │   └── renderers/          # panel.tsx (Vite dynamic), appframe.tsx (iframe)
 │   ├── chat/                   # Message rendering (Markdown, TurnItem, etc.)
 │   ├── Sidebar.tsx             # Left navigation (Home, Connect)
@@ -357,9 +356,9 @@ frontend/src/
 The app uses a \`ViewType = 'home' | 'app'\` to control what \`WorkspaceArea\` displays:
 
 - **\`'home'\`** (default): Renders \`HomeView\` — built-in component at \`src/views/home/HomeView.tsx\` showing welcome suggestions, active tasks, and schedule. To customize the home screen, edit this file directly.
-- **\`'app'\`**: Renders a canvas app (set by \`OpenCanvas\` tool or \`canvas_command\` events). Routes by URL: if \`canvas.url\` → iframe (\`AppframeRenderer\`), otherwise → Vite dynamic import (\`PanelRenderer\`).
+- **\`'app'\`**: Renders workspace content selected from the shell. If a local panel is active, it loads through \`PanelRenderer\`. If the shell provides a URL, \`AppframeRenderer\` renders it in an iframe.
 
-\`WorkspaceArea.tsx\` handles the routing. \`use-canvas-commands.ts\` automatically sets view to \`'app'\` when a canvas opens, \`'home'\` when it closes.
+\`WorkspaceArea.tsx\` handles the routing. Local workspace panels are surfaced through the shell's own workspace selection UI rather than a backend event bridge.
 
 ## Key Layout Structure
 \`\`\`
@@ -367,7 +366,7 @@ The app uses a \`ViewType = 'home' | 'app'\` to control what \`WorkspaceArea\` d
 ├── Sidebar (left nav, ~240px)
 ├── WorkspaceArea (flex: 1)
 │   ├── HomeView (default — suggestions, tasks, schedule)
-│   └── Canvas content (when view === 'app' && canvas active)
+│   └── Workspace content (when view === 'app' && workspace content is active)
 └── ChatPanel (right side, collapsible)
     └── ChatColumn (messages + composer)
 \`\`\`
@@ -403,12 +402,12 @@ const SidebarSlot = useSlot('sidebar')
 overrideSlot('sidebar', MyCustomSidebar, { priority: 10, source: 'self-mod' })
 \`\`\`
 
-## Canvas System
+## Workspace Content
 Interactive content rendered in \`WorkspaceArea\` when view is \`'app'\`:
 - **Panels**: Single-file TSX in \`workspace/panels/\` — Vite-compiled on demand via dynamic import
 - **Apps**: Full Vite+React projects in \`~/.stella/apps/\` — rendered via sandboxed iframe
 
-Open a canvas via the \`OpenCanvas\` tool (sets view to \`'app'\`). Close via \`CloseCanvas\` (returns to \`'home'\`).`,
+Agents create the content, then report the panel name or local app URL so the user can open it through the workspace UI.`,
 };
 
 const BLUEPRINT_MANAGEMENT: BuiltinSkill = {

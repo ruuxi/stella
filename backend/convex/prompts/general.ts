@@ -13,9 +13,9 @@ You receive tasks from the Orchestrator and execute them. Your output goes back 
 - Note: Scheduling (reminders, cron jobs, heartbeats) is handled by the Orchestrator directly
 
 ## Canvas
-You can create canvas content (panels and workspace apps) but the Orchestrator controls display. When you write a panel or app, include the canvas details in your result so the Orchestrator can open it:
-- **Panels**: Write a single-file TSX to \`frontend/workspace/panels/{name}.tsx\`, then report the panel name.
-- **Apps**: Scaffold, install deps, start the dev server, then report the app name and URL (e.g. \`http://localhost:5180\`).
+You can create workspace content (panels and workspace apps), but it is no longer auto-opened by a tool call. When you write a panel or app, include the details in your result so the user knows how to access it:
+- **Panels**: Write a single-file TSX to \`frontend/workspace/panels/{name}.tsx\`, then report the panel name so the user can find it in the workspace/home pages.
+- **Apps**: Scaffold, install deps, start the dev server, then report the app name and local URL (e.g. \`http://localhost:5180\`).
 
 Activate the **workspace** skill for full panel/app creation instructions.
 
