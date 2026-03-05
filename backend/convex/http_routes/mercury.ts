@@ -3,18 +3,20 @@
  *
  * POST /api/mercury/chat
  *
- * Receives a voice request, routes through Mercury (Inception Labs mercury-2)
- * with AI SDK generateText, and returns tool results + text for the voice agent.
+ * Receives a voice request, routes through Mercury, and returns tool results
+ * + text for the voice agent.
  */
 import type { HttpRouter } from "convex/server";
+import { stepCountIs } from "ai";
 import { httpAction } from "../_generated/server";
+import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
+import { generateTextWithFailover } from "../agent/model_execution";
 import {
   errorResponse,
   jsonResponse,
   handleCorsRequest,
   corsPreflightHandler,
 } from "../http_shared/cors";
-import { getUserProviderKey } from "../lib/provider_keys";
 import { createMercuryTools } from "../tools/mercury_schemas";
 import type { MercuryToolResult } from "../tools/mercury_schemas";
 import { buildMercurySystemPrompt } from "../prompts/mercury";
@@ -57,25 +59,23 @@ export const registerMercuryRoutes = (http: HttpRouter) => {
           return errorResponse(400, "Missing 'message' field", origin);
         }
 
-        // 3. Resolve API key (BYOK or env var)
+        // 3. Resolve model config through the shared gateway/BYOK path
         const ownerId = identity.subject;
-        let apiKey: string | null = null;
-        try {
-          const byok = await getUserProviderKey(ctx, ownerId, "llm:inception");
-          if (byok) apiKey = byok;
-        } catch {
-          // BYOK lookup failed, fall through to env var
-        }
-        if (!apiKey) {
-          apiKey = process.env.INCEPTION_API_KEY ?? null;
-        }
-        if (!apiKey) {
+        const platformGatewayKey = process.env.AI_GATEWAY_API_KEY?.trim();
+        const resolvedConfig = await resolveModelConfig(ctx, "mercury", ownerId);
+        if (typeof resolvedConfig.model === "string" && !platformGatewayKey) {
           return errorResponse(
             503,
-            "Mercury not configured — set INCEPTION_API_KEY or add an Inception provider key",
+            "Mercury not configured — set AI_GATEWAY_API_KEY or add a compatible provider key",
             origin,
           );
         }
+        const fallbackCandidate = await resolveFallbackConfig(ctx, "mercury", ownerId);
+        const fallbackConfig =
+          fallbackCandidate &&
+          (typeof fallbackCandidate.model !== "string" || Boolean(platformGatewayKey))
+            ? fallbackCandidate
+            : null;
 
         // 4. Build system prompt with window state
         const systemPrompt = buildMercurySystemPrompt({
@@ -87,23 +87,15 @@ export const registerMercuryRoutes = (http: HttpRouter) => {
 
         // 6. Call Mercury via AI SDK
         try {
-          // Dynamic import to avoid bundling issues in Convex
-          const { generateText } = await import("ai");
-          const { createOpenAI } = await import("@ai-sdk/openai");
-
-          const model = createOpenAI({
-            apiKey,
-            baseURL: "https://api.inceptionlabs.ai/v1",
-          }).chat("mercury-2");
-
-          const { stepCountIs } = await import("ai");
-
-          const result = await generateText({
-            model,
-            system: systemPrompt,
-            messages: [{ role: "user" as const, content: body.message }],
-            tools,
-            stopWhen: stepCountIs(3),
+          const result = await generateTextWithFailover({
+            resolvedConfig,
+            fallbackConfig,
+            sharedArgs: {
+              system: systemPrompt,
+              messages: [{ role: "user" as const, content: body.message }],
+              tools,
+              stopWhen: stepCountIs(3),
+            },
           });
 
           // 7. Extract tool results from steps
