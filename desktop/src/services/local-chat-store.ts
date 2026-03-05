@@ -189,6 +189,12 @@ export const listLocalEvents = (
   return sorted.slice(sorted.length - maxItems);
 };
 
+export const getLocalEventCount = (conversationId: string): number => {
+  const store = readStore();
+  const conversation = store.conversations[conversationId];
+  return conversation?.events.length ?? 0;
+};
+
 export const appendLocalEvent = (args: LocalAppendEventArgs): EventRecord => {
   const store = readStore();
   const conversation = ensureConversation(store, args.conversationId);

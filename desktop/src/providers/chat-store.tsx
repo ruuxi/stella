@@ -6,7 +6,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useConvexAuth, useMutation, useAction } from 'convex/react'
+import { insertAtTop, useConvexAuth, useMutation, useAction } from 'convex/react'
 import { api } from '@/convex/api'
 import { useAccountMode } from '@/hooks/use-account-mode'
 import {
@@ -95,24 +95,19 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       (localStore, args) => {
         if (args.type !== 'user_message') return
 
-        const queryArgs = {
-          conversationId: args.conversationId,
-          paginationOpts: { cursor: null, numItems: 200 },
-        }
-        const current = localStore.getQuery(api.events.listEvents, queryArgs)
-        if (!current?.page) return
-
         const optimisticEvent = {
           _id: `optimistic-${crypto.randomUUID()}`,
-          timestamp: (current.page[0]?.timestamp ?? 0) + 1,
+          timestamp: Date.now(),
           type: args.type,
           deviceId: args.deviceId,
           payload: args.payload,
         }
 
-        localStore.setQuery(api.events.listEvents, queryArgs, {
-          ...current,
-          page: [optimisticEvent, ...current.page],
+        insertAtTop({
+          paginatedQuery: api.events.listEvents,
+          argsToMatch: { conversationId: args.conversationId },
+          localQueryStore: localStore,
+          item: optimisticEvent,
         })
       },
     ),
