@@ -5,25 +5,15 @@ const DEVICE_ID_KEY = "Stella.deviceId";
 let cachedDeviceId: string | null = null;
 
 const readLocalDeviceId = () => {
-  if (typeof window === "undefined") {
-    return null;
-  }
   return window.localStorage.getItem(DEVICE_ID_KEY);
 };
 
 const writeLocalDeviceId = (deviceId: string) => {
-  if (typeof window === "undefined") {
-    return;
-  }
   window.localStorage.setItem(DEVICE_ID_KEY, deviceId);
 };
 
 const generateFallbackDeviceId = () => {
-  const fallback = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return fallback;
+  return crypto.randomUUID();
 };
 
 export const configurePiRuntime = async () => {

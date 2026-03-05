@@ -36,7 +36,7 @@ const arrayBufferToBase64 = (buffer: ArrayBufferLike): string => {
   const bytes = new Uint8Array(buffer);
   let binary = "";
   for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i] ?? 0);
+    binary += String.fromCharCode(bytes[i]!);
   }
   return btoa(binary);
 };
@@ -49,7 +49,7 @@ const mixAudioBufferToMono = (audioBuffer: AudioBuffer): Float32Array => {
   for (let channel = 0; channel < channelCount; channel += 1) {
     const channelData = audioBuffer.getChannelData(channel);
     for (let i = 0; i < length; i += 1) {
-      mono[i] += channelData[i] ?? 0;
+      mono[i] += channelData[i]!;
     }
   }
 
@@ -76,8 +76,8 @@ export const resampleLinear = (
     const sourceFloor = Math.floor(sourceIndex);
     const sourceCeil = Math.min(sourceFloor + 1, samples.length - 1);
     const alpha = sourceIndex - sourceFloor;
-    const a = samples[sourceFloor] ?? 0;
-    const b = samples[sourceCeil] ?? 0;
+    const a = samples[sourceFloor]!;
+    const b = samples[sourceCeil]!;
     resampled[i] = a + (b - a) * alpha;
   }
 
@@ -87,7 +87,7 @@ export const resampleLinear = (
 export const floatToInt16Pcm = (samples: Float32Array): Int16Array => {
   const pcm = new Int16Array(samples.length);
   for (let i = 0; i < samples.length; i += 1) {
-    const clamped = Math.max(-1, Math.min(1, samples[i] ?? 0));
+    const clamped = Math.max(-1, Math.min(1, samples[i]!));
     pcm[i] = clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff);
   }
   return pcm;
@@ -97,7 +97,7 @@ export const calculatePacketVolume = (packetSamples: Float32Array): number => {
   if (packetSamples.length === 0) return 0;
   let sum = 0;
   for (let i = 0; i < packetSamples.length; i += 1) {
-    const sample = packetSamples[i] ?? 0;
+    const sample = packetSamples[i]!;
     sum += sample * sample;
   }
   return Math.sqrt(sum / packetSamples.length);
@@ -137,22 +137,10 @@ export const packetizeAudioSamples = (samples: Float32Array): PreparedWisprAudio
 };
 
 export const prepareAudioForWispr = async (audioBlob: Blob): Promise<PreparedWisprAudio> => {
-  const AudioContextCtor = window.AudioContext ?? (window as typeof window & {
-    webkitAudioContext?: typeof AudioContext;
-  }).webkitAudioContext;
-
-  if (!AudioContextCtor) {
-    return {
-      packetDurationSeconds: PACKET_DURATION_SECONDS,
-      packets: [await blobToBase64(audioBlob)],
-      volumes: [0],
-    };
-  }
-
   let audioContext: AudioContext | null = null;
   try {
     const arrayBuffer = await audioBlob.arrayBuffer();
-    audioContext = new AudioContextCtor();
+    audioContext = new AudioContext();
     const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
     const mono = mixAudioBufferToMono(decoded);
     const resampled = resampleLinear(mono, decoded.sampleRate, TARGET_WAV_SAMPLE_RATE);
