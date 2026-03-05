@@ -184,10 +184,11 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
 /**
  * Get the model config for a specific agent type.
- * Falls back to DEFAULT_MODEL if agent type is not configured.
  */
 export function getModelConfig(agentType: string): ModelConfig {
-  return AGENT_MODELS[agentType] ?? DEFAULT_MODEL;
+  const config = AGENT_MODELS[agentType];
+  if (!config) throw new Error(`No model config for agent type: ${agentType}`);
+  return config;
 }
 
 export { DEFAULT_MODEL, AGENT_MODELS };

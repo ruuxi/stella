@@ -185,7 +185,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
 
         let coreMemory: string | undefined;
         const userName =
-          identity.name ?? identity.nickname ?? undefined;
+          identity.name ?? identity.nickname;
 
         const instructions = buildVoiceSessionInstructions({
           userName,

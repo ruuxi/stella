@@ -348,8 +348,8 @@ export const parseAdjudicationResponse = (response: string): AdjudicationResult 
         updatedContent: parsed.updatedContent,
       };
     }
-  } catch {
-    // Fallback to new_fact on parse error
+  } catch (err) {
+    console.warn("[memory] Failed to parse adjudication response, defaulting to new_fact:", response, err);
   }
   return { action: "new_fact" };
 };

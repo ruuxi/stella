@@ -444,7 +444,7 @@ export const run = internalAction({
 
     const conversationId = config.conversationId;
 
-    let targetDeviceId: string | undefined = config.targetDeviceId ?? undefined;
+    let targetDeviceId: string | undefined = config.targetDeviceId;
     if (!targetDeviceId) {
       const target = await ctx.runQuery(
         internal.agent.device_resolver.resolveExecutionTarget,
