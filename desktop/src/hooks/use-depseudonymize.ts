@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
 
 type Replacement = { pattern: RegExp; replacement: string };
 
 const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
 const DISCOVERY_CATEGORIES_CHANGED_EVENT = "stella:discovery-categories-changed";
+const EMPTY_REPLACEMENTS: Replacement[] = [];
 
 function isMessagesNotesEnabled(): boolean {
   try {
@@ -135,10 +136,7 @@ export function useDepseudonymize(): (text: string) => string {
     };
   }, [isEnabled]);
 
-  const resolvedReplacements = useMemo(
-    () => replacements ?? [],
-    [replacements],
-  );
+  const resolvedReplacements = replacements ?? EMPTY_REPLACEMENTS;
 
   return useCallback(
     (text: string) => applyReplacements(text, resolvedReplacements),

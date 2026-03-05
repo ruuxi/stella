@@ -1,3 +1,4 @@
+import { memo } from "react"
 import type { WelcomeSuggestion } from "@/services/synthesis"
 import { DashboardCard } from "./DashboardCard"
 
@@ -12,13 +13,13 @@ type SuggestionsPanelProps = {
   onSuggestionClick: (s: WelcomeSuggestion) => void
 }
 
-export function SuggestionsPanel({ suggestions, onSuggestionClick }: SuggestionsPanelProps) {
+function SuggestionsPanelView({ suggestions, onSuggestionClick }: SuggestionsPanelProps) {
   return (
     <DashboardCard label="Suggestions">
       <div className="home-suggestions">
-        {suggestions.map((s, i) => (
+        {suggestions.map((s) => (
           <button
-            key={i}
+            key={`${s.category}:${s.title}:${s.prompt}`}
             className="home-suggestion-card"
             onClick={() => onSuggestionClick(s)}
           >
@@ -37,3 +38,5 @@ export function SuggestionsPanel({ suggestions, onSuggestionClick }: Suggestions
     </DashboardCard>
   )
 }
+
+export const SuggestionsPanel = memo(SuggestionsPanelView)
