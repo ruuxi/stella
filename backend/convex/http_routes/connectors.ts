@@ -565,7 +565,7 @@ export const registerConnectorWebhookRoutes = (http: HttpRouter) => {
         const telegramUserId = String(message.from.id);
         const text = summarizeTelegramMessage(message);
         const attachments = extractTelegramAttachments(message);
-        const displayName = message.from.first_name ?? message.from.username ?? undefined;
+        const displayName = message.from.first_name ?? message.from.username;
         const groupId = message.chat.type === "private" ? undefined : chatId;
   
         if (!text && attachments.length === 0) {
@@ -764,7 +764,7 @@ export const registerConnectorWebhookRoutes = (http: HttpRouter) => {
         // User can be top-level (DM) or nested under member (guild)
         const user = interaction.user ?? interaction.member?.user;
         const discordUserId = user?.id ?? "";
-        const displayName = user?.global_name ?? user?.username ?? undefined;
+        const displayName = user?.global_name ?? user?.username;
         const applicationId = interaction.application_id;
         const interactionToken = interaction.token;
   
@@ -1554,7 +1554,7 @@ export const registerConnectorWebhookRoutes = (http: HttpRouter) => {
       const attachments = extractTeamsAttachments(activity.attachments);
       const cleanedText = (activity.text ?? "").replace(/<at>.*?<\/at>/g, "").trim();
       const sourceTimestamp = parseIsoTimestampMs(activity.localTimestamp ?? activity.timestamp);
-      const externalMessageId = activity.id ?? activity.replyToId ?? undefined;
+      const externalMessageId = activity.id ?? activity.replyToId;
   
       if (!teamsUserId || !conversationId) {
         return jsonResponse({ status: "ok" });

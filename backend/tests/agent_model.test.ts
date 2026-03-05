@@ -54,9 +54,10 @@ describe("getModelConfig", () => {
     expect(config).toBe(AGENT_MODELS.general);
   });
 
-  test("falls back to DEFAULT_MODEL for unknown agent type", () => {
-    const config = getModelConfig("unknown_agent_type");
-    expect(config).toBe(DEFAULT_MODEL);
+  test("throws for unknown agent type", () => {
+    expect(() => getModelConfig("unknown_agent_type")).toThrow(
+      "No model config for agent type: unknown_agent_type",
+    );
   });
 
   test("returned config satisfies ModelConfig type", () => {

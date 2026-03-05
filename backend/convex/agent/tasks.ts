@@ -844,7 +844,7 @@ const executeSubagentRun = async (
 
   try {
     const resolvedConfig = await resolveModelConfig(ctx, args.subagentType, args.ownerId);
-    const fallbackConfig = await resolveFallbackConfig(ctx, args.subagentType, args.ownerId).catch(() => null);
+    const fallbackConfig = await resolveFallbackConfig(ctx, args.subagentType, args.ownerId);
 
     if (args.threadId && threadSupported && isAutoCompactionEnabled()) {
       try {
@@ -2035,7 +2035,7 @@ export const deliverTaskResult = internalAction({
       ctx,
       "orchestrator",
       args.ownerId,
-    ).catch(() => null);
+    );
     const orchestratorTurn = await prepareOrchestratorTurn(ctx, {
       conversation,
       conversationId: args.conversationId,
@@ -2281,7 +2281,7 @@ export const batchPersistRunChunk = mutation({
       // 3. Log usage
       if (args.usage) {
         const totalTokens =
-          (args.usage.inputTokens ?? 0) + (args.usage.outputTokens ?? 0) || undefined;
+          (args.usage.inputTokens ?? 0) + (args.usage.outputTokens ?? 0);
 
         // Count tool calls across ALL chunks for this run
         const allChunks = await ctx.db

@@ -12,10 +12,10 @@ export type ExecutionArgs = {
 
 export const executeStream = async ({ ctx, agentType, ownerId, sharedArgs, useFailover = true }: ExecutionArgs) => {
   const resolvedConfig = await resolveModelConfig(ctx, agentType, ownerId);
-  const fallbackConfig = useFailover 
-    ? await resolveFallbackConfig(ctx, agentType, ownerId).catch(() => null) 
+  const fallbackConfig = useFailover
+    ? await resolveFallbackConfig(ctx, agentType, ownerId)
     : null;
-  
+
   return streamTextWithFailover({
     resolvedConfig,
     fallbackConfig: fallbackConfig ?? undefined,
@@ -25,10 +25,10 @@ export const executeStream = async ({ ctx, agentType, ownerId, sharedArgs, useFa
 
 export const executeGenerate = async ({ ctx, agentType, ownerId, sharedArgs, useFailover = true }: ExecutionArgs) => {
   const resolvedConfig = await resolveModelConfig(ctx, agentType, ownerId);
-  const fallbackConfig = useFailover 
-    ? await resolveFallbackConfig(ctx, agentType, ownerId).catch(() => null) 
+  const fallbackConfig = useFailover
+    ? await resolveFallbackConfig(ctx, agentType, ownerId)
     : null;
-  
+
   return generateTextWithFailover({
     resolvedConfig,
     fallbackConfig: fallbackConfig ?? undefined,
