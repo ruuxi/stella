@@ -16,6 +16,8 @@ import {
 } from "./MessageTurn";
 import type { SelfModAppliedData } from "@/hooks/use-streaming-chat";
 
+type BaseTurnViewModel = Omit<TurnViewModel, "selfModApplied">;
+
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   if (!event?.payload || typeof event.payload !== "object") {
     return null;
@@ -86,8 +88,8 @@ export function useTurnViewModels(opts: {
 
   const depseudonymize = useDepseudonymize();
 
-  const turns = useMemo(() => {
-    return slicedTurns.map((turn): TurnViewModel => {
+  const baseTurns = useMemo(() => {
+    return slicedTurns.map((turn): BaseTurnViewModel => {
       const userText = getEventText(turn.userMessage);
       const userAttachments = getAttachments(turn.userMessage);
       const userChannelEnvelope = getChannelEnvelope(turn.userMessage);
@@ -107,34 +109,50 @@ export function useTurnViewModels(opts: {
         assistantText,
         assistantMessageId,
         assistantEmotesEnabled,
-        selfModApplied: selfModMap?.[turn.id],
       };
     });
-  }, [slicedTurns, depseudonymize, selfModMap]);
+  }, [slicedTurns, depseudonymize]);
+
+  const turns = useMemo(() => {
+    if (!selfModMap) {
+      return baseTurns;
+    }
+
+    let hasAppliedSelfMod = false;
+    const nextTurns = baseTurns.map((turn): TurnViewModel => {
+      const selfModApplied = selfModMap[turn.id];
+      if (!selfModApplied) {
+        return turn;
+      }
+      hasAppliedSelfMod = true;
+      return { ...turn, selfModApplied };
+    });
+
+    return hasAppliedSelfMod ? nextTurns : baseTurns;
+  }, [baseTurns, selfModMap]);
 
   const deferredStreamingText = useDeferredValue(streamingText);
   const deferredReasoningText = useDeferredValue(reasoningText);
 
-  const processedStreamingText = useMemo(
-    () =>
-      deferredStreamingText
+  const { processedStreamingText, processedReasoningText } = useMemo(
+    () => ({
+      processedStreamingText: deferredStreamingText
         ? depseudonymize(deferredStreamingText)
         : deferredStreamingText,
-    [deferredStreamingText, depseudonymize],
-  );
-  const processedReasoningText = useMemo(
-    () =>
-      deferredReasoningText
+      processedReasoningText: deferredReasoningText
         ? depseudonymize(deferredReasoningText)
         : deferredReasoningText,
-    [deferredReasoningText, depseudonymize],
+    }),
+    [deferredStreamingText, deferredReasoningText, depseudonymize],
   );
 
-  const runningTool = useMemo(
-    () => getCurrentRunningTool(events),
+  const { runningTool, runningTasks } = useMemo(
+    () => ({
+      runningTool: getCurrentRunningTool(events),
+      runningTasks: getRunningTasks(events),
+    }),
     [events],
   );
-  const runningTasks = useMemo(() => getRunningTasks(events), [events]);
 
   const hasPendingTurn = useMemo(() => {
     if (!pendingUserMessageId) return false;
