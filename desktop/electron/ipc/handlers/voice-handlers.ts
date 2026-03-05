@@ -15,6 +15,7 @@ type VoiceHandlersOptions = {
   getOverlayController: () => OverlayWindowController | null
   getConvexSiteUrl: () => string | null
   getAuthToken: () => Promise<string | null> | string | null
+  setAssistantSpeaking: (active: boolean) => Promise<void>
 }
 
 export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
@@ -150,5 +151,10 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         reject(err instanceof Error ? err : new Error(String(err)))
       })
     })
+  })
+
+  ipcMain.handle('voice:setAssistantSpeaking', async (_event, active: boolean) => {
+    await options.setAssistantSpeaking(Boolean(active))
+    return { ok: true }
   })
 }
