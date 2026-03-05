@@ -87,6 +87,50 @@ describe("useCanvasCommands", () => {
     expect(openCanvas).toHaveBeenCalledTimes(2);
   });
 
+  it("ignores prepended history while still handling live canvas commands", () => {
+    const openCanvas = vi.fn();
+    const closeCanvas = vi.fn();
+    mockUseCanvas.mockReturnValue({
+      state: { canvas: null },
+      openCanvas,
+      closeCanvas,
+    });
+
+    const latestEvent = createEvent({
+      _id: "cmd-latest",
+      type: "canvas_command",
+      payload: { action: "open", name: "latest" },
+    });
+    const historicalEvent = createEvent({
+      _id: "cmd-history",
+      type: "canvas_command",
+      payload: { action: "close" },
+    });
+    const appendedEvent = createEvent({
+      _id: "cmd-appended",
+      type: "canvas_command",
+      payload: { action: "open", name: "appended" },
+    });
+
+    const { rerender } = renderHook(({ list }) => useCanvasCommands(list, "conv-1"), {
+      initialProps: { list: [latestEvent] },
+    });
+
+    expect(openCanvas).toHaveBeenCalledTimes(1);
+
+    rerender({ list: [historicalEvent, latestEvent] });
+    expect(closeCanvas).not.toHaveBeenCalled();
+    expect(openCanvas).toHaveBeenCalledTimes(1);
+
+    rerender({ list: [historicalEvent, latestEvent, appendedEvent] });
+    expect(openCanvas).toHaveBeenCalledTimes(2);
+    expect(openCanvas).toHaveBeenLastCalledWith({
+      name: "appended",
+      title: undefined,
+      url: undefined,
+    });
+  });
+
   it("closes canvas and kills localhost shell by port", () => {
     const openCanvas = vi.fn();
     const closeCanvas = vi.fn();

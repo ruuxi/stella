@@ -853,10 +853,11 @@ export class RealtimeVoiceSession {
   /**
    * Call Mercury endpoint directly from the renderer using the same
    * auth/URL resolution as the voice session endpoint.
-   * Then forward tool results to main process for Neri UI dispatch.
+   * Then apply any returned dashboard actions locally in the renderer.
    */
   private async callMercury(message: string): Promise<string> {
     const { endpoint, headers } = await createServiceRequest("/api/mercury/chat");
+    const { getNeriWindowSummary } = await import("@/app/neri/neri-store");
     console.log("[Voice RTC] Mercury call:", message, "→", endpoint);
 
     const res = await fetch(endpoint, {
@@ -865,6 +866,7 @@ export class RealtimeVoiceSession {
       body: JSON.stringify({
         message,
         conversationId: this.conversationId,
+        windowState: { windows: getNeriWindowSummary() },
       }),
     });
 
@@ -961,7 +963,7 @@ export class RealtimeVoiceSession {
    * completes, inject the real result into the conversation and trigger
    * a follow-up response.
    */
-  private callMercuryAsync(message: string, _callId: string): void {
+  private callMercuryAsync(message: string): void {
     this.callMercury(message)
       .then((spokenResult) => {
         if (!spokenResult || spokenResult === "Working on it.") return;
@@ -1060,7 +1062,7 @@ export class RealtimeVoiceSession {
         // Use the user's actual transcript instead of the model's paraphrase
         const message = this.lastUserTranscript || (args.message as string) || "";
         result = "Working on it.";
-        this.callMercuryAsync(message, callId);
+        this.callMercuryAsync(message);
       } else {
         result = `Unknown tool: ${name}`;
       }

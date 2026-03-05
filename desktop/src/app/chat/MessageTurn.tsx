@@ -166,7 +166,7 @@ export const TurnItem = memo(function TurnItem({
   const assistantCacheKey = `assistant-${turn.id}`;
 
   return (
-    <div className="session-turn">
+    <div className="session-turn" data-turn-id={turn.id}>
       {/* User message (skip if empty, e.g., for standalone assistant messages) */}
       {hasUserContent && (
         <div className="event-item user">

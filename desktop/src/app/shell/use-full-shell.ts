@@ -14,6 +14,83 @@ type ScrollManagementOptions = {
   onLoadOlder?: () => void;
 };
 
+type TurnAnchorSnapshot = {
+  turnId: string;
+  offsetTop: number;
+};
+
+type PrependAnchorSnapshot = {
+  itemCount: number;
+  scrollHeight: number;
+  scrollTop: number;
+  turnAnchor: TurnAnchorSnapshot | null;
+};
+
+const getVisibleTurnAnchor = (
+  container: HTMLDivElement,
+): TurnAnchorSnapshot | null => {
+  if (
+    typeof container.querySelectorAll !== "function" ||
+    typeof container.getBoundingClientRect !== "function"
+  ) {
+    return null;
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const turnElements = container.querySelectorAll<HTMLElement>("[data-turn-id]");
+
+  for (const element of turnElements) {
+    const turnId = element.dataset.turnId;
+    if (!turnId || typeof element.getBoundingClientRect !== "function") {
+      continue;
+    }
+
+    const elementRect = element.getBoundingClientRect();
+    if (
+      elementRect.bottom <= containerRect.top ||
+      elementRect.top >= containerRect.bottom
+    ) {
+      continue;
+    }
+
+    return {
+      turnId,
+      offsetTop: elementRect.top - containerRect.top,
+    };
+  }
+
+  return null;
+};
+
+const restoreTurnAnchor = (
+  container: HTMLDivElement,
+  anchor: TurnAnchorSnapshot,
+  baseScrollTop: number,
+) => {
+  if (
+    typeof container.querySelectorAll !== "function" ||
+    typeof container.getBoundingClientRect !== "function"
+  ) {
+    return false;
+  }
+
+  const turnElements = container.querySelectorAll<HTMLElement>("[data-turn-id]");
+  const anchorElement = Array.from(turnElements).find(
+    (element) => element.dataset.turnId === anchor.turnId,
+  );
+
+  if (!anchorElement || typeof anchorElement.getBoundingClientRect !== "function") {
+    return false;
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const currentOffsetTop =
+    anchorElement.getBoundingClientRect().top - containerRect.top;
+
+  container.scrollTop = baseScrollTop + (currentOffsetTop - anchor.offsetTop);
+  return true;
+};
+
 export function useScrollManagement({
   itemCount = 0,
   hasOlderEvents = false,
@@ -23,11 +100,7 @@ export function useScrollManagement({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const scrollRafRef = useRef<number | null>(null);
-  const prependAnchorRef = useRef<{
-    itemCount: number;
-    scrollHeight: number;
-    scrollTop: number;
-  } | null>(null);
+  const prependAnchorRef = useRef<PrependAnchorSnapshot | null>(null);
   const continueLoadingOlderRef = useRef(false);
 
   const showScrollButton = !isNearBottom;
@@ -65,6 +138,7 @@ export function useScrollManagement({
       itemCount,
       scrollHeight: container.scrollHeight,
       scrollTop: container.scrollTop,
+      turnAnchor: getVisibleTurnAnchor(container),
     };
     onLoadOlder();
   }, [hasOlderEvents, isLoadingOlder, itemCount, onLoadOlder]);
@@ -90,8 +164,14 @@ export function useScrollManagement({
     }
 
     if (itemCount > anchor.itemCount) {
-      const scrollDelta = container.scrollHeight - anchor.scrollHeight;
-      container.scrollTop = anchor.scrollTop + scrollDelta;
+      const restoredFromTurn =
+        anchor.turnAnchor !== null &&
+        restoreTurnAnchor(container, anchor.turnAnchor, anchor.scrollTop);
+
+      if (!restoredFromTurn) {
+        const scrollDelta = container.scrollHeight - anchor.scrollHeight;
+        container.scrollTop = anchor.scrollTop + scrollDelta;
+      }
     }
 
     prependAnchorRef.current = null;
