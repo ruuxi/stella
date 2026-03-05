@@ -223,7 +223,7 @@ export const FullShell = () => {
     return () => unsubscribe?.();
   }, [handleVoiceTranscript]);
 
-  useCanvasCommands(events);
+  useCanvasCommands(events, activeConversationId);
 
   useEffect(() => {
     if (isNearBottomRef.current) {

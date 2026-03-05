@@ -133,6 +133,58 @@ describe("useConversationEventFeed", () => {
     expect(result.current.hasOlderEvents).toBe(false);
   });
 
+  it("resets the local window when the conversation changes", () => {
+    const eventsByConversation = {
+      "conv-1": Array.from({ length: 400 }, (_, index) =>
+        makeEvent(
+          `conv-1-${index + 1}`,
+          index + 1,
+          index % 2 === 0 ? "user_message" : "assistant_message",
+          { text: `conv-1 event ${index + 1}` },
+        ),
+      ),
+      "conv-2": Array.from({ length: 50 }, (_, index) =>
+        makeEvent(
+          `conv-2-${index + 1}`,
+          index + 1,
+          index % 2 === 0 ? "user_message" : "assistant_message",
+          { text: `conv-2 event ${index + 1}` },
+        ),
+      ),
+    } satisfies Record<string, EventRecord[]>;
+
+    mockListLocalEvents.mockImplementation((conversationId, maxItems) => {
+      const events = eventsByConversation[conversationId as keyof typeof eventsByConversation] ?? [];
+      return events.slice(Math.max(0, events.length - maxItems));
+    });
+    mockGetLocalEventCount.mockImplementation(
+      (conversationId) =>
+        eventsByConversation[conversationId as keyof typeof eventsByConversation]?.length ?? 0,
+    );
+
+    const { result, rerender } = renderHook(
+      ({ conversationId }: { conversationId?: string }) =>
+        useConversationEventFeed(conversationId),
+      {
+        initialProps: { conversationId: "conv-1" },
+      },
+    );
+
+    expect(result.current.events).toHaveLength(200);
+
+    act(() => {
+      result.current.loadOlder();
+    });
+    expect(result.current.events).toHaveLength(400);
+
+    rerender({ conversationId: "conv-2" });
+    expect(result.current.events).toHaveLength(50);
+
+    rerender({ conversationId: "conv-1" });
+    expect(result.current.events).toHaveLength(200);
+    expect(mockListLocalEvents).toHaveBeenLastCalledWith("conv-1", 200);
+  });
+
   it("uses cloud pagination results, exposes loading state, and requests older history", () => {
     mockStorageMode = "cloud";
     const loadMore = vi.fn();

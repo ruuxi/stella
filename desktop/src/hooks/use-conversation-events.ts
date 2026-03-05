@@ -2,7 +2,6 @@ import { usePaginatedQuery } from "convex/react";
 import {
   startTransition,
   useCallback,
-  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -81,21 +80,23 @@ export const useConversationEventFeed = (
 ): ConversationEventFeed => {
   const { storageMode } = useChatStore();
   const localWindowKey = `${storageMode}:${conversationId ?? ""}`;
+  const localWindowVisitToken = useMemo(() => Symbol(localWindowKey), [localWindowKey]);
   const [localWindowState, setLocalWindowState] = useState(() => ({
-    key: localWindowKey,
+    visitToken: localWindowVisitToken,
     maxItems: EVENT_PAGE_SIZE,
   }));
-  const [isLocalLoadingOlder, setIsLocalLoadingOlder] = useState(false);
-  const [pendingLocalMaxItems, setPendingLocalMaxItems] = useState<number | null>(null);
+  const [pendingLocalWindowState, setPendingLocalWindowState] = useState(() => ({
+    visitToken: localWindowVisitToken,
+    maxItems: null as number | null,
+  }));
   const localMaxItems =
-    localWindowState.key === localWindowKey
+    localWindowState.visitToken === localWindowVisitToken
       ? localWindowState.maxItems
       : EVENT_PAGE_SIZE;
-
-  useEffect(() => {
-    setIsLocalLoadingOlder(false);
-    setPendingLocalMaxItems(null);
-  }, [localWindowKey]);
+  const pendingLocalMaxItems =
+    pendingLocalWindowState.visitToken === localWindowVisitToken
+      ? pendingLocalWindowState.maxItems
+      : null;
 
   const cloudResult = usePaginatedQuery(
     api.events.listEvents,
@@ -132,24 +133,11 @@ export const useConversationEventFeed = (
     storageMode === "local" && conversationId
       ? getLocalEventCount(conversationId)
       : 0;
-
-  useEffect(() => {
-    if (!isLocalLoadingOlder || pendingLocalMaxItems === null) {
-      return;
-    }
-    if (
-      localEvents.length >= pendingLocalMaxItems ||
-      localEventCount <= localEvents.length
-    ) {
-      setIsLocalLoadingOlder(false);
-      setPendingLocalMaxItems(null);
-    }
-  }, [
-    isLocalLoadingOlder,
-    localEventCount,
-    localEvents.length,
-    pendingLocalMaxItems,
-  ]);
+  const isLocalLoadingOlder =
+    storageMode === "local" &&
+    pendingLocalMaxItems !== null &&
+    localEvents.length < pendingLocalMaxItems &&
+    localEventCount > localEvents.length;
 
   const cloudResults = cloudResult?.results ?? EMPTY_EVENTS;
   const cloudStatus = cloudResult?.status ?? "Exhausted";
@@ -166,11 +154,13 @@ export const useConversationEventFeed = (
       }
 
       const nextMaxItems = Math.min(localMaxItems + EVENT_PAGE_SIZE, localEventCount);
-      setPendingLocalMaxItems(nextMaxItems);
-      setIsLocalLoadingOlder(true);
+      setPendingLocalWindowState({
+        visitToken: localWindowVisitToken,
+        maxItems: nextMaxItems,
+      });
       startTransition(() => {
         setLocalWindowState({
-          key: localWindowKey,
+          visitToken: localWindowVisitToken,
           maxItems: nextMaxItems,
         });
       });
@@ -187,7 +177,7 @@ export const useConversationEventFeed = (
     localEventCount,
     localEvents.length,
     localMaxItems,
-    localWindowKey,
+    localWindowVisitToken,
     storageMode,
   ]);
 

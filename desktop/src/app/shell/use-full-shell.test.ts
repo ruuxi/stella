@@ -12,6 +12,17 @@ const makeOptions = (overrides: Partial<Parameters<typeof useScrollManagement>[0
 
 describe("useScrollManagement", () => {
   let rafCallbacks: FrameRequestCallback[];
+  const createRect = (top: number, height: number) => ({
+    top,
+    bottom: top + height,
+    left: 0,
+    right: 0,
+    width: 0,
+    height,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  });
 
   beforeEach(() => {
     rafCallbacks = [];
@@ -172,6 +183,61 @@ describe("useScrollManagement", () => {
 
     Object.defineProperty(mockDiv, "scrollHeight", {
       value: 1800,
+      configurable: true,
+      writable: true,
+    });
+
+    rerender(
+      makeOptions({
+        itemCount: 40,
+        hasOlderEvents: true,
+        onLoadOlder,
+      }),
+    );
+
+    expect(mockDiv.scrollTop).toBe(600);
+  });
+
+  it("preserves the scroll anchor when older history loads while the bottom grows", () => {
+    const onLoadOlder = vi.fn();
+    const { result, rerender } = renderHook(
+      (options: ReturnType<typeof makeOptions>) => useScrollManagement(options),
+      {
+        initialProps: makeOptions({
+          itemCount: 20,
+          hasOlderEvents: true,
+          onLoadOlder,
+        }),
+      },
+    );
+
+    let anchorTop = 20;
+    const anchorElement = {
+      dataset: { turnId: "turn-20" },
+      getBoundingClientRect: vi.fn(() => createRect(anchorTop, 120)),
+    } as unknown as HTMLElement;
+
+    const mockDiv = {
+      scrollTop: 0,
+      scrollHeight: 1200,
+      clientHeight: 600,
+      scrollTo: vi.fn(),
+      querySelectorAll: vi.fn(() => [anchorElement]),
+      getBoundingClientRect: vi.fn(() => createRect(0, 600)),
+    } as unknown as HTMLDivElement;
+
+    (result.current.scrollContainerRef as { current: HTMLDivElement }).current = mockDiv;
+
+    act(() => {
+      result.current.handleScroll();
+    });
+    act(() => {
+      rafCallbacks.shift()?.(0);
+    });
+
+    anchorTop = 620;
+    Object.defineProperty(mockDiv, "scrollHeight", {
+      value: 2100,
       configurable: true,
       writable: true,
     });
