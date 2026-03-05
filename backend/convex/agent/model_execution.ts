@@ -34,7 +34,7 @@ export function usageSummaryFromFinish(
   usage: LanguageModelUsage,
   totalUsage: LanguageModelUsage,
 ): ReturnType<typeof toUsageSummary> {
-  return toUsageSummary(totalUsage ?? usage);
+  return toUsageSummary(totalUsage);
 }
 
 export function usageSummaryFromUsage(
