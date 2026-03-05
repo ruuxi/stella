@@ -146,6 +146,10 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
     // radial:show includes extra screenX/screenY for container positioning
     const cleanupShow = api.radial.onShow(
       (_event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number; screenX?: number; screenY?: number }) => {
+        if (radialHideTimerRef.current) {
+          clearTimeout(radialHideTimerRef.current);
+          radialHideTimerRef.current = null;
+        }
         if (typeof data.screenX === "number" && typeof data.screenY === "number") {
           dispatch({ type: "radial:show", position: { x: data.screenX!, y: data.screenY! } });
         } else {

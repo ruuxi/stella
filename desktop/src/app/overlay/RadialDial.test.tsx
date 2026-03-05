@@ -184,20 +184,18 @@ describe("RadialDial", () => {
     expect(frame!.classList.contains("radial-dial-frame--visible")).toBe(false);
   });
 
-  // ---- ForeignObject elements ----
+  // ---- Wedge content ----
 
-  it("renders 5 foreignObject elements for wedge content", () => {
+  it("renders 5 wedge content containers", () => {
     const { container } = render(<RadialDial />);
-    const foreignObjects = container.querySelectorAll("foreignObject");
-    expect(foreignObjects).toHaveLength(5);
+    const wedgeContent = container.querySelectorAll(".radial-wedge-content");
+    expect(wedgeContent).toHaveLength(5);
   });
 
-  it("foreignObject elements have pointer-events:none style", () => {
+  it("wedge content containers render labels", () => {
     const { container } = render(<RadialDial />);
-    const foreignObjects = container.querySelectorAll("foreignObject");
-    foreignObjects.forEach((fo) => {
-      expect(fo.getAttribute("style")).toContain("pointer-events: none");
-    });
+    const labels = container.querySelectorAll(".radial-wedge-label");
+    expect(labels).toHaveLength(5);
   });
 
   // ---- Wedge groups ----
@@ -257,12 +255,12 @@ describe("RadialDial helper functions (via rendering)", () => {
     });
   });
 
-  it("foreignObject positions are within SVG bounds (0-280)", () => {
+  it("wedge content positions are within SVG bounds (0-280)", () => {
     const { container } = render(<RadialDial />);
-    const foreignObjects = container.querySelectorAll("foreignObject");
-    foreignObjects.forEach((fo) => {
-      const x = parseFloat(fo.getAttribute("x")!);
-      const y = parseFloat(fo.getAttribute("y")!);
+    const wedgeContent = container.querySelectorAll<HTMLElement>(".radial-wedge-content");
+    wedgeContent.forEach((item) => {
+      const x = parseFloat(item.style.left);
+      const y = parseFloat(item.style.top);
       // Content position should be roughly between inner and outer radius from center
       expect(x).toBeGreaterThan(0);
       expect(x).toBeLessThan(280);
@@ -271,12 +269,12 @@ describe("RadialDial helper functions (via rendering)", () => {
     });
   });
 
-  it("foreignObject elements have width=56 and height=40", () => {
+  it("wedge content positions are written inline for each wedge", () => {
     const { container } = render(<RadialDial />);
-    const foreignObjects = container.querySelectorAll("foreignObject");
-    foreignObjects.forEach((fo) => {
-      expect(fo.getAttribute("width")).toBe("56");
-      expect(fo.getAttribute("height")).toBe("40");
+    const wedgeContent = container.querySelectorAll<HTMLElement>(".radial-wedge-content");
+    wedgeContent.forEach((item) => {
+      expect(item.style.left).toMatch(/px$/);
+      expect(item.style.top).toMatch(/px$/);
     });
   });
 

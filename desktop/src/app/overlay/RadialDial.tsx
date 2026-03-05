@@ -1,24 +1,24 @@
 import {
   useEffect,
   useMemo,
-  useState,
   useRef,
+  useState,
   type ComponentType,
-  type SVGProps
-} from 'react';
-import { Camera, MessageSquare, Mic, Maximize2, Sparkles } from 'lucide-react'
-import { RADIAL_SIZE } from '@/lib/layout'
-import { getElectronApi } from '@/services/electron'
-import type { RadialWedge } from '@/types/electron'
-import { useTheme } from '@/theme/theme-context'
+  type SVGProps,
+} from 'react'
+import { Camera, Maximize2, MessageSquare, Mic, Sparkles } from 'lucide-react'
 import { StellaAnimation } from '@/app/shell/ascii-creature/StellaAnimation'
 import { cssToVec3 } from '@/lib/color'
+import { RADIAL_SIZE } from '@/lib/layout'
+import { getElectronApi } from '@/services/electron'
+import { useTheme } from '@/theme/theme-context'
+import type { RadialWedge } from '@/types/electron'
 import {
-  initBlob,
-  startOpen,
-  startClose,
   cancelAnimation,
   destroyBlob,
+  initBlob,
+  startClose,
+  startOpen,
   type BlobColors,
 } from './radial-blob'
 
@@ -34,8 +34,8 @@ const SIZE = RADIAL_SIZE
 const CENTER = SIZE / 2
 const INNER_RADIUS = 40
 const OUTER_RADIUS = 125
-const WEDGE_ANGLE = 72 // 360 / 5 wedges
-const DEAD_ZONE_RADIUS = 30 // Center zone for "dismiss"
+const WEDGE_ANGLE = 72
+const DEAD_ZONE_RADIUS = 30
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
 const toRgba = (color: string, alpha: number): string => {
@@ -90,6 +90,12 @@ const calculateWedge = (x: number, y: number, centerX: number, centerY: number):
   return WEDGES[wedgeIndex]?.id ?? 'dismiss'
 }
 
+const WEDGE_LAYOUT = WEDGES.map((wedge, index) => ({
+  ...wedge,
+  contentPos: getContentPosition(index),
+  path: createWedgePath(index * WEDGE_ANGLE, (index + 1) * WEDGE_ANGLE),
+}))
+
 type Phase = 'hidden' | 'opening' | 'open' | 'closing'
 
 type BlobRefs = {
@@ -99,7 +105,6 @@ type BlobRefs = {
   colorsRef: React.RefObject<BlobColors>
 }
 
-/** Manages the WebGL blob lifecycle and theme color sync. */
 function useRadialBlob(colors: ReturnType<typeof useTheme>['colors']): BlobRefs {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const blobReady = useRef(false)
@@ -138,25 +143,25 @@ function useRadialBlob(colors: ReturnType<typeof useTheme>['colors']): BlobRefs 
   return useMemo(() => ({ canvasRef, blobReady, selectedIdxRef, colorsRef }), [])
 }
 
-/** Subscribes to radial IPC events (show/hide/cursor) and drives phase transitions. */
 function useRadialIPC(
   blob: BlobRefs,
   setSelectedWedge: React.Dispatch<React.SetStateAction<RadialWedge>>,
   setPhase: React.Dispatch<React.SetStateAction<Phase>>,
   setContentVisible: React.Dispatch<React.SetStateAction<boolean>>,
 ) {
-  const api = getElectronApi()
   const visibleRef = useRef(false)
   const phaseRef = useRef<Phase>('hidden')
   const contentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const transitionIdRef = useRef(0)
 
   useEffect(() => {
-    if (!api) return
+    if (!getElectronApi()) return
 
     const handleShow = (
       _event: unknown,
       data: { centerX: number; centerY: number; x?: number; y?: number },
     ) => {
+      const transitionId = ++transitionIdRef.current
       visibleRef.current = true
 
       if (typeof data.x === 'number' && typeof data.y === 'number') {
@@ -180,26 +185,28 @@ function useRadialIPC(
           blob.selectedIdxRef,
           blob.colorsRef,
           () => {
-            if (visibleRef.current) {
-              setPhase('open')
-              phaseRef.current = 'open'
-              setContentVisible(true)
-            }
+            if (!visibleRef.current || transitionIdRef.current !== transitionId) return
+            phaseRef.current = 'open'
+            setPhase('open')
+            setContentVisible(true)
           },
           () => {
-            if (visibleRef.current) setContentVisible(true)
+            if (!visibleRef.current || transitionIdRef.current !== transitionId) return
+            setContentVisible(true)
           },
         )
       } else {
         setPhase('open')
         phaseRef.current = 'open'
         requestAnimationFrame(() => {
-          if (visibleRef.current) setContentVisible(true)
+          if (!visibleRef.current || transitionIdRef.current !== transitionId) return
+          setContentVisible(true)
         })
       }
     }
 
     const handleHide = () => {
+      const transitionId = ++transitionIdRef.current
       if (contentTimerRef.current) {
         clearTimeout(contentTimerRef.current)
         contentTimerRef.current = null
@@ -212,16 +219,20 @@ function useRadialIPC(
         phaseRef.current = 'closing'
 
         contentTimerRef.current = setTimeout(() => {
+          if (transitionIdRef.current !== transitionId) return
           contentTimerRef.current = null
           setContentVisible(false)
         }, 60)
         startClose(blob.selectedIdxRef, blob.colorsRef, () => {
+          if (transitionIdRef.current !== transitionId) return
           visibleRef.current = false
           setPhase('hidden')
           phaseRef.current = 'hidden'
           setContentVisible(false)
           requestAnimationFrame(() => {
-            window.electronAPI?.radial.animDone?.()
+            if (transitionIdRef.current === transitionId && !visibleRef.current) {
+              window.electronAPI?.radial.animDone?.()
+            }
           })
         })
       } else {
@@ -249,6 +260,8 @@ function useRadialIPC(
       const cleanupCursor = electronAPI.radial.onCursor(handleCursor)
 
       return () => {
+        transitionIdRef.current += 1
+        visibleRef.current = false
         cancelAnimation()
         if (contentTimerRef.current) clearTimeout(contentTimerRef.current)
         cleanupShow()
@@ -256,7 +269,7 @@ function useRadialIPC(
         cleanupCursor()
       }
     }
-  }, [api, blob, setSelectedWedge, setPhase, setContentVisible])
+  }, [blob, setSelectedWedge, setPhase, setContentVisible])
 }
 
 export function RadialDial() {
@@ -267,23 +280,33 @@ export function RadialDial() {
 
   const blob = useRadialBlob(colors)
   useRadialIPC(blob, setSelectedWedge, setPhase, setContentVisible)
+  const palette = useMemo(() => {
+    const interactive = toRgba(colors.interactive, 1)
+    const interactiveStroke = toRgba(colors.interactive, 0.9)
+    const card = toRgba(colors.card, 1)
+    const border = toRgba(colors.border, 0.5)
+    const background = toRgba(colors.background, 1)
+    return {
+      interactive,
+      interactiveStroke,
+      card,
+      border,
+      background,
+      cardVec: cssToVec3(colors.card),
+      interactiveVec: cssToVec3(colors.interactive),
+    }
+  }, [colors.background, colors.border, colors.card, colors.interactive])
 
-  // Sync selection highlight to blob colors — deferred until SVG is visible
-  // because the asymmetric wobble during opening makes visual wedge positions
-  // differ from mathematical boundaries.
   useEffect(() => {
     const idx = WEDGES.findIndex((w) => w.id === selectedWedge)
     blob.selectedIdxRef.current = phase === 'open' || phase === 'closing' ? idx : -1
 
-    const cardVec = cssToVec3(colors.card)
-    const selVec = cssToVec3(colors.interactive)
     blob.colorsRef.current = {
       ...blob.colorsRef.current,
-      fills: WEDGES.map((_, i) => (i === idx ? selVec : cardVec)),
+      fills: WEDGES.map((_, i) => (i === idx ? palette.interactiveVec : palette.cardVec)),
     }
-  }, [selectedWedge, colors, phase, blob])
+  }, [selectedWedge, phase, blob, palette.cardVec, palette.interactiveVec])
 
-  // Canvas visible whenever the dial is not hidden to avoid compositor pops
   const showCanvas = phase !== 'hidden'
 
   return (
@@ -316,29 +339,15 @@ export function RadialDial() {
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           className="radial-dial"
         >
-          {WEDGES.map((wedge, index) => {
-            const startAngle = index * WEDGE_ANGLE
-            const endAngle = (index + 1) * WEDGE_ANGLE
+          {WEDGE_LAYOUT.map((wedge) => {
             const isSelected = selectedWedge === wedge.id
-            const contentPos = getContentPosition(index)
-            const Icon = wedge.icon
-
-            const fillColor = isSelected
-              ? toRgba(colors.interactive, 1)
-              : toRgba(colors.card, 1)
-
-            const strokeColor = isSelected
-              ? toRgba(colors.interactive, 0.9)
-              : toRgba(colors.border, 0.5)
-
-            const iconColor = isSelected
-              ? colors.primaryForeground
-              : colors.mutedForeground
+            const fillColor = isSelected ? palette.interactive : palette.card
+            const strokeColor = isSelected ? palette.interactiveStroke : palette.border
 
             return (
               <g key={wedge.id}>
                 <path
-                  d={createWedgePath(startAngle, endAngle)}
+                  d={wedge.path}
                   fill={fillColor}
                   stroke={strokeColor}
                   strokeWidth={1.5}
@@ -348,34 +357,6 @@ export function RadialDial() {
                     cursor: 'pointer',
                   }}
                 />
-                <foreignObject
-                  x={contentPos.x - 28}
-                  y={contentPos.y - 20}
-                  width={56}
-                  height={40}
-                  style={{ pointerEvents: 'none' }}
-                >
-                  <div className="flex flex-col items-center justify-center w-full h-full gap-0.5">
-                    <Icon
-                      style={{
-                        color: iconColor,
-                        width: '16px',
-                        height: '16px',
-                        transition: 'color 0.1s',
-                      }}
-                    />
-                    <span
-                      style={{
-                        color: iconColor,
-                        fontSize: '10px',
-                        fontWeight: 500,
-                        transition: 'color 0.1s',
-                      }}
-                    >
-                      {wedge.label}
-                    </span>
-                  </div>
-                </foreignObject>
               </g>
             )
           })}
@@ -384,12 +365,45 @@ export function RadialDial() {
             cx={CENTER}
             cy={CENTER}
             r={CENTER_BG_RADIUS}
-            fill={toRgba(colors.background, 1)}
-            stroke={toRgba(colors.border, 0.5)}
+            fill={palette.background}
+            stroke={palette.border}
             strokeWidth={1}
             style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
           />
         </svg>
+
+        {WEDGE_LAYOUT.map((wedge) => {
+          const Icon = wedge.icon
+          const isSelected = selectedWedge === wedge.id
+          const iconColor = isSelected
+            ? colors.primaryForeground
+            : colors.mutedForeground
+
+          return (
+            <div
+              key={`${wedge.id}-content`}
+              className="radial-wedge-content"
+              style={{
+                left: wedge.contentPos.x,
+                top: wedge.contentPos.y,
+                color: iconColor,
+              }}
+            >
+              <Icon
+                aria-hidden="true"
+                width={16}
+                height={16}
+                style={{ transition: 'color 0.1s' }}
+              />
+              <span
+                className="radial-wedge-label"
+                style={{ transition: 'color 0.1s' }}
+              >
+                {wedge.label}
+              </span>
+            </div>
+          )
+        })}
 
         <div className="radial-center-stella-animation">
           <StellaAnimation width={20} height={20} initialBirthProgress={1} maxDpr={1} frameSkip={1} />
@@ -398,6 +412,3 @@ export function RadialDial() {
     </div>
   )
 }
-
-
-
