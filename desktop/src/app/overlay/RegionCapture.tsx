@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { getElectronApi } from "@/services/electron";
 import { runVacuumEffect } from "./region-capture-vacuum";
 
@@ -14,6 +14,7 @@ const MIN_SELECTION_SIZE = 6;
 
 export function RegionCapture() {
   const api = getElectronApi();
+  const captureApi = api?.capture;
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
   const [vacuum, setVacuum] = useState<VacuumState | null>(null);
@@ -26,48 +27,53 @@ export function RegionCapture() {
     height: Math.abs(startPoint.y - currentPoint.y),
   } : null;
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setStartPoint(null);
     setCurrentPoint(null);
-  };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        getElectronApi()?.capture.cancelRegion?.();
+        captureApi?.cancelRegion?.();
         clearSelection();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [captureApi, clearSelection]);
 
   // Listen for reset from main process (e.g. global Escape shortcut swallows
   // the keypress before the renderer's keydown handler fires).
   useEffect(() => {
-    const cleanup = getElectronApi()?.capture.onRegionReset?.(() => {
+    const cleanup = captureApi?.onRegionReset?.(() => {
       clearSelection();
       setVacuum(null);
     });
     return () => cleanup?.();
-  }, []);
+  }, [captureApi, clearSelection]);
 
   useEffect(() => {
     if (!vacuum || !canvasRef.current) return;
     const { clickPoint, bounds, thumbnail } = vacuum;
     const cx = (clickPoint.x - bounds.x) / bounds.width;
     const cy = (clickPoint.y - bounds.y) / bounds.height;
+    let cancelled = false;
 
     runVacuumEffect(canvasRef.current, thumbnail, cx, cy).then(() => {
-      api?.capture.submitRegionClick?.(clickPoint);
+      if (cancelled) return;
+      captureApi?.submitRegionClick?.(clickPoint);
       setVacuum(null);
     });
-  }, [vacuum]);
+    return () => {
+      cancelled = true;
+    };
+  }, [vacuum, captureApi]);
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-    api?.capture.cancelRegion?.();
+    captureApi?.cancelRegion?.();
     clearSelection();
   };
 
@@ -80,7 +86,17 @@ export function RegionCapture() {
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
     if (!startPoint) return;
-    setCurrentPoint({ x: event.clientX, y: event.clientY });
+    const nextPoint = { x: event.clientX, y: event.clientY };
+    setCurrentPoint((previousPoint) => {
+      if (
+        previousPoint &&
+        previousPoint.x === nextPoint.x &&
+        previousPoint.y === nextPoint.y
+      ) {
+        return previousPoint;
+      }
+      return nextPoint;
+    });
   };
 
   const handleMouseUp = async (event: MouseEvent<HTMLDivElement>) => {
@@ -99,20 +115,20 @@ export function RegionCapture() {
       resolvedSelection.height < MIN_SELECTION_SIZE
     ) {
       clearSelection();
-      const getWindowCapture = api?.capture.getWindowCapture;
+      const getWindowCapture = captureApi?.getWindowCapture;
       if (!getWindowCapture) {
-        api?.capture.submitRegionClick?.(endPoint);
+        captureApi?.submitRegionClick?.(endPoint);
         return;
       }
       const capture = await getWindowCapture(endPoint);
       if (capture) {
         setVacuum({ clickPoint: endPoint, ...capture });
       } else {
-        api?.capture.submitRegionClick?.(endPoint);
+        captureApi?.submitRegionClick?.(endPoint);
       }
       return;
     }
-    api?.capture.submitRegionSelection?.(resolvedSelection);
+    captureApi?.submitRegionSelection?.(resolvedSelection);
     clearSelection();
   };
 

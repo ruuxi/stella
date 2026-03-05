@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useCallback, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useCallback, useState } from "react";
 import { useNeriState } from "./use-neri-state";
 import { NeriWindowContent } from "./NeriWindowContent";
 import { WINDOW_TEMPLATES, type NeriWindowType } from "./neri-types";
@@ -56,6 +56,14 @@ const StatusClock = memo(function StatusClock() {
   );
 });
 
+function setMutableRefCurrent<T>(
+  ref: React.RefObject<T | null> | undefined,
+  value: T | null,
+) {
+  if (!ref || !("current" in ref)) return;
+  (ref as React.MutableRefObject<T | null>).current = value;
+}
+
 /** Draggable floating panel hook */
 function useNeriPanelDrag(rootRef: React.RefObject<HTMLDivElement | null>) {
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -111,35 +119,28 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
   const closeTimeoutRef = useRef<number | null>(null);
   const [showLauncher, setShowLauncher] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const workspaceBoundsRef = useRef({
-    activeWorkspaceIndex: state.activeWorkspaceIndex,
-    workspaceCount: state.workspaces.length,
-  });
-  const keyboardStateRef = useRef({
+  const interactionStateRef = useRef({
     showLauncher,
     activeWorkspaceIndex: state.activeWorkspaceIndex,
     workspaceCount: state.workspaces.length,
   });
-
-  workspaceBoundsRef.current.activeWorkspaceIndex = state.activeWorkspaceIndex;
-  workspaceBoundsRef.current.workspaceCount = state.workspaces.length;
-  keyboardStateRef.current.showLauncher = showLauncher;
-  keyboardStateRef.current.activeWorkspaceIndex = state.activeWorkspaceIndex;
-  keyboardStateRef.current.workspaceCount = state.workspaces.length;
+  useLayoutEffect(() => {
+    interactionStateRef.current.showLauncher = showLauncher;
+    interactionStateRef.current.activeWorkspaceIndex = state.activeWorkspaceIndex;
+    interactionStateRef.current.workspaceCount = state.workspaces.length;
+  }, [showLauncher, state.activeWorkspaceIndex, state.workspaces.length]);
 
   // Merge internal rootRef with external panelRef for hit-testing
   const setRootRef = useCallback((el: HTMLDivElement | null) => {
-    (rootRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-    if (panelRef && "current" in panelRef) {
-      (panelRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-    }
+    setMutableRefCurrent(rootRef, el);
+    setMutableRefCurrent(panelRef, el);
   }, [panelRef]);
 
   const { handleDragStart } = useNeriPanelDrag(rootRef);
 
   // Right-click drag navigation
   const handleWorkspaceSwitch = useCallback((delta: number) => {
-    const { activeWorkspaceIndex, workspaceCount } = workspaceBoundsRef.current;
+    const { activeWorkspaceIndex, workspaceCount } = interactionStateRef.current;
     const newIdx = activeWorkspaceIndex + delta;
     if (newIdx >= 0 && newIdx < workspaceCount) {
       switchWorkspace(newIdx);
@@ -155,6 +156,44 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
       return true;
     });
   }, [onClose]);
+  const handleOpenLauncher = useCallback(() => {
+    setShowLauncher(true);
+  }, []);
+  const handleCloseLauncher = useCallback(() => {
+    setShowLauncher(false);
+  }, []);
+  const handleLauncherClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+  const handleWorkspaceClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      const index = Number(e.currentTarget.dataset.workspaceIndex);
+      if (Number.isInteger(index)) {
+        switchWorkspace(index);
+      }
+    },
+    [switchWorkspace],
+  );
+  const handleColumnFocus = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const index = Number(e.currentTarget.dataset.columnIndex);
+      if (Number.isInteger(index)) {
+        focusColumn(index);
+      }
+    },
+    [focusColumn],
+  );
+  const handleCloseWindow = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      const columnId = e.currentTarget.dataset.columnId;
+      const windowId = e.currentTarget.dataset.windowId;
+      if (columnId && windowId) {
+        closeWindow(columnId, windowId);
+      }
+    },
+    [closeWindow],
+  );
 
   useEffect(() => {
     return () => {
@@ -176,7 +215,7 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
   // Keyboard
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const { showLauncher: launcherOpen, activeWorkspaceIndex, workspaceCount } = keyboardStateRef.current;
+      const { showLauncher: launcherOpen, activeWorkspaceIndex, workspaceCount } = interactionStateRef.current;
 
       // Don't intercept if typing in an input
       const tag = (e.target as HTMLElement).tagName;
@@ -210,7 +249,7 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
           e.preventDefault();
           break;
         case "Enter":
-          if (e.ctrlKey || e.metaKey) setShowLauncher(true);
+          if (e.ctrlKey || e.metaKey) handleOpenLauncher();
           e.preventDefault();
           break;
       }
@@ -218,7 +257,15 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleClose, focusLeft, focusRight, moveColumnLeft, moveColumnRight, switchWorkspace]);
+  }, [
+    handleClose,
+    handleOpenLauncher,
+    focusLeft,
+    focusRight,
+    moveColumnLeft,
+    moveColumnRight,
+    switchWorkspace,
+  ]);
 
   // Scroll focused column into view
   useEffect(() => {
@@ -275,24 +322,22 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
             <span className="neri-statusbar-pill subtle">
               Workspace {state.activeWorkspaceIndex + 1}
             </span>
-            {activeWorkspace.columns.length > 0 && (
+            {workspaceColumnCount > 0 && (
               <span className="neri-statusbar-pill subtle">
-                {activeWorkspace.columns.length} window{activeWorkspace.columns.length !== 1 ? "s" : ""}
+                {workspaceColumnCount} window{workspaceColumnCount !== 1 ? "s" : ""}
               </span>
             )}
           </div>
           <div className="neri-statusbar-center">
-            {activeWorkspace.focusedColumnIndex >= 0 && activeWorkspace.columns[activeWorkspace.focusedColumnIndex] && (
+            {focusedColumn && (
               <span className="neri-statusbar-pill focused">
-                {activeWorkspace.columns[activeWorkspace.focusedColumnIndex].windows[0]?.title}
+                {focusedColumn.windows[0]?.title}
               </span>
             )}
           </div>
           <div className="neri-statusbar-right">
-            <button className="neri-statusbar-btn" onClick={() => setShowLauncher(true)} title="Open window (Ctrl+Enter)">+</button>
-            <span className="neri-statusbar-pill subtle">
-              {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
+            <button className="neri-statusbar-btn" onClick={handleOpenLauncher} title="Open window (Ctrl+Enter)">+</button>
+            <StatusClock />
             <button className="neri-close-btn" onClick={handleClose} title="Exit Neri (Esc)">✕</button>
           </div>
         </div>
@@ -305,7 +350,8 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
               <button
                 key={ws.id}
                 className={`neri-ws-dot ${i === state.activeWorkspaceIndex ? "active" : ""} ${ws.columns.length === 0 ? "empty" : ""}`}
-                onClick={() => switchWorkspace(i)}
+                onClick={handleWorkspaceClick}
+                data-workspace-index={i}
                 title={`Workspace ${i + 1}${ws.columns.length === 0 ? " (empty)" : ` (${ws.columns.length} windows)`}`}
               >
                 <span className="neri-ws-dot-indicator" />
@@ -319,8 +365,8 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
           {/* Window strip */}
           <div className="neri-strip-container" ref={stripContainerRef} onWheel={handleWheel}>
             <div className="neri-strip" ref={stripRef}>
-              <div className="neri-strip-inner" style={{ padding: `${STRIP_PADDING}px`, gap: `${COLUMN_GAP}px` }}>
-                {activeWorkspace.columns.length === 0 && (
+              <div className="neri-strip-inner" style={STRIP_INNER_STYLE}>
+                {workspaceColumnCount === 0 && (
                   <div className="neri-empty-workspace">
                     <div className="neri-empty-text">Empty workspace</div>
                     <div className="neri-empty-hint">Press Ctrl+Enter to open a window</div>
@@ -331,18 +377,21 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
                     key={col.id}
                     className={`neri-column ${colIdx === activeWorkspace.focusedColumnIndex ? "focused" : ""}`}
                     style={{ width: col.windows[0]?.width ?? 400 }}
-                    onClick={() => focusColumn(colIdx)}
+                    onClick={handleColumnFocus}
+                    data-column-index={colIdx}
                   >
                     {col.windows.map((win) => (
                       <div key={win.id} className="neri-window">
-                        <div className="neri-window-titlebar" style={{ height: TITLEBAR_HEIGHT }}>
+                        <div className="neri-window-titlebar" style={WINDOW_TITLEBAR_STYLE}>
                           <div className="neri-window-titlebar-left">
                             <span className="neri-window-title">{win.title}</span>
                           </div>
                           <div className="neri-window-titlebar-right">
                             <button
                               className="neri-window-btn"
-                              onClick={(e) => { e.stopPropagation(); closeWindow(col.id, win.id); }}
+                              onClick={handleCloseWindow}
+                              data-column-id={col.id}
+                              data-window-id={win.id}
                               title="Close window"
                             >
                               ✕
@@ -372,8 +421,8 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
 
         {/* Launcher overlay */}
         {showLauncher && (
-          <div className="neri-launcher-backdrop" onClick={() => setShowLauncher(false)}>
-            <div className="neri-launcher" onClick={(e) => e.stopPropagation()}>
+          <div className="neri-launcher-backdrop" onClick={handleCloseLauncher}>
+            <div className="neri-launcher" onClick={handleLauncherClick}>
               <div className="neri-launcher-title">Open Window</div>
               <div className="neri-launcher-grid">
                 {WINDOW_TYPE_OPTIONS.map((type) => {

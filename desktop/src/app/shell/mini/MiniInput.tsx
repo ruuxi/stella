@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ChatContext } from "@/types/electron";
 
 type Props = {
@@ -36,12 +36,79 @@ export const MiniInput = ({
     }
   }, [shellVisible]);
 
-  const hasScreenshots = Boolean(chatContext?.regionScreenshots?.length);
+  const regionScreenshots = chatContext?.regionScreenshots ?? [];
+  const hasScreenshots = regionScreenshots.length > 0;
+  const isCapturePending = Boolean(chatContext?.capturePending);
 
   const canSend =
     Boolean(message.trim()) ||
     Boolean(selectedText) ||
-    Boolean(chatContext?.regionScreenshots?.length);
+    hasScreenshots;
+
+  const clearWindowContext = useCallback(() => {
+    setChatContext((prev) =>
+      prev ? { ...prev, window: null } : prev,
+    );
+  }, [setChatContext]);
+
+  const clearSelectedTextContext = useCallback(() => {
+    setSelectedText(null);
+    setChatContext((prev) =>
+      prev ? { ...prev, selectedText: null } : prev,
+    );
+  }, [setSelectedText, setChatContext]);
+
+  const removeScreenshotContext = useCallback((index: number) => {
+    window.electronAPI?.capture.removeScreenshot?.(index);
+    setChatContext((prev) => {
+      if (!prev) return prev;
+      const next = [...(prev.regionScreenshots ?? [])];
+      next.splice(index, 1);
+      return { ...prev, regionScreenshots: next };
+    });
+  }, [setChatContext]);
+
+  const placeholder = isCapturePending
+    ? "Capturing screen..."
+    : hasScreenshots
+      ? "Ask about the capture..."
+      : chatContext?.window
+        ? "Ask about this window..."
+        : selectedText
+          ? "Ask about the selection..."
+          : "Ask for follow-up changes";
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setMessage(e.target.value);
+  }, [setMessage]);
+
+  const handleInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !message && selectedText) {
+      clearSelectedTextContext();
+      return;
+    }
+
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+      return;
+    }
+
+    if (e.key === "Escape") {
+      if (previewIndex !== null) {
+        setPreviewIndex(null);
+      } else {
+        window.electronAPI?.window.close?.();
+      }
+    }
+  }, [
+    clearSelectedTextContext,
+    message,
+    onSend,
+    previewIndex,
+    selectedText,
+    setPreviewIndex,
+  ]);
 
   return (
     <div className="mini-composer">
@@ -54,20 +121,16 @@ export const MiniInput = ({
             type="button"
             className="mini-composer-window-dismiss"
             aria-label="Remove window context"
-            onClick={() =>
-              setChatContext((prev) =>
-                prev ? { ...prev, window: null } : prev,
-              )
-            }
+            onClick={clearWindowContext}
           >
             &times;
           </button>
         </div>
       )}
 
-      {(hasScreenshots || Boolean(chatContext?.capturePending)) && (
+      {(hasScreenshots || isCapturePending) && (
         <div className="mini-composer-screenshots">
-          {chatContext?.regionScreenshots?.map((screenshot, index) => (
+          {regionScreenshots.map((screenshot, index) => (
             <div
               key={index}
               className="mini-context-chip mini-context-chip--screenshot"
@@ -84,20 +147,14 @@ export const MiniInput = ({
                 aria-label="Remove screenshot"
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.electronAPI?.capture.removeScreenshot?.(index);
-                  setChatContext((prev) => {
-                    if (!prev) return prev;
-                    const next = [...(prev.regionScreenshots ?? [])];
-                    next.splice(index, 1);
-                    return { ...prev, regionScreenshots: next };
-                  });
+                  removeScreenshotContext(index);
                 }}
               >
                 &times;
               </button>
             </div>
           ))}
-          {chatContext?.capturePending && (
+          {isCapturePending && (
             <div className="mini-context-chip mini-context-chip--pending">
               <div className="mini-context-pending-inner" />
             </div>
@@ -118,10 +175,7 @@ export const MiniInput = ({
                 aria-label="Remove selected text"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelectedText(null);
-                  setChatContext((prev) =>
-                    prev ? { ...prev, selectedText: null } : prev,
-                  );
+                  clearSelectedTextContext();
                 }}
               >
                 &times;
@@ -133,38 +187,10 @@ export const MiniInput = ({
         <input
           ref={inputRef}
           className="mini-composer-input"
-          placeholder={
-            chatContext?.capturePending
-              ? "Capturing screen..."
-              : hasScreenshots
-                ? "Ask about the capture..."
-                : chatContext?.window
-                  ? "Ask about this window..."
-                  : selectedText
-                    ? "Ask about the selection..."
-                    : "Ask for follow-up changes"
-          }
+          placeholder={placeholder}
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Backspace" && !message && selectedText) {
-              setSelectedText(null);
-              setChatContext((prev) =>
-                prev ? { ...prev, selectedText: null } : prev,
-              );
-            }
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSend();
-            }
-            if (e.key === "Escape") {
-              if (previewIndex !== null) {
-                setPreviewIndex(null);
-              } else {
-                window.electronAPI?.window.close?.();
-              }
-            }
-          }}
+          onChange={handleInputChange}
+          onKeyDown={handleInputKeyDown}
           autoFocus
         />
 

@@ -52,6 +52,13 @@ type OverlayAction =
   | { type: "neri:show"; cursor: { x: number; y: number } }
   | { type: "neri:hide" };
 
+function isSamePosition(
+  a: { x: number; y: number } | null,
+  b: { x: number; y: number } | null,
+): boolean {
+  return a?.x === b?.x && a?.y === b?.y;
+}
+
 const initialState: OverlayState = {
   modifierBlock: false,
   radialVisible: false,
@@ -68,32 +75,50 @@ const initialState: OverlayState = {
 
 function overlayReducer(state: OverlayState, action: OverlayAction): OverlayState {
   switch (action.type) {
-    case "radial:show":
-      return { ...state, radialVisible: true, ...(action.position ? { radialPosition: action.position } : {}) };
+    case "radial:show": {
+      const nextPosition = action.position ?? state.radialPosition;
+      if (state.radialVisible && isSamePosition(state.radialPosition, nextPosition)) {
+        return state;
+      }
+      return { ...state, radialVisible: true, radialPosition: nextPosition };
+    }
     case "radial:hide":
-      return { ...state, radialVisible: false };
+      return state.radialVisible ? { ...state, radialVisible: false } : state;
     case "modifier":
-      return { ...state, modifierBlock: action.active };
+      return state.modifierBlock === action.active ? state : { ...state, modifierBlock: action.active };
     case "region":
-      return { ...state, regionCaptureActive: action.active };
+      return state.regionCaptureActive === action.active
+        ? state
+        : { ...state, regionCaptureActive: action.active };
     case "mini:show":
+      if (state.miniVisible && isSamePosition(state.miniPosition, action.position)) {
+        return state;
+      }
       return { ...state, miniVisible: true, miniPosition: action.position };
     case "mini:hide":
-      return { ...state, miniVisible: false };
+      return state.miniVisible ? { ...state, miniVisible: false } : state;
     case "mini:restore":
-      return { ...state, miniVisible: true };
+      return state.miniVisible ? state : { ...state, miniVisible: true };
     case "mini:position":
-      return { ...state, miniPosition: action.position };
+      return isSamePosition(state.miniPosition, action.position)
+        ? state
+        : { ...state, miniPosition: action.position };
     case "mini:preview":
       return state.miniPreviewVisible === action.visible ? state : { ...state, miniPreviewVisible: action.visible };
     case "voice:show":
+      if (state.voiceVisible && isSamePosition(state.voicePosition, action.position)) {
+        return state;
+      }
       return { ...state, voiceVisible: true, voicePosition: action.position };
     case "voice:hide":
-      return { ...state, voiceVisible: false };
+      return state.voiceVisible ? { ...state, voiceVisible: false } : state;
     case "neri:show":
+      if (state.neriVisible && isSamePosition(state.neriCursor, action.cursor)) {
+        return state;
+      }
       return { ...state, neriVisible: true, neriCursor: action.cursor };
     case "neri:hide":
-      return { ...state, neriVisible: false };
+      return state.neriVisible ? { ...state, neriVisible: false } : state;
     default:
       return state;
   }
@@ -111,6 +136,8 @@ const VOICE_CREATURE_SIZE = {
 // Also handles context-menu suppression when modifier block is active.
 // ---------------------------------------------------------------------------
 function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean) {
+  const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Radial dial positioning (driven by radial:show/hide IPC).
   // The RadialDial component handles its own animation state via these same
   // IPC channels. OverlayRoot additionally tracks visibility and position
@@ -133,12 +160,20 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
       // Do not immediately set radialVisible=false. The RadialDial plays a
       // close animation and calls radialAnimDone. We hide after a short delay
       // to let the animation complete.
-      setTimeout(() => {
+      if (radialHideTimerRef.current) {
+        clearTimeout(radialHideTimerRef.current);
+      }
+      radialHideTimerRef.current = setTimeout(() => {
+        radialHideTimerRef.current = null;
         dispatch({ type: "radial:hide" });
       }, 300);
     });
 
     return () => {
+      if (radialHideTimerRef.current) {
+        clearTimeout(radialHideTimerRef.current);
+        radialHideTimerRef.current = null;
+      }
       cleanupShow();
       cleanupHide();
     };
@@ -359,40 +394,53 @@ function useOverlayHitTesting(
   neriRef: React.RefObject<HTMLDivElement | null>,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
+  const {
+    neriVisible,
+    regionCaptureActive,
+    miniPreviewVisible,
+    modifierBlock,
+    radialVisible,
+    miniVisible,
+    voiceVisible,
+    voicePosition,
+  } = state;
+  const voiceX = voicePosition?.x ?? null;
+  const voiceY = voicePosition?.y ?? null;
+
   useEffect(() => {
     // When region capture is active, the entire overlay must be interactive
-    if (state.regionCaptureActive) {
+    if (regionCaptureActive) {
       updateInteractive(true);
       return;
     }
 
     // Screenshot preview behaves like a modal over the overlay; keep full hit-test enabled.
-    if (state.miniPreviewVisible) {
+    if (miniPreviewVisible) {
       updateInteractive(true);
       return;
     }
 
     // When modifier block is active, the overlay must capture right-clicks
-    if (state.modifierBlock) {
+    if (modifierBlock) {
       updateInteractive(true);
       return;
     }
 
     // When radial is visible, main process handles interactivity directly
-    if (state.radialVisible) {
+    if (radialVisible) {
       return;
     }
 
     // For mini shell, standalone voice, and neri: only interactive when cursor
     // is over an active interactive region.
-    if (!state.miniVisible && !state.voiceVisible && !state.neriVisible) {
+    if (!miniVisible && !voiceVisible && !neriVisible) {
       updateInteractive(false);
       return;
     }
 
     const handleMouseMove = (e: MouseEvent) => {
       let isOverMini = false;
-      if (state.miniVisible) {
+      if (miniVisible) {
         const miniEl = miniRef.current;
         if (miniEl) {
           const rect = miniEl.getBoundingClientRect();
@@ -405,9 +453,9 @@ function useOverlayHitTesting(
       }
 
       let isOverVoice = false;
-      if (state.voiceVisible && state.voicePosition) {
-        const left = state.voicePosition.x - VOICE_CREATURE_SIZE.width / 2;
-        const top = state.voicePosition.y - VOICE_CREATURE_SIZE.height / 2;
+      if (voiceVisible && voiceX !== null && voiceY !== null) {
+        const left = voiceX - VOICE_CREATURE_SIZE.width / 2;
+        const top = voiceY - VOICE_CREATURE_SIZE.height / 2;
         isOverVoice =
           e.clientX >= left &&
           e.clientX <= left + VOICE_CREATURE_SIZE.width &&
@@ -416,7 +464,7 @@ function useOverlayHitTesting(
       }
 
       let isOverNeri = false;
-      if (state.neriVisible) {
+      if (neriVisible) {
         const neriEl = neriRef.current;
         if (neriEl) {
           const rect = neriEl.getBoundingClientRect();
@@ -434,14 +482,15 @@ function useOverlayHitTesting(
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [
-    state.neriVisible,
-    state.regionCaptureActive,
-    state.miniPreviewVisible,
-    state.modifierBlock,
-    state.radialVisible,
-    state.miniVisible,
-    state.voiceVisible,
-    state.voicePosition,
+    neriVisible,
+    regionCaptureActive,
+    miniPreviewVisible,
+    modifierBlock,
+    radialVisible,
+    miniVisible,
+    voiceVisible,
+    voiceX,
+    voiceY,
     miniRef,
     neriRef,
     updateInteractive,
@@ -449,18 +498,27 @@ function useOverlayHitTesting(
 
   useEffect(() => {
     const anythingActive =
-      state.modifierBlock ||
-      state.radialVisible ||
-      state.regionCaptureActive ||
-      state.miniPreviewVisible ||
-      state.miniVisible ||
-      state.voiceVisible ||
-      state.neriVisible;
+      modifierBlock ||
+      radialVisible ||
+      regionCaptureActive ||
+      miniPreviewVisible ||
+      miniVisible ||
+      voiceVisible ||
+      neriVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
     }
-  }, [state, updateInteractive]);
+  }, [
+    modifierBlock,
+    radialVisible,
+    regionCaptureActive,
+    miniPreviewVisible,
+    miniVisible,
+    voiceVisible,
+    neriVisible,
+    updateInteractive,
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -582,7 +640,5 @@ export function OverlayRoot() {
     </div>
   );
 }
-
-
 
 

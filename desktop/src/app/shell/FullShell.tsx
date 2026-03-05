@@ -53,11 +53,14 @@ export const FullShell = () => {
   const isNearBottomRef = useRef(true);
   const activeViewRef = useRef(state.view);
   const orbRef = useRef<FloatingOrbHandle>(null);
-  activeViewRef.current = state.view;
 
   const [message, setMessage] = useState("");
 
   useBridgeAutoReconnect();
+
+  useEffect(() => {
+    activeViewRef.current = state.view;
+  }, [state.view]);
 
   const onboarding = useOnboardingOverlay();
   const { personalPages } = useLocalWorkspacePanels();
@@ -124,19 +127,23 @@ export const FullShell = () => {
     conversationId: activeConversationId,
     events,
   });
+  const sendMessageRef = useRef(sendMessage);
+
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  }, [sendMessage]);
+
   const sendContextlessMessage = useCallback(
     (text: string) => {
-      void sendMessage({
+      void sendMessageRef.current({
         text,
         selectedText: null,
         chatContext: null,
         onClear: NO_OP,
       });
     },
-    [sendMessage],
+    [],
   );
-  const sendContextlessMessageRef = useRef(sendContextlessMessage);
-  sendContextlessMessageRef.current = sendContextlessMessage;
 
   const handleUserReturn = useCallback(
     (awayMs: number) => {
@@ -231,12 +238,12 @@ export const FullShell = () => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ text: string }>).detail;
       if (detail?.text) {
-        sendContextlessMessageRef.current(detail.text);
+        sendContextlessMessage(detail.text);
       }
     };
     window.addEventListener("stella:send-message", handler);
     return () => window.removeEventListener("stella:send-message", handler);
-  }, []);
+  }, [sendContextlessMessage]);
 
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasWindowContext = Boolean(chatContext?.window);
@@ -334,13 +341,6 @@ export const FullShell = () => {
     handleCommandSelect,
   ]);
 
-  const handleOrbSend = useCallback(
-    (text: string) => {
-      sendContextlessMessage(text);
-    },
-    [sendContextlessMessage],
-  );
-
   return (
     <div className="window-shell full">
       <TitleBar />
@@ -390,7 +390,7 @@ export const FullShell = () => {
                 bubbleText={orbMessage.text}
                 bubbleOpacity={orbMessage.opacity}
                 isStreaming={isStreaming}
-                onSend={handleOrbSend}
+                onSend={sendContextlessMessage}
               />
 
             </div>
