@@ -30,6 +30,7 @@ const mockConvexAction = vi.fn((ref?: unknown) => {
   void ref;
   return vi.fn();
 });
+const mockInsertAtTop = vi.fn();
 
 const mockUseConvexAuth = vi.fn(() => ({
   isAuthenticated: true,
@@ -38,6 +39,7 @@ const mockUseConvexAuth = vi.fn(() => ({
 const mockUseQuery = vi.fn(() => "connected");
 
 vi.mock("convex/react", () => ({
+  insertAtTop: (args: unknown) => mockInsertAtTop(args),
   useConvexAuth: () => mockUseConvexAuth(),
   useQuery: () => mockUseQuery(),
   useMutation: (ref: unknown) => mockConvexMutation(ref),
@@ -169,6 +171,40 @@ describe("ChatStoreProvider", () => {
   // appendEvent
   // ----------------------------------------------------------------
   describe("appendEvent", () => {
+    it("registers an optimistic paginated insert for cloud user messages", () => {
+      renderHook(() => useChatStore(), { wrapper });
+
+      expect(mockWithOptimisticUpdate).toHaveBeenCalledTimes(1);
+      const optimisticCalls = mockWithOptimisticUpdate.mock.calls as Array<
+        [((localStore: unknown, args: Record<string, unknown>) => void)?]
+      >;
+      const optimisticUpdate = optimisticCalls[0]?.[0];
+      expect(optimisticUpdate).toBeTypeOf("function");
+
+      const localStore = {};
+      act(() => {
+        optimisticUpdate?.(localStore, {
+          conversationId: "cloud-conv-1",
+          type: "user_message",
+          deviceId: "device-1",
+          payload: { text: "hello cloud" },
+        });
+      });
+
+      expect(mockInsertAtTop).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paginatedQuery: "listEvents",
+          argsToMatch: { conversationId: "cloud-conv-1" },
+          localQueryStore: localStore,
+          item: expect.objectContaining({
+            type: "user_message",
+            deviceId: "device-1",
+            payload: { text: "hello cloud" },
+          }),
+        }),
+      );
+    });
+
     it("returns cloud event id when cloud append succeeds", async () => {
       mockUseConvexAuth.mockReturnValue({
         isAuthenticated: true,

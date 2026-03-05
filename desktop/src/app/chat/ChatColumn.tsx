@@ -22,6 +22,12 @@ export type StreamingState = {
   selfModMap: Record<string, SelfModAppliedData>;
 };
 
+export type HistoryState = {
+  hasOlderEvents: boolean;
+  isLoadingOlder: boolean;
+  isInitialLoading: boolean;
+};
+
 export type ComposerState = {
   message: string;
   setMessage: (message: string) => void;
@@ -31,13 +37,6 @@ export type ComposerState = {
   setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
   canSubmit: boolean;
   onSend: () => void;
-};
-
-export type ScrollState = {
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  handleScroll: () => void;
-  showScrollButton: boolean;
-  scrollToBottom: (behavior?: ScrollBehavior) => void;
 };
 
 export type OnboardingState = {
@@ -61,8 +60,12 @@ export type OnboardingState = {
 export type ChatColumnProps = {
   events: EventRecord[];
   streaming: StreamingState;
+  history: HistoryState;
   composer: ComposerState;
-  scroll: ScrollState;
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  onScroll: () => void;
+  showScrollButton: boolean;
+  scrollToBottom: (behavior?: ScrollBehavior) => void;
   onboarding: OnboardingState;
   conversationId: string | null;
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
@@ -71,8 +74,12 @@ export type ChatColumnProps = {
 export const ChatColumn = memo(function ChatColumn({
   events,
   streaming,
+  history,
   composer,
-  scroll,
+  scrollContainerRef,
+  onScroll,
+  showScrollButton,
+  scrollToBottom,
   onboarding,
   conversationId,
   onCommandSelect,
@@ -84,8 +91,8 @@ export const ChatColumn = memo(function ChatColumn({
     <div className="full-body-main">
       <div
         className="session-content"
-        ref={scroll.containerRef}
-        onScroll={scroll.handleScroll}
+        ref={scrollContainerRef}
+        onScroll={onScroll}
       >
         {showConversation ? (
           <div className="session-messages">
@@ -96,7 +103,10 @@ export const ChatColumn = memo(function ChatColumn({
               isStreaming={streaming.isStreaming}
               pendingUserMessageId={streaming.pendingUserMessageId}
               selfModMap={streaming.selfModMap}
-              scrollContainerRef={scroll.containerRef}
+              hasOlderEvents={history.hasOlderEvents}
+              isLoadingOlder={history.isLoadingOlder}
+              isLoadingHistory={history.isInitialLoading}
+              scrollContainerRef={scrollContainerRef}
             />
             {!streaming.isStreaming && suggestions.length > 0 && onCommandSelect && (
               <CommandChips
@@ -126,10 +136,10 @@ export const ChatColumn = memo(function ChatColumn({
         )}
       </div>
 
-      {scroll.showScrollButton && showConversation && (
+      {showScrollButton && showConversation && (
         <button
           className="scroll-to-bottom"
-          onClick={() => scroll.scrollToBottom("smooth")}
+          onClick={() => scrollToBottom("smooth")}
           aria-label="Scroll to bottom"
         >
           <svg

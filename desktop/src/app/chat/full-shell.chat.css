@@ -2,8 +2,15 @@
 .event-list {
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 40px;
   flex: 1;
+  min-height: 100%;
+}
+
+.event-list[data-empty="true"],
+.event-list[data-loading-history="true"] {
+  justify-content: center;
 }
 
 /* Session turn - single message container */
@@ -180,6 +187,17 @@
   color: var(--text-weaker);
   text-align: center;
   padding: 40px 20px;
+}
+
+.event-history-status {
+  align-self: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-base);
+  background: color-mix(in srgb, var(--surface-inset) 22%, transparent);
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1;
 }
 
 /* Panel resize handle - hidden for Aura-style overlay panels */

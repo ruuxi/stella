@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
+import type { EventRecord } from "@/hooks/use-conversation-events";
 import { ChatColumn } from "../chat/ChatColumn";
 import type { ChatColumnProps } from "../chat/ChatColumn";
 
@@ -36,6 +37,12 @@ function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
       selfModMap: {},
       ...overrides.streaming,
     },
+    history: {
+      hasOlderEvents: false,
+      isLoadingOlder: false,
+      isInitialLoading: false,
+      ...overrides.history,
+    },
     composer: {
       message: "",
       setMessage: vi.fn(),
@@ -47,13 +54,10 @@ function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
       onSend: vi.fn(),
       ...overrides.composer,
     },
-    scroll: {
-      containerRef: React.createRef<HTMLDivElement>(),
-      handleScroll: vi.fn(),
-      showScrollButton: false,
-      scrollToBottom: vi.fn(),
-      ...overrides.scroll,
-    },
+    scrollContainerRef: React.createRef<HTMLDivElement>(),
+    onScroll: vi.fn(),
+    showScrollButton: false,
+    scrollToBottom: vi.fn(),
     onboarding: {
       done: true,
       exiting: false,
@@ -116,11 +120,13 @@ describe("ChatColumn", () => {
   });
 
   it("shows scroll-to-bottom button when showScrollButton=true and conversation visible", () => {
-    const events = [{ id: "1", type: "user", body: "hi" }] as any;
+    const events: EventRecord[] = [
+      { _id: "event-1", timestamp: 1, type: "user_message", payload: { text: "hi" } },
+    ];
     render(
       <ChatColumn
         {...makeProps({
-          scroll: { ...makeProps().scroll, showScrollButton: true },
+          showScrollButton: true,
           onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true },
           events,
         })}
@@ -133,7 +139,7 @@ describe("ChatColumn", () => {
     render(
       <ChatColumn
         {...makeProps({
-          scroll: { ...makeProps().scroll, showScrollButton: true },
+          showScrollButton: true,
           onboarding: { ...makeProps().onboarding, isAuthenticated: false, done: true },
         })}
       />,
@@ -143,11 +149,14 @@ describe("ChatColumn", () => {
 
   it('calls scrollToBottom("smooth") when scroll button clicked', () => {
     const scrollToBottom = vi.fn();
-    const events = [{ id: "1", type: "user", body: "hi" }] as any;
+    const events: EventRecord[] = [
+      { _id: "event-1", timestamp: 1, type: "user_message", payload: { text: "hi" } },
+    ];
     render(
       <ChatColumn
         {...makeProps({
-          scroll: { ...makeProps().scroll, showScrollButton: true, scrollToBottom },
+          showScrollButton: true,
+          scrollToBottom,
           onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true },
           events,
         })}
@@ -162,6 +171,3 @@ describe("ChatColumn", () => {
     expect(container.querySelector(".full-body-main")).toBeTruthy();
   });
 });
-
-
-
