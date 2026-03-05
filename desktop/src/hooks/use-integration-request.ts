@@ -21,7 +21,7 @@ type IntegrationResult = {
 }
 
 /**
- * React hook for canvas panel components to make API calls
+ * React hook for workspace panel components to make API calls
  * via the Convex integration proxy.
  */
 export const useIntegrationRequest = () => {

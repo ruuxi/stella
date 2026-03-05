@@ -9,12 +9,12 @@ export const TitleBar = () => {
   const { state: workspaceState } = useWorkspace();
   const platform = getPlatform();
   const isMac = platform === 'darwin';
-  const canvas = workspaceState.canvas;
-  const canvasTitle = canvas && canvas.name !== 'dashboard'
-    ? (canvas.title ?? canvas.name)
+  const activePanel = workspaceState.activePanel;
+  const panelTitle = activePanel && activePanel.name !== 'dashboard'
+    ? (activePanel.title ?? activePanel.name)
     : null;
-  const canvasTitleLabel = canvasTitle
-    ? <span className="title-bar-canvas-label">{canvasTitle}</span>
+  const panelTitleLabel = panelTitle
+    ? <span className="title-bar-workspace-label">{panelTitle}</span>
     : null;
 
   const syncMaximizedState = useCallback(async () => {
@@ -46,7 +46,7 @@ export const TitleBar = () => {
     return (
       <div className="title-bar title-bar-mac">
         <div className="title-bar-drag-region" />
-        {canvasTitleLabel}
+        {panelTitleLabel}
       </div>
     );
   }
@@ -55,7 +55,7 @@ export const TitleBar = () => {
   return (
     <div className="title-bar">
       <div className="title-bar-drag-region" />
-      {canvasTitleLabel}
+      {panelTitleLabel}
       <div className="title-bar-controls">
         <button
           className="title-bar-button"

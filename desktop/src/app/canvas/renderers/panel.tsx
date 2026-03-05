@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ComponentType } from 'react'
-import { CanvasErrorBoundary } from '../CanvasErrorBoundary'
+import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import { Spinner } from '@/ui/spinner'
-import type { CanvasPayload } from '@/providers/workspace-state'
+import type { WorkspacePanel } from '@/providers/workspace-state'
 
 const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 const PANEL_IMPORT_ATTEMPTS = 3
@@ -135,8 +135,8 @@ const toPanelLoadMessage = (error: unknown): string => {
   return `Failed to load panel: ${formatUnknownError(error)}`
 }
 
-const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
-  const { name } = canvas
+const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
+  const { name } = panel
   const [Component, setComponent] = useState<PanelComponent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -171,7 +171,7 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
   }, [loadModule])
 
   const handleRetry = useCallback(() => {
-    retryKeyRef.current++
+    retryKeyRef.current += 1
     void loadModule()
   }, [loadModule])
 
@@ -210,11 +210,11 @@ const PanelRenderer = ({ canvas }: { canvas: CanvasPayload }) => {
 
   return (
     <div className="canvas-vite-wrap">
-      <CanvasErrorBoundary key={retryKeyRef.current} onRetry={handleRetry}>
+      <WorkspaceErrorBoundary key={retryKeyRef.current} onRetry={handleRetry}>
         <div className="canvas-vite-content">
           <Component />
         </div>
-      </CanvasErrorBoundary>
+      </WorkspaceErrorBoundary>
     </div>
   )
 }

@@ -9,19 +9,18 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <WorkspaceProvider>{children}</WorkspaceProvider>
 );
 
-// Helper that opens a canvas before rendering TitleBar
-function CanvasOpener({ name, title }: { name: string; title?: string }) {
-  const { openCanvas } = useWorkspace();
+function PanelOpener({ name, title }: { name: string; title?: string }) {
+  const { openPanel } = useWorkspace();
   useEffect(() => {
-    openCanvas({ name, title });
-  }, [name, title, openCanvas]);
+    openPanel({ name, title });
+  }, [name, title, openPanel]);
   return null;
 }
 
-function TitleBarWithCanvas({ name, title }: { name: string; title?: string }) {
+function TitleBarWithPanel({ name, title }: { name: string; title?: string }) {
   return (
     <WorkspaceProvider>
-      <CanvasOpener name={name} title={title} />
+      <PanelOpener name={name} title={title} />
       <TitleBar />
     </WorkspaceProvider>
   );
@@ -117,44 +116,44 @@ describe("TitleBar", () => {
     expect(screen.getByLabelText("Restore")).toBeTruthy();
   });
 
-  it("shows canvas title when canvas is open (win32)", () => {
+  it("shows panel title when a workspace panel is open (win32)", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
       window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
-    render(<TitleBarWithCanvas name="my-panel" title="My Panel" />);
+    render(<TitleBarWithPanel name="my-panel" title="My Panel" />);
     expect(screen.getByText("My Panel")).toBeTruthy();
   });
 
-  it("shows canvas name as fallback when title is not set (win32)", () => {
+  it("shows panel name as fallback when title is not set (win32)", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
       window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
-    render(<TitleBarWithCanvas name="chart-view" />);
+    render(<TitleBarWithPanel name="chart-view" />);
     expect(screen.getByText("chart-view")).toBeTruthy();
   });
 
-  it("shows canvas title on mac", () => {
+  it("shows panel title on mac", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "darwin",
       window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
-    render(<TitleBarWithCanvas name="panel" title="Mac Panel" />);
+    render(<TitleBarWithPanel name="panel" title="Mac Panel" />);
     expect(screen.getByText("Mac Panel")).toBeTruthy();
   });
 
-  it("does not show canvas label when canvas is not open", () => {
+  it("does not show panel label when no workspace panel is open", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       platform: "win32",
       window: { isMaximized: vi.fn().mockResolvedValue(false) },
     };
 
     const { container } = render(<TitleBar />, { wrapper });
-    expect(container.querySelector(".title-bar-canvas-label")).toBeNull();
+    expect(container.querySelector(".title-bar-workspace-label")).toBeNull();
   });
 
   it("has a drag region on both platforms", () => {

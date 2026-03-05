@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { CanvasErrorBoundary } from "./CanvasErrorBoundary";
+import { WorkspaceErrorBoundary } from "./WorkspaceErrorBoundary";
 
 // Suppress console.error for expected error boundary logs
 beforeEach(() => {
@@ -14,39 +14,39 @@ function ThrowingChild({ shouldThrow = true }: { shouldThrow?: boolean }) {
   return <div>No error</div>;
 }
 
-describe("CanvasErrorBoundary", () => {
+describe("WorkspaceErrorBoundary", () => {
   it("renders children when there is no error", () => {
     render(
-      <CanvasErrorBoundary>
+      <WorkspaceErrorBoundary>
         <div>Child content</div>
-      </CanvasErrorBoundary>
+      </WorkspaceErrorBoundary>
     );
     expect(screen.getByText("Child content")).toBeTruthy();
   });
 
   it("shows error UI when child throws", () => {
     render(
-      <CanvasErrorBoundary>
+      <WorkspaceErrorBoundary>
         <ThrowingChild />
-      </CanvasErrorBoundary>
+      </WorkspaceErrorBoundary>
     );
     expect(screen.getByText("This component ran into a problem")).toBeTruthy();
   });
 
   it("does not expose internal error details", () => {
     render(
-      <CanvasErrorBoundary>
+      <WorkspaceErrorBoundary>
         <ThrowingChild />
-      </CanvasErrorBoundary>
+      </WorkspaceErrorBoundary>
     );
     expect(screen.queryByText("Test render error")).toBeNull();
   });
 
   it("shows retry button", () => {
     render(
-      <CanvasErrorBoundary>
+      <WorkspaceErrorBoundary>
         <ThrowingChild />
-      </CanvasErrorBoundary>
+      </WorkspaceErrorBoundary>
     );
     expect(screen.getByText("Retry")).toBeTruthy();
   });
@@ -54,9 +54,9 @@ describe("CanvasErrorBoundary", () => {
   it("calls onRetry and resets error state", () => {
     const onRetry = vi.fn();
     render(
-      <CanvasErrorBoundary onRetry={onRetry}>
+      <WorkspaceErrorBoundary onRetry={onRetry}>
         <ThrowingChild shouldThrow={true} />
-      </CanvasErrorBoundary>
+      </WorkspaceErrorBoundary>
     );
 
     expect(screen.getByText("This component ran into a problem")).toBeTruthy();

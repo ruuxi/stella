@@ -50,15 +50,15 @@ vi.mock("@/providers/ui-state", () => ({
   })),
 }));
 
-const mockOpenCanvas = vi.fn();
-const mockCloseCanvas = vi.fn();
+const mockOpenPanel = vi.fn();
+const mockClosePanel = vi.fn();
 const mockSetChatWidth = vi.fn();
 const mockSetChatOpen = vi.fn();
 vi.mock("@/providers/workspace-state", () => ({
   useWorkspace: vi.fn(() => ({
-    state: { canvas: null, chatWidth: 480, isChatOpen: true },
-    openCanvas: mockOpenCanvas,
-    closeCanvas: mockCloseCanvas,
+    state: { activePanel: null, chatWidth: 480, isChatOpen: true },
+    openPanel: mockOpenPanel,
+    closePanel: mockClosePanel,
     setChatWidth: mockSetChatWidth,
     setChatOpen: mockSetChatOpen,
   })),
@@ -353,7 +353,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     fireEvent.click(pageButton);
 
     expect(listWorkspacePanels).toHaveBeenCalled();
-    expect(mockOpenCanvas).toHaveBeenCalledWith({ name: "pd_focus", title: "Focus" });
+    expect(mockOpenPanel).toHaveBeenCalledWith({ name: "pd_focus", title: "Focus" });
     expect(mockSetView).toHaveBeenCalledWith("app");
   });
 });

@@ -10,18 +10,18 @@ type PersonalPage = {
 
 interface HeaderTabBarProps {
   activeView: ViewType;
-  activeCanvasName?: string | null;
+  activePanelName?: string | null;
   pages: PersonalPage[];
   onTabSelect: (view: ViewType, page?: PersonalPage) => void;
 }
 
-export function HeaderTabBar({ activeView, activeCanvasName, pages, onTabSelect }: HeaderTabBarProps) {
+export function HeaderTabBar({ activeView, activePanelName, pages, onTabSelect }: HeaderTabBarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const sortedPages = [...pages].sort((a, b) => a.order - b.order);
 
   const isPageActive = (page: PersonalPage) =>
-    activeView === "app" && activeCanvasName === page.panelName;
+    activeView === "app" && activePanelName === page.panelName;
 
   return (
     <div className="htb">

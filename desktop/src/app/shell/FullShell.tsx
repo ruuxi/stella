@@ -8,7 +8,6 @@ import { useUiState } from "@/providers/ui-state";
 import { useWorkspace } from "@/providers/workspace-state";
 import { useTheme } from "@/theme/theme-context";
 import { useConversationEventFeed } from "@/hooks/use-conversation-events";
-import { useCanvasCommands } from "@/hooks/use-canvas-commands";
 import { secureSignOut } from "@/services/auth";
 import { ShiftingGradient } from "@/app/shell/background/ShiftingGradient";
 import { TitleBar } from "@/app/shell/TitleBar";
@@ -46,8 +45,8 @@ const NO_OP = () => {};
 export const FullShell = () => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
-  const { state: workspaceState, openCanvas } = useWorkspace();
-  const canvas = workspaceState.canvas;
+  const { state: workspaceState, openPanel } = useWorkspace();
+  const activePanel = workspaceState.activePanel;
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
   const isNearBottomRef = useRef(true);
@@ -101,13 +100,13 @@ export const FullShell = () => {
   const handleTabSelect = useCallback(
     (view: "home" | "app" | "chat", page?: PersonalPage) => {
       if (view === "app" && page) {
-        openCanvas({ name: page.panelName, title: page.title });
+        openPanel({ name: page.panelName, title: page.title });
         setView("app");
       } else {
         setView(view);
       }
     },
-    [openCanvas, setView],
+    [openPanel, setView],
   );
 
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
@@ -222,8 +221,6 @@ export const FullShell = () => {
     const unsubscribe = window.electronAPI?.voice.onTranscript?.(handleVoiceTranscript);
     return () => unsubscribe?.();
   }, [handleVoiceTranscript]);
-
-  useCanvasCommands(events, activeConversationId);
 
   useEffect(() => {
     if (isNearBottomRef.current) {
@@ -405,7 +402,7 @@ export const FullShell = () => {
             <div className="content-area">
               <HeaderTabBar
                 activeView={state.view}
-                activeCanvasName={canvas?.name}
+                activePanelName={activePanel?.name}
                 pages={personalPages}
                 onTabSelect={handleTabSelect}
               />
