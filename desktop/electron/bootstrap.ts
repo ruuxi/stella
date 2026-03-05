@@ -352,6 +352,9 @@ export const bootstrapMainProcess = () => {
         scheduleResumeWakeWord: () => uiStateService.scheduleResumeWakeWord(),
         syncVoiceOverlay: () => uiStateService.syncVoiceOverlay(),
         getPiHostRunner: () => piHostRunner,
+        getOverlayController: () => overlayController,
+        getConvexSiteUrl: () => authService.getConvexSiteUrl(),
+        getAuthToken: () => authService.getAuthToken(),
       },
     })
 

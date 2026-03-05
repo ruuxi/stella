@@ -9,11 +9,37 @@ import {
 } from "./glyph-atlas";
 import { initRenderer } from "./renderer";
 
+/** Reusable buffer for frequency data — avoids per-frame allocation. */
+let energyBuffer: Uint8Array<ArrayBuffer> | null = null;
+
+function computeEnergy(analyser: AnalyserNode): number {
+  const len = analyser.frequencyBinCount;
+  if (!energyBuffer || energyBuffer.length < len) {
+    energyBuffer = new Uint8Array(len);
+  }
+  analyser.getByteFrequencyData(energyBuffer);
+  let sum = 0;
+  for (let j = 0; j < len; j++) {
+    const v = energyBuffer[j] / 255;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / len);
+}
+
+/**
+ * Extra canvas space around the creature so edge effects (speaking expansion,
+ * breathing, flash wave) are never clipped. The shader UV mapping is scaled
+ * by the same factor so the creature stays the same pixel size.
+ */
+const EDGE_SCALE = 2.5;
+
 export interface StellaAnimationHandle {
   triggerFlash: () => void;
   startBirth: () => void;
   reset: (value?: number) => void;
 }
+
+export type VoiceMode = "idle" | "listening" | "speaking";
 
 interface StellaAnimationProps {
   width?: number;
@@ -22,6 +48,10 @@ interface StellaAnimationProps {
   paused?: boolean;
   maxDpr?: number;
   frameSkip?: number;
+  voiceMode?: VoiceMode;
+  isUserSpeaking?: boolean;
+  analyserRef?: React.RefObject<AnalyserNode | null>;
+  outputAnalyserRef?: React.RefObject<AnalyserNode | null>;
 }
 
 export const StellaAnimation = React.forwardRef<
@@ -29,7 +59,7 @@ export const StellaAnimation = React.forwardRef<
   StellaAnimationProps
 >(
   (
-    { width = 80, height = 40, initialBirthProgress = 1, paused = false, maxDpr, frameSkip = 0 },
+    { width = 80, height = 40, initialBirthProgress = 1, paused = false, maxDpr, frameSkip = 0, voiceMode = "idle", isUserSpeaking = false, analyserRef: externalAnalyserRef, outputAnalyserRef: externalOutputAnalyserRef },
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -54,6 +84,11 @@ export const StellaAnimation = React.forwardRef<
       startTime: number;
       duration: number;
     } | null>(null);
+    const listeningRef = useRef(0);
+    const speakingRef = useRef(0);
+    const voiceEnergyRef = useRef(0);
+    const voiceModeRef = useRef<VoiceMode>(voiceMode);
+    const isUserSpeakingRef = useRef(isUserSpeaking);
 
     useImperativeHandle(
       ref,
@@ -90,6 +125,14 @@ export const StellaAnimation = React.forwardRef<
     }, [initialBirthProgress]);
 
     useEffect(() => {
+      voiceModeRef.current = voiceMode;
+    }, [voiceMode]);
+
+    useEffect(() => {
+      isUserSpeakingRef.current = isUserSpeaking;
+    }, [isUserSpeaking]);
+
+    useEffect(() => {
       pausedRef.current = paused;
       if (!paused && !requestRef.current && animateRef.current) {
         requestRef.current = requestAnimationFrame(animateRef.current);
@@ -122,8 +165,8 @@ export const StellaAnimation = React.forwardRef<
       const glyphWidth = Math.max(1, Math.ceil(metrics.width));
       const glyphHeight = Math.max(1, Math.ceil(lineHeight));
 
-      const cssWidth = Math.max(1, Math.floor(width * glyphWidth));
-      const cssHeight = Math.max(1, Math.floor(height * glyphHeight));
+      const cssWidth = Math.max(1, Math.floor(width * glyphWidth * EDGE_SCALE));
+      const cssHeight = Math.max(1, Math.floor(height * glyphHeight * EDGE_SCALE));
       const dpr = Math.min(window.devicePixelRatio || 1, maxDpr ?? Infinity);
 
       canvas.style.width = `${cssWidth}px`;
@@ -156,8 +199,8 @@ export const StellaAnimation = React.forwardRef<
       const mainRenderer = initRenderer(
         canvas,
         glyphAtlas,
-        width,
-        height,
+        width * EDGE_SCALE,
+        height * EDGE_SCALE,
         readColors(),
         birthRef.current,
         flashRef.current,
@@ -202,17 +245,44 @@ export const StellaAnimation = React.forwardRef<
           }
         }
 
+        // Read analyser refs directly from props (stable ref objects, .current changes)
+        const outputAnalyser = externalOutputAnalyserRef?.current ?? null;
+        const micAnalyser = externalAnalyserRef?.current ?? null;
+        const outputEnergy = outputAnalyser ? computeEnergy(outputAnalyser) : 0;
+        const micEnergy = micAnalyser ? computeEnergy(micAnalyser) : 0;
+
+        const isVoiceActive = voiceModeRef.current !== "idle";
+        const isSpeakingNow = isVoiceActive && outputEnergy > 0.08;
+        const isListeningNow = isVoiceActive && !isSpeakingNow && isUserSpeakingRef.current;
+
+        // Smoothly interpolate listening/speaking (0→1)
+        const targetListening = isListeningNow ? 1 : 0;
+        const targetSpeaking = isSpeakingNow ? 1 : 0;
+        const voiceLerp = 0.15;
+        listeningRef.current += (targetListening - listeningRef.current) * voiceLerp;
+        speakingRef.current += (targetSpeaking - speakingRef.current) * voiceLerp;
+
+        // Voice energy: use output energy when speaking, mic energy when listening
+        const rawEnergy = isSpeakingNow
+          ? Math.min(outputEnergy * 2.5, 1)
+          : Math.min(micEnergy * 2.5, 1);
+        const energyRate = rawEnergy > voiceEnergyRef.current ? 0.15 : 0.06;
+        voiceEnergyRef.current += (rawEnergy - voiceEnergyRef.current) * energyRate;
+
         mainRenderer.render(
           timeRef.current,
           birthRef.current,
           flashRef.current,
+          listeningRef.current,
+          speakingRef.current,
+          voiceEnergyRef.current,
         );
         requestRef.current = requestAnimationFrame(animate);
       };
 
       animateRef.current = animate;
       // Always render one initial frame so paused mode shows the creature
-      mainRenderer.render(timeRef.current, birthRef.current, flashRef.current);
+      mainRenderer.render(timeRef.current, birthRef.current, flashRef.current, 0, 0, 0);
       if (!pausedRef.current) {
         requestRef.current = requestAnimationFrame(animate);
       }

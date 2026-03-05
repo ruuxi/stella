@@ -312,6 +312,7 @@ export type ElectronVoiceApi = {
   onTranscript: (callback: (transcript: string) => void) => () => void
   persistTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) => void
   orchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
+  mercuryChat: (payload: { conversationId: string; message: string }) => Promise<string>
   setRtcShortcut: (shortcut: string) => void
   onRtcPreWarm: (callback: (conversationId: string) => void) => () => void
   onRtcPrefetchToken: (callback: () => void) => () => void
