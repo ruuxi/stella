@@ -43,8 +43,6 @@ export const BASE_TOOL_NAMES = [
   "CronUpdate",
   "CronRemove",
   "CronRun",
-  "OpenCanvas",
-  "CloseCanvas",
   "GenerateApiSkill",
   "ListResources",
   "NoResponse",
