@@ -18,16 +18,20 @@ export function getVoiceToolSchemas(): VoiceToolSchema[] {
       type: "function",
       name: "perform_action",
       description:
-        "Execute an action on behalf of the user. Use this for ANY request that involves doing something: searching, opening/closing the dashboard, creating content, managing files, running tasks, setting reminders, browsing the web, or anything beyond casual conversation. Pass the user's request as a natural language message.",
+        "Execute an action on behalf of the user. Call this for ANY request that involves doing something: searching, opening/closing the dashboard, creating content, managing files, running tasks, setting reminders, browsing the web, or anything beyond casual conversation.",
       parameters: {
         type: "object",
-        properties: {
-          message: {
-            type: "string",
-            description: "The user's request in natural language",
-          },
-        },
-        required: ["message"],
+        properties: {},
+      },
+    },
+    {
+      type: "function",
+      name: "no_response",
+      description:
+        "Stay silent and wait for the user to finish. Call this when the user is still thinking — filler sounds like \"hmm,\" \"um,\" \"uh,\" half-finished sentences, trailing off, or any indication they haven't completed their thought yet. Also use for ambient noise or unclear audio that isn't a real utterance. Examples: \"I want to...\" / \"So maybe we could\" / \"Hmm\" / \"Let me think\" / \"What if we—\"",
+      parameters: {
+        type: "object",
+        properties: {},
       },
     },
     {
