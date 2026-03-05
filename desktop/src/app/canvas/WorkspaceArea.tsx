@@ -22,7 +22,6 @@ type WorkspaceAreaProps = {
   view: ViewType
   activeDemo: OnboardingDemo
   demoClosing: boolean
-  onComposePrompt: (text: string) => void
   conversationId?: string
 }
 
@@ -30,7 +29,6 @@ export function WorkspaceArea({
   view,
   activeDemo,
   demoClosing,
-  onComposePrompt,
   conversationId,
 }: WorkspaceAreaProps) {
   const { state, closeCanvas } = useWorkspace()

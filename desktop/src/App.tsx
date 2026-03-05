@@ -118,7 +118,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!api?.agent.onSelfModHmrState) return
+    if (!api?.agent?.onSelfModHmrState) return
     const unsubscribe = api.agent.onSelfModHmrState((event) => {
       const nextMessage = normalizeSelfModMessage(event.message)
       setSelfModHmr((prev) => {
@@ -135,7 +135,7 @@ function App() {
   }, [api])
 
   useEffect(() => {
-    if (!api?.agent.getActiveRun) return
+    if (!api?.agent?.getActiveRun) return
     let cancelled = false
     void api.agent
       .getActiveRun()
@@ -253,4 +253,3 @@ function App() {
 }
 
 export { App }
-

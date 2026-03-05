@@ -302,11 +302,6 @@ export const FullShell = () => {
     handleCommandSelect,
   ]);
 
-  const handleComposePrompt = useCallback((text: string) => {
-    setView("home");
-    setMessage(text);
-  }, [setView]);
-
   const handleOrbSend = useCallback(
     (text: string) => {
       void sendMessage({ text, selectedText: null, chatContext: null, onClear: () => {} });
@@ -353,7 +348,6 @@ export const FullShell = () => {
                   view={state.view}
                   activeDemo={activeDemo}
                   demoClosing={demoClosing}
-                  onComposePrompt={handleComposePrompt}
                   conversationId={activeConversationId ?? undefined}
                 />
               )}
@@ -435,5 +429,4 @@ export const FullShell = () => {
     </div>
   );
 };
-
 

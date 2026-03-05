@@ -26,17 +26,9 @@ describe("Sidebar", () => {
     expect(screen.getByText("Stella")).toBeTruthy();
   });
 
-  it("renders nav items: App Store, Connect", () => {
+  it("renders nav items: Connect", () => {
     render(<Sidebar />);
-    expect(screen.getByText("App Store")).toBeTruthy();
     expect(screen.getByText("Connect")).toBeTruthy();
-  });
-
-  it("calls onStore when clicking App Store", () => {
-    const onStore = vi.fn();
-    render(<Sidebar onStore={onStore} />);
-    fireEvent.click(screen.getByText("App Store"));
-    expect(onStore).toHaveBeenCalledTimes(1);
   });
 
   it("calls onConnect when clicking Connect", () => {
@@ -65,10 +57,9 @@ describe("Sidebar", () => {
     expect(screen.getByText("Sign in")).toBeTruthy();
   });
 
-  it("applies active class to App Store when storeActive is true", () => {
-    render(<Sidebar storeActive />);
-    const appStoreButton = screen.getByText("App Store").closest("button");
-    expect(appStoreButton?.className).toContain("sidebar-nav-item--active");
+  it("renders settings item", () => {
+    render(<Sidebar />);
+    expect(screen.getByText("Settings")).toBeTruthy();
   });
 });
 
