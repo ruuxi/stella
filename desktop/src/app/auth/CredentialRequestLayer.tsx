@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { getElectronApi } from "@/services/electron";
@@ -16,7 +16,7 @@ export const CredentialRequestLayer = () => {
   const createSecret = useMutation(api.data.secrets.createSecret);
   const [pending, setPending] = useState<PendingCredentialRequest | null>(null);
 
-  const apiHandle = useMemo(() => getElectronApi(), []);
+  const apiHandle = getElectronApi();
 
   useEffect(() => {
     const systemApi = apiHandle?.system;
@@ -66,6 +66,4 @@ export const CredentialRequestLayer = () => {
     />
   );
 };
-
-
 

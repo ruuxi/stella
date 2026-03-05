@@ -31,9 +31,9 @@ describe("useIsMobile", () => {
   });
 
   it("reacts to media change events and cleans up listeners", () => {
-    const listeners: Array<() => void> = [];
+    const listeners: Array<(event: MediaQueryListEvent) => void> = [];
     const addEventListener = vi.fn((_: string, cb: () => void) => {
-      listeners.push(cb);
+      listeners.push(cb as (event: MediaQueryListEvent) => void);
     });
     const removeEventListener = vi.fn((_: string, cb: () => void) => {
       const i = listeners.indexOf(cb);
@@ -62,9 +62,8 @@ describe("useIsMobile", () => {
     expect(result.current).toBe(false);
     expect(addEventListener).toHaveBeenCalledTimes(1);
 
-    Object.defineProperty(window, "innerWidth", { value: 500, configurable: true });
     act(() => {
-      listeners[0]();
+      listeners[0]({ matches: true } as MediaQueryListEvent);
     });
     expect(result.current).toBe(true);
 

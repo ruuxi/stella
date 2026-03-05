@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useWorkspace } from '@/providers/workspace-state';
 import { getPlatform } from '@/lib/platform';
+
+const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
 
 export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -11,10 +13,18 @@ export const TitleBar = () => {
   const canvasTitle = canvas && canvas.name !== 'dashboard'
     ? (canvas.title ?? canvas.name)
     : null;
+  const canvasTitleLabel = canvasTitle
+    ? <span className="title-bar-canvas-label">{canvasTitle}</span>
+    : null;
+
+  const syncMaximizedState = useCallback(async () => {
+    const maximized = await window.electronAPI?.window.isMaximized?.();
+    setIsMaximized(maximized ?? false);
+  }, []);
 
   useEffect(() => {
-    window.electronAPI?.window.isMaximized?.().then(setIsMaximized);
-  }, []);
+    void syncMaximizedState();
+  }, [syncMaximizedState]);
 
   const handleMinimize = () => {
     window.electronAPI?.window.minimize?.();
@@ -23,9 +33,8 @@ export const TitleBar = () => {
   const handleMaximize = async () => {
     window.electronAPI?.window.maximize?.();
     setTimeout(async () => {
-      const maximized = await window.electronAPI?.window.isMaximized?.();
-      setIsMaximized(maximized ?? false);
-    }, 50);
+      await syncMaximizedState();
+    }, MAXIMIZE_STATE_SYNC_DELAY_MS);
   };
 
   const handleClose = () => {
@@ -37,7 +46,7 @@ export const TitleBar = () => {
     return (
       <div className="title-bar title-bar-mac">
         <div className="title-bar-drag-region" />
-        {canvasTitle && <span className="title-bar-canvas-label">{canvasTitle}</span>}
+        {canvasTitleLabel}
       </div>
     );
   }
@@ -46,7 +55,7 @@ export const TitleBar = () => {
   return (
     <div className="title-bar">
       <div className="title-bar-drag-region" />
-      {canvasTitle && <span className="title-bar-canvas-label">{canvasTitle}</span>}
+      {canvasTitleLabel}
       <div className="title-bar-controls">
         <button
           className="title-bar-button"

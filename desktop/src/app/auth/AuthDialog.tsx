@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect } from "react";
 import { useConvexAuth } from "convex/react";
-import { authClient } from "@/lib/auth-client";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import {
@@ -12,17 +11,8 @@ import {
   DialogBody,
   DialogCloseButton,
 } from "@/ui/dialog";
+import { useMagicLinkAuth } from "./useMagicLinkAuth";
 import "./AuthDialog.css";
-
-type Status = "idle" | "sending" | "sent" | "error";
-
-const getCallbackUrl = () => {
-  if (window.electronAPI) {
-    const protocol = (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined) ?? "Stella";
-    return `${protocol}://auth`;
-  }
-  return (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
-};
 
 interface AuthDialogProps {
   open: boolean;
@@ -31,11 +21,7 @@ interface AuthDialogProps {
 
 export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
   const { isAuthenticated } = useConvexAuth();
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<Status>("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  const callbackURL = useMemo(() => getCallbackUrl(), []);
+  const { email, setEmail, status, error, handleMagicLinkSubmit, reset } = useMagicLinkAuth();
 
   // Close dialog when user becomes authenticated
   useEffect(() => {
@@ -44,33 +30,10 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
     }
   }, [isAuthenticated, open, onOpenChange]);
 
-  const handleMagicLink = async (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setError("Enter an email address.");
-      return;
-    }
-    setError(null);
-    setStatus("sending");
-    try {
-      await authClient.$fetch("/sign-in/magic-link", {
-        method: "POST",
-        body: { email: trimmed, callbackURL },
-      });
-      setStatus("sent");
-    } catch (err) {
-      setStatus("error");
-      setError(err instanceof Error ? err.message : "Failed to send magic link.");
-    }
-  };
-
   const handleOpenChange = (newOpen: boolean) => {
     // Reset state when closing
     if (!newOpen) {
-      setEmail("");
-      setStatus("idle");
-      setError(null);
+      reset();
     }
     onOpenChange(newOpen);
   };
@@ -84,7 +47,7 @@ export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
         </DialogHeader>
         <DialogDescription>Sign in with your email.</DialogDescription>
         <DialogBody>
-          <form className="auth-dialog-form" onSubmit={handleMagicLink}>
+          <form className="auth-dialog-form" onSubmit={handleMagicLinkSubmit}>
             <TextField
               label="Email"
               type="email"
