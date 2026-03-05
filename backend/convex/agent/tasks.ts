@@ -1901,7 +1901,7 @@ export const executeSubagent = internalAction({
       const task = await ctx.runQuery(internal.agent.tasks.getTaskStatus, {
         taskId: args.taskId,
       });
-      const status = task === "completed" ? "completed" : task === "error" ? "error" : task ?? "completed";
+      const status = task ?? "completed";
 
       // Extract the actual result text from the formatted return string
       const resultMatch = resultText.match(/--- (?:Agent Result|Error) ---\n([\s\S]*)$/);

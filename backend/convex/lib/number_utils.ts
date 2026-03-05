@@ -18,7 +18,7 @@ export const normalizeOptionalInt = ({
   min,
   max,
 }: NormalizeOptionalIntArgs): number => {
-  const fallback = Number.isFinite(defaultValue) ? defaultValue : min;
+  const fallback = defaultValue;
   const input = typeof value === "number" && Number.isFinite(value) ? value : fallback;
   return clampIntToRange(input, min, max);
 };

@@ -201,7 +201,7 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
   const toolsAllowlist = coerceStringArray(record.toolsAllowlist);
   const defaultSkills = coerceStringArray(record.defaultSkills);
 
-  const versionNumber = Number(record.version ?? 1);
+  const versionNumber = Number(record.version);
   const version = Number.isFinite(versionNumber) && versionNumber > 0 ? Math.floor(versionNumber) : 1;
 
   const maxTaskDepthNumber = Number(record.maxTaskDepth);

@@ -227,7 +227,7 @@ export const buildSystemPrompt = async (
     }
   }
 
-  const maxTaskDepthValue = Number(agent.maxTaskDepth ?? 2);
+  const maxTaskDepthValue = Number(agent.maxTaskDepth);
   const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
     ? Math.floor(maxTaskDepthValue)
     : 2;
@@ -235,7 +235,7 @@ export const buildSystemPrompt = async (
   return {
     systemPrompt: systemParts.join("\n\n").trim(),
     dynamicContext: dynamicParts.join("\n\n").trim(),
-    toolsAllowlist: agent.toolsAllowlist ?? undefined,
+    toolsAllowlist: agent.toolsAllowlist,
     maxTaskDepth,
     defaultSkills: agent.defaultSkills ?? [],
     skillIds: skills.map((skill: { id: string }) => skill.id),

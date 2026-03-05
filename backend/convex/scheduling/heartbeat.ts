@@ -43,13 +43,13 @@ function normalizeIntervalMs(value?: number) {
 function resolveActiveHoursTimezone(raw?: string) {
   const trimmed = raw?.trim();
   if (!trimmed || trimmed === "local" || trimmed === "user") {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: trimmed }).format(new Date());
     return trimmed;
   } catch {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
 }
 
