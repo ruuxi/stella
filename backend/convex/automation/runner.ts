@@ -87,7 +87,7 @@ export async function runAgentTurn({
 
   const resolvedOwnerId = ownerId ?? conversation.ownerId;
   const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
-  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId).catch(() => null);
+  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId);
   let promptBuild: Awaited<ReturnType<typeof buildSystemPrompt>>;
   let requestMessages: ModelMessage[];
   let orchestratorTurn: Awaited<ReturnType<typeof prepareOrchestratorTurn>> | null = null;

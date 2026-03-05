@@ -328,16 +328,12 @@ const fetchAgentContextForOwner = async (
   // 3. Resolve primary/fallback models for the runtime.
   const modelDefaults = getModelConfig(args.agentType);
   let model = modelDefaults.model;
-  try {
-    const override = await ctx.runQuery(
-      internal.data.preferences.getPreferenceForOwner,
-      { ownerId: args.ownerId, key: `model_config:${args.agentType}` },
-    );
-    if (typeof override === "string" && override.trim().length > 0) {
-      model = override.trim();
-    }
-  } catch {
-    // Ignore model override lookup errors; defaults remain valid.
+  const override = await ctx.runQuery(
+    internal.data.preferences.getPreferenceForOwner,
+    { ownerId: args.ownerId, key: `model_config:${args.agentType}` },
+  );
+  if (typeof override === "string" && override.trim().length > 0) {
+    model = override.trim();
   }
 
   let generalAgentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
@@ -345,24 +341,16 @@ const fetchAgentContextForOwner = async (
   if (args.agentType === "general") {
     generalAgentEngine = "default";
     codexLocalMaxConcurrency = DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY;
-    try {
-      const enginePreference = await ctx.runQuery(
-        internal.data.preferences.getPreferenceForOwner,
-        { ownerId: args.ownerId, key: GENERAL_AGENT_ENGINE_KEY },
-      );
-      generalAgentEngine = normalizeGeneralAgentEngine(enginePreference);
-    } catch {
-      // Ignore preference lookup errors; defaults remain valid.
-    }
-    try {
-      const concurrencyPreference = await ctx.runQuery(
-        internal.data.preferences.getPreferenceForOwner,
-        { ownerId: args.ownerId, key: CODEX_LOCAL_MAX_CONCURRENCY_KEY },
-      );
-      codexLocalMaxConcurrency = normalizeCodexLocalMaxConcurrency(concurrencyPreference);
-    } catch {
-      // Ignore preference lookup errors; defaults remain valid.
-    }
+    const enginePreference = await ctx.runQuery(
+      internal.data.preferences.getPreferenceForOwner,
+      { ownerId: args.ownerId, key: GENERAL_AGENT_ENGINE_KEY },
+    );
+    generalAgentEngine = normalizeGeneralAgentEngine(enginePreference);
+    const concurrencyPreference = await ctx.runQuery(
+      internal.data.preferences.getPreferenceForOwner,
+      { ownerId: args.ownerId, key: CODEX_LOCAL_MAX_CONCURRENCY_KEY },
+    );
+    codexLocalMaxConcurrency = normalizeCodexLocalMaxConcurrency(concurrencyPreference);
   }
 
   // 4. Get thread history if we have an active thread

@@ -306,7 +306,7 @@ export const logProxyUsage = internalMutation({
     }
 
     const totalTokens =
-      (args.inputTokens ?? 0) + (args.outputTokens ?? 0) || undefined;
+      (args.inputTokens ?? 0) + (args.outputTokens ?? 0);
 
     await ctx.db.insert("usage_logs", {
       ownerId: args.ownerId,

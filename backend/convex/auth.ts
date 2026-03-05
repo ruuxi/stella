@@ -102,7 +102,7 @@ const getSessionPolicyFromDb = async (
   }
   return {
     sessionVersion: policy.sessionVersion,
-    minIssuedAtSec: policy.minIssuedAtSec ?? undefined,
+    minIssuedAtSec: policy.minIssuedAtSec,
     updatedAt: policy.updatedAt,
   };
 };
@@ -337,7 +337,7 @@ export const getSessionPolicyByOwnerInternal = internalQuery({
     }
     return {
       sessionVersion: policy.sessionVersion,
-      minIssuedAtSec: policy.minIssuedAtSec ?? undefined,
+      minIssuedAtSec: policy.minIssuedAtSec,
       updatedAt: policy.updatedAt,
     };
   },
@@ -371,9 +371,7 @@ const upsertSessionPolicy = async (
   if (existing) {
     const next = {
       sessionVersion: patch.sessionVersion ?? existing.sessionVersion,
-      minIssuedAtSec:
-        patch.minIssuedAtSec ??
-        (existing.minIssuedAtSec !== undefined ? existing.minIssuedAtSec : undefined),
+      minIssuedAtSec: patch.minIssuedAtSec ?? existing.minIssuedAtSec,
       updatedAt: now,
     };
     await ctx.db.patch(existing._id, next);
