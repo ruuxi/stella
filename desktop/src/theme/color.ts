@@ -10,7 +10,7 @@ export interface OklchColor {
 }
 
 export function hexToRgb(hex: HexColor): { r: number; g: number; b: number } {
-  if (!hex || typeof hex !== "string") {
+  if (!hex) {
     return { r: 0.5, g: 0.5, b: 0.5 };
   }
 
@@ -80,11 +80,6 @@ export function rgbToOklch(r: number, g: number, b: number): OklchColor {
 
 export function oklchToRgb(oklch: OklchColor): { r: number; g: number; b: number } {
   const { l: L, c: C, h: H } = oklch;
-
-  // Handle edge cases
-  if (Number.isNaN(L) || Number.isNaN(C) || Number.isNaN(H)) {
-    return { r: 0.5, g: 0.5, b: 0.5 };
-  }
 
   const a = C * Math.cos((H * Math.PI) / 180);
   const b = C * Math.sin((H * Math.PI) / 180);

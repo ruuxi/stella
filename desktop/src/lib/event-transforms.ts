@@ -61,8 +61,6 @@ export type ChannelEnvelope = {
 // Message payload structure
 export type MessagePayload = {
   text?: string;
-  content?: string;
-  message?: string;
   role?: string;
   source?: string;
   agentType?: string;
@@ -86,10 +84,6 @@ export const getEventText = (event: EventRecord): string => {
   const payload = event.payload as MessagePayload;
   if (typeof payload.text === "string" && payload.text.trim().length > 0)
     return payload.text;
-  if (typeof payload.content === "string" && payload.content.trim().length > 0)
-    return payload.content;
-  if (typeof payload.message === "string" && payload.message.trim().length > 0)
-    return payload.message;
   return "";
 };
 
@@ -186,11 +180,11 @@ export function extractToolTitle(event: EventRecord): string {
 
   switch (toolName.toLowerCase()) {
     case "read":
-      return args?.path ? String(args.path).split("/").pop() || "file" : "Reading file";
+      return args?.path ? String(args.path).split("/").pop()! : "Reading file";
     case "write":
-      return args?.path ? String(args.path).split("/").pop() || "file" : "Writing file";
+      return args?.path ? String(args.path).split("/").pop()! : "Writing file";
     case "edit":
-      return args?.path ? String(args.path).split("/").pop() || "file" : "Editing file";
+      return args?.path ? String(args.path).split("/").pop()! : "Editing file";
     case "grep":
       return args?.pattern ? `"${String(args.pattern).slice(0, 30)}"` : "Searching";
     case "glob":

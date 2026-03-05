@@ -108,12 +108,6 @@ describe("rgbToOklch", () => {
 });
 
 describe("oklchToRgb", () => {
-  it("returns fallback gray for NaN inputs", () => {
-    expect(oklchToRgb({ l: NaN, c: 0, h: 0 })).toEqual({ r: 0.5, g: 0.5, b: 0.5 });
-    expect(oklchToRgb({ l: 0.5, c: NaN, h: 0 })).toEqual({ r: 0.5, g: 0.5, b: 0.5 });
-    expect(oklchToRgb({ l: 0.5, c: 0, h: NaN })).toEqual({ r: 0.5, g: 0.5, b: 0.5 });
-  });
-
   it("converts black OKLCH back to black RGB", () => {
     const { r, g, b } = oklchToRgb({ l: 0, c: 0, h: 0 });
     expect(r).toBeCloseTo(0, 2);
