@@ -132,7 +132,7 @@ const ownerStableHash = (ownerId: string): string => {
 
 const buildSpriteNameForOwner = (ownerId: string): string => {
   const sanitized = ownerId.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const suffix = sanitized.slice(-8) || "user";
+  const suffix = sanitized.slice(-8);
   const stable = ownerStableHash(ownerId).slice(0, 6).padEnd(6, "0");
   return `stella-${suffix}-${stable}`;
 };
