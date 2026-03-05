@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 const resolveWindowType = (): "mini" | "full" | "overlay" => {
   const dataHint = document.documentElement.dataset.stellaWindow;
   if (dataHint === "mini") {
@@ -17,7 +15,7 @@ const resolveWindowType = (): "mini" | "full" | "overlay" => {
   return "full";
 };
 
-/** Returns 'mini', 'full', or 'overlay' for voice overlay activity gating. Stable across renders. */
+/** Returns 'mini', 'full', or 'overlay' for voice overlay activity gating. */
 export function useWindowType(): "mini" | "full" | "overlay" {
-  return useMemo(() => resolveWindowType(), []);
+  return resolveWindowType();
 }

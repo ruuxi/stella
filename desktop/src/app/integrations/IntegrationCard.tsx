@@ -1,4 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import {
+  memo,
+  useState,
+  useEffect,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
@@ -21,6 +27,28 @@ function isConnectedConnection(connection: unknown) {
 function useIntegrationConnectionStatus(provider: string) {
   const connection = useQuery(api.channels.utils.getConnection, { provider });
   return isConnectedConnection(connection);
+}
+
+function isBridgeProvider(provider: string): provider is BridgeProvider {
+  return provider === "whatsapp" || provider === "signal";
+}
+
+function SetupContent({
+  instructions,
+  error,
+  children,
+}: {
+  instructions: string;
+  error: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <p className="connect-instructions">{instructions}</p>
+      {error ? <div className="connect-error">{error}</div> : null}
+      {children}
+    </>
+  );
 }
 
 function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
@@ -68,7 +96,7 @@ function ConnectedView({ integration }: { integration: Integration }) {
   const stopBridge = useAction(api.channels.bridge_actions.stopBridge);
   const [disconnecting, setDisconnecting] = useState(false);
 
-  const isBridge = integration.provider === "whatsapp" || integration.provider === "signal";
+  const isBridge = isBridgeProvider(integration.provider);
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
@@ -118,7 +146,7 @@ function BotSetupView({
   const generateCode = useMutation(api.channels.utils.generateLinkCode);
   const createSlackInstallUrl = useMutation(api.data.integrations.createSlackInstallUrl);
   const [code, setCode] = useState<string | null>(null);
-  const [botLink, setBotLink] = useState<string | null>(
+  const [botLink, setBotLink] = useState<string | null>(() =>
     sanitizeExternalLinkUrl(integration.botLink),
   );
   const [error, setError] = useState<string | null>(null);
@@ -149,17 +177,15 @@ function BotSetupView({
       ]);
       if (cancelled) return;
 
-      if (codeResult.status === "fulfilled") {
-        setCode(codeResult.value.code);
-      } else {
-        setCode(null);
-      }
-
-      if (botLinkResult.status === "fulfilled") {
-        setBotLink(botLinkResult.value);
-      } else {
-        setBotLink(integration.provider === "slack" ? null : staticBotLink);
-      }
+      const nextCode = codeResult.status === "fulfilled" ? codeResult.value.code : null;
+      const nextBotLink =
+        botLinkResult.status === "fulfilled"
+          ? botLinkResult.value
+          : integration.provider === "slack"
+            ? null
+            : staticBotLink;
+      setCode(nextCode);
+      setBotLink(nextBotLink);
 
       if (codeResult.status === "rejected") {
         setError(getErrorMessage(codeResult.reason, "Failed to generate code"));
@@ -200,37 +226,35 @@ function BotSetupView({
   }, [code]);
 
   return (
-    <>
-      <p className="connect-instructions">{integration.instructions}</p>
+    <SetupContent instructions={integration.instructions} error={error}>
+      <>
+        {error ? null : (
+          <div className="connect-code-row">
+            {code ? (
+              <>
+                <span className="connect-code">{code}</span>
+                <Button variant="ghost" size="small" onClick={handleCopy}>
+                  Copy
+                </Button>
+              </>
+            ) : (
+              <div className="connect-skeleton connect-skeleton-code" />
+            )}
+          </div>
+        )}
 
-      {error && <div className="connect-error">{error}</div>}
-
-      {!error && (
-        <div className="connect-code-row">
-          {code ? (
-            <>
-              <span className="connect-code">{code}</span>
-              <Button variant="ghost" size="small" onClick={handleCopy}>
-                Copy
-              </Button>
-            </>
-          ) : (
-            <div className="connect-skeleton connect-skeleton-code" />
-          )}
-        </div>
-      )}
-
-      {botLink && (
-        <a
-          className="connect-bot-link"
-          href={botLink}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Find bot on {integration.displayName} &#8599;
-        </a>
-      )}
-    </>
+        {botLink ? (
+          <a
+            className="connect-bot-link"
+            href={botLink}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Find bot on {integration.displayName} &#8599;
+          </a>
+        ) : null}
+      </>
+    </SetupContent>
   );
 }
 
@@ -243,13 +267,10 @@ function WhatsAppBridgeView({ isExpanded }: { isExpanded: boolean }) {
   ) as string | null | undefined;
 
   return (
-    <>
-      <p className="connect-instructions">
-        Scan the QR code below with your WhatsApp app to link your account.
-      </p>
-
-      {error && <div className="connect-error">{error}</div>}
-
+    <SetupContent
+      instructions="Scan the QR code below with your WhatsApp app to link your account."
+      error={error}
+    >
       <div className="connect-qr">
         {qrCode ? (
           <img
@@ -259,10 +280,10 @@ function WhatsAppBridgeView({ isExpanded }: { isExpanded: boolean }) {
             height={200}
           />
         ) : (
-          <div className="connect-skeleton connect-skeleton-qr" />
-        )}
+            <div className="connect-skeleton connect-skeleton-qr" />
+          )}
       </div>
-    </>
+    </SetupContent>
   );
 }
 
@@ -282,14 +303,10 @@ function SignalBridgeView({ isExpanded }: { isExpanded: boolean }) {
   }, [linkUri]);
 
   return (
-    <>
-      <p className="connect-instructions">
-        Open Signal on your phone, go to Settings &gt; Linked Devices, then scan or tap
-        the link below.
-      </p>
-
-      {error && <div className="connect-error">{error}</div>}
-
+    <SetupContent
+      instructions="Open Signal on your phone, go to Settings > Linked Devices, then scan or tap the link below."
+      error={error}
+    >
       {linkUri ? (
         <div className="connect-link-uri">
           <div className="connect-link-uri-value">{linkUri}</div>
@@ -300,19 +317,21 @@ function SignalBridgeView({ isExpanded }: { isExpanded: boolean }) {
       ) : (
         <div className="connect-skeleton connect-skeleton-link" />
       )}
-    </>
+    </SetupContent>
   );
 }
 
-export function IntegrationGridCard({
-  integration,
-  isSelected,
-  onClick,
-}: {
+type IntegrationGridCardProps = {
   integration: Integration;
   isSelected: boolean;
   onClick: () => void;
-}) {
+};
+
+function IntegrationGridCardComponent({
+  integration,
+  isSelected,
+  onClick,
+}: IntegrationGridCardProps) {
   const isConnected = useIntegrationConnectionStatus(integration.provider);
 
   return (
@@ -331,6 +350,8 @@ export function IntegrationGridCard({
     </button>
   );
 }
+export const IntegrationGridCard = memo(IntegrationGridCardComponent);
+IntegrationGridCard.displayName = "IntegrationGridCard";
 
 export function IntegrationDetailArea({
   integration,
@@ -338,33 +359,25 @@ export function IntegrationDetailArea({
   integration: Integration;
 }) {
   const isConnected = useIntegrationConnectionStatus(integration.provider);
+  let detailContent: ReactNode = null;
 
-  const renderContent = () => {
-    if (isConnected) {
-      return <ConnectedView integration={integration} />;
-    }
-    if (integration.type === "bot") {
-      return (
-        <BotSetupView
-          key={integration.provider}
-          integration={integration}
-          isExpanded={true}
-        />
-      );
-    }
-    if (integration.provider === "whatsapp") {
-      return <WhatsAppBridgeView isExpanded={true} />;
-    }
-    return <SignalBridgeView isExpanded={true} />;
-  };
+  if (isConnected) {
+    detailContent = <ConnectedView integration={integration} />;
+  } else if (integration.type === "bot") {
+    detailContent = <BotSetupView integration={integration} isExpanded={true} />;
+  } else if (integration.provider === "whatsapp") {
+    detailContent = <WhatsAppBridgeView isExpanded={true} />;
+  } else {
+    detailContent = <SignalBridgeView isExpanded={true} />;
+  }
 
   return (
-    <div className="connect-detail-area" key={integration.provider}>
+    <div className="connect-detail-area">
       <div className="connect-detail-header">
         <span className="connect-grid-card-icon">{integration.icon}</span>
         <span className="connect-detail-name">{integration.displayName}</span>
       </div>
-      <div className="connect-detail-body">{renderContent()}</div>
+      <div className="connect-detail-body">{detailContent}</div>
     </div>
   );
 }
