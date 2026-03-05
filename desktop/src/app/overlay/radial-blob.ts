@@ -4,8 +4,6 @@
  * Uses spring physics for Apple-like overshoot + settle.
  */
 
-import { cssToVec3 } from '@/lib/color'
-
 // ---- Shaders ----
 
 const VERT = `

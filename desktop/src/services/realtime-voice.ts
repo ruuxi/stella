@@ -9,6 +9,7 @@
  */
 
 import { createServiceRequest } from "./http/service-request";
+import type { NeriWindowType } from "@/app/neri/neri-types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,6 +88,23 @@ const VOICE_MIC_CONSTRAINTS: MediaTrackConstraints = {
   noiseSuppression: true,
   autoGainControl: true,
 };
+
+const NERI_WINDOW_TYPES: ReadonlySet<NeriWindowType> = new Set([
+  "news-feed",
+  "music-player",
+  "ai-search",
+  "calendar",
+  "game",
+  "system-monitor",
+  "weather",
+  "notes",
+  "file-browser",
+  "search",
+  "canvas",
+]);
+
+const isNeriWindowType = (value: string): value is NeriWindowType =>
+  NERI_WINDOW_TYPES.has(value as NeriWindowType);
 
 const toConvexConversationId = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -915,10 +933,14 @@ export class RealtimeVoiceSession {
           break;
         case "manage_windows":
           if (tr.operation === "close" && tr.window_type) {
+            const windowType = tr.window_type;
+            if (!isNeriWindowType(windowType)) {
+              break;
+            }
             import("@/app/neri/neri-store").then(({ getNeriStore }) => {
               getNeriStore().dispatch({
                 type: "close-window-by-type",
-                windowType: tr.window_type as string,
+                windowType,
               });
             });
           }
