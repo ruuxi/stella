@@ -76,6 +76,15 @@ const PRECONNECT_SILENCE_MS = 280;
 const PRECONNECT_BOUNDARY_MAX_WAIT_MS = 1800;
 const PRECONNECT_BOUNDARY_POLL_MS = 40;
 const DATA_CHANNEL_OPEN_TIMEOUT_MS = 8_000;
+const DUPLEX_GATE_ANALYSIS_WINDOW = 2048;
+const DUPLEX_GATE_INTERVAL_MS = 50;
+const DUPLEX_GATE_OPEN_FRAMES = 2;
+const DUPLEX_GATE_CLOSE_FRAMES = 4;
+const DUPLEX_GATE_MIN_MIC_RMS = 0.018;
+const DUPLEX_GATE_MIN_OUTPUT_RMS = 0.01;
+const DUPLEX_GATE_ECHO_CORRELATION = 0.72;
+const DUPLEX_GATE_NEAR_FIELD_RATIO = 1.35;
+const DUPLEX_GATE_LAGS = [0, 120, 240, 360, 480];
 
 const RTC_CONFIGURATION: RTCConfiguration = {
   // Pre-gather one ICE candidate batch to shorten negotiation time.
@@ -244,10 +253,27 @@ export class RealtimeVoiceSession {
   private audioElement: HTMLAudioElement | null = null;
   private localStream: MediaStream | null = null;
   private inputTrack: MediaStreamTrack | null = null;
+  private outboundTrack: MediaStreamTrack | null = null;
   private analyser: AnalyserNode | null = null;
   private audioContext: AudioContext | null = null;
   private outputAnalyser: AnalyserNode | null = null;
-  private outputAudioContext: AudioContext | null = null;
+  private gateGainNode: GainNode | null = null;
+  private gateSilentSink: GainNode | null = null;
+  private inputMonitorNode: ScriptProcessorNode | null = null;
+  private outputMonitorNode: ScriptProcessorNode | null = null;
+  private outputMonitorSource: MediaStreamAudioSourceNode | null = null;
+  private pendingRemoteStream: MediaStream | null = null;
+  private duplexGateTimer: ReturnType<typeof setInterval> | null = null;
+  private duplexGateOpen = true;
+  private duplexGateOpenFrames = 0;
+  private duplexGateCloseFrames = 0;
+  private assistantSpeaking = false;
+  private inputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
+  private outputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
+  private inputSampleWriteIndex = 0;
+  private outputSampleWriteIndex = 0;
+  private inputWindowFilled = false;
+  private outputWindowFilled = false;
   private destroyed = false;
   private inputActive = false;
 
@@ -304,6 +330,7 @@ export class RealtimeVoiceSession {
     if (this.inputTrack && this.inputTrack.readyState === "live") {
       this.inputTrack.enabled = active;
     }
+    this.updateOutboundGate();
     if (active && this.localStream && !this.inputTrack && !this.isBufferingPreConnect) {
       this.startPreConnectBuffering(this.localStream);
     }
@@ -457,6 +484,7 @@ export class RealtimeVoiceSession {
       if (!this.inputTrack) {
         throw new Error("No microphone track available");
       }
+      this.setupLocalAudioPipeline(micStream);
 
       if (this.inputActive) {
         if (!this.isBufferingPreConnect) {
@@ -472,10 +500,7 @@ export class RealtimeVoiceSession {
       }
 
       this.inputTrack.enabled = this.inputActive;
-      await transceiver.sender.replaceTrack(this.inputTrack);
-
-      // Setup audio analyser for visualization
-      this.setupAudioAnalyser();
+      await transceiver.sender.replaceTrack(this.outboundTrack ?? this.inputTrack);
 
       this.trace("CONNECTED", `conv=${conversationId} prefetched=${!!prefetchedToken}`);
       this.setState("connected");
@@ -698,27 +723,262 @@ export class RealtimeVoiceSession {
     // Create analyser for the output (assistant) audio stream.
     // Don't connect to destination — the Audio element handles playback.
     try {
-      this.outputAudioContext = new AudioContext();
-      this.outputAnalyser = this.outputAudioContext.createAnalyser();
-      this.outputAnalyser.fftSize = 256;
-      const source = this.outputAudioContext.createMediaStreamSource(stream);
-      source.connect(this.outputAnalyser);
+      this.pendingRemoteStream = stream;
+      this.attachOutputMonitor(stream);
     } catch (err) {
       console.debug("[realtime-voice] Output analyser setup failed:", (err as Error).message);
     }
   }
 
-  private setupAudioAnalyser() {
-    if (!this.localStream) return;
+  private setupLocalAudioPipeline(stream: MediaStream) {
+    if (this.audioContext) return;
     try {
-      this.audioContext = new AudioContext();
-      this.analyser = this.audioContext.createAnalyser();
+      const ctx = new AudioContext();
+      this.audioContext = ctx;
+
+      const source = ctx.createMediaStreamSource(stream);
+      this.analyser = ctx.createAnalyser();
       this.analyser.fftSize = 256;
-      const source = this.audioContext.createMediaStreamSource(this.localStream);
       source.connect(this.analyser);
+
+      this.gateGainNode = ctx.createGain();
+      this.gateGainNode.gain.value = 1;
+      source.connect(this.gateGainNode);
+
+      const destination = ctx.createMediaStreamDestination();
+      this.gateGainNode.connect(destination);
+      this.outboundTrack = destination.stream.getAudioTracks()[0] ?? this.inputTrack;
+
+      this.gateSilentSink = ctx.createGain();
+      this.gateSilentSink.gain.value = 0;
+      this.gateSilentSink.connect(ctx.destination);
+
+      this.inputMonitorNode = ctx.createScriptProcessor(1024, 1, 1);
+      this.inputMonitorNode.onaudioprocess = (event) => {
+        this.recordSampleWindow(
+          event.inputBuffer.getChannelData(0),
+          this.inputSampleWindow,
+          "input",
+        );
+      };
+      source.connect(this.inputMonitorNode);
+      this.inputMonitorNode.connect(this.gateSilentSink);
+
+      if (this.pendingRemoteStream) {
+        this.attachOutputMonitor(this.pendingRemoteStream);
+      }
+
+      this.startDuplexGate();
+      this.updateOutboundGate();
     } catch (err) {
       console.debug("[realtime-voice] Analyser setup failed:", (err as Error).message);
+      this.outboundTrack = this.inputTrack;
     }
+  }
+
+  private attachOutputMonitor(stream: MediaStream) {
+    if (!this.audioContext) return;
+
+    this.pendingRemoteStream = stream;
+
+    if (this.outputMonitorSource) {
+      this.outputMonitorSource.disconnect();
+      this.outputMonitorSource = null;
+    }
+    if (this.outputMonitorNode) {
+      this.outputMonitorNode.disconnect();
+      this.outputMonitorNode = null;
+    }
+
+    this.outputAnalyser = this.audioContext.createAnalyser();
+    this.outputAnalyser.fftSize = 256;
+    const source = this.audioContext.createMediaStreamSource(stream);
+    source.connect(this.outputAnalyser);
+
+    this.outputMonitorNode = this.audioContext.createScriptProcessor(1024, 1, 1);
+    this.outputMonitorNode.onaudioprocess = (event) => {
+      this.recordSampleWindow(
+        event.inputBuffer.getChannelData(0),
+        this.outputSampleWindow,
+        "output",
+      );
+    };
+    source.connect(this.outputMonitorNode);
+    if (this.gateSilentSink) {
+      this.outputMonitorNode.connect(this.gateSilentSink);
+    }
+    this.outputMonitorSource = source;
+  }
+
+  private recordSampleWindow(
+    input: Float32Array,
+    target: Float32Array,
+    kind: "input" | "output",
+  ) {
+    let writeIndex =
+      kind === "input" ? this.inputSampleWriteIndex : this.outputSampleWriteIndex;
+
+    for (let i = 0; i < input.length; i++) {
+      target[writeIndex] = input[i];
+      writeIndex = (writeIndex + 1) % target.length;
+    }
+
+    if (kind === "input") {
+      this.inputSampleWriteIndex = writeIndex;
+      if (!this.inputWindowFilled && writeIndex === 0) {
+        this.inputWindowFilled = true;
+      }
+      return;
+    }
+
+    this.outputSampleWriteIndex = writeIndex;
+    if (!this.outputWindowFilled && writeIndex === 0) {
+      this.outputWindowFilled = true;
+    }
+  }
+
+  private startDuplexGate() {
+    if (this.duplexGateTimer) return;
+    this.duplexGateTimer = setInterval(() => {
+      this.updateOutboundGate();
+    }, DUPLEX_GATE_INTERVAL_MS);
+  }
+
+  private stopDuplexGate() {
+    if (this.duplexGateTimer) {
+      clearInterval(this.duplexGateTimer);
+      this.duplexGateTimer = null;
+    }
+  }
+
+  private updateOutboundGate() {
+    if (!this.gateGainNode) return;
+    if (!this.inputActive) {
+      this.duplexGateOpen = false;
+      this.duplexGateOpenFrames = 0;
+      this.duplexGateCloseFrames = 0;
+      this.gateGainNode.gain.setTargetAtTime(
+        0,
+        this.audioContext?.currentTime ?? 0,
+        0.01,
+      );
+      return;
+    }
+    if (!this.assistantSpeaking) {
+      this.duplexGateOpen = true;
+      this.duplexGateOpenFrames = 0;
+      this.duplexGateCloseFrames = 0;
+      this.gateGainNode.gain.setTargetAtTime(
+        1,
+        this.audioContext?.currentTime ?? 0,
+        0.01,
+      );
+      return;
+    }
+
+    const nextOpen = this.computeOutboundGateState();
+    if (nextOpen) {
+      this.duplexGateCloseFrames = 0;
+      this.duplexGateOpenFrames = Math.min(
+        DUPLEX_GATE_OPEN_FRAMES,
+        this.duplexGateOpenFrames + 1,
+      );
+      if (!this.duplexGateOpen && this.duplexGateOpenFrames >= DUPLEX_GATE_OPEN_FRAMES) {
+        this.duplexGateOpen = true;
+      }
+    } else {
+      this.duplexGateOpenFrames = 0;
+      this.duplexGateCloseFrames = Math.min(
+        DUPLEX_GATE_CLOSE_FRAMES,
+        this.duplexGateCloseFrames + 1,
+      );
+      if (this.duplexGateOpen && this.duplexGateCloseFrames >= DUPLEX_GATE_CLOSE_FRAMES) {
+        this.duplexGateOpen = false;
+      }
+    }
+
+    this.gateGainNode.gain.setTargetAtTime(
+      this.duplexGateOpen ? 1 : 0,
+      this.audioContext?.currentTime ?? 0,
+      this.duplexGateOpen ? 0.01 : 0.02,
+    );
+  }
+
+  private computeOutboundGateState(): boolean {
+    if (!this.inputWindowFilled) return false;
+    if (!this.outputWindowFilled) return false;
+
+    const micSamples = this.getOrderedWindow(this.inputSampleWindow, this.inputSampleWriteIndex);
+    const outputSamples = this.getOrderedWindow(
+      this.outputSampleWindow,
+      this.outputSampleWriteIndex,
+    );
+    const micRms = this.computeRms(micSamples);
+    const outputRms = this.computeRms(outputSamples);
+
+    if (micRms < DUPLEX_GATE_MIN_MIC_RMS) {
+      return false;
+    }
+    if (outputRms < DUPLEX_GATE_MIN_OUTPUT_RMS) {
+      return true;
+    }
+
+    const correlation = this.computeMaxCorrelation(micSamples, outputSamples);
+    const nearFieldRatio = micRms / Math.max(outputRms, 1e-4);
+    const echoLikely =
+      correlation >= DUPLEX_GATE_ECHO_CORRELATION &&
+      nearFieldRatio < DUPLEX_GATE_NEAR_FIELD_RATIO;
+
+    if (echoLikely) {
+      return false;
+    }
+
+    return nearFieldRatio >= 1 || correlation < DUPLEX_GATE_ECHO_CORRELATION;
+  }
+
+  private getOrderedWindow(source: Float32Array, writeIndex: number): Float32Array {
+    const ordered = new Float32Array(source.length);
+    ordered.set(source.subarray(writeIndex), 0);
+    ordered.set(source.subarray(0, writeIndex), source.length - writeIndex);
+    return ordered;
+  }
+
+  private computeRms(samples: Float32Array): number {
+    let sumSquares = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const sample = samples[i];
+      sumSquares += sample * sample;
+    }
+    return Math.sqrt(sumSquares / Math.max(1, samples.length));
+  }
+
+  private computeMaxCorrelation(
+    micSamples: Float32Array,
+    outputSamples: Float32Array,
+  ): number {
+    let maxCorrelation = -1;
+
+    for (const lag of DUPLEX_GATE_LAGS) {
+      const available = micSamples.length - lag;
+      if (available <= 32) continue;
+
+      let dot = 0;
+      let micEnergy = 0;
+      let outputEnergy = 0;
+      for (let i = 0; i < available; i++) {
+        const mic = micSamples[i + lag];
+        const output = outputSamples[i];
+        dot += mic * output;
+        micEnergy += mic * mic;
+        outputEnergy += output * output;
+      }
+
+      const denominator = Math.sqrt(micEnergy * outputEnergy);
+      if (denominator <= 1e-6) continue;
+      maxCorrelation = Math.max(maxCorrelation, dot / denominator);
+    }
+
+    return maxCorrelation;
   }
 
   private sendEvent(event: Record<string, unknown>) {
@@ -807,10 +1067,17 @@ export class RealtimeVoiceSession {
       }
 
       case "output_audio.started":
+        this.assistantSpeaking = true;
+        this.duplexGateOpen = false;
+        this.duplexGateOpenFrames = 0;
+        this.duplexGateCloseFrames = 0;
+        this.updateOutboundGate();
         this.emit({ type: "speaking-start" });
         break;
 
       case "output_audio.done":
+        this.assistantSpeaking = false;
+        this.updateOutboundGate();
         this.emit({ type: "speaking-end" });
         break;
 
@@ -1126,14 +1393,25 @@ export class RealtimeVoiceSession {
       this.audioContext = null;
       this.analyser = null;
     }
-
-    if (this.outputAudioContext) {
-      this.outputAudioContext.close().catch((err) => {
-        console.debug('[RealtimeVoice] Output audio context close failed:', (err as Error).message);
-      });
-      this.outputAudioContext = null;
-      this.outputAnalyser = null;
-    }
+    this.outputAnalyser = null;
+    this.gateGainNode = null;
+    this.gateSilentSink = null;
+    this.inputMonitorNode = null;
+    this.outputMonitorNode = null;
+    this.outputMonitorSource = null;
+    this.pendingRemoteStream = null;
+    this.outboundTrack = null;
+    this.stopDuplexGate();
+    this.duplexGateOpen = true;
+    this.duplexGateOpenFrames = 0;
+    this.duplexGateCloseFrames = 0;
+    this.assistantSpeaking = false;
+    this.inputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
+    this.outputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
+    this.inputSampleWriteIndex = 0;
+    this.outputSampleWriteIndex = 0;
+    this.inputWindowFilled = false;
+    this.outputWindowFilled = false;
 
     this.assistantTranscriptBuffer = "";
     this.stopPreConnectBuffering();
