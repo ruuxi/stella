@@ -15,7 +15,7 @@ export function GenerativeCanvas() {
         <div className="canvas-rings-outer" />
         <div className="canvas-rings" />
         <div className="home-stella-orb">
-          <StellaAnimation width={96} height={68} />
+          <StellaAnimation width={40} height={30} />
         </div>
         <div className="canvas-footer">
           <span className="canvas-greeting">{getGreeting()}</span>
