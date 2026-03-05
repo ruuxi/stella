@@ -116,6 +116,7 @@ beforeEach(() => {
     },
     voice: {
       setShortcut: vi.fn(),
+      setAssistantSpeaking: vi.fn().mockResolvedValue({ ok: true }),
       setRtcShortcut: vi.fn(),
     },
   };

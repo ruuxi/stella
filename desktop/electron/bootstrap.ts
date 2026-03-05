@@ -15,6 +15,7 @@ import { createPiHostRunner } from './pi-runtime/runner.js'
 import { ensureLastResortRecoveryScripts } from './self-mod/recovery-script.js'
 import { cleanupSelectedTextProcess, getSelectedText, initSelectedTextProcess } from './selected-text.js'
 import { AuthService } from './services/auth-service.js'
+import { AudioDuckingService } from './services/audio-ducking-service.js'
 import { CaptureService } from './services/capture-service.js'
 import { CredentialService } from './services/credential-service.js'
 import { ExternalLinkService } from './services/external-link-service.js'
@@ -52,6 +53,9 @@ export const bootstrapMainProcess = () => {
   const workspaceService = new WorkspaceService(__dirname)
   const externalLinkService = new ExternalLinkService()
   const miniBridgeService = new MiniBridgeService()
+  const audioDuckingService = new AudioDuckingService(
+    () => windowManager?.getAllWindows() ?? BrowserWindow.getAllWindows(),
+  )
 
   const securityPolicyService = new SecurityPolicyService({
     getWindowManager: () => windowManager,
@@ -355,6 +359,7 @@ export const bootstrapMainProcess = () => {
         getOverlayController: () => overlayController,
         getConvexSiteUrl: () => authService.getConvexSiteUrl(),
         getAuthToken: () => authService.getAuthToken(),
+        setAssistantSpeaking: (active) => audioDuckingService.setAssistantSpeaking(active),
       },
     })
 

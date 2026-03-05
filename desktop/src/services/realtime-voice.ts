@@ -276,6 +276,7 @@ export class RealtimeVoiceSession {
   private outputWindowFilled = false;
   private destroyed = false;
   private inputActive = false;
+  private externalAudioDuckingActive = false;
 
   // Pre-connection audio buffer — captures mic audio while SDP negotiation is in progress
   private preConnectBuffer: string[] = []; // base64-encoded PCM chunks
@@ -987,6 +988,14 @@ export class RealtimeVoiceSession {
     }
   }
 
+  private syncExternalAudioDucking(active: boolean) {
+    if (this.externalAudioDuckingActive === active) return;
+    this.externalAudioDuckingActive = active;
+    window.electronAPI?.voice.setAssistantSpeaking(active).catch((err) => {
+      console.debug("[realtime-voice] External audio ducking failed:", (err as Error).message);
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Server event handling
   // ---------------------------------------------------------------------------
@@ -1072,12 +1081,14 @@ export class RealtimeVoiceSession {
         this.duplexGateOpenFrames = 0;
         this.duplexGateCloseFrames = 0;
         this.updateOutboundGate();
+        this.syncExternalAudioDucking(true);
         this.emit({ type: "speaking-start" });
         break;
 
       case "output_audio.done":
         this.assistantSpeaking = false;
         this.updateOutboundGate();
+        this.syncExternalAudioDucking(false);
         this.emit({ type: "speaking-end" });
         break;
 
@@ -1412,6 +1423,7 @@ export class RealtimeVoiceSession {
     this.outputSampleWriteIndex = 0;
     this.inputWindowFilled = false;
     this.outputWindowFilled = false;
+    this.syncExternalAudioDucking(false);
 
     this.assistantTranscriptBuffer = "";
     this.stopPreConnectBuffering();
