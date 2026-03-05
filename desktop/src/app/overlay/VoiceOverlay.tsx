@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useUiState } from "@/providers/ui-state";
 import { useVoiceRecording } from "@/hooks/use-voice-recording";
 import { useRealtimeVoice } from "@/hooks/use-realtime-voice";
@@ -15,6 +15,8 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   const { state, updateState } = useUiState();
   const [showOverlay, setShowOverlay] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transitionFrameRef = useRef<number | null>(null);
 
   const windowType = useWindowType();
   const isActiveWindow = windowType === "overlay" || state.window === windowType;
@@ -35,7 +37,7 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   // from the audio analysers, so we just signal "listening" (= voice session active).
   let voiceMode: VoiceMode = "idle";
   let micAnalyserRef = sttAnalyserRef;
-  let outputAnalyserRef = rtcOutputAnalyserRef;
+  const outputAnalyserRef = rtcOutputAnalyserRef;
 
   if (isAudioReady) {
     voiceMode = "listening";
@@ -46,18 +48,51 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
 
   // Show/hide with exit animation
   useEffect(() => {
-    if (isAnyVoiceActive) {
-      setExiting(false);
-      setShowOverlay(true);
-    } else if (showOverlay) {
-      setExiting(true);
-      const timer = setTimeout(() => {
-        setShowOverlay(false);
-        setExiting(false);
-      }, 250);
-      return () => clearTimeout(timer);
+    if (transitionFrameRef.current) {
+      cancelAnimationFrame(transitionFrameRef.current);
+      transitionFrameRef.current = null;
     }
+
+    if (isAnyVoiceActive) {
+      if (exitTimerRef.current) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      transitionFrameRef.current = requestAnimationFrame(() => {
+        transitionFrameRef.current = null;
+        setExiting(false);
+        setShowOverlay(true);
+      });
+      return;
+    }
+
+    if (!showOverlay || exitTimerRef.current) {
+      return;
+    }
+
+    transitionFrameRef.current = requestAnimationFrame(() => {
+      transitionFrameRef.current = null;
+      setExiting(true);
+    });
+    exitTimerRef.current = setTimeout(() => {
+      exitTimerRef.current = null;
+      setShowOverlay(false);
+      setExiting(false);
+    }, 250);
   }, [isAnyVoiceActive, showOverlay]);
+
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      if (transitionFrameRef.current) {
+        cancelAnimationFrame(transitionFrameRef.current);
+        transitionFrameRef.current = null;
+      }
+    };
+  }, []);
 
   const handleClick = useCallback(() => {
     if (state.isVoiceRtcActive) {

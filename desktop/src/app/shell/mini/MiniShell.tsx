@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useUiState } from "@/providers/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
@@ -40,34 +40,65 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
   });
 
   const hasConversation = events.length > 0 || Boolean(streamingText);
+  const previewScreenshot =
+    previewIndex !== null ? chatContext?.regionScreenshots?.[previewIndex] : null;
+  const hasPreview = previewIndex !== null;
 
   useEffect(() => {
-    onPreviewVisibilityChange?.(previewIndex !== null);
+    onPreviewVisibilityChange?.(hasPreview);
+  }, [hasPreview, onPreviewVisibilityChange]);
+
+  useEffect(() => {
     return () => onPreviewVisibilityChange?.(false);
-  }, [onPreviewVisibilityChange, previewIndex]);
+  }, [onPreviewVisibilityChange]);
+
+  const handleVoiceTranscript = useCallback(
+    (transcript: string) => {
+      setMessage((prev) => (prev ? `${prev} ${transcript}` : transcript));
+    },
+    [setMessage],
+  );
 
   useEffect(() => {
     if (!shellVisible) {
       return;
     }
-    return window.electronAPI?.voice.onTranscript?.((transcript) => {
-      setMessage((prev) => (prev ? prev + ' ' + transcript : transcript));
-    });
-  }, [setMessage, shellVisible]);
+    return window.electronAPI?.voice.onTranscript?.(handleVoiceTranscript);
+  }, [handleVoiceTranscript, shellVisible]);
 
   const windowTitle = chatContext?.window
     ? (chatContext.window.title || chatContext.window.app || null)
     : null;
 
-  const handleShellClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget && previewIndex !== null) {
+  const handleShellClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && hasPreview) {
       setPreviewIndex(null);
     }
-  };
+  }, [hasPreview, setPreviewIndex]);
+  const handleExpandWindow = useCallback(() => {
+    setWindow("full");
+  }, [setWindow]);
+  const handleCloseWindow = useCallback(() => {
+    window.electronAPI?.window.close?.();
+  }, []);
+  const handleSend = useCallback(() => {
+    void sendMessage();
+  }, [sendMessage]);
+  const closePreview = useCallback(() => {
+    setPreviewIndex(null);
+  }, [setPreviewIndex]);
+  const stopPreviewPropagation = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+  }, []);
+  const handlePreviewClose = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closePreview();
+  }, [closePreview]);
 
   return (
     <div
-      className={`raycast-shell${shellVisible ? " is-visible" : ""}${previewIndex !== null ? " has-preview" : ""}`}
+      className={`raycast-shell${shellVisible ? " is-visible" : ""}${hasPreview ? " has-preview" : ""}`}
       onClick={handleShellClick}
     >
       <div className="raycast-panel">
@@ -79,7 +110,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
             <button
               className="mini-titlebar-action"
               type="button"
-              onClick={() => setWindow("full")}
+              onClick={handleExpandWindow}
               title="Expand to full view"
             >
               <svg
@@ -99,7 +130,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
             <button
               className="mini-titlebar-action"
               type="button"
-              onClick={() => window.electronAPI?.window.close?.()}
+              onClick={handleCloseWindow}
               title="Close"
             >
               <svg
@@ -137,40 +168,35 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
           previewIndex={previewIndex}
           setPreviewIndex={setPreviewIndex}
           isStreaming={isStreaming}
-          onSend={() => void sendMessage()}
+          onSend={handleSend}
         />
       </div>
 
-      {previewIndex !== null &&
-        chatContext?.regionScreenshots?.[previewIndex] && (
+      {previewScreenshot && (
+        <div
+          className="raycast-screenshot-overlay"
+          onClick={closePreview}
+        >
           <div
-            className="raycast-screenshot-overlay"
-            onClick={() => setPreviewIndex(null)}
+            className="raycast-screenshot-preview-container"
+            onClick={stopPreviewPropagation}
           >
-            <div
-              className="raycast-screenshot-preview-container"
-              onClick={(e) => e.stopPropagation()}
+            <img
+              src={previewScreenshot.dataUrl}
+              className="raycast-screenshot-preview"
+              alt="Screenshot preview"
+            />
+            <button
+              type="button"
+              className="raycast-screenshot-close"
+              onClick={handlePreviewClose}
+              aria-label="Close preview"
             >
-              <img
-                src={chatContext.regionScreenshots[previewIndex].dataUrl}
-                className="raycast-screenshot-preview"
-                alt="Screenshot preview"
-              />
-              <button
-                type="button"
-                className="raycast-screenshot-close"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setPreviewIndex(null);
-                }}
-                aria-label="Close preview"
-              >
-                &times;
-              </button>
-            </div>
+              &times;
+            </button>
           </div>
-        )}
+        </div>
+      )}
     </div>
   );
 };
