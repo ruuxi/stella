@@ -45,7 +45,7 @@ const AUTO_COMPACT_ENABLED =
   String(process.env.TC_AUTO_COMPACT_ENABLED ?? "true").toLowerCase() !== "false";
 
 const AUTO_COMPACT_THRESHOLD_PCT = parsePercent(
-  process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE ?? process.env.TC_AUTO_COMPACT_PCT,
+  process.env.TC_AUTO_COMPACT_PCT,
   0.85,
 );
 

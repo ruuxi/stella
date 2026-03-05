@@ -330,22 +330,13 @@ function googleVertexProject(apiKey?: string): string | null {
   const parsed = apiKey ? parseJsonObject(apiKey) : null;
   return (
     process.env.GOOGLE_VERTEX_PROJECT?.trim() ||
-    process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
-    process.env.GCP_PROJECT?.trim() ||
-    process.env.GCLOUD_PROJECT?.trim() ||
     asNonEmptyString(parsed?.project_id) ||
-    asNonEmptyString(parsed?.projectId) ||
     null
   );
 }
 
 function googleVertexLocation(defaultLocation: string): string {
-  return (
-    process.env.GOOGLE_VERTEX_LOCATION?.trim() ||
-    process.env.GOOGLE_CLOUD_LOCATION?.trim() ||
-    process.env.VERTEX_LOCATION?.trim() ||
-    defaultLocation
-  );
+  return process.env.GOOGLE_VERTEX_LOCATION?.trim() || defaultLocation;
 }
 
 
