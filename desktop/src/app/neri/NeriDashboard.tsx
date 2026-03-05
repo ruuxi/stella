@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { memo, useEffect, useRef, useCallback, useState } from "react";
 import { useNeriState } from "./use-neri-state";
 import { NeriWindowContent } from "./NeriWindowContent";
 import { WINDOW_TEMPLATES, type NeriWindowType } from "./neri-types";
@@ -8,6 +8,9 @@ import "./neri.css";
 const COLUMN_GAP = 8;
 const STRIP_PADDING = 8;
 const TITLEBAR_HEIGHT = 32;
+const STRIP_INNER_STYLE = { padding: `${STRIP_PADDING}px`, gap: `${COLUMN_GAP}px` };
+const WINDOW_TITLEBAR_STYLE = { height: TITLEBAR_HEIGHT } as const;
+const CLOCK_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" };
 
 // Lazily computed on first use to avoid reading window.screen at module parse time
 let _defaultWidth = 0;
@@ -37,6 +40,21 @@ const WINDOW_ICONS: Record<NeriWindowType, string> = {
   "search": "🔎",
   "canvas": "🎨",
 };
+
+const StatusClock = memo(function StatusClock() {
+  const [time, setTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setTime(new Date()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  return (
+    <span className="neri-statusbar-pill subtle">
+      {time.toLocaleTimeString([], CLOCK_FORMAT_OPTIONS)}
+    </span>
+  );
+});
 
 /** Draggable floating panel hook */
 function useNeriPanelDrag(rootRef: React.RefObject<HTMLDivElement | null>) {
@@ -90,9 +108,24 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
   const rootRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const stripContainerRef = useRef<HTMLDivElement>(null);
+  const closeTimeoutRef = useRef<number | null>(null);
   const [showLauncher, setShowLauncher] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const [time, setTime] = useState(() => new Date());
+  const workspaceBoundsRef = useRef({
+    activeWorkspaceIndex: state.activeWorkspaceIndex,
+    workspaceCount: state.workspaces.length,
+  });
+  const keyboardStateRef = useRef({
+    showLauncher,
+    activeWorkspaceIndex: state.activeWorkspaceIndex,
+    workspaceCount: state.workspaces.length,
+  });
+
+  workspaceBoundsRef.current.activeWorkspaceIndex = state.activeWorkspaceIndex;
+  workspaceBoundsRef.current.workspaceCount = state.workspaces.length;
+  keyboardStateRef.current.showLauncher = showLauncher;
+  keyboardStateRef.current.activeWorkspaceIndex = state.activeWorkspaceIndex;
+  keyboardStateRef.current.workspaceCount = state.workspaces.length;
 
   // Merge internal rootRef with external panelRef for hit-testing
   const setRootRef = useCallback((el: HTMLDivElement | null) => {
@@ -106,19 +139,30 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
 
   // Right-click drag navigation
   const handleWorkspaceSwitch = useCallback((delta: number) => {
-    const newIdx = state.activeWorkspaceIndex + delta;
-    if (newIdx >= 0 && newIdx < state.workspaces.length) {
+    const { activeWorkspaceIndex, workspaceCount } = workspaceBoundsRef.current;
+    const newIdx = activeWorkspaceIndex + delta;
+    if (newIdx >= 0 && newIdx < workspaceCount) {
       switchWorkspace(newIdx);
     }
-  }, [state.activeWorkspaceIndex, state.workspaces.length, switchWorkspace]);
+  }, [switchWorkspace]);
 
   useNeriDrag(stripContainerRef, handleWorkspaceSwitch);
 
   const handleClose = useCallback(() => {
-    if (isClosing) return;
-    setIsClosing(true);
-    setTimeout(() => onClose(), 200); // match neri-panel-exit duration
-  }, [onClose, isClosing]);
+    setIsClosing((wasClosing) => {
+      if (wasClosing) return wasClosing;
+      closeTimeoutRef.current = window.setTimeout(() => onClose(), 200); // match neri-panel-exit duration
+      return true;
+    });
+  }, [onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Center on the screen where the cursor is (multi-monitor aware)
   const [{ initialPos, panelSize }] = useState(() => {
@@ -129,15 +173,11 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
     return { initialPos: pos, panelSize: size };
   });
 
-  // Clock
-  useEffect(() => {
-    const iv = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(iv);
-  }, []);
-
   // Keyboard
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const { showLauncher: launcherOpen, activeWorkspaceIndex, workspaceCount } = keyboardStateRef.current;
+
       // Don't intercept if typing in an input
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") {
@@ -147,7 +187,7 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
 
       switch (e.key) {
         case "Escape":
-          if (showLauncher) { setShowLauncher(false); }
+          if (launcherOpen) { setShowLauncher(false); }
           else { handleClose(); }
           e.preventDefault();
           break;
@@ -162,11 +202,11 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
           e.preventDefault();
           break;
         case "ArrowUp":
-          if (state.activeWorkspaceIndex > 0) switchWorkspace(state.activeWorkspaceIndex - 1);
+          if (activeWorkspaceIndex > 0) switchWorkspace(activeWorkspaceIndex - 1);
           e.preventDefault();
           break;
         case "ArrowDown":
-          if (state.activeWorkspaceIndex < state.workspaces.length - 1) switchWorkspace(state.activeWorkspaceIndex + 1);
+          if (activeWorkspaceIndex < workspaceCount - 1) switchWorkspace(activeWorkspaceIndex + 1);
           e.preventDefault();
           break;
         case "Enter":
@@ -178,7 +218,7 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleClose, showLauncher, focusLeft, focusRight, moveColumnLeft, moveColumnRight, switchWorkspace, state.activeWorkspaceIndex, state.workspaces.length]);
+  }, [handleClose, focusLeft, focusRight, moveColumnLeft, moveColumnRight, switchWorkspace]);
 
   // Scroll focused column into view
   useEffect(() => {
@@ -210,6 +250,11 @@ export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: 
     openWindow(type);
     setShowLauncher(false);
   }, [openWindow]);
+
+  const workspaceColumnCount = activeWorkspace.columns.length;
+  const focusedColumn = activeWorkspace.focusedColumnIndex >= 0
+    ? activeWorkspace.columns[activeWorkspace.focusedColumnIndex]
+    : null;
 
   return (
     <div className="neri-backdrop">

@@ -41,6 +41,7 @@ const SettingsDialog = lazy(() => import("../settings/SettingsView"));
 const AuthDialog = lazy(() => import("@/app/auth/AuthDialog").then(m => ({ default: m.AuthDialog })));
 const ConnectDialog = lazy(() => import("@/app/integrations/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
 const SelfModTestDialog = lazy(() => import("@/testing/SelfModTestDialog"));
+const NO_OP = () => {};
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -50,6 +51,9 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
   const isNearBottomRef = useRef(true);
+  const activeViewRef = useRef(state.view);
+  const orbRef = useRef<FloatingOrbHandle>(null);
+  activeViewRef.current = state.view;
 
   const [message, setMessage] = useState("");
 
@@ -60,6 +64,36 @@ export const FullShell = () => {
   const { chatContext, setChatContext, selectedText, setSelectedText } = useChatContextSync();
   const { activeDemo, demoClosing, handleDemoChange } = useDemoAnimation();
   const { activeDialog, setActiveDialog } = useDialogManager();
+  const showAuthDialog = useCallback(() => {
+    setActiveDialog("auth");
+  }, [setActiveDialog]);
+  const showConnectDialog = useCallback(() => {
+    setActiveDialog("connect");
+  }, [setActiveDialog]);
+  const showSettingsDialog = useCallback(() => {
+    setActiveDialog("settings");
+  }, [setActiveDialog]);
+  const showHomeView = useCallback(() => {
+    setView("home");
+  }, [setView]);
+  const handleDialogOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        setActiveDialog(null);
+      }
+    },
+    [setActiveDialog],
+  );
+  const handleSettingsSignOut = useCallback(() => {
+    setActiveDialog(null);
+    void secureSignOut();
+  }, [setActiveDialog]);
+  const showTestDialog = useCallback(() => {
+    setActiveDialog("test");
+  }, [setActiveDialog]);
+  const showNeri = useCallback(() => {
+    window.electronAPI?.overlay.showNeri?.();
+  }, []);
 
   const handleTabSelect = useCallback(
     (view: "home" | "app" | "chat", page?: PersonalPage) => {
@@ -90,20 +124,30 @@ export const FullShell = () => {
     conversationId: activeConversationId,
     events,
   });
+  const sendContextlessMessage = useCallback(
+    (text: string) => {
+      void sendMessage({
+        text,
+        selectedText: null,
+        chatContext: null,
+        onClear: NO_OP,
+      });
+    },
+    [sendMessage],
+  );
+  const sendContextlessMessageRef = useRef(sendContextlessMessage);
+  sendContextlessMessageRef.current = sendContextlessMessage;
+
+  const handleUserReturn = useCallback(
+    (awayMs: number) => {
+      sendContextlessMessage(`[System: The user has returned after being away for ${formatDuration(awayMs)}.]`);
+    },
+    [sendContextlessMessage],
+  );
 
   useReturnDetection({
     enabled: !!activeConversationId,
-    onReturn: useCallback(
-      (awayMs: number) => {
-        void sendMessage({
-          text: `[System: The user has returned after being away for ${formatDuration(awayMs)}.]`,
-          selectedText: null,
-          chatContext: null,
-          onClear: () => {},
-        });
-      },
-      [sendMessage],
-    ),
+    onReturn: handleUserReturn,
   });
 
   const {
@@ -118,20 +162,18 @@ export const FullShell = () => {
     isNearBottomRef.current = isNearBottom;
   }, [isNearBottom]);
 
-  const orbRef = useRef<FloatingOrbHandle>(null);
-
   const isOrbVisible = state.view !== "chat" && onboarding.onboardingDone;
   const orbMessage = useOrbMessage(events, isOrbVisible);
 
   const handleVoiceTranscript = useCallback(
     (text: string) => {
-      if (state.view === "chat") {
+      if (activeViewRef.current === "chat") {
         setMessage(text);
       } else {
         orbRef.current?.openWithText(text);
       }
     },
-    [state.view],
+    [],
   );
 
   useEffect(() => {
@@ -139,9 +181,7 @@ export const FullShell = () => {
   }, [onboarding.onboardingDone]);
 
   useEffect(() => {
-    const unsubscribe = window.electronAPI?.voice.onTranscript?.((transcript) => {
-      handleVoiceTranscript(transcript);
-    });
+    const unsubscribe = window.electronAPI?.voice.onTranscript?.(handleVoiceTranscript);
     return () => unsubscribe?.();
   }, [handleVoiceTranscript]);
 
@@ -179,14 +219,11 @@ export const FullShell = () => {
 
   const handleCommandSelect = useCallback(
     (suggestion: CommandSuggestion) => {
-      void sendMessage({
-        text: `Run the command "${suggestion.name}" (${suggestion.description}). Create a task for the general agent with command_id "${suggestion.commandId}", using the current or most recently used thread.`,
-        selectedText: null,
-        chatContext: null,
-        onClear: () => {},
-      });
+      sendContextlessMessage(
+        `Run the command "${suggestion.name}" (${suggestion.description}). Create a task for the general agent with command_id "${suggestion.commandId}", using the current or most recently used thread.`,
+      );
     },
-    [sendMessage],
+    [sendContextlessMessage],
   );
 
   // Listen for custom events from the home view (suggestion clicks)
@@ -194,17 +231,12 @@ export const FullShell = () => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ text: string }>).detail;
       if (detail?.text) {
-        void sendMessage({
-          text: detail.text,
-          selectedText: null,
-          chatContext: null,
-          onClear: () => {},
-        });
+        sendContextlessMessageRef.current(detail.text);
       }
     };
     window.addEventListener("stella:send-message", handler);
     return () => window.removeEventListener("stella:send-message", handler);
-  }, [sendMessage]);
+  }, []);
 
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasWindowContext = Boolean(chatContext?.window);
@@ -304,9 +336,9 @@ export const FullShell = () => {
 
   const handleOrbSend = useCallback(
     (text: string) => {
-      void sendMessage({ text, selectedText: null, chatContext: null, onClear: () => {} });
+      sendContextlessMessage(text);
     },
-    [sendMessage],
+    [sendContextlessMessage],
   );
 
   return (
@@ -327,10 +359,10 @@ export const FullShell = () => {
         {appReady ? (
           <>
             <Sidebar
-              onSignIn={() => setActiveDialog("auth")}
-              onConnect={() => setActiveDialog("connect")}
-              onSettings={() => setActiveDialog("settings")}
-              onHome={() => setView('home')}
+              onSignIn={showAuthDialog}
+              onConnect={showConnectDialog}
+              onSettings={showSettingsDialog}
+              onHome={showHomeView}
             />
 
             <div className="content-area">
@@ -370,14 +402,14 @@ export const FullShell = () => {
 
       {activeDialog === "auth" && (
         <Suspense fallback={null}>
-          <AuthDialog open onOpenChange={(open) => { if (!open) setActiveDialog(null); }} />
+          <AuthDialog open onOpenChange={handleDialogOpenChange} />
         </Suspense>
       )}
       {activeDialog === "connect" && (
         <Suspense fallback={null}>
           <ConnectDialog
             open
-            onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
+            onOpenChange={handleDialogOpenChange}
           />
         </Suspense>
       )}
@@ -385,11 +417,8 @@ export const FullShell = () => {
         <Suspense fallback={null}>
           <SettingsDialog
             open
-            onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
-            onSignOut={() => {
-              setActiveDialog(null);
-              void secureSignOut();
-            }}
+            onOpenChange={handleDialogOpenChange}
+            onSignOut={handleSettingsSignOut}
           />
         </Suspense>
       )}
@@ -404,13 +433,13 @@ export const FullShell = () => {
           </button>
           <button
             className="onboarding-reset"
-            onClick={() => setActiveDialog("test")}
+            onClick={showTestDialog}
           >
             Test UI
           </button>
           <button
             className="onboarding-reset"
-            onClick={() => window.electronAPI?.overlay.showNeri?.()}
+            onClick={showNeri}
           >
             Neri
           </button>
@@ -421,7 +450,7 @@ export const FullShell = () => {
         <Suspense fallback={null}>
           <SelfModTestDialog
             open
-            onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
+            onOpenChange={handleDialogOpenChange}
           />
         </Suspense>
       )}
@@ -429,4 +458,3 @@ export const FullShell = () => {
     </div>
   );
 };
-

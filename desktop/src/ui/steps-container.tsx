@@ -58,6 +58,19 @@ const resolveToolMeta = (tool: string): ToolMeta => {
 function StepItemDisplay({ step, hideDetails }: { step: StepItem; hideDetails?: boolean }) {
   const toolMeta = resolveToolMeta(step.tool);
 
+  let statusAdornment: React.ReactNode = null;
+  if (step.status === "running") {
+    statusAdornment = (
+      <div data-slot="step-item-spinner">
+        <Spinner />
+      </div>
+    );
+  } else if (step.status === "completed") {
+    statusAdornment = <span data-slot="step-item-check">✓</span>;
+  } else if (step.status === "error") {
+    statusAdornment = <span data-slot="step-item-error">✗</span>;
+  }
+
   return (
     <div data-slot="step-item" data-status={step.status}>
       <div data-slot="step-item-icon">{toolMeta.icon}</div>
@@ -70,17 +83,7 @@ function StepItemDisplay({ step, hideDetails }: { step: StepItem; hideDetails?: 
           <span data-slot="step-item-subtitle">{step.subtitle}</span>
         )}
       </div>
-      {step.status === "running" && (
-        <div data-slot="step-item-spinner">
-          <Spinner />
-        </div>
-      )}
-      {step.status === "completed" && (
-        <span data-slot="step-item-check">✓</span>
-      )}
-      {step.status === "error" && (
-        <span data-slot="step-item-error">✗</span>
-      )}
+      {statusAdornment}
     </div>
   );
 }
@@ -94,26 +97,25 @@ export function StepsContainer({
 }: StepsContainerProps) {
   const [animatingIndex, setAnimatingIndex] = React.useState<number | null>(null);
   const prevLengthRef = React.useRef(0);
+  const stepCount = steps.length;
 
   React.useEffect(() => {
-    const currentLength = steps.length;
-    const prev = prevLengthRef.current;
+    const prevCount = prevLengthRef.current;
+    prevLengthRef.current = stepCount;
 
-    if (currentLength > prev && prev > 0) {
-      setAnimatingIndex(currentLength - 1);
+    if (stepCount > prevCount && prevCount > 0) {
+      setAnimatingIndex(stepCount - 1);
       const timeout = setTimeout(() => setAnimatingIndex(null), 300);
       return () => clearTimeout(timeout);
     }
 
-    prevLengthRef.current = currentLength;
-  }, [steps.length]);
+    return undefined;
+  }, [stepCount]);
 
-  const visibleSteps = React.useMemo(() => {
-    if (steps.length === 0) return [];
-    if (expanded) return steps;
-    if (steps.length <= 3) return steps;
-    return steps.slice(-3);
-  }, [steps, expanded]);
+  const visibleSteps =
+    stepCount === 0 || expanded || stepCount <= 3
+      ? steps
+      : steps.slice(-3);
 
   return (
     <div
@@ -141,7 +143,7 @@ export function StepsContainer({
 
       <div data-slot="steps-footer" onClick={onToggle}>
         {working && !expanded && <Spinner />}
-        <span>{expanded ? "Hide" : `Steps ${steps.length}+`}</span>
+        <span>{expanded ? "Hide" : `Steps ${stepCount}+`}</span>
         <ChevronsUpDown size={14} />
       </div>
     </div>
