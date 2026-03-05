@@ -283,10 +283,14 @@ export type ElectronOverlayApi = {
   onMorphReverse: (callback: (data: { screenshotDataUrl: string }) => void) => () => void
   onMorphEnd: (callback: () => void) => () => void
   morphDone: () => void
-  onShowNiri: (callback: () => void) => () => void
-  onHideNiri: (callback: () => void) => () => void
-  showNiri: () => void
-  hideNiri: () => void
+  onShowNeri: (callback: (data: { cursorX: number; cursorY: number }) => void) => () => void
+  onHideNeri: (callback: () => void) => () => void
+  showNeri: () => void
+  hideNeri: () => void
+  onNeriOpenSearch: (callback: (data: { query: string; results: Array<{ title: string; url: string; snippet: string }> }) => void) => () => void
+  onNeriOpenCanvas: (callback: (data: { title: string; html: string }) => void) => () => void
+  onNeriManageWindow: (callback: (data: { operation: string; window_type?: string }) => void) => () => void
+  reportNeriWindowState: (state: Array<{ type: string; title: string }>) => void
 }
 
 export type ElectronMiniApi = {

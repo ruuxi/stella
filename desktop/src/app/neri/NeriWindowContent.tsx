@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import type { NiriWindowType } from "./niri-types";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
+import type { NeriWindowType, NeriWindow } from "./neri-types";
 
 // ─── News Feed ──────────────────────────────────────────────────────────
 
@@ -16,22 +16,22 @@ const NEWS_ITEMS = [
 
 function NewsFeed() {
   return (
-    <div className="niri-content-news">
-      <div className="niri-news-tabs">
-        <span className="niri-news-tab active">For You</span>
-        <span className="niri-news-tab">World</span>
-        <span className="niri-news-tab">Tech</span>
-        <span className="niri-news-tab">Science</span>
+    <div className="neri-content-news">
+      <div className="neri-news-tabs">
+        <span className="neri-news-tab active">For You</span>
+        <span className="neri-news-tab">World</span>
+        <span className="neri-news-tab">Tech</span>
+        <span className="neri-news-tab">Science</span>
       </div>
-      <div className="niri-news-list">
+      <div className="neri-news-list">
         {NEWS_ITEMS.map((item, i) => (
-          <div key={i} className="niri-news-item">
-            <div className="niri-news-thumb" style={{ background: `hsl(${i * 40 + 200}, 40%, 25%)` }}>
-              <span className="niri-news-category">{item.category}</span>
+          <div key={i} className="neri-news-item">
+            <div className="neri-news-thumb" style={{ background: `hsl(${i * 40 + 200}, 40%, 25%)` }}>
+              <span className="neri-news-category">{item.category}</span>
             </div>
-            <div className="niri-news-text">
-              <div className="niri-news-headline">{item.headline}</div>
-              <div className="niri-news-meta">{item.source} · {item.time}</div>
+            <div className="neri-news-text">
+              <div className="neri-news-headline">{item.headline}</div>
+              <div className="neri-news-meta">{item.source} · {item.time}</div>
             </div>
           </div>
         ))}
@@ -53,36 +53,36 @@ function MusicPlayer() {
   }, [playing]);
 
   return (
-    <div className="niri-content-music">
-      <div className="niri-music-art" style={{ background: "linear-gradient(135deg, #1a1a2e, #16213e, #0f3460)" }}>
-        <div className="niri-music-vinyl" data-playing={playing}>
-          <div className="niri-music-vinyl-inner" />
+    <div className="neri-content-music">
+      <div className="neri-music-art" style={{ background: "linear-gradient(135deg, #1a1a2e, #16213e, #0f3460)" }}>
+        <div className="neri-music-vinyl" data-playing={playing}>
+          <div className="neri-music-vinyl-inner" />
         </div>
       </div>
-      <div className="niri-music-info">
-        <div className="niri-music-title">Ethereal Horizons</div>
-        <div className="niri-music-artist">Stellar Drift</div>
+      <div className="neri-music-info">
+        <div className="neri-music-title">Ethereal Horizons</div>
+        <div className="neri-music-artist">Stellar Drift</div>
       </div>
-      <div className="niri-music-progress">
-        <div className="niri-music-progress-bar">
-          <div className="niri-music-progress-fill" style={{ width: `${progress}%` }} />
+      <div className="neri-music-progress">
+        <div className="neri-music-progress-bar">
+          <div className="neri-music-progress-fill" style={{ width: `${progress}%` }} />
         </div>
-        <div className="niri-music-times">
+        <div className="neri-music-times">
           <span>{Math.floor(progress * 2.4 / 60)}:{String(Math.floor(progress * 2.4) % 60).padStart(2, "0")}</span>
           <span>4:00</span>
         </div>
       </div>
-      <div className="niri-music-controls">
-        <button className="niri-music-btn">⏮</button>
-        <button className="niri-music-btn primary" onClick={() => setPlaying(!playing)}>
+      <div className="neri-music-controls">
+        <button className="neri-music-btn">⏮</button>
+        <button className="neri-music-btn primary" onClick={() => setPlaying(!playing)}>
           {playing ? "⏸" : "▶"}
         </button>
-        <button className="niri-music-btn">⏭</button>
+        <button className="neri-music-btn">⏭</button>
       </div>
-      <div className="niri-music-queue">
-        <div className="niri-music-queue-title">Up Next</div>
+      <div className="neri-music-queue">
+        <div className="neri-music-queue-title">Up Next</div>
         {["Cosmic Waves — Nebula Sound", "Deep Space — Astral Echoes", "Gravity Well — Dark Matter"].map((t, i) => (
-          <div key={i} className="niri-music-queue-item">{t}</div>
+          <div key={i} className="neri-music-queue-item">{t}</div>
         ))}
       </div>
     </div>
@@ -96,8 +96,8 @@ function AISearch() {
   const [searched, setSearched] = useState(true);
 
   return (
-    <div className="niri-content-search">
-      <div className="niri-search-bar">
+    <div className="neri-content-search">
+      <div className="neri-search-bar">
         <input
           type="text"
           value={query}
@@ -108,9 +108,9 @@ function AISearch() {
         <button onClick={() => setSearched(true)}>Search</button>
       </div>
       {searched && (
-        <div className="niri-search-results">
-          <div className="niri-search-ai-answer">
-            <div className="niri-search-ai-label">AI Summary</div>
+        <div className="neri-search-results">
+          <div className="neri-search-ai-answer">
+            <div className="neri-search-ai-label">AI Summary</div>
             <p>
               Quantum entanglement is a phenomenon where two or more particles become
               interconnected in such a way that the quantum state of each particle cannot
@@ -124,10 +124,10 @@ function AISearch() {
               quantum cryptography, and quantum teleportation protocols.
             </p>
           </div>
-          <div className="niri-search-sources">
-            <div className="niri-search-source-label">Sources</div>
+          <div className="neri-search-sources">
+            <div className="neri-search-source-label">Sources</div>
             {["Nature Physics — Quantum Entanglement Explained", "arxiv.org — Bell's Theorem and Beyond", "MIT OpenCourseWare — Quantum Mechanics"].map((s, i) => (
-              <div key={i} className="niri-search-source">{s}</div>
+              <div key={i} className="neri-search-source">{s}</div>
             ))}
           </div>
         </div>
@@ -158,31 +158,31 @@ function Calendar() {
   for (let i = 1; i <= daysInMonth; i++) days.push(i);
 
   return (
-    <div className="niri-content-calendar">
-      <div className="niri-cal-header">
-        <span className="niri-cal-month">{monthName} {year}</span>
-        <div className="niri-cal-nav">
+    <div className="neri-content-calendar">
+      <div className="neri-cal-header">
+        <span className="neri-cal-month">{monthName} {year}</span>
+        <div className="neri-cal-nav">
           <button>←</button>
           <button>Today</button>
           <button>→</button>
         </div>
       </div>
-      <div className="niri-cal-weekdays">
+      <div className="neri-cal-weekdays">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <span key={d}>{d}</span>
         ))}
       </div>
-      <div className="niri-cal-grid">
+      <div className="neri-cal-grid">
         {days.map((day, i) => (
           <div
             key={i}
-            className={`niri-cal-day ${day === today.getDate() ? "today" : ""} ${day && events[day] ? "has-events" : ""}`}
+            className={`neri-cal-day ${day === today.getDate() ? "today" : ""} ${day && events[day] ? "has-events" : ""}`}
           >
             {day && (
               <>
-                <span className="niri-cal-day-num">{day}</span>
+                <span className="neri-cal-day-num">{day}</span>
                 {events[day]?.map((e, j) => (
-                  <div key={j} className="niri-cal-event">{e}</div>
+                  <div key={j} className="neri-cal-event">{e}</div>
                 ))}
               </>
             )}
@@ -315,9 +315,9 @@ function Game() {
   }, [shoot]);
 
   return (
-    <div className="niri-content-game">
-      <canvas ref={canvasRef} width={460} height={480} className="niri-game-canvas" />
-      <div className="niri-game-hint">Click canvas to focus. Arrow keys to move, Space to shoot.</div>
+    <div className="neri-content-game">
+      <canvas ref={canvasRef} width={460} height={480} className="neri-game-canvas" />
+      <div className="neri-game-hint">Click canvas to focus. Arrow keys to move, Space to shoot.</div>
     </div>
   );
 }
@@ -353,34 +353,34 @@ function SystemMonitor() {
   }, []);
 
   return (
-    <div className="niri-content-sysmon">
-      <div className="niri-sysmon-bars">
+    <div className="neri-content-sysmon">
+      <div className="neri-sysmon-bars">
         {[
           { label: "CPU", value: stats.cpu, color: "#5af" },
           { label: "Memory", value: stats.memory, color: "#f5a" },
           { label: "Disk", value: stats.disk, color: "#5fa" },
           { label: "Network", value: stats.network, color: "#fa5" },
         ].map((bar) => (
-          <div key={bar.label} className="niri-sysmon-bar">
-            <div className="niri-sysmon-bar-label">
+          <div key={bar.label} className="neri-sysmon-bar">
+            <div className="neri-sysmon-bar-label">
               <span>{bar.label}</span>
               <span>{Math.round(bar.value)}%</span>
             </div>
-            <div className="niri-sysmon-bar-track">
+            <div className="neri-sysmon-bar-track">
               <div
-                className="niri-sysmon-bar-fill"
+                className="neri-sysmon-bar-fill"
                 style={{ width: `${bar.value}%`, background: bar.color, transition: "width 0.5s ease" }}
               />
             </div>
           </div>
         ))}
       </div>
-      <div className="niri-sysmon-processes">
-        <div className="niri-sysmon-proc-header">
+      <div className="neri-sysmon-processes">
+        <div className="neri-sysmon-proc-header">
           <span>Process</span><span>CPU %</span><span>Mem (MB)</span>
         </div>
         {stats.processes.map((p) => (
-          <div key={p.name} className="niri-sysmon-proc-row">
+          <div key={p.name} className="neri-sysmon-proc-row">
             <span>{p.name}</span><span>{p.cpu.toFixed(1)}</span><span>{p.mem}</span>
           </div>
         ))}
@@ -403,24 +403,24 @@ function Weather() {
   ];
 
   return (
-    <div className="niri-content-weather">
-      <div className="niri-weather-current">
-        <div className="niri-weather-temp">24°</div>
-        <div className="niri-weather-desc">
-          <div className="niri-weather-condition">Partly Cloudy</div>
-          <div className="niri-weather-location">San Francisco, CA</div>
-          <div className="niri-weather-details">
+    <div className="neri-content-weather">
+      <div className="neri-weather-current">
+        <div className="neri-weather-temp">24°</div>
+        <div className="neri-weather-desc">
+          <div className="neri-weather-condition">Partly Cloudy</div>
+          <div className="neri-weather-location">San Francisco, CA</div>
+          <div className="neri-weather-details">
             <span>Humidity: 65%</span>
             <span>Wind: 12 km/h</span>
           </div>
         </div>
       </div>
-      <div className="niri-weather-forecast">
+      <div className="neri-weather-forecast">
         {forecast.map((f) => (
-          <div key={f.day} className="niri-weather-day">
-            <span className="niri-weather-day-name">{f.day}</span>
-            <span className="niri-weather-day-icon">{f.icon}</span>
-            <span className="niri-weather-day-temps">{f.high}° / {f.low}°</span>
+          <div key={f.day} className="neri-weather-day">
+            <span className="neri-weather-day-name">{f.day}</span>
+            <span className="neri-weather-day-icon">{f.icon}</span>
+            <span className="neri-weather-day-temps">{f.high}° / {f.low}°</span>
           </div>
         ))}
       </div>
@@ -432,29 +432,29 @@ function Weather() {
 
 function Notes() {
   const [text, setText] = useState(
-    "# Meeting Notes\n\n## Sprint Planning\n- Review backlog items\n- Assign story points\n- Set sprint goal\n\n## Action Items\n- [ ] Update API documentation\n- [ ] Fix login flow regression\n- [x] Deploy staging build\n- [x] Review PR #247\n\n## Ideas\nConsider implementing the niri-style tiling for workspace management...",
+    "# Meeting Notes\n\n## Sprint Planning\n- Review backlog items\n- Assign story points\n- Set sprint goal\n\n## Action Items\n- [ ] Update API documentation\n- [ ] Fix login flow regression\n- [x] Deploy staging build\n- [x] Review PR #247\n\n## Ideas\nConsider implementing the neri-style tiling for workspace management...",
   );
 
   return (
-    <div className="niri-content-notes">
-      <div className="niri-notes-toolbar">
-        <span className="niri-notes-btn">B</span>
-        <span className="niri-notes-btn">I</span>
-        <span className="niri-notes-btn">U</span>
-        <span className="niri-notes-divider" />
-        <span className="niri-notes-btn">H1</span>
-        <span className="niri-notes-btn">H2</span>
-        <span className="niri-notes-divider" />
-        <span className="niri-notes-btn">•</span>
-        <span className="niri-notes-btn">☐</span>
+    <div className="neri-content-notes">
+      <div className="neri-notes-toolbar">
+        <span className="neri-notes-btn">B</span>
+        <span className="neri-notes-btn">I</span>
+        <span className="neri-notes-btn">U</span>
+        <span className="neri-notes-divider" />
+        <span className="neri-notes-btn">H1</span>
+        <span className="neri-notes-btn">H2</span>
+        <span className="neri-notes-divider" />
+        <span className="neri-notes-btn">•</span>
+        <span className="neri-notes-btn">☐</span>
       </div>
       <textarea
-        className="niri-notes-editor"
+        className="neri-notes-editor"
         value={text}
         onChange={(e) => setText(e.target.value)}
         spellCheck={false}
       />
-      <div className="niri-notes-footer">{text.length} chars · {text.split("\n").length} lines</div>
+      <div className="neri-notes-footer">{text.length} chars · {text.split("\n").length} lines</div>
     </div>
   );
 }
@@ -466,9 +466,9 @@ const FILE_TREE = [
   { name: "frontend/", type: "dir", indent: 1 },
   { name: "src/", type: "dir", indent: 2 },
   { name: "app/", type: "dir", indent: 3 },
-  { name: "niri/", type: "dir", indent: 4 },
-  { name: "NiriDemo.tsx", type: "file", indent: 5, size: "12.4 KB" },
-  { name: "niri.css", type: "file", indent: 5, size: "8.2 KB" },
+  { name: "neri/", type: "dir", indent: 4 },
+  { name: "NeriDashboard.tsx", type: "file", indent: 5, size: "12.4 KB" },
+  { name: "neri.css", type: "file", indent: 5, size: "8.2 KB" },
   { name: "overlay/", type: "dir", indent: 4 },
   { name: "OverlayRoot.tsx", type: "file", indent: 5, size: "6.8 KB" },
   { name: "shell/", type: "dir", indent: 4 },
@@ -485,21 +485,21 @@ function FileBrowser() {
   const [selected, setSelected] = useState(5);
 
   return (
-    <div className="niri-content-files">
-      <div className="niri-files-toolbar">
-        <span className="niri-files-path">/stella/frontend/src/app/niri</span>
+    <div className="neri-content-files">
+      <div className="neri-files-toolbar">
+        <span className="neri-files-path">/stella/frontend/src/app/neri</span>
       </div>
-      <div className="niri-files-list">
+      <div className="neri-files-list">
         {FILE_TREE.map((f, i) => (
           <div
             key={i}
-            className={`niri-files-item ${i === selected ? "selected" : ""}`}
+            className={`neri-files-item ${i === selected ? "selected" : ""}`}
             style={{ paddingLeft: f.indent * 16 + 8 }}
             onClick={() => setSelected(i)}
           >
-            <span className="niri-files-icon">{f.type === "dir" ? "📁" : "📄"}</span>
-            <span className="niri-files-name">{f.name}</span>
-            {"size" in f && <span className="niri-files-size">{f.size}</span>}
+            <span className="neri-files-icon">{f.type === "dir" ? "📁" : "📄"}</span>
+            <span className="neri-files-name">{f.name}</span>
+            {"size" in f && <span className="neri-files-size">{f.size}</span>}
           </div>
         ))}
       </div>
@@ -507,9 +507,66 @@ function FileBrowser() {
   );
 }
 
+// ─── Search Window (Mercury-driven) ─────────────────────────────────────
+
+function SearchWindow({ win }: { win: NeriWindow }) {
+  const results = win.searchResults ?? [];
+
+  const handleOpenUrl = (url: string) => {
+    window.electronAPI?.system.openExternal?.(url);
+  };
+
+  return (
+    <div className="neri-content-search-results">
+      <div className="neri-search-results-header">
+        <span className="neri-search-results-count">{results.length} results</span>
+      </div>
+      <div className="neri-search-results-list">
+        {results.map((result, i) => (
+          <div
+            key={i}
+            className="neri-search-result-card"
+            onClick={() => handleOpenUrl(result.url)}
+          >
+            <div className="neri-search-result-title">{result.title}</div>
+            <div className="neri-search-result-snippet">{result.snippet}</div>
+            <div className="neri-search-result-url">{result.url}</div>
+          </div>
+        ))}
+        {results.length === 0 && (
+          <div className="neri-search-no-results">No results yet</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Canvas Window (Mercury-driven) ─────────────────────────────────────
+
+function CanvasWindow({ win }: { win: NeriWindow }) {
+  const html = win.canvasHtml ?? "";
+
+  return (
+    <div className="neri-content-canvas">
+      <iframe
+        srcDoc={html}
+        sandbox="allow-scripts"
+        style={{
+          width: "100%",
+          height: "100%",
+          border: "none",
+          background: "#fff",
+          borderRadius: 4,
+        }}
+        title={win.title}
+      />
+    </div>
+  );
+}
+
 // ─── Export ─────────────────────────────────────────────────────────────
 
-export function NiriWindowContent({ type }: { type: NiriWindowType }) {
+export const NeriWindowContent = memo(function NeriWindowContent({ type, win }: { type: NeriWindowType; win?: NeriWindow }) {
   switch (type) {
     case "news-feed": return <NewsFeed />;
     case "music-player": return <MusicPlayer />;
@@ -520,5 +577,7 @@ export function NiriWindowContent({ type }: { type: NiriWindowType }) {
     case "weather": return <Weather />;
     case "notes": return <Notes />;
     case "file-browser": return <FileBrowser />;
+    case "search": return win ? <SearchWindow win={win} /> : null;
+    case "canvas": return win ? <CanvasWindow win={win} /> : null;
   }
-}
+});

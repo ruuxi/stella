@@ -1,4 +1,4 @@
-export type NiriWindowType =
+export type NeriWindowType =
   | "news-feed"
   | "music-player"
   | "ai-search"
@@ -7,34 +7,42 @@ export type NiriWindowType =
   | "system-monitor"
   | "weather"
   | "notes"
-  | "file-browser";
+  | "file-browser"
+  | "search"
+  | "canvas";
 
-export interface NiriWindow {
+export interface SearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface NeriWindow {
   id: string;
-  type: NiriWindowType;
+  type: NeriWindowType;
   title: string;
   width: number; // column width in px
-  height: number; // -1 means fill available height
+  searchResults?: SearchResult[];
+  canvasHtml?: string;
 }
 
-export interface NiriColumn {
+export interface NeriColumn {
   id: string;
-  windows: NiriWindow[];
+  windows: NeriWindow[];
 }
 
-export interface NiriWorkspace {
+export interface NeriWorkspace {
   id: string;
-  columns: NiriColumn[];
+  columns: NeriColumn[];
   focusedColumnIndex: number;
-  scrollX: number; // current scroll offset
 }
 
-export interface NiriState {
-  workspaces: NiriWorkspace[];
+export interface NeriState {
+  workspaces: NeriWorkspace[];
   activeWorkspaceIndex: number;
 }
 
-export const WINDOW_TEMPLATES: Record<NiriWindowType, { title: string; width: number }> = {
+export const WINDOW_TEMPLATES: Record<NeriWindowType, { title: string; width: number }> = {
   "news-feed": { title: "News Feed", width: 420 },
   "music-player": { title: "Music", width: 360 },
   "ai-search": { title: "AI Search", width: 520 },
@@ -44,4 +52,6 @@ export const WINDOW_TEMPLATES: Record<NiriWindowType, { title: string; width: nu
   "weather": { title: "Weather", width: 340 },
   "notes": { title: "Notes", width: 400 },
   "file-browser": { title: "Files", width: 380 },
+  "search": { title: "Search", width: 520 },
+  "canvas": { title: "Canvas", width: 600 },
 };

@@ -1,31 +1,52 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { useNiriState } from "./use-niri-state";
-import { NiriWindowContent } from "./NiriWindowContent";
-import { WINDOW_TEMPLATES, type NiriWindowType } from "./niri-types";
-import "./niri.css";
+import { useNeriState } from "./use-neri-state";
+import { NeriWindowContent } from "./NeriWindowContent";
+import { WINDOW_TEMPLATES, type NeriWindowType } from "./neri-types";
+import { useNeriDrag } from "./use-neri-drag";
+import "./neri.css";
 
 const COLUMN_GAP = 8;
 const STRIP_PADDING = 8;
 const TITLEBAR_HEIGHT = 32;
 
-// 70% of the current screen
-const DEFAULT_WIDTH = Math.round(window.screen.width * 0.7);
-const DEFAULT_HEIGHT = Math.round(window.screen.height * 0.7);
+// Lazily computed on first use to avoid reading window.screen at module parse time
+let _defaultWidth = 0;
+let _defaultHeight = 0;
+function getDefaultSize() {
+  if (!_defaultWidth) {
+    _defaultWidth = Math.round(window.screen.width * 0.7);
+    _defaultHeight = Math.round(window.screen.height * 0.7);
+  }
+  return { width: _defaultWidth, height: _defaultHeight };
+}
 
-const WINDOW_TYPE_OPTIONS: NiriWindowType[] = [
-  "news-feed", "music-player", "ai-search", "calendar",
-  "game", "system-monitor", "weather", "notes", "file-browser",
-];
+// Mercury-only types excluded from the launcher
+const MERCURY_ONLY = new Set<NeriWindowType>(["search", "canvas"]);
+const WINDOW_TYPE_OPTIONS = (Object.keys(WINDOW_TEMPLATES) as NeriWindowType[]).filter((t) => !MERCURY_ONLY.has(t));
+
+const WINDOW_ICONS: Record<NeriWindowType, string> = {
+  "news-feed": "📰",
+  "music-player": "🎵",
+  "ai-search": "🔍",
+  "calendar": "📅",
+  "game": "🎮",
+  "system-monitor": "📊",
+  "weather": "🌤",
+  "notes": "📝",
+  "file-browser": "📁",
+  "search": "🔎",
+  "canvas": "🎨",
+};
 
 /** Draggable floating panel hook */
-function useNiriDrag(rootRef: React.RefObject<HTMLDivElement | null>) {
+function useNeriPanelDrag(rootRef: React.RefObject<HTMLDivElement | null>) {
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     // Only on the drag handle itself, not children buttons/inputs
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
-    if (target.closest("button, input, textarea, .niri-strip-container, .niri-workspace-switcher")) return;
+    if (target.closest("button, input, textarea, .neri-strip-container, .neri-workspace-switcher")) return;
     e.preventDefault();
     const el = rootRef.current;
     if (!el) return;
@@ -57,18 +78,20 @@ function useNiriDrag(rootRef: React.RefObject<HTMLDivElement | null>) {
   return { handleDragStart };
 }
 
-export function NiriDemo({ onClose, panelRef }: { onClose: () => void; panelRef?: React.RefObject<HTMLDivElement | null> }) {
+export function NeriDashboard({ onClose, panelRef, cursorPosition }: { onClose: () => void; panelRef?: React.RefObject<HTMLDivElement | null>; cursorPosition?: { x: number; y: number } | null }) {
   const {
     state, activeWorkspace,
     focusColumn, focusLeft, focusRight,
     openWindow, closeWindow,
     switchWorkspace,
     moveColumnLeft, moveColumnRight,
-  } = useNiriState();
+  } = useNeriState();
 
   const rootRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
+  const stripContainerRef = useRef<HTMLDivElement>(null);
   const [showLauncher, setShowLauncher] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const [time, setTime] = useState(() => new Date());
 
   // Merge internal rootRef with external panelRef for hit-testing
@@ -79,13 +102,32 @@ export function NiriDemo({ onClose, panelRef }: { onClose: () => void; panelRef?
     }
   }, [panelRef]);
 
-  const { handleDragStart } = useNiriDrag(rootRef);
+  const { handleDragStart } = useNeriPanelDrag(rootRef);
 
-  // Center on primary screen
-  const [initialPos] = useState(() => ({
-    left: Math.round((window.screen.width - DEFAULT_WIDTH) / 2),
-    top: Math.round((window.screen.height - DEFAULT_HEIGHT) / 2),
-  }));
+  // Right-click drag navigation
+  const handleWorkspaceSwitch = useCallback((delta: number) => {
+    const newIdx = state.activeWorkspaceIndex + delta;
+    if (newIdx >= 0 && newIdx < state.workspaces.length) {
+      switchWorkspace(newIdx);
+    }
+  }, [state.activeWorkspaceIndex, state.workspaces.length, switchWorkspace]);
+
+  useNeriDrag(stripContainerRef, handleWorkspaceSwitch);
+
+  const handleClose = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => onClose(), 200); // match neri-panel-exit duration
+  }, [onClose, isClosing]);
+
+  // Center on the screen where the cursor is (multi-monitor aware)
+  const [{ initialPos, panelSize }] = useState(() => {
+    const size = getDefaultSize();
+    const pos = cursorPosition
+      ? { left: Math.round(cursorPosition.x - size.width / 2), top: Math.round(cursorPosition.y - size.height / 2) }
+      : { left: Math.round((window.screen.width - size.width) / 2), top: Math.round((window.screen.height - size.height) / 2) };
+    return { initialPos: pos, panelSize: size };
+  });
 
   // Clock
   useEffect(() => {
@@ -106,7 +148,7 @@ export function NiriDemo({ onClose, panelRef }: { onClose: () => void; panelRef?
       switch (e.key) {
         case "Escape":
           if (showLauncher) { setShowLauncher(false); }
-          else { onClose(); }
+          else { handleClose(); }
           e.preventDefault();
           break;
         case "ArrowLeft":
@@ -136,14 +178,14 @@ export function NiriDemo({ onClose, panelRef }: { onClose: () => void; panelRef?
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose, showLauncher, focusLeft, focusRight, moveColumnLeft, moveColumnRight, switchWorkspace, state.activeWorkspaceIndex, state.workspaces.length]);
+  }, [handleClose, showLauncher, focusLeft, focusRight, moveColumnLeft, moveColumnRight, switchWorkspace, state.activeWorkspaceIndex, state.workspaces.length]);
 
   // Scroll focused column into view
   useEffect(() => {
     const strip = stripRef.current;
     if (!strip || activeWorkspace.focusedColumnIndex < 0) return;
 
-    const columns = strip.querySelectorAll<HTMLElement>(".niri-column");
+    const columns = strip.querySelectorAll<HTMLElement>(".neri-column");
     const col = columns[activeWorkspace.focusedColumnIndex];
     if (!col) return;
 
@@ -164,97 +206,97 @@ export function NiriDemo({ onClose, panelRef }: { onClose: () => void; panelRef?
     }
   }, []);
 
-  const handleOpenWindow = useCallback((type: NiriWindowType) => {
+  const handleOpenWindow = useCallback((type: NeriWindowType) => {
     openWindow(type);
     setShowLauncher(false);
   }, [openWindow]);
 
   return (
-    <div className="niri-backdrop">
+    <div className="neri-backdrop">
       <div
         ref={setRootRef}
-        className="niri-root"
+        className={`neri-root${isClosing ? " closing" : ""}`}
         style={{
           left: initialPos.left,
           top: initialPos.top,
-          width: DEFAULT_WIDTH,
-          height: DEFAULT_HEIGHT,
+          width: panelSize.width,
+          height: panelSize.height,
         }}
       >
         {/* Status bar — draggable handle */}
-        <div className="niri-statusbar" onMouseDown={handleDragStart}>
-          <div className="niri-statusbar-left">
-            <span className="niri-statusbar-pill">niri</span>
-            <span className="niri-statusbar-pill subtle">
+        <div className="neri-statusbar" onMouseDown={handleDragStart}>
+          <div className="neri-statusbar-left">
+            <span className="neri-statusbar-pill">neri</span>
+            <span className="neri-statusbar-pill subtle">
               Workspace {state.activeWorkspaceIndex + 1}
             </span>
             {activeWorkspace.columns.length > 0 && (
-              <span className="niri-statusbar-pill subtle">
+              <span className="neri-statusbar-pill subtle">
                 {activeWorkspace.columns.length} window{activeWorkspace.columns.length !== 1 ? "s" : ""}
               </span>
             )}
           </div>
-          <div className="niri-statusbar-center">
+          <div className="neri-statusbar-center">
             {activeWorkspace.focusedColumnIndex >= 0 && activeWorkspace.columns[activeWorkspace.focusedColumnIndex] && (
-              <span className="niri-statusbar-pill focused">
+              <span className="neri-statusbar-pill focused">
                 {activeWorkspace.columns[activeWorkspace.focusedColumnIndex].windows[0]?.title}
               </span>
             )}
           </div>
-          <div className="niri-statusbar-right">
-            <button className="niri-statusbar-btn" onClick={() => setShowLauncher(true)} title="Open window (Ctrl+Enter)">+</button>
-            <span className="niri-statusbar-pill subtle">
+          <div className="neri-statusbar-right">
+            <button className="neri-statusbar-btn" onClick={() => setShowLauncher(true)} title="Open window (Ctrl+Enter)">+</button>
+            <span className="neri-statusbar-pill subtle">
               {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
-            <button className="niri-close-btn" onClick={onClose} title="Exit niri demo (Esc)">✕</button>
+            <button className="neri-close-btn" onClick={handleClose} title="Exit Neri (Esc)">✕</button>
           </div>
         </div>
 
         {/* Main area: workspace switcher + strip */}
-        <div className="niri-main">
+        <div className="neri-main">
           {/* Workspace switcher (left edge) */}
-          <div className="niri-workspace-switcher">
+          <div className="neri-workspace-switcher">
             {state.workspaces.map((ws, i) => (
               <button
                 key={ws.id}
-                className={`niri-ws-dot ${i === state.activeWorkspaceIndex ? "active" : ""} ${ws.columns.length === 0 ? "empty" : ""}`}
+                className={`neri-ws-dot ${i === state.activeWorkspaceIndex ? "active" : ""} ${ws.columns.length === 0 ? "empty" : ""}`}
                 onClick={() => switchWorkspace(i)}
                 title={`Workspace ${i + 1}${ws.columns.length === 0 ? " (empty)" : ` (${ws.columns.length} windows)`}`}
               >
-                <span className="niri-ws-dot-indicator" />
+                <span className="neri-ws-dot-indicator" />
                 {ws.columns.length > 0 && (
-                  <span className="niri-ws-dot-count">{ws.columns.length}</span>
+                  <span className="neri-ws-dot-count">{ws.columns.length}</span>
                 )}
               </button>
             ))}
           </div>
 
           {/* Window strip */}
-          <div className="niri-strip-container" onWheel={handleWheel}>
-            <div className="niri-strip" ref={stripRef}>
-              <div className="niri-strip-inner" style={{ padding: `${STRIP_PADDING}px`, gap: `${COLUMN_GAP}px` }}>
+          <div className="neri-strip-container" ref={stripContainerRef} onWheel={handleWheel}>
+            <div className="neri-strip" ref={stripRef}>
+              <div className="neri-strip-inner" style={{ padding: `${STRIP_PADDING}px`, gap: `${COLUMN_GAP}px` }}>
                 {activeWorkspace.columns.length === 0 && (
-                  <div className="niri-empty-workspace">
-                    <div className="niri-empty-text">Empty workspace</div>
-                    <div className="niri-empty-hint">Press Ctrl+Enter to open a window</div>
+                  <div className="neri-empty-workspace">
+                    <div className="neri-empty-text">Empty workspace</div>
+                    <div className="neri-empty-hint">Press Ctrl+Enter to open a window</div>
                   </div>
                 )}
                 {activeWorkspace.columns.map((col, colIdx) => (
                   <div
                     key={col.id}
-                    className={`niri-column ${colIdx === activeWorkspace.focusedColumnIndex ? "focused" : ""}`}
+                    className={`neri-column ${colIdx === activeWorkspace.focusedColumnIndex ? "focused" : ""}`}
                     style={{ width: col.windows[0]?.width ?? 400 }}
                     onClick={() => focusColumn(colIdx)}
                   >
                     {col.windows.map((win) => (
-                      <div key={win.id} className="niri-window">
-                        <div className="niri-window-titlebar" style={{ height: TITLEBAR_HEIGHT }}>
-                          <div className="niri-window-titlebar-left">
-                            <span className="niri-window-title">{win.title}</span>
+                      <div key={win.id} className="neri-window">
+                        <div className="neri-window-titlebar" style={{ height: TITLEBAR_HEIGHT }}>
+                          <div className="neri-window-titlebar-left">
+                            <span className="neri-window-title">{win.title}</span>
                           </div>
-                          <div className="niri-window-titlebar-right">
+                          <div className="neri-window-titlebar-right">
                             <button
-                              className="niri-window-btn"
+                              className="neri-window-btn"
                               onClick={(e) => { e.stopPropagation(); closeWindow(col.id, win.id); }}
                               title="Close window"
                             >
@@ -262,8 +304,8 @@ export function NiriDemo({ onClose, panelRef }: { onClose: () => void; panelRef?
                             </button>
                           </div>
                         </div>
-                        <div className="niri-window-content">
-                          <NiriWindowContent type={win.type} />
+                        <div className="neri-window-content">
+                          <NeriWindowContent type={win.type} win={win} />
                         </div>
                       </div>
                     ))}
@@ -275,30 +317,30 @@ export function NiriDemo({ onClose, panelRef }: { onClose: () => void; panelRef?
         </div>
 
         {/* Bottom hints — floating pills */}
-        <div className="niri-hints">
-          <span className="niri-hint-pill">←/→ Focus</span>
-          <span className="niri-hint-pill">Ctrl+←/→ Move</span>
-          <span className="niri-hint-pill">↑/↓ Workspace</span>
-          <span className="niri-hint-pill">Ctrl+Enter Open</span>
-          <span className="niri-hint-pill">Esc Close</span>
+        <div className="neri-hints">
+          <span className="neri-hint-pill">Right-drag Scroll</span>
+          <span className="neri-hint-pill">←/→ Focus</span>
+          <span className="neri-hint-pill">↑/↓ Workspace</span>
+          <span className="neri-hint-pill">Ctrl+Enter Open</span>
+          <span className="neri-hint-pill">Esc Close</span>
         </div>
 
         {/* Launcher overlay */}
         {showLauncher && (
-          <div className="niri-launcher-backdrop" onClick={() => setShowLauncher(false)}>
-            <div className="niri-launcher" onClick={(e) => e.stopPropagation()}>
-              <div className="niri-launcher-title">Open Window</div>
-              <div className="niri-launcher-grid">
+          <div className="neri-launcher-backdrop" onClick={() => setShowLauncher(false)}>
+            <div className="neri-launcher" onClick={(e) => e.stopPropagation()}>
+              <div className="neri-launcher-title">Open Window</div>
+              <div className="neri-launcher-grid">
                 {WINDOW_TYPE_OPTIONS.map((type) => {
                   const t = WINDOW_TEMPLATES[type];
                   return (
                     <button
                       key={type}
-                      className="niri-launcher-item"
+                      className="neri-launcher-item"
                       onClick={() => handleOpenWindow(type)}
                     >
-                      <span className="niri-launcher-icon">{getWindowIcon(type)}</span>
-                      <span className="niri-launcher-label">{t.title}</span>
+                      <span className="neri-launcher-icon">{WINDOW_ICONS[type]}</span>
+                      <span className="neri-launcher-label">{t.title}</span>
                     </button>
                   );
                 })}
@@ -311,18 +353,4 @@ export function NiriDemo({ onClose, panelRef }: { onClose: () => void; panelRef?
   );
 }
 
-function getWindowIcon(type: NiriWindowType): string {
-  switch (type) {
-    case "news-feed": return "📰";
-    case "music-player": return "🎵";
-    case "ai-search": return "🔍";
-    case "calendar": return "📅";
-    case "game": return "🎮";
-    case "system-monitor": return "📊";
-    case "weather": return "🌤";
-    case "notes": return "📝";
-    case "file-browser": return "📁";
-  }
-}
-
-export default NiriDemo;
+export default NeriDashboard;

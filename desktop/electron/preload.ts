@@ -101,10 +101,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMorphReverse: onIpc<{ screenshotDataUrl: string }>('overlay:morphReverse'),
     onMorphEnd: onIpcSignal('overlay:morphEnd'),
     morphDone: () => ipcRenderer.send('overlay:morphDone'),
-    onShowNiri: onIpcSignal('overlay:showNiri'),
-    onHideNiri: onIpcSignal('overlay:hideNiri'),
-    showNiri: () => ipcRenderer.send('overlay:showNiri:request'),
-    hideNiri: () => ipcRenderer.send('overlay:hideNiri:request'),
+    onShowNeri: onIpc<{ cursorX: number; cursorY: number }>('overlay:showNeri'),
+    onHideNeri: onIpcSignal('overlay:hideNeri'),
+    showNeri: () => ipcRenderer.send('overlay:showNeri:request'),
+    hideNeri: () => ipcRenderer.send('overlay:hideNeri:request'),
+    onNeriOpenSearch: onIpc<{ query: string; results: Array<{ title: string; url: string; snippet: string }> }>('neri:openSearchWindow'),
+    onNeriOpenCanvas: onIpc<{ title: string; html: string }>('neri:openCanvasWindow'),
+    onNeriManageWindow: onIpc<{ operation: string; window_type?: string }>('neri:manageWindow'),
+    reportNeriWindowState: (state: Array<{ type: string; title: string }>) => ipcRenderer.send('neri:windowState', state),
   },
 
   mini: {
