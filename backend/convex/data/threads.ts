@@ -748,7 +748,7 @@ export const finalizeThreadCompaction = internalMutation({
         ...(typeof msg.tokenEstimate === "number"
           ? { tokenEstimate: msg.tokenEstimate }
           : {}),
-        createdAt: msg.createdAt ?? now,
+        createdAt: msg.createdAt,
       });
       nextOrdinal += 1;
       await ctx.db.delete(msg._id);

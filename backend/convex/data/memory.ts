@@ -430,7 +430,7 @@ export const touchMemoriesById = internalMutation({
         if (!mem) return;
         await ctx.db.patch(touch.memoryId, {
           accessedAt: now,
-          accessCount: (mem.accessCount ?? 0) + 1,
+          accessCount: mem.accessCount + 1,
         });
       }),
     );
