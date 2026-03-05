@@ -652,28 +652,6 @@ const STATUS_DESCRIPTIONS: Record<string, string[]> = {
     "Grabbing a reference",
     "Pulling data from a page",
   ],
-  OpenCanvas: [
-    "Preparing something visual",
-    "Setting up a display",
-    "Getting ready to show you something",
-    "Putting together a visual",
-    "Firing up the canvas",
-    "Creating something to show you",
-    "Setting the stage",
-    "Preparing a preview",
-    "Getting the visual ready",
-    "Spinning up a display",
-    "Building something visual",
-    "Laying out a display",
-    "Setting up the canvas",
-    "Crafting a visual",
-    "Prepping a preview",
-    "Getting things ready to display",
-    "Working on a visual",
-    "Assembling a display",
-    "Whipping up something visual",
-    "Putting on a show",
-  ],
   default: [
     "Working on it...",
     "Making progress...",
@@ -712,9 +690,6 @@ const describeToolCall = (toolName: string, _args: Record<string, unknown>): str
     const key = `Bash:${category}`;
     return pick(STATUS_DESCRIPTIONS[key] ?? STATUS_DESCRIPTIONS["Bash:other"]);
   }
-
-  // CloseCanvas is rare and boring — just skip it
-  if (toolName === "CloseCanvas") return "Tidying up";
 
   // TaskCreate — keep the description if present, it's already human-written
   if (toolName === "TaskCreate") {

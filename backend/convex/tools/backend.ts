@@ -309,16 +309,7 @@ type PublicIntegrationPolicy = {
   allowedHosts: string[];
 };
 
-const CANVAS_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const PRIVATE_HOST_PREF_PREFIX = "integration_private_hosts";
-
-const normalizeCanvasName = (value: string): string | null => {
-  const normalized = value.trim().replace(/\.tsx$/i, "");
-  if (!CANVAS_NAME_PATTERN.test(normalized)) {
-    return null;
-  }
-  return normalized;
-};
 
 const normalizeProviderToken = (value: string) =>
   value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -919,76 +910,6 @@ export const createBackendTools = (
         return formatResult(result);
       },
     }),
-    OpenCanvas: tool({
-      description:
-        "Display content in the canvas side panel. For panels (single-file TSX), write the file first then call this. For workspace apps, start the dev server first then pass the url.",
-      inputSchema: z.object({
-        name: z
-          .string()
-          .describe(
-            "Name of the panel or app. For panels, matches the file at frontend/workspace/panels/{name}.tsx. For apps, matches the directory at ~/.stella/apps/{name}/.",
-          ),
-        title: z.string().optional().describe("Panel header title. Defaults to name."),
-        url: z
-          .string()
-          .optional()
-          .describe(
-            "Dev server URL for workspace apps (e.g. http://localhost:5180). If provided, renders in an iframe. If omitted, loads as a panel via Vite dynamic import.",
-          ),
-      }),
-      execute: async (args) => {
-        const conversationId = options.conversationId;
-        if (!conversationId) {
-          return "OpenCanvas requires a conversation context.";
-        }
-        const normalizedName = normalizeCanvasName(args.name);
-        if (!normalizedName) {
-          return "OpenCanvas name is invalid. Use letters, numbers, '_' or '-'.";
-        }
-        if (args.url) {
-          let parsedUrl: URL;
-          try {
-            parsedUrl = new URL(args.url);
-          } catch {
-            return "OpenCanvas url must be a valid URL.";
-          }
-          if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-            return "OpenCanvas url must use http(s).";
-          }
-          const host = parsedUrl.hostname.toLowerCase();
-          if (host !== "localhost" && host !== "127.0.0.1") {
-            return "OpenCanvas only allows localhost URLs for app frames.";
-          }
-        }
-        await ctx.runMutation(internal.events.appendInternalEvent, {
-          conversationId: conversationId as Id<"conversations">,
-          type: "canvas_command",
-          payload: {
-            action: "open",
-            name: normalizedName,
-            title: args.title ?? normalizedName,
-            ...(args.url ? { url: args.url } : {}),
-          },
-        });
-        return `Canvas opened: ${normalizedName}`;
-      },
-    }),
-    CloseCanvas: tool({
-      description: "Close the canvas side panel.",
-      inputSchema: z.object({}),
-      execute: async () => {
-        const conversationId = options.conversationId;
-        if (!conversationId) {
-          return "CloseCanvas requires a conversation context.";
-        }
-        await ctx.runMutation(internal.events.appendInternalEvent, {
-          conversationId: conversationId as Id<"conversations">,
-          type: "canvas_command",
-          payload: { action: "close" },
-        });
-        return "Canvas closed.";
-      },
-    }),
     GenerateApiSkill: tool({
       description:
         "Convert a browser-discovered API map into a reusable skill.\n\n" +
@@ -1131,7 +1052,7 @@ export const createBackendTools = (
             `Suggested visualization: **${args.canvasHint}**`,
           );
           lines.push(
-            `Write a panel TSX file to \`frontend/workspace/panels/\` that visualizes the data, then call \`OpenCanvas(name="...")\` to display it.`,
+            "Write a panel TSX file for the visualization, then report the panel name so the user can find it in the workspace/home pages.",
           );
         }
 
