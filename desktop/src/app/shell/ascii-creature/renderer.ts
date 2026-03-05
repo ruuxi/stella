@@ -2,7 +2,7 @@ import { DOT_COUNT } from "./glyph-atlas";
 import { createProgram, getFragmentShader } from "./shader";
 
 export type GlRenderer = {
-  render: (time: number, birth: number, flashValue: number) => void;
+  render: (time: number, birth: number, flashValue: number, listening?: number, speaking?: number, voiceEnergy?: number) => void;
   setColors: (next: Float32Array) => void;
   destroy: () => void;
 };
@@ -80,6 +80,9 @@ export const initRenderer = (
   const uFlash = gl.getUniformLocation(program, "u_flash");
   const uGlyph = gl.getUniformLocation(program, "u_glyph");
   const uColors = gl.getUniformLocation(program, "u_colors[0]");
+  const uListening = gl.getUniformLocation(program, "u_listening");
+  const uSpeaking = gl.getUniformLocation(program, "u_speaking");
+  const uVoiceEnergy = gl.getUniformLocation(program, "u_voiceEnergy");
 
   if (
     !uCanvasSize ||
@@ -101,6 +104,9 @@ export const initRenderer = (
   gl.uniform1f(uFlash, flashValue);
   gl.uniform1i(uGlyph, 0);
   gl.uniform3fv(uColors, colors);
+  if (uListening) gl.uniform1f(uListening, 0);
+  if (uSpeaking) gl.uniform1f(uSpeaking, 0);
+  if (uVoiceEnergy) gl.uniform1f(uVoiceEnergy, 0);
 
   gl.disable(gl.DEPTH_TEST);
   gl.disable(gl.CULL_FACE);
@@ -108,13 +114,16 @@ export const initRenderer = (
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  const render = (time: number, birth: number, flash: number) => {
+  const render = (time: number, birth: number, flash: number, listening = 0, speaking = 0, voiceEnergy = 0) => {
     gl.useProgram(program);
     gl.viewport(0, 0, targetCanvas.width, targetCanvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(uTime, time);
     gl.uniform1f(uBirth, birth);
     gl.uniform1f(uFlash, flash);
+    if (uListening) gl.uniform1f(uListening, listening);
+    if (uSpeaking) gl.uniform1f(uSpeaking, speaking);
+    if (uVoiceEnergy) gl.uniform1f(uVoiceEnergy, voiceEnergy);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   };
 

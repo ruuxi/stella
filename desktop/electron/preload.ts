@@ -139,6 +139,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send('voice:persistTranscript', payload),
     orchestratorChat: (payload: { conversationId: string; message: string }) =>
       ipcRenderer.invoke('voice:orchestratorChat', payload) as Promise<string>,
+    mercuryChat: (payload: { conversationId: string; message: string }) =>
+      ipcRenderer.invoke('voice:mercuryChat', payload) as Promise<string>,
     setRtcShortcut: (shortcut: string) => ipcRenderer.send('voice-rtc:setShortcut', shortcut),
     onRtcPreWarm: onIpc<string>('voice-rtc:pre-warm'),
     onRtcPrefetchToken: onIpcSignal('voice-rtc:prefetch-token'),
