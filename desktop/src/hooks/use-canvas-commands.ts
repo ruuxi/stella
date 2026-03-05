@@ -13,6 +13,26 @@ type CanvasCommandPayload = {
 
 const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
+const findEventWindowStart = (
+  previousIds: string[],
+  nextEvents: EventRecord[],
+): number => {
+  if (previousIds.length === 0 || previousIds.length > nextEvents.length) {
+    return -1
+  }
+
+  outer: for (let start = 0; start <= nextEvents.length - previousIds.length; start += 1) {
+    for (let offset = 0; offset < previousIds.length; offset += 1) {
+      if (nextEvents[start + offset]?._id !== previousIds[offset]) {
+        continue outer
+      }
+    }
+    return start
+  }
+
+  return -1
+}
+
 const normalizeCanvasName = (value?: string): string | null => {
   if (!value) return null
   const normalized = value.trim().replace(/\.tsx$/i, '')
@@ -36,22 +56,40 @@ const isSafeCanvasUrl = (value?: string): boolean => {
  * Watches conversation events for `canvas_command` type and dispatches
  * to the canvas state (open/close).
  */
-export const useCanvasCommands = (events: EventRecord[]) => {
+export const useCanvasCommands = (
+  events: EventRecord[],
+  conversationId?: string | null,
+) => {
   const { state, openCanvas, closeCanvas } = useWorkspace()
   const { setView } = useUiState()
   const processedRef = useRef<Set<string>>(new Set())
-  const previousLengthRef = useRef(events.length)
+  const previousEventIdsRef = useRef<string[]>([])
 
-  // Reset processed IDs when the event stream is reset (e.g. conversation switch)
   useEffect(() => {
-    if (events.length === 0 && previousLengthRef.current > 0) {
+    processedRef.current.clear()
+    previousEventIdsRef.current = []
+  }, [conversationId])
+
+  useEffect(() => {
+    if (events.length === 0) {
       processedRef.current.clear()
+      previousEventIdsRef.current = []
+      return
     }
-    previousLengthRef.current = events.length
-  }, [events.length])
 
-  useEffect(() => {
-    for (const event of events) {
+    const previousEventIds = previousEventIdsRef.current
+    let nextEventsToProcess = events
+
+    if (previousEventIds.length > 0) {
+      const previousWindowStart = findEventWindowStart(previousEventIds, events)
+      if (previousWindowStart === -1) {
+        processedRef.current.clear()
+      } else {
+        nextEventsToProcess = events.slice(previousWindowStart + previousEventIds.length)
+      }
+    }
+
+    for (const event of nextEventsToProcess) {
       if (event.type !== 'canvas_command') continue
       if (processedRef.current.has(event._id)) continue
 
@@ -85,6 +123,8 @@ export const useCanvasCommands = (events: EventRecord[]) => {
         }
       }
     }
+
+    previousEventIdsRef.current = events.map((event) => event._id)
   }, [events, state.canvas, openCanvas, closeCanvas, setView])
 }
 

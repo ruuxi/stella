@@ -6,9 +6,6 @@ import { MiniShell } from "../shell/mini/MiniShell";
 import { VoiceOverlay } from "@/app/overlay/VoiceOverlay";
 import { MorphTransition } from "@/app/overlay/MorphTransition";
 
-import { getNeriStore, getNeriWindowSummary } from "@/app/neri/neri-store";
-import type { NeriWindowType } from "@/app/neri/neri-types";
-
 const NeriDashboard = lazy(() => import("@/app/neri/NeriDashboard"));
 
 /**
@@ -271,55 +268,6 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
     };
   }, [dispatch]);
 
-  // Neri Mercury command routing — IPC listeners from main process.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanups: (() => void)[] = [];
-
-    const onSearch = api.overlay.onNeriOpenSearch?.((data: { query: string; results: Array<{ title: string; url: string; snippet: string }> }) => {
-      getNeriStore().dispatch({ type: "open-search-window", query: data.query, results: data.results });
-    });
-    if (onSearch) cleanups.push(onSearch);
-
-    const onCanvas = api.overlay.onNeriOpenCanvas?.((data: { title: string; html: string }) => {
-      getNeriStore().dispatch({ type: "open-canvas-window", title: data.title, html: data.html });
-    });
-    if (onCanvas) cleanups.push(onCanvas);
-
-    const onManage = api.overlay.onNeriManageWindow?.((data: { operation: string; window_type?: string }) => {
-      if (data.operation === "close" && data.window_type) {
-        getNeriStore().dispatch({ type: "close-window-by-type", windowType: data.window_type as NeriWindowType });
-      }
-    });
-    if (onManage) cleanups.push(onManage);
-
-    return () => { cleanups.forEach((c) => c()); };
-  }, []);
-
-  // Report Neri window state to main process for Mercury context.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api?.overlay.reportNeriWindowState) return;
-
-    const store = getNeriStore();
-
-    // Only report when the window list actually changes (not on scroll/focus)
-    let lastJson = "";
-    const report = () => {
-      const summary = getNeriWindowSummary();
-      const json = JSON.stringify(summary);
-      if (json === lastJson) return;
-      lastJson = json;
-      api.overlay.reportNeriWindowState(summary);
-    };
-
-    const unsubscribe = store.subscribe(report);
-    report(); // initial state
-
-    return unsubscribe;
-  }, []);
 }
 
 // ---------------------------------------------------------------------------
@@ -640,5 +588,3 @@ export function OverlayRoot() {
     </div>
   );
 }
-
-

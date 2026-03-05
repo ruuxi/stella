@@ -287,10 +287,6 @@ export type ElectronOverlayApi = {
   onHideNeri: (callback: () => void) => () => void
   showNeri: () => void
   hideNeri: () => void
-  onNeriOpenSearch: (callback: (data: { query: string; results: Array<{ title: string; url: string; snippet: string }> }) => void) => () => void
-  onNeriOpenCanvas: (callback: (data: { title: string; html: string }) => void) => () => void
-  onNeriManageWindow: (callback: (data: { operation: string; window_type?: string }) => void) => () => void
-  reportNeriWindowState: (state: Array<{ type: string; title: string }>) => void
 }
 
 export type ElectronMiniApi = {
@@ -316,7 +312,6 @@ export type ElectronVoiceApi = {
   onTranscript: (callback: (transcript: string) => void) => () => void
   persistTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) => void
   orchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
-  mercuryChat: (payload: { conversationId: string; message: string }) => Promise<string>
   setRtcShortcut: (shortcut: string) => void
   onRtcPreWarm: (callback: (conversationId: string) => void) => () => void
   onRtcPrefetchToken: (callback: () => void) => () => void
