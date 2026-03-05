@@ -209,7 +209,7 @@ export const consumeSlackOAuthState = internalMutation({
           stateHash: parsed.stateHash,
           stateSalt: parsed.stateSalt,
           expiresAt: parsed.expiresAt,
-          createdAt: parsed.createdAt ?? now,
+          createdAt: parsed.createdAt,
           usedAt: now,
         }),
         updatedAt: now,
