@@ -11,6 +11,7 @@ import { registerSeedMemoryRoutes } from "./http_routes/seed_memories";
 import { registerSkillRoutes } from "./http_routes/skills";
 import { registerMusicRoutes } from "./http_routes/music";
 import { registerVoiceRoutes } from "./http_routes/voice";
+import { registerMercuryRoutes } from "./http_routes/mercury";
 
 // AI proxy (already extracted)
 import { proxyChat, proxyEmbed, proxySearch, llmProxy } from "./ai_proxy";
@@ -34,6 +35,7 @@ registerSkillRoutes(http);
 registerConnectorWebhookRoutes(http);
 registerMusicRoutes(http);
 registerVoiceRoutes(http);
+registerMercuryRoutes(http);
 
 // ---------------------------------------------------------------------------
 // Stella AI Proxy — thin LLM/embed/search proxy for desktop local runtime
