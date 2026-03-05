@@ -246,6 +246,15 @@ export class AuthService {
     return this.pendingConvexUrl
   }
 
+  getConvexSiteUrl(): string | null {
+    return deriveConvexSiteUrl(this.pendingConvexUrl, this.pendingConvexSiteUrl)
+  }
+
+  async getAuthToken(): Promise<string | null> {
+    if (!this.hostAuthAuthenticated) return null
+    return this.fetchRunnerAuthToken()
+  }
+
   clearPendingAuthCallback() {
     this.pendingAuthCallback = null
   }

@@ -50,6 +50,9 @@ export const getFragmentShader = (): string => {
     uniform float u_charCount;
     uniform float u_birth;
     uniform float u_flash;
+    uniform float u_listening;
+    uniform float u_speaking;
+    uniform float u_voiceEnergy;
     uniform sampler2D u_glyph;
     uniform vec3 u_colors[5];
   `;
@@ -186,22 +189,67 @@ export const getFragmentShader = (): string => {
       mouthShape = (1.0 - smoothstep(lineW * 0.3, lineW * 0.7, abs(md.y))) * step(abs(md.x), 1.5);
     }
     mouthShape *= smoothstep(0.05, 0.2, mouthAnim);
+
     float mouthMask = mouthShape * smoothstep(0.3, 0.6, u_birth);
     gl_FragColor = mix(gl_FragColor, vec4(u_colors[4], 1.0), mouthMask);
   `;
 
   // Flowing organic patterns — 3 phases morphing smoothly
+  // GLSL helper: compute the 3-phase intensity at any distance
+  const phaseFunction = `
+    float computePhases(float d, float a, float w1, float w2, float w3) {
+      float i1 = 0.0;
+      if (w1 > 0.01 && d >= 0.15) {
+        float so = 1.0 / (d + 0.05);
+        float wv1 = sin(a * 3.0 + so * 2.0 - u_time * 3.0);
+        float wv2 = cos(a * 5.0 - so * 3.0 + u_time * 2.0);
+        float fo = max(0.0, 1.0 - (d - 0.15) * 1.5);
+        float dk = exp(-pow((d - 0.3) * 10.0, 2.0)) * 0.8;
+        i1 = ((wv1 + wv2) * 0.5 + 0.5) * fo + dk;
+      }
+      float i2 = 0.0;
+      if (w2 > 0.01) {
+        float t1 = u_time * 2.0;
+        float p1 = sin(t1) * 0.5 + 0.5;
+        float p2 = sin(t1 + 2.094) * 0.5 + 0.5;
+        float p3 = sin(t1 + 4.188) * 0.5 + 0.5;
+        float s1 = exp(-abs(mod(a + 0.0, 6.283) - 3.14) * 1.5) * p1;
+        float s2 = exp(-abs(mod(a + 2.094, 6.283) - 3.14) * 1.5) * p2;
+        float s3 = exp(-abs(mod(a + 4.188, 6.283) - 3.14) * 1.5) * p3;
+        float rw = sin(d * 10.0 - u_time * 3.0) * 0.3 + 0.7;
+        float rays = max(max(s1, s2), s3) * rw;
+        float c2 = exp(-d * 4.0) * 0.8;
+        float f2 = max(0.0, 1.0 - d * 0.8);
+        i2 = rays * f2 + c2;
+      }
+      float i3 = 0.0;
+      if (w3 > 0.01) {
+        float br = sin(u_time * 0.4) * 0.5 + 0.5;
+        float pt = sin(a * 7.0 + d * 8.0 + u_time * 0.5) * 0.5 + 0.5;
+        pt *= exp(-d * 1.0);
+        float fm = sin(a * 3.0 - u_time * 0.3) * 0.5 + 0.5;
+        fm *= sin(d * 12.0 - u_time * 1.2) * 0.5 + 0.5;
+        fm *= exp(-d * 1.5);
+        float sf = exp(-d * 3.5) * (0.7 + br * 0.3);
+        i3 = sf + mix(pt, fm, br) * 0.5;
+      }
+      return i1 * w1 + i2 * w2 + i3 * w3;
+    }
+  `;
+
   return `${baseHeader}
+    ${phaseFunction}
     void main() {
       vec2 uv = vec2(gl_FragCoord.x / u_canvasSize.x, 1.0 - gl_FragCoord.y / u_canvasSize.y);
 
-      // True circular distance using canvas pixel aspect ratio
-      vec2 c = uv - 0.5;
+      // True circular distance using canvas pixel aspect ratio.
+      // UV scale < EDGE_SCALE leaves room for expansion effects without clipping.
+      vec2 c = (uv - 0.5) * 1.2;
       c.x *= u_canvasSize.x / u_canvasSize.y;
       float dist = length(c) * 2.0;
 
       // Early discard — pixels far from center are always transparent
-      if (dist > 1.2) { gl_FragColor = vec4(0.0); return; }
+      if (dist > 2.0) { gl_FragColor = vec4(0.0); return; }
 
       float angle = atan(c.y, c.x);
 
@@ -214,48 +262,39 @@ export const getFragmentShader = (): string => {
       float total = w1 + w2 + w3;
       w1 /= total; w2 /= total; w3 /= total;
 
-      // Phase 1: Flowing spiral disk (skip when weight ≈ 0)
-      float i1 = 0.0;
-      if (w1 > 0.01 && dist >= 0.15) {
-        float spiralOffset = 1.0 / (dist + 0.05);
-        float wave1 = sin(angle * 3.0 + spiralOffset * 2.0 - u_time * 3.0);
-        float wave2 = cos(angle * 5.0 - spiralOffset * 3.0 + u_time * 2.0);
-        float falloff = max(0.0, 1.0 - (dist - 0.15) * 1.5);
-        float disk = exp(-pow((dist - 0.3) * 10.0, 2.0)) * 0.8;
-        i1 = ((wave1 + wave2) * 0.5 + 0.5) * falloff + disk;
+      // Base intensity from the 3 idle phases — always running
+      float intensity = computePhases(dist, angle, w1, w2, w3);
+
+      // Voice: Listening — contract inward, pulsing concentration
+      if (u_listening > 0.01) {
+        float squeezedDist = dist * (1.0 + u_listening * 0.5);
+        float squeezedIntensity = computePhases(squeezedDist, angle, w1, w2, w3);
+        intensity = mix(intensity, squeezedIntensity, u_listening);
+
+        // Inward-flowing rings overlay
+        float rings = sin(dist * 20.0 + u_time * 5.0) * 0.5 + 0.5;
+        rings *= smoothstep(0.5, 0.1, dist);
+        intensity += rings * u_listening * 0.3;
+
+        // Mic energy: pulse brighter
+        intensity *= 1.0 + u_voiceEnergy * u_listening * 0.8;
       }
 
-      // Phase 2: Pulsing rays with radial waves (skip when weight ≈ 0)
-      float i2 = 0.0;
-      if (w2 > 0.01) {
-        float time1 = u_time * 2.0;
-        float p1 = sin(time1) * 0.5 + 0.5;
-        float p2 = sin(time1 + 2.094) * 0.5 + 0.5;
-        float p3 = sin(time1 + 4.188) * 0.5 + 0.5;
-        float s1 = exp(-abs(mod(angle + 0.0, 6.283) - 3.14) * 1.5) * p1;
-        float s2 = exp(-abs(mod(angle + 2.094, 6.283) - 3.14) * 1.5) * p2;
-        float s3 = exp(-abs(mod(angle + 4.188, 6.283) - 3.14) * 1.5) * p3;
-        float radialWave = sin(dist * 10.0 - u_time * 3.0) * 0.3 + 0.7;
-        float rays = max(max(s1, s2), s3) * radialWave;
-        float core2 = exp(-dist * 4.0) * 0.8;
-        float falloff2 = max(0.0, 1.0 - dist * 0.8);
-        i2 = rays * falloff2 + core2;
+      // Voice: Speaking — expand outward, pulse with energy
+      if (u_speaking > 0.01) {
+        float expandedDist = dist / (1.0 + u_speaking * 0.08 + u_voiceEnergy * 0.12);
+        float expandedIntensity = computePhases(expandedDist, angle, w1, w2, w3);
+        intensity = mix(intensity, expandedIntensity, u_speaking);
+
+        // Outward-flowing waves
+        float waves = sin(dist * 10.0 - u_time * 8.0) * 0.5 + 0.5;
+        waves *= smoothstep(1.2, 0.1, dist) * u_voiceEnergy;
+        intensity += waves * u_speaking * 0.4;
+
+        // Overall energy boost
+        intensity *= 1.0 + u_speaking * u_voiceEnergy * 0.4;
       }
 
-      // Phase 3: Organic breathing forms (skip when weight ≈ 0)
-      float i3 = 0.0;
-      if (w3 > 0.01) {
-        float breathe = sin(u_time * 0.4) * 0.5 + 0.5;
-        float potential = sin(angle * 7.0 + dist * 8.0 + u_time * 0.5) * 0.5 + 0.5;
-        potential *= exp(-dist * 1.0);
-        float form = sin(angle * 3.0 - u_time * 0.3) * 0.5 + 0.5;
-        form *= sin(dist * 12.0 - u_time * 1.2) * 0.5 + 0.5;
-        form *= exp(-dist * 1.5);
-        float self = exp(-dist * 3.5) * (0.7 + breathe * 0.3);
-        i3 = self + mix(potential, form, breathe) * 0.5;
-      }
-
-      float intensity = i1 * w1 + i2 * w2 + i3 * w3;
       intensity = min(intensity, 1.0);
 
       // Birth animation

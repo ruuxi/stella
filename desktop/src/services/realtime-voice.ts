@@ -28,7 +28,9 @@ export type VoiceSessionEvent =
   | { type: "tool-start"; name: string; callId: string }
   | { type: "tool-end"; name: string; callId: string; result: string }
   | { type: "speaking-start" }
-  | { type: "speaking-end" };
+  | { type: "speaking-end" }
+  | { type: "user-speaking-start" }
+  | { type: "user-speaking-end" };
 
 type VoiceSessionListener = (event: VoiceSessionEvent) => void;
 
@@ -226,6 +228,8 @@ export class RealtimeVoiceSession {
   private inputTrack: MediaStreamTrack | null = null;
   private analyser: AnalyserNode | null = null;
   private audioContext: AudioContext | null = null;
+  private outputAnalyser: AnalyserNode | null = null;
+  private outputAudioContext: AudioContext | null = null;
   private destroyed = false;
   private inputActive = false;
 
@@ -482,9 +486,14 @@ export class RealtimeVoiceSession {
     this.setState("idle");
   }
 
-  /** Get the audio analyser node for waveform visualization. */
+  /** Get the mic input analyser node for visualization. */
   getAnalyser(): AnalyserNode | null {
     return this.analyser;
+  }
+
+  /** Get the output (assistant voice) analyser node for visualization. */
+  getOutputAnalyser(): AnalyserNode | null {
+    return this.outputAnalyser;
   }
 
   // ---------------------------------------------------------------------------
@@ -666,6 +675,18 @@ export class RealtimeVoiceSession {
     this.audioElement.play().catch((err) => {
       console.debug('[RealtimeVoice] Audio playback failed:', (err as Error).message);
     });
+
+    // Create analyser for the output (assistant) audio stream.
+    // Don't connect to destination — the Audio element handles playback.
+    try {
+      this.outputAudioContext = new AudioContext();
+      this.outputAnalyser = this.outputAudioContext.createAnalyser();
+      this.outputAnalyser.fftSize = 256;
+      const source = this.outputAudioContext.createMediaStreamSource(stream);
+      source.connect(this.outputAnalyser);
+    } catch (err) {
+      console.debug("[realtime-voice] Output analyser setup failed:", (err as Error).message);
+    }
   }
 
   private setupAudioAnalyser() {
@@ -773,9 +794,32 @@ export class RealtimeVoiceSession {
         this.emit({ type: "speaking-end" });
         break;
 
-      case "error":
+      case "input_audio_buffer.speech_started":
+        this.emit({ type: "user-speaking-start" });
         break;
 
+      case "input_audio_buffer.speech_stopped":
+        this.emit({ type: "user-speaking-end" });
+        break;
+
+      case "response.done": {
+        // Log whether the model used a tool or just spoke
+        const output = (event as Record<string, unknown>).response as Record<string, unknown> | undefined;
+        const outputItems = (output?.output as Array<Record<string, unknown>>) ?? [];
+        const toolCalls = outputItems.filter((o) => o.type === "function_call");
+        if (toolCalls.length === 0) {
+          // Model responded without calling a tool — persist for terminal visibility
+          window.electronAPI?.voice.persistTranscript?.({
+            conversationId: this.conversationId ?? "voice-rtc",
+            role: "assistant",
+            text: "[NO TOOL CALL — model responded conversationally]",
+          });
+        }
+        break;
+      }
+
+      case "error":
+        break;
 
       default:
         break;
@@ -783,11 +827,165 @@ export class RealtimeVoiceSession {
   }
 
   // ---------------------------------------------------------------------------
-  // Function call execution — single orchestrator_chat tool
+  // Function call execution
   // ---------------------------------------------------------------------------
+
+  /**
+   * Call Mercury endpoint directly from the renderer using the same
+   * auth/URL resolution as the voice session endpoint.
+   * Then forward tool results to main process for Neri UI dispatch.
+   */
+  private async callMercury(message: string): Promise<string> {
+    const { endpoint, headers } = await createServiceRequest("/api/mercury/chat");
+    console.log("[Voice RTC] Mercury call:", message, "→", endpoint);
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        conversationId: this.conversationId,
+      }),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`Mercury ${res.status}: ${detail}`);
+    }
+
+    const data = (await res.json()) as {
+      toolResults: Array<{
+        action: string;
+        spoken_summary?: string;
+        query?: string;
+        results?: Array<{ title: string; url: string; snippet: string }>;
+        title?: string;
+        html?: string;
+        operation?: string;
+        window_type?: string;
+      }>;
+      text: string | null;
+    };
+
+    // Log to terminal via persistTranscript
+    const actions = data.toolResults.map((tr) => `${tr.action}(${tr.spoken_summary ?? ""})`).join(", ");
+    window.electronAPI?.voice.persistTranscript?.({
+      conversationId: this.conversationId ?? "voice-rtc",
+      role: "assistant",
+      text: `[MERCURY RESULTS: ${actions || "none"}]`,
+    });
+
+    // Dispatch Neri UI commands — store is in the same overlay renderer
+    const api = window.electronAPI;
+    for (const tr of data.toolResults) {
+      switch (tr.action) {
+        case "show_search":
+          console.log("[Voice RTC] Calling showNeri for search");
+          api?.overlay.showNeri?.();
+          import("@/app/neri/neri-store").then(({ getNeriStore }) => {
+            getNeriStore().dispatch({
+              type: "open-search-window",
+              query: tr.query ?? "",
+              results: tr.results ?? [],
+            });
+          });
+          break;
+        case "open_dashboard":
+          window.electronAPI?.voice.persistTranscript?.({
+            conversationId: this.conversationId ?? "voice-rtc",
+            role: "assistant",
+            text: `[DISPATCH: showNeri, api exists=${!!api}, showNeri exists=${!!api?.overlay?.showNeri}]`,
+          });
+          api?.overlay.showNeri?.();
+          break;
+        case "close_dashboard":
+          api?.overlay.hideNeri?.();
+          break;
+        case "create_canvas":
+          api?.overlay.showNeri?.();
+          import("@/app/neri/neri-store").then(({ getNeriStore }) => {
+            getNeriStore().dispatch({
+              type: "open-canvas-window",
+              title: tr.title ?? "Canvas",
+              html: tr.html ?? "",
+            });
+          });
+          break;
+        case "manage_windows":
+          if (tr.operation === "close" && tr.window_type) {
+            import("@/app/neri/neri-store").then(({ getNeriStore }) => {
+              getNeriStore().dispatch({
+                type: "close-window-by-type",
+                windowType: tr.window_type as string,
+              });
+            });
+          }
+          break;
+      }
+    }
+
+    // Return spoken summary for voice agent
+    const spokenParts = data.toolResults
+      .map((tr) => tr.spoken_summary)
+      .filter(Boolean);
+    return spokenParts.join(" ") || data.text || "";
+  }
+
+  /**
+   * Fire Mercury in the background. The tool call already returned a quick
+   * acknowledgment so the voice agent can speak immediately. When Mercury
+   * completes, inject the real result into the conversation and trigger
+   * a follow-up response.
+   */
+  private callMercuryAsync(message: string, _callId: string): void {
+    this.callMercury(message)
+      .then((spokenResult) => {
+        if (!spokenResult || spokenResult === "Working on it.") return;
+        // Inject Mercury's result as a new user-invisible context message
+        // and trigger the model to speak the result
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: the action completed. Here is the result to share with the user: "${spokenResult}"]`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+      })
+      .catch((err) => {
+        console.error("[realtime-voice] Mercury async error:", err);
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: the action failed with error: "${(err as Error).message}". Let the user know briefly.]`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+      });
+  }
 
   private async handleFunctionCall(item: Record<string, unknown>) {
     const name = item.name as string;
+    console.log("[realtime-voice] handleFunctionCall called with tool:", name);
+    // Forward to main process so it shows in terminal
+    window.electronAPI?.voice.persistTranscript?.({
+      conversationId: this.conversationId ?? "voice-rtc",
+      role: "assistant",
+      text: `[TOOL CALL: ${name}]`,
+    });
     const callId = item.call_id as string;
     const argsStr = item.arguments as string;
 
@@ -803,17 +1001,33 @@ export class RealtimeVoiceSession {
 
     let result: string;
     try {
-      if (name === "orchestrator_chat") {
+      if (name === "goodbye") {
+        result = "Session ended.";
+
+        // Send the tool output and trigger one final response so the model
+        // can speak its goodbye before we disconnect.
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: callId,
+            output: result,
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+        this.emit({ type: "tool-end", name, callId, result });
+
+        // Give the model a moment to speak, then end voice session
+        setTimeout(() => {
+          window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
+        }, 3000);
+        return; // Skip the normal tool output flow below
+      } else if (name === "perform_action") {
         const message = (args.message as string) ?? "";
-        const api = window.electronAPI;
-        if (!api?.voice.orchestratorChat) {
-          result = "Error: Electron API not available";
-        } else {
-          result = await api.voice.orchestratorChat({
-            conversationId: this.conversationId ?? "voice-rtc",
-            message,
-          });
-        }
+        // Return acknowledgment immediately so voice agent can speak
+        // Mercury runs in background and injects real result when done
+        result = "Working on it.";
+        this.callMercuryAsync(message, callId);
       } else {
         result = `Unknown tool: ${name}`;
       }
@@ -834,8 +1048,13 @@ export class RealtimeVoiceSession {
       },
     });
 
-    // Trigger model to continue (speak the result)
-    this.sendEvent({ type: "response.create" });
+    // For async Mercury calls, don't request a response here — the
+    // callMercuryAsync callback will inject the real result and trigger
+    // response.create once Mercury completes. Requesting one now would
+    // cause a premature "it should be open" before Mercury actually returns.
+    if (name !== "perform_action") {
+      this.sendEvent({ type: "response.create" });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -871,6 +1090,14 @@ export class RealtimeVoiceSession {
       });
       this.audioContext = null;
       this.analyser = null;
+    }
+
+    if (this.outputAudioContext) {
+      this.outputAudioContext.close().catch((err) => {
+        console.debug('[RealtimeVoice] Output audio context close failed:', (err as Error).message);
+      });
+      this.outputAudioContext = null;
+      this.outputAnalyser = null;
     }
 
     this.assistantTranscriptBuffer = "";

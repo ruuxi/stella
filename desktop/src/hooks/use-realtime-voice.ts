@@ -14,7 +14,10 @@ import { appendLocalEvent } from "@/services/local-chat-store";
 
 interface UseRealtimeVoiceResult {
   analyserRef: React.RefObject<AnalyserNode | null>;
+  outputAnalyserRef: React.RefObject<AnalyserNode | null>;
   isConnected: boolean;
+  isSpeaking: boolean;
+  isUserSpeaking: boolean;
   sessionState: VoiceSessionState;
 }
 
@@ -44,7 +47,10 @@ interface VoiceSessionManagerDeps {
   appendEventRef: { current: (...args: any[]) => any };
   deviceIdRef: { current: string | null };
   analyserRef: { current: AnalyserNode | null };
+  outputAnalyserRef: { current: AnalyserNode | null };
   onStateChange: (state: VoiceSessionState) => void;
+  onSpeakingChange: (isSpeaking: boolean) => void;
+  onUserSpeakingChange: (isUserSpeaking: boolean) => void;
 }
 
 export class VoiceSessionManager {
@@ -70,6 +76,9 @@ export class VoiceSessionManager {
   stop(): void {
     this.aborted = true;
     this.deps.analyserRef.current = null;
+    this.deps.outputAnalyserRef.current = null;
+    this.deps.onSpeakingChange(false);
+    this.deps.onUserSpeakingChange(false);
     this.deps.onStateChange("idle");
     void this.teardownSession();
   }
@@ -177,6 +186,7 @@ export class VoiceSessionManager {
       if (event.type === "state-change") {
         this.deps.onStateChange(event.state);
         this.deps.analyserRef.current = session.getAnalyser();
+        this.deps.outputAnalyserRef.current = session.getOutputAnalyser();
         if (event.state === "connected") {
           this.retryAttemptRef.current = 0;
           this.scheduleRotate();
@@ -184,6 +194,23 @@ export class VoiceSessionManager {
           this.clearRotateTimer();
           this.scheduleRetry();
         }
+        return;
+      }
+
+      if (event.type === "speaking-start") {
+        this.deps.onSpeakingChange(true);
+        return;
+      }
+      if (event.type === "speaking-end") {
+        this.deps.onSpeakingChange(false);
+        return;
+      }
+      if (event.type === "user-speaking-start") {
+        this.deps.onUserSpeakingChange(true);
+        return;
+      }
+      if (event.type === "user-speaking-end") {
+        this.deps.onUserSpeakingChange(false);
         return;
       }
 
@@ -261,8 +288,11 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   const { state } = useUiState();
   const chatStore = useOptionalChatStore();
   const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
+  const isSpeakingRef = useRef(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
 
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   const windowType = useWindowType();
   const isSessionOwnerWindow = windowType === "overlay" || state.window === windowType;
@@ -302,7 +332,10 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
       appendEventRef,
       deviceIdRef,
       analyserRef,
+      outputAnalyserRef,
       onStateChange: setSessionState,
+      onSpeakingChange: (v: boolean) => { isSpeakingRef.current = v; },
+      onUserSpeakingChange: setIsUserSpeaking,
     });
     managerRef.current = manager;
     manager.start();
@@ -320,7 +353,10 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
 
   return {
     analyserRef,
+    outputAnalyserRef,
     isConnected: sessionState === "connected",
+    isSpeaking: isSpeakingRef.current,
+    isUserSpeaking,
     sessionState,
   };
 }
