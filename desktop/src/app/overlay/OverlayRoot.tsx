@@ -6,7 +6,10 @@ import { MiniShell } from "../shell/mini/MiniShell";
 import { VoiceOverlay } from "@/app/overlay/VoiceOverlay";
 import { MorphTransition } from "@/app/overlay/MorphTransition";
 
-const NiriDemo = lazy(() => import("@/app/niri/NiriDemo"));
+import { getNeriStore, getNeriWindowSummary } from "@/app/neri/neri-store";
+import type { NeriWindowType } from "@/app/neri/neri-types";
+
+const NeriDashboard = lazy(() => import("@/app/neri/NeriDashboard"));
 
 /**
  * OverlayRoot manages the unified transparent overlay window.
@@ -30,7 +33,8 @@ type OverlayState = {
   miniPosition: { x: number; y: number } | null;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
-  niriVisible: boolean;
+  neriVisible: boolean;
+  neriCursor: { x: number; y: number } | null;
 };
 
 type OverlayAction =
@@ -45,8 +49,8 @@ type OverlayAction =
   | { type: "mini:preview"; visible: boolean }
   | { type: "voice:show"; position: { x: number; y: number } }
   | { type: "voice:hide" }
-  | { type: "niri:show" }
-  | { type: "niri:hide" };
+  | { type: "neri:show"; cursor: { x: number; y: number } }
+  | { type: "neri:hide" };
 
 const initialState: OverlayState = {
   modifierBlock: false,
@@ -58,7 +62,8 @@ const initialState: OverlayState = {
   miniPosition: null,
   voiceVisible: false,
   voicePosition: null,
-  niriVisible: false,
+  neriVisible: false,
+  neriCursor: null,
 };
 
 function overlayReducer(state: OverlayState, action: OverlayAction): OverlayState {
@@ -85,18 +90,18 @@ function overlayReducer(state: OverlayState, action: OverlayAction): OverlayStat
       return { ...state, voiceVisible: true, voicePosition: action.position };
     case "voice:hide":
       return { ...state, voiceVisible: false };
-    case "niri:show":
-      return { ...state, niriVisible: true };
-    case "niri:hide":
-      return { ...state, niriVisible: false };
+    case "neri:show":
+      return { ...state, neriVisible: true, neriCursor: action.cursor };
+    case "neri:hide":
+      return { ...state, neriVisible: false };
     default:
       return state;
   }
 }
 
-const VOICE_PILL_SIZE = {
-  width: 148,
-  height: 36,
+const VOICE_CREATURE_SIZE = {
+  width: 168,
+  height: 168,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -214,22 +219,72 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
     };
   }, [dispatch]);
 
-  // Niri demo visibility.
+  // Neri dashboard visibility.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
 
-    const cleanupShow = api.overlay.onShowNiri?.(() => {
-      dispatch({ type: "niri:show" });
+    const cleanupShow = api.overlay.onShowNeri?.((data: { cursorX: number; cursorY: number }) => {
+      dispatch({ type: "neri:show", cursor: { x: data.cursorX, y: data.cursorY } });
     });
-    const cleanupHide = api.overlay.onHideNiri?.(() => {
-      dispatch({ type: "niri:hide" });
+    const cleanupHide = api.overlay.onHideNeri?.(() => {
+      dispatch({ type: "neri:hide" });
     });
     return () => {
       cleanupShow?.();
       cleanupHide?.();
     };
   }, [dispatch]);
+
+  // Neri Mercury command routing — IPC listeners from main process.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanups: (() => void)[] = [];
+
+    const onSearch = api.overlay.onNeriOpenSearch?.((data: { query: string; results: Array<{ title: string; url: string; snippet: string }> }) => {
+      getNeriStore().dispatch({ type: "open-search-window", query: data.query, results: data.results });
+    });
+    if (onSearch) cleanups.push(onSearch);
+
+    const onCanvas = api.overlay.onNeriOpenCanvas?.((data: { title: string; html: string }) => {
+      getNeriStore().dispatch({ type: "open-canvas-window", title: data.title, html: data.html });
+    });
+    if (onCanvas) cleanups.push(onCanvas);
+
+    const onManage = api.overlay.onNeriManageWindow?.((data: { operation: string; window_type?: string }) => {
+      if (data.operation === "close" && data.window_type) {
+        getNeriStore().dispatch({ type: "close-window-by-type", windowType: data.window_type as NeriWindowType });
+      }
+    });
+    if (onManage) cleanups.push(onManage);
+
+    return () => { cleanups.forEach((c) => c()); };
+  }, []);
+
+  // Report Neri window state to main process for Mercury context.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.overlay.reportNeriWindowState) return;
+
+    const store = getNeriStore();
+
+    // Only report when the window list actually changes (not on scroll/focus)
+    let lastJson = "";
+    const report = () => {
+      const summary = getNeriWindowSummary();
+      const json = JSON.stringify(summary);
+      if (json === lastJson) return;
+      lastJson = json;
+      api.overlay.reportNeriWindowState(summary);
+    };
+
+    const unsubscribe = store.subscribe(report);
+    report(); // initial state
+
+    return unsubscribe;
+  }, []);
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +356,7 @@ function useMiniDrag(
 function useOverlayHitTesting(
   state: OverlayState,
   miniRef: React.RefObject<HTMLDivElement | null>,
-  niriRef: React.RefObject<HTMLDivElement | null>,
+  neriRef: React.RefObject<HTMLDivElement | null>,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
   useEffect(() => {
@@ -328,9 +383,9 @@ function useOverlayHitTesting(
       return;
     }
 
-    // For mini shell, standalone voice, and niri: only interactive when cursor
+    // For mini shell, standalone voice, and neri: only interactive when cursor
     // is over an active interactive region.
-    if (!state.miniVisible && !state.voiceVisible && !state.niriVisible) {
+    if (!state.miniVisible && !state.voiceVisible && !state.neriVisible) {
       updateInteractive(false);
       return;
     }
@@ -351,21 +406,21 @@ function useOverlayHitTesting(
 
       let isOverVoice = false;
       if (state.voiceVisible && state.voicePosition) {
-        const left = state.voicePosition.x - VOICE_PILL_SIZE.width / 2;
-        const top = state.voicePosition.y - VOICE_PILL_SIZE.height / 2;
+        const left = state.voicePosition.x - VOICE_CREATURE_SIZE.width / 2;
+        const top = state.voicePosition.y - VOICE_CREATURE_SIZE.height / 2;
         isOverVoice =
           e.clientX >= left &&
-          e.clientX <= left + VOICE_PILL_SIZE.width &&
+          e.clientX <= left + VOICE_CREATURE_SIZE.width &&
           e.clientY >= top &&
-          e.clientY <= top + VOICE_PILL_SIZE.height;
+          e.clientY <= top + VOICE_CREATURE_SIZE.height;
       }
 
-      let isOverNiri = false;
-      if (state.niriVisible) {
-        const niriEl = niriRef.current;
-        if (niriEl) {
-          const rect = niriEl.getBoundingClientRect();
-          isOverNiri =
+      let isOverNeri = false;
+      if (state.neriVisible) {
+        const neriEl = neriRef.current;
+        if (neriEl) {
+          const rect = neriEl.getBoundingClientRect();
+          isOverNeri =
             e.clientX >= rect.left &&
             e.clientX <= rect.right &&
             e.clientY >= rect.top &&
@@ -373,13 +428,13 @@ function useOverlayHitTesting(
         }
       }
 
-      updateInteractive(isOverMini || isOverVoice || isOverNiri);
+      updateInteractive(isOverMini || isOverVoice || isOverNeri);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [
-    state.niriVisible,
+    state.neriVisible,
     state.regionCaptureActive,
     state.miniPreviewVisible,
     state.modifierBlock,
@@ -388,7 +443,7 @@ function useOverlayHitTesting(
     state.voiceVisible,
     state.voicePosition,
     miniRef,
-    niriRef,
+    neriRef,
     updateInteractive,
   ]);
 
@@ -400,7 +455,7 @@ function useOverlayHitTesting(
       state.miniPreviewVisible ||
       state.miniVisible ||
       state.voiceVisible ||
-      state.niriVisible;
+      state.neriVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -417,7 +472,7 @@ export function OverlayRoot() {
   const interactiveRef = useRef(false);
   const miniRef = useRef<HTMLDivElement>(null);
   const radialRef = useRef<HTMLDivElement>(null);
-  const niriRef = useRef<HTMLDivElement>(null);
+  const neriRef = useRef<HTMLDivElement>(null);
   const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
 
   // Wire up all IPC subscriptions (radial, modifier, region, mini, voice)
@@ -433,7 +488,7 @@ export function OverlayRoot() {
     window.electronAPI?.overlay.setInteractive?.(shouldBeInteractive);
   }, []);
 
-  useOverlayHitTesting(state, miniRef, niriRef, updateInteractive);
+  useOverlayHitTesting(state, miniRef, neriRef, updateInteractive);
 
   const handleMiniPreviewVisibilityChange = useCallback((visible: boolean) => {
     dispatch({ type: "mini:preview", visible });
@@ -443,8 +498,8 @@ export function OverlayRoot() {
     window.electronAPI?.voice.submitTranscript?.(transcript);
   }, []);
 
-  const handleNiriClose = useCallback(() => {
-    window.electronAPI?.overlay.hideNiri?.();
+  const handleNeriClose = useCallback(() => {
+    window.electronAPI?.overlay.hideNeri?.();
   }, []);
 
   return (
@@ -518,10 +573,10 @@ export function OverlayRoot() {
 
       <MorphTransition />
 
-      {/* Niri demo: mounted only when active */}
-      {state.niriVisible && (
+      {/* Neri dashboard: mounted only when active */}
+      {state.neriVisible && (
         <Suspense fallback={null}>
-          <NiriDemo onClose={handleNiriClose} panelRef={niriRef} />
+          <NeriDashboard onClose={handleNeriClose} panelRef={neriRef} cursorPosition={state.neriCursor} />
         </Suspense>
       )}
     </div>
