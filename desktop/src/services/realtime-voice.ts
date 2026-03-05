@@ -249,6 +249,7 @@ export class RealtimeVoiceSession {
 
   // Accumulated transcript fragments
   private assistantTranscriptBuffer = "";
+  private lastUserTranscript = "";
 
   // Conversation trace log — sequential record of every event for debugging
   private static readonly MAX_TRACE_ENTRIES = 500;
@@ -764,6 +765,7 @@ export class RealtimeVoiceSession {
       case "conversation.item.input_audio_transcription.completed": {
         const transcript = (event as { transcript?: string }).transcript;
         if (transcript) {
+          this.lastUserTranscript = transcript;
           this.trace("USER_MSG", transcript);
           this.emit({
             type: "user-transcript",
@@ -1001,31 +1003,40 @@ export class RealtimeVoiceSession {
 
     let result: string;
     try {
-      if (name === "goodbye") {
-        result = "Session ended.";
-
-        // Send the tool output and trigger one final response so the model
-        // can speak its goodbye before we disconnect.
+      if (name === "no_response") {
+        // User is still thinking — stay silent. Send tool output but
+        // do NOT trigger response.create so the model produces no speech.
         this.sendEvent({
           type: "conversation.item.create",
           item: {
             type: "function_call_output",
             call_id: callId,
-            output: result,
+            output: "ok",
           },
         });
-        this.sendEvent({ type: "response.create" });
-        this.emit({ type: "tool-end", name, callId, result });
+        this.emit({ type: "tool-end", name, callId, result: "ok" });
+        return;
+      } else if (name === "goodbye") {
+        // The model already spoke its farewell before calling the tool.
+        // Just send the tool output silently and disconnect.
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: callId,
+            output: "ok",
+          },
+        });
+        this.emit({ type: "tool-end", name, callId, result: "ok" });
 
-        // Give the model a moment to speak, then end voice session
+        // Brief delay so the farewell audio finishes playing
         setTimeout(() => {
           window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
-        }, 3000);
-        return; // Skip the normal tool output flow below
+        }, 2000);
+        return;
       } else if (name === "perform_action") {
-        const message = (args.message as string) ?? "";
-        // Return acknowledgment immediately so voice agent can speak
-        // Mercury runs in background and injects real result when done
+        // Use the user's actual transcript instead of the model's paraphrase
+        const message = this.lastUserTranscript || (args.message as string) || "";
         result = "Working on it.";
         this.callMercuryAsync(message, callId);
       } else {
