@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { extractProvider as sharedExtractProvider } from "@stella/shared";
 
 export type CatalogModel = {
@@ -104,8 +104,8 @@ async function fetchCatalogModels(): Promise<CatalogModel[] | null> {
 
 export function useModelCatalog() {
   const [models, setModels] = useState<CatalogModel[]>(FALLBACK_MODELS);
-  const [groups, setGroups] = useState<ProviderGroup[]>(() => groupByProvider(FALLBACK_MODELS));
   const [loading, setLoading] = useState(true);
+  const groups = useMemo(() => groupByProvider(models), [models]);
 
   useEffect(() => {
     let canceled = false;
@@ -114,7 +114,6 @@ export function useModelCatalog() {
       const list = await fetchCatalogModels();
       if (!canceled && list) {
         setModels(list);
-        setGroups(groupByProvider(list));
       }
       if (!canceled) setLoading(false);
     }

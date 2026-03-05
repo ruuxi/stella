@@ -45,9 +45,8 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
     return handlers;
   }, [handleCardSelect]);
 
-  const selectedIntegration = useMemo(
-    () => allIntegrations.find((integration) => integration.provider === selectedProvider),
-    [selectedProvider],
+  const selectedIntegration = allIntegrations.find(
+    (integration) => integration.provider === selectedProvider,
   );
 
   return (

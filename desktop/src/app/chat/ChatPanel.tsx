@@ -3,7 +3,15 @@
  * Provides resize handle, open/close animation, and collapse toggle.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react'
 import {
   MAX_CHAT_WIDTH_RATIO,
   MIN_CHAT_WIDTH,
@@ -11,6 +19,34 @@ import {
 } from '@/providers/workspace-state'
 
 const ANIM_DURATION = 350 // ms, matches CSS chat-slide-out duration
+const OPEN_CHAT_ICON = (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
+)
+const COLLAPSE_CHAT_ICON = (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M9 18l6-6-6-6" />
+  </svg>
+)
 
 export function ChatPanel({ children }: { children: ReactNode }) {
   const { state, setChatWidth, setChatOpen } = useWorkspace()
@@ -21,20 +57,25 @@ export function ChatPanel({ children }: { children: ReactNode }) {
   const [isResizing, setIsResizing] = useState(false)
   const [draftChatWidth, setDraftChatWidth] = useState<number | null>(null)
   const wasOpenRef = useRef(isChatOpen)
+  const isChatOpenRef = useRef(isChatOpen)
   const draftWidthRef = useRef<number | null>(null)
+  const widthRef = useRef(chatWidth)
+  const resizeListenersRef = useRef<{
+    move: (event: MouseEvent) => void
+    up: () => void
+  } | null>(null)
 
-  // Open: mount then trigger visible for animation
   useEffect(() => {
+    const wasOpen = wasOpenRef.current
+    wasOpenRef.current = isChatOpen
+
     if (isChatOpen) {
       setClosing(false)
       const frame = requestAnimationFrame(() => setVisible(true))
       return () => cancelAnimationFrame(frame)
     }
-  }, [isChatOpen])
 
-  // Close: play exit animation then unmount
-  useEffect(() => {
-    if (!isChatOpen && wasOpenRef.current) {
+    if (wasOpen) {
       setClosing(true)
       const timer = setTimeout(() => {
         setVisible(false)
@@ -42,26 +83,59 @@ export function ChatPanel({ children }: { children: ReactNode }) {
       }, ANIM_DURATION)
       return () => clearTimeout(timer)
     }
-    wasOpenRef.current = isChatOpen
   }, [isChatOpen])
 
-  // Keep wasOpenRef in sync
+  const teardownResizeListeners = useCallback(() => {
+    const listeners = resizeListenersRef.current
+    if (!listeners) return
+    document.removeEventListener('mousemove', listeners.move)
+    document.removeEventListener('mouseup', listeners.up)
+    resizeListenersRef.current = null
+  }, [])
+
+  const resetResizeUi = useCallback(() => {
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }, [])
+
+  const finishResize = useCallback(
+    (commit: boolean) => {
+      if (commit && draftWidthRef.current !== null) {
+        setChatWidth(draftWidthRef.current)
+      }
+      draftWidthRef.current = null
+      setDraftChatWidth(null)
+      setIsResizing(false)
+      resetResizeUi()
+      teardownResizeListeners()
+    },
+    [resetResizeUi, setChatWidth, teardownResizeListeners],
+  )
+
   useEffect(() => {
-    wasOpenRef.current = isChatOpen
-  }, [isChatOpen])
+    return () => {
+      draftWidthRef.current = null
+      resetResizeUi()
+      teardownResizeListeners()
+    }
+  }, [resetResizeUi, teardownResizeListeners])
 
   const handleToggle = useCallback(() => {
-    setChatOpen(!isChatOpen)
-  }, [isChatOpen, setChatOpen])
+    setChatOpen(!isChatOpenRef.current)
+  }, [setChatOpen])
 
   // --- Resize ---
-  const widthRef = useRef(chatWidth)
+  isChatOpenRef.current = isChatOpen
   widthRef.current = chatWidth
 
   const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.button !== 0) return
-      const startX = e.clientX
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return
+
+      teardownResizeListeners()
+      resetResizeUi()
+
+      const startX = event.clientX
       const startWidth = widthRef.current
       setIsResizing(true)
       draftWidthRef.current = startWidth
@@ -69,8 +143,8 @@ export function ChatPanel({ children }: { children: ReactNode }) {
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
 
-      const handleMouseMove = (e: MouseEvent) => {
-        const totalDelta = e.clientX - startX
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const totalDelta = moveEvent.clientX - startX
         const maxWidth = window.innerWidth * MAX_CHAT_WIDTH_RATIO
         const nextWidth = Math.max(
           MIN_CHAT_WIDTH,
@@ -81,22 +155,29 @@ export function ChatPanel({ children }: { children: ReactNode }) {
       }
 
       const handleMouseUp = () => {
-        if (draftWidthRef.current !== null) {
-          setChatWidth(draftWidthRef.current)
-        }
-        draftWidthRef.current = null
-        setDraftChatWidth(null)
-        setIsResizing(false)
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
+        finishResize(true)
       }
 
+      resizeListenersRef.current = { move: handleMouseMove, up: handleMouseUp }
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
     },
-    [setChatWidth],
+    [finishResize, resetResizeUi, teardownResizeListeners],
+  )
+
+  const handleCollapseClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation()
+      handleToggle()
+    },
+    [handleToggle],
+  )
+
+  const handleCollapseMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation()
+    },
+    [],
   )
 
   // Don't render the panel shell at all when fully closed
@@ -107,9 +188,7 @@ export function ChatPanel({ children }: { children: ReactNode }) {
         onClick={handleToggle}
         aria-label="Open chat"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
+        {OPEN_CHAT_ICON}
       </button>
     )
   }
@@ -126,18 +205,16 @@ export function ChatPanel({ children }: { children: ReactNode }) {
   return (
     <div
       className={shellClass}
-      style={{ '--chat-panel-width': `${panelWidth}px` } as React.CSSProperties}
+      style={{ '--chat-panel-width': `${panelWidth}px` } as CSSProperties}
     >
       <div className={`chat-resize-handle ${animClass}`} onMouseDown={handleMouseDown}>
         <button
           className="chat-panel-collapse"
-          onClick={(e) => { e.stopPropagation(); handleToggle() }}
-          onMouseDown={(e) => e.stopPropagation()}
+          onClick={handleCollapseClick}
+          onMouseDown={handleCollapseMouseDown}
           aria-label="Collapse chat"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 18l6-6-6-6" />
-          </svg>
+          {COLLAPSE_CHAT_ICON}
         </button>
       </div>
       <div className="chat-panel-viewport">

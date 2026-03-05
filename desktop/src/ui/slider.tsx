@@ -9,15 +9,16 @@ export interface SliderProps
   formatValue?: (value: number) => string;
 }
 
+const defaultFormatValue = (value: number) => String(value);
+
 export const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   SliderProps
 >(({ className, label, showValue, formatValue, value, ...props }, ref) => {
-  const displayValue = React.useMemo(() => {
-    if (!value || !Array.isArray(value) || value.length === 0) return "";
-    const fn = formatValue ?? ((v: number) => String(v));
-    return fn(value[0]);
-  }, [value, formatValue]);
+  const displayValue =
+    Array.isArray(value) && value.length > 0
+      ? (formatValue ?? defaultFormatValue)(value[0])
+      : "";
 
   return (
     <div data-component="slider" className={cn(className)}>

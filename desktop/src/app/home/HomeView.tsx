@@ -118,7 +118,7 @@ type HomeViewProps = {
 export function HomeView({ conversationId }: HomeViewProps) {
   const events = useConversationEvents(conversationId)
   const welcomeSuggestions = useWelcomeSuggestions(events)
-  const runningTasks = getRunningTasks(events)
+  const runningTasks = useMemo(() => getRunningTasks(events), [events])
   const scheduleItems = useScheduleData()
 
   const hasSuggestions = welcomeSuggestions.length > 0
