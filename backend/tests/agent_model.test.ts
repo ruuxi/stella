@@ -35,6 +35,11 @@ describe("AGENT_MODELS", () => {
     expect(typeof AGENT_MODELS.general.model).toBe("string");
   });
 
+  test("includes mercury config", () => {
+    expect(AGENT_MODELS.mercury).toBeDefined();
+    expect(AGENT_MODELS.mercury.model).toBe("inception/mercury-2");
+  });
+
   test("each config has required model field", () => {
     for (const [, config] of Object.entries(AGENT_MODELS)) {
       expect(typeof config.model).toBe("string");
@@ -52,6 +57,11 @@ describe("getModelConfig", () => {
   test("returns general config for general", () => {
     const config = getModelConfig("general");
     expect(config).toBe(AGENT_MODELS.general);
+  });
+
+  test("returns mercury config for mercury", () => {
+    const config = getModelConfig("mercury");
+    expect(config).toBe(AGENT_MODELS.mercury);
   });
 
   test("throws for unknown agent type", () => {

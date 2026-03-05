@@ -130,6 +130,11 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  mercury: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+  },
+
   synthesis: {
     model: "openai/gpt-5.3-codex",
     fallback: "zai/glm-4.7",
