@@ -54,13 +54,15 @@ export const CredentialRequestLayer = () => {
     setPending(null);
   };
 
+  if (!pending) return null;
+
   return (
     <CredentialModal
-      open={Boolean(pending)}
-      provider={pending?.provider ?? ""}
-      label={pending?.label}
-      description={pending?.description}
-      placeholder={pending?.placeholder}
+      open={true}
+      provider={pending.provider}
+      label={pending.label}
+      description={pending.description}
+      placeholder={pending.placeholder}
       onSubmit={handleSubmit}
       onCancel={handleCancel}
     />

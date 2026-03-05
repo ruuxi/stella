@@ -17,7 +17,7 @@ type MessageGroupProps = {
 const getMessageText = (event: EventRecord): string => {
   if (event.payload && typeof event.payload === "object") {
     const payload = event.payload as MessagePayload;
-    return payload.text ?? payload.content ?? payload.message ?? "";
+    return payload.text ?? "";
   }
   return "";
 };

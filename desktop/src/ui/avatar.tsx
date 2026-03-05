@@ -43,7 +43,7 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
             }}
           />
         ) : (
-          fallback?.[0]
+          fallback[0]
         )}
       </div>
     );

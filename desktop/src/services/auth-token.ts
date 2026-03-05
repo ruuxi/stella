@@ -40,7 +40,8 @@ export async function getConvexToken(): Promise<string | null> {
     // Parse JWT exp claim for precise refresh timing
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
-      const expMs = (payload.exp ?? 0) * 1000;
+      if (typeof payload.exp !== "number") throw new Error("Missing exp claim");
+      const expMs = payload.exp * 1000;
       tokenExpiresAt = expMs - REFRESH_MARGIN_MS;
     } catch (err) {
       console.debug("[auth-token] JWT parse failed, using 4-minute cache:", (err as Error).message);
