@@ -61,7 +61,7 @@ const DEFAULT_THRESHOLD = 0.5;
 const MIN_THRESHOLD = 0.3;
 
 // RMS gate — skip all inference when audio is near-silent
-const RMS_THRESHOLD = 400; // int16 scale; ~0.012 normalized
+const RMS_THRESHOLD = 250; // int16 scale; ~0.009 normalized
 
 function computeRms(pcm: Int16Array): number {
   let sum = 0;
