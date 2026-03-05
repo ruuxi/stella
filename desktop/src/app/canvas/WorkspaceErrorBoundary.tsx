@@ -10,7 +10,7 @@ type State = {
   error: Error | null
 }
 
-export class CanvasErrorBoundary extends Component<Props, State> {
+export class WorkspaceErrorBoundary extends Component<Props, State> {
   state: State = { error: null }
 
   static getDerivedStateFromError(error: Error): State {
@@ -18,7 +18,7 @@ export class CanvasErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[CanvasErrorBoundary]', error, info.componentStack)
+    console.error('[WorkspaceErrorBoundary]', error, info.componentStack)
   }
 
   handleRetry = () => {

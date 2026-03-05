@@ -5,7 +5,6 @@
  * that can execute entirely in the Electron process:
  * - WebFetch: direct fetch() + HTML-to-text
  * - ActivateSkill: read from ~/.stella/skills/ on disk
- * - OpenCanvas / CloseCanvas: IPC signal to renderer
  * - NoResponse: immediate return
  */
 

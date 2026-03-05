@@ -1,7 +1,7 @@
 /* ============================================
    WORKSPACE AREA
    Main content area — always visible.
-   Shows dashboard, canvas content, or store.
+   Shows the dashboard or an active workspace panel.
    ============================================ */
 
 .workspace-area {
@@ -14,7 +14,7 @@
   overflow: hidden;
 }
 
-/* --- Header bar (shown when non-dashboard canvas is active) --- */
+/* --- Header bar (shown when a panel is active) --- */
 
 .workspace-header {
   display: flex;

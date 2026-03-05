@@ -36,6 +36,3 @@ export const sanitizeExternalLinkUrl = (value: unknown): string | null =>
 
 export const sanitizeAttachmentImageUrl = (value: unknown): string | null =>
   sanitizeUrl(value, ATTACHMENT_IMAGE_PROTOCOLS);
-
-export const sanitizeCanvasAppUrl = (value: unknown): string | null =>
-  sanitizeExternalLinkUrl(value);

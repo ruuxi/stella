@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 // Mock the error boundary to pass through children
-vi.mock("../CanvasErrorBoundary", () => ({
-  CanvasErrorBoundary: ({
+vi.mock("../WorkspaceErrorBoundary", () => ({
+  WorkspaceErrorBoundary: ({
     children,
   }: {
     children: React.ReactNode;
@@ -24,13 +24,13 @@ import PanelRenderer from "./panel";
 
 describe("PanelRenderer", () => {
   it("shows loading state initially", () => {
-    render(<PanelRenderer canvas={{ name: "test-panel" }} />);
+    render(<PanelRenderer panel={{ name: "test-panel" }} />);
     expect(screen.getByTestId("spinner")).toBeTruthy();
     expect(screen.getByText("Loading panel...")).toBeTruthy();
   });
 
   it("shows error when name is empty string", async () => {
-    render(<PanelRenderer canvas={{ name: "" }} />);
+    render(<PanelRenderer panel={{ name: "" }} />);
 
     await waitFor(() => {
       expect(screen.getByText("Panel Error")).toBeTruthy();
@@ -39,7 +39,7 @@ describe("PanelRenderer", () => {
   });
 
   it("shows error for unsafe panel names", async () => {
-    render(<PanelRenderer canvas={{ name: "../escape" }} />);
+    render(<PanelRenderer panel={{ name: "../escape" }} />);
 
     await waitFor(() => {
       expect(screen.getByText("Panel Error")).toBeTruthy();
@@ -50,7 +50,7 @@ describe("PanelRenderer", () => {
   });
 
   it("shows error when dynamic import fails", async () => {
-    render(<PanelRenderer canvas={{ name: "nonexistent" }} />);
+    render(<PanelRenderer panel={{ name: "nonexistent" }} />);
 
     await waitFor(() => {
       expect(screen.getByText("Panel Error")).toBeTruthy();
@@ -60,7 +60,7 @@ describe("PanelRenderer", () => {
   });
 
   it("shows retry button on error", async () => {
-    render(<PanelRenderer canvas={{ name: "bad-panel" }} />);
+    render(<PanelRenderer panel={{ name: "bad-panel" }} />);
 
     await waitFor(() => {
       expect(screen.getByText("Panel Error")).toBeTruthy();
@@ -69,7 +69,7 @@ describe("PanelRenderer", () => {
   });
 
   it("retry button triggers reload", async () => {
-    render(<PanelRenderer canvas={{ name: "bad-panel" }} />);
+    render(<PanelRenderer panel={{ name: "bad-panel" }} />);
 
     await waitFor(() => {
       expect(screen.getByText("Retry")).toBeTruthy();
@@ -87,7 +87,7 @@ describe("PanelRenderer", () => {
   });
 
   it("appends .tsx extension if not present", async () => {
-    render(<PanelRenderer canvas={{ name: "my-chart" }} />);
+    render(<PanelRenderer panel={{ name: "my-chart" }} />);
 
     await waitFor(() => {
       expect(screen.getByText("Panel Error")).toBeTruthy();
@@ -95,7 +95,7 @@ describe("PanelRenderer", () => {
   });
 
   it("does not double-append .tsx if already present", async () => {
-    render(<PanelRenderer canvas={{ name: "my-chart.tsx" }} />);
+    render(<PanelRenderer panel={{ name: "my-chart.tsx" }} />);
 
     await waitFor(() => {
       expect(screen.getByText("Panel Error")).toBeTruthy();
@@ -106,7 +106,7 @@ describe("PanelRenderer", () => {
 
   it("applies correct CSS classes to error view", async () => {
     const { container } = render(
-      <PanelRenderer canvas={{ name: "fail" }} />
+      <PanelRenderer panel={{ name: "fail" }} />
     );
 
     await waitFor(() => {
@@ -119,7 +119,7 @@ describe("PanelRenderer", () => {
 
   it("applies correct CSS classes to loading view", () => {
     const { container } = render(
-      <PanelRenderer canvas={{ name: "test" }} />
+      <PanelRenderer panel={{ name: "test" }} />
     );
     expect(container.querySelector(".canvas-vite-loading")).toBeTruthy();
   });

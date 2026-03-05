@@ -1,18 +1,16 @@
 /**
  * WorkspaceArea: Main content area that always occupies the center of the layout.
- * Shows HomeView (default), canvas/app content, or onboarding demos.
+ * Shows HomeView (default), workspace panels, or onboarding demos.
  */
 
 import { lazy, Suspense, useCallback } from 'react'
-import { useWorkspace, type CanvasPayload } from '@/providers/workspace-state'
+import { useWorkspace, type WorkspacePanel } from '@/providers/workspace-state'
 import { Spinner } from '@/ui/spinner'
 import type { OnboardingDemo } from '@/app/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/types/ui'
 import { HomeView } from '@/app/home/HomeView'
-import { getLocalhostPort } from '@/lib/utils'
 
 const PanelRenderer = lazy(() => import('@/app/canvas/renderers/panel'))
-const AppframeRenderer = lazy(() => import('@/app/canvas/renderers/appframe'))
 const OnboardingCanvas = lazy(() =>
   import('@/app/onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
 )
@@ -31,16 +29,12 @@ export function WorkspaceArea({
   demoClosing,
   conversationId,
 }: WorkspaceAreaProps) {
-  const { state, closeCanvas } = useWorkspace()
-  const { canvas } = state
+  const { state, closePanel } = useWorkspace()
+  const { activePanel } = state
 
-  const handleCloseCanvas = useCallback(() => {
-    const port = getLocalhostPort(canvas?.url)
-    if (port) {
-      window.electronAPI?.system.shellKillByPort(port)
-    }
-    closeCanvas()
-  }, [canvas, closeCanvas])
+  const handleClosePanel = useCallback(() => {
+    closePanel()
+  }, [closePanel])
 
   // --- Render routing ---
 
@@ -55,17 +49,14 @@ export function WorkspaceArea({
     )
   }
 
-  // App view — canvas content with header
-  if (view === 'app' && canvas) {
+  // App view - active workspace panel with header
+  if (view === 'app' && activePanel) {
     return (
       <div className="workspace-area">
-        <CanvasHeader canvas={canvas} onClose={handleCloseCanvas} />
+        <WorkspaceHeader panel={activePanel} onClose={handleClosePanel} />
         <div className="workspace-content">
           <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
-            {canvas.url
-              ? <AppframeRenderer canvas={canvas} />
-              : <PanelRenderer canvas={canvas} />
-            }
+            <PanelRenderer panel={activePanel} />
           </Suspense>
         </div>
       </div>
@@ -82,18 +73,16 @@ export function WorkspaceArea({
   )
 }
 
-// --- Header sub-component for canvas ---
-
-function CanvasHeader({ canvas, onClose }: { canvas: CanvasPayload; onClose: () => void }) {
+function WorkspaceHeader({ panel, onClose }: { panel: WorkspacePanel; onClose: () => void }) {
   return (
     <div className="workspace-header">
       <span className="workspace-header-title">
-        {canvas.title ?? canvas.name}
+        {panel.title ?? panel.name}
       </span>
       <button
         className="workspace-header-close"
         onClick={onClose}
-        aria-label="Close canvas"
+        aria-label="Close panel"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 6L6 18M6 6l12 12" />
