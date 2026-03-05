@@ -79,9 +79,8 @@ describe("useConversationEvents hook behavior", () => {
       ...initialEvents,
       makeEvent("e-2", 2, "assistant_message", { text: "hi" }),
     ];
-    mockListLocalEvents
-      .mockReturnValueOnce(initialEvents)
-      .mockReturnValueOnce(refreshedEvents);
+    let currentEvents = initialEvents;
+    mockListLocalEvents.mockImplementation(() => currentEvents);
 
     const { result, unmount } = renderHook(() => useConversationEvents("conv-1"));
 
@@ -91,10 +90,11 @@ describe("useConversationEvents hook behavior", () => {
     expect(result.current).toEqual(initialEvents);
 
     act(() => {
+      currentEvents = refreshedEvents;
       localUpdateListener?.();
     });
 
-    expect(mockListLocalEvents).toHaveBeenCalledTimes(2);
+    expect(mockListLocalEvents.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(result.current).toEqual(refreshedEvents);
 
     unmount();

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
+import React, { Suspense, lazy, useState, useEffect } from "react";
 import { Spinner } from "@/ui/spinner";
 
 const DJStudioDemo = lazy(() =>
@@ -19,33 +19,36 @@ interface OnboardingCanvasProps {
 }
 
 export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({ activeDemo }) => {
+  const [renderedDemo, setRenderedDemo] = useState<OnboardingDemo>(activeDemo);
   const [visible, setVisible] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const lastDemoRef = useRef<OnboardingDemo>(null);
-
-  if (activeDemo) {
-    lastDemoRef.current = activeDemo;
-  }
 
   useEffect(() => {
     if (activeDemo) {
-      setClosing(false);
       // Trigger open animation next frame
-      requestAnimationFrame(() => setVisible(true));
-    } else if (visible) {
-      // Trigger close animation
-      setClosing(true);
-      setVisible(false);
-      const timer = setTimeout(() => {
-        setClosing(false);
-        lastDemoRef.current = null;
-      }, ANIM_DURATION);
-      return () => clearTimeout(timer);
+      const frame = requestAnimationFrame(() => {
+        setRenderedDemo(activeDemo);
+        setVisible(true);
+      });
+      return () => cancelAnimationFrame(frame);
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- close state must be applied immediately to start the exit animation.
+    setVisible(false);
   }, [activeDemo]);
 
-  const demo = activeDemo || lastDemoRef.current;
-  if (!demo && !closing) return null;
+  useEffect(() => {
+    if (activeDemo || !renderedDemo) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setRenderedDemo(null);
+    }, ANIM_DURATION);
+    return () => clearTimeout(timer);
+  }, [activeDemo, renderedDemo]);
+
+  const demo = activeDemo || renderedDemo;
+  const closing = !activeDemo && renderedDemo !== null;
+
+  if (!demo) return null;
 
   return (
     <div className={`onboarding-canvas ${visible ? "onboarding-canvas-open" : ""} ${closing ? "onboarding-canvas-closing" : ""}`}>
