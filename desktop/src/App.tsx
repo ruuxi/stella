@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { useUiState } from './providers/ui-state'
 import { getElectronApi } from './services/electron'
 import { AuthTokenBridge } from './app/auth/AuthTokenBridge'
@@ -86,7 +86,7 @@ const readPersistedSelfModHmrState = (): PersistedSelfModHmrState | null => {
 function App() {
   const { state } = useUiState()
   const api = getElectronApi()
-  const windowParam = useMemo(() => new URLSearchParams(window.location.search).get('window'), [])
+  const windowParam = new URLSearchParams(window.location.search).get('window')
   const isElectron = Boolean(api)
   const windowType = getWindowType(isElectron, windowParam, state.window)
   const [selfModHmr, setSelfModHmr] = useState<PersistedSelfModHmrState>(() => {

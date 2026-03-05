@@ -1,45 +1,9 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { authClient } from "@/lib/auth-client";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
-
-type Status = "idle" | "sending" | "sent" | "error";
-
-const getCallbackUrl = () => {
-  if (window.electronAPI) {
-    const protocol = (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined) ?? "Stella";
-    return `${protocol}://auth`;
-  }
-  return (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
-};
+import { useMagicLinkAuth } from "./useMagicLinkAuth";
 
 export const AuthPanel = () => {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<Status>("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  const callbackURL = useMemo(() => getCallbackUrl(), []);
-
-  const handleMagicLink = async (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setError("Enter an email address.");
-      return;
-    }
-    setError(null);
-    setStatus("sending");
-    try {
-      await authClient.$fetch("/sign-in/magic-link", {
-        method: "POST",
-        body: { email: trimmed, callbackURL },
-      });
-      setStatus("sent");
-    } catch (err) {
-      setStatus("error");
-      setError(err instanceof Error ? err.message : "Failed to send magic link.");
-    }
-  };
+  const { email, setEmail, status, error, handleMagicLinkSubmit } = useMagicLinkAuth();
 
   /*
   const handleSocial = async (provider: "google" | "github") => {
@@ -86,7 +50,7 @@ export const AuthPanel = () => {
         </div>
         */}
 
-        <form className="auth-panel-form" onSubmit={handleMagicLink}>
+        <form className="auth-panel-form" onSubmit={handleMagicLinkSubmit}>
           <TextField
             label="Email"
             type="email"
