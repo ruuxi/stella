@@ -5,17 +5,6 @@ import { useMagicLinkAuth } from "./useMagicLinkAuth";
 export const AuthPanel = () => {
   const { email, setEmail, status, error, handleMagicLinkSubmit } = useMagicLinkAuth();
 
-  /*
-  const handleSocial = async (provider: "google" | "github") => {
-    setError(null);
-    try {
-      await authClient.signIn.social({ provider, callbackURL });
-    } catch (err) {
-      setError((err as Error)?.message ?? `Failed to sign in with ${provider}.`);
-    }
-  };
-  */
-
   return (
     <div className="auth-panel">
       <div className="auth-panel-card">
@@ -23,32 +12,6 @@ export const AuthPanel = () => {
           <div className="auth-panel-title">Welcome to Stella</div>
           <div className="auth-panel-subtitle">Sign in to continue.</div>
         </div>
-
-        {/* Social logins disabled for now. Re-enable by uncommenting handleSocial + buttons. */}
-        {/*
-        <div className="auth-panel-actions">
-          <Button
-            type="button"
-            variant="primary"
-            className="auth-panel-button auth-panel-google"
-            onClick={() => handleSocial("google")}
-          >
-            Continue with Google
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            className="auth-panel-button auth-panel-github"
-            onClick={() => handleSocial("github")}
-          >
-            Continue with GitHub
-          </Button>
-        </div>
-
-        <div className="auth-panel-divider">
-          <span>or</span>
-        </div>
-        */}
 
         <form className="auth-panel-form" onSubmit={handleMagicLinkSubmit}>
           <TextField

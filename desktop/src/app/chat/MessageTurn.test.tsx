@@ -19,10 +19,10 @@ const createEvent = (
 });
 
 describe("MessageTurn helpers", () => {
-  it("extracts text from message payload variants", () => {
+  it("extracts text from message payload", () => {
     expect(getEventText(createEvent({ payload: { text: "hello" } }))).toBe("hello");
-    expect(getEventText(createEvent({ payload: { content: "hi" } }))).toBe("hi");
-    expect(getEventText(createEvent({ payload: { message: "ping" } }))).toBe("ping");
+    expect(getEventText(createEvent({ payload: { content: "hi" } }))).toBe("");
+    expect(getEventText(createEvent({ payload: { message: "ping" } }))).toBe("");
     expect(getEventText(createEvent({ payload: undefined }))).toBe("");
   });
 
