@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   sanitizeAttachmentImageUrl,
-  sanitizeCanvasAppUrl,
   sanitizeExternalLinkUrl,
 } from "./url-safety";
 
@@ -31,10 +30,5 @@ describe("url-safety", () => {
   it("blocks unsafe attachment image protocols", () => {
     expect(sanitizeAttachmentImageUrl("javascript:alert(1)")).toBeNull();
     expect(sanitizeAttachmentImageUrl("ftp://example.com/file.png")).toBeNull();
-  });
-
-  it("reuses external-link policy for canvas URLs", () => {
-    expect(sanitizeCanvasAppUrl("https://mini-app.example")).toBe("https://mini-app.example");
-    expect(sanitizeCanvasAppUrl("file:///tmp/app")).toBeNull();
   });
 });

@@ -1,20 +1,7 @@
 /* ============================================
    CANVAS RENDERERS
-   Styles for panel and appframe renderers.
+   Styles for workspace panel renderers.
    ============================================ */
-
-/* --- Shared empty state --- */
-
-.canvas-renderer-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 24px;
-  color: var(--text-weak);
-  font-size: 13px;
-  text-align: center;
-}
 
 /* ============================================
    PANEL (Vite-compiled TSX)
@@ -92,56 +79,4 @@
 
 .canvas-error-retry:hover {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
-}
-
-/* ============================================
-   APPFRAME (workspace mini-apps)
-   ============================================ */
-
-.canvas-appframe-wrap {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-}
-
-.canvas-appframe-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border-weak);
-  flex-shrink: 0;
-}
-
-.canvas-appframe-url {
-  font-size: 11px;
-  color: var(--text-weak);
-  font-family: var(--font-family-mono);
-  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.canvas-appframe-reload {
-  padding: 3px 8px;
-  font-size: 11px;
-  color: var(--text-weak);
-  background: transparent;
-  border: 1px solid var(--border-weak);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.canvas-appframe-reload:hover {
-  color: var(--text-strong);
-  border-color: var(--border-base);
-}
-
-.canvas-appframe-frame {
-  flex: 1;
-  border: none;
 }

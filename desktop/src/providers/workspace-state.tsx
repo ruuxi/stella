@@ -1,20 +1,16 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 
-// --- Types ---
-
-export type CanvasPayload = {
-  /** Name of the panel or app */
+export type WorkspacePanel = {
+  /** Stable panel identifier used by the workspace router. */
   name: string
-  /** Display title for the panel header */
+  /** Optional display title shown in the shell header. */
   title?: string
-  /** Dev server URL for workspace apps (iframe). If absent, loads as panel via dynamic import. */
-  url?: string
 }
 
 export type WorkspaceState = {
-  /** Active canvas content. null = show dashboard. */
-  canvas: CanvasPayload | null
+  /** Active workspace panel. null = show the home dashboard. */
+  activePanel: WorkspacePanel | null
   /** Chat panel width in pixels */
   chatWidth: number
   /** Whether the chat panel is open */
@@ -23,10 +19,10 @@ export type WorkspaceState = {
 
 type WorkspaceContextValue = {
   state: WorkspaceState
-  /** Set workspace content to a canvas payload */
-  openCanvas: (payload: CanvasPayload) => void
-  /** Clear workspace canvas (returns to dashboard) */
-  closeCanvas: () => void
+  /** Show a workspace panel in the center area. */
+  openPanel: (panel: WorkspacePanel) => void
+  /** Clear the active panel and return to the home dashboard. */
+  closePanel: () => void
   /** Update the chat panel width (called by resize handle) */
   setChatWidth: (width: number) => void
   /** Toggle the chat panel open/closed */
@@ -38,7 +34,7 @@ const MIN_CHAT_WIDTH = 320
 const MAX_CHAT_WIDTH_RATIO = 0.5 // Never exceed 50% of viewport
 
 const defaultState: WorkspaceState = {
-  canvas: null,
+  activePanel: null,
   chatWidth: DEFAULT_CHAT_WIDTH,
   isChatOpen: true,
 }
@@ -48,17 +44,17 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<WorkspaceState>(defaultState)
 
-  const openCanvas = useCallback((payload: CanvasPayload) => {
+  const openPanel = useCallback((panel: WorkspacePanel) => {
     setState((prev) => ({
       ...prev,
-      canvas: payload,
+      activePanel: panel,
     }))
   }, [])
 
-  const closeCanvas = useCallback(() => {
+  const closePanel = useCallback(() => {
     setState((prev) => ({
       ...prev,
-      canvas: null,
+      activePanel: null,
     }))
   }, [])
 
@@ -73,8 +69,8 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   }, [])
 
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ state, openCanvas, closeCanvas, setChatWidth, setChatOpen }),
-    [state, openCanvas, closeCanvas, setChatWidth, setChatOpen],
+    () => ({ state, openPanel, closePanel, setChatWidth, setChatOpen }),
+    [state, openPanel, closePanel, setChatWidth, setChatOpen],
   )
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>
