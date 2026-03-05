@@ -423,9 +423,9 @@ export const FullShell = () => {
           </button>
           <button
             className="onboarding-reset"
-            onClick={() => window.electronAPI?.overlay.showNiri?.()}
+            onClick={() => window.electronAPI?.overlay.showNeri?.()}
           >
-            Niri
+            Neri
           </button>
         </div>
       )}

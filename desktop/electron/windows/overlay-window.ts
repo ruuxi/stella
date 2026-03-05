@@ -201,7 +201,7 @@ export class OverlayWindowController {
   private activeRegionCapture = false
   private activeMini = false
   private activeVoice = false
-  private activeNiri = false
+  private activeNeri = false
 
   private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
@@ -215,19 +215,19 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
-  private readonly handleNiriRequest = () => {
-    this.showNiri()
+  private readonly handleNeriRequest = () => {
+    this.showNeri()
   }
-  private readonly handleNiriHideRequest = () => {
-    this.hideNiri()
+  private readonly handleNeriHideRequest = () => {
+    this.hideNeri()
   }
 
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.on('radial:animDone', this.handleRadialAnimDone)
-    ipcMain.on('overlay:showNiri:request', this.handleNiriRequest)
-    ipcMain.on('overlay:hideNiri:request', this.handleNiriHideRequest)
+    ipcMain.on('overlay:showNeri:request', this.handleNeriRequest)
+    ipcMain.on('overlay:hideNeri:request', this.handleNeriHideRequest)
   }
 
   getWindow() { return this.overlayWindow.getWindow() }
@@ -236,7 +236,7 @@ export class OverlayWindowController {
   create() { return this.overlayWindow.create() }
 
   private get isAnyActive() {
-    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph || this.activeNiri
+    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph || this.activeNeri
   }
 
   private hideOverlayIfIdle() {
@@ -255,7 +255,7 @@ export class OverlayWindowController {
 
   hideModifierBlock() {
     this.activeModifierBlock = false
-    if (!this.activeRegionCapture && !this.activeMini && !this.activeRadial) {
+    if (!this.isAnyActive) {
       this.overlayWindow.setIgnoreMouseEvents(true)
     }
     this.overlayWindow.send('overlay:modifierBlock', false)
@@ -304,7 +304,7 @@ export class OverlayWindowController {
   hideRadial() {
     if (!this.overlayWindow.getWindow()) return
     this.overlayWindow.send('radial:hide')
-    if (!this.activeRegionCapture && !this.activeMini && !this.activeModifierBlock) {
+    if (!this.isAnyActive) {
       this.overlayWindow.setIgnoreMouseEvents(true)
     }
     this.radialBounds = null
@@ -396,19 +396,26 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
-  // ─── Niri Demo ─────────────────────────────────────────────────────────
+  // ─── Neri Dashboard ────────────────────────────────────────────────────
 
-  showNiri() {
-    this.activeNiri = true
+  showNeri() {
+    this.activeNeri = true
     this.overlayWindow.show({ focus: true })
     this.overlayWindow.setIgnoreMouseEvents(false)
     this.overlayWindow.setFocusable(true)
-    this.overlayWindow.send('overlay:showNiri')
+    // Find the display the cursor is on and send its center (overlay-relative)
+    const cursor = screen.getCursorScreenPoint()
+    const display = screen.getDisplayNearestPoint(cursor)
+    const origin = this.overlayWindow.getOverlayOrigin()
+    this.overlayWindow.send('overlay:showNeri', {
+      cursorX: display.bounds.x + display.bounds.width / 2 - origin.x,
+      cursorY: display.bounds.y + display.bounds.height / 2 - origin.y,
+    })
   }
 
-  hideNiri() {
-    this.activeNiri = false
-    this.overlayWindow.send('overlay:hideNiri')
+  hideNeri() {
+    this.activeNeri = false
+    this.overlayWindow.send('overlay:hideNeri')
     this.overlayWindow.setIgnoreMouseEvents(true)
     this.overlayWindow.setFocusable(false)
     this.hideOverlayIfIdle()
@@ -446,8 +453,8 @@ export class OverlayWindowController {
   destroy() {
     ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
-    ipcMain.removeListener('overlay:showNiri:request', this.handleNiriRequest)
-    ipcMain.removeListener('overlay:hideNiri:request', this.handleNiriHideRequest)
+    ipcMain.removeListener('overlay:showNeri:request', this.handleNeriRequest)
+    ipcMain.removeListener('overlay:hideNeri:request', this.handleNeriHideRequest)
     this.overlayWindow.destroy()
   }
 }
