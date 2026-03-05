@@ -83,10 +83,9 @@ describe("CredentialRequestLayer", () => {
     mockCreateSecret.mockResolvedValue({ secretId: "secret-123" });
   });
 
-  it("renders CredentialModal closed initially", () => {
+  it("renders nothing initially when no pending request", () => {
     render(<CredentialRequestLayer />);
-    expect(screen.getByTestId("credential-modal")).toHaveAttribute("data-open", "false");
-    expect(screen.getByTestId("provider")).toHaveTextContent("");
+    expect(screen.queryByTestId("credential-modal")).toBeNull();
   });
 
   it("opens modal when credential request arrives", () => {
@@ -137,7 +136,7 @@ describe("CredentialRequestLayer", () => {
       label: "My API Key",
     });
 
-    expect(screen.getByTestId("credential-modal")).toHaveAttribute("data-open", "false");
+    expect(screen.queryByTestId("credential-modal")).toBeNull();
   });
 
   it("cancels credential request and closes modal", async () => {
@@ -156,19 +155,19 @@ describe("CredentialRequestLayer", () => {
     });
 
     expect(mockCancelCredential).toHaveBeenCalledWith({ requestId: "req-2" });
-    expect(screen.getByTestId("credential-modal")).toHaveAttribute("data-open", "false");
+    expect(screen.queryByTestId("credential-modal")).toBeNull();
   });
 
   it("does not crash when electronAPI is not available", () => {
     mockElectronApi = undefined;
     render(<CredentialRequestLayer />);
-    expect(screen.getByTestId("credential-modal")).toHaveAttribute("data-open", "false");
+    expect(screen.queryByTestId("credential-modal")).toBeNull();
   });
 
   it("does not crash when onCredentialRequest is not available", () => {
     mockElectronApi = { system: {} };
     render(<CredentialRequestLayer />);
-    expect(screen.getByTestId("credential-modal")).toHaveAttribute("data-open", "false");
+    expect(screen.queryByTestId("credential-modal")).toBeNull();
   });
 
   it("unsubscribes from credential request on unmount", () => {
