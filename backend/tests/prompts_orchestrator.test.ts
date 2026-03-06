@@ -11,25 +11,14 @@ describe("ORCHESTRATOR_AGENT_SYSTEM_PROMPT", () => {
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("Stella");
   });
 
-  test("defines routing paths", () => {
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("Routing");
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("General");
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("Explore");
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("Browser");
-  });
-
   test("mentions memory capabilities", () => {
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("RecallMemories");
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("SaveMemory");
   });
 
-  test("includes direct tool guardrails", () => {
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("Direct Tool Guardrails");
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("TaskCreate");
-  });
-
-  test("includes communication guidelines", () => {
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("Acknowledge first");
+  test("describes offline fallback role", () => {
+    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("offline");
+    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("WebSearch");
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("NoResponse");
   });
 });
