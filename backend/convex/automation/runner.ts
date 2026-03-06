@@ -34,7 +34,6 @@ type RunAgentTurnArgs = {
   agentType: string;
   ownerId?: string;
   userMessageId?: Id<"events">;
-  targetDeviceId?: string;
   transient?: boolean;
 };
 
@@ -72,7 +71,6 @@ export async function runAgentTurn({
   agentType,
   ownerId,
   userMessageId,
-  targetDeviceId,
   transient,
 }: RunAgentTurnArgs): Promise<RunAgentTurnResult> {
   await ensureBuiltins(ctx);
@@ -150,7 +148,6 @@ export async function runAgentTurn({
       ownerId: resolvedOwnerId,
       conversationId,
       userMessageId,
-      targetDeviceId,
       transient: Boolean(transient),
     },
   );

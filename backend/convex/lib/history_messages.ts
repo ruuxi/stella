@@ -1,10 +1,9 @@
-import { asPlainObjectRecord } from "./object_utils";
-import { stringifyBounded, truncateWithSuffix } from "./text_utils";
 import { estimateContextEventTokens } from "./context_window";
+import { asPlainObjectRecord } from "./object_utils";
+import { truncateWithSuffix } from "./text_utils";
 
 /**
- * Generic context event shape — compatible with both Convex Doc<"events">
- * and the frontend EventRecord type.
+ * Generic context event shape compatible with Convex event docs and local test fixtures.
  */
 export type ContextEvent = {
   _id: string;
@@ -45,45 +44,14 @@ export type HistoryBuildResult = {
   microcompactBoundary?: MicrocompactBoundaryPayload;
 };
 
-type PendingToolCall = {
-  requestId?: string;
-  toolName: string;
-};
-
 const MAX_TEXT_CHARS = 30_000;
-const MAX_JSON_CHARS = 12_000;
-
 const MICROCOMPACT_MIN_SAVED_TOKENS = 20_000;
 const MICROCOMPACT_DEFAULT_KEEP_TOKENS = 40_000;
-const MICROCOMPACT_PROTECT_RECENT_RESULTS = 3;
 const MICROCOMPACT_ATTACHMENT_TOKENS = 2_000;
-const MICROCOMPACT_SENTINEL_OPEN = "<microcompact_trimmed>";
-const MICROCOMPACT_SENTINEL_CLOSE = "</microcompact_trimmed>";
-const MICROCOMPACT_SENTINEL_TEXT =
-  "Tool result compacted to save context. Re-run the tool (for example Read) if you need the full output.";
-const MICROCOMPACT_TRIMMED_RESULT_TOKENS = Math.max(
-  8,
-  Math.ceil(
-    `${MICROCOMPACT_SENTINEL_OPEN}${MICROCOMPACT_SENTINEL_TEXT}${MICROCOMPACT_SENTINEL_CLOSE}`.length /
-      4,
-  ),
-);
-
-const MICROCOMPACT_ELIGIBLE_TOOLS = new Set([
-  "Read",
-  "Grep",
-  "Glob",
-  "Bash",
-  "ListFiles",
-  "Write",
-  "Edit",
-  "ShellStatus",
-]);
 
 const ellipsize = truncateWithSuffix;
 const asObject = asPlainObjectRecord;
 
-/** Browser-safe env var access (works in Node, Convex, and browser). */
 const getEnvVar = (key: string): string | undefined => {
   try {
     return typeof process !== "undefined" && process.env ? process.env[key] : undefined;
@@ -92,36 +60,11 @@ const getEnvVar = (key: string): string | undefined => {
   }
 };
 
-const normalizeRequestId = (event: ContextEvent): string | undefined => {
-  if (event.requestId && event.requestId.trim().length > 0) {
-    return event.requestId;
-  }
-  const payload = asObject(event.payload);
-  const fromPayload =
-    typeof payload.requestId === "string" ? payload.requestId.trim() : "";
-  return fromPayload.length > 0 ? fromPayload : undefined;
-};
-
-const normalizeToolName = (
-  payload: Record<string, unknown>,
-  fallbackToolName?: string,
-): string => {
-  const payloadToolName =
-    typeof payload.toolName === "string" ? payload.toolName.trim() : "";
-  return payloadToolName || fallbackToolName || "unknown_tool";
-};
-
 const isMicrocompactDisabled = (enabledOverride?: boolean): boolean => {
   if (enabledOverride === false) return true;
   const envDisabled = String(getEnvVar("DISABLE_MICROCOMPACT") ?? "").toLowerCase();
   return envDisabled === "1" || envDisabled === "true";
 };
-
-const isEligibleToolName = (toolName: string): boolean =>
-  MICROCOMPACT_ELIGIBLE_TOOLS.has(toolName);
-
-const stringifyValue = (value: unknown, maxChars = MAX_JSON_CHARS): string =>
-  stringifyBounded(value, maxChars);
 
 const formatTaskEvent = (
   eventType: string,
@@ -141,7 +84,7 @@ const formatTaskEvent = (
     const lines = ["[Task completed]"];
     if (taskId) lines.push(`task_id: ${taskId}`);
     if (payload.result !== undefined) {
-      lines.push(`result: ${stringifyValue(payload.result)}`);
+      lines.push(`result: ${JSON.stringify(payload.result)}`);
     }
     return { role: "user", content: lines.join("\n") };
   }
@@ -149,79 +92,11 @@ const formatTaskEvent = (
     const lines = ["[Task failed]"];
     if (taskId) lines.push(`task_id: ${taskId}`);
     if (payload.error !== undefined) {
-      lines.push(`error: ${stringifyValue(payload.error)}`);
+      lines.push(`error: ${String(payload.error)}`);
     }
     return { role: "user", content: lines.join("\n") };
   }
   return null;
-};
-
-const formatToolRequest = (event: ContextEvent): HistoryMessage => {
-  const payload = asObject(event.payload);
-  const toolName = normalizeToolName(payload);
-  const toolArgs = payload.args ?? {};
-  const agentType =
-    typeof payload.agentType === "string" ? payload.agentType : undefined;
-  const lines = [
-    `[Tool call] ${toolName}${agentType ? ` (agent: ${agentType})` : ""}`,
-  ];
-  const requestId = normalizeRequestId(event);
-  if (requestId) lines.push(`request_id: ${requestId}`);
-  lines.push(`args: ${stringifyValue(toolArgs)}`);
-  return { role: "assistant", content: lines.join("\n") };
-};
-
-const microcompactTrimmedMessage = () =>
-  `${MICROCOMPACT_SENTINEL_OPEN}${MICROCOMPACT_SENTINEL_TEXT}${MICROCOMPACT_SENTINEL_CLOSE}`;
-
-const isTrimmedResultPayload = (value: unknown): boolean =>
-  typeof value === "string" &&
-  value.includes(MICROCOMPACT_SENTINEL_OPEN) &&
-  value.includes(MICROCOMPACT_SENTINEL_CLOSE);
-
-const formatToolResult = (
-  event: ContextEvent,
-  fallbackToolName: string | undefined,
-  compactedToolIds: Set<string>,
-): HistoryMessage => {
-  const payload = asObject(event.payload);
-  const toolName = normalizeToolName(payload, fallbackToolName);
-  const requestId = normalizeRequestId(event);
-  const lines = [`[Tool result] ${toolName}`];
-  if (requestId) lines.push(`request_id: ${requestId}`);
-
-  if (requestId && compactedToolIds.has(requestId)) {
-    lines.push(`result: ${microcompactTrimmedMessage()}`);
-    return { role: "user", content: lines.join("\n") };
-  }
-
-  if (typeof payload.error === "string" && payload.error.trim().length > 0) {
-    lines.push(`error: ${ellipsize(payload.error.trim(), MAX_TEXT_CHARS)}`);
-  } else if ("result" in payload) {
-    lines.push(`result: ${stringifyValue(payload.result)}`);
-  }
-  return { role: "user", content: lines.join("\n") };
-};
-
-const flushPendingToolCalls = (
-  pendingById: Map<string, PendingToolCall>,
-  pendingWithoutId: PendingToolCall[],
-  out: HistoryMessage[],
-) => {
-  for (const pending of pendingById.values()) {
-    const lines = [`[Tool result] ${pending.toolName}`];
-    if (pending.requestId) lines.push(`request_id: ${pending.requestId}`);
-    lines.push("error: No result provided");
-    out.push({ role: "user", content: lines.join("\n") });
-  }
-  pendingById.clear();
-  for (const pending of pendingWithoutId) {
-    out.push({
-      role: "user",
-      content: `[Tool result] ${pending.toolName}\nerror: No result provided`,
-    });
-  }
-  pendingWithoutId.length = 0;
 };
 
 /** Format a timestamp for message tagging. Includes date only if it differs from prevDate. */
@@ -291,30 +166,24 @@ const collectAttachmentUUIDs = (event: ContextEvent): string[] => {
 };
 
 type MicrocompactState = {
-  compactedToolIds: Set<string>;
   clearedAttachmentUUIDs: Set<string>;
 };
 
 const replayMicrocompactState = (events: ContextEvent[]): MicrocompactState => {
-  const compactedToolIds = new Set<string>();
   const clearedAttachmentUUIDs = new Set<string>();
 
   for (const event of events) {
     if (event.type !== "microcompact_boundary") continue;
     const payload = asObject(event.payload);
-    const compacted = asStringArray(payload.compactedToolIds);
     const cleared = asStringArray(payload.clearedAttachmentUUIDs);
-    for (const id of compacted) compactedToolIds.add(id);
     for (const uuid of cleared) clearedAttachmentUUIDs.add(uuid);
   }
 
-  return { compactedToolIds, clearedAttachmentUUIDs };
+  return { clearedAttachmentUUIDs };
 };
 
 const estimateEventTokensForMicrocompact = (
   event: ContextEvent,
-  _index: number,
-  compactedToolIds: Set<string>,
   clearedAttachmentUUIDs: Set<string>,
 ): number => {
   let estimated = estimateContextEventTokens({
@@ -322,13 +191,6 @@ const estimateEventTokensForMicrocompact = (
     payload: event.payload,
     requestId: event.requestId,
   });
-
-  if (event.type === "tool_result") {
-    const requestId = normalizeRequestId(event);
-    if (requestId && compactedToolIds.has(requestId)) {
-      estimated = MICROCOMPACT_TRIMMED_RESULT_TOKENS;
-    }
-  }
 
   if (event.type === "user_message") {
     const attachmentUUIDs = collectAttachmentUUIDs(event);
@@ -344,76 +206,13 @@ const estimateEventTokensForMicrocompact = (
 
 const estimateTotalTokensForMicrocompact = (
   events: ContextEvent[],
-  compactedToolIds: Set<string>,
   clearedAttachmentUUIDs: Set<string>,
 ): number => {
   let total = 0;
-  for (let i = 0; i < events.length; i += 1) {
-    total += estimateEventTokensForMicrocompact(
-      events[i]!,
-      i,
-      compactedToolIds,
-      clearedAttachmentUUIDs,
-    );
+  for (const event of events) {
+    total += estimateEventTokensForMicrocompact(event, clearedAttachmentUUIDs);
   }
   return total;
-};
-
-type ToolResultCandidate = {
-  requestId: string;
-  tokensSaved: number;
-};
-
-const collectToolResultCandidates = (
-  events: ContextEvent[],
-  compactedToolIds: Set<string>,
-  clearedAttachmentUUIDs: Set<string>,
-): ToolResultCandidate[] => {
-  const requestToolName = new Map<string, string>();
-  const candidates: ToolResultCandidate[] = [];
-
-  for (let i = 0; i < events.length; i += 1) {
-    const event = events[i]!;
-    if (event.type === "tool_request") {
-      const requestId = normalizeRequestId(event);
-      if (!requestId) continue;
-      const payload = asObject(event.payload);
-      const toolName = normalizeToolName(payload).trim();
-      if (toolName.length > 0) {
-        requestToolName.set(requestId, toolName);
-      }
-      continue;
-    }
-
-    if (event.type !== "tool_result") continue;
-    const requestId = normalizeRequestId(event);
-    if (!requestId || compactedToolIds.has(requestId)) continue;
-
-    const payload = asObject(event.payload);
-    if (typeof payload.error === "string" && payload.error.trim().length > 0) {
-      continue;
-    }
-    if (isTrimmedResultPayload(payload.result)) {
-      compactedToolIds.add(requestId);
-      continue;
-    }
-
-    const toolName = normalizeToolName(payload, requestToolName.get(requestId)).trim();
-    if (!isEligibleToolName(toolName)) continue;
-
-    const rawTokens = estimateEventTokensForMicrocompact(
-      event,
-      i,
-      compactedToolIds,
-      clearedAttachmentUUIDs,
-    );
-    const tokensSaved = Math.max(0, rawTokens - MICROCOMPACT_TRIMMED_RESULT_TOKENS);
-    if (tokensSaved <= 0) continue;
-
-    candidates.push({ requestId, tokensSaved });
-  }
-
-  return candidates;
 };
 
 const collectAttachmentCandidates = (
@@ -444,9 +243,7 @@ const collectAttachmentCandidates = (
 };
 
 type MicrocompactPlan = {
-  compactedToolIds: Set<string>;
   clearedAttachmentUUIDs: Set<string>;
-  newlyCompactedToolIds: string[];
   newlyClearedAttachmentUUIDs: string[];
   trigger: MicrocompactTrigger;
   preTokens: number;
@@ -461,15 +258,12 @@ const buildMicrocompactPlan = (
   const trigger = options?.trigger ?? "auto";
   const preTokens = estimateTotalTokensForMicrocompact(
     events,
-    state.compactedToolIds,
     state.clearedAttachmentUUIDs,
   );
 
   if (isMicrocompactDisabled(options?.enabled)) {
     return {
-      compactedToolIds: state.compactedToolIds,
       clearedAttachmentUUIDs: state.clearedAttachmentUUIDs,
-      newlyCompactedToolIds: [],
       newlyClearedAttachmentUUIDs: [],
       trigger,
       preTokens,
@@ -481,33 +275,14 @@ const buildMicrocompactPlan = (
     1,
     Math.floor(options?.keepTokens ?? MICROCOMPACT_DEFAULT_KEEP_TOKENS),
   );
-  const candidates = collectToolResultCandidates(
-    events,
-    state.compactedToolIds,
-    state.clearedAttachmentUUIDs,
-  );
-
-  const protectedToolIds = new Set(
-    candidates
-      .slice(-MICROCOMPACT_PROTECT_RECENT_RESULTS)
-      .map((candidate) => candidate.requestId),
-  );
-
-  const newlyCompactedToolIds: string[] = [];
-  let plannedSavings = 0;
-
-  for (const candidate of candidates) {
-    if (protectedToolIds.has(candidate.requestId)) continue;
-    if (preTokens - plannedSavings <= keepTokens) break;
-    newlyCompactedToolIds.push(candidate.requestId);
-    plannedSavings += candidate.tokensSaved;
-  }
 
   const attachmentCandidates = collectAttachmentCandidates(
     events,
     state.clearedAttachmentUUIDs,
   );
   const newlyClearedAttachmentUUIDs: string[] = [];
+  let plannedSavings = 0;
+
   for (const uuid of attachmentCandidates) {
     if (preTokens - plannedSavings <= keepTokens) break;
     newlyClearedAttachmentUUIDs.push(uuid);
@@ -529,19 +304,12 @@ const buildMicrocompactPlan = (
     (!isAboveWarningThreshold || plannedSavings < MICROCOMPACT_MIN_SAVED_TOKENS)
   ) {
     return {
-      compactedToolIds: state.compactedToolIds,
       clearedAttachmentUUIDs: state.clearedAttachmentUUIDs,
-      newlyCompactedToolIds: [],
       newlyClearedAttachmentUUIDs: [],
       trigger,
       preTokens,
       tokensSaved: 0,
     };
-  }
-
-  const compactedToolIds = new Set(state.compactedToolIds);
-  for (const requestId of newlyCompactedToolIds) {
-    compactedToolIds.add(requestId);
   }
 
   const clearedAttachmentUUIDs = new Set(state.clearedAttachmentUUIDs);
@@ -551,14 +319,11 @@ const buildMicrocompactPlan = (
 
   const postTokens = estimateTotalTokensForMicrocompact(
     events,
-    compactedToolIds,
     clearedAttachmentUUIDs,
   );
 
   return {
-    compactedToolIds,
     clearedAttachmentUUIDs,
-    newlyCompactedToolIds,
     newlyClearedAttachmentUUIDs,
     trigger,
     preTokens,
@@ -571,51 +336,11 @@ export const eventsToHistoryMessages = (
   options: HistoryBuildOptions = {},
 ): HistoryBuildResult => {
   const out: HistoryMessage[] = [];
-  const pendingById = new Map<string, PendingToolCall>();
-  const pendingWithoutId: PendingToolCall[] = [];
   const microcompactPlan = buildMicrocompactPlan(events, options.microcompact);
   const tsState: TimestampState = { timezone: options.timezone };
 
   for (const event of events) {
-    if (
-      event.type !== "tool_request" &&
-      event.type !== "tool_result" &&
-      (pendingById.size > 0 || pendingWithoutId.length > 0)
-    ) {
-      flushPendingToolCalls(pendingById, pendingWithoutId, out);
-    }
-
     if (event.type === "microcompact_boundary") {
-      continue;
-    }
-
-    if (event.type === "tool_request") {
-      const toolMessage = formatToolRequest(event);
-      out.push(toolMessage);
-      const payload = asObject(event.payload);
-      const toolName = normalizeToolName(payload);
-      const pending: PendingToolCall = { toolName };
-      const requestId = normalizeRequestId(event);
-      if (requestId) {
-        pending.requestId = requestId;
-        pendingById.set(requestId, pending);
-      } else {
-        pendingWithoutId.push(pending);
-      }
-      continue;
-    }
-
-    if (event.type === "tool_result") {
-      let fallbackName: string | undefined;
-      const requestId = normalizeRequestId(event);
-      if (requestId) {
-        const pending = pendingById.get(requestId);
-        fallbackName = pending?.toolName;
-        pendingById.delete(requestId);
-      } else if (pendingWithoutId.length > 0) {
-        fallbackName = pendingWithoutId.shift()?.toolName;
-      }
-      out.push(formatToolResult(event, fallbackName, microcompactPlan.compactedToolIds));
       continue;
     }
 
@@ -629,13 +354,7 @@ export const eventsToHistoryMessages = (
     if (taskMessage) out.push(taskMessage);
   }
 
-  if (pendingById.size > 0 || pendingWithoutId.length > 0) {
-    flushPendingToolCalls(pendingById, pendingWithoutId, out);
-  }
-
-  const hasBoundary =
-    microcompactPlan.newlyCompactedToolIds.length > 0 ||
-    microcompactPlan.newlyClearedAttachmentUUIDs.length > 0;
+  const hasBoundary = microcompactPlan.newlyClearedAttachmentUUIDs.length > 0;
 
   return {
     messages: out,
@@ -645,7 +364,7 @@ export const eventsToHistoryMessages = (
             trigger: microcompactPlan.trigger,
             preTokens: microcompactPlan.preTokens,
             tokensSaved: microcompactPlan.tokensSaved,
-            compactedToolIds: microcompactPlan.newlyCompactedToolIds,
+            compactedToolIds: [],
             clearedAttachmentUUIDs: microcompactPlan.newlyClearedAttachmentUUIDs,
           },
         }

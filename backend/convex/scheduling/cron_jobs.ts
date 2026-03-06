@@ -11,10 +11,10 @@ import {
   DEFAULT_STUCK_RUN_MS,
 } from "./claim_flow";
 import {
-  buildExecutionCandidates,
+  buildDesktopTurnCandidates,
   resolveOwnedConversationId,
-  runAgentTurnWithFallback,
-} from "./execution_policy";
+  runAgentTurnWithCloudFallback,
+} from "./desktop_handoff_policy";
 import {
   cronScheduleValidator,
   cronPayloadValidator,
@@ -596,7 +596,7 @@ export const execute = internalAction({
           internal.agent.device_resolver.resolveExecutionTarget,
           { ownerId: job.ownerId },
         );
-        const candidates = buildExecutionCandidates({
+        const candidates = buildDesktopTurnCandidates({
           targetDeviceId: target.targetDeviceId,
         });
         const agentType = payloadResolved.agentType ?? "orchestrator";
@@ -604,7 +604,7 @@ export const execute = internalAction({
         // Inverted execution: when the desktop is online, insert a
         // remote_turn_request and let the desktop run the AI turn locally.
         const firstCandidate = candidates[0];
-        if (firstCandidate?.mode === "local" && !transient) {
+        if (firstCandidate?.mode === "desktop" && !transient) {
           // Persist a synthetic user message so the desktop has a userMessageId
           const userMessageId = await ctx.runMutation(internal.events.appendInternalEvent, {
             conversationId,
@@ -663,7 +663,7 @@ export const execute = internalAction({
           return null;
         }
 
-        const { result } = await runAgentTurnWithFallback({
+        const { result } = await runAgentTurnWithCloudFallback({
           ctx,
           conversationId,
           prompt,

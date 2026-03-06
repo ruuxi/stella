@@ -101,9 +101,3 @@ export const sanitizeSensitiveData = (
 
 export const sanitizeForLogs = (value: unknown): Value =>
   sanitizeSensitiveData(value, { redactFreeformStrings: true });
-
-export const sanitizeForToolResultPersistence = (value: unknown): Value =>
-  sanitizeSensitiveData(value, { redactFreeformStrings: true });
-
-export const sanitizeForToolRequestPersistence = (value: unknown): Value =>
-  sanitizeSensitiveData(value, { redactFreeformStrings: false });

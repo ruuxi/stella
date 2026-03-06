@@ -13,7 +13,6 @@ import type * as agent_cloud_device_cleanup from "../agent/cloud_device_cleanup.
 import type * as agent_cloud_devices from "../agent/cloud_devices.js";
 import type * as agent_context_budget from "../agent/context_budget.js";
 import type * as agent_device_resolver from "../agent/device_resolver.js";
-import type * as agent_device_tools from "../agent/device_tools.js";
 import type * as agent_hooks from "../agent/hooks.js";
 import type * as agent_invoke from "../agent/invoke.js";
 import type * as agent_local_runtime from "../agent/local_runtime.js";
@@ -114,7 +113,7 @@ import type * as reset from "../reset.js";
 import type * as scheduling_claim_flow from "../scheduling/claim_flow.js";
 import type * as scheduling_cron_jobs from "../scheduling/cron_jobs.js";
 import type * as scheduling_dashboard_queries from "../scheduling/dashboard_queries.js";
-import type * as scheduling_execution_policy from "../scheduling/execution_policy.js";
+import type * as scheduling_desktop_handoff_policy from "../scheduling/desktop_handoff_policy.js";
 import type * as scheduling_heartbeat from "../scheduling/heartbeat.js";
 import type * as schema_agents from "../schema/agents.js";
 import type * as schema_auth from "../schema/auth.js";
@@ -143,7 +142,6 @@ declare const fullApi: ApiFromModules<{
   "agent/cloud_devices": typeof agent_cloud_devices;
   "agent/context_budget": typeof agent_context_budget;
   "agent/device_resolver": typeof agent_device_resolver;
-  "agent/device_tools": typeof agent_device_tools;
   "agent/hooks": typeof agent_hooks;
   "agent/invoke": typeof agent_invoke;
   "agent/local_runtime": typeof agent_local_runtime;
@@ -244,7 +242,7 @@ declare const fullApi: ApiFromModules<{
   "scheduling/claim_flow": typeof scheduling_claim_flow;
   "scheduling/cron_jobs": typeof scheduling_cron_jobs;
   "scheduling/dashboard_queries": typeof scheduling_dashboard_queries;
-  "scheduling/execution_policy": typeof scheduling_execution_policy;
+  "scheduling/desktop_handoff_policy": typeof scheduling_desktop_handoff_policy;
   "scheduling/heartbeat": typeof scheduling_heartbeat;
   "schema/agents": typeof schema_agents;
   "schema/auth": typeof schema_auth;

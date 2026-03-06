@@ -14,10 +14,10 @@ import {
   DEFAULT_STUCK_RUN_MS,
 } from "./claim_flow";
 import {
-  buildExecutionCandidates,
+  buildDesktopTurnCandidates,
   resolveOwnedConversationId,
-  runAgentTurnWithFallback,
-} from "./execution_policy";
+  runAgentTurnWithCloudFallback,
+} from "./desktop_handoff_policy";
 
 const ACTIVE_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]|24):([0-5]\d)$/;
 const DUPLICATE_SUPPRESSION_MS = 24 * 60 * 60 * 1000;
@@ -417,7 +417,7 @@ export const run = internalAction({
     }
 
     const agentType = config.agentType ?? "orchestrator";
-    const candidates = buildExecutionCandidates({
+    const candidates = buildDesktopTurnCandidates({
       targetDeviceId,
     });
 
@@ -425,7 +425,7 @@ export const run = internalAction({
     let silent = false;
     let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
     try {
-      const { result } = await runAgentTurnWithFallback({
+      const { result } = await runAgentTurnWithCloudFallback({
         ctx,
         conversationId,
         prompt,

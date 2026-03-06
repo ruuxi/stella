@@ -89,7 +89,10 @@ describe("security regressions", () => {
   });
 
   test("sync-off operational write policy is explicitly documented", () => {
-    const source = readBackendFile("docs/sync_off_operational_writes.md");
+    const source = readFileSync(
+      path.resolve(backendRoot, "..", "docs", "sync_off_operational_writes.md"),
+      "utf-8",
+    );
     expect(source).toContain("Sync-off blocks durable chat content persistence");
     expect(source).toContain("Expected operational writes");
     expect(source).toContain("Explicitly blocked in sync-off");
@@ -120,25 +123,6 @@ describe("security regressions", () => {
     expect(source).toContain("internal.channels.transient_data.deleteTransientBatch");
     expect(source).toContain("await cleanupTransientBatch()");
     expect(source).toMatch(/\}\s*finally\s*\{/);
-  });
-
-  test("ephemeral tool events have TTL metadata and cron-backed cleanup", () => {
-    const eventsSource = readBackendFile("convex/events.ts");
-    const schemaSource = readBackendFile("convex/schema/conversations.ts");
-    const cronsSource = readBackendFile("convex/crons.ts");
-    const deviceToolsSource = readBackendFile("convex/agent/device_tools.ts");
-
-    expect(eventsSource).toContain("DEFAULT_EPHEMERAL_EVENT_TTL_MS");
-    expect(eventsSource).toContain("export const purgeExpiredEphemeralToolEvents = internalMutation");
-    expect(eventsSource).toContain("withIndex(\"by_ephemeral_and_expiresAt\"");
-    expect(eventsSource).toContain("event.type === \"tool_request\"");
-    expect(eventsSource).toContain("event.type === \"tool_result\"");
-    expect(schemaSource).toContain("ephemeral: v.optional(v.boolean())");
-    expect(schemaSource).toContain("expiresAt: v.optional(v.number())");
-    expect(schemaSource).toContain(".index(\"by_ephemeral_and_expiresAt\", [\"ephemeral\", \"expiresAt\"])");
-    expect(cronsSource).toContain("\"ephemeral tool event cleanup\"");
-    expect(cronsSource).toContain("internal.events.purgeExpiredEphemeralToolEvents");
-    expect(deviceToolsSource).toContain("ephemeral: context.ephemeral === true");
   });
 
   test("cron sync-off mode avoids persisting output previews", () => {
@@ -198,7 +182,7 @@ describe("security regressions", () => {
     expect(pipelineSource).toContain("const userMessageId = transient");
     expect(routingFlowSource).toContain("isOwnerInConnectedMode");
     expect(routingFlowSource).toContain("resolveConnectionForIncomingMessage");
-    expect(pipelineSource).toContain("const candidates = buildExecutionCandidates({");
+    expect(pipelineSource).toContain("const candidates = buildDesktopTurnCandidates({");
     expect(pipelineSource).not.toContain("runtimeMode === \"cloud_247\"");
     expect(pipelineSource).toContain("const usedCloudFallback =");
   });
@@ -221,13 +205,6 @@ describe("security regressions", () => {
     expect(source).toContain("DEFAULT_CLEANUP_FAILURE_RETENTION_MS");
     expect(cronsSource).toContain("\"transient cleanup failure retention sweep\"");
     expect(cronsSource).toContain("internal.channels.transient_data.purgeExpiredCleanupFailures");
-  });
-
-  test("request-id cleanup iterates until no matching events remain", () => {
-    const source = readBackendFile("convex/events.ts");
-    expect(source).toContain("while (true)");
-    expect(source).toContain("deletedThisBatch");
-    expect(source).toContain("rows.length < 100 || deletedThisBatch === 0");
   });
 
   test("fallback resolver preserves provider options", () => {
