@@ -29,6 +29,7 @@ import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './system/device.
 import { resolveStellaHome } from './system/stella-home.js'
 import { initializeWakeWord } from './wake-word/initialize.js'
 import { WindowManager } from './windows/window-manager.js'
+import { VoiceRuntimeWindowController } from './windows/voice-runtime-window.js'
 import { createHmrMorphOrchestrator } from './self-mod/hmr-morph.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -46,6 +47,7 @@ export const bootstrapMainProcess = () => {
   let piHostRunner: PiHostRunner | null = null
   let windowManager: WindowManager | null = null
   let overlayController: OverlayWindowController | null = null
+  let voiceRuntimeWindowController: VoiceRuntimeWindowController | null = null
 
   // --- Core services (no deps or lightweight deps) ---
 
@@ -252,6 +254,17 @@ export const bootstrapMainProcess = () => {
     })
     overlayController.create()
 
+    voiceRuntimeWindowController = new VoiceRuntimeWindowController({
+      preloadPath: path.join(__dirname, 'preload.js'),
+      sessionPartition: STELLA_SESSION_PARTITION,
+      electronDir: __dirname,
+      isDev,
+      getDevServerUrl,
+      onRenderProcessGone: (details) => {
+        console.error('[voice-runtime] Renderer process gone:', details.reason)
+      },
+    })
+
     windowManager = new WindowManager({
       electronDir: __dirname,
       preloadPath: path.join(__dirname, 'preload.js'),
@@ -362,6 +375,8 @@ export const bootstrapMainProcess = () => {
         setAssistantSpeaking: (active) => audioDuckingService.setAssistantSpeaking(active),
       },
     })
+
+    voiceRuntimeWindowController.create()
 
     windowManager.showWindow('full')
 

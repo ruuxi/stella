@@ -64,6 +64,15 @@ describe("OverlayRoot radial lifecycle", () => {
       },
       voice: {
         submitTranscript: vi.fn(),
+        getRuntimeState: vi.fn().mockResolvedValue({
+          sessionState: "idle",
+          isConnected: false,
+          isSpeaking: false,
+          isUserSpeaking: false,
+          micLevel: 0,
+          outputLevel: 0,
+        }),
+        onRuntimeState: vi.fn(() => vi.fn()),
       },
     };
   });

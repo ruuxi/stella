@@ -52,6 +52,8 @@ interface StellaAnimationProps {
   isUserSpeaking?: boolean;
   analyserRef?: React.RefObject<AnalyserNode | null>;
   outputAnalyserRef?: React.RefObject<AnalyserNode | null>;
+  micLevel?: number;
+  outputLevel?: number;
 }
 
 export const StellaAnimation = React.forwardRef<
@@ -59,7 +61,7 @@ export const StellaAnimation = React.forwardRef<
   StellaAnimationProps
 >(
   (
-    { width = 80, height = 40, initialBirthProgress = 1, paused = false, maxDpr, frameSkip = 0, voiceMode = "idle", isUserSpeaking = false, analyserRef: externalAnalyserRef, outputAnalyserRef: externalOutputAnalyserRef },
+    { width = 80, height = 40, initialBirthProgress = 1, paused = false, maxDpr, frameSkip = 0, voiceMode = "idle", isUserSpeaking = false, analyserRef: externalAnalyserRef, outputAnalyserRef: externalOutputAnalyserRef, micLevel: externalMicLevel, outputLevel: externalOutputLevel },
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -248,8 +250,16 @@ export const StellaAnimation = React.forwardRef<
         // Read analyser refs directly from props (stable ref objects, .current changes)
         const outputAnalyser = externalOutputAnalyserRef?.current ?? null;
         const micAnalyser = externalAnalyserRef?.current ?? null;
-        const outputEnergy = outputAnalyser ? computeEnergy(outputAnalyser) : 0;
-        const micEnergy = micAnalyser ? computeEnergy(micAnalyser) : 0;
+        const outputEnergy = typeof externalOutputLevel === "number"
+          ? externalOutputLevel
+          : outputAnalyser
+            ? computeEnergy(outputAnalyser)
+            : 0;
+        const micEnergy = typeof externalMicLevel === "number"
+          ? externalMicLevel
+          : micAnalyser
+            ? computeEnergy(micAnalyser)
+            : 0;
 
         const isVoiceActive = voiceModeRef.current !== "idle";
         const isSpeakingNow = isVoiceActive && outputEnergy > 0.08;
