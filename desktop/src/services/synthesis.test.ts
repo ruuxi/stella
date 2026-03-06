@@ -1,71 +1,38 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { synthesizeCoreMemory } from "./synthesis";
 
 describe("synthesizeCoreMemory", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn());
-    import.meta.env.VITE_CONVEX_URL = "https://test.convex.cloud";
-    import.meta.env.VITE_CONVEX_HTTP_URL = "https://test.convex.site";
+  it("returns an empty result for blank input", async () => {
+    await expect(synthesizeCoreMemory("   \n\n  ")).resolves.toEqual({
+      coreMemory: "",
+      welcomeMessage: "",
+      suggestions: [],
+    });
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+  it("normalizes and caps the local profile document", async () => {
+    const source = `\r\n\r\n${"a".repeat(13_000)}\n\n\nextra`;
+    const result = await synthesizeCoreMemory(source);
+
+    expect(result.coreMemory).toHaveLength(12_000);
+    expect(result.coreMemory.startsWith("a")).toBe(true);
   });
 
-  it("throws when VITE_CONVEX_URL is not set", async () => {
-    import.meta.env.VITE_CONVEX_URL = "";
-    await expect(synthesizeCoreMemory("signals")).rejects.toThrow("VITE_CONVEX_URL is not set");
+  it("returns local suggestions and a welcome message for non-empty input", async () => {
+    const result = await synthesizeCoreMemory("Developer workflow\nTypeScript\nGit");
+
+    expect(result.coreMemory).toBe("Developer workflow\nTypeScript\nGit");
+    expect(result.welcomeMessage).toContain("local profile");
+    expect(result.suggestions).toHaveLength(3);
   });
 
-  it("returns synthesis result on success", async () => {
-    const mockResult = {
-      coreMemory: "core memory content",
-      welcomeMessage: "welcome!",
-      suggestions: [{ category: "skill", title: "Test", description: "Desc", prompt: "prompt" }],
-    };
-    vi.mocked(fetch).mockImplementation(() =>
-      Promise.resolve(new Response(JSON.stringify(mockResult), { status: 200 }))
-    );
-
-    const result = await synthesizeCoreMemory("test signals");
-    expect(result).toEqual(mockResult);
-  });
-
-  it("throws on non-ok response with error text", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response("bad request", { status: 400, statusText: "Bad Request" })
-    );
-
-    await expect(synthesizeCoreMemory("bad")).rejects.toThrow(
-      "Synthesis failed: 400 - bad request"
-    );
-  });
-
-  it("sends formattedSignals in request body", async () => {
-    vi.mocked(fetch).mockImplementation(() =>
-      Promise.resolve(new Response(JSON.stringify({ coreMemory: "", welcomeMessage: "" }), { status: 200 }))
-    );
-
-    await synthesizeCoreMemory("my signals data");
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      expect.stringContaining("/api/synthesize"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ formattedSignals: "my signals data" }),
-      })
-    );
-  });
-
-  it("constructs URL using VITE_CONVEX_HTTP_URL when available", async () => {
-    import.meta.env.VITE_CONVEX_HTTP_URL = "https://custom.site.example";
-    vi.mocked(fetch).mockImplementation(() =>
-      Promise.resolve(new Response(JSON.stringify({ coreMemory: "", welcomeMessage: "" }), { status: 200 }))
-    );
+  it("does not call fetch", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
 
     await synthesizeCoreMemory("signals");
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      expect.stringContaining("/api/synthesize"),
-      expect.any(Object)
-    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
