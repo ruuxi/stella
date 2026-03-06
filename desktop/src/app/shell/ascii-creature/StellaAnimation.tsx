@@ -32,6 +32,13 @@ function computeEnergy(analyser: AnalyserNode): number {
  * by the same factor so the creature stays the same pixel size.
  */
 const EDGE_SCALE = 2.5;
+const LOCAL_LISTENING_MIC_THRESHOLD = 0.03;
+const LISTENING_ATTACK_LERP = 0.35;
+const LISTENING_RELEASE_LERP = 0.14;
+const SPEAKING_ATTACK_LERP = 0.18;
+const SPEAKING_RELEASE_LERP = 0.12;
+const VOICE_ENERGY_ATTACK_RATE = 0.24;
+const VOICE_ENERGY_RELEASE_RATE = 0.08;
 
 export interface StellaAnimationHandle {
   triggerFlash: () => void;
@@ -273,20 +280,32 @@ export const StellaAnimation = React.forwardRef<
 
         const isVoiceActive = voiceModeRef.current !== "idle";
         const isSpeakingNow = isVoiceActive && outputEnergy > 0.08;
-        const isListeningNow = isVoiceActive && !isSpeakingNow && isUserSpeakingRef.current;
+        const isListeningNow =
+          isVoiceActive &&
+          !isSpeakingNow &&
+          (isUserSpeakingRef.current || micEnergy > LOCAL_LISTENING_MIC_THRESHOLD);
 
         // Smoothly interpolate listening/speaking (0→1)
         const targetListening = isListeningNow ? 1 : 0;
         const targetSpeaking = isSpeakingNow ? 1 : 0;
-        const voiceLerp = 0.15;
-        listeningRef.current += (targetListening - listeningRef.current) * voiceLerp;
-        speakingRef.current += (targetSpeaking - speakingRef.current) * voiceLerp;
+        const listeningLerp =
+          targetListening > listeningRef.current
+            ? LISTENING_ATTACK_LERP
+            : LISTENING_RELEASE_LERP;
+        const speakingLerp =
+          targetSpeaking > speakingRef.current
+            ? SPEAKING_ATTACK_LERP
+            : SPEAKING_RELEASE_LERP;
+        listeningRef.current += (targetListening - listeningRef.current) * listeningLerp;
+        speakingRef.current += (targetSpeaking - speakingRef.current) * speakingLerp;
 
         // Voice energy: use output energy when speaking, mic energy when listening
         const rawEnergy = isSpeakingNow
           ? Math.min(outputEnergy * 2.5, 1)
           : Math.min(micEnergy * 2.5, 1);
-        const energyRate = rawEnergy > voiceEnergyRef.current ? 0.15 : 0.06;
+        const energyRate = rawEnergy > voiceEnergyRef.current
+          ? VOICE_ENERGY_ATTACK_RATE
+          : VOICE_ENERGY_RELEASE_RATE;
         voiceEnergyRef.current += (rawEnergy - voiceEnergyRef.current) * energyRate;
 
         mainRenderer.render(
