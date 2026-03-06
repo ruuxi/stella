@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useReducer, useRef, lazy, Suspense, type Dispatch } from "react";
+import { useCallback, useEffect, useReducer, useRef, type Dispatch } from "react";
 import { MINI_SHELL_SIZE } from "@/lib/layout";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "../shell/mini/MiniShell";
 import { VoiceOverlay } from "@/app/overlay/VoiceOverlay";
 import { MorphTransition } from "@/app/overlay/MorphTransition";
-
-const NeriDashboard = lazy(() => import("@/app/neri/NeriDashboard"));
 
 /**
  * OverlayRoot manages the unified transparent overlay window.
@@ -30,8 +28,6 @@ type OverlayState = {
   miniPosition: { x: number; y: number } | null;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
-  neriVisible: boolean;
-  neriCursor: { x: number; y: number } | null;
 };
 
 type OverlayAction =
@@ -46,8 +42,6 @@ type OverlayAction =
   | { type: "mini:preview"; visible: boolean }
   | { type: "voice:show"; position: { x: number; y: number } }
   | { type: "voice:hide" }
-  | { type: "neri:show"; cursor: { x: number; y: number } }
-  | { type: "neri:hide" };
 
 function isSamePosition(
   a: { x: number; y: number } | null,
@@ -66,8 +60,6 @@ const initialState: OverlayState = {
   miniPosition: null,
   voiceVisible: false,
   voicePosition: null,
-  neriVisible: false,
-  neriCursor: null,
 };
 
 function overlayReducer(state: OverlayState, action: OverlayAction): OverlayState {
@@ -109,13 +101,6 @@ function overlayReducer(state: OverlayState, action: OverlayAction): OverlayStat
       return { ...state, voiceVisible: true, voicePosition: action.position };
     case "voice:hide":
       return state.voiceVisible ? { ...state, voiceVisible: false } : state;
-    case "neri:show":
-      if (state.neriVisible && isSamePosition(state.neriCursor, action.cursor)) {
-        return state;
-      }
-      return { ...state, neriVisible: true, neriCursor: action.cursor };
-    case "neri:hide":
-      return state.neriVisible ? { ...state, neriVisible: false } : state;
     default:
       return state;
   }
@@ -255,23 +240,6 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
     };
   }, [dispatch]);
 
-  // Neri dashboard visibility.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.overlay.onShowNeri?.((data: { cursorX: number; cursorY: number }) => {
-      dispatch({ type: "neri:show", cursor: { x: data.cursorX, y: data.cursorY } });
-    });
-    const cleanupHide = api.overlay.onHideNeri?.(() => {
-      dispatch({ type: "neri:hide" });
-    });
-    return () => {
-      cleanupShow?.();
-      cleanupHide?.();
-    };
-  }, [dispatch]);
-
 }
 
 // ---------------------------------------------------------------------------
@@ -343,11 +311,9 @@ function useMiniDrag(
 function useOverlayHitTesting(
   state: OverlayState,
   miniRef: React.RefObject<HTMLDivElement | null>,
-  neriRef: React.RefObject<HTMLDivElement | null>,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
   const {
-    neriVisible,
     regionCaptureActive,
     miniPreviewVisible,
     modifierBlock,
@@ -383,9 +349,9 @@ function useOverlayHitTesting(
       return;
     }
 
-    // For mini shell, standalone voice, and neri: only interactive when cursor
+    // For mini shell and standalone voice: only interactive when cursor
     // is over an active interactive region.
-    if (!miniVisible && !voiceVisible && !neriVisible) {
+    if (!miniVisible && !voiceVisible) {
       updateInteractive(false);
       return;
     }
@@ -415,26 +381,12 @@ function useOverlayHitTesting(
           e.clientY <= top + VOICE_CREATURE_SIZE.height;
       }
 
-      let isOverNeri = false;
-      if (neriVisible) {
-        const neriEl = neriRef.current;
-        if (neriEl) {
-          const rect = neriEl.getBoundingClientRect();
-          isOverNeri =
-            e.clientX >= rect.left &&
-            e.clientX <= rect.right &&
-            e.clientY >= rect.top &&
-            e.clientY <= rect.bottom;
-        }
-      }
-
-      updateInteractive(isOverMini || isOverVoice || isOverNeri);
+      updateInteractive(isOverMini || isOverVoice);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [
-    neriVisible,
     regionCaptureActive,
     miniPreviewVisible,
     modifierBlock,
@@ -444,7 +396,6 @@ function useOverlayHitTesting(
     voiceX,
     voiceY,
     miniRef,
-    neriRef,
     updateInteractive,
   ]);
 
@@ -455,8 +406,7 @@ function useOverlayHitTesting(
       regionCaptureActive ||
       miniPreviewVisible ||
       miniVisible ||
-      voiceVisible ||
-      neriVisible;
+      voiceVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -468,7 +418,6 @@ function useOverlayHitTesting(
     miniPreviewVisible,
     miniVisible,
     voiceVisible,
-    neriVisible,
     updateInteractive,
   ]);
 }
@@ -482,7 +431,6 @@ export function OverlayRoot() {
   const interactiveRef = useRef(false);
   const miniRef = useRef<HTMLDivElement>(null);
   const radialRef = useRef<HTMLDivElement>(null);
-  const neriRef = useRef<HTMLDivElement>(null);
   const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
 
   // Wire up all IPC subscriptions (radial, modifier, region, mini, voice)
@@ -498,7 +446,7 @@ export function OverlayRoot() {
     window.electronAPI?.overlay.setInteractive?.(shouldBeInteractive);
   }, []);
 
-  useOverlayHitTesting(state, miniRef, neriRef, updateInteractive);
+  useOverlayHitTesting(state, miniRef, updateInteractive);
 
   const handleMiniPreviewVisibilityChange = useCallback((visible: boolean) => {
     dispatch({ type: "mini:preview", visible });
@@ -506,10 +454,6 @@ export function OverlayRoot() {
 
   const handleVoiceTranscript = useCallback((transcript: string) => {
     window.electronAPI?.voice.submitTranscript?.(transcript);
-  }, []);
-
-  const handleNeriClose = useCallback(() => {
-    window.electronAPI?.overlay.hideNeri?.();
   }, []);
 
   return (
@@ -582,13 +526,6 @@ export function OverlayRoot() {
       />
 
       <MorphTransition />
-
-      {/* Neri dashboard: mounted only when active */}
-      {state.neriVisible && (
-        <Suspense fallback={null}>
-          <NeriDashboard onClose={handleNeriClose} panelRef={neriRef} cursorPosition={state.neriCursor} />
-        </Suspense>
-      )}
     </div>
   );
 }
