@@ -35,7 +35,6 @@ import {
   createShellState,
   handleBash,
   handleKillShell,
-  handleOpenApp,
   handleShellStatus,
   handleSkillBash,
   type ShellState,
@@ -143,7 +142,6 @@ export const createToolHost = ({
     Grep: (args) => handleGrep(args),
 
     // Shell tools
-    OpenApp: (args) => handleOpenApp(args),
     Bash: (args, context) => handleBash(shellState, args, context),
     KillShell: (args) => handleKillShell(shellState, args),
     ShellStatus: (args) => handleShellStatus(shellState, args),
