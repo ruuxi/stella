@@ -1,6 +1,6 @@
 # Backend
 
-Convex serverless backend. 5 agents defined in `agent/agents.ts`. Entry point: `http.ts`.
+Convex serverless backend. Offline fallback orchestrator defined in `agent/agents.ts`. Entry point: `http.ts`. All agent execution happens on the local PI runtime — the backend only responds when the user's machine is offline (web search, scheduling, NoResponse).
 
 ## Commands
 
