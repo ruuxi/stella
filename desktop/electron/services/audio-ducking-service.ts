@@ -1,5 +1,6 @@
-import { BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { execFile } from 'node:child_process'
+import path from 'node:path'
 
 type DuckSnapshotEntry = {
   pid: number
@@ -10,9 +11,11 @@ const WINDOWS_DUCK_FACTOR = 0.25
 
 const WINDOWS_AUDIO_DUCKING_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 Add-Type -Language CSharp @"
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 
@@ -96,7 +99,7 @@ namespace StellaAudioInterop {
 
   [ComImport]
   [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  [Guid("BFA971F1-4D5E-40BB-935E-967039BFBEE4")]
+  [Guid("F4B1A599-7266-4319-A8CA-E70ACB11E8CD")]
   interface IAudioSessionControl {
     int GetState(out int pRetVal);
     int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string pRetVal);
@@ -143,9 +146,27 @@ namespace StellaAudioInterop {
     public uint ProcessId { get; set; }
     public float Volume { get; set; }
     public bool Muted { get; set; }
+    public string ProcessName { get; set; }
+    public string ProcessPath { get; set; }
   }
 
   public static class AudioSessionAccessor {
+    private static void PopulateProcessMetadata(SessionVolumeInfo info, uint processId) {
+      try {
+        using (var process = Process.GetProcessById((int)processId)) {
+          info.ProcessName = process.ProcessName ?? string.Empty;
+          try {
+            info.ProcessPath = process.MainModule != null ? (process.MainModule.FileName ?? string.Empty) : string.Empty;
+          } catch {
+            info.ProcessPath = string.Empty;
+          }
+        }
+      } catch {
+        info.ProcessName = string.Empty;
+        info.ProcessPath = string.Empty;
+      }
+    }
+
     public static List<SessionVolumeInfo> ListSessions() {
       var sessions = new List<SessionVolumeInfo>();
 
@@ -176,11 +197,13 @@ namespace StellaAudioInterop {
         Marshal.ThrowExceptionForHR(volume.GetMasterVolume(out level));
         Marshal.ThrowExceptionForHR(volume.GetMute(out muted));
 
-        sessions.Add(new SessionVolumeInfo {
+        var info = new SessionVolumeInfo {
           ProcessId = pid,
           Volume = level,
           Muted = muted
-        });
+        };
+        PopulateProcessMetadata(info, pid);
+        sessions.Add(info);
       }
 
       return sessions;
@@ -222,26 +245,56 @@ $excludePids = @()
 if ($ExcludePidsJson) {
   $excludePids = @((ConvertFrom-Json -InputObject $ExcludePidsJson) | ForEach-Object { [int]$_ })
 }
+$excludeProcessPaths = @()
+if ($ExcludeProcessPathsJson) {
+  $excludeProcessPaths = @(
+    (ConvertFrom-Json -InputObject $ExcludeProcessPathsJson) |
+      ForEach-Object { [string]$_ } |
+      Where-Object { $_ -and $_.Trim().Length -gt 0 } |
+      ForEach-Object { $_.Trim().ToLowerInvariant() }
+  )
+}
+$excludeProcessNames = @()
+if ($ExcludeProcessNamesJson) {
+  $excludeProcessNames = @(
+    (ConvertFrom-Json -InputObject $ExcludeProcessNamesJson) |
+      ForEach-Object { [string]$_ } |
+      Where-Object { $_ -and $_.Trim().Length -gt 0 } |
+      ForEach-Object { $_.Trim().ToLowerInvariant() }
+  )
+}
 
 if ($Action -eq 'duck') {
   $sessions = [StellaAudioInterop.AudioSessionAccessor]::ListSessions()
-  $snapshot = New-Object System.Collections.Generic.List[object]
+  $snapshot = @()
   foreach ($session in $sessions) {
-    $pid = [int]$session.ProcessId
-    if ($pid -le 0) { continue }
-    if ($excludePids -contains $pid) { continue }
+    $sessionPid = [int]$session.ProcessId
+    if ($sessionPid -le 0) { continue }
+    if ($excludePids -contains $sessionPid) { continue }
     if ($session.Muted) { continue }
+    $sessionProcessPath = [string]$session.ProcessPath
+    $sessionProcessName = [string]$session.ProcessName
+    if ($sessionProcessPath -and $excludeProcessPaths -contains $sessionProcessPath.Trim().ToLowerInvariant()) {
+      continue
+    }
+    if (
+      (-not $sessionProcessPath -or -not $sessionProcessPath.Trim()) -and
+      $sessionProcessName -and
+      $excludeProcessNames -contains $sessionProcessName.Trim().ToLowerInvariant()
+    ) {
+      continue
+    }
 
     $originalVolume = [double]$session.Volume
     $duckedVolume = [Math]::Max(0.0, [Math]::Min(1.0, $originalVolume * $DuckFactor))
-    [StellaAudioInterop.AudioSessionAccessor]::SetVolume([uint32]$pid, [single]$duckedVolume)
-    $snapshot.Add([pscustomobject]@{
-      pid = $pid
+    [StellaAudioInterop.AudioSessionAccessor]::SetVolume([uint32]$sessionPid, [single]$duckedVolume)
+    $snapshot += [pscustomobject]@{
+      pid = $sessionPid
       volume = $originalVolume
-    })
+    }
   }
 
-  $snapshot | ConvertTo-Json -Compress
+  ConvertTo-Json -InputObject @($snapshot) -Compress
   exit 0
 }
 
@@ -251,7 +304,9 @@ if ($SnapshotJson) {
 }
 foreach ($entry in $snapshot) {
   if ($null -eq $entry.pid -or $null -eq $entry.volume) { continue }
-  [StellaAudioInterop.AudioSessionAccessor]::SetVolume([uint32][int]$entry.pid, [single][double]$entry.volume)
+  $restorePid = [int](@($entry.pid)[0])
+  $restoreVolume = [double](@($entry.volume)[0])
+  [StellaAudioInterop.AudioSessionAccessor]::SetVolume([uint32]$restorePid, [single]$restoreVolume)
 }
 
 '[]'
@@ -313,6 +368,8 @@ export class AudioDuckingService {
       const stdout = await execPowerShell([
         `$Action = 'duck'`,
         `$ExcludePidsJson = ${toPowerShellSingleQuoted(JSON.stringify(this.getExcludedProcessIds()))}`,
+        `$ExcludeProcessPathsJson = ${toPowerShellSingleQuoted(JSON.stringify(this.getExcludedProcessPaths()))}`,
+        `$ExcludeProcessNamesJson = ${toPowerShellSingleQuoted(JSON.stringify(this.getExcludedProcessNames()))}`,
         `$SnapshotJson = '[]'`,
         `$DuckFactor = ${String(WINDOWS_DUCK_FACTOR)}`,
         WINDOWS_AUDIO_DUCKING_SCRIPT,
@@ -343,6 +400,8 @@ export class AudioDuckingService {
       await execPowerShell([
         `$Action = 'restore'`,
         `$ExcludePidsJson = '[]'`,
+        `$ExcludeProcessPathsJson = '[]'`,
+        `$ExcludeProcessNamesJson = '[]'`,
         `$SnapshotJson = ${toPowerShellSingleQuoted(JSON.stringify(snapshot))}`,
         `$DuckFactor = ${String(WINDOWS_DUCK_FACTOR)}`,
         WINDOWS_AUDIO_DUCKING_SCRIPT,
@@ -355,10 +414,24 @@ export class AudioDuckingService {
   private getExcludedProcessIds(): number[] {
     return uniquePids([
       process.pid,
+      ...app.getAppMetrics().map((metric) => metric.pid),
       ...this.getWindows().flatMap((window) => {
         if (window.isDestroyed()) return []
         return [window.webContents.getOSProcessId()]
       }),
     ])
+  }
+
+  private getExcludedProcessPaths(): string[] {
+    return [process.execPath]
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0)
+  }
+
+  private getExcludedProcessNames(): string[] {
+    const executableName = path.basename(process.execPath, path.extname(process.execPath))
+    return [executableName]
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0)
   }
 }
