@@ -124,10 +124,10 @@ const sanitizeProxyBase = (value: string | null): string | null => {
   const trimmed = value.trim();
   if (!trimmed) return null;
   const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/llm-proxy/")) {
+  if (normalized.includes("/api/ai/v1")) {
     return normalized;
   }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/llm-proxy/v1`;
+  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/v1`;
 };
 
 /** Build a compact panel inventory for the orchestrator's dynamic context. */
@@ -183,10 +183,10 @@ export const createPiHostRunner = ({
   const store = new JsonlRuntimeStore(StellaHome);
 
   const envProxyBaseUrl = sanitizeProxyBase(process.env.STELLA_LLM_PROXY_URL ?? null);
-  const envProxyToken = process.env.STELLA_LLM_PROXY_TOKEN ?? null;
+  const envAuthToken = process.env.STELLA_LLM_PROXY_TOKEN ?? null;
 
   let proxyBaseUrl: string | null = envProxyBaseUrl;
-  let proxyToken: string | null = envProxyToken;
+  let authToken: string | null = envAuthToken;
   let cloudSyncEnabled = false;
   let isRunning = false;
 
@@ -248,16 +248,16 @@ export const createPiHostRunner = ({
       ?? loadedAgents.find((entry) => entry.id === agentType);
   };
 
-  const ensureProxyReady = (): { baseUrl: string; token: string } => {
+  const ensureProxyReady = (): { baseUrl: string; authToken: string } => {
     const baseUrl = sanitizeProxyBase(proxyBaseUrl);
-    const token = proxyToken?.trim();
+    const nextAuthToken = authToken?.trim();
     if (!baseUrl) {
       throw new Error("Pi runtime is missing proxy URL. Set STELLA_LLM_PROXY_URL or configure host URL.");
     }
-    if (!token) {
-      throw new Error("Pi runtime is missing proxy token. Set STELLA_LLM_PROXY_TOKEN or auth token.");
+    if (!nextAuthToken) {
+      throw new Error("Pi runtime is missing auth token. Sign in or set STELLA_LLM_PROXY_TOKEN.");
     }
-    return { baseUrl, token };
+    return { baseUrl, authToken: nextAuthToken };
   };
 
   const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string => {
@@ -275,8 +275,6 @@ export const createPiHostRunner = ({
     const model = getConfiguredModel(args.agentType, agent);
 
     const threadHistory = store.loadThreadMessages(args.conversationId, 50);
-    const nextProxyToken = proxyToken?.trim();
-
     return {
       systemPrompt: agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
       dynamicContext:
@@ -294,14 +292,6 @@ export const createPiHostRunner = ({
       generalAgentEngine: args.agentType === "general" ? getGeneralAgentEngine(StellaHome) : undefined,
       codexLocalMaxConcurrency:
         args.agentType === "general" ? getCodexLocalMaxConcurrency(StellaHome) : undefined,
-      ...(nextProxyToken
-        ? {
-            proxyToken: {
-              token: nextProxyToken,
-              expiresAt: Date.now() + 60 * 60 * 1000,
-            },
-          }
-        : {}),
     };
   };
 
@@ -335,7 +325,7 @@ export const createPiHostRunner = ({
         agentType,
         proxy: {
           baseUrl: proxyBaseUrl,
-          getToken: () => proxyToken?.trim(),
+          getAuthToken: () => authToken?.trim(),
         },
       });
       try {
@@ -394,8 +384,8 @@ export const createPiHostRunner = ({
   };
 
   const setAuthToken = (value: string | null) => {
-    if (envProxyToken) return;
-    proxyToken = value;
+    if (envAuthToken) return;
+    authToken = value;
   };
 
   const setCloudSyncEnabled = (enabled: boolean) => {
@@ -449,18 +439,18 @@ export const createPiHostRunner = ({
       modelName: orchestratorModel,
       proxy: {
         baseUrl: proxyBaseUrl,
-        getToken: () => proxyToken?.trim(),
+        getAuthToken: () => authToken?.trim(),
       },
     })) {
       return { ready: true, engine: "pi" };
     }
     const hasProxyUrl = Boolean(sanitizeProxyBase(proxyBaseUrl));
-    const hasProxyToken = Boolean(proxyToken?.trim());
+    const hasAuthToken = Boolean(authToken?.trim());
     if (!hasProxyUrl) {
       return { ready: false, reason: "Missing proxy URL", engine: "pi" };
     }
-    if (!hasProxyToken) {
-      return { ready: false, reason: "Missing proxy token", engine: "pi" };
+    if (!hasAuthToken) {
+      return { ready: false, reason: "Missing auth token", engine: "pi" };
     }
     return { ready: false, reason: "No usable model route", engine: "pi" };
   };
@@ -497,7 +487,7 @@ export const createPiHostRunner = ({
       agentType,
       proxy: {
         baseUrl: proxyBaseUrl,
-        getToken: () => proxyToken?.trim(),
+        getAuthToken: () => authToken?.trim(),
       },
     });
 
@@ -593,7 +583,7 @@ export const createPiHostRunner = ({
     stop,
     subscribeQuery: () => null,
     getConvexUrl: () => proxyBaseUrl,
-    getProxy: (): { baseUrl: string; token: string } | null => {
+    getProxy: (): { baseUrl: string; authToken: string } | null => {
       try { return ensureProxyReady(); } catch { return null; }
     },
     killAllShells: () => toolHost.killAllShells(),

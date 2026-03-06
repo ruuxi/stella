@@ -1,11 +1,11 @@
 import { getModels, type Api, type Model } from "@mariozechner/pi-ai";
 import { getLocalLlmCredential, hasLocalLlmCredential } from "../system/llm-credentials.js";
 
-const DEFAULT_MODEL = "openai/gpt-4.1-mini";
+const DEFAULT_MODEL = "anthropic/claude-4.6-sonnet";
 
 type ManagedProxyConfig = {
   baseUrl: string | null;
-  getToken: () => string | null | undefined;
+  getAuthToken: () => string | null | undefined;
 };
 
 export type ResolvedLlmRoute = {
@@ -19,10 +19,10 @@ const normalizeProxyBase = (value: string | null | undefined): string | null => 
   const trimmed = value.trim();
   if (!trimmed) return null;
   const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/llm-proxy/")) {
+  if (normalized.includes("/api/ai/v1")) {
     return normalized;
   }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/llm-proxy/v1`;
+  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/v1`;
 };
 
 const parseModel = (rawModel: string | undefined): { provider: string; modelId: string; fullModelId: string } => {
@@ -233,12 +233,12 @@ export const resolveLlmRoute = (args: {
   }
 
   const proxyBaseUrl = normalizeProxyBase(args.proxy.baseUrl);
-  const proxyToken = args.proxy.getToken()?.trim();
-  if (proxyBaseUrl && proxyToken) {
+  const authToken = args.proxy.getAuthToken()?.trim();
+  if (proxyBaseUrl && authToken) {
     return {
       model: createManagedProxyModel(fullModelId, provider, proxyBaseUrl, args.agentType),
       route: "managed-proxy",
-      getApiKey: () => args.proxy.getToken()?.trim() || proxyToken,
+      getApiKey: () => args.proxy.getAuthToken()?.trim() || authToken,
     };
   }
 

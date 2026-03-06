@@ -72,7 +72,7 @@ async function callGenerateModel(
   currentSource: string,
   prompt: string,
   proxyBaseUrl: string,
-  proxyToken: string,
+  authToken: string,
 ): Promise<string> {
   const modelId = "inception/mercury-2";
 
@@ -80,7 +80,7 @@ async function callGenerateModel(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${proxyToken}`,
+      "Authorization": `Bearer ${authToken}`,
       "X-Provider": "inception",
       "X-Model-Id": modelId,
       "X-Agent-Type": "panel-generate",
@@ -127,7 +127,7 @@ async function callGenerateModel(
 export function startStellaUiServer(opts: {
   getWindow: () => BrowserWindow | null;
   frontendRoot: string;
-  getProxy: () => { baseUrl: string; token: string } | null;
+  getProxy: () => { baseUrl: string; authToken: string } | null;
 }): number {
   if (server) {
     const addr = server.address();
@@ -185,7 +185,7 @@ export function startStellaUiServer(opts: {
 
       try {
         const currentSource = fs.readFileSync(filePath, "utf-8");
-        const updatedSource = await callGenerateModel(currentSource, prompt, proxy.baseUrl, proxy.token);
+        const updatedSource = await callGenerateModel(currentSource, prompt, proxy.baseUrl, proxy.authToken);
         fs.writeFileSync(filePath, updatedSource, "utf-8");
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end(`Updated ${path.basename(filePath)}`);

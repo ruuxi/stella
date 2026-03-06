@@ -1,5 +1,8 @@
 import { createServiceRequest } from "@/services/http/service-request"
 
+const MUSIC_PROMPT_MODEL = "google/gemini-3-flash"
+const MUSIC_PROMPT_ENDPOINT = "/api/ai/v1/chat/completions"
+
 export type MusicMood = "Auto" | "Focus" | "Calm" | "Energy" | "Sleep" | "Lo-fi"
 
 export type PromptSet = {
@@ -12,6 +15,30 @@ export type PromptSet = {
     guidance: number
     temperature: number
   }
+}
+
+type ChatCompletionResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }>
+    }
+  }>
+}
+
+function extractChatMessageText(response: ChatCompletionResponse): string {
+  const content = response.choices?.[0]?.message?.content
+  if (typeof content === "string") {
+    return content.trim()
+  }
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part?.type === "text" && typeof part.text === "string")
+      .map((part) => part.text!.trim())
+      .filter(Boolean)
+      .join("\n")
+      .trim()
+  }
+  return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -144,17 +171,24 @@ export async function generateMusicPrompt(
   }
 
   try {
-    const { endpoint, headers } = await createServiceRequest("/api/ai/proxy", {
+    const { endpoint, headers } = await createServiceRequest(MUSIC_PROMPT_ENDPOINT, {
       "Content-Type": "application/json",
+      "X-Provider": "vercel",
+      "X-Model-Id": MUSIC_PROMPT_MODEL,
+      "X-Agent-Type": "music_prompt",
     })
 
     const res = await fetch(endpoint, {
       method: "POST",
       headers,
       body: JSON.stringify({
-        messages: [{ role: "user", content: userMessage }],
-        system: SYSTEM_PROMPT,
-        agentType: "music_prompt",
+        model: MUSIC_PROMPT_MODEL,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
+        ],
+        max_tokens: 16192,
+        temperature: 1,
         stream: false,
       }),
     })
@@ -163,13 +197,14 @@ export async function generateMusicPrompt(
       return getFallbackPrompt(mood)
     }
 
-    const json = (await res.json()) as { text?: string }
-    if (!json.text) {
+    const json = (await res.json()) as ChatCompletionResponse
+    const responseText = extractChatMessageText(json)
+    if (!responseText) {
       return getFallbackPrompt(mood)
     }
 
     // Parse JSON from LLM response (strip any markdown fences)
-    const cleaned = json.text.replace(/```(?:json)?\s*/g, "").replace(/```\s*/g, "").trim()
+    const cleaned = responseText.replace(/```(?:json)?\s*/g, "").replace(/```\s*/g, "").trim()
     const parsed = JSON.parse(cleaned) as PromptSet
 
     // Validate structure

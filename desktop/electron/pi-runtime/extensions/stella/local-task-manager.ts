@@ -17,10 +17,6 @@ export type LocalTaskManagerAgentContext = {
   activeThreadId?: string;
   generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
   codexLocalMaxConcurrency?: number;
-  proxyToken?: {
-    token: string;
-    expiresAt: number;
-  };
 };
 
 export type LocalTaskManagerStatus = "pending" | "running" | "completed" | "error" | "canceled";
