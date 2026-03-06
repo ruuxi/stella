@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { ConvexClient } from "convex/browser";
+import { anyApi } from "convex/server";
 import { getDevServerUrl } from "../dev-url.js";
 import { createSelfModHmrController } from "../self-mod/hmr.js";
 import type { HmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
@@ -27,6 +29,7 @@ import {
   type PiToolStartEvent,
 } from "./pi_agent_runtime.js";
 import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
+import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4-6";
 const DEFAULT_MAX_TASK_DEPTH = 8;
@@ -128,6 +131,13 @@ const defaultPromptForAgentType = (agentType: string): string => {
   return DEFAULT_SUBAGENT_PROMPT;
 };
 
+const sanitizeConvexDeploymentUrl = (value: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\/+$/, "");
+};
+
 const sanitizeProxyBase = (value: string | null): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
@@ -191,12 +201,17 @@ export const createPiHostRunner = ({
   scheduleApi,
 }: HostRunnerOptions) => {
   const store = new JsonlRuntimeStore(StellaHome);
+  const convexApi = anyApi;
 
   const envProxyBaseUrl = sanitizeProxyBase(process.env.STELLA_LLM_PROXY_URL ?? null);
   const envAuthToken = process.env.STELLA_LLM_PROXY_TOKEN ?? null;
+  const envConvexDeploymentUrl = sanitizeConvexDeploymentUrl(process.env.STELLA_CONVEX_URL ?? null);
 
   let proxyBaseUrl: string | null = envProxyBaseUrl;
   let authToken: string | null = envAuthToken;
+  let convexDeploymentUrl: string | null = envConvexDeploymentUrl;
+  let convexClient: ConvexClient | null = null;
+  let convexClientUrl: string | null = null;
   let cloudSyncEnabled = false;
   let isRunning = false;
 
@@ -214,6 +229,44 @@ export const createPiHostRunner = ({
   const agentsPath = path.join(StellaHome, "agents");
 
   let loadedAgents: ParsedAgentLike[] = [];
+
+  const disposeConvexClient = () => {
+    const client = convexClient;
+    convexClient = null;
+    convexClientUrl = null;
+    if (client) {
+      void client.close().catch(() => undefined);
+    }
+  };
+
+  const ensureConvexClient = (): ConvexClient | null => {
+    const deploymentUrl = sanitizeConvexDeploymentUrl(convexDeploymentUrl);
+    if (!deploymentUrl) {
+      disposeConvexClient();
+      return null;
+    }
+
+    if (convexClient && convexClientUrl === deploymentUrl) {
+      return convexClient;
+    }
+
+    disposeConvexClient();
+    const client = new ConvexClient(deploymentUrl, {
+      logger: false,
+      unsavedChangesWarning: false,
+    });
+    client.setAuth(async () => authToken?.trim() || null);
+    convexClient = client;
+    convexClientUrl = deploymentUrl;
+    return client;
+  };
+
+  const refreshConvexAuth = () => {
+    if (!convexClient) {
+      return;
+    }
+    convexClient.setAuth(async () => authToken?.trim() || null);
+  };
 
   const toolHost = createToolHost({
     StellaHome,
@@ -390,25 +443,35 @@ export const createPiHostRunner = ({
   });
 
   const setConvexUrl = (value: string | null) => {
-    if (envProxyBaseUrl) return;
-    proxyBaseUrl = sanitizeProxyBase(value);
+    if (!envConvexDeploymentUrl) {
+      const nextConvexDeploymentUrl = sanitizeConvexDeploymentUrl(value);
+      if (nextConvexDeploymentUrl !== convexClientUrl) {
+        disposeConvexClient();
+      }
+      convexDeploymentUrl = nextConvexDeploymentUrl;
+    }
+    if (!envProxyBaseUrl) {
+      proxyBaseUrl = sanitizeProxyBase(value);
+    }
+    syncRemoteTurnBridge();
   };
 
   const setAuthToken = (value: string | null) => {
     if (envAuthToken) return;
     authToken = value;
+    refreshConvexAuth();
+    syncRemoteTurnBridge();
   };
 
   const setCloudSyncEnabled = (enabled: boolean) => {
     cloudSyncEnabled = Boolean(enabled);
-    if (!cloudSyncEnabled) {
-      // Local Pi runtime intentionally ignores cloud persistence.
-    }
+    syncRemoteTurnBridge();
   };
 
   const start = () => {
     if (isRunning) return;
     isRunning = true;
+    syncRemoteTurnBridge();
 
     void loadSkillsFromHome(skillsPath)
       .then((skills) => {
@@ -429,6 +492,8 @@ export const createPiHostRunner = ({
 
   const stop = () => {
     isRunning = false;
+    remoteTurnBridge.stop();
+    disposeConvexClient();
     activeOrchestratorRunId = null;
     activeOrchestratorConversationId = null;
     for (const controller of activeRunAbortControllers.values()) {
@@ -673,6 +738,75 @@ export const createPiHostRunner = ({
     }
   };
 
+  const remoteTurnBridge = createRemoteTurnBridge({
+    deviceId,
+    isEnabled: () => isRunning && cloudSyncEnabled,
+    isRunnerBusy: () => Boolean(activeOrchestratorRunId),
+    subscribeRemoteTurnRequests: ({
+      deviceId: targetDeviceId,
+      since,
+      onUpdate,
+      onError,
+    }) => {
+      const client = ensureConvexClient();
+      if (!client) {
+        return () => {};
+      }
+
+      const subscription = client.onUpdate(
+        convexApi.events.subscribeRemoteTurnRequestsForDevice,
+        {
+          deviceId: targetDeviceId,
+          since,
+          limit: 20,
+        },
+        (events) => {
+          onUpdate(events as Array<{
+            _id: string;
+            timestamp: number;
+            type: string;
+            requestId?: string;
+            payload?: Record<string, unknown>;
+          }>);
+        },
+        onError,
+      );
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    },
+    runLocalTurn: async ({ conversationId, userPrompt, agentType }) =>
+      await runAutomationTurn({ conversationId, userPrompt, agentType }),
+    completeConnectorTurn: async ({ requestId, conversationId, text }) => {
+      const client = ensureConvexClient();
+      if (!client) {
+        throw new Error("Missing Convex client configuration.");
+      }
+      await client.mutation(
+        convexApi.channels.connector_delivery.completeRemoteTurn,
+        { requestId, conversationId, text },
+      );
+    },
+    log: (level, message, error) => {
+      const logger = level === "error" ? console.error : console.warn;
+      if (error === undefined) {
+        logger(message);
+        return;
+      }
+      logger(message, error);
+    },
+  });
+
+  function syncRemoteTurnBridge() {
+    if (!isRunning || !cloudSyncEnabled) {
+      remoteTurnBridge.stop();
+      return;
+    }
+    remoteTurnBridge.start();
+    remoteTurnBridge.kick();
+  }
+
   const cancelLocalChat = (runId: string) => {
     const controller = activeRunAbortControllers.get(runId);
     if (!controller) return;
@@ -705,7 +839,21 @@ export const createPiHostRunner = ({
     setCloudSyncEnabled,
     start,
     stop,
-    subscribeQuery: () => null,
+    subscribeQuery: (query: unknown, args: Record<string, unknown>, onUpdate: (value: unknown) => void, onError?: (error: Error) => void) => {
+      const client = ensureConvexClient();
+      if (!client) {
+        return null;
+      }
+      const subscription = client.onUpdate(
+        query as never,
+        args as never,
+        onUpdate as never,
+        onError,
+      );
+      return () => {
+        subscription.unsubscribe();
+      };
+    },
     getConvexUrl: () => proxyBaseUrl,
     getProxy: (): { baseUrl: string; authToken: string } | null => {
       try { return ensureProxyReady(); } catch { return null; }
