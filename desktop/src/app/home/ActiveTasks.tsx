@@ -13,7 +13,7 @@ type ActiveTasksProps = {
 
 export function ActiveTasks({ tasks }: ActiveTasksProps) {
   return (
-    <DashboardCard label="Active Tasks">
+    <DashboardCard label="Active Tasks" data-stella-label="Active Tasks" data-stella-state={`${tasks.length} running`}>
       <div className="home-tasks">
         {tasks.map((task) => (
           <div key={task.id} className="home-task-card">

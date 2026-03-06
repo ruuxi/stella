@@ -163,9 +163,11 @@ export function MusicPlayer() {
   return (
     <DashboardCard
       label="Ambient"
+      data-stella-label="Music Player"
+      data-stella-state={`status: ${status} | mood: ${mood}${isActive ? ` | elapsed: ${formatTime(elapsedSeconds)}` : ""}${lyrics ? " | lyrics: on" : ""}`}
       actions={
         isActive ? (
-          <button className="music-stop-btn" onClick={stop} aria-label="Stop">
+          <button className="music-stop-btn" onClick={stop} aria-label="Stop" data-stella-action="Stop music">
             <Square size={10} />
           </button>
         ) : undefined
@@ -183,6 +185,7 @@ export function MusicPlayer() {
           onFocus={preloadMusic}
           disabled={status === "loading"}
           aria-label={status === "playing" ? "Pause" : "Play"}
+          data-stella-action={status === "playing" ? "Pause music" : "Play music"}
         >
           {status === "loading" ? (
             <span className="music-loading-dot" />
@@ -229,6 +232,7 @@ export function MusicPlayer() {
             key={m}
             className={`music-mood-chip${m === mood ? " music-mood-chip--selected" : ""}`}
             onClick={() => selectMood(m)}
+            data-stella-action={`Set mood: ${m}`}
           >
             {m}
           </button>
@@ -250,6 +254,7 @@ export function MusicPlayer() {
           type="text"
           className="music-prompt-input"
           placeholder="Describe your vibe..."
+          data-stella-action="Music vibe prompt"
           value={localHint}
           onChange={(e) => setLocalHint(e.target.value)}
           onKeyDown={(e) => {
@@ -265,6 +270,7 @@ export function MusicPlayer() {
           onClick={handlePlay}
           disabled={status === "loading"}
           aria-label="Play with this vibe"
+          data-stella-action="Play with vibe"
         >
           <Play size={12} />
         </button>

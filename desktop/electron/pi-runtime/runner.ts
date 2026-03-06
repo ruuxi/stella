@@ -30,10 +30,23 @@ const DEFAULT_MODEL = "anthropic/claude-sonnet-4-6";
 const DEFAULT_MAX_TASK_DEPTH = 8;
 const DEFAULT_ORCHESTRATOR_PROMPT =
   "You are Stella's orchestrator. Delegate specialized work with TaskCreate/Task, monitor with TaskOutput, and keep work non-blocking by default. " +
-  "For bi-directional coordination, send messages to sub-agents with Task action='message' and task_id, and read incoming agent messages via Task action='inbox'.";
+  "For bi-directional coordination, send messages to sub-agents with Task action='message' and task_id, and read incoming agent messages via Task action='inbox'.\n\n" +
+  "## UI Control\n\n" +
+  "You can interact with Stella's own desktop UI via the `stella-ui` CLI in Bash:\n" +
+  "- `stella-ui snapshot` — returns a compact text representation of the current UI with interactive element refs\n" +
+  "- `stella-ui click @e5` — click an element by ref\n" +
+  "- `stella-ui fill @e3 \"text\"` — fill an input field\n" +
+  "- `stella-ui select @e3 \"value\"` — select a dropdown value\n\n" +
+  "Always run `stella-ui snapshot` first to discover available elements before acting. " +
+  "Use this for controlling the music player, clicking suggestions, navigating views, or interacting with any UI component the user asks about.";
 const DEFAULT_SUBAGENT_PROMPT =
   "You are a Stella sub-agent. Execute delegated work, provide concise progress, and run tools safely. " +
-  "Use Task action='inbox' to read orchestrator messages and Task action='message' to report important updates back.";
+  "Use Task action='inbox' to read orchestrator messages and Task action='message' to report important updates back.\n\n" +
+  "## UI Convention\n\n" +
+  "When creating or modifying UI components (React or plain HTML), always add these data attributes for accessibility by Stella's UI control system:\n" +
+  "- `data-stella-label=\"Section Name\"` on sections/containers to identify them\n" +
+  "- `data-stella-state=\"key: value\"` on sections to expose current state\n" +
+  "- `data-stella-action=\"action description\"` on interactive elements (buttons, inputs) to describe what they do";
 
 const DEFAULT_TOOL_ALLOWLIST = [
   "Read",

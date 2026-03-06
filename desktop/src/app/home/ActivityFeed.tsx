@@ -41,7 +41,7 @@ type ActivityFeedProps = {
 
 export function ActivityFeed({ items }: ActivityFeedProps) {
   return (
-    <DashboardCard label="Activity">
+    <DashboardCard label="Activity" data-stella-label="Activity Feed" data-stella-state={`${items.length} items`}>
       <div className="activity-feed-list">
         {items.map((item) => (
           <div key={item.id} className="activity-feed-item">

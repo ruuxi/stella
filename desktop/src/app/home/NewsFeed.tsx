@@ -5,7 +5,7 @@ const SOURCE_WIDTHS = ["30%", "40%", "25%", "35%", "28%", "32%"]
 
 export function NewsFeed() {
   return (
-    <DashboardCard label="Your News">
+    <DashboardCard label="Your News" data-stella-label="News Feed" data-stella-state="placeholder">
       <div className="news-feed-list">
         {SKELETON_WIDTHS.map((width, i) => (
           <div key={i} className="news-feed-item">
