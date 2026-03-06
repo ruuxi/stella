@@ -10,6 +10,12 @@ type HmrControllerOptions = {
   enabled: boolean;
 };
 
+type HmrStatus = {
+  paused: boolean;
+  queuedFiles: number;
+  requiresFullReload: boolean;
+};
+
 const withTimeoutSignal = (timeoutMs: number): AbortSignal => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -63,6 +69,40 @@ const postWithRetry = async (args: {
 export const createSelfModHmrController = (options: HmrControllerOptions) => {
   const activeRuns = new Set<string>();
 
+  const getStatus = async (): Promise<HmrStatus | null> => {
+    if (!options.enabled) {
+      return {
+        paused: activeRuns.size > 0,
+        queuedFiles: 0,
+        requiresFullReload: false,
+      };
+    }
+
+    const baseUrl = options.getDevServerUrl().replace(/\/+$/, "");
+    const target = `${baseUrl}${HMR_ENDPOINT_BASE}/status`;
+
+    try {
+      const response = await fetch(target, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        signal: withTimeoutSignal(REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = await response.json() as Partial<HmrStatus>;
+      return {
+        paused: Boolean(payload.paused),
+        queuedFiles: Number(payload.queuedFiles ?? 0),
+        requiresFullReload: Boolean(payload.requiresFullReload),
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const pause = async (runId: string): Promise<boolean> => {
     if (!options.enabled) {
       activeRuns.add(runId);
@@ -113,7 +153,7 @@ export const createSelfModHmrController = (options: HmrControllerOptions) => {
     pause,
     resume,
     forceResumeAll,
+    getStatus,
     isPaused: () => activeRuns.size > 0,
   };
 };
-
