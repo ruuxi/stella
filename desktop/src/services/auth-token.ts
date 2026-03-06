@@ -1,5 +1,5 @@
 /**
- * Auth token helper for custom HTTP endpoints (e.g. /api/chat, /api/synthesize,
+ * Auth token helper for custom HTTP endpoints (e.g. /api/chat,
  * /api/speech-to-text/ws-token).
  *
  * BetterAuth crossDomain stores session cookies in localStorage, NOT as browser

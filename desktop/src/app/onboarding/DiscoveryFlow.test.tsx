@@ -2,26 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useDiscoveryFlow } from "../onboarding/DiscoveryFlow";
 
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
 const mockChatStoreAppendEvent = vi.fn(() => Promise.resolve({ _id: "event-123" }));
-const mockSetCoreMemory = vi.fn(() => Promise.resolve(null));
-const mockGetOrCreateDefaultConversation = vi.fn(() =>
-  Promise.resolve({ _id: "conv-cloud-default" }),
-);
-const mockStartGeneration = vi.fn(() => Promise.resolve(null));
-
-vi.mock("convex/react", () => ({
-  useMutation: vi.fn((ref: string) => {
-    if (ref === "setCoreMemory") return mockSetCoreMemory;
-    if (ref === "getOrCreateDefaultConversation")
-      return mockGetOrCreateDefaultConversation;
-    return vi.fn();
-  }),
-  useAction: vi.fn(() => mockStartGeneration),
-}));
 
 const mockUseChatStore = vi.fn(() => ({
   storageMode: "cloud",
@@ -38,17 +19,6 @@ vi.mock("@/providers/chat-store", () => ({
   useChatStore: () => mockUseChatStore(),
 }));
 
-vi.mock("@/convex/api", () => ({
-  api: {
-    events: { appendEvent: "appendEvent" },
-    data: { preferences: { setCoreMemory: "setCoreMemory" } },
-    conversations: {
-      getOrCreateDefaultConversation: "getOrCreateDefaultConversation",
-    },
-    personalized_dashboard: { startGeneration: "startGeneration" },
-  },
-}));
-
 vi.mock("@/services/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
@@ -58,14 +28,6 @@ vi.mock("@/services/synthesis", () => ({
     Promise.resolve({ coreMemory: null }),
   ),
 }));
-
-vi.mock("@/services/skill-selection", () => ({
-  selectDefaultSkills: vi.fn(() => Promise.resolve()),
-}));
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 const BROWSER_SELECTION_KEY = "stella-selected-browser";
 
@@ -85,7 +47,7 @@ function setCloudMode(isAuthenticated = true) {
     appendAgentEvent: vi.fn(),
     uploadAttachments: vi.fn(),
     buildHistory: vi.fn(),
-    });
+  });
 }
 
 function setLocalMode(isAuthenticated = false) {
@@ -100,10 +62,6 @@ function setLocalMode(isAuthenticated = false) {
     buildHistory: vi.fn(),
   });
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe("useDiscoveryFlow", () => {
   beforeEach(() => {
@@ -130,14 +88,12 @@ describe("useDiscoveryFlow", () => {
       useDiscoveryFlow(defaultOptions()),
     );
 
-    // Should not throw when called
     act(() => {
       result.current.handleDiscoveryConfirm(["dev_environment"]);
     });
   });
 
   it("does not prepend browsing_bookmarks when no browser is selected in localStorage", () => {
-    // Ensure no browser selected
     localStorage.removeItem(BROWSER_SELECTION_KEY);
     setCloudMode(true);
 
@@ -356,7 +312,6 @@ describe("useDiscoveryFlow", () => {
         "User is a developer",
       );
       expect(getOrCreateDeviceId).toHaveBeenCalled();
-      // chatStore.appendEvent should be called twice: assistant_message + welcome_suggestions
       expect(mockChatStoreAppendEvent).toHaveBeenCalledTimes(2);
       expect(mockChatStoreAppendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -379,12 +334,6 @@ describe("useDiscoveryFlow", () => {
           },
         }),
       );
-      expect(mockStartGeneration).toHaveBeenCalledWith({
-        conversationId: "conv-1",
-        coreMemory: "User is a developer",
-        targetDeviceId: "device-1",
-        force: false,
-      });
     });
   });
 
@@ -421,55 +370,12 @@ describe("useDiscoveryFlow", () => {
     });
 
     await vi.waitFor(() => {
-      // Only assistant_message, no welcome_suggestions (empty array is falsy via .length)
       expect(mockChatStoreAppendEvent).toHaveBeenCalledTimes(1);
       expect(mockChatStoreAppendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "assistant_message",
         }),
       );
-    });
-  });
-
-  it("starts generation in local mode when core memory is synthesized", async () => {
-    setLocalMode(true);
-
-    const { synthesizeCoreMemory } = await import(
-      "@/services/synthesis"
-    );
-
-    vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
-      coreMemory: "Local user profile",
-      welcomeMessage: "",
-    });
-
-    (window as unknown as Record<string, unknown>).electronAPI = {
-      browser: {
-        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-        collectAllSignals: vi.fn(() =>
-          Promise.resolve({ formatted: "signals", error: null }),
-        ),
-        writeCoreMemory: vi.fn(() => Promise.resolve()),
-      },
-    };
-
-    const { result } = renderHook(() =>
-      useDiscoveryFlow({
-        conversationId: "conv-local-1",
-      }),
-    );
-
-    act(() => {
-      result.current.handleDiscoveryConfirm(["apps_system"]);
-    });
-
-    await vi.waitFor(() => {
-      expect(mockStartGeneration).toHaveBeenCalledWith({
-        conversationId: "conv-cloud-default",
-        coreMemory: "Local user profile",
-        targetDeviceId: "device-1",
-        force: true,
-      });
     });
   });
 
@@ -512,7 +418,7 @@ describe("useDiscoveryFlow", () => {
         { includeAuth: false },
       );
       expect(writeCoreMemory).toHaveBeenCalledWith("Unauth local profile");
-      expect(mockStartGeneration).not.toHaveBeenCalled();
+      expect(mockChatStoreAppendEvent).not.toHaveBeenCalled();
     });
   });
 
@@ -568,7 +474,6 @@ describe("useDiscoveryFlow", () => {
       }),
     );
 
-    // Should not throw
     act(() => {
       result.current.handleDiscoveryConfirm(["dev_environment"]);
     });
@@ -615,15 +520,10 @@ describe("useDiscoveryFlow", () => {
       expect(synthesizeCoreMemory).toHaveBeenCalledTimes(1);
     });
 
-    // Force a rerender — the ref guard should prevent a second run
     rerender({
       conversationId: "conv-5",
     });
 
-    // Still only called once
     expect(synthesizeCoreMemory).toHaveBeenCalledTimes(1);
   });
 });
-
-
-
