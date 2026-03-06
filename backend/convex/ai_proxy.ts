@@ -17,6 +17,7 @@ import {
   isAnonDeviceHashSaltMissingError,
   logMissingSaltOnce,
 } from "./http_shared/anon_device";
+import { AGENT_MODELS, DEFAULT_MODEL } from "./agent/model";
 
 const MAX_ANON_REQUESTS = 50_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
@@ -143,15 +144,22 @@ export const managedAi = httpAction(async (ctx, request) => {
     );
   }
 
-  const modelId =
-    request.headers.get("X-Model-Id")?.trim() || `${requestedProvider}/unknown`;
+  const clientModelId = request.headers.get("X-Model-Id")?.trim() || "";
+  const needsServerModel = !clientModelId;
+  const serverModelConfig = needsServerModel
+    ? (AGENT_MODELS[agentType] ?? DEFAULT_MODEL)
+    : null;
+  const modelId = clientModelId || serverModelConfig?.model || `${requestedProvider}/unknown`;
   const gatewayUpstream = `${GATEWAY_BASE_URL}${sanitizedPath}`;
+
+  console.log(`[ai-proxy] agent=${agentType} | clientModel=${clientModelId || "(none)"} | serverModel=${serverModelConfig?.model || "(not used)"} | resolvedModel=${modelId} | fallback=${serverModelConfig?.fallback || "(none)"}`);
 
   return await forwardRequest(
     ctx,
     request,
     { url: gatewayUpstream, apiKey: gatewayKey },
     { ownerId, agentType, modelId },
+    serverModelConfig,
   );
 });
 
@@ -160,6 +168,7 @@ async function forwardRequest(
   request: Request,
   upstream: { url: string; apiKey: string },
   usage: { ownerId: string; agentType: string; modelId: string },
+  serverModelConfig?: { model: string; fallback?: string; providerOptions?: Record<string, Record<string, unknown>> } | null,
 ): Promise<Response> {
   const forwardHeaders: Record<string, string> = {};
   request.headers.forEach((value, key) => {
@@ -175,13 +184,36 @@ async function forwardRequest(
   delete forwardHeaders["x-goog-api-key"];
   forwardHeaders.Authorization = `Bearer ${upstream.apiKey}`;
 
+  // When the frontend didn't specify a model, inject the server-side model
+  // config into the request body before forwarding to the gateway.
+  let requestBody: BodyInit | null = request.body;
+  if (serverModelConfig) {
+    try {
+      const bodyText = await request.text();
+      const bodyJson = JSON.parse(bodyText) as Record<string, unknown>;
+      bodyJson.model = serverModelConfig.model;
+      if (serverModelConfig.providerOptions) {
+        // Merge provider options (e.g. gateway ordering) into the body
+        for (const [key, value] of Object.entries(serverModelConfig.providerOptions)) {
+          bodyJson[key] = value;
+        }
+      }
+      requestBody = JSON.stringify(bodyJson);
+      forwardHeaders["content-type"] = "application/json";
+      console.log(`[ai-proxy] injected server model into body | model=${bodyJson.model}`);
+    } catch {
+      // If body parsing fails, forward as-is
+      console.warn("[ai-proxy] failed to parse request body for model injection");
+    }
+  }
+
   const startMs = Date.now();
 
   try {
     const upstreamResponse = await fetch(upstream.url, {
       method: request.method,
       headers: forwardHeaders,
-      body: request.body,
+      body: requestBody,
     });
 
     const durationMs = Date.now() - startMs;
