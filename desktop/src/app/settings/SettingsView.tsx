@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useAccountMode } from "@/hooks/use-account-mode";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
+import type { LocalLlmCredentialSummary } from "@/types/electron";
 import {
   Dialog,
   DialogContent,
@@ -56,27 +57,18 @@ const GENERAL_AGENT_ENGINE_OPTIONS = [
 const CODEX_LOCAL_CONCURRENCY_OPTIONS = [1, 2, 3] as const;
 
 const LLM_PROVIDERS = [
-  { key: "llm:anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
-  { key: "llm:openai", label: "OpenAI", placeholder: "sk-..." },
-  { key: "llm:google", label: "Google", placeholder: "AIza..." },
-  { key: "llm:azure", label: "Azure OpenAI", placeholder: "..." },
-  { key: "llm:azure-cognitive-services", label: "Azure Cognitive Services", placeholder: "..." },
-  { key: "llm:cloudflare-workers-ai", label: "Cloudflare Workers AI", placeholder: "..." },
-  { key: "llm:cloudflare-ai-gateway", label: "Cloudflare AI Gateway", placeholder: "..." },
-  { key: "llm:vercel", label: "Vercel AI Gateway (Direct)", placeholder: "..." },
-  { key: "llm:openrouter", label: "OpenRouter", placeholder: "sk-or-..." },
-  { key: "llm:gateway", label: "Vercel AI Gateway", placeholder: "..." },
-  { key: "llm:amazon-bedrock", label: "Amazon Bedrock", placeholder: "..." },
-  { key: "llm:google-vertex", label: "Google Vertex AI", placeholder: "..." },
-  { key: "llm:google-vertex-anthropic", label: "Vertex AI (Anthropic)", placeholder: "..." },
-  { key: "llm:gitlab", label: "GitLab Duo", placeholder: "..." },
-  { key: "llm:github-copilot", label: "GitHub Copilot", placeholder: "..." },
-  { key: "llm:github-copilot-enterprise", label: "GitHub Copilot Enterprise", placeholder: "..." },
-  { key: "llm:sap-ai-core", label: "SAP AI Core", placeholder: "..." },
-  { key: "llm:opencode", label: "OpenCode Zen", placeholder: "..." },
-  { key: "llm:zenmux", label: "ZenMux", placeholder: "..." },
-  { key: "llm:cerebras", label: "Cerebras", placeholder: "..." },
-  { key: "llm:kilo", label: "Kilo Gateway", placeholder: "..." },
+  { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
+  { key: "openai", label: "OpenAI", placeholder: "sk-..." },
+  { key: "google", label: "Google", placeholder: "AIza..." },
+  { key: "kimi-coding", label: "Kimi (Moonshot AI)", placeholder: "sk-..." },
+  { key: "zai", label: "Z.AI", placeholder: "..." },
+  { key: "xai", label: "xAI", placeholder: "xai-..." },
+  { key: "groq", label: "Groq", placeholder: "gsk_..." },
+  { key: "mistral", label: "Mistral", placeholder: "..." },
+  { key: "cerebras", label: "Cerebras", placeholder: "..." },
+  { key: "openrouter", label: "OpenRouter", placeholder: "sk-or-..." },
+  { key: "vercel-ai-gateway", label: "Vercel AI Gateway", placeholder: "..." },
+  { key: "opencode", label: "OpenCode Zen", placeholder: "..." },
 ] as const;
 
 const TABS: { key: SettingsTab; label: string }[] = [
@@ -465,63 +457,127 @@ function ModelConfigSection() {
 }
 
 function ApiKeysSection() {
-  const secrets = useQuery(api.data.secrets.listSecrets, {}) as
-    | Array<{ _id: string; provider: string; label: string; status: string }>
-    | undefined;
-  const createSecret = useMutation(api.data.secrets.createSecret);
-  const deleteSecret = useMutation(api.data.secrets.deleteSecret);
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState("");
+  const [llmCredentials, setLlmCredentials] = useState<LocalLlmCredentialSummary[]>([]);
+  const [credentialsError, setCredentialsError] = useState<string | null>(null);
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [removingProvider, setRemovingProvider] = useState<string | null>(null);
 
-  const llmSecrets = (secrets ?? []).filter((s) => s.provider.startsWith("llm:"));
+  const loadCredentials = useCallback(async () => {
+    if (!window.electronAPI?.system.listLlmCredentials) {
+      setLlmCredentials([]);
+      return;
+    }
 
-  const getSecretForProvider = (providerKey: string) =>
-    llmSecrets.find((s) => s.provider === providerKey && s.status === "active");
+    const nextCredentials = await window.electronAPI.system.listLlmCredentials();
+    setLlmCredentials(nextCredentials);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        await loadCredentials();
+        if (!cancelled) {
+          setCredentialsError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCredentialsError(
+            error instanceof Error ? error.message : "Failed to load local API keys.",
+          );
+          setLlmCredentials([]);
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCredentials]);
+
+  const getCredentialForProvider = (providerKey: string) =>
+    llmCredentials.find((credential) =>
+      credential.provider === providerKey && credential.status === "active");
 
   const handleSave = useCallback(
     async (providerKey: string, label: string) => {
       if (!keyInput.trim()) return;
-      const existing = llmSecrets.find((s) => s.provider === providerKey);
-      if (existing) {
-        await deleteSecret({ secretId: existing._id as any });
+      if (!window.electronAPI?.system.saveLlmCredential) {
+        setCredentialsError("Local API key storage is unavailable in this window.");
+        return;
       }
-      await createSecret({
-        provider: providerKey,
-        label,
-        plaintext: keyInput.trim(),
-        metadata: undefined,
-      });
-      setKeyInput("");
-      setEditingProvider(null);
+      setCredentialsError(null);
+      setIsSavingKey(true);
+      try {
+        const saved = await window.electronAPI.system.saveLlmCredential({
+          provider: providerKey,
+          label,
+          plaintext: keyInput.trim(),
+        });
+        setLlmCredentials((prev) => {
+          const next = prev.filter((entry) => entry.provider !== saved.provider);
+          next.push(saved);
+          return next.sort((a, b) => a.label.localeCompare(b.label));
+        });
+        setKeyInput("");
+        setEditingProvider(null);
+      } catch (error) {
+        setCredentialsError(
+          error instanceof Error ? error.message : "Failed to save local API key.",
+        );
+      } finally {
+        setIsSavingKey(false);
+      }
     },
-    [keyInput, llmSecrets, createSecret, deleteSecret],
+    [keyInput],
   );
 
   const handleRemove = useCallback(
     async (providerKey: string) => {
-      const existing = llmSecrets.find((s) => s.provider === providerKey);
-      if (existing) {
-        await deleteSecret({ secretId: existing._id as any });
+      if (!window.electronAPI?.system.deleteLlmCredential) {
+        setCredentialsError("Local API key storage is unavailable in this window.");
+        return;
+      }
+      setCredentialsError(null);
+      setRemovingProvider(providerKey);
+      try {
+        await window.electronAPI.system.deleteLlmCredential(providerKey);
+        setLlmCredentials((prev) => prev.filter((entry) => entry.provider !== providerKey));
+      } catch (error) {
+        setCredentialsError(
+          error instanceof Error ? error.message : "Failed to remove local API key.",
+        );
+      } finally {
+        setRemovingProvider(null);
       }
     },
-    [llmSecrets, deleteSecret],
+    [],
   );
 
   return (
     <div className="settings-card">
       <h3 className="settings-card-title">API Keys</h3>
       <p className="settings-card-desc">
-        Bring your own API keys to bypass the gateway and call providers directly.
+        Keys stay on this device. If Stella has a matching local key it calls that provider
+        directly. Otherwise it uses the managed Stella route.
       </p>
+      {credentialsError ? (
+        <p className="settings-card-desc">{credentialsError}</p>
+      ) : null}
       {LLM_PROVIDERS.map((provider) => {
-        const secret = getSecretForProvider(provider.key);
+        const credential = getCredentialForProvider(provider.key);
         const isEditing = editingProvider === provider.key;
+        const isRemoving = removingProvider === provider.key;
         return (
           <div key={provider.key} className="settings-row">
             <div className="settings-row-info">
               <div className="settings-row-label">{provider.label}</div>
               <div className="settings-row-sublabel">
-                {secret ? (
+                {credential ? (
                   <span className="settings-key-status">
                     <span className="settings-key-dot settings-key-dot--active" />
                     Key set
@@ -554,8 +610,9 @@ function ApiKeysSection() {
                   <button
                     className="settings-btn settings-btn--primary"
                     onClick={() => handleSave(provider.key, provider.label)}
+                    disabled={isSavingKey}
                   >
-                    Save
+                    {isSavingKey ? "Saving..." : "Save"}
                   </button>
                   <button
                     className="settings-btn"
@@ -563,6 +620,7 @@ function ApiKeysSection() {
                       setEditingProvider(null);
                       setKeyInput("");
                     }}
+                    disabled={isSavingKey}
                   >
                     Cancel
                   </button>
@@ -574,16 +632,19 @@ function ApiKeysSection() {
                     onClick={() => {
                       setEditingProvider(provider.key);
                       setKeyInput("");
+                      setCredentialsError(null);
                     }}
+                    disabled={isSavingKey || Boolean(removingProvider)}
                   >
-                    {secret ? "Update Key" : "Add Key"}
+                    {credential ? "Update Key" : "Add Key"}
                   </button>
-                  {secret && (
+                  {credential && (
                     <button
                       className="settings-btn settings-btn--danger"
                       onClick={() => handleRemove(provider.key)}
+                      disabled={isRemoving || isSavingKey}
                     >
-                      Remove
+                      {isRemoving ? "Removing..." : "Remove"}
                     </button>
                   )}
                 </>
