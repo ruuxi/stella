@@ -9,7 +9,6 @@
  */
 
 import { createServiceRequest } from "./http/service-request";
-import { runLocalVoiceAction } from "./local-voice-action-router";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1170,62 +1169,6 @@ export class RealtimeVoiceSession {
   // Function call execution
   // ---------------------------------------------------------------------------
 
-  /**
-   * Run the local voice action router in the background. The tool call already
-   * returned a quick acknowledgment so the voice agent can speak immediately.
-   * When the action completes, inject the result and trigger a follow-up
-   * response in the realtime session.
-   */
-  private runLocalActionAsync(message: string): void {
-    import("@/app/neri/neri-store")
-      .then(async ({ getNeriWindowSummary }) =>
-        await runLocalVoiceAction({
-          message,
-          conversationId: this.conversationId ?? undefined,
-          windowState: getNeriWindowSummary(),
-        }),
-      )
-      .then(({ action, spokenResult }) => {
-        window.electronAPI?.voice.persistTranscript?.({
-          conversationId: this.conversationId ?? "voice-rtc",
-          role: "assistant",
-          text: `[VOICE ACTION: ${action}] ${spokenResult || ""}`.trim(),
-        });
-        if (!spokenResult || spokenResult === "Working on it.") return;
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `[System: the action completed. Here is the result to share with the user: "${spokenResult}"]`,
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
-      })
-      .catch((err) => {
-        console.error("[realtime-voice] Local action router error:", err);
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `[System: the action failed with error: "${(err as Error).message}". Let the user know briefly.]`,
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
-      });
-  }
-
   private async handleFunctionCall(item: Record<string, unknown>) {
     const name = item.name as string;
     console.log("[realtime-voice] handleFunctionCall called with tool:", name);
@@ -1281,11 +1224,6 @@ export class RealtimeVoiceSession {
           window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
         }, 2000);
         return;
-      } else if (name === "perform_action") {
-        // Use the user's actual transcript instead of the model's paraphrase
-        const message = this.lastUserTranscript || (args.message as string) || "";
-        result = "Working on it.";
-        this.runLocalActionAsync(message);
       } else {
         result = `Unknown tool: ${name}`;
       }
@@ -1306,12 +1244,7 @@ export class RealtimeVoiceSession {
       },
     });
 
-    // For async local action calls, don't request a response here — the
-    // runLocalActionAsync callback will inject the real result and trigger
-    // response.create once the action actually completes.
-    if (name !== "perform_action") {
-      this.sendEvent({ type: "response.create" });
-    }
+    this.sendEvent({ type: "response.create" });
   }
 
   // ---------------------------------------------------------------------------

@@ -201,7 +201,6 @@ export class OverlayWindowController {
   private activeRegionCapture = false
   private activeMini = false
   private activeVoice = false
-  private activeNeri = false
 
   private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
@@ -215,19 +214,10 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
-  private readonly handleNeriRequest = () => {
-    this.showNeri()
-  }
-  private readonly handleNeriHideRequest = () => {
-    this.hideNeri()
-  }
-
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.on('radial:animDone', this.handleRadialAnimDone)
-    ipcMain.on('overlay:showNeri:request', this.handleNeriRequest)
-    ipcMain.on('overlay:hideNeri:request', this.handleNeriHideRequest)
   }
 
   getWindow() { return this.overlayWindow.getWindow() }
@@ -236,7 +226,7 @@ export class OverlayWindowController {
   create() { return this.overlayWindow.create() }
 
   private get isAnyActive() {
-    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph || this.activeNeri
+    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph
   }
 
   private hideOverlayIfIdle() {
@@ -396,31 +386,6 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
-  // ─── Neri Dashboard ────────────────────────────────────────────────────
-
-  showNeri() {
-    this.activeNeri = true
-    this.overlayWindow.show({ focus: true })
-    this.overlayWindow.setIgnoreMouseEvents(false)
-    this.overlayWindow.setFocusable(true)
-    // Find the display the cursor is on and send its center (overlay-relative)
-    const cursor = screen.getCursorScreenPoint()
-    const display = screen.getDisplayNearestPoint(cursor)
-    const origin = this.overlayWindow.getOverlayOrigin()
-    this.overlayWindow.send('overlay:showNeri', {
-      cursorX: display.bounds.x + display.bounds.width / 2 - origin.x,
-      cursorY: display.bounds.y + display.bounds.height / 2 - origin.y,
-    })
-  }
-
-  hideNeri() {
-    this.activeNeri = false
-    this.overlayWindow.send('overlay:hideNeri')
-    this.overlayWindow.setIgnoreMouseEvents(true)
-    this.overlayWindow.setFocusable(false)
-    this.hideOverlayIfIdle()
-  }
-
   // ─── Morph Transition (HMR Resume) ───────────────────────────────────
 
   private activeMorph = false
@@ -453,8 +418,6 @@ export class OverlayWindowController {
   destroy() {
     ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
-    ipcMain.removeListener('overlay:showNeri:request', this.handleNeriRequest)
-    ipcMain.removeListener('overlay:hideNeri:request', this.handleNeriHideRequest)
     this.overlayWindow.destroy()
   }
 }

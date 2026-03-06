@@ -58,9 +58,6 @@ describe("OverlayRoot radial lifecycle", () => {
         onRestoreMini: vi.fn(() => vi.fn()),
         onShowVoice: vi.fn(() => vi.fn()),
         onHideVoice: vi.fn(() => vi.fn()),
-        onShowNeri: vi.fn(() => vi.fn()),
-        onHideNeri: vi.fn(() => vi.fn()),
-        hideNeri: vi.fn(),
       },
       voice: {
         submitTranscript: vi.fn(),
