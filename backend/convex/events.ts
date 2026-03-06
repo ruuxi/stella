@@ -1107,10 +1107,30 @@ function deviceSubscriptionHandler(opts: {
       .take(maxItems * 3); // Over-fetch to account for type/ownership filtering
 
     const ownershipCache = new Map<string, boolean>();
+    const remoteTurnStatusCache = new Map<string, boolean>();
     const filtered: Infer<typeof eventValidator>[] = [];
 
     for (const event of events) {
       if (event.type !== opts.eventType) continue;
+
+      if (opts.eventType === "remote_turn_request" && event.requestId) {
+        let alreadyHandled = remoteTurnStatusCache.get(event.requestId);
+        if (alreadyHandled === undefined) {
+          const [claimed, fulfilled] = await Promise.all([
+            ctx.db
+              .query("events")
+              .withIndex("by_requestId", (q) => q.eq("requestId", `claimed:${event.requestId}`))
+              .first(),
+            ctx.db
+              .query("events")
+              .withIndex("by_requestId", (q) => q.eq("requestId", `fulfilled:${event.requestId}`))
+              .first(),
+          ]);
+          alreadyHandled = claimed !== null || fulfilled !== null;
+          remoteTurnStatusCache.set(event.requestId, alreadyHandled);
+        }
+        if (alreadyHandled) continue;
+      }
 
       const key = String(event.conversationId);
       let owned = ownershipCache.get(key);
