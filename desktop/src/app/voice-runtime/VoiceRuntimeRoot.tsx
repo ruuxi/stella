@@ -14,7 +14,7 @@ type RuntimeVoiceState = {
   outputLevel: number;
 };
 
-const LEVEL_SAMPLE_MS = 50;
+const LEVEL_SAMPLE_MS = 24;
 const DEFAULT_RUNTIME_STATE: RuntimeVoiceState = {
   sessionState: "idle",
   isConnected: false,
