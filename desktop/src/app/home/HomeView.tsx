@@ -1,11 +1,12 @@
-import { Suspense, lazy, useCallback, useMemo } from "react"
-import { useQuery } from "convex/react"
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react"
 import { useConversationEvents } from "@/hooks/use-conversation-events"
 import { getRunningTasks } from "@/lib/event-transforms"
 import { useWelcomeSuggestions } from "@/hooks/use-welcome-suggestions"
-import { useChatStore } from "@/providers/chat-store"
-import { api } from "@/convex/api"
 import type { WelcomeSuggestion } from "@/services/synthesis"
+import type {
+  LocalCronJobRecord,
+  LocalHeartbeatConfigRecord,
+} from "@/types/electron"
 import { NewsFeed } from "./NewsFeed"
 import { ImageGallery } from "./ImageGallery"
 import { GenerativeCanvas } from "./GenerativeCanvas"
@@ -33,39 +34,45 @@ const MusicPlayer = lazy(() =>
 )
 
 function useScheduleData(): ScheduleItem[] {
-  const { cloudFeaturesEnabled } = useChatStore()
+  const [cronJobs, setCronJobs] = useState<LocalCronJobRecord[]>([])
+  const [heartbeats, setHeartbeats] = useState<LocalHeartbeatConfigRecord[]>([])
 
-  const cronJobs = useQuery(
-    api.scheduling.dashboard_queries.listCronJobs,
-    cloudFeaturesEnabled ? {} : "skip",
-  ) as
-    | {
-        _id: string
-        name: string
-        description?: string
-        enabled: boolean
-        nextRunAtMs: number
-        lastRunAtMs?: number
-        lastStatus?: string
-        lastOutputPreview?: string
-      }[]
-    | undefined
+  useEffect(() => {
+    const scheduleApi = window.electronAPI?.schedule
+    if (!scheduleApi) {
+      setCronJobs([])
+      setHeartbeats([])
+      return
+    }
 
-  const heartbeats = useQuery(
-    api.scheduling.dashboard_queries.listHeartbeats,
-    cloudFeaturesEnabled ? {} : "skip",
-  ) as
-    | {
-        _id: string
-        enabled: boolean
-        intervalMs: number
-        prompt?: string
-        nextRunAtMs: number
-        lastRunAtMs?: number
-        lastStatus?: string
-        lastSentText?: string
-      }[]
-    | undefined
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const [nextCronJobs, nextHeartbeats] = await Promise.all([
+          scheduleApi.listCronJobs(),
+          scheduleApi.listHeartbeats(),
+        ])
+        if (cancelled) return
+        setCronJobs(nextCronJobs)
+        setHeartbeats(nextHeartbeats)
+      } catch {
+        if (cancelled) return
+        setCronJobs([])
+        setHeartbeats([])
+      }
+    }
+
+    void load()
+    const unsubscribe = scheduleApi.onUpdated(() => {
+      void load()
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [])
 
   return useMemo(() => {
     const items: ScheduleItem[] = []
@@ -74,7 +81,7 @@ function useScheduleData(): ScheduleItem[] {
       for (const job of cronJobs) {
         if (!job.enabled) continue
         items.push({
-          id: job._id,
+          id: job.id,
           kind: "scheduled",
           name: job.name,
           description: job.description,
@@ -94,7 +101,7 @@ function useScheduleData(): ScheduleItem[] {
           ? hb.prompt.slice(0, 40) + (hb.prompt.length > 40 ? "..." : "")
           : "Heartbeat"
         items.push({
-          id: hb._id,
+          id: hb.id,
           kind: "monitoring",
           name,
           enabled: hb.enabled,
