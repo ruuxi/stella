@@ -69,13 +69,19 @@ function resolvePanelFile(panelName: string, frontendRoot: string): string | nul
 // LLM call for generate command
 // ---------------------------------------------------------------------------
 
-const GENERATE_SYSTEM_PROMPT = `You are a React component generator for Stella, a desktop AI assistant.
-You receive the current source code of a React component and a user prompt describing what content to show.
+const GENERATE_SYSTEM_PROMPT = `You are a React component updater for Stella, a desktop AI assistant.
+You receive the current source code of a React component and a prompt describing what content to display.
 Return ONLY the updated component source code — no explanation, no markdown fences, no commentary.
-Preserve the component's exports, imports structure, and data-stella-* attributes.
-Use the existing CSS classes and styling patterns from the original component.
-Replace placeholder/skeleton content with real content based on the prompt.
-If the component needs data, hardcode it inline (no API calls needed — this is for display).`;
+
+CRITICAL RULES:
+- NEVER change component behavior, hooks, event handlers, callbacks, or state logic.
+- NEVER add useEffect, useState, or modify existing hooks.
+- NEVER change function signatures, props, or exports.
+- ONLY change static/display content: text, labels, hardcoded data arrays, placeholder strings.
+- Preserve ALL imports, exports, data-stella-* attributes, CSS classes, and component structure exactly.
+- If the component has placeholder/skeleton content, replace it with real content matching the prompt.
+- If the component already has real content, update the content to match the prompt.
+- Hardcode display data inline (no API calls).`;
 
 async function callGenerateModel(
   currentSource: string,
@@ -89,7 +95,6 @@ async function callGenerateModel(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Accept-Encoding": "identity",
       "Authorization": `Bearer ${authToken}`,
       "X-Provider": "inception",
       "X-Model-Id": modelId,
@@ -106,6 +111,7 @@ async function callGenerateModel(
       ],
       max_tokens: 8192,
       temperature: 0.3,
+      stream: true,
     }),
   });
 
@@ -114,11 +120,39 @@ async function callGenerateModel(
     throw new Error(`Generate model call failed (${response.status}): ${detail}`);
   }
 
-  const body = await response.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
+  // Read SSE stream and collect content deltas
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No response body");
 
-  const content = body.choices?.[0]?.message?.content?.trim();
+  const decoder = new TextDecoder();
+  let fullContent = "";
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (data === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(data) as {
+          choices?: Array<{ delta?: { content?: string } }>;
+        };
+        const delta = parsed.choices?.[0]?.delta?.content;
+        if (delta) fullContent += delta;
+      } catch {
+        // Skip malformed SSE chunks
+      }
+    }
+  }
+
+  const content = fullContent.trim();
   if (!content) {
     throw new Error("Generate model returned no content");
   }
