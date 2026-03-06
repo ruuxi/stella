@@ -6,7 +6,7 @@ describe("StepsContainer", () => {
   const mockSteps: StepItem[] = [
     { id: "1", tool: "read", title: "config.ts", status: "completed" },
     { id: "2", tool: "grep", title: '"handleClick"', status: "completed" },
-    { id: "3", tool: "write", title: "Button.tsx", status: "running" },
+    { id: "3", tool: "bash", title: "Button.tsx", status: "running" },
   ];
 
   it("renders nothing when steps array is empty", () => {
@@ -21,14 +21,14 @@ describe("StepsContainer", () => {
 
     expect(screen.getByText("Read")).toBeInTheDocument();
     expect(screen.getByText("Search")).toBeInTheDocument();
-    expect(screen.getByText("Write")).toBeInTheDocument();
+    expect(screen.getByText("Terminal")).toBeInTheDocument();
   });
 
   it("shows collapsed view by default (last 3 items)", () => {
     const manySteps: StepItem[] = [
       { id: "1", tool: "read", status: "completed" },
       { id: "2", tool: "grep", status: "completed" },
-      { id: "3", tool: "write", status: "completed" },
+      { id: "3", tool: "glob", status: "completed" },
       { id: "4", tool: "bash", status: "completed" },
       { id: "5", tool: "edit", status: "running" },
     ];
@@ -38,7 +38,7 @@ describe("StepsContainer", () => {
     // Should only show last 3 in collapsed mode
     expect(screen.queryByText("Read")).not.toBeInTheDocument();
     expect(screen.queryByText("Search")).not.toBeInTheDocument();
-    expect(screen.getByText("Write")).toBeInTheDocument();
+    expect(screen.getByText("Find files")).toBeInTheDocument();
     expect(screen.getByText("Terminal")).toBeInTheDocument();
     expect(screen.getByText("Edit")).toBeInTheDocument();
   });
@@ -47,7 +47,7 @@ describe("StepsContainer", () => {
     const manySteps: StepItem[] = [
       { id: "1", tool: "read", status: "completed" },
       { id: "2", tool: "grep", status: "completed" },
-      { id: "3", tool: "write", status: "completed" },
+      { id: "3", tool: "glob", status: "completed" },
       { id: "4", tool: "bash", status: "completed" },
       { id: "5", tool: "edit", status: "running" },
     ];
@@ -56,7 +56,7 @@ describe("StepsContainer", () => {
 
     expect(screen.getByText("Read")).toBeInTheDocument();
     expect(screen.getByText("Search")).toBeInTheDocument();
-    expect(screen.getByText("Write")).toBeInTheDocument();
+    expect(screen.getByText("Find files")).toBeInTheDocument();
     expect(screen.getByText("Terminal")).toBeInTheDocument();
     expect(screen.getByText("Edit")).toBeInTheDocument();
   });
@@ -117,21 +117,19 @@ describe("StepsContainer", () => {
   it("maps tool names to correct display labels", () => {
     const toolSteps: StepItem[] = [
       { id: "1", tool: "read", status: "completed" },
-      { id: "2", tool: "write", status: "completed" },
-      { id: "3", tool: "edit", status: "completed" },
-      { id: "4", tool: "grep", status: "completed" },
-      { id: "5", tool: "glob", status: "completed" },
-      { id: "6", tool: "list", status: "completed" },
-      { id: "7", tool: "bash", status: "completed" },
-      { id: "8", tool: "webfetch", status: "completed" },
-      { id: "9", tool: "task", status: "completed" },
-      { id: "10", tool: "unknown_tool", status: "completed" },
+      { id: "2", tool: "edit", status: "completed" },
+      { id: "3", tool: "grep", status: "completed" },
+      { id: "4", tool: "glob", status: "completed" },
+      { id: "5", tool: "list", status: "completed" },
+      { id: "6", tool: "bash", status: "completed" },
+      { id: "7", tool: "webfetch", status: "completed" },
+      { id: "8", tool: "task", status: "completed" },
+      { id: "9", tool: "unknown_tool", status: "completed" },
     ];
 
     render(<StepsContainer steps={toolSteps} expanded={true} />);
 
     expect(screen.getByText("Read")).toBeInTheDocument();
-    expect(screen.getByText("Write")).toBeInTheDocument();
     expect(screen.getByText("Edit")).toBeInTheDocument();
     expect(screen.getByText("Search")).toBeInTheDocument();
     expect(screen.getByText("Find files")).toBeInTheDocument();
