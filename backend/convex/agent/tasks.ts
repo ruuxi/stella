@@ -23,7 +23,6 @@ import {
   SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
   SUBAGENT_THREAD_HISTORY_MAX_TOKENS,
 } from "./context_budget";
-import type { DeviceToolContext } from "./device_tools";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import {
@@ -778,17 +777,6 @@ const executeSubagentRun = async (
     }
   }
 
-  const toolContext: DeviceToolContext | undefined = args.targetDeviceId
-    ? {
-        conversationId: args.conversationId,
-        userMessageId: args.userMessageId,
-        targetDeviceId: args.targetDeviceId,
-        agentType: args.subagentType,
-        sourceDeviceId: args.targetDeviceId,
-        currentTaskId: args.taskId,
-      }
-    : undefined;
-
   let finished = false;
   let canceled = false;
   const abortController = new AbortController();
@@ -880,7 +868,6 @@ const executeSubagentRun = async (
           currentTaskId: args.taskId,
           conversationId: args.conversationId,
           userMessageId: args.userMessageId,
-          targetDeviceId: args.targetDeviceId,
         },
       ),
       messages: messages as ModelMessage[],
@@ -1952,16 +1939,6 @@ export const deliverTaskResult = internalAction({
     });
     if (!conversation) return null;
 
-    const toolContext: DeviceToolContext | undefined = args.targetDeviceId
-      ? {
-          conversationId: args.conversationId,
-          userMessageId: args.userMessageId,
-          targetDeviceId: args.targetDeviceId,
-          agentType: "orchestrator",
-          sourceDeviceId: args.targetDeviceId,
-        }
-      : undefined;
-
     const resolvedConfig = await resolveModelConfig(
       ctx,
       "orchestrator",
@@ -2000,7 +1977,6 @@ export const deliverTaskResult = internalAction({
           ownerId: args.ownerId,
           conversationId: args.conversationId,
           userMessageId: args.userMessageId,
-          targetDeviceId: args.targetDeviceId,
         }),
         messages: orchestratorTurn.messages as ModelMessage[],
       };

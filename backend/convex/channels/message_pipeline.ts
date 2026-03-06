@@ -10,7 +10,10 @@ import {
   resolveConnectionForIncomingMessage,
 } from "./routing_flow";
 import { sleep } from "../lib/async";
-import { buildExecutionCandidates, runAgentTurnWithFallback } from "../scheduling/execution_policy";
+import {
+  buildDesktopTurnCandidates,
+  runAgentTurnWithCloudFallback,
+} from "../scheduling/desktop_handoff_policy";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -392,7 +395,7 @@ export async function processIncomingMessage(
       ownerId: connection.ownerId,
     });
 
-    const candidates = buildExecutionCandidates({
+    const candidates = buildDesktopTurnCandidates({
       targetDeviceId: executionTarget.targetDeviceId,
     });
 
@@ -403,7 +406,7 @@ export async function processIncomingMessage(
     // response back to the connector asynchronously.
     const firstCandidate = candidates[0];
     if (
-      firstCandidate?.mode === "local" &&
+      firstCandidate?.mode === "desktop" &&
       args.deliveryMeta &&
       userMessageId &&
       !transient
@@ -431,9 +434,9 @@ export async function processIncomingMessage(
     }
 
     let result: RunAgentTurnResult | null = null;
-    let selectedMode: "local" | "cloud" | null = null;
+    let selectedMode: "desktop" | "cloud" | null = null;
     try {
-      const outcome = await runAgentTurnWithFallback({
+      const outcome = await runAgentTurnWithCloudFallback({
         ctx: args.ctx,
         conversationId,
         prompt: args.text,

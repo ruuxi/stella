@@ -1,28 +1,28 @@
 import { describe, test, expect } from "bun:test";
-import { buildExecutionCandidates } from "../convex/scheduling/execution_policy";
+import { buildDesktopTurnCandidates } from "../convex/scheduling/desktop_handoff_policy";
 
-describe("buildExecutionCandidates", () => {
-  test("returns local then cloud when targetDeviceId provided", () => {
-    const candidates = buildExecutionCandidates({ targetDeviceId: "device-123" });
+describe("buildDesktopTurnCandidates", () => {
+  test("returns desktop then cloud when targetDeviceId provided", () => {
+    const candidates = buildDesktopTurnCandidates({ targetDeviceId: "device-123" });
     expect(candidates).toHaveLength(2);
-    expect(candidates[0]).toEqual({ mode: "local", targetDeviceId: "device-123" });
+    expect(candidates[0]).toEqual({ mode: "desktop", targetDeviceId: "device-123" });
     expect(candidates[1]).toEqual({ mode: "cloud" });
   });
 
   test("returns only cloud when no targetDeviceId", () => {
-    const candidates = buildExecutionCandidates({});
+    const candidates = buildDesktopTurnCandidates({});
     expect(candidates).toHaveLength(1);
     expect(candidates[0]).toEqual({ mode: "cloud" });
   });
 
   test("returns only cloud when targetDeviceId is null", () => {
-    const candidates = buildExecutionCandidates({ targetDeviceId: null });
+    const candidates = buildDesktopTurnCandidates({ targetDeviceId: null });
     expect(candidates).toHaveLength(1);
     expect(candidates[0]).toEqual({ mode: "cloud" });
   });
 
   test("returns only cloud when targetDeviceId is undefined", () => {
-    const candidates = buildExecutionCandidates({ targetDeviceId: undefined });
+    const candidates = buildDesktopTurnCandidates({ targetDeviceId: undefined });
     expect(candidates).toHaveLength(1);
     expect(candidates[0]).toEqual({ mode: "cloud" });
   });

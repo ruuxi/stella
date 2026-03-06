@@ -5,15 +5,9 @@ import { internal, components } from "./_generated/api";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { requireConversationOwner, requireUserId, tryLoadOwnedConversation } from "./auth";
+import { requireConversationOwner, requireUserId } from "./auth";
 import { jsonValueValidator, optionalChannelEnvelopeValidator } from "./shared_validators";
 import { normalizeOptionalInt } from "./lib/number_utils";
-import { asPlainObjectRecord } from "./lib/object_utils";
-import {
-  sanitizeForToolResultPersistence,
-  sanitizeForToolRequestPersistence,
-  sanitizeSensitiveData,
-} from "./lib/redaction";
 import {
   estimateContextEventTokens,
   selectRecentByTokenBudget,
@@ -32,8 +26,6 @@ const eventValidator = v.object({
   targetDeviceId: v.optional(v.string()),
   payload: jsonValueValidator,
   channelEnvelope: optionalChannelEnvelopeValidator,
-  ephemeral: v.optional(v.boolean()),
-  expiresAt: v.optional(v.number()),
 });
 
 const usageSummaryValidator = v.object({
@@ -50,8 +42,6 @@ const localSyncMessageValidator = v.object({
   deviceId: v.optional(v.string()),
 });
 
-const DEFAULT_EPHEMERAL_EVENT_TTL_MS = 30 * 60 * 1000;
-
 const PAGINATION_PAGE_SIZE = 1000;
 const MAX_EVENTS_QUERY_LIMIT = 2000;
 const MAX_SYNC_EVENTS_QUERY_LIMIT = 1000;
@@ -61,30 +51,6 @@ const MAX_SCAN_LIMIT = 2400;
 const APPEND_EVENT_RATE = { rate: 100, period: 10_000 } as const;
 const IMPORT_CHUNK_RATE = { rate: 30, period: 10_000 } as const;
 
-const normalizeEphemeralEventTtlMs = (ttlMs?: number) => {
-  if (typeof ttlMs !== "number" || !Number.isFinite(ttlMs)) {
-    return DEFAULT_EPHEMERAL_EVENT_TTL_MS;
-  }
-  return Math.max(60_000, Math.floor(ttlMs));
-};
-
-const sanitizeEventPayloadForStorage = (type: string, payload: Value): Value => {
-  if (type === "tool_result") {
-    return sanitizeForToolResultPersistence(payload);
-  }
-  if (type === "tool_request") {
-    return sanitizeForToolRequestPersistence(payload);
-  }
-  return payload;
-};
-
-const sanitizeEventPayloadForRead = (type: string, payload: Value): Value => {
-  if (type === "tool_request" || type === "tool_result") {
-    return sanitizeSensitiveData(payload, { redactFreeformStrings: true });
-  }
-  return payload;
-};
-
 const sanitizeEventForRead = <T extends { type: string; payload: Value } | null>(
   event: T,
 ): T => {
@@ -93,7 +59,7 @@ const sanitizeEventForRead = <T extends { type: string; payload: Value } | null>
   }
   return {
     ...event,
-    payload: sanitizeEventPayloadForRead(event.type, event.payload ?? {}),
+    payload: event.payload ?? {},
   } as T;
 };
 
@@ -263,8 +229,6 @@ export const listRecentMessages = internalQuery({
 const MODEL_CONTEXT_EVENT_TYPES = new Set([
   "user_message",
   "assistant_message",
-  "tool_request",
-  "tool_result",
   "microcompact_boundary",
   "task_started",
   "task_completed",
@@ -289,27 +253,9 @@ type ContextEventFilterOptions = {
   contextAgentType?: string;
 };
 
-const asPayloadObject = (value: Value): Record<string, Value> =>
-  asPlainObjectRecord<Value>(value);
-
-const getEventPayloadAgentType = (event: ContextEvent): string | undefined => {
-  const raw = asPayloadObject(event.payload).agentType;
-  return typeof raw === "string" ? raw : undefined;
-};
-
 const filterOrchestratorContextEvents = (
   eventsNewestFirst: ContextEvent[],
 ): ContextEvent[] => {
-  const orchestratorRequestIds = new Set<string>();
-  for (const event of eventsNewestFirst) {
-    if (event.type !== "tool_request" || !event.requestId) {
-      continue;
-    }
-    if (getEventPayloadAgentType(event) === "orchestrator") {
-      orchestratorRequestIds.add(event.requestId);
-    }
-  }
-
   return eventsNewestFirst.filter((event) => {
     if (event.type === "microcompact_boundary") {
       return true;
@@ -326,18 +272,6 @@ const filterOrchestratorContextEvents = (
     ) {
       // Subagent task lifecycle should not pollute orchestrator context.
       return false;
-    }
-
-    if (event.type === "tool_request") {
-      return getEventPayloadAgentType(event) === "orchestrator";
-    }
-
-    if (event.type === "tool_result") {
-      const agentType = getEventPayloadAgentType(event);
-      if (agentType === "orchestrator") {
-        return true;
-      }
-      return !!(event.requestId && orchestratorRequestIds.has(event.requestId));
     }
 
     return false;
@@ -536,192 +470,8 @@ export const saveAssistantMessage = internalMutation({
     return eventId;
   },
 });
-
-export const enqueueToolRequest = internalMutation({
-  args: {
-    conversationId: v.id("conversations"),
-    requestId: v.string(),
-    targetDeviceId: v.string(),
-    toolName: v.string(),
-    toolArgs: jsonValueValidator,
-    sourceDeviceId: v.optional(v.string()),
-    userMessageId: v.optional(v.id("events")),
-    agentType: v.optional(v.string()),
-    ephemeral: v.optional(v.boolean()),
-    ttlMs: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const timestamp = Date.now();
-    const isEphemeral = args.ephemeral === true;
-    const expiresAt = isEphemeral
-      ? timestamp + normalizeEphemeralEventTtlMs(args.ttlMs)
-      : undefined;
-    const payload = sanitizeEventPayloadForStorage("tool_request", {
-      toolName: args.toolName,
-      args: args.toolArgs ?? {},
-      targetDeviceId: args.targetDeviceId,
-      sourceDeviceId: args.sourceDeviceId,
-      userMessageId: args.userMessageId,
-      agentType: args.agentType,
-      ephemeral: isEphemeral ? true : undefined,
-    });
-    const eventId = await ctx.db.insert("events", {
-      conversationId: args.conversationId,
-      timestamp,
-      type: "tool_request",
-      requestId: args.requestId,
-      targetDeviceId: args.targetDeviceId,
-      deviceId: args.sourceDeviceId,
-      payload,
-      ephemeral: isEphemeral ? true : undefined,
-      expiresAt,
-    });
-    await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
-    return await ctx.db.get(eventId);
-  },
-});
-
-export const getToolResultByRequestId = internalQuery({
-  args: {
-    requestId: v.string(),
-    deviceId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const results = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
-      .order("desc")
-      .take(20);
-    const match =
-      results.find((event) => {
-        if (event.type !== "tool_result") {
-          return false;
-        }
-        if (args.deviceId && event.deviceId !== args.deviceId) {
-          return false;
-        }
-        return true;
-      }) ?? null;
-    return sanitizeEventForRead(match);
-  },
-});
-
-export const getToolResult = query({
-  args: {
-    requestId: v.string(),
-    deviceId: v.optional(v.string()),
-  },
-  returns: v.union(v.null(), eventValidator),
-  handler: async (ctx, args) => {
-    await requireUserId(ctx);
-    const results = await ctx.db
-      .query("events")
-      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
-      .order("desc")
-      .take(20);
-    const match =
-      results.find((event) => {
-        if (event.type !== "tool_result") {
-          return false;
-        }
-        if (args.deviceId && event.deviceId !== args.deviceId) {
-          return false;
-        }
-        return true;
-      }) ?? null;
-
-    if (!match) {
-      return null;
-    }
-
-    const conversation = await tryLoadOwnedConversation(ctx, match.conversationId);
-    if (!conversation) {
-      return null;
-    }
-
-    return sanitizeEventForRead(match);
-  },
-});
-
-export const deleteEventsByRequestId = internalMutation({
-  args: {
-    conversationId: v.id("conversations"),
-    requestId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    let deleted = 0;
-    while (true) {
-      const rows = await ctx.db
-        .query("events")
-        .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
-        .take(100);
-      if (rows.length === 0) {
-        break;
-      }
-
-      let deletedThisBatch = 0;
-      for (const row of rows) {
-        if (row.conversationId !== args.conversationId) {
-          continue;
-        }
-        await ctx.db.delete(row._id);
-        deleted += 1;
-        deletedThisBatch += 1;
-      }
-
-      if (rows.length < 100 || deletedThisBatch === 0) {
-        break;
-      }
-    }
-
-    return deleted;
-  },
-});
-
-export const purgeExpiredEphemeralToolEvents = internalMutation({
-  args: {
-    nowMs: v.optional(v.number()),
-    limit: v.optional(v.number()),
-    maxBatches: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const nowMs = args.nowMs ?? Date.now();
-    const limit = normalizeOptionalInt({ value: args.limit, defaultValue: 500, min: 1, max: 5_000 });
-    const maxBatches = normalizeOptionalInt({ value: args.maxBatches, defaultValue: 10, min: 1, max: 50 });
-
-    let deleted = 0;
-    for (let i = 0; i < maxBatches; i += 1) {
-      const expired = await ctx.db
-        .query("events")
-        .withIndex("by_ephemeral_and_expiresAt", (q) =>
-          q.eq("ephemeral", true).lte("expiresAt", nowMs),
-        )
-        .take(limit);
-
-      if (expired.length === 0) {
-        break;
-      }
-
-      for (const row of expired) {
-        if (row.type !== "tool_request" && row.type !== "tool_result") {
-          continue;
-        }
-        await ctx.db.delete(row._id);
-        deleted += 1;
-      }
-
-      if (expired.length < limit) {
-        break;
-      }
-    }
-
-    return deleted;
-  },
-});
-
 const deviceRequiredTypes = new Set([
   "user_message",
-  "tool_result",
   "screen_event",
 ]);
 
@@ -734,57 +484,13 @@ type AppendEventArgs = {
   targetDeviceId?: string;
   payload: Value;
   channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
-  ephemeral?: boolean;
-  expiresAt?: number;
 };
 
 const resolveAppendEventPayload = (args: AppendEventArgs) => {
-  if (
-    args.ephemeral === true &&
-    args.type !== "tool_request" &&
-    args.type !== "tool_result"
-  ) {
-    throw new ConvexError({
-      code: "INVALID_ARGUMENT",
-      message: "ephemeral is only supported for tool_request/tool_result",
-    });
-  }
-  if (args.expiresAt !== undefined && args.ephemeral !== true) {
-    throw new ConvexError({
-      code: "INVALID_ARGUMENT",
-      message: "expiresAt requires ephemeral=true",
-    });
-  }
-
   if (deviceRequiredTypes.has(args.type) && !args.deviceId) {
     throw new ConvexError({
       code: "INVALID_ARGUMENT",
       message: `deviceId required for ${args.type}`,
-    });
-  }
-
-  if (args.type === "tool_result" && !args.requestId) {
-    throw new ConvexError({
-      code: "INVALID_ARGUMENT",
-      message: "tool_result requires requestId",
-    });
-  }
-
-  const sanitizedPayload = sanitizeEventPayloadForStorage(args.type, args.payload ?? {});
-  const payloadTargetDeviceId =
-    sanitizedPayload &&
-      typeof sanitizedPayload === "object" &&
-      !Array.isArray(sanitizedPayload)
-      ? (sanitizedPayload as { targetDeviceId?: Value }).targetDeviceId
-      : undefined;
-  const payloadTargetDeviceIdString =
-    typeof payloadTargetDeviceId === "string" ? payloadTargetDeviceId : undefined;
-  const resolvedTargetDeviceId = args.targetDeviceId ?? payloadTargetDeviceIdString;
-
-  if (args.type === "tool_request" && !resolvedTargetDeviceId) {
-    throw new ConvexError({
-      code: "INVALID_ARGUMENT",
-      message: "tool_request requires targetDeviceId",
     });
   }
 
@@ -805,64 +511,23 @@ const resolveAppendEventPayload = (args: AppendEventArgs) => {
   }
 
   return {
-    sanitizedPayload,
-    resolvedTargetDeviceId,
+    payload: args.payload ?? {},
+    targetDeviceId: args.targetDeviceId,
     timestamp: args.timestamp ?? Date.now(),
   };
 };
 
-const resolveEphemeralPersistence = async (
-  ctx: MutationCtx,
-  args: AppendEventArgs,
-  timestamp: number,
-): Promise<{ ephemeral?: boolean; expiresAt?: number }> => {
-  if (args.ephemeral === true) {
-    const expiresAt =
-      typeof args.expiresAt === "number"
-        ? args.expiresAt
-        : timestamp + normalizeEphemeralEventTtlMs();
-    return { ephemeral: true, expiresAt };
-  }
-
-  if (args.type !== "tool_result" || !args.requestId) {
-    return {};
-  }
-
-  const relatedEvents = await ctx.db
-    .query("events")
-    .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId as string))
-    .order("desc")
-    .take(20);
-  const toolRequest = relatedEvents.find(
-    (event) =>
-      event.type === "tool_request" &&
-      event.requestId === args.requestId &&
-      event.conversationId === args.conversationId,
-  );
-  if (!toolRequest || toolRequest.ephemeral !== true) {
-    return {};
-  }
-  const expiresAt =
-    typeof toolRequest.expiresAt === "number"
-      ? toolRequest.expiresAt
-      : timestamp + normalizeEphemeralEventTtlMs();
-  return { ephemeral: true, expiresAt };
-};
-
 const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
-  const { sanitizedPayload, resolvedTargetDeviceId, timestamp } = resolveAppendEventPayload(args);
-  const { ephemeral, expiresAt } = await resolveEphemeralPersistence(ctx, args, timestamp);
+  const { payload, targetDeviceId, timestamp } = resolveAppendEventPayload(args);
   const eventId = await ctx.db.insert("events", {
     conversationId: args.conversationId,
     timestamp,
     type: args.type,
     deviceId: args.deviceId,
     requestId: args.requestId,
-    targetDeviceId: resolvedTargetDeviceId,
-    payload: sanitizedPayload,
+    targetDeviceId,
+    payload,
     channelEnvelope: args.channelEnvelope,
-    ephemeral,
-    expiresAt,
   });
 
   await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
@@ -879,8 +544,6 @@ export const appendEvent = mutation({
     targetDeviceId: v.optional(v.string()),
     payload: jsonValueValidator,
     channelEnvelope: optionalChannelEnvelopeValidator,
-    ephemeral: v.optional(v.boolean()),
-    expiresAt: v.optional(v.number()),
   },
   returns: v.union(v.null(), eventValidator),
   handler: async (ctx, args) => {
@@ -987,8 +650,6 @@ export const appendInternalEvent = internalMutation({
     targetDeviceId: v.optional(v.string()),
     payload: jsonValueValidator,
     channelEnvelope: optionalChannelEnvelopeValidator,
-    ephemeral: v.optional(v.boolean()),
-    expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     return await appendEventCore(ctx, args);
@@ -1154,16 +815,6 @@ const deviceSubscriptionArgs = {
   since: v.number(),
   limit: v.optional(v.number()),
 };
-
-export const subscribeToolRequestsForDevice = query({
-  args: deviceSubscriptionArgs,
-  returns: v.array(eventValidator),
-  handler: deviceSubscriptionHandler({
-    eventType: "tool_request",
-    defaultLimit: 20,
-    maxLimit: 100,
-  }),
-});
 
 export const subscribeRemoteTurnRequestsForDevice = query({
   args: deviceSubscriptionArgs,

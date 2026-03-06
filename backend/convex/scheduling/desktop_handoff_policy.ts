@@ -1,35 +1,25 @@
-/**
- * Execution Policy — orchestrates how agent turns are executed.
- *
- * Execution pipeline flow:
- *   1. Caller (channels/message_pipeline, scheduling/cron_jobs, scheduling/heartbeat)
- *      builds execution candidates via `buildExecutionCandidates`.
- *   2. `runAgentTurnWithFallback` iterates candidates (local → cloud) and delegates
- *      each attempt to `automation/runner.runAgentTurn`.
- *   3. `runAgentTurn` in automation/runner invokes the appropriate agent
- *      (defined in agent/agents.ts) and manages the turn lifecycle.
- *
- * Dependency direction: channels → execution_policy ← scheduling
- * Both channels and scheduling modules depend on this shared orchestration layer.
- */
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { runAgentTurn } from "../automation/runner";
 import { requireConversationOwner } from "../auth";
 
-export type ExecutionCandidate =
-  | { mode: "local"; targetDeviceId: string }
+/**
+ * Shared desktop handoff policy for backend-owned turns.
+ *
+ * Callers can prefer desktop execution when a device is online, then fall back
+ * to backend execution if the handoff is unavailable or fails.
+ */
+export type DesktopTurnCandidate =
+  | { mode: "desktop"; targetDeviceId: string }
   | { mode: "cloud" };
 
-export const buildExecutionCandidates = (args: {
+export const buildDesktopTurnCandidates = (args: {
   targetDeviceId?: string | null;
-}): ExecutionCandidate[] => {
-  const candidates: ExecutionCandidate[] = [];
+}): DesktopTurnCandidate[] => {
+  const candidates: DesktopTurnCandidate[] = [];
   if (args.targetDeviceId) {
-    candidates.push({ mode: "local", targetDeviceId: args.targetDeviceId });
+    candidates.push({ mode: "desktop", targetDeviceId: args.targetDeviceId });
   }
-
-  // Local-first scheduler policy: local -> cloud.
   candidates.push({ mode: "cloud" });
   return candidates;
 };
@@ -50,18 +40,18 @@ export const resolveOwnedConversationId = async (
   return conversation?._id ?? null;
 };
 
-export const runAgentTurnWithFallback = async (args: {
+export const runAgentTurnWithCloudFallback = async (args: {
   ctx: ActionCtx;
   conversationId: Id<"conversations">;
   prompt: string;
   agentType: string;
   ownerId: string;
   transient?: boolean;
-  candidates: ExecutionCandidate[];
+  candidates: DesktopTurnCandidate[];
   userMessageId?: Id<"events">;
 }): Promise<{
   result: Awaited<ReturnType<typeof runAgentTurn>>;
-  selectedMode: ExecutionCandidate["mode"];
+  selectedMode: DesktopTurnCandidate["mode"];
 }> => {
   let lastExecutionError: Error | null = null;
 
@@ -73,7 +63,6 @@ export const runAgentTurnWithFallback = async (args: {
         prompt: args.prompt,
         agentType: args.agentType,
         ownerId: args.ownerId,
-        targetDeviceId: candidate.mode === "local" ? candidate.targetDeviceId : undefined,
         transient: args.transient,
         userMessageId: args.userMessageId,
       });

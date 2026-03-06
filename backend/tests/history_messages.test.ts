@@ -34,78 +34,6 @@ describe("history message formatting", () => {
     expect(messages[1]?.content).toContain("Trying that now.");
   });
 
-  test("replays tool calls and tool results", () => {
-    const events = [
-      {
-        ...baseEvent,
-        _id: "event_tool_req",
-        requestId: "req_123",
-        type: "tool_request",
-        payload: {
-          toolName: "Bash",
-          args: { command: "start winword" },
-          agentType: "general",
-        },
-      },
-      {
-        ...baseEvent,
-        _id: "event_tool_res",
-        requestId: "req_123",
-        type: "tool_result",
-        payload: {
-          toolName: "Bash",
-          result: "Command executed successfully.",
-        },
-      },
-    ] as unknown[];
-
-    const messages = eventsToHistoryMessages(events).messages;
-    expect(messages).toHaveLength(2);
-    expect(messages[0]).toMatchObject({
-      role: "assistant",
-    });
-    expect(messages[0]?.content).toContain("[Tool call] Bash");
-    expect(messages[0]?.content).toContain("request_id: req_123");
-    expect(messages[0]?.content).toContain("start winword");
-
-    expect(messages[1]).toMatchObject({
-      role: "user",
-    });
-    expect(messages[1]?.content).toContain("[Tool result] Bash");
-    expect(messages[1]?.content).toContain("request_id: req_123");
-    expect(messages[1]?.content).toContain("Command executed successfully.");
-  });
-
-  test("inserts synthetic tool result when a call is left unresolved", () => {
-    const events = [
-      {
-        ...baseEvent,
-        _id: "event_tool_req_unresolved",
-        requestId: "req_missing",
-        type: "tool_request",
-        payload: {
-          toolName: "Bash",
-          args: { command: "start winword" },
-          agentType: "general",
-        },
-      },
-      {
-        ...baseEvent,
-        _id: "event_next_user",
-        type: "user_message",
-        payload: { text: "Any update?" },
-      },
-    ] as unknown[];
-
-    const messages = eventsToHistoryMessages(events).messages;
-    expect(messages).toHaveLength(3);
-    expect(messages[1]?.content).toContain("[Tool result] Bash");
-    expect(messages[1]?.content).toContain("request_id: req_missing");
-    expect(messages[1]?.content).toContain("No result provided");
-    expect(messages[2]?.role).toBe("user");
-    expect(messages[2]?.content).toContain("Any update?");
-  });
-
   test("replays task lifecycle events", () => {
     const events = [
       {
@@ -165,5 +93,40 @@ describe("history message formatting", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]?.role).toBe("user");
     expect(messages[0]?.content).toContain("Hello");
+  });
+
+  test("emits a microcompact boundary for oversized attachment history", () => {
+    const events = [
+      {
+        ...baseEvent,
+        _id: "event_user_with_attachment",
+        timestamp: 1,
+        type: "user_message",
+        payload: {
+          text: "Here's the screenshot.",
+          attachments: Array.from({ length: 16 }, (_, index) => ({
+            id: `attachment_${index + 1}`,
+          })),
+        },
+      },
+      {
+        ...baseEvent,
+        _id: "event_assistant_after_attachment",
+        timestamp: 2,
+        type: "assistant_message",
+        payload: { text: "I can see it." },
+      },
+    ] as unknown[];
+
+    const result = eventsToHistoryMessages(events, {
+      microcompact: {
+        trigger: "manual",
+        keepTokens: 1,
+      },
+    });
+
+    expect(result.microcompactBoundary).toBeDefined();
+    expect(result.microcompactBoundary?.compactedToolIds).toEqual([]);
+    expect(result.microcompactBoundary?.clearedAttachmentUUIDs).toHaveLength(16);
   });
 });
