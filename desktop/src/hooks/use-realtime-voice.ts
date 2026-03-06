@@ -1,40 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   RealtimeVoiceSession,
   claimPreWarmedSession,
-  initRealtimeVoiceIpc,
   type VoiceSessionEvent,
   type VoiceSessionState,
 } from "@/services/realtime-voice";
-import { useUiState } from "@/providers/ui-state";
-import { useWindowType } from "./use-window-type";
-import { useOptionalChatStore } from "@/providers/chat-store";
-import { getOrCreateDeviceId } from "@/services/device";
-import { appendLocalEvent } from "@/services/local-chat-store";
+import type { VoiceRuntimeSnapshot } from "@/types/electron";
 
 interface UseRealtimeVoiceResult {
-  analyserRef: React.RefObject<AnalyserNode | null>;
-  outputAnalyserRef: React.RefObject<AnalyserNode | null>;
   isConnected: boolean;
   isSpeaking: boolean;
   isUserSpeaking: boolean;
   sessionState: VoiceSessionState;
+  micLevel: number;
+  outputLevel: number;
 }
 
 const SESSION_ROTATE_MS = 55 * 60 * 1000;
 const RETRY_BASE_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
-
-const appendEventLocalFallback = async (args: {
-  conversationId: string;
-  type: string;
-  payload?: unknown;
-  deviceId?: string;
-  requestId?: string;
-  targetDeviceId?: string;
-}) => {
-  appendLocalEvent(args);
-  return null;
+const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
+  sessionState: "idle",
+  isConnected: false,
+  isSpeaking: false,
+  isUserSpeaking: false,
+  micLevel: 0,
+  outputLevel: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -284,80 +275,40 @@ export class VoiceSessionManager {
 // ---------------------------------------------------------------------------
 
 export function useRealtimeVoice(): UseRealtimeVoiceResult {
-  initRealtimeVoiceIpc();
-  const { state } = useUiState();
-  const chatStore = useOptionalChatStore();
-  const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
-  const isSpeakingRef = useRef(false);
-  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [runtimeState, setRuntimeState] = useState<VoiceRuntimeSnapshot>(DEFAULT_RUNTIME_STATE);
 
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
-  const deviceIdRef = useRef<string | null>(null);
-  const windowType = useWindowType();
-  const isSessionOwnerWindow = windowType === "overlay" || state.window === windowType;
-  const conversationId = state.conversationId ?? "voice-rtc";
-  const conversationIdRef = useRef<string>(conversationId);
-  const inputActiveRef = useRef<boolean>(state.isVoiceRtcActive);
-  const appendEventRef = useRef(chatStore?.appendEvent ?? appendEventLocalFallback);
-  const managerRef = useRef<VoiceSessionManager | null>(null);
-
-  // Keep appendEvent ref current without re-triggering effects
   useEffect(() => {
-    appendEventRef.current = chatStore?.appendEvent ?? appendEventLocalFallback;
-  }, [chatStore]);
+    const api = window.electronAPI;
+    if (!api?.voice) {
+      setRuntimeState(DEFAULT_RUNTIME_STATE);
+      return;
+    }
 
-  // Resolve deviceId once on mount
-  useEffect(() => {
-    void getOrCreateDeviceId().then((id) => {
-      deviceIdRef.current = id;
+    void api.voice
+      .getRuntimeState()
+      .then((snapshot) => {
+        setRuntimeState(snapshot);
+      })
+      .catch(() => {
+        setRuntimeState(DEFAULT_RUNTIME_STATE);
+      });
+
+    const unsubscribe = api.voice.onRuntimeState((snapshot) => {
+      setRuntimeState(snapshot);
     });
-  }, []);
-
-  useEffect(() => {
-    conversationIdRef.current = conversationId;
-  }, [conversationId]);
-
-  useEffect(() => {
-    inputActiveRef.current = state.isVoiceRtcActive;
-  }, [state.isVoiceRtcActive]);
-
-  // Main lifecycle effect — create manager, start, return cleanup
-  useEffect(() => {
-    if (!isSessionOwnerWindow) return;
-
-    const manager = new VoiceSessionManager({
-      conversationIdRef,
-      inputActiveRef,
-      appendEventRef,
-      deviceIdRef,
-      analyserRef,
-      outputAnalyserRef,
-      onStateChange: setSessionState,
-      onSpeakingChange: (v: boolean) => { isSpeakingRef.current = v; },
-      onUserSpeakingChange: setIsUserSpeaking,
-    });
-    managerRef.current = manager;
-    manager.start();
 
     return () => {
-      manager.stop();
-      managerRef.current = null;
+      unsubscribe();
     };
-  }, [isSessionOwnerWindow, windowType]);
-
-  // Forward conversationId / inputActive changes to the live session
-  useEffect(() => {
-    managerRef.current?.updateSession(conversationId, state.isVoiceRtcActive);
-  }, [conversationId, state.isVoiceRtcActive]);
+  }, []);
 
   return {
-    analyserRef,
-    outputAnalyserRef,
-    isConnected: sessionState === "connected",
-    isSpeaking: isSpeakingRef.current,
-    isUserSpeaking,
-    sessionState,
+    isConnected: runtimeState.isConnected,
+    isSpeaking: runtimeState.isSpeaking,
+    isUserSpeaking: runtimeState.isUserSpeaking,
+    sessionState: runtimeState.sessionState,
+    micLevel: runtimeState.micLevel,
+    outputLevel: runtimeState.outputLevel,
   };
 }
 

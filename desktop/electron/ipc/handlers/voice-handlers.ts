@@ -18,9 +18,35 @@ type VoiceHandlersOptions = {
   setAssistantSpeaking: (active: boolean) => Promise<void>
 }
 
+type VoiceRuntimeSnapshot = {
+  sessionState: 'idle' | 'connecting' | 'connected' | 'error' | 'disconnecting'
+  isConnected: boolean
+  isSpeaking: boolean
+  isUserSpeaking: boolean
+  micLevel: number
+  outputLevel: number
+}
+
+const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
+  sessionState: 'idle',
+  isConnected: false,
+  isSpeaking: false,
+  isUserSpeaking: false,
+  micLevel: 0,
+  outputLevel: 0,
+}
+
 export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   let currentVoiceShortcut = 'CommandOrControl+Shift+V'
   let currentVoiceRtcShortcut = 'CommandOrControl+Shift+D'
+  let runtimeState: VoiceRuntimeSnapshot = DEFAULT_RUNTIME_STATE
+
+  const broadcastRuntimeState = () => {
+    for (const window of options.windowManager.getAllWindows()) {
+      if (window.isDestroyed()) continue
+      window.webContents.send('voice:runtimeState', runtimeState)
+    }
+  }
 
   const toggleVoice = () => {
     if (!options.getAppReady()) return
@@ -156,5 +182,19 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   ipcMain.handle('voice:setAssistantSpeaking', async (_event, active: boolean) => {
     await options.setAssistantSpeaking(Boolean(active))
     return { ok: true }
+  })
+
+  ipcMain.handle('voice:getRuntimeState', () => runtimeState)
+
+  ipcMain.on('voice:runtimeState', (_event, nextState: VoiceRuntimeSnapshot) => {
+    runtimeState = {
+      sessionState: nextState?.sessionState ?? 'idle',
+      isConnected: Boolean(nextState?.isConnected),
+      isSpeaking: Boolean(nextState?.isSpeaking),
+      isUserSpeaking: Boolean(nextState?.isUserSpeaking),
+      micLevel: Number.isFinite(nextState?.micLevel) ? Math.max(0, Number(nextState.micLevel)) : 0,
+      outputLevel: Number.isFinite(nextState?.outputLevel) ? Math.max(0, Number(nextState.outputLevel)) : 0,
+    }
+    broadcastRuntimeState()
   })
 }

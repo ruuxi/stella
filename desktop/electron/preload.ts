@@ -141,6 +141,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('voice:orchestratorChat', payload) as Promise<string>,
     setAssistantSpeaking: (active: boolean) =>
       ipcRenderer.invoke('voice:setAssistantSpeaking', active) as Promise<{ ok: boolean }>,
+    getRuntimeState: () =>
+      ipcRenderer.invoke('voice:getRuntimeState') as Promise<{
+        sessionState: 'idle' | 'connecting' | 'connected' | 'error' | 'disconnecting';
+        isConnected: boolean;
+        isSpeaking: boolean;
+        isUserSpeaking: boolean;
+        micLevel: number;
+        outputLevel: number;
+      }>,
+    onRuntimeState: onIpc<{
+      sessionState: 'idle' | 'connecting' | 'connected' | 'error' | 'disconnecting';
+      isConnected: boolean;
+      isSpeaking: boolean;
+      isUserSpeaking: boolean;
+      micLevel: number;
+      outputLevel: number;
+    }>('voice:runtimeState'),
+    pushRuntimeState: (state: {
+      sessionState: 'idle' | 'connecting' | 'connected' | 'error' | 'disconnecting';
+      isConnected: boolean;
+      isSpeaking: boolean;
+      isUserSpeaking: boolean;
+      micLevel: number;
+      outputLevel: number;
+    }) => ipcRenderer.send('voice:runtimeState', state),
     setRtcShortcut: (shortcut: string) => ipcRenderer.send('voice-rtc:setShortcut', shortcut),
     onRtcPreWarm: onIpc<string>('voice-rtc:pre-warm'),
     onRtcPrefetchToken: onIpcSignal('voice-rtc:prefetch-token'),

@@ -28,7 +28,7 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   });
 
   // RTC mode
-  const { analyserRef: rtcMicAnalyserRef, outputAnalyserRef: rtcOutputAnalyserRef, isConnected, isUserSpeaking } = useRealtimeVoice();
+  const { micLevel: rtcMicLevel, outputLevel: rtcOutputLevel, isConnected, isUserSpeaking } = useRealtimeVoice();
 
   const isAnyVoiceActive = isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
   const isAudioReady = isRecording || isConnected;
@@ -37,12 +37,14 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   // from the audio analysers, so we just signal "listening" (= voice session active).
   let voiceMode: VoiceMode = "idle";
   let micAnalyserRef = sttAnalyserRef;
-  const outputAnalyserRef = rtcOutputAnalyserRef;
+  let micLevel: number | undefined;
+  let outputLevel: number | undefined;
 
   if (isAudioReady) {
     voiceMode = "listening";
     if (state.isVoiceRtcActive) {
-      micAnalyserRef = rtcMicAnalyserRef;
+      micLevel = rtcMicLevel;
+      outputLevel = rtcOutputLevel;
     }
   }
 
@@ -117,7 +119,8 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
           voiceMode={voiceMode}
           isUserSpeaking={isUserSpeaking}
           analyserRef={micAnalyserRef}
-          outputAnalyserRef={outputAnalyserRef}
+          micLevel={micLevel}
+          outputLevel={outputLevel}
         />
       </div>
     </div>

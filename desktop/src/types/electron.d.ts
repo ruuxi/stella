@@ -306,6 +306,15 @@ export type ElectronThemeApi = {
   listInstalled: () => Promise<Theme[]>
 }
 
+export type VoiceRuntimeSnapshot = {
+  sessionState: 'idle' | 'connecting' | 'connected' | 'error' | 'disconnecting'
+  isConnected: boolean
+  isSpeaking: boolean
+  isUserSpeaking: boolean
+  micLevel: number
+  outputLevel: number
+}
+
 export type ElectronVoiceApi = {
   submitTranscript: (transcript: string) => void
   setShortcut: (shortcut: string) => void
@@ -313,6 +322,9 @@ export type ElectronVoiceApi = {
   persistTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) => void
   orchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
   setAssistantSpeaking: (active: boolean) => Promise<{ ok: boolean }>
+  getRuntimeState: () => Promise<VoiceRuntimeSnapshot>
+  onRuntimeState: (callback: (state: VoiceRuntimeSnapshot) => void) => () => void
+  pushRuntimeState: (state: VoiceRuntimeSnapshot) => void
   setRtcShortcut: (shortcut: string) => void
   onRtcPreWarm: (callback: (conversationId: string) => void) => () => void
   onRtcPrefetchToken: (callback: () => void) => () => void
