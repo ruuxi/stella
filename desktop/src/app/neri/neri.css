@@ -1234,7 +1234,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Search Results (Mercury) ──────────────── */
+/* Search Results (Voice Actions) */
 
 .neri-content-search-results {
   display: flex;
@@ -1305,7 +1305,7 @@
   font-size: 13px;
 }
 
-/* ─── Canvas (Mercury) ──────────────────────── */
+/* Canvas (Voice Actions) */
 
 .neri-content-canvas {
   width: 100%;

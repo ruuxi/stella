@@ -507,7 +507,7 @@ function FileBrowser() {
   );
 }
 
-// ─── Search Window (Mercury-driven) ─────────────────────────────────────
+// Search Window (voice action-driven)
 
 function SearchWindow({ win }: { win: NeriWindow }) {
   const results = win.searchResults ?? [];
@@ -541,7 +541,7 @@ function SearchWindow({ win }: { win: NeriWindow }) {
   );
 }
 
-// ─── Canvas Window (Mercury-driven) ─────────────────────────────────────
+// Canvas Window (voice action-driven)
 
 function CanvasWindow({ win }: { win: NeriWindow }) {
   const html = win.canvasHtml ?? "";
