@@ -81,9 +81,12 @@ const DUPLEX_GATE_INTERVAL_MS = 50;
 const DUPLEX_GATE_OPEN_FRAMES = 2;
 const DUPLEX_GATE_CLOSE_FRAMES = 4;
 const DUPLEX_GATE_MIN_MIC_RMS = 0.018;
-const DUPLEX_GATE_MIN_OUTPUT_RMS = 0.01;
-const DUPLEX_GATE_ECHO_CORRELATION = 0.72;
-const DUPLEX_GATE_NEAR_FIELD_RATIO = 1.35;
+const DUPLEX_GATE_MIN_OUTPUT_RMS = 0.008;
+const DUPLEX_GATE_REOPEN_CORRELATION = 0.42;
+const DUPLEX_GATE_STRONG_ECHO_CORRELATION = 0.58;
+const DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO = 2.4;
+const DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES = 1;
+const DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES = 6;
 const DUPLEX_GATE_LAGS = [0, 120, 240, 360, 480];
 
 const RTC_CONFIGURATION: RTCConfiguration = {
@@ -267,7 +270,10 @@ export class RealtimeVoiceSession {
   private duplexGateOpen = true;
   private duplexGateOpenFrames = 0;
   private duplexGateCloseFrames = 0;
-  private assistantSpeaking = false;
+  private assistantServerSpeaking = false;
+  private assistantPlaybackActive = false;
+  private assistantPlaybackActiveFrames = 0;
+  private assistantPlaybackSilentFrames = 0;
   private inputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
   private outputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
   private inputSampleWriteIndex = 0;
@@ -854,6 +860,7 @@ export class RealtimeVoiceSession {
 
   private updateOutboundGate() {
     if (!this.gateGainNode) return;
+    const assistantSpeaking = this.updateAssistantPlaybackState();
     if (!this.inputActive) {
       this.duplexGateOpen = false;
       this.duplexGateOpenFrames = 0;
@@ -865,7 +872,7 @@ export class RealtimeVoiceSession {
       );
       return;
     }
-    if (!this.assistantSpeaking) {
+    if (!assistantSpeaking) {
       this.duplexGateOpen = true;
       this.duplexGateOpenFrames = 0;
       this.duplexGateCloseFrames = 0;
@@ -905,6 +912,38 @@ export class RealtimeVoiceSession {
     );
   }
 
+  private updateAssistantPlaybackState(): boolean {
+    const outputSamples =
+      this.outputWindowFilled
+        ? this.getOrderedWindow(this.outputSampleWindow, this.outputSampleWriteIndex)
+        : null;
+    const outputRms = outputSamples ? this.computeRms(outputSamples) : 0;
+
+    if (outputRms >= DUPLEX_GATE_MIN_OUTPUT_RMS) {
+      this.assistantPlaybackSilentFrames = 0;
+      this.assistantPlaybackActiveFrames = Math.min(
+        DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES,
+        this.assistantPlaybackActiveFrames + 1,
+      );
+      if (this.assistantPlaybackActiveFrames >= DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES) {
+        this.assistantPlaybackActive = true;
+      }
+    } else {
+      this.assistantPlaybackActiveFrames = 0;
+      this.assistantPlaybackSilentFrames = Math.min(
+        DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES,
+        this.assistantPlaybackSilentFrames + 1,
+      );
+      if (this.assistantPlaybackSilentFrames >= DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES) {
+        this.assistantPlaybackActive = false;
+      }
+    }
+
+    const speaking = this.assistantServerSpeaking || this.assistantPlaybackActive;
+    this.syncExternalAudioDucking(speaking);
+    return speaking;
+  }
+
   private computeOutboundGateState(): boolean {
     if (!this.inputWindowFilled) return false;
     if (!this.outputWindowFilled) return false;
@@ -920,21 +959,21 @@ export class RealtimeVoiceSession {
     if (micRms < DUPLEX_GATE_MIN_MIC_RMS) {
       return false;
     }
-    if (outputRms < DUPLEX_GATE_MIN_OUTPUT_RMS) {
-      return true;
-    }
 
     const correlation = this.computeMaxCorrelation(micSamples, outputSamples);
     const nearFieldRatio = micRms / Math.max(outputRms, 1e-4);
-    const echoLikely =
-      correlation >= DUPLEX_GATE_ECHO_CORRELATION &&
-      nearFieldRatio < DUPLEX_GATE_NEAR_FIELD_RATIO;
-
-    if (echoLikely) {
+    if (
+      correlation >= DUPLEX_GATE_STRONG_ECHO_CORRELATION &&
+      nearFieldRatio < DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO
+    ) {
       return false;
     }
 
-    return nearFieldRatio >= 1 || correlation < DUPLEX_GATE_ECHO_CORRELATION;
+    if (correlation <= DUPLEX_GATE_REOPEN_CORRELATION) {
+      return true;
+    }
+
+    return nearFieldRatio >= DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO;
   }
 
   private getOrderedWindow(source: Float32Array, writeIndex: number): Float32Array {
@@ -1076,19 +1115,17 @@ export class RealtimeVoiceSession {
       }
 
       case "output_audio.started":
-        this.assistantSpeaking = true;
+        this.assistantServerSpeaking = true;
         this.duplexGateOpen = false;
         this.duplexGateOpenFrames = 0;
         this.duplexGateCloseFrames = 0;
         this.updateOutboundGate();
-        this.syncExternalAudioDucking(true);
         this.emit({ type: "speaking-start" });
         break;
 
       case "output_audio.done":
-        this.assistantSpeaking = false;
+        this.assistantServerSpeaking = false;
         this.updateOutboundGate();
-        this.syncExternalAudioDucking(false);
         this.emit({ type: "speaking-end" });
         break;
 
@@ -1416,7 +1453,10 @@ export class RealtimeVoiceSession {
     this.duplexGateOpen = true;
     this.duplexGateOpenFrames = 0;
     this.duplexGateCloseFrames = 0;
-    this.assistantSpeaking = false;
+    this.assistantServerSpeaking = false;
+    this.assistantPlaybackActive = false;
+    this.assistantPlaybackActiveFrames = 0;
+    this.assistantPlaybackSilentFrames = 0;
     this.inputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
     this.outputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
     this.inputSampleWriteIndex = 0;
