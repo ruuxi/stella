@@ -1,5 +1,5 @@
 /**
- * Stella managed LLM proxy.
+ * Stella managed AI endpoint.
  *
  * This endpoint is only used for Stella-managed requests when the desktop app
  * does not have a matching local PI provider key. It authenticates the user via
@@ -59,7 +59,6 @@ async function consumeDeviceRateLimit(
 const STRIP_REQUEST_HEADERS = new Set([
   "host",
   "x-provider",
-  "x-original-path",
   "x-model-id",
   "x-agent-type",
   "connection",
@@ -75,7 +74,7 @@ function sanitizePathSuffix(pathSuffix: string): string | null {
   return pathSuffix;
 }
 
-export const llmProxy = httpAction(async (ctx, request) => {
+export const managedAi = httpAction(async (ctx, request) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     return proxyErrorResponse(401, "Unauthorized", request);
@@ -89,11 +88,9 @@ export const llmProxy = httpAction(async (ctx, request) => {
     request.headers.get("X-Provider")?.trim()?.toLowerCase() || "vercel";
 
   const url = new URL(request.url);
-  const originalPath =
-    request.headers.get("X-Original-Path")?.trim() ||
-    url.pathname.replace(/^\/api\/ai\/llm-proxy/, "");
+  const originalPath = url.pathname.replace(/^\/api\/ai\/v1/, "");
   if (!originalPath) {
-    return proxyErrorResponse(400, "Missing X-Original-Path header", request);
+    return proxyErrorResponse(400, "Managed AI path is required", request);
   }
 
   const sanitizedPath = sanitizePathSuffix(originalPath);
@@ -260,7 +257,7 @@ async function forwardRequest(
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error("[llm-proxy] Forward error:", error);
+    console.error("[managed-ai] Forward error:", error);
     const durationMs = Date.now() - startMs;
 
     void ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
