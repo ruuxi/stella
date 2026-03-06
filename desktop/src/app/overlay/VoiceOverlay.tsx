@@ -28,7 +28,12 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   });
 
   // RTC mode
-  const { micLevel: rtcMicLevel, outputLevel: rtcOutputLevel, isConnected, isUserSpeaking } = useRealtimeVoice();
+  const {
+    micLevel: rtcMicLevel,
+    outputLevel: rtcOutputLevel,
+    isConnected,
+    isUserSpeaking,
+  } = useRealtimeVoice();
 
   const isAnyVoiceActive = isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
   const isAudioReady = isRecording || isConnected;

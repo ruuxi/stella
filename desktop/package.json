@@ -151,10 +151,20 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*",
-      "native/mouse_block.exe"
+      "dist-electron/**/*"
     ],
     "extraResources": [
+      {
+        "from": "native",
+        "to": "native",
+        "filter": [
+          "mouse_block.exe",
+          "window_info.exe",
+          "audio_ducking.exe",
+          "window_info",
+          "audio_ducking"
+        ]
+      },
       {
         "from": "resources/bundled-skills",
         "to": "bundled-skills",

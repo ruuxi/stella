@@ -5,12 +5,7 @@
  */
 
 import { spawn, type ChildProcess } from 'child_process'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import { existsSync } from 'fs'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+import { resolveNativeHelperPath } from '../native-helper-path.js'
 
 type MouseBlockEvent = 'down' | 'up'
 type MouseBlockCallback = (event: MouseBlockEvent, x: number, y: number) => void
@@ -23,23 +18,7 @@ let isReady = false
  * Find the helper executable
  */
 const findHelperPath = (): string | null => {
-  // Check various locations
-  const candidates = [
-    // Development: next to dist-electron
-    path.join(__dirname, '..', 'native', 'mouse_block.exe'),
-    // Production: in resources
-    path.join(__dirname, '..', '..', 'native', 'mouse_block.exe'),
-    // Alternative: same directory
-    path.join(__dirname, 'mouse_block.exe'),
-  ]
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate
-    }
-  }
-
-  return null
+  return resolveNativeHelperPath('mouse_block')
 }
 
 /**

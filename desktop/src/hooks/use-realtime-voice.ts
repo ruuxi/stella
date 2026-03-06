@@ -174,10 +174,13 @@ export class VoiceSessionManager {
     this.unsubscribeRef.current = session.on((event: VoiceSessionEvent) => {
       if (this.aborted) return;
 
+      // The remote output analyser is created after the session is already connected,
+      // so refresh analyser refs on every event rather than only on state changes.
+      this.deps.analyserRef.current = session.getAnalyser();
+      this.deps.outputAnalyserRef.current = session.getOutputAnalyser();
+
       if (event.type === "state-change") {
         this.deps.onStateChange(event.state);
-        this.deps.analyserRef.current = session.getAnalyser();
-        this.deps.outputAnalyserRef.current = session.getOutputAnalyser();
         if (event.state === "connected") {
           this.retryAttemptRef.current = 0;
           this.scheduleRotate();
