@@ -34,7 +34,6 @@ export const generateSuggestions = internalAction({
     conversationId: v.id("conversations"),
     ownerId: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     // 1. Load command catalog
     const catalog = await ctx.runQuery(internal.data.commands.listCatalog, {});

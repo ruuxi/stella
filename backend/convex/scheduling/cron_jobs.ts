@@ -117,29 +117,6 @@ function assertValidPayload(payload: unknown): CronPayload {
   throw new ConvexError({ code: "INVALID_ARGUMENT", message: 'payload.kind must be "systemEvent" or "agentTurn"' });
 }
 
-const cronJobDocValidator = v.object({
-  _id: v.id("cron_jobs"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  conversationId: v.optional(v.id("conversations")),
-  name: v.string(),
-  description: v.optional(v.string()),
-  enabled: v.boolean(),
-  schedule: cronScheduleValidator,
-  sessionTarget: v.string(),
-  payload: cronPayloadValidator,
-  deleteAfterRun: v.optional(v.boolean()),
-  nextRunAtMs: v.number(),
-  scheduledRunId: v.optional(v.id("_scheduled_functions")),
-  runningAtMs: v.optional(v.number()),
-  lastRunAtMs: v.optional(v.number()),
-  lastStatus: v.optional(v.string()),
-  lastError: v.optional(v.string()),
-  lastDurationMs: v.optional(v.number()),
-  lastOutputPreview: v.optional(v.string()),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-});
 
 const sanitizeCronJobForReturn = <T extends { payload: unknown } | null>(
   job: T,
@@ -193,7 +170,6 @@ async function cancelScheduledRun(
 
 export const list = internalQuery({
   args: {},
-  returns: v.array(cronJobDocValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     const jobs = await ctx.db
@@ -216,7 +192,6 @@ export const add = internalMutation({
     enabled: v.optional(v.boolean()),
     deleteAfterRun: v.optional(v.boolean()),
   },
-  returns: v.union(v.null(), cronJobDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const schedule = assertValidSchedule(args.schedule);
@@ -286,7 +261,6 @@ export const update = internalMutation({
     jobId: v.id("cron_jobs"),
     patch: cronPatchValidator,
   },
-  returns: v.union(v.null(), cronJobDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
@@ -373,7 +347,6 @@ export const remove = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
@@ -396,7 +369,6 @@ export const deleteJob = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (job) {
@@ -411,7 +383,6 @@ export const run = internalMutation({
   args: {
     jobId: v.id("cron_jobs"),
   },
-  returns: v.union(v.null(), cronJobDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const job = await ctx.db.get(args.jobId);
@@ -457,7 +428,6 @@ export const getById = internalQuery({
   args: {
     id: v.id("cron_jobs"),
   },
-  returns: v.union(v.null(), cronJobDocValidator),
   handler: async (ctx, args) => {
     return sanitizeCronJobForReturn(await ctx.db.get(args.id));
   },
@@ -469,7 +439,6 @@ export const markRunning = internalMutation({
     runningAtMs: v.number(),
     expectedRunningAtMs: v.optional(v.number()),
   },
-  returns: v.boolean(),
   handler: async (ctx, args) => {
     return await claimRunIfAvailable({
       ctx,
@@ -497,7 +466,6 @@ export const finishRun = internalMutation({
     lastOutputPreview: v.optional(v.string()),
     enabled: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.id);
     if (!job) {
@@ -543,7 +511,6 @@ export const execute = internalAction({
     jobId: v.id("cron_jobs"),
     forced: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const job = await ctx.runQuery(internal.scheduling.cron_jobs.getById, { id: args.jobId });
     if (!job || (!job.enabled && !args.forced)) {
@@ -933,7 +900,6 @@ export const completeCronTurnResultFromWatchdog = internalMutation({
     error: v.optional(v.string()),
     skipAssistantMessage: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await completeCronTurnResultCore(ctx, {
       requestId: args.requestId,

@@ -95,7 +95,6 @@ export const deliverToConnector = internalAction({
     deliveryMeta: jsonValueValidator,
     text: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const meta = args.deliveryMeta as Record<string, unknown>;
 
@@ -491,16 +490,6 @@ const ORPHAN_MAX_AGE_MS = 10 * 60_000; // ignore anything older than 10 min
 
 export const findOrphanedTurnRequests = internalQuery({
   args: {},
-  returns: v.array(
-    v.object({
-      eventId: v.id("events"),
-      requestId: v.string(),
-      conversationId: v.id("conversations"),
-      targetDeviceId: v.string(),
-      payload: jsonValueValidator,
-      claimed: v.boolean(),
-    }),
-  ),
   handler: async (ctx) => {
     const now = Date.now();
 
@@ -577,7 +566,6 @@ export const findOrphanedTurnRequests = internalQuery({
 
 export const rescueOrphanedTurns = internalAction({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     const orphans = await ctx.runQuery(
       internal.channels.connector_delivery.findOrphanedTurnRequests,

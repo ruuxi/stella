@@ -364,7 +364,6 @@ export const insertMemory = internalMutation({
     conversationId: v.optional(v.id("conversations")),
     content: v.string(),
   },
-  returns: v.id("memories"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("memories", {
@@ -388,7 +387,6 @@ export const mergeMemory = internalMutation({
     memoryId: v.id("memories"),
     content: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     await ctx.db.patch(args.memoryId, {
@@ -413,7 +411,6 @@ export const touchMemoriesById = internalMutation({
       }),
     ),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     await Promise.all(
@@ -442,21 +439,9 @@ export const touchMemoriesById = internalMutation({
 // getMemoryById (internal query)
 // ---------------------------------------------------------------------------
 
-const memoryDocValidator = v.object({
-  _id: v.id("memories"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  conversationId: v.optional(v.id("conversations")),
-  content: v.string(),
-  accessCount: v.number(),
-  accessedAt: v.number(),
-  createdAt: v.number(),
-  updatedAt: v.optional(v.number()),
-});
 
 export const getMemoryById = internalQuery({
   args: { id: v.id("memories") },
-  returns: v.union(v.null(), memoryDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -468,7 +453,6 @@ export const getMemoryById = internalQuery({
 
 export const getMemoriesByIds = internalQuery({
   args: { ids: v.array(v.id("memories")) },
-  returns: v.array(memoryDocValidator),
   handler: async (ctx, args) => {
     const results = await Promise.all(args.ids.map((id) => ctx.db.get(id)));
     return results.filter((m): m is NonNullable<typeof m> => m !== null);
@@ -485,7 +469,6 @@ export const searchMemoriesByContent = internalQuery({
     query: v.string(),
     limit: v.number(),
   },
-  returns: v.array(memoryDocValidator),
   handler: async (ctx, args) => {
     const normalizedQuery = args.query.trim();
     if (!normalizedQuery) return [];
@@ -505,7 +488,6 @@ export const searchMemoriesByContent = internalQuery({
 
 export const deleteMemory = internalMutation({
   args: { memoryId: v.id("memories") },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.memoryId);
     return null;
@@ -523,7 +505,6 @@ export const recallMemories = internalAction({
     source: v.optional(v.union(v.literal("memory"), v.literal("history"))),
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const query = args.query.trim();
     if (!query) return "";
@@ -658,7 +639,6 @@ export const adjudicateAndStoreFact = internalAction({
     content: v.string(),
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     try {
       const docs = (await ctx.runQuery(internal.data.memory.searchMemoriesByContent, {
@@ -750,7 +730,6 @@ export const saveMemory = internalAction({
     content: v.string(),
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     return await ctx.runAction(internal.data.memory.adjudicateAndStoreFact, {
       ownerId: args.ownerId,
@@ -769,7 +748,6 @@ export const seedFromDiscovery = internalAction({
     ownerId: v.string(),
     formattedSignals: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const response = await cheapLLM(
       MEMORY_DISCOVERY_FACT_EXTRACTION_MODEL_KEY,

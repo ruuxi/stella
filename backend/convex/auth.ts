@@ -309,7 +309,6 @@ export const getCurrentUser = query({
 
 export const rotateKeys = internalAction({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     const auth = createAuth(ctx);
     await auth.api.rotateKeys();
@@ -319,14 +318,6 @@ export const rotateKeys = internalAction({
 
 export const getSessionPolicyByOwnerInternal = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.union(
-    v.null(),
-    v.object({
-      sessionVersion: v.number(),
-      minIssuedAtSec: v.optional(v.number()),
-      updatedAt: v.number(),
-    }),
-  ),
   handler: async (ctx, args) => {
     const policy = await ctx.db
       .query("auth_session_policies")

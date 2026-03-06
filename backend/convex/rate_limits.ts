@@ -22,7 +22,6 @@ export const consumeWebhookRateLimit = internalMutation({
     windowMs: v.number(),
     blockMs: v.optional(v.number()),
   },
-  returns: v.object({ allowed: v.boolean(), retryAfterMs: v.number() }),
   handler: async (ctx, args) => {
     const limit = Math.max(1, Math.floor(args.limit));
     const periodMs = Math.max(1_000, Math.floor(args.windowMs), Math.floor(args.blockMs ?? 0));

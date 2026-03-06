@@ -221,10 +221,6 @@ export const createThread = internalMutation({
     conversationId: v.id("conversations"),
     name: v.string(),
   },
-  returns: v.object({
-    threadId: v.id("threads"),
-    evictedThreadName: v.union(v.null(), v.string()),
-  }),
   handler: async (ctx, args) => {
     const conversation = await loadConversationForOwner(
       ctx,
@@ -279,32 +275,7 @@ export const createThread = internalMutation({
 // getThreadByName
 // ---------------------------------------------------------------------------
 
-const threadDocValidator = v.object({
-  _id: v.id("threads"),
-  _creationTime: v.number(),
-  conversationId: v.id("conversations"),
-  name: v.string(),
-  status: v.string(),
-  summary: v.optional(v.string()),
-  messageCount: v.number(),
-  totalTokenEstimate: v.number(),
-  createdAt: v.number(),
-  lastUsedAt: v.number(),
-  resurfacedAt: v.optional(v.number()),
-  closedAt: v.optional(v.number()),
-});
 
-const threadMessageDocValidator = v.object({
-  _id: v.id("thread_messages"),
-  _creationTime: v.number(),
-  threadId: v.id("threads"),
-  ordinal: v.number(),
-  role: v.string(),
-  content: v.string(),
-  toolCallId: v.optional(v.string()),
-  tokenEstimate: v.optional(v.number()),
-  createdAt: v.number(),
-});
 
 export const getThreadByName = internalQuery({
   args: {
@@ -312,7 +283,6 @@ export const getThreadByName = internalQuery({
     conversationId: v.id("conversations"),
     name: v.string(),
   },
-  returns: v.union(v.null(), threadDocValidator),
   handler: async (ctx, args) => {
     const conversation = await loadConversationForOwner(
       ctx,
@@ -353,7 +323,6 @@ export const getThreadById = internalQuery({
   args: {
     threadId: v.id("threads"),
   },
-  returns: v.union(v.null(), threadDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.threadId);
   },
@@ -368,7 +337,6 @@ export const listActiveThreads = internalQuery({
     ownerId: v.string(),
     conversationId: v.id("conversations"),
   },
-  returns: v.array(threadDocValidator),
   handler: async (ctx, args) => {
     const conversation = await loadConversationForOwner(
       ctx,
@@ -400,7 +368,6 @@ export const touchThread = internalMutation({
     ownerId: v.string(),
     threadId: v.id("threads"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
@@ -416,7 +383,6 @@ export const activateThread = internalMutation({
     ownerId: v.string(),
     threadId: v.id("threads"),
   },
-  returns: v.union(v.null(), threadDocValidator),
   handler: async (ctx, args) => {
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) {
@@ -439,7 +405,6 @@ export const closeThread = internalMutation({
     ownerId: v.string(),
     threadId: v.id("threads"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) return null;
@@ -460,7 +425,6 @@ export const loadThreadMessages = internalQuery({
   args: {
     threadId: v.id("threads"),
   },
-  returns: v.array(threadMessageDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("thread_messages")
@@ -488,7 +452,6 @@ export const saveThreadMessages = internalMutation({
       }),
     ),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     if (args.messages.length === 0) return null;
 
@@ -545,7 +508,6 @@ export const deleteMessagesBefore = internalMutation({
     threadId: v.id("threads"),
     beforeOrdinal: v.number(),
   },
-  returns: v.number(),
   handler: async (ctx, args) => {
     const thread = await loadThreadForOwner(ctx, args.threadId, args.ownerId);
     if (!thread) return 0;
@@ -578,7 +540,6 @@ export const compactThread = internalAction({
     threadId: v.id("threads"),
     force: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     // 1. Load thread metadata
     const thread = await ctx.runQuery(internal.data.threads.getThreadById, {
@@ -679,7 +640,6 @@ export const finalizeThreadCompaction = internalMutation({
     keepFromOrdinal: v.number(),
     summary: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     const thread = await ctx.db.get(args.threadId);
@@ -777,7 +737,6 @@ export const sweepThreadLifecycle = internalMutation({
   args: {
     now: v.optional(v.number()),
   },
-  returns: v.object({ idled: v.number(), archived: v.number() }),
   handler: async (ctx, args) => {
     const now = args.now ?? Date.now();
     const idleCutoff = now - THREAD_IDLE_AFTER_MS;
