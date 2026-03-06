@@ -8,7 +8,6 @@ export type ToolOptions = {
   ownerId?: string;
   conversationId?: Id<"conversations">;
   userMessageId?: Id<"events">;
-  targetDeviceId?: string;
   transient?: boolean;
 };
 

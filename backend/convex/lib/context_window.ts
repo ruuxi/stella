@@ -45,19 +45,6 @@ export const estimateContextEventTokens = (event: ContextEventLike): number => {
     return clampEventTokens(textTokens + usageTokens + 8);
   }
 
-  if (event.type === "tool_request") {
-    const toolNameTokens = estimateTextTokens(payload.toolName);
-    const argsTokens = estimateJsonTokens(payload.args ?? {});
-    return clampEventTokens(toolNameTokens + argsTokens + 20);
-  }
-
-  if (event.type === "tool_result") {
-    const toolNameTokens = estimateTextTokens(payload.toolName);
-    const resultTokens = "result" in payload ? estimateJsonTokens(payload.result) : 0;
-    const errorTokens = estimateTextTokens(payload.error);
-    return clampEventTokens(toolNameTokens + resultTokens + errorTokens + 20);
-  }
-
   if (
     event.type === "task_started" ||
     event.type === "task_completed" ||

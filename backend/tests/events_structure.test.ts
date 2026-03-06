@@ -10,7 +10,6 @@ describe("events module structure", () => {
   });
 
   test("exports subscription queries", () => {
-    expect(source).toContain("subscribeToolRequestsForDevice");
     expect(source).toContain("subscribeRemoteTurnRequestsForDevice");
     expect(source).toContain("subscribeDashboardGenRequestsForDevice");
   });

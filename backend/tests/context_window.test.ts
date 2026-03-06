@@ -37,12 +37,12 @@ describe("context window selection", () => {
 });
 
 describe("context event token estimation", () => {
-  test("assigns non-trivial token weight to tool events", () => {
-    const toolCallTokens = estimateContextEventTokens({
-      type: "tool_request",
+  test("assigns non-trivial token weight to task events", () => {
+    const taskTokens = estimateContextEventTokens({
+      type: "task_completed",
       payload: {
-        toolName: "Bash",
-        args: { command: "start winword" },
+        description: "Open Word",
+        result: "Completed successfully",
       },
     });
 
@@ -53,7 +53,7 @@ describe("context event token estimation", () => {
       },
     });
 
-    expect(toolCallTokens).toBeGreaterThan(userTokens);
-    expect(toolCallTokens).toBeGreaterThan(8);
+    expect(taskTokens).toBeGreaterThan(userTokens);
+    expect(taskTokens).toBeGreaterThan(8);
   });
 });

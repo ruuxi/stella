@@ -47,7 +47,6 @@ export const invoke = internalAction({
     maxSteps: v.optional(v.number()),
     conversationId: v.optional(v.id("conversations")),
     userMessageId: v.optional(v.id("events")),
-    targetDeviceId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<AgentInvokeResult> => {
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
@@ -84,7 +83,6 @@ export const invoke = internalAction({
         ownerId,
         conversationId: args.conversationId,
         userMessageId: args.userMessageId,
-        targetDeviceId: args.targetDeviceId,
       },
     );
 

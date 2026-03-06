@@ -16,12 +16,6 @@ crons.interval(
   internal.channels.transient_data.purgeExpiredCleanupFailures,
   { maxBatches: 10 },
 );
-crons.interval(
-  "ephemeral tool event cleanup",
-  { minutes: 5 },
-  internal.events.purgeExpiredEphemeralToolEvents,
-  { maxBatches: 10 },
-);
 crons.interval("thread lifecycle sweep", { hours: 24 }, internal.data.threads.sweepThreadLifecycle, {});
 
 crons.cron(
