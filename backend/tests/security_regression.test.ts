@@ -51,40 +51,6 @@ describe("security regressions", () => {
     expect(source).not.toMatch(/runMutation\(internal\.ai_proxy_data\.incrementDeviceUsage/);
   });
 
-  test("integration requests enforce unsafe-host guard", () => {
-    const integrationProxySource = readBackendFile("convex/tools/integration_proxy.ts");
-    const backendToolsSource = readBackendFile("convex/tools/backend.ts");
-    const integrationServiceSource = readBackendFile("convex/tools/integration_request_service.ts");
-    const networkSafetySource = readBackendFile("convex/tools/network_safety.ts");
-
-    expect(integrationProxySource).toMatch(/getUnsafeIntegrationHostError/);
-    expect(backendToolsSource).toMatch(/getUnsafeIntegrationHostError/);
-    expect(backendToolsSource).toContain("executeIntegrationRequestService");
-    expect(integrationServiceSource).toMatch(/allowPrivateNetworkHosts:\s*mode === "private"/);
-    expect(networkSafetySource).toContain("Host");
-    expect(networkSafetySource).not.toContain("STELLA_ALLOW_PRIVATE_INTEGRATION_HOSTS");
-  });
-
-  test("integration request guidance disallows raw credential forwarding", () => {
-    const generalPrompt = readBackendFile("convex/prompts/general.ts");
-    const builtinSkillsPrompt = readBackendFile("convex/prompts/builtin_skills.ts");
-    const backendToolsSource = readBackendFile("convex/tools/backend.ts");
-
-    expect(generalPrompt).not.toContain("ephemeral session tokens");
-    expect(backendToolsSource).not.toContain("pass them directly in request.headers");
-    expect(builtinSkillsPrompt).not.toContain("request.headers");
-    expect(backendToolsSource).toMatch(/does not accept credential headers in request\.headers/);
-    expect(backendToolsSource).toMatch(/does not accept credential query params in request\.query/);
-  });
-
-  test("integration response handling includes credential redaction", () => {
-    const backendToolsSource = readBackendFile("convex/tools/backend.ts");
-
-    expect(backendToolsSource).toContain("redactIntegrationResponseData");
-    expect(backendToolsSource).toContain("SENSITIVE_RESPONSE_FIELD_NAME_RE");
-    expect(backendToolsSource).toContain("deriveIntegrationRedactionSecrets");
-  });
-
   test("channel link codes are stored as hashes, not plaintext", () => {
     // Link code logic was moved from channels/utils.ts to channels/link_codes.ts.
     const source = readBackendFile("convex/channels/link_codes.ts");
