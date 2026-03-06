@@ -17,22 +17,9 @@ export type ToolOptions = {
  * Not used for logic — only for documentation and type hints.
  */
 export const BASE_TOOL_NAMES = [
-  // Device tools (Electron local execution)
-  "Read",
-  "Edit",
-  "Glob",
-  "Grep",
-  "Bash",
-  "KillShell",
-  "AskUserQuestion",
-  "RequestCredential",
-  "SkillBash",
-  "MediaGenerate",
-  // Backend tools (always available, server-side)
+  // Backend tools (server-side, used by offline fallback orchestrator)
   "WebSearch",
   "WebFetch",
-  "IntegrationRequest",
-  "ActivateSkill",
   "HeartbeatGet",
   "HeartbeatUpsert",
   "HeartbeatRun",
@@ -41,7 +28,5 @@ export const BASE_TOOL_NAMES = [
   "CronUpdate",
   "CronRemove",
   "CronRun",
-  "GenerateApiSkill",
-  "ListResources",
   "NoResponse",
 ] as const;
