@@ -22,7 +22,6 @@ export const BASE_TOOL_NAMES = [
   "Edit",
   "Glob",
   "Grep",
-  "OpenApp",
   "Bash",
   "KillShell",
   "AskUserQuestion",
