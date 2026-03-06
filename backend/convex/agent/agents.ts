@@ -7,10 +7,7 @@ import {
 } from "../_generated/server";
 import { v, Infer } from "convex/values";
 import {
-  GENERAL_AGENT_SYSTEM_PROMPT,
   ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
-  EXPLORE_AGENT_SYSTEM_PROMPT,
-  BROWSER_AGENT_SYSTEM_PROMPT,
 } from "../prompts/index";
 import { requireUserId } from "../auth";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
@@ -84,7 +81,7 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
   {
     id: "orchestrator",
     name: "Orchestrator",
-    description: "Coordinates subagents and responds to the user.",
+    description: "Responds to the user when their local machine is offline.",
     systemPrompt: ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
     agentTypes: ["orchestrator"],
     toolsAllowlist: [
@@ -96,72 +93,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     ],
     defaultSkills: [],
     maxTaskDepth: 2,
-    version: 1,
-    source: "builtin",
-    updatedAt: 0,
-  },
-  {
-    id: "general",
-    name: "General Agent",
-    description: "Handles user tasks including UI modifications using available tools.",
-    systemPrompt: GENERAL_AGENT_SYSTEM_PROMPT,
-    agentTypes: ["general"],
-    toolsAllowlist: [
-      "Edit",
-      "Glob",
-      "Grep",
-      "Bash",
-      "KillShell",
-      "ShellStatus",
-      "WebFetch",
-      "WebSearch",
-      "RequestCredential",
-      "IntegrationRequest",
-      "SkillBash",
-      "ListResources",
-      "GenerateApiSkill",
-      "MediaGenerate",
-      "ActivateSkill",
-      "RecallMemories",
-      "TaskCreate",
-      "TaskOutput",
-      "AskUserQuestion",
-    ],
-    defaultSkills: [],
-    maxTaskDepth: 2,
-    version: 1,
-    source: "builtin",
-    updatedAt: 0,
-  },
-  {
-    id: "explore",
-    name: "Explore Agent",
-    description:
-      "Primary investigator for codebase exploration and web research. Use liberally for file discovery, pattern searching, documentation lookup, and understanding code structure.",
-    systemPrompt: EXPLORE_AGENT_SYSTEM_PROMPT,
-    agentTypes: ["explore"],
-    toolsAllowlist: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
-    defaultSkills: [],
-    maxTaskDepth: 0,
-    version: 1,
-    source: "builtin",
-    updatedAt: 0,
-  },
-  {
-    id: "browser",
-    name: "Browser Agent",
-    description:
-      "Web browsing and browser automation specialist. Use for navigating websites, interacting with web applications, taking screenshots, filling forms, and extracting information from web pages via Playwright.",
-    systemPrompt: BROWSER_AGENT_SYSTEM_PROMPT,
-    agentTypes: ["browser"],
-    toolsAllowlist: [
-      "Bash",
-      "KillShell",
-      "ShellStatus",
-      "ActivateSkill",
-    ],
-    defaultSkills: [],
-    maxTaskDepth: 0,
     version: 1,
     source: "builtin",
     updatedAt: 0,
