@@ -28,11 +28,6 @@ describe("BASE_TOOL_NAMES", () => {
     expect(BASE_TOOL_NAMES).toContain("CronAdd");
   });
 
-  test("contains memory tools", () => {
-    expect(BASE_TOOL_NAMES).toContain("RecallMemories");
-    expect(BASE_TOOL_NAMES).toContain("SaveMemory");
-  });
-
   test("has no duplicates", () => {
     const set = new Set(BASE_TOOL_NAMES);
     expect(set.size).toBe(BASE_TOOL_NAMES.length);

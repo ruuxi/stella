@@ -33,13 +33,7 @@ export const createTools = (
   ctx: ActionCtx,
   options: ToolOptions,
 ): ToolSet => {
-  const backendTools = createBackendTools(ctx, options);
-  const orchestrationTools = createOrchestrationTools(ctx, options);
-
-  const allTools: ToolSet = {
-    ...backendTools,
-    ...orchestrationTools,
-  };
+  const allTools: ToolSet = createBackendTools(ctx, options);
 
   const privacyFilteredTools =
     options.transient
