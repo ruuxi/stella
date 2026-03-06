@@ -53,10 +53,6 @@ const buildAgentContext = (
   maxTaskDepth: 4,
   defaultSkills: [],
   skillIds: [],
-  proxyToken: {
-    token: "proxy-token",
-    expiresAt: Date.now() + 60_000,
-  },
   ...overrides,
 });
 
