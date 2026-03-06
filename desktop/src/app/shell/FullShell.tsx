@@ -93,10 +93,6 @@ export const FullShell = () => {
   const showTestDialog = useCallback(() => {
     setActiveDialog("test");
   }, [setActiveDialog]);
-  const showNeri = useCallback(() => {
-    window.electronAPI?.overlay.showNeri?.();
-  }, []);
-
   const handleTabSelect = useCallback(
     (view: "home" | "app" | "chat", page?: PersonalPage) => {
       if (view === "app" && page) {
@@ -470,12 +466,6 @@ export const FullShell = () => {
             onClick={showTestDialog}
           >
             Test UI
-          </button>
-          <button
-            className="onboarding-reset"
-            onClick={showNeri}
-          >
-            Neri
           </button>
         </div>
       )}
