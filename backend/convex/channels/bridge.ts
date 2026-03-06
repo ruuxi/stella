@@ -45,27 +45,6 @@ const bridgeAuthStateValidator = v.optional(
   }),
 );
 
-const decodedBridgeSessionValidator = v.object({
-  _id: v.id("bridge_sessions"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  provider: v.string(),
-  spriteName: v.optional(v.string()),
-  mode: v.optional(v.string()),
-  status: v.string(),
-  webhookSecret: v.string(),
-  webhookSecretKeyVersion: v.optional(v.number()),
-  authState: bridgeAuthStateValidator,
-  errorMessage: v.optional(v.string()),
-  lastHeartbeatAt: v.optional(v.number()),
-  lastMessageAtMs: v.optional(v.number()),
-  nextWakeAtMs: v.optional(v.number()),
-  wakeIntervalMs: v.optional(v.number()),
-  wakeTier: v.optional(v.string()),
-  consecutiveEmptyWakes: v.optional(v.number()),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-});
 
 const decodeBridgeSession = async (
   session: Doc<"bridge_sessions"> | null,
@@ -274,7 +253,6 @@ export const getBridgeSession = internalQuery({
     ownerId: v.string(),
     provider: v.string(),
   },
-  returns: v.union(v.null(), decodedBridgeSessionValidator),
   handler: async (ctx, args) => {
     const session = await ctx.db
       .query("bridge_sessions")
@@ -288,7 +266,6 @@ export const getBridgeSession = internalQuery({
 
 export const getBridgeSessionById = internalQuery({
   args: { id: v.id("bridge_sessions") },
-  returns: v.union(v.null(), decodedBridgeSessionValidator),
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.id);
     return await decodeBridgeSession(session);
@@ -297,7 +274,6 @@ export const getBridgeSessionById = internalQuery({
 
 export const hasActiveBridgeForOwner = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.boolean(),
   handler: async (ctx, args) => {
     const sessions = await ctx.db
       .query("bridge_sessions")
@@ -323,7 +299,6 @@ export const createBridgeSession = internalMutation({
     spriteName: v.optional(v.string()),
     mode: v.optional(v.string()),
   },
-  returns: v.id("bridge_sessions"),
   handler: async (ctx, args) => {
     const now = Date.now();
     const encrypted = await encryptSecret(generateBridgeWebhookSecret());
@@ -351,7 +326,6 @@ export const updateBridgeSession = internalMutation({
     lastMessageAtMs: v.optional(v.number()),
     consecutiveEmptyWakes: v.optional(v.number()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.status !== undefined) patch.status = args.status;
@@ -367,7 +341,6 @@ export const updateBridgeSession = internalMutation({
 
 export const deleteBridgeSession = internalMutation({
   args: { id: v.id("bridge_sessions") },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const doc = await ctx.db.get(args.id);
     if (doc) await ctx.db.delete(args.id);
@@ -377,7 +350,6 @@ export const deleteBridgeSession = internalMutation({
 
 export const clearWakeSchedule = internalMutation({
   args: { id: v.id("bridge_sessions") },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, {
       nextWakeAtMs: undefined,
@@ -392,7 +364,6 @@ export const clearWakeSchedule = internalMutation({
 
 export const listDueWakes = internalQuery({
   args: { nowMs: v.number() },
-  returns: v.array(decodedBridgeSessionValidator),
   handler: async (ctx, args) => {
     const sessions = await ctx.db
       .query("bridge_sessions")
@@ -406,7 +377,6 @@ export const listDueWakes = internalQuery({
 
 export const listAllBridgeSessions = internalQuery({
   args: {},
-  returns: v.array(decodedBridgeSessionValidator),
   handler: async (ctx) => {
     const sessions = await ctx.db.query("bridge_sessions").collect();
     return await decodeBridgeSessions(sessions);
@@ -418,7 +388,6 @@ export const scheduleNextWake = internalMutation({
     id: v.id("bridge_sessions"),
     consecutiveEmptyWakes: v.number(),
   },
-  returns: v.object({ intervalMs: v.number(), dueAtMs: v.number() }),
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.id);
     if (!session) {
@@ -521,7 +490,6 @@ export const deployBridge = internalAction({
     provider: v.string(),
     ownerId: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       const spritesToken = await getSpritesTokenForOwner(ctx, args.ownerId);
@@ -621,7 +589,6 @@ export const wakeSprite = internalAction({
     sessionId: v.id("bridge_sessions"),
     dueAtMs: v.optional(v.number()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const session = await ctx.runQuery(internal.channels.bridge.getBridgeSessionById, {
       id: args.sessionId,
@@ -659,7 +626,6 @@ export const wakeSprite = internalAction({
 
 export const bridgeWakeTick = internalAction({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
 
@@ -823,7 +789,6 @@ export const handleHeartbeat = internalAction({
     ownerId: v.string(),
     provider: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const session = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId: args.ownerId,
@@ -866,7 +831,6 @@ export const handleAuthUpdate = internalAction({
     }),
     status: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const session = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId: args.ownerId,
@@ -934,7 +898,6 @@ export const handleBridgeMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const hasText = args.text.trim().length > 0;
     const hasAttachments = (args.attachments?.length ?? 0) > 0;
@@ -1018,7 +981,6 @@ export const handleBridgeError = internalAction({
     provider: v.string(),
     error: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const session = await ctx.runQuery(internal.channels.bridge.getBridgeSession, {
       ownerId: args.ownerId,

@@ -1,7 +1,11 @@
 # Convex guidelines
 ## Function guidelines
 ### New function syntax
-- ALWAYS use the new function syntax for Convex functions. For example:
+- ALWAYS use the new function syntax for Convex functions.
+- Add `returns` validators on public `query`/`mutation`/`action` functions to enforce runtime contracts for the frontend.
+- OMIT `returns` on `internalQuery`/`internalMutation`/`internalAction` — rely on TypeScript inference instead.
+
+Public function example:
 ```typescript
 import { query } from "./_generated/server";
 import { v } from "convex/values";
@@ -10,6 +14,18 @@ export const f = query({
     returns: v.null(),
     handler: async (ctx, args) => {
     // Function body
+    },
+});
+```
+
+Internal function example (no returns):
+```typescript
+import { internalQuery } from "./_generated/server";
+import { v } from "convex/values";
+export const f = internalQuery({
+    args: { id: v.id("users") },
+    handler: async (ctx, args) => {
+      return await ctx.db.get(args.id);
     },
 });
 ```

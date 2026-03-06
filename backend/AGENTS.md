@@ -13,7 +13,6 @@ bun run deploy      # Deploy to Convex cloud
 
 See `convex_rules.md` for full reference. Key gotchas:
 
-- Always include `args` and `returns` validators
 - Use `internalQuery`/`internalMutation`/`internalAction` for private functions
 - File names: **no hyphens** (use underscores)
 - `ActionCtx` has no `ctx.db` — only `QueryCtx` and `MutationCtx` do

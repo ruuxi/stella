@@ -404,7 +404,6 @@ const fetchAgentContextForOwner = async (
 
 export const fetchAgentContext = internalAction({
   args: fetchAgentContextInternalArgs,
-  returns: agentContextResultValidator,
   handler: async (ctx, args): Promise<AgentContextResult> => {
     return await fetchAgentContextForOwner(ctx, args);
   },

@@ -134,7 +134,6 @@ export async function verifyLinqSignature(
 
 export const getCachedChatId = internalQuery({
   args: { phoneNumber: v.string() },
-  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("linq_chats")
@@ -149,7 +148,6 @@ export const cacheChatId = internalMutation({
     phoneNumber: v.string(),
     linqChatId: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("linq_chats")
@@ -237,7 +235,6 @@ export const handleStartCommand = internalAction({
     text: v.string(),
     incomingChatId: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     // Extract 6-digit code from text like "link ABC123" or just "ABC123"
     const codeMatch = args.text.match(/\b([A-Z0-9]{6})\b/i);
@@ -284,7 +281,6 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
     try {

@@ -148,7 +148,6 @@ export const handleLinkCommand = internalAction({
     code: v.string(),
     displayName: v.optional(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const result = await processLinkCode({
       ctx,
@@ -189,7 +188,6 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 

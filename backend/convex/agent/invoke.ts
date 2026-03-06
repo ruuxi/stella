@@ -24,18 +24,6 @@ const MAX_INPUT_CHARS = 40_000;
 const truncate = (value: string, max = MAX_RAW_TEXT) =>
   value.length <= max ? value : `${value.slice(0, max)}\n\n... (truncated)`;
 
-const agentInvokeResultValidator = v.union(
-  v.object({
-    ok: v.literal(false),
-    reason: v.string(),
-    rawText: v.string(),
-  }),
-  v.object({
-    ok: v.literal(true),
-    rawText: v.string(),
-    outputJson: v.string(),
-  }),
-);
 
 type AgentInvokeResult =
   | {
@@ -61,7 +49,6 @@ export const invoke = internalAction({
     userMessageId: v.optional(v.id("events")),
     targetDeviceId: v.optional(v.string()),
   },
-  returns: agentInvokeResultValidator,
   handler: async (ctx, args): Promise<AgentInvokeResult> => {
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
     await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
