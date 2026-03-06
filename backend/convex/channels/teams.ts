@@ -5,6 +5,8 @@ import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { base64UrlDecode } from "../lib/crypto_utils";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
+import { TEAMS_MAX_MESSAGE_CHARS, truncateForConnector } from "./connector_constants";
+import { getTeamsBotToken } from "./connector_auth";
 
 // ---------------------------------------------------------------------------
 // Azure AD JWT Verification (Bot Framework)
@@ -99,46 +101,6 @@ export async function verifyTeamsToken(
 // Teams Bot Framework API Helpers
 // ---------------------------------------------------------------------------
 
-const TOKEN_REFRESH_BUFFER_MS = 60_000;
-const TEAMS_MAX_MESSAGE_CHARS = 28_000;
-
-let cachedBotToken: { token: string; expiresAt: number } | null = null;
-
-async function getTeamsBotToken(): Promise<string> {
-  if (cachedBotToken && cachedBotToken.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
-    return cachedBotToken.token;
-  }
-
-  const appId = process.env.TEAMS_APP_ID;
-  const appPassword = process.env.TEAMS_APP_PASSWORD;
-  if (!appId || !appPassword) throw new Error("Missing TEAMS_APP_ID or TEAMS_APP_PASSWORD");
-
-  const res = await fetch(
-    "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: appId,
-        client_secret: appPassword,
-        scope: "https://api.botframework.com/.default",
-      }).toString(),
-    },
-  );
-
-  if (!res.ok) {
-    throw new Error(`Teams token request failed: ${res.status} ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  cachedBotToken = {
-    token: data.access_token,
-    expiresAt: Date.now() + (data.expires_in - 60) * 1000,
-  };
-  return data.access_token;
-}
-
 const sendTeamsMessage = async (
   serviceUrl: string,
   conversationId: string,
@@ -146,11 +108,7 @@ const sendTeamsMessage = async (
 ) => {
   try {
     const token = await getTeamsBotToken();
-    // Teams message limit is ~28,000 chars for text
-    const maxLen = TEAMS_MAX_MESSAGE_CHARS;
-    const truncated = text.length > maxLen
-      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
-      : text;
+    const truncated = truncateForConnector(text, TEAMS_MAX_MESSAGE_CHARS);
 
     // Normalize service URL
     const baseUrl = serviceUrl.endsWith("/") ? serviceUrl.slice(0, -1) : serviceUrl;

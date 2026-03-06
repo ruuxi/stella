@@ -17,7 +17,7 @@ import {
 import {
   estimateContextEventTokens,
   selectRecentByTokenBudget,
-} from "./agent/context_window";
+} from "@stella/shared";
 
 const rateLimiter = new RateLimiter(components.rateLimiter);
 

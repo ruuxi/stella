@@ -37,6 +37,7 @@ import type { ModelMessage } from "@ai-sdk/provider-utils";
 import { PREFERRED_BROWSER_KEY } from "../data/preferences";
 import { BROWSER_AGENT_SAFARI_DENIED_REASON, SUBAGENT_TYPES } from "../lib/agent_constants";
 import { sleep } from "../lib/async";
+import { normalizeToolCallId } from "../lib/tool_call_utils";
 
 // Task without model field for client responses
 const taskClientValidator = v.object({
@@ -241,11 +242,6 @@ const parseJson = (raw: string): unknown => {
     // Not valid JSON — return as raw string
     return raw;
   }
-};
-
-const normalizeToolCallId = (value: string): string => {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return normalized.length > 64 ? normalized.slice(0, 64) : normalized;
 };
 
 const asThreadMessageText = (value: unknown): string => {
