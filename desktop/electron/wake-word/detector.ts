@@ -57,7 +57,7 @@ const STACK_REQUIRED = 3;
 const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
-const DEFAULT_THRESHOLD = 0.5;
+const DEFAULT_THRESHOLD = 0.60;
 const MIN_THRESHOLD = 0.3;
 
 // RMS gate — skip all inference when audio is near-silent
