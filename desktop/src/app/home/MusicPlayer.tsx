@@ -1,8 +1,5 @@
 import Play from "lucide-react/dist/esm/icons/play"
-import Pause from "lucide-react/dist/esm/icons/pause"
 import Square from "lucide-react/dist/esm/icons/square"
-import Mic from "lucide-react/dist/esm/icons/mic"
-import MicOff from "lucide-react/dist/esm/icons/mic-off"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { DashboardCard } from "./DashboardCard"
 import { preloadLyriaMusic, useLyriaMusic } from "@/hooks/use-lyria-music"
@@ -85,25 +82,35 @@ function Waveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode |
 
       ctx.clearRect(0, 0, width, height)
 
-      const barCount = Math.min(bufferLength, 64)
-      if (barCount === 0) {
+      const halfCount = Math.min(bufferLength, 32)
+      if (halfCount === 0) {
         return
       }
 
-      const barWidth = width / barCount
+      // Total bars = halfCount * 2, mirrored from center outward
+      const totalBars = halfCount * 2
+      const barWidth = width / totalBars
       const gap = Math.max(1, barWidth * 0.2)
+      const centerX = width / 2
       ctx.fillStyle = colorRef.current
 
-      for (let i = 0; i < barCount; i++) {
+      for (let i = 0; i < halfCount; i++) {
         const value = dataArray[i] / 255
         const barHeight = Math.max(2 * dpr, value * height * 0.85)
-
-        const x = i * barWidth + gap / 2
-        const y = (height - barHeight) / 2
+        const y = height - barHeight
 
         ctx.globalAlpha = 0.15 + value * 0.45
+
+        // Right side: center outward
+        const xRight = centerX + i * barWidth + gap / 2
         ctx.beginPath()
-        ctx.roundRect(x, y, barWidth - gap, barHeight, 1.5 * dpr)
+        ctx.roundRect(xRight, y, barWidth - gap, barHeight, 1.5 * dpr)
+        ctx.fill()
+
+        // Left side: mirror
+        const xLeft = centerX - (i + 1) * barWidth + gap / 2
+        ctx.beginPath()
+        ctx.roundRect(xLeft, y, barWidth - gap, barHeight, 1.5 * dpr)
         ctx.fill()
       }
       ctx.globalAlpha = 1
@@ -139,7 +146,6 @@ export function MusicPlayer() {
     userHint,
     lyrics,
     analyserRef,
-    togglePlayPause,
     play,
     selectMood,
     stop,
@@ -162,118 +168,87 @@ export function MusicPlayer() {
 
   return (
     <DashboardCard
-      label="Ambient"
       data-stella-label="Music Player"
       data-stella-state={`status: ${status} | mood: ${mood}${isActive ? ` | elapsed: ${formatTime(elapsedSeconds)}` : ""}${lyrics ? " | lyrics: on" : ""}`}
-      actions={
-        isActive ? (
-          <button className="music-stop-btn" onClick={stop} aria-label="Stop" data-stella-action="Stop music">
-            <Square size={10} />
-          </button>
-        ) : undefined
-      }
     >
       {/* Waveform visualization */}
       {isActive && <Waveform analyserRef={analyserRef} />}
 
-      {/* Playback row */}
-      <div className="music-player-row">
-        <button
-          className={`music-play-btn${isActive ? " music-play-btn--active" : ""}`}
-          onClick={togglePlayPause}
-          onMouseEnter={preloadMusic}
-          onFocus={preloadMusic}
-          disabled={status === "loading"}
-          aria-label={status === "playing" ? "Pause" : "Play"}
-          data-stella-action={status === "playing" ? "Pause music" : "Play music"}
-        >
-          {status === "loading" ? (
-            <span className="music-loading-dot" />
-          ) : status === "playing" ? (
-            <Pause size={14} />
-          ) : (
-            <Play size={14} />
-          )}
-        </button>
-
-        {/* Progress bar + info */}
-        <div className="music-player-center">
+      {/* Left: Prompt bar + track info */}
+      <div className="music-left-group" data-active={isActive || undefined}>
+        <div className="music-prompt-bar">
+          <input
+            type="text"
+            className="music-prompt-input"
+            placeholder="Describe your vibe..."
+            data-stella-action="Music vibe prompt"
+            value={localHint}
+            onChange={(e) => setLocalHint(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                handlePlay()
+              }
+            }}
+            maxLength={200}
+          />
+        </div>
+        {isActive && (
           <div className="music-track-info">
             <span className="music-track-title">
               {error
                 ? "Unable to play"
                 : status === "loading"
                   ? "Starting..."
-                  : isActive
-                    ? currentPromptLabel || mood
-                    : "Tap play to start"}
+                  : currentPromptLabel || mood}
             </span>
             <span className="music-track-duration">
-              {isActive ? formatTime(elapsedSeconds) : ""}
+              {formatTime(elapsedSeconds)}
             </span>
           </div>
-          {isActive && (
-            <div className="music-progress">
-              <div
-                className="music-progress-fill"
-                style={{
-                  width: `${Math.min(100, (elapsedSeconds / 600) * 100)}%`,
-                }}
-              />
-            </div>
-          )}
+        )}
+      </div>
+
+      {/* Center: Play/Stop button */}
+      <button
+        className={`music-play-btn${isActive ? " music-play-btn--active" : ""}`}
+        onClick={isActive ? stop : handlePlay}
+        onMouseEnter={preloadMusic}
+        onFocus={preloadMusic}
+        disabled={status === "loading"}
+        aria-label={isActive ? "Stop" : "Play"}
+        data-stella-action={isActive ? "Stop music" : "Play music"}
+      >
+        {status === "loading" ? (
+          <span className="music-loading-dot" />
+        ) : isActive ? (
+          <Square size={14} />
+        ) : (
+          <Play size={14} />
+        )}
+      </button>
+
+      {/* Right side: Mood chips + Lyrics toggle */}
+      <div className="music-right-group">
+        <div className="music-moods">
+          {MOODS.map((m) => (
+            <button
+              key={m}
+              className={`music-mood-chip${m === mood ? " music-mood-chip--selected" : ""}`}
+              onClick={() => selectMood(m)}
+              data-stella-action={`Set mood: ${m}`}
+            >
+              {m}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* Mood chips + lyrics toggle */}
-      <div className="music-moods">
-        {MOODS.map((m) => (
-          <button
-            key={m}
-            className={`music-mood-chip${m === mood ? " music-mood-chip--selected" : ""}`}
-            onClick={() => selectMood(m)}
-            data-stella-action={`Set mood: ${m}`}
-          >
-            {m}
-          </button>
-        ))}
-        <button
-          className={`music-mood-chip music-lyrics-toggle${lyrics ? " music-mood-chip--selected" : ""}`}
-          onClick={toggleLyrics}
-          aria-label={lyrics ? "Disable lyrics" : "Enable lyrics"}
-          title={lyrics ? "Lyrics on" : "Lyrics off"}
-        >
-          {lyrics ? <Mic size={11} /> : <MicOff size={11} />}
-          <span>Lyrics</span>
-        </button>
-      </div>
-
-      {/* Prompt bar with play button */}
-      <div className="music-prompt-bar">
-        <input
-          type="text"
-          className="music-prompt-input"
-          placeholder="Describe your vibe..."
-          data-stella-action="Music vibe prompt"
-          value={localHint}
-          onChange={(e) => setLocalHint(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              handlePlay()
-            }
-          }}
-          maxLength={200}
-        />
-        <button
-          className="music-prompt-submit"
-          onClick={handlePlay}
-          disabled={status === "loading"}
-          aria-label="Play with this vibe"
-          data-stella-action="Play with vibe"
-        >
-          <Play size={12} />
-        </button>
+        <div className={`music-lyrics-toggle${lyrics ? " music-lyrics-toggle--active" : ""}`} onClick={toggleLyrics} role="button" tabIndex={0} aria-label={lyrics ? "Disable lyrics" : "Enable lyrics"}>
+          <span className="music-lyrics-label">Lyrics</span>
+          <div className={`music-lyrics-switch${lyrics ? " music-lyrics-switch--on" : ""}`}>
+            <div className="music-lyrics-switch-thumb" />
+          </div>
+        </div>
       </div>
     </DashboardCard>
   )

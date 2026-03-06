@@ -15,15 +15,12 @@ export function ImageGallery() {
       }
     >
       <div className="gallery-grid">
-        {Array.from({ length: 6 }).map((_, i) => (
+        {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="gallery-placeholder">
             <ImageIcon size={20} />
           </div>
         ))}
       </div>
-      <span className="gallery-footnote">
-        AI-generated images will appear here
-      </span>
     </DashboardCard>
   )
 }
