@@ -49,6 +49,7 @@ export const bootstrapMainProcess = () => {
   let windowManager: WindowManager | null = null
   let overlayController: OverlayWindowController | null = null
   let voiceRuntimeWindowController: VoiceRuntimeWindowController | null = null
+  let hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null = null
 
   // --- Core services (no deps or lightweight deps) ---
 
@@ -170,6 +171,7 @@ export const bootstrapMainProcess = () => {
       deviceId,
       StellaHome: stellaHome.homePath,
       frontendRoot: path.resolve(__dirname, '..'),
+      getHmrMorphOrchestrator: () => hmrMorphOrchestrator,
       requestCredential: (payload) => credentialService.requestCredential(payload),
       signHeartbeatPayload: async (signedAtMs: number) => ({
         publicKey: deviceIdentity.publicKey,
@@ -309,7 +311,7 @@ export const bootstrapMainProcess = () => {
     })
     process.env.STELLA_UI_PORT = String(stellaUiPort)
 
-    const hmrMorphOrchestrator = createHmrMorphOrchestrator({
+    hmrMorphOrchestrator = createHmrMorphOrchestrator({
       getFullWindow: () => windowManager?.getFullWindow() ?? null,
       getOverlayController: () => overlayController,
     })

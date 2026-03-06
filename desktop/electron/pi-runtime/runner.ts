@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { getDevServerUrl } from "../dev-url.js";
 import { createSelfModHmrController } from "../self-mod/hmr.js";
+import type { HmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { createToolHost } from "./extensions/stella/tools.js";
 import { loadAgentsFromHome } from "./extensions/stella/agents.js";
 import { loadSkillsFromHome } from "./extensions/stella/skills.js";
@@ -25,6 +26,7 @@ import {
   type PiToolEndEvent,
   type PiToolStartEvent,
 } from "./pi_agent_runtime.js";
+import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4-6";
 const DEFAULT_MAX_TASK_DEPTH = 8;
@@ -65,6 +67,7 @@ type HostRunnerOptions = {
   deviceId: string;
   StellaHome: string;
   frontendRoot?: string;
+  getHmrMorphOrchestrator?: () => HmrMorphOrchestrator | null;
   signHeartbeatPayload?: (
     signedAtMs: number,
   ) => Promise<{ publicKey: string; signature: string }> | { publicKey: string; signature: string };
@@ -174,6 +177,7 @@ export const createPiHostRunner = ({
   deviceId,
   StellaHome,
   frontendRoot,
+  getHmrMorphOrchestrator,
   requestCredential,
 }: HostRunnerOptions) => {
   const store = new JsonlRuntimeStore(StellaHome);
@@ -190,7 +194,6 @@ export const createPiHostRunner = ({
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
   const activeRunAbortControllers = new Map<string, AbortController>();
-  const activeRunHmrReleases = new Map<string, () => Promise<void>>();
 
   const selfModHmrController = createSelfModHmrController({
     getDevServerUrl,
@@ -257,19 +260,22 @@ export const createPiHostRunner = ({
     return { baseUrl, token };
   };
 
+  const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string => {
+    const modelFromPrefs = getModelOverride(StellaHome, agentType);
+    return modelFromPrefs ?? agent?.model ?? process.env.STELLA_DEFAULT_MODEL ?? DEFAULT_MODEL;
+  };
+
   const buildAgentContext = async (args: {
     conversationId: string;
     agentType: string;
     runId: string;
     threadId?: string;
   }): Promise<LocalTaskManagerAgentContext> => {
-    const proxy = ensureProxyReady();
     const agent = resolveAgent(args.agentType);
-
-    const modelFromPrefs = getModelOverride(StellaHome, args.agentType);
-    const model = modelFromPrefs ?? agent?.model ?? process.env.STELLA_DEFAULT_MODEL ?? DEFAULT_MODEL;
+    const model = getConfiguredModel(args.agentType, agent);
 
     const threadHistory = store.loadThreadMessages(args.conversationId, 50);
+    const nextProxyToken = proxyToken?.trim();
 
     return {
       systemPrompt: agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
@@ -288,10 +294,14 @@ export const createPiHostRunner = ({
       generalAgentEngine: args.agentType === "general" ? getGeneralAgentEngine(StellaHome) : undefined,
       codexLocalMaxConcurrency:
         args.agentType === "general" ? getCodexLocalMaxConcurrency(StellaHome) : undefined,
-      proxyToken: {
-        token: proxy.token,
-        expiresAt: Date.now() + 60 * 60 * 1000,
-      },
+      ...(nextProxyToken
+        ? {
+            proxyToken: {
+              token: nextProxyToken,
+              expiresAt: Date.now() + 60 * 60 * 1000,
+            },
+          }
+        : {}),
     };
   };
 
@@ -309,24 +319,67 @@ export const createPiHostRunner = ({
       onProgress,
       toolExecutor,
     }) => {
-      const proxy = ensureProxyReady();
-      return await runPiSubagentTask({
-        conversationId,
-        userMessageId,
-        runId: `local:sub:${crypto.randomUUID()}`,
+      const runId = `local:sub:${crypto.randomUUID()}`;
+      const shouldControlHmr = agentType === "general";
+      const pauseApplied = shouldControlHmr
+        ? await selfModHmrController.pause(runId)
+        : true;
+
+      if (shouldControlHmr && !pauseApplied) {
+        console.warn("[self-mod-hmr] Pause endpoint unavailable for general subagent.");
+      }
+
+      const resolvedLlm = resolveLlmRoute({
+        stellaHomePath: StellaHome,
+        modelName: agentContext.model,
         agentType,
-        userPrompt: `${taskDescription}\n\n${taskPrompt}`,
-        agentContext,
-        toolExecutor,
-        deviceId,
-        stellaHome: StellaHome,
-        proxyBaseUrl: proxy.baseUrl,
-        proxyToken: proxy.token,
-        getProxyToken: () => proxyToken?.trim() || proxy.token,
-        store,
-        abortSignal,
-        onProgress,
+        proxy: {
+          baseUrl: proxyBaseUrl,
+          getToken: () => proxyToken?.trim(),
+        },
       });
+      try {
+        return await runPiSubagentTask({
+          conversationId,
+          userMessageId,
+          runId,
+          agentType,
+          userPrompt: `${taskDescription}\n\n${taskPrompt}`,
+          agentContext,
+          toolExecutor,
+          deviceId,
+          stellaHome: StellaHome,
+          resolvedLlm,
+          store,
+          abortSignal,
+          onProgress,
+        });
+      } finally {
+        if (shouldControlHmr) {
+          const status = await selfModHmrController.getStatus().catch(() => null);
+          const shouldMorph = Boolean(
+            status && (status.queuedFiles > 0 || status.requiresFullReload),
+          );
+          const resumeHmr = async () => {
+            const resumeApplied = await selfModHmrController.resume(runId);
+            if (!resumeApplied) {
+              console.warn("[self-mod-hmr] Resume endpoint unavailable for general subagent.");
+            }
+          };
+
+          try {
+            const morphOrchestrator = getHmrMorphOrchestrator?.() ?? null;
+            if (shouldMorph && morphOrchestrator) {
+              await morphOrchestrator.runTransition({ resumeHmr });
+            } else {
+              await resumeHmr();
+            }
+          } catch (error) {
+            console.warn("[self-mod-hmr] Failed to resume general subagent HMR:", (error as Error).message);
+            await selfModHmrController.resume(runId).catch(() => undefined);
+          }
+        }
+      }
     },
     toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
     createCloudTaskRecord: async () => ({ taskId: `local:task:${crypto.randomUUID()}` }),
@@ -381,10 +434,6 @@ export const createPiHostRunner = ({
       controller.abort();
     }
     activeRunAbortControllers.clear();
-    for (const release of activeRunHmrReleases.values()) {
-      void release();
-    }
-    activeRunHmrReleases.clear();
     void selfModHmrController.forceResumeAll();
     toolHost.killAllShells();
     shutdownPiSubagentRuntimes();
@@ -394,6 +443,17 @@ export const createPiHostRunner = ({
     if (!isRunning) {
       return { ready: false, reason: "Pi runtime is not started", engine: "pi" };
     }
+    const orchestratorModel = getConfiguredModel("orchestrator", resolveAgent("orchestrator"));
+    if (canResolveLlmRoute({
+      stellaHomePath: StellaHome,
+      modelName: orchestratorModel,
+      proxy: {
+        baseUrl: proxyBaseUrl,
+        getToken: () => proxyToken?.trim(),
+      },
+    })) {
+      return { ready: true, engine: "pi" };
+    }
     const hasProxyUrl = Boolean(sanitizeProxyBase(proxyBaseUrl));
     const hasProxyToken = Boolean(proxyToken?.trim());
     if (!hasProxyUrl) {
@@ -402,7 +462,7 @@ export const createPiHostRunner = ({
     if (!hasProxyToken) {
       return { ready: false, reason: "Missing proxy token", engine: "pi" };
     }
-    return { ready: true, engine: "pi" };
+    return { ready: false, reason: "No usable model route", engine: "pi" };
   };
 
   const handleLocalChat = async (
@@ -422,9 +482,6 @@ export const createPiHostRunner = ({
     const runId = `local:${crypto.randomUUID()}`;
     const agentType = payload.agentType ?? "orchestrator";
     const userPrompt = payload.userPrompt.trim();
-    const proxy = ensureProxyReady();
-    const updateMessage = "Stella is updating your interface.";
-
     if (!userPrompt) {
       throw new Error("Missing user prompt");
     }
@@ -434,6 +491,15 @@ export const createPiHostRunner = ({
       agentType,
       runId,
     });
+    const resolvedLlm = resolveLlmRoute({
+      stellaHomePath: StellaHome,
+      modelName: agentContext.model,
+      agentType,
+      proxy: {
+        baseUrl: proxyBaseUrl,
+        getToken: () => proxyToken?.trim(),
+      },
+    });
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
@@ -441,54 +507,12 @@ export const createPiHostRunner = ({
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
 
-    callbacks.onSelfModHmrState?.({
-      paused: true,
-      message: updateMessage,
-    });
-    const pauseApplied = await selfModHmrController.pause(runId);
-    if (!pauseApplied) {
-      console.warn("[self-mod-hmr] Pause endpoint unavailable; proceeding without HMR pause.");
-    }
-
-    let hmrReleased = false;
-    const releaseHmrPause = async () => {
-      if (hmrReleased) return;
-      hmrReleased = true;
-      activeRunHmrReleases.delete(runId);
-
-      const doResume = async () => {
-        try {
-          const resumeApplied = await selfModHmrController.resume(runId);
-          if (!resumeApplied) {
-            console.warn("[self-mod-hmr] Resume endpoint unavailable.");
-          }
-        } catch (error) {
-          console.warn("[self-mod-hmr] Failed to resume:", (error as Error).message);
-        }
-      };
-
-      try {
-        if (callbacks.onHmrResume) {
-          await callbacks.onHmrResume(doResume);
-        } else {
-          await doResume();
-        }
-      } finally {
-        callbacks.onSelfModHmrState?.({
-          paused: false,
-          message: "",
-        });
-      }
-    };
-    activeRunHmrReleases.set(runId, releaseHmrPause);
-
     const cleanupRun = () => {
       activeRunAbortControllers.delete(runId);
       if (activeOrchestratorRunId === runId) {
         activeOrchestratorRunId = null;
         activeOrchestratorConversationId = null;
       }
-      void releaseHmrPause();
     };
 
     const runtimeCallbacks: PiRunCallbacks = {
@@ -518,9 +542,7 @@ export const createPiHostRunner = ({
       toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
       deviceId,
       stellaHome: StellaHome,
-      proxyBaseUrl: proxy.baseUrl,
-      proxyToken: proxy.token,
-      getProxyToken: () => proxyToken?.trim() || proxy.token,
+      resolvedLlm,
       store,
       abortSignal: abortController.signal,
       frontendRoot,
@@ -542,10 +564,6 @@ export const createPiHostRunner = ({
     if (!controller) return;
     controller.abort();
     activeRunAbortControllers.delete(runId);
-    const release = activeRunHmrReleases.get(runId);
-    if (release) {
-      void release();
-    }
     if (activeOrchestratorRunId === runId) {
       activeOrchestratorRunId = null;
       activeOrchestratorConversationId = null;
