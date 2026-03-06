@@ -24,13 +24,15 @@ if (!command) {
     `stella-ui — control Stella's UI from the command line
 
 Usage:
-  stella-ui snapshot              Show current UI state
-  stella-ui click <ref>           Click an element (e.g. @e5)
-  stella-ui fill <ref> <text>     Fill an input field
-  stella-ui select <ref> <value>  Select a dropdown value
+  stella-ui snapshot                          Show current UI state
+  stella-ui click <ref>                       Click an element (e.g. @e5)
+  stella-ui fill <ref> <text>                 Fill an input field
+  stella-ui select <ref> <value>              Select a dropdown value
+  stella-ui generate <panel> <prompt>         Populate a panel with content
 
 Element refs (like @e5) are assigned by the snapshot command.
 Run snapshot first to discover available elements.
+The generate command uses a fast model to update a panel's content.
 `
   );
   process.exit(0);
