@@ -32,7 +32,10 @@ function computeEnergy(analyser: AnalyserNode): number {
  * by the same factor so the creature stays the same pixel size.
  */
 const EDGE_SCALE = 2.5;
-const LOCAL_LISTENING_MIC_THRESHOLD = 0.03;
+const NOISE_FLOOR_FAST_RATE = 0.1;
+const NOISE_FLOOR_SLOW_RATE = 0.005;
+const NOISE_FLOOR_SPEECH_RATIO = 3;
+const NOISE_FLOOR_MIN_THRESHOLD = 0.04;
 const LISTENING_ATTACK_LERP = 0.35;
 const LISTENING_RELEASE_LERP = 0.14;
 const SPEAKING_ATTACK_LERP = 0.18;
@@ -96,6 +99,7 @@ export const StellaAnimation = React.forwardRef<
     const listeningRef = useRef(0);
     const speakingRef = useRef(0);
     const voiceEnergyRef = useRef(0);
+    const noiseFloorRef = useRef(0);
     const voiceModeRef = useRef<VoiceMode>(voiceMode);
     const isUserSpeakingRef = useRef(isUserSpeaking);
     const externalMicLevelRef = useRef<number | undefined>(externalMicLevel);
@@ -279,11 +283,36 @@ export const StellaAnimation = React.forwardRef<
             : 0;
 
         const isVoiceActive = voiceModeRef.current !== "idle";
-        const isSpeakingNow = isVoiceActive && outputEnergy > 0.08;
+
+        // Adaptive noise floor: tracks ambient mic level so the listening
+        // animation only triggers on actual speech, not background noise.
+        if (!isVoiceActive) {
+          noiseFloorRef.current = 0;
+        } else {
+          const floor = noiseFloorRef.current;
+          if (micEnergy <= floor || floor === 0) {
+            // Fast adapt downward / initialize
+            noiseFloorRef.current = floor * (1 - NOISE_FLOOR_FAST_RATE) + micEnergy * NOISE_FLOOR_FAST_RATE;
+          } else if (micEnergy < floor * NOISE_FLOOR_SPEECH_RATIO) {
+            // Slow adapt upward (ambient drift, not speech)
+            noiseFloorRef.current = floor * (1 - NOISE_FLOOR_SLOW_RATE) + micEnergy * NOISE_FLOOR_SLOW_RATE;
+          }
+          // When micEnergy >= floor * SPEECH_RATIO, don't adapt — it's speech
+        }
+        const speechThreshold = Math.max(
+          noiseFloorRef.current * NOISE_FLOOR_SPEECH_RATIO,
+          NOISE_FLOOR_MIN_THRESHOLD,
+        );
+
+        // Prefer voiceMode prop (driven by server events) for speaking detection;
+        // fall back to energy threshold for non-RTC or when voiceMode is "listening".
+        const isSpeakingNow =
+          voiceModeRef.current === "speaking" ||
+          (isVoiceActive && outputEnergy > 0.08);
         const isListeningNow =
           isVoiceActive &&
           !isSpeakingNow &&
-          (isUserSpeakingRef.current || micEnergy > LOCAL_LISTENING_MIC_THRESHOLD);
+          (isUserSpeakingRef.current || micEnergy > speechThreshold);
 
         // Smoothly interpolate listening/speaking (0→1)
         const targetListening = isListeningNow ? 1 : 0;
