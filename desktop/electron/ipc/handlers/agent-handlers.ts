@@ -167,6 +167,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       throw new Error('Agent runtime not ready')
     }
 
+    console.log(`[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | msgId=${payload.userMessageId} | prompt=${payload.userPrompt.slice(0, 200)}`)
     const senderWebContentsId = event.sender.id
     const result = await piHostRunner.handleLocalChat(payload, {
       onStream: (ev) => emitAgentEvent(ev.runId, { type: 'stream', ...ev }, senderWebContentsId),

@@ -139,7 +139,7 @@ export const ChatColumn = memo(function ChatColumn({
       {showScrollButton && showConversation && (
         <button
           className="scroll-to-bottom"
-          onClick={() => scrollToBottom("smooth")}
+          onClick={() => scrollToBottom("instant")}
           aria-label="Scroll to bottom"
         >
           <svg

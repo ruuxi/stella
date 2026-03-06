@@ -229,6 +229,7 @@ vi.mock("@/app/shell/use-full-shell", () => ({
   useScrollManagement: vi.fn(() => ({
     scrollContainerRef: createRef(),
     isNearBottom: true,
+    isNearBottomRef: { current: true },
     showScrollButton: false,
     scrollToBottom: vi.fn(),
     handleScroll: vi.fn(),
