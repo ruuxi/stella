@@ -60,7 +60,7 @@ export const useCanvasCommands = (
   events: EventRecord[],
   conversationId?: string | null,
 ) => {
-  const { state, openCanvas, closeCanvas } = useWorkspace()
+  const { state, openPanel, closePanel } = useWorkspace()
   const { setView } = useUiState()
   const processedRef = useRef<Set<string>>(new Set())
   const previousEventIdsRef = useRef<string[]>([])
@@ -103,7 +103,7 @@ export const useCanvasCommands = (
           const normalizedName = normalizeCanvasName(payload.name)
           if (!normalizedName) break
           if (!isSafeCanvasUrl(payload.url)) break
-          openCanvas({
+          openPanel({
             name: normalizedName,
             title: payload.title,
             url: payload.url,
@@ -113,11 +113,11 @@ export const useCanvasCommands = (
         }
         case 'close': {
           // Kill dev server shell if canvas had a localhost URL
-          const port = getLocalhostPort(state.canvas?.url)
+          const port = getLocalhostPort(state.activePanel?.url)
           if (port) {
             window.electronAPI?.system.shellKillByPort(port)
           }
-          closeCanvas()
+          closePanel()
           setView('home')
           break
         }
@@ -125,6 +125,5 @@ export const useCanvasCommands = (
     }
 
     previousEventIdsRef.current = events.map((event) => event._id)
-  }, [events, state.canvas, openCanvas, closeCanvas, setView])
+  }, [events, state.activePanel, openPanel, closePanel, setView])
 }
-

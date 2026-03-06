@@ -23,6 +23,19 @@ const createEvent = (
 });
 
 describe("useCanvasCommands", () => {
+  const createWorkspaceValue = (activePanelUrl?: string | null) => {
+    const openPanel = vi.fn();
+    const closePanel = vi.fn();
+    mockUseCanvas.mockReturnValue({
+      state: {
+        activePanel: activePanelUrl ? { name: "panel", url: activePanelUrl } : null,
+      },
+      openPanel,
+      closePanel,
+    });
+    return { openPanel, closePanel };
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     window.electronAPI = {
@@ -31,13 +44,7 @@ describe("useCanvasCommands", () => {
   });
 
   it("opens canvas on open command and ignores duplicate event IDs", () => {
-    const openCanvas = vi.fn();
-    const closeCanvas = vi.fn();
-    mockUseCanvas.mockReturnValue({
-      state: { canvas: null },
-      openCanvas,
-      closeCanvas,
-    });
+    const { openPanel } = createWorkspaceValue();
 
     const events: EventRecord[] = [
       createEvent({
@@ -51,7 +58,7 @@ describe("useCanvasCommands", () => {
       initialProps: { list: events },
     });
 
-    expect(openCanvas).toHaveBeenCalledWith({
+    expect(openPanel).toHaveBeenCalledWith({
       name: "demo",
       title: "Demo",
       url: "http://localhost:3000",
@@ -59,17 +66,11 @@ describe("useCanvasCommands", () => {
 
     // Same event id should not be processed again.
     rerender({ list: events });
-    expect(openCanvas).toHaveBeenCalledTimes(1);
+    expect(openPanel).toHaveBeenCalledTimes(1);
   });
 
   it("resets processed IDs when events are cleared", () => {
-    const openCanvas = vi.fn();
-    const closeCanvas = vi.fn();
-    mockUseCanvas.mockReturnValue({
-      state: { canvas: null },
-      openCanvas,
-      closeCanvas,
-    });
+    const { openPanel } = createWorkspaceValue();
 
     const event = createEvent({
       _id: "cmd-reset",
@@ -80,21 +81,15 @@ describe("useCanvasCommands", () => {
     const { rerender } = renderHook(({ list }) => useCanvasCommands(list), {
       initialProps: { list: [event] },
     });
-    expect(openCanvas).toHaveBeenCalledTimes(1);
+    expect(openPanel).toHaveBeenCalledTimes(1);
 
     rerender({ list: [] });
     rerender({ list: [event] });
-    expect(openCanvas).toHaveBeenCalledTimes(2);
+    expect(openPanel).toHaveBeenCalledTimes(2);
   });
 
   it("ignores prepended history while still handling live canvas commands", () => {
-    const openCanvas = vi.fn();
-    const closeCanvas = vi.fn();
-    mockUseCanvas.mockReturnValue({
-      state: { canvas: null },
-      openCanvas,
-      closeCanvas,
-    });
+    const { openPanel, closePanel } = createWorkspaceValue();
 
     const latestEvent = createEvent({
       _id: "cmd-latest",
@@ -116,15 +111,15 @@ describe("useCanvasCommands", () => {
       initialProps: { list: [latestEvent] },
     });
 
-    expect(openCanvas).toHaveBeenCalledTimes(1);
+    expect(openPanel).toHaveBeenCalledTimes(1);
 
     rerender({ list: [historicalEvent, latestEvent] });
-    expect(closeCanvas).not.toHaveBeenCalled();
-    expect(openCanvas).toHaveBeenCalledTimes(1);
+    expect(closePanel).not.toHaveBeenCalled();
+    expect(openPanel).toHaveBeenCalledTimes(1);
 
     rerender({ list: [historicalEvent, latestEvent, appendedEvent] });
-    expect(openCanvas).toHaveBeenCalledTimes(2);
-    expect(openCanvas).toHaveBeenLastCalledWith({
+    expect(openPanel).toHaveBeenCalledTimes(2);
+    expect(openPanel).toHaveBeenLastCalledWith({
       name: "appended",
       title: undefined,
       url: undefined,
@@ -132,13 +127,7 @@ describe("useCanvasCommands", () => {
   });
 
   it("closes canvas and kills localhost shell by port", () => {
-    const openCanvas = vi.fn();
-    const closeCanvas = vi.fn();
-    mockUseCanvas.mockReturnValue({
-      state: { canvas: { url: "http://127.0.0.1:4173" } },
-      openCanvas,
-      closeCanvas,
-    });
+    const { closePanel } = createWorkspaceValue("http://127.0.0.1:4173");
 
     const events: EventRecord[] = [
       createEvent({
@@ -151,17 +140,11 @@ describe("useCanvasCommands", () => {
     renderHook(() => useCanvasCommands(events));
 
     expect(window.electronAPI?.system.shellKillByPort).toHaveBeenCalledWith(4173);
-    expect(closeCanvas).toHaveBeenCalledTimes(1);
+    expect(closePanel).toHaveBeenCalledTimes(1);
   });
 
   it("closes canvas without killing shell for non-localhost URL", () => {
-    const openCanvas = vi.fn();
-    const closeCanvas = vi.fn();
-    mockUseCanvas.mockReturnValue({
-      state: { canvas: { url: "https://example.com/app" } },
-      openCanvas,
-      closeCanvas,
-    });
+    const { closePanel } = createWorkspaceValue("https://example.com/app");
 
     const events: EventRecord[] = [
       createEvent({
@@ -174,17 +157,11 @@ describe("useCanvasCommands", () => {
     renderHook(() => useCanvasCommands(events));
 
     expect(window.electronAPI?.system.shellKillByPort).not.toHaveBeenCalled();
-    expect(closeCanvas).toHaveBeenCalledTimes(1);
+    expect(closePanel).toHaveBeenCalledTimes(1);
   });
 
   it("ignores malformed canvas command payloads", () => {
-    const openCanvas = vi.fn();
-    const closeCanvas = vi.fn();
-    mockUseCanvas.mockReturnValue({
-      state: { canvas: null },
-      openCanvas,
-      closeCanvas,
-    });
+    const { openPanel, closePanel } = createWorkspaceValue();
 
     const events: EventRecord[] = [
       createEvent({ _id: "bad-1", type: "canvas_command", payload: {} }),
@@ -194,18 +171,12 @@ describe("useCanvasCommands", () => {
 
     renderHook(() => useCanvasCommands(events));
 
-    expect(openCanvas).not.toHaveBeenCalled();
-    expect(closeCanvas).not.toHaveBeenCalled();
+    expect(openPanel).not.toHaveBeenCalled();
+    expect(closePanel).not.toHaveBeenCalled();
   });
 
   it("ignores unsafe panel names and URLs", () => {
-    const openCanvas = vi.fn();
-    const closeCanvas = vi.fn();
-    mockUseCanvas.mockReturnValue({
-      state: { canvas: null },
-      openCanvas,
-      closeCanvas,
-    });
+    const { openPanel } = createWorkspaceValue();
 
     const events: EventRecord[] = [
       createEvent({
@@ -221,7 +192,6 @@ describe("useCanvasCommands", () => {
     ];
 
     renderHook(() => useCanvasCommands(events));
-    expect(openCanvas).not.toHaveBeenCalled();
+    expect(openPanel).not.toHaveBeenCalled();
   });
 });
-
