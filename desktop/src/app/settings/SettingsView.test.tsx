@@ -52,6 +52,11 @@ vi.mock("@/hooks/use-model-catalog", () => ({
   })),
 }));
 
+const mockListLlmCredentials = vi.fn();
+const mockSaveLlmCredential = vi.fn();
+const mockDeleteLlmCredential = vi.fn();
+const mockSetLocalSyncMode = vi.fn();
+
 // Lightweight mock of the Radix-based Dialog components so that the dialog
 // content is rendered synchronously in jsdom when `open` is true.
 vi.mock("@/ui/dialog", () => ({
@@ -127,7 +132,6 @@ function mockUseMutation(
  */
 function setupUseQuery(opts: {
   modelOverrides?: string;
-  secrets?: Array<{ _id: string; provider: string; label: string; status: string }>;
   accountMode?: "connected" | "private_local";
   syncMode?: "on" | "off";
   generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
@@ -150,14 +154,53 @@ function setupUseQuery(opts: {
     if (path === "preferences.getCodexLocalMaxConcurrency") {
       return opts.codexLocalMaxConcurrency ?? 3;
     }
-    if (path === "secrets.listSecrets") {
-      return opts.secrets ?? undefined;
-    }
     return undefined;
   });
 }
 
-const LLM_PROVIDER_ROW_COUNT = 21;
+function setupElectronApi(
+  credentials: Array<{ provider: string; label: string; status: "active"; updatedAt?: number }> = [],
+) {
+  mockSetLocalSyncMode.mockResolvedValue(undefined);
+  mockListLlmCredentials.mockResolvedValue(
+    credentials.map((entry, index) => ({
+      provider: entry.provider,
+      label: entry.label,
+      status: entry.status,
+      updatedAt: entry.updatedAt ?? index + 1,
+    })),
+  );
+  mockSaveLlmCredential.mockImplementation(async (payload: {
+    provider: string;
+    label: string;
+    plaintext: string;
+  }) => ({
+    provider: payload.provider,
+    label: payload.label,
+    status: "active" as const,
+    updatedAt: Date.now(),
+  }));
+  mockDeleteLlmCredential.mockResolvedValue({ removed: true });
+
+  window.electronAPI = {
+    system: {
+      setLocalSyncMode: mockSetLocalSyncMode,
+      listLlmCredentials: mockListLlmCredentials,
+      saveLlmCredential: mockSaveLlmCredential,
+      deleteLlmCredential: mockDeleteLlmCredential,
+    },
+  } as any;
+}
+
+async function renderModelsTab() {
+  render(<SettingsDialog {...defaultProps()} />);
+  await act(async () => {
+    fireEvent.click(screen.getByText("Models"));
+    await Promise.resolve();
+  });
+}
+
+const LLM_PROVIDER_ROW_COUNT = 12;
 
 // ---------------------------------------------------------------------------
 // Tests: Dialog rendering
@@ -166,6 +209,7 @@ const LLM_PROVIDER_ROW_COUNT = 21;
 describe("SettingsDialog rendering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
@@ -207,6 +251,7 @@ describe("SettingsDialog rendering", () => {
 describe("Tab switching", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
@@ -269,6 +314,7 @@ describe("Tab switching", () => {
 describe("Basic tab privacy copy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
@@ -304,6 +350,7 @@ describe("Basic tab privacy copy", () => {
 describe("BasicTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
@@ -371,6 +418,7 @@ describe("BasicTab", () => {
 describe("GeneralAgentRuntimeSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
@@ -472,6 +520,7 @@ describe("GeneralAgentRuntimeSection", () => {
 describe("ModelConfigSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
@@ -697,6 +746,7 @@ describe("ModelConfigSection", () => {
 describe("ApiKeysSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
@@ -704,109 +754,91 @@ describe("ApiKeysSection", () => {
     } as unknown as typeof globalThis.ResizeObserver;
   });
 
-  it("renders API Keys title and description", () => {
+  it("renders API Keys title and description", async () => {
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     expect(screen.getByText("API Keys")).toBeTruthy();
-    expect(screen.getByText(/Bring your own API keys/)).toBeTruthy();
+    expect(screen.getByText(/Keys stay on this device/)).toBeTruthy();
   });
 
-  it("renders all LLM provider rows", () => {
+  it("renders all LLM provider rows", async () => {
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     expect(screen.getByText("Anthropic")).toBeTruthy();
     expect(screen.getByText("OpenAI")).toBeTruthy();
     expect(screen.getByText("Google")).toBeTruthy();
-    expect(screen.getByText("Azure OpenAI")).toBeTruthy();
-    expect(screen.getByText("Azure Cognitive Services")).toBeTruthy();
-    expect(screen.getByText("Cloudflare Workers AI")).toBeTruthy();
-    expect(screen.getByText("Cloudflare AI Gateway")).toBeTruthy();
-    expect(screen.getByText("Vercel AI Gateway (Direct)")).toBeTruthy();
+    expect(screen.getByText("Kimi (Moonshot AI)")).toBeTruthy();
+    expect(screen.getByText("Z.AI")).toBeTruthy();
+    expect(screen.getByText("xAI")).toBeTruthy();
+    expect(screen.getByText("Groq")).toBeTruthy();
+    expect(screen.getByText("Mistral")).toBeTruthy();
+    expect(screen.getByText("Cerebras")).toBeTruthy();
     expect(screen.getByText("OpenRouter")).toBeTruthy();
     expect(screen.getByText("Vercel AI Gateway")).toBeTruthy();
-    expect(screen.getByText("Amazon Bedrock")).toBeTruthy();
-    expect(screen.getByText("Google Vertex AI")).toBeTruthy();
-    expect(screen.getByText("Vertex AI (Anthropic)")).toBeTruthy();
-    expect(screen.getByText("GitLab Duo")).toBeTruthy();
-    expect(screen.getByText("GitHub Copilot")).toBeTruthy();
-    expect(screen.getByText("GitHub Copilot Enterprise")).toBeTruthy();
-    expect(screen.getByText("SAP AI Core")).toBeTruthy();
     expect(screen.getByText("OpenCode Zen")).toBeTruthy();
-    expect(screen.getByText("ZenMux")).toBeTruthy();
-    expect(screen.getByText("Cerebras")).toBeTruthy();
-    expect(screen.getByText("Kilo Gateway")).toBeTruthy();
   });
 
-  it("shows 'No key' status when no secrets exist", () => {
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("shows 'No key' status when no local credentials exist", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
     const noKeyStatuses = screen.getAllByText("No key");
-    expect(noKeyStatuses.length).toBe(LLM_PROVIDER_ROW_COUNT); // one for each provider
+    expect(noKeyStatuses.length).toBe(LLM_PROVIDER_ROW_COUNT);
   });
 
-  it("shows 'Key set' status when secret exists for a provider", () => {
-    setupUseQuery({
-      secrets: [
-        { _id: "s1", provider: "llm:anthropic", label: "Anthropic", status: "active" },
-      ],
-    });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("shows 'Key set' status when a local credential exists for a provider", async () => {
+    setupUseQuery();
+    setupElectronApi([
+      { provider: "anthropic", label: "Anthropic", status: "active" },
+    ]);
+    await renderModelsTab();
 
     expect(screen.getByText("Key set")).toBeTruthy();
-    // The other providers should still show "No key"
     const noKeyStatuses = screen.getAllByText("No key");
     expect(noKeyStatuses.length).toBe(LLM_PROVIDER_ROW_COUNT - 1);
   });
 
-  it("shows 'Add Key' button when provider has no secret", () => {
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("shows 'Add Key' button when provider has no local credential", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
     const addKeyButtons = screen.getAllByText("Add Key");
     expect(addKeyButtons.length).toBe(LLM_PROVIDER_ROW_COUNT);
   });
 
-  it("shows 'Update Key' and 'Remove' buttons when provider has a secret", () => {
-    setupUseQuery({
-      secrets: [
-        { _id: "s1", provider: "llm:anthropic", label: "Anthropic", status: "active" },
-      ],
-    });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("shows 'Update Key' and 'Remove' buttons when provider has a local credential", async () => {
+    setupUseQuery();
+    setupElectronApi([
+      { provider: "anthropic", label: "Anthropic", status: "active" },
+    ]);
+    await renderModelsTab();
 
     expect(screen.getByText("Update Key")).toBeTruthy();
     expect(screen.getByText("Remove")).toBeTruthy();
   });
 
-  it("shows input field with Save/Cancel when Add Key is clicked", () => {
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("shows input field with Save/Cancel when Add Key is clicked", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
-    // Click the first "Add Key" (Anthropic)
     const addKeyButtons = screen.getAllByText("Add Key");
     fireEvent.click(addKeyButtons[0]);
 
-    // Input should appear with placeholder
     const input = screen.getByPlaceholderText("sk-ant-...");
     expect(input).toBeTruthy();
     expect(screen.getByText("Save")).toBeTruthy();
     expect(screen.getByText("Cancel")).toBeTruthy();
   });
 
-  it("hides input field when Cancel is clicked", () => {
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("hides input field when Cancel is clicked", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
     const addKeyButtons = screen.getAllByText("Add Key");
     fireEvent.click(addKeyButtons[0]);
@@ -819,138 +851,84 @@ describe("ApiKeysSection", () => {
     expect(screen.queryByText("Save")).toBeNull();
   });
 
-  it("calls createSecret mutation when Save is clicked with input", async () => {
-    const mockCreateSecret = vi.fn().mockResolvedValue(undefined);
-    const mockDeleteSecret = vi.fn().mockResolvedValue(undefined);
-    mockUseMutation((mutationPath: unknown) => {
-      const path = mutationPath as string;
-      if (path === "secrets.createSecret") return mockCreateSecret;
-      if (path === "secrets.deleteSecret") return mockDeleteSecret;
-      return vi.fn();
-    });
+  it("calls saveLlmCredential when Save is clicked with input", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
-
-    // Click Add Key for Anthropic
     const addKeyButtons = screen.getAllByText("Add Key");
     fireEvent.click(addKeyButtons[0]);
 
-    // Type a key
     const input = screen.getByPlaceholderText("sk-ant-...");
     fireEvent.change(input, { target: { value: "sk-ant-test-key-123" } });
 
-    // Click Save
     await act(async () => {
       fireEvent.click(screen.getByText("Save"));
     });
 
-    expect(mockCreateSecret).toHaveBeenCalledWith({
-      provider: "llm:anthropic",
+    expect(mockSaveLlmCredential).toHaveBeenCalledWith({
+      provider: "anthropic",
       label: "Anthropic",
       plaintext: "sk-ant-test-key-123",
-      metadata: undefined,
     });
   });
 
-  it("does not call createSecret when Save is clicked with empty input", async () => {
-    const mockCreateSecret = vi.fn().mockResolvedValue(undefined);
-    mockUseMutation((mutationPath: unknown) => {
-      const path = mutationPath as string;
-      if (path === "secrets.createSecret") return mockCreateSecret;
-      return vi.fn();
-    });
-
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("does not call saveLlmCredential when Save is clicked with empty input", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
     const addKeyButtons = screen.getAllByText("Add Key");
     fireEvent.click(addKeyButtons[0]);
 
-    // Don't type anything, just click Save
     await act(async () => {
       fireEvent.click(screen.getByText("Save"));
     });
 
-    expect(mockCreateSecret).not.toHaveBeenCalled();
+    expect(mockSaveLlmCredential).not.toHaveBeenCalled();
   });
 
-  it("calls deleteSecret then createSecret when updating an existing key", async () => {
-    const mockCreateSecret = vi.fn().mockResolvedValue(undefined);
-    const mockDeleteSecret = vi.fn().mockResolvedValue(undefined);
-    mockUseMutation((mutationPath: unknown) => {
-      const path = mutationPath as string;
-      if (path === "secrets.createSecret") return mockCreateSecret;
-      if (path === "secrets.deleteSecret") return mockDeleteSecret;
-      return vi.fn();
-    });
+  it("calls saveLlmCredential when updating an existing key", async () => {
+    setupUseQuery();
+    setupElectronApi([
+      { provider: "anthropic", label: "Anthropic", status: "active" },
+    ]);
+    await renderModelsTab();
 
-    setupUseQuery({
-      secrets: [
-        { _id: "s1", provider: "llm:anthropic", label: "Anthropic", status: "active" },
-      ],
-    });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
-
-    // Click Update Key
     fireEvent.click(screen.getByText("Update Key"));
 
-    // Type new key
     const input = screen.getByPlaceholderText("sk-ant-...");
     fireEvent.change(input, { target: { value: "sk-ant-new-key" } });
 
-    // Click Save
     await act(async () => {
       fireEvent.click(screen.getByText("Save"));
     });
 
-    // Should delete old key first, then create new one
-    expect(mockDeleteSecret).toHaveBeenCalledWith({ secretId: "s1" });
-    expect(mockCreateSecret).toHaveBeenCalledWith({
-      provider: "llm:anthropic",
+    expect(mockSaveLlmCredential).toHaveBeenCalledWith({
+      provider: "anthropic",
       label: "Anthropic",
       plaintext: "sk-ant-new-key",
-      metadata: undefined,
     });
   });
 
-  it("calls deleteSecret when Remove button is clicked", async () => {
-    const mockDeleteSecret = vi.fn().mockResolvedValue(undefined);
-    mockUseMutation((mutationPath: unknown) => {
-      const path = mutationPath as string;
-      if (path === "secrets.deleteSecret") return mockDeleteSecret;
-      return vi.fn();
-    });
-
-    setupUseQuery({
-      secrets: [
-        { _id: "s1", provider: "llm:anthropic", label: "Anthropic", status: "active" },
-      ],
-    });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("calls deleteLlmCredential when Remove button is clicked", async () => {
+    setupUseQuery();
+    setupElectronApi([
+      { provider: "anthropic", label: "Anthropic", status: "active" },
+    ]);
+    await renderModelsTab();
 
     await act(async () => {
       fireEvent.click(screen.getByText("Remove"));
     });
 
-    expect(mockDeleteSecret).toHaveBeenCalledWith({ secretId: "s1" });
+    expect(mockDeleteLlmCredential).toHaveBeenCalledWith("anthropic");
   });
 
-  it("calls createSecret on Enter keypress in input", async () => {
-    const mockCreateSecret = vi.fn().mockResolvedValue(undefined);
-    mockUseMutation((mutationPath: unknown) => {
-      const path = mutationPath as string;
-      if (path === "secrets.createSecret") return mockCreateSecret;
-      return vi.fn();
-    });
-
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("calls saveLlmCredential on Enter keypress in input", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
     const addKeyButtons = screen.getAllByText("Add Key");
     fireEvent.click(addKeyButtons[0]);
@@ -962,18 +940,17 @@ describe("ApiKeysSection", () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
 
-    expect(mockCreateSecret).toHaveBeenCalledWith({
-      provider: "llm:anthropic",
+    expect(mockSaveLlmCredential).toHaveBeenCalledWith({
+      provider: "anthropic",
       label: "Anthropic",
       plaintext: "sk-ant-enter-key",
-      metadata: undefined,
     });
   });
 
-  it("closes input on Escape keypress", () => {
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("closes input on Escape keypress", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
     const addKeyButtons = screen.getAllByText("Add Key");
     fireEvent.click(addKeyButtons[0]);
@@ -984,57 +961,46 @@ describe("ApiKeysSection", () => {
     expect(screen.queryByPlaceholderText("sk-ant-...")).toBeNull();
   });
 
-  it("only shows Remove button for providers that have an active secret", () => {
-    setupUseQuery({
-      secrets: [
-        { _id: "s1", provider: "llm:openai", label: "OpenAI", status: "active" },
-      ],
-    });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("only shows Remove button for providers that have an active local credential", async () => {
+    setupUseQuery();
+    setupElectronApi([
+      { provider: "openai", label: "OpenAI", status: "active" },
+    ]);
+    await renderModelsTab();
 
-    // Only one Remove button should exist (for OpenAI)
     const removeButtons = screen.getAllByText("Remove");
     expect(removeButtons.length).toBe(1);
   });
 
-  it("does not treat inactive secrets as key set", () => {
-    setupUseQuery({
-      secrets: [
-        { _id: "s1", provider: "llm:anthropic", label: "Anthropic", status: "revoked" },
-      ],
-    });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("does not show 'Key set' when no local credentials exist", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
-    // All providers should show "No key" since the only secret is revoked
     const noKeyStatuses = screen.getAllByText("No key");
     expect(noKeyStatuses.length).toBe(LLM_PROVIDER_ROW_COUNT);
     expect(screen.queryByText("Key set")).toBeNull();
   });
 
-  it("shows correct placeholders for each provider", () => {
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("shows correct placeholders for each provider", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
-    // Click each Add Key and check placeholder (use first one as example)
     const addKeyButtons = screen.getAllByText("Add Key");
 
-    // Click Anthropic's Add Key
     fireEvent.click(addKeyButtons[0]);
     expect(screen.getByPlaceholderText("sk-ant-...")).toBeTruthy();
 
-    // Cancel and try OpenAI
     fireEvent.click(screen.getByText("Cancel"));
     fireEvent.click(addKeyButtons[1]);
     expect(screen.getByPlaceholderText("sk-...")).toBeTruthy();
   });
 
-  it("input is of type password", () => {
-    setupUseQuery({ secrets: [] });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+  it("input is of type password", async () => {
+    setupUseQuery();
+    setupElectronApi([]);
+    await renderModelsTab();
 
     const addKeyButtons = screen.getAllByText("Add Key");
     fireEvent.click(addKeyButtons[0]);
@@ -1051,6 +1017,7 @@ describe("ApiKeysSection", () => {
 describe("SettingsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}

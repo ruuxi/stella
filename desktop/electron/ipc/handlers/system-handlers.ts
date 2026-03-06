@@ -3,6 +3,11 @@ import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '../../p
 import type { PiHostRunner } from '../../pi-host-runner.js'
 import type { AuthService } from '../../services/auth-service.js'
 import type { ExternalLinkService } from '../../services/external-link-service.js'
+import {
+  deleteLocalLlmCredential,
+  listLocalLlmCredentials,
+  saveLocalLlmCredential,
+} from '../../system/llm-credentials.js'
 
 type SystemHandlersOptions = {
   getDeviceId: () => string | null
@@ -146,5 +151,46 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     const prefs = loadLocalPreferences(stellaHomePath)
     prefs.syncMode = mode === 'off' ? 'off' : 'on'
     saveLocalPreferences(stellaHomePath, prefs)
+  })
+
+  ipcMain.handle('llmCredentials:list', (event) => {
+    if (!options.externalLinkService.assertPrivilegedSender(event, 'llmCredentials:list')) {
+      throw new Error('Blocked untrusted credential request.')
+    }
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) {
+      return []
+    }
+    return listLocalLlmCredentials(stellaHomePath)
+  })
+
+  ipcMain.handle('llmCredentials:save', (event, payload: {
+    provider?: string
+    label?: string
+    plaintext?: string
+  }) => {
+    if (!options.externalLinkService.assertPrivilegedSender(event, 'llmCredentials:save')) {
+      throw new Error('Blocked untrusted credential write.')
+    }
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) {
+      throw new Error('Local Stella home is unavailable.')
+    }
+    return saveLocalLlmCredential(stellaHomePath, {
+      provider: asTrimmedString(payload?.provider),
+      label: asTrimmedString(payload?.label),
+      plaintext: asTrimmedString(payload?.plaintext),
+    })
+  })
+
+  ipcMain.handle('llmCredentials:delete', (event, payload: { provider?: string }) => {
+    if (!options.externalLinkService.assertPrivilegedSender(event, 'llmCredentials:delete')) {
+      throw new Error('Blocked untrusted credential delete.')
+    }
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) {
+      return { removed: false }
+    }
+    return deleteLocalLlmCredential(stellaHomePath, asTrimmedString(payload?.provider))
   })
 }

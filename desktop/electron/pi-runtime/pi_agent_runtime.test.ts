@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocalTaskManagerAgentContext } from "./extensions/stella/local-task-manager.js";
 import type { JsonlRuntimeStore } from "./jsonl_store.js";
+import type { ResolvedLlmRoute } from "./model-routing.js";
 
 const {
   runCodexAppServerTurnMock,
@@ -68,8 +69,27 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runPiSubagentTask>[0]>)
   toolExecutor: vi.fn().mockResolvedValue({ result: "unused" }),
   deviceId: "device-1",
   stellaHome: "/tmp/.stella",
-  proxyBaseUrl: "https://proxy.example.com/llm-proxy/v1",
-  proxyToken: "proxy-token",
+  resolvedLlm: {
+    model: {
+      id: "openai/gpt-4.1-mini",
+      name: "GPT-4.1 mini",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+      },
+      contextWindow: 200000,
+      maxTokens: 100000,
+    },
+    route: "direct-provider",
+    getApiKey: () => "test-key",
+  } as ResolvedLlmRoute,
   store: createStoreStub() as unknown as JsonlRuntimeStore,
   ...overrides,
 });

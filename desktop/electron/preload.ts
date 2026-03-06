@@ -243,6 +243,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     shellKillByPort: (port: number) => ipcRenderer.invoke('shell:killByPort', { port }),
     getLocalSyncMode: () => ipcRenderer.invoke('preferences:getSyncMode') as Promise<string>,
     setLocalSyncMode: (mode: string) => ipcRenderer.invoke('preferences:setSyncMode', mode),
+    listLlmCredentials: () =>
+      ipcRenderer.invoke('llmCredentials:list') as Promise<Array<{
+        provider: string;
+        label: string;
+        status: 'active';
+        updatedAt: number;
+      }>>,
+    saveLlmCredential: (payload: { provider: string; label: string; plaintext: string }) =>
+      ipcRenderer.invoke('llmCredentials:save', payload) as Promise<{
+        provider: string;
+        label: string;
+        status: 'active';
+        updatedAt: number;
+      }>,
+    deleteLlmCredential: (provider: string) =>
+      ipcRenderer.invoke('llmCredentials:delete', { provider }) as Promise<{ removed: boolean }>,
     onCredentialRequest: onIpcWithEvent<{ requestId: string; provider: string; label?: string; description?: string; placeholder?: string }>('credential:request'),
     submitCredential: (payload: { requestId: string; secretId: string; provider: string; label: string }) =>
       ipcRenderer.invoke('credential:submit', payload),
