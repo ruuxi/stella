@@ -12,8 +12,8 @@ import { registerSkillRoutes } from "./http_routes/skills";
 import { registerMusicRoutes } from "./http_routes/music";
 import { registerVoiceRoutes } from "./http_routes/voice";
 
-// AI proxy (already extracted)
-import { proxyChat, proxyEmbed, proxySearch, llmProxy } from "./ai_proxy";
+// Managed AI proxy
+import { llmProxy } from "./ai_proxy";
 
 const http = httpRouter();
 
@@ -36,23 +36,14 @@ registerMusicRoutes(http);
 registerVoiceRoutes(http);
 
 // ---------------------------------------------------------------------------
-// Stella AI Proxy — thin LLM/embed/search proxy for desktop local runtime
+// Stella managed AI proxy for desktop runtime and managed frontend requests
 // ---------------------------------------------------------------------------
 
 const proxyOptionsHandler = httpAction(async (_ctx, request) =>
   corsPreflightHandler(request),
 );
 
-http.route({ path: "/api/ai/proxy", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ path: "/api/ai/proxy", method: "POST", handler: proxyChat });
-
-http.route({ path: "/api/ai/embed", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ path: "/api/ai/embed", method: "POST", handler: proxyEmbed });
-
-http.route({ path: "/api/ai/search", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ path: "/api/ai/search", method: "POST", handler: proxySearch });
-
-// Transparent LLM reverse proxy for local agent runtime
+// Managed LLM reverse proxy
 http.route({ path: "/api/ai/llm-proxy", method: "OPTIONS", handler: proxyOptionsHandler });
 http.route({ path: "/api/ai/llm-proxy", method: "POST", handler: llmProxy });
 http.route({ pathPrefix: "/api/ai/llm-proxy/", method: "OPTIONS", handler: proxyOptionsHandler });
