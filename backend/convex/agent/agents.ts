@@ -112,7 +112,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "Edit",
       "Glob",
       "Grep",
-      "OpenApp",
       "Bash",
       "KillShell",
       "ShellStatus",
