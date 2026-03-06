@@ -5,6 +5,8 @@ import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { base64UrlDecode } from "../lib/crypto_utils";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
+import { GOOGLE_CHAT_MAX_MESSAGE_CHARS, truncateForConnector } from "./connector_constants";
+import { getGoogleAccessToken } from "./connector_auth";
 
 // ---------------------------------------------------------------------------
 // Google Chat JWT Verification
@@ -13,11 +15,6 @@ import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "..
 // Google's public JWKs for chat service account
 const GOOGLE_CHAT_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/chat@system.gserviceaccount.com";
-
-const GOOGLE_JWT_EXPIRATION_SECONDS = 3600;
-const DEFAULT_TOKEN_LIFETIME_SECONDS = 3600;
-const TOKEN_REFRESH_BUFFER_MS = 60_000;
-const GOOGLE_CHAT_MAX_MESSAGE_CHARS = 4096;
 
 let cachedJwks: { keys: JsonWebKey[]; fetchedAt: number } | null = null;
 const JWKS_CACHE_MS = 60 * 60 * 1000; // 1 hour
@@ -90,104 +87,10 @@ export async function verifyGoogleChatJwt(
 // Google Chat API Helpers
 // ---------------------------------------------------------------------------
 
-let cachedGoogleToken: { token: string; expiresAt: number } | null = null;
-
-/**
- * Get OAuth2 access token using service account key.
- * Creates a self-signed JWT, exchanges it for an access token.
- */
-async function getGoogleAccessToken(): Promise<string> {
-  if (cachedGoogleToken && cachedGoogleToken.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
-    return cachedGoogleToken.token;
-  }
-
-  const keyJson = process.env.GOOGLE_CHAT_SERVICE_ACCOUNT_KEY;
-  if (!keyJson) throw new Error("Missing GOOGLE_CHAT_SERVICE_ACCOUNT_KEY");
-
-  const key = JSON.parse(keyJson);
-  const now = Math.floor(Date.now() / 1000);
-
-  // Build JWT header and claims
-  const header = { alg: "RS256", typ: "JWT" };
-  const claims = {
-    iss: key.client_email,
-    scope: "https://www.googleapis.com/auth/chat.bot",
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now,
-    exp: now + GOOGLE_JWT_EXPIRATION_SECONDS,
-  };
-
-  const encode = (obj: unknown) => {
-    const json = JSON.stringify(obj);
-    const bytes = new TextEncoder().encode(json);
-    return btoa(String.fromCharCode(...bytes))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-  };
-
-  const headerB64 = encode(header);
-  const claimsB64 = encode(claims);
-  const unsigned = `${headerB64}.${claimsB64}`;
-
-  // Import private key and sign
-  const pemContents = key.private_key
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\n/g, "");
-  const keyData = base64UrlDecode(
-    pemContents.replace(/\+/g, "-").replace(/\//g, "_"),
-  );
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8",
-    keyData.buffer as ArrayBuffer,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    cryptoKey,
-    new TextEncoder().encode(unsigned),
-  );
-
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-
-  const jwt = `${unsigned}.${sigB64}`;
-
-  // Exchange JWT for access token
-  const tokenRes = await retryFetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
-  });
-
-  if (!tokenRes.ok) {
-    throw new Error(`Google token exchange failed: ${tokenRes.status} ${await tokenRes.text()}`);
-  }
-
-  const tokenData = await tokenRes.json();
-  const expiresIn = Number(tokenData.expires_in);
-  cachedGoogleToken = {
-    token: tokenData.access_token,
-    expiresAt: Date.now() + ((Number.isFinite(expiresIn) ? expiresIn : DEFAULT_TOKEN_LIFETIME_SECONDS) - 60) * 1000,
-  };
-  return tokenData.access_token;
-}
-
 const sendGoogleChatMessage = async (spaceName: string, text: string) => {
   try {
     const accessToken = await getGoogleAccessToken();
-    // Google Chat message limit is 4096 chars
-    const maxLen = GOOGLE_CHAT_MAX_MESSAGE_CHARS;
-    const truncated = text.length > maxLen
-      ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
-      : text;
+    const truncated = truncateForConnector(text, GOOGLE_CHAT_MAX_MESSAGE_CHARS);
 
     const res = await retryFetch(
       `https://chat.googleapis.com/v1/${spaceName}/messages`,

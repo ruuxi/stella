@@ -10,7 +10,7 @@ import {
   type HistoryBuildOptions,
   type HistoryMessage,
   type MicrocompactTrigger,
-} from "./history_messages";
+} from "@stella/shared";
 import type { PromptBuildResult } from "./prompt_builder";
 import { buildSystemPrompt } from "./prompt_builder";
 import {
@@ -18,6 +18,7 @@ import {
   type PromptSummaryPair,
 } from "./orchestrator_prompt_context";
 import { afterChat } from "./hooks";
+import { normalizeToolCallId } from "../lib/tool_call_utils";
 
 type UsageSummary = {
   inputTokens?: number;
@@ -336,7 +337,7 @@ export const finalizeOrchestratorTurn = async (
       const rawToolCallId = msg.toolCallId;
       const toolCallId =
         typeof rawToolCallId === "string"
-          ? rawToolCallId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64)
+          ? normalizeToolCallId(rawToolCallId)
           : undefined;
 
       messagesToSave.push({

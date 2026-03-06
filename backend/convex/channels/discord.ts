@@ -4,6 +4,7 @@ import { processIncomingMessage } from "./message_pipeline";
 import { processLinkCode } from "./link_codes";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 import { hexToUint8Array } from "../lib/crypto_utils";
+import { DISCORD_MAX_MESSAGE_CHARS, truncateForConnector } from "./connector_constants";
 
 // ---------------------------------------------------------------------------
 // Ed25519 Signature Verification (Discord Interactions Endpoint)
@@ -76,18 +77,12 @@ const discordApi = async (
   });
 };
 
-const DISCORD_MAX_MESSAGE_CHARS = 2000;
-
 const editInteractionResponse = async (
   applicationId: string,
   interactionToken: string,
   content: string,
 ) => {
-  const maxLen = DISCORD_MAX_MESSAGE_CHARS;
-  const truncated =
-    content.length > maxLen
-      ? content.slice(0, maxLen - 20) + "\n\n... (truncated)"
-      : content;
+  const truncated = truncateForConnector(content, DISCORD_MAX_MESSAGE_CHARS);
 
   const res = await fetch(
     `${DISCORD_API}/webhooks/${applicationId}/${interactionToken}/messages/@original`,
