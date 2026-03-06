@@ -148,6 +148,7 @@ function createProviderModel(modelString: string, apiKey: string): LanguageModel
     case "google-vertex-anthropic":
     case "gitlab":
     case "sap-ai-core":
+    case "baseten":
       return null;
     default:
       return null;

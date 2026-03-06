@@ -314,7 +314,7 @@ export const proxySearch = httpAction(async (ctx, request) => {
 // Client sends:
 //   POST /api/ai/llm-proxy
 //   X-Proxy-Token: <token>
-//   X-Provider: anthropic|openai|google|openrouter|azure|azure-cognitive-services|cloudflare-workers-ai|vercel|zenmux|cerebras|kilo|cloudflare-ai-gateway|amazon-bedrock|google-vertex|google-vertex-anthropic|gitlab|github-copilot|github-copilot-enterprise|sap-ai-core|opencode
+//   X-Provider: anthropic|openai|google|openrouter|azure|azure-cognitive-services|cloudflare-workers-ai|vercel|zenmux|cerebras|kilo|cloudflare-ai-gateway|amazon-bedrock|google-vertex|google-vertex-anthropic|gitlab|github-copilot|github-copilot-enterprise|sap-ai-core|opencode|baseten
 //   X-Original-Path: /v1/messages (the provider-specific path suffix)
 //   Body: raw provider request
 //
@@ -378,6 +378,7 @@ const STATIC_PROVIDER_UPSTREAMS: Record<string, string> = {
   "github-copilot-enterprise": "https://api.githubcopilot.com",
   opencode: "https://opencode.ai/zen/v1",
   inception: "https://api.inceptionlabs.ai",
+  baseten: "https://inference.baseten.co/v1",
 };
 
 const DYNAMIC_PROVIDER_IDS = new Set([
@@ -500,6 +501,7 @@ async function buildUpstreamAuthHeaders(
     case "github-copilot-enterprise":
     case "opencode":
     case "inception":
+    case "baseten":
       return {
         Authorization: `Bearer ${apiKey}`,
       };
