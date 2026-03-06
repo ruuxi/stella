@@ -135,6 +135,7 @@ export function HomeView({ conversationId }: HomeViewProps) {
 
   return (
     <div className="home-root" data-stella-view="home" data-stella-label="Home Dashboard">
+      <div className="home-dashboard">
         <div className="home-zone-canvas">
           <GenerativeCanvas />
         </div>
@@ -170,6 +171,7 @@ export function HomeView({ conversationId }: HomeViewProps) {
             <MusicPlayer />
           </Suspense>
         </div>
+      </div>
     </div>
   )
 }
