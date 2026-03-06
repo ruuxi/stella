@@ -12,8 +12,8 @@ import { registerSkillRoutes } from "./http_routes/skills";
 import { registerMusicRoutes } from "./http_routes/music";
 import { registerVoiceRoutes } from "./http_routes/voice";
 
-// Managed AI proxy
-import { llmProxy } from "./ai_proxy";
+// Managed AI endpoint
+import { managedAi } from "./ai_proxy";
 
 const http = httpRouter();
 
@@ -43,10 +43,10 @@ const proxyOptionsHandler = httpAction(async (_ctx, request) =>
   corsPreflightHandler(request),
 );
 
-// Managed LLM reverse proxy
-http.route({ path: "/api/ai/llm-proxy", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ path: "/api/ai/llm-proxy", method: "POST", handler: llmProxy });
-http.route({ pathPrefix: "/api/ai/llm-proxy/", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ pathPrefix: "/api/ai/llm-proxy/", method: "POST", handler: llmProxy });
+// Managed model inference API
+http.route({ path: "/api/ai/v1", method: "OPTIONS", handler: proxyOptionsHandler });
+http.route({ path: "/api/ai/v1", method: "POST", handler: managedAi });
+http.route({ pathPrefix: "/api/ai/v1/", method: "OPTIONS", handler: proxyOptionsHandler });
+http.route({ pathPrefix: "/api/ai/v1/", method: "POST", handler: managedAi });
 
 export default http;
