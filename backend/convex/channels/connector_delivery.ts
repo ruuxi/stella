@@ -667,8 +667,6 @@ export const rescueOrphanedTurns = internalAction({
               conversationId: orphan.conversationId,
               provider,
               deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
-              // We don't have the original text — fetch the latest assistant
-              // message from the conversation as the response.
               text: await getLatestAssistantText(ctx, orphan.conversationId),
             },
           );
