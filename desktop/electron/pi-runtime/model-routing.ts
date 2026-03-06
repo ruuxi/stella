@@ -1,8 +1,6 @@
 import { getModels, type Api, type Model } from "@mariozechner/pi-ai";
 import { getLocalLlmCredential, hasLocalLlmCredential } from "../system/llm-credentials.js";
 
-const DEFAULT_MODEL = "anthropic/claude-4.6-sonnet";
-
 type ManagedProxyConfig = {
   baseUrl: string | null;
   getAuthToken: () => string | null | undefined;
@@ -25,20 +23,20 @@ const normalizeProxyBase = (value: string | null | undefined): string | null => 
   return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/v1`;
 };
 
-const parseModel = (rawModel: string | undefined): { provider: string; modelId: string; fullModelId: string } => {
-  const value = (rawModel ?? DEFAULT_MODEL).trim();
+const parseModel = (rawModel: string | undefined): { provider: string; modelId: string; fullModelId: string } | null => {
+  const value = rawModel?.trim();
+  if (!value) return null;
   if (!value.includes("/")) {
-    const provider = "openai";
-    const modelId = value || "gpt-4.1-mini";
     return {
-      provider,
-      modelId,
-      fullModelId: `${provider}/${modelId}`,
+      provider: value,
+      modelId: value,
+      fullModelId: value,
     };
   }
   const parts = value.split("/");
-  const provider = (parts.shift() || "openai").trim().toLowerCase();
-  const modelId = parts.join("/").trim() || "gpt-4.1-mini";
+  const provider = (parts.shift() || "").trim().toLowerCase();
+  const modelId = parts.join("/").trim();
+  if (!provider || !modelId) return null;
   return {
     provider,
     modelId,
@@ -191,50 +189,58 @@ export const resolveLlmRoute = (args: {
   agentType: string;
   proxy: ManagedProxyConfig;
 }): ResolvedLlmRoute => {
-  const { provider, modelId, fullModelId } = parseModel(args.modelName);
+  const parsed = parseModel(args.modelName);
 
-  const directProvider = getDirectProviderCandidates(provider, modelId);
-  if (directProvider) {
-    const directKey = getCredential(args.stellaHomePath, directProvider.credentialProvider);
-    if (directKey) {
-      const directModel = findRegistryModel(directProvider.registryProvider, directProvider.candidates);
-      if (directModel) {
+  // When a model is explicitly specified, try direct provider / openrouter / gateway routes
+  if (parsed) {
+    const { provider, modelId, fullModelId } = parsed;
+
+    const directProvider = getDirectProviderCandidates(provider, modelId);
+    if (directProvider) {
+      const directKey = getCredential(args.stellaHomePath, directProvider.credentialProvider);
+      if (directKey) {
+        const directModel = findRegistryModel(directProvider.registryProvider, directProvider.candidates);
+        if (directModel) {
+          return {
+            model: directModel,
+            route: "direct-provider",
+            getApiKey: () => directKey,
+          };
+        }
+      }
+    }
+
+    const openrouterKey = getCredential(args.stellaHomePath, "openrouter");
+    if (openrouterKey) {
+      const openrouterModel = findRegistryModel("openrouter", [fullModelId]);
+      if (openrouterModel) {
         return {
-          model: directModel,
-          route: "direct-provider",
-          getApiKey: () => directKey,
+          model: openrouterModel,
+          route: "direct-openrouter",
+          getApiKey: () => openrouterKey,
+        };
+      }
+    }
+
+    const gatewayKey = getGatewayCredential(args.stellaHomePath);
+    if (gatewayKey) {
+      const gatewayModel = findRegistryModel("vercel-ai-gateway", [fullModelId]);
+      if (gatewayModel) {
+        return {
+          model: gatewayModel,
+          route: "direct-gateway",
+          getApiKey: () => gatewayKey,
         };
       }
     }
   }
 
-  const openrouterKey = getCredential(args.stellaHomePath, "openrouter");
-  if (openrouterKey) {
-    const openrouterModel = findRegistryModel("openrouter", [fullModelId]);
-    if (openrouterModel) {
-      return {
-        model: openrouterModel,
-        route: "direct-openrouter",
-        getApiKey: () => openrouterKey,
-      };
-    }
-  }
-
-  const gatewayKey = getGatewayCredential(args.stellaHomePath);
-  if (gatewayKey) {
-    const gatewayModel = findRegistryModel("vercel-ai-gateway", [fullModelId]);
-    if (gatewayModel) {
-      return {
-        model: gatewayModel,
-        route: "direct-gateway",
-        getApiKey: () => gatewayKey,
-      };
-    }
-  }
-
+  // Managed proxy path — model may be undefined (backend decides)
   const proxyBaseUrl = normalizeProxyBase(args.proxy.baseUrl);
   const authToken = args.proxy.getAuthToken()?.trim();
   if (proxyBaseUrl && authToken) {
+    const fullModelId = parsed?.fullModelId ?? "";
+    const provider = parsed?.provider ?? "";
     return {
       model: createManagedProxyModel(fullModelId, provider, proxyBaseUrl, args.agentType),
       route: "managed-proxy",

@@ -36,7 +36,7 @@ stella-ui snapshot              # See current UI with interactive element refs
 stella-ui click @e5             # Click an element by ref
 stella-ui fill @e3 "text"       # Fill an input field
 stella-ui select @e3 "value"    # Select a dropdown value
-stella-ui generate "<panel>" "<prompt>"  # Populate a panel with content (fast, no self-mod)
+stella-ui generate "<panel>" "<prompt>"  # Populate a panel with content
 ```
 
 Always run `stella-ui snapshot` first to discover available elements before acting.

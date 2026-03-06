@@ -3,7 +3,7 @@
  * renders .full-body grid: Sidebar | WorkspaceArea | ChatPanel.
  */
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useUiState } from "@/providers/ui-state";
 import { useWorkspace } from "@/providers/workspace-state";
 import { useTheme } from "@/theme/theme-context";
@@ -49,7 +49,6 @@ export const FullShell = () => {
   const activePanel = workspaceState.activePanel;
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
-  const isNearBottomRef = useRef(true);
   const activeViewRef = useRef(state.view);
   const orbRef = useRef<FloatingOrbHandle>(null);
 
@@ -160,7 +159,7 @@ export const FullShell = () => {
 
   const {
     scrollContainerRef,
-    isNearBottom,
+    isNearBottomRef,
     showScrollButton,
     scrollToBottom,
     handleScroll,
@@ -172,27 +171,23 @@ export const FullShell = () => {
     onLoadOlder: loadOlder,
   });
 
-  useEffect(() => {
-    isNearBottomRef.current = isNearBottom;
-  }, [isNearBottom]);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     resetScrollState();
-    isNearBottomRef.current = true;
-    requestAnimationFrame(() => {
-      scrollToBottom("auto");
+    scrollToBottom("instant");
+    const raf = requestAnimationFrame(() => {
+      scrollToBottom("instant");
     });
+    return () => cancelAnimationFrame(raf);
   }, [activeConversationId, resetScrollState, scrollToBottom]);
 
-  useEffect(() => {
-    if (state.view !== "chat") {
-      return;
-    }
+  useLayoutEffect(() => {
+    if (state.view !== "chat") return;
     resetScrollState();
-    isNearBottomRef.current = true;
-    requestAnimationFrame(() => {
-      scrollToBottom("auto");
+    scrollToBottom("instant");
+    const raf = requestAnimationFrame(() => {
+      scrollToBottom("instant");
     });
+    return () => cancelAnimationFrame(raf);
   }, [state.view, resetScrollState, scrollToBottom]);
 
   const isOrbVisible = state.view !== "chat" && onboarding.onboardingDone;
@@ -218,22 +213,17 @@ export const FullShell = () => {
     return () => unsubscribe?.();
   }, [handleVoiceTranscript]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isNearBottomRef.current) {
-      scrollToBottom("smooth");
+      scrollToBottom("instant");
     }
-  }, [events.length, scrollToBottom]);
+  }, [events.length, scrollToBottom, isNearBottomRef]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isStreaming && isNearBottomRef.current) {
-      scrollToBottom("auto");
+      scrollToBottom("instant");
     }
-  }, [
-    streamingText,
-    reasoningText,
-    isStreaming,
-    scrollToBottom,
-  ]);
+  }, [streamingText, reasoningText, isStreaming, scrollToBottom, isNearBottomRef]);
 
   const handleSend = useCallback(() => {
     void sendMessage({

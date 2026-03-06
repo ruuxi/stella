@@ -99,6 +99,7 @@ export function useScrollManagement({
 }: ScrollManagementOptions) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
+  const isNearBottomRef = useRef(true);
   const scrollRafRef = useRef<number | null>(null);
   const prependAnchorRef = useRef<PrependAnchorSnapshot | null>(null);
   const continueLoadingOlderRef = useRef(false);
@@ -121,6 +122,7 @@ export function useScrollManagement({
   const resetScrollState = useCallback(() => {
     prependAnchorRef.current = null;
     continueLoadingOlderRef.current = false;
+    isNearBottomRef.current = true;
     setIsNearBottom(true);
   }, []);
 
@@ -151,7 +153,9 @@ export function useScrollManagement({
       if (container && container.scrollTop > TOP_LOAD_THRESHOLD) {
         continueLoadingOlderRef.current = false;
       }
-      setIsNearBottom(checkIfNearBottom());
+      const nearBottom = checkIfNearBottom();
+      isNearBottomRef.current = nearBottom;
+      setIsNearBottom(nearBottom);
       maybeLoadOlder();
     });
   }, [checkIfNearBottom, maybeLoadOlder]);
@@ -195,6 +199,7 @@ export function useScrollManagement({
   return {
     scrollContainerRef,
     isNearBottom,
+    isNearBottomRef,
     showScrollButton,
     scrollToBottom,
     handleScroll,
