@@ -302,7 +302,11 @@ export const bootstrapMainProcess = () => {
     windowManager.createInitialWindows()
 
     // Start stella-ui server for agent UI control
-    const stellaUiPort = startStellaUiServer(() => windowManager?.getFullWindow() ?? null)
+    const stellaUiPort = startStellaUiServer({
+      getWindow: () => windowManager?.getFullWindow() ?? null,
+      frontendRoot: path.resolve(__dirname, '..'),
+      getProxy: () => piHostRunner?.getProxy() ?? null,
+    })
     process.env.STELLA_UI_PORT = String(stellaUiPort)
 
     const hmrMorphOrchestrator = createHmrMorphOrchestrator({

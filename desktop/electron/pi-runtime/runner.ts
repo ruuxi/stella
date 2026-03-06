@@ -127,6 +127,39 @@ const sanitizeProxyBase = (value: string | null): string | null => {
   return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/llm-proxy/v1`;
 };
 
+/** Build a compact panel inventory for the orchestrator's dynamic context. */
+const buildPanelInventory = (frontendRoot: string): string => {
+  // Default home view panels (always present)
+  const defaultPanels = [
+    "GenerativeCanvas (greeting/animation)",
+    "News Feed (placeholder)",
+    "Image Gallery (placeholder)",
+    "Music Player (playback controls, mood, vibe prompt)",
+    "Suggestions (onboarding suggestions)",
+    "Active Tasks (running agent tasks)",
+    "Activity Feed (scheduled jobs)",
+  ];
+
+  // Dynamically created workspace panels
+  const pagesDir = path.join(frontendRoot, "src", "views", "home", "pages");
+  let userPanels: string[] = [];
+  try {
+    const entries = fs.readdirSync(pagesDir, { withFileTypes: true });
+    userPanels = entries
+      .filter((e) => e.isFile() && /\.(tsx|jsx)$/.test(e.name))
+      .map((e) => e.name.replace(/\.(tsx|jsx)$/, ""));
+  } catch {
+    // No pages directory yet
+  }
+
+  const lines = ["Home view panels: " + defaultPanels.join(", ")];
+  if (userPanels.length > 0) {
+    lines.push("Workspace panels: " + userPanels.join(", "));
+  }
+  lines.push('Use `stella-ui generate "<panel>" "<prompt>"` to populate any panel with content.');
+  return lines.join("\n");
+};
+
 const readCoreMemory = (stellaHome: string): string | undefined => {
   const filePath = path.join(stellaHome, "state", "CORE_MEMORY.MD");
   try {
@@ -240,7 +273,10 @@ export const createPiHostRunner = ({
 
     return {
       systemPrompt: agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
-      dynamicContext: "",
+      dynamicContext:
+        args.agentType === "orchestrator" && frontendRoot
+          ? buildPanelInventory(frontendRoot)
+          : "",
       toolsAllowlist: agent?.toolsAllowlist?.length ? agent.toolsAllowlist : DEFAULT_TOOL_ALLOWLIST,
       model,
       maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
@@ -539,6 +575,9 @@ export const createPiHostRunner = ({
     stop,
     subscribeQuery: () => null,
     getConvexUrl: () => proxyBaseUrl,
+    getProxy: (): { baseUrl: string; token: string } | null => {
+      try { return ensureProxyReady(); } catch { return null; }
+    },
     killAllShells: () => toolHost.killAllShells(),
     killShellsByPort: (port: number) => toolHost.killShellsByPort(port),
     executeTool: (
