@@ -2,7 +2,7 @@
  * Backend-local provider registry for model resolution and BYOK lookup.
  */
 
-export type SdkType = "anthropic" | "openai" | "amazon-bedrock" | "google" | "gitlab";
+export type SdkType = "anthropic" | "openai" | "amazon-bedrock" | "google" | "gitlab" | "baseten";
 
 /**
  * Maps provider strings to their AI SDK constructor type.
@@ -33,6 +33,9 @@ export const PROVIDER_SDK_MAP: Record<string, SdkType> = {
   zai: "openai",
   inception: "openai",
 
+  // Baseten (native SDK)
+  baseten: "baseten",
+
   // Native SDKs
   "amazon-bedrock": "amazon-bedrock",
   google: "google",
@@ -50,6 +53,7 @@ export const NODE_ONLY_PROVIDERS = new Set([
   "google-vertex-anthropic",
   "gitlab",
   "sap-ai-core",
+  "baseten",
 ]);
 
 /**
@@ -81,6 +85,7 @@ export const PROVIDER_SECRET_KEYS: Record<string, string> = {
   "sap-ai-core": "llm:sap-ai-core",
   opencode: "llm:opencode",
   inception: "llm:inception",
+  baseten: "llm:baseten",
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
