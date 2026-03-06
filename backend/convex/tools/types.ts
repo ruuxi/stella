@@ -44,7 +44,4 @@ export const BASE_TOOL_NAMES = [
   "GenerateApiSkill",
   "ListResources",
   "NoResponse",
-  // Orchestration tools (memory only — tasks handled by local runtime)
-  "RecallMemories",
-  "SaveMemory",
 ] as const;
