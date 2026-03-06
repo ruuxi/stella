@@ -20,7 +20,8 @@ import {
 
 const MAX_ANON_REQUESTS = 50_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
-const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
+const GATEWAY_BASE_URL =
+  process.env.AI_GATEWAY_BASE_URL ?? "https://ai-gateway.vercel.sh/v1";
 
 /** Convenience wrapper: error response with CORS extracted from request. */
 function proxyErrorResponse(
