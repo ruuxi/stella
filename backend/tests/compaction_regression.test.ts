@@ -7,7 +7,7 @@ const backendRoot = path.resolve(import.meta.dir, "..");
 const readBackendFile = (relativePath: string) =>
   readFileSync(path.join(backendRoot, relativePath), "utf-8");
 
-describe("memory + compaction regressions", () => {
+describe("compaction regressions", () => {
   test("compaction thresholds are explicitly pinned to 80k/140k defaults", () => {
     const source = readBackendFile("convex/agent/context_budget.ts");
     expect(source).toContain("ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS");

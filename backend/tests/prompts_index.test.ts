@@ -1,10 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import {
   ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
-  CORE_MEMORY_SYNTHESIS_PROMPT,
-  buildCoreSynthesisUserMessage,
-  buildWelcomeMessagePrompt,
-  buildWelcomeSuggestionsPrompt,
   SKILL_METADATA_PROMPT,
   buildSkillMetadataUserMessage,
   BUILTIN_SKILLS,
@@ -17,13 +13,6 @@ import {
 describe("prompts/index re-exports", () => {
   test("exports orchestrator system prompt", () => {
     expect(typeof ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toBe("string");
-  });
-
-  test("exports synthesis prompts", () => {
-    expect(typeof CORE_MEMORY_SYNTHESIS_PROMPT).toBe("string");
-    expect(typeof buildCoreSynthesisUserMessage).toBe("function");
-    expect(typeof buildWelcomeMessagePrompt).toBe("function");
-    expect(typeof buildWelcomeSuggestionsPrompt).toBe("function");
   });
 
   test("exports skill-related items", () => {

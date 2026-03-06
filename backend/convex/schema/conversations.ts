@@ -99,37 +99,4 @@ export const conversationsSchema = {
     createdAt: v.number(),
   })
     .index("by_threadId_and_ordinal", ["threadId", "ordinal"]),
-
-  memories: defineTable({
-    ownerId: v.string(),
-    conversationId: v.optional(v.id("conversations")),
-    content: v.string(),
-    accessCount: v.number(),
-    accessedAt: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
-  })
-    .index("by_ownerId_and_accessedAt", ["ownerId", "accessedAt"])
-    .index("by_accessedAt", ["accessedAt"])
-    .searchIndex("search_content", {
-      searchField: "content",
-      filterFields: ["ownerId"],
-    }),
-
-  event_embeddings: defineTable({
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    eventId: v.id("events"),
-    type: v.union(v.literal("user_message"), v.literal("assistant_message")),
-    content: v.string(),
-    timestamp: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_eventId", ["eventId"])
-    .index("by_ownerId_and_timestamp", ["ownerId", "timestamp"])
-    .searchIndex("search_content", {
-      searchField: "content",
-      filterFields: ["ownerId", "conversationId", "type"],
-    }),
 };

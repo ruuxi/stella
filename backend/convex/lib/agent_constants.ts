@@ -1,4 +1,4 @@
-export const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore", "memory"]);
+export const SKILLS_DISABLED_AGENT_TYPES = new Set(["explore"]);
 
 export const SUBAGENT_TYPES = ["general", "explore", "browser"] as const;
 export type SubagentType = (typeof SUBAGENT_TYPES)[number];

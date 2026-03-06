@@ -7,7 +7,7 @@ const backendRoot = path.resolve(import.meta.dir, "..");
 const readBackendFile = (relativePath: string) =>
   readFileSync(path.join(backendRoot, relativePath), "utf-8");
 
-describe("memory compaction acceptance", () => {
+describe("compaction acceptance", () => {
   test("thread compaction defaults match acceptance thresholds", () => {
     const source = readBackendFile("convex/agent/context_budget.ts");
     expect(source).toContain("THREAD_COMPACTION_KEEP_RECENT_TOKENS");
@@ -26,14 +26,6 @@ describe("memory compaction acceptance", () => {
     expect(promptSource).toContain("forceReminderOnNextTurn");
     expect(promptSource).toContain("shouldInjectDynamicReminder");
     expect(conversationSource).toContain("updateReminderTokenCounter");
-  });
-
-  test("recall history embeddings remain scoped to user/assistant messages", () => {
-    const memorySource = readBackendFile("convex/data/memory.ts");
-    const embeddingSource = readBackendFile("convex/data/event_embeddings.ts");
-
-    expect(memorySource).toContain("internal.data.event_embeddings.searchByContent");
-    expect(embeddingSource).toContain('event.type !== "user_message" && event.type !== "assistant_message"');
   });
 
   test("microcompact boundary events continue to be emitted", () => {

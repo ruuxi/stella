@@ -23,9 +23,6 @@
 → `prompt_builder.ts` — System prompt assembly
 → `model.ts` — Model configuration
 
-### "Change memory system"
-→ `memory.ts` — Search, ingest, decay (cohesive module)
-
 ## Directory Structure
 
 ```
@@ -34,11 +31,10 @@ convex/
 │   ├── index.ts      # Barrel file re-exporting all prompts
 │   ├── orchestrator.ts
 │   ├── general.ts
-│   ├── memory.ts
 │   ├── explore.ts
 │   ├── browser.ts    # Largest prompt (~470 lines)
 │   ├── self_mod.ts
-│   └── synthesis.ts  # Core memory synthesis + builder functions
+│   └── ...
 │
 ├── tools/            # Tool factory and implementations
 │   ├── index.ts      # createTools() factory + re-exports
@@ -52,11 +48,10 @@ convex/
 │   └── runner.ts     # runAgentTurn() for heartbeat/cron execution
 │
 ├── _generated/       # Convex generated files (don't edit)
-├── http.ts           # HTTP endpoints (/api/chat, /api/synthesize)
+├── http.ts           # HTTP endpoints
 ├── schema.ts         # Database schema
 ├── heartbeat.ts      # Heartbeat scheduling (crons.ts dependency)
 ├── cron_jobs.ts      # Cron scheduling (crons.ts dependency)
-├── memory.ts         # Memory system (crons.ts dependency)
 ├── device_tools.ts   # Core device tools (Read, Write, Bash, etc.)
 ├── plugins.ts        # Plugin system + jsonSchemaToZod
 ├── agents.ts         # Agent definitions and builtins
@@ -77,7 +72,6 @@ These files are referenced via `internal.*` paths:
 
 - `heartbeat.ts` — Self-schedules via `ctx.scheduler.runAfter`
 - `cron_jobs.ts` — Self-schedules via `ctx.scheduler.runAfter`
-- `memory.ts` — Referenced as `internal.memory.decayMemories`
 
 Moving/renaming these would break scheduling.
 
@@ -90,7 +84,7 @@ Pure constants and builder functions for agent system prompts. No dependencies o
 Tool definitions for the AI SDK. Split by category:
 - **types.ts**: Shared types and constants
 - **backend.ts**: Tools that interact with external services (integrations, skills, scheduler)
-- **orchestration.ts**: Tools for agent coordination (Task, TaskOutput, AgentInvoke, MemorySearch)
+- **orchestration.ts**: Tools for agent coordination (Task, TaskOutput, AgentInvoke)
 - **index.ts**: Assembly point that combines device tools, backend tools, orchestration tools, and plugin tools
 
 ### automation/

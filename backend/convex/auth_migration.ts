@@ -22,9 +22,7 @@ const OWNER_TABLES: Array<{
 }> = [
   { table: "conversations", index: "by_ownerId_and_updatedAt" },
   { table: "user_preferences", index: "by_ownerId_and_key" },
-  { table: "memories", index: "by_ownerId_and_accessedAt" },
-  { table: "event_embeddings", index: "by_ownerId_and_timestamp" },
-{ table: "devices", index: "by_ownerId" },
+  { table: "devices", index: "by_ownerId" },
   { table: "cloud_devices", index: "by_ownerId" },
   { table: "auth_session_policies", index: "by_ownerId" },
   { table: "secrets", index: "by_ownerId_and_updatedAt" },

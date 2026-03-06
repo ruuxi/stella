@@ -83,14 +83,14 @@ Your tools describe when to use them. A few behavioral notes:
 
 /**
  * Build the full voice session instructions by combining the base prompt
- * with dynamic context (user info, device status, threads, core memory).
+ * with dynamic context (user info, device status, threads, profile details).
  */
 export function buildVoiceSessionInstructions(context: {
   userName?: string;
   platform?: string;
   deviceStatus?: string;
   activeThreads?: string;
-  coreMemory?: string;
+  userProfile?: string;
 }): string {
   const parts = [VOICE_ORCHESTRATOR_PROMPT];
 
@@ -110,8 +110,8 @@ export function buildVoiceSessionInstructions(context: {
     parts.push(`\n${context.activeThreads}`);
   }
 
-  if (context.coreMemory) {
-    parts.push(`\n## Core Memory\n${context.coreMemory}`);
+  if (context.userProfile) {
+    parts.push(`\n## User Profile\n${context.userProfile}`);
   }
 
   return parts.join("\n");

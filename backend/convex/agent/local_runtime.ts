@@ -85,49 +85,6 @@ export const executeTool = action({
   },
 });
 
-export const recallMemories = action({
-  args: {
-    query: v.string(),
-    source: v.optional(v.union(v.literal("memory"), v.literal("history"))),
-    conversationId: v.optional(v.id("conversations")),
-  },
-  returns: v.string(),
-  handler: async (ctx, args): Promise<string> => {
-    const ownerId = await requireUserId(ctx);
-    if (args.conversationId) {
-      await requireConversationOwnerAction(ctx, args.conversationId);
-    }
-
-    const text = await ctx.runAction(internal.data.memory.recallMemories, {
-      ownerId,
-      query: args.query,
-      source: args.source,
-      conversationId: args.conversationId,
-    });
-    return text || "No relevant memories found.";
-  },
-});
-
-export const saveMemory = action({
-  args: {
-    content: v.string(),
-    conversationId: v.optional(v.id("conversations")),
-  },
-  returns: v.string(),
-  handler: async (ctx, args): Promise<string> => {
-    const ownerId = await requireUserId(ctx);
-    if (args.conversationId) {
-      await requireConversationOwnerAction(ctx, args.conversationId);
-    }
-
-    return await ctx.runAction(internal.data.memory.saveMemory, {
-      ownerId,
-      content: args.content,
-      conversationId: args.conversationId,
-    });
-  },
-});
-
 export const webSearch = action({
   args: {
     query: v.string(),

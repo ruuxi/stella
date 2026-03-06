@@ -30,7 +30,7 @@ describe("buildSkillSelectionUserMessage", () => {
     { id: "code-review", name: "Code Review", description: "Reviews code", tags: ["dev", "quality"] },
   ];
 
-  test("includes core memory in output", () => {
+  test("includes user profile in output", () => {
     const result = buildSkillSelectionUserMessage("User is a developer", catalog);
     expect(result).toContain("User is a developer");
   });

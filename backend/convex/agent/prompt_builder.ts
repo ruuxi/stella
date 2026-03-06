@@ -212,21 +212,6 @@ export const buildSystemPrompt = async (
     }
   }
 
-  // Inject core memory (user profile) into system prompt for orchestrator
-  if (agentType === "orchestrator" && options?.ownerId) {
-    try {
-      const coreMemory = await ctx.runQuery(
-        internal.data.preferences.getPreferenceForOwner,
-        { ownerId: options.ownerId, key: "core_memory" },
-      );
-      if (coreMemory) {
-        systemParts.push(`\n\n# User Profile\n${coreMemory}`);
-      }
-    } catch {
-      // Core memory query failed — skip
-    }
-  }
-
   const maxTaskDepthValue = Number(agent.maxTaskDepth);
   const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
     ? Math.floor(maxTaskDepthValue)
@@ -245,7 +230,7 @@ export const buildSystemPrompt = async (
 
 // ─── fetchAgentContext ──────────────────────────────────────────────────────
 // Returns everything the local agent runtime needs in a single round-trip:
-// system prompt, dynamic context, tool allowlist, core memory, skills,
+// system prompt, dynamic context, tool allowlist, skills,
 // thread history, and managed auth context for LLM access.
 
 const agentContextResultValidator = v.object({
@@ -257,7 +242,6 @@ const agentContextResultValidator = v.object({
   maxTaskDepth: v.number(),
   defaultSkills: v.array(v.string()),
   skillIds: v.array(v.string()),
-  coreMemory: v.optional(v.string()),
   threadHistory: v.optional(v.array(v.object({
     role: v.string(),
     content: v.string(),
@@ -306,7 +290,7 @@ const fetchAgentContextForOwner = async (
   ctx: ActionCtx,
   args: FetchAgentContextSharedArgs,
 ): Promise<AgentContextResult> => {
-  // 1. Build system prompt (includes skills, threads, core memory, platform, timezone)
+  // 1. Build system prompt (includes skills, threads, platform, timezone)
   const promptBuild = await buildSystemPrompt(ctx, args.agentType, {
     ownerId: args.ownerId,
     conversationId: args.conversationId,
@@ -314,18 +298,7 @@ const fetchAgentContextForOwner = async (
     timezone: args.timezone,
   });
 
-  // 2. Get core memory separately for the local runtime to use
-  let coreMemory: string | undefined;
-  try {
-    coreMemory = await ctx.runQuery(
-      internal.data.preferences.getPreferenceForOwner,
-      { ownerId: args.ownerId, key: "core_memory" },
-    ) ?? undefined;
-  } catch {
-    // Skip if unavailable
-  }
-
-  // 3. Resolve primary/fallback models for the runtime.
+  // 2. Resolve primary/fallback models for the runtime.
   const modelDefaults = getModelConfig(args.agentType);
   let model = modelDefaults.model;
   const override = await ctx.runQuery(
@@ -353,7 +326,7 @@ const fetchAgentContextForOwner = async (
     codexLocalMaxConcurrency = normalizeCodexLocalMaxConcurrency(concurrencyPreference);
   }
 
-  // 4. Get thread history if we have an active thread
+  // 3. Get thread history if we have an active thread
   let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
   let activeThreadId: string | undefined;
 
@@ -393,7 +366,6 @@ const fetchAgentContextForOwner = async (
     maxTaskDepth: promptBuild.maxTaskDepth,
     defaultSkills: promptBuild.defaultSkills,
     skillIds: promptBuild.skillIds,
-    coreMemory,
     threadHistory,
     activeThreadId,
     gatewayApiKey: process.env.AI_GATEWAY_API_KEY,
@@ -478,16 +450,6 @@ export const fetchLocalAgentContextForRuntime = action({
       }
     }
 
-    let coreMemory: string | undefined;
-    try {
-      coreMemory = await ctx.runQuery(
-        internal.data.preferences.getPreferenceForOwner,
-        { ownerId, key: "core_memory" },
-      ) ?? undefined;
-    } catch {
-      // Skip if unavailable
-    }
-
     return {
       systemPrompt: promptBuild.systemPrompt,
       dynamicContext: promptBuild.dynamicContext,
@@ -497,7 +459,6 @@ export const fetchLocalAgentContextForRuntime = action({
       maxTaskDepth: promptBuild.maxTaskDepth,
       defaultSkills: promptBuild.defaultSkills,
       skillIds: promptBuild.skillIds,
-      coreMemory,
       threadHistory: undefined,
       activeThreadId: undefined,
       gatewayApiKey: process.env.AI_GATEWAY_API_KEY,
