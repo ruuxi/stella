@@ -40,22 +40,6 @@ const cloudDeviceValidator = v.object({
   updatedAt: v.number(),
 });
 
-const enable247ResultValidator = v.union(
-  v.object({
-    status: v.literal("already_enabled"),
-    spriteName: v.string(),
-  }),
-  v.object({
-    status: v.literal("provisioning"),
-    spriteName: v.string(),
-  }),
-);
-
-const disable247ResultValidator = v.union(
-  v.object({ status: v.literal("not_enabled") }),
-  v.object({ status: v.literal("disabled") }),
-);
-
 type Enable247Result =
   | { status: "already_enabled"; spriteName: string }
   | { status: "provisioning"; spriteName: string };
@@ -67,11 +51,6 @@ const runtimeStatusValidator = v.object({
   mode: runtimeModeValidator,
   enabled: v.boolean(),
   cloudDevice: v.union(cloudDeviceValidator, v.null()),
-});
-const cloudDeviceListValidator = v.array(cloudDeviceValidator);
-const ensureSingleRecordResultValidator = v.object({
-  cloudDevice: cloudDeviceValidator,
-  created: v.boolean(),
 });
 
 type RuntimeStatus = {
@@ -515,7 +494,6 @@ export const assertNdjsonNoError = (raw: string, context: string) => {
 
 export const resolveForOwner = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const runtimePreference = await ctx.db
       .query("user_preferences")
@@ -544,7 +522,6 @@ export const resolveForOwner = internalQuery({
  */
 export const resolveForOwnerUngated = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -558,7 +535,6 @@ export const resolveForOwnerUngated = internalQuery({
 
 export const listForOwner = internalQuery({
   args: { ownerId: v.string() },
-  returns: cloudDeviceListValidator,
   handler: async (ctx, args) => {
     return await ctx.db
       .query("cloud_devices")
@@ -572,7 +548,6 @@ export const listInactiveBefore = internalQuery({
     cutoffMs: v.number(),
     limit: v.number(),
   },
-  returns: cloudDeviceListValidator,
   handler: async (ctx, args) => {
     return await ctx.db
       .query("cloud_devices")
@@ -584,7 +559,6 @@ export const listInactiveBefore = internalQuery({
 
 export const getForOwner = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.union(v.null(), cloudDeviceValidator),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -600,7 +574,6 @@ export const getForOwner = internalQuery({
 
 export const touchActivity = internalMutation({
   args: { ownerId: v.string() },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -624,7 +597,6 @@ export const updateStatus = internalMutation({
     status: v.string(),
     setupComplete: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = {
       status: args.status,
@@ -642,7 +614,6 @@ export const deleteCloudDevicesByIds = internalMutation({
   args: {
     ids: v.array(v.id("cloud_devices")),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     for (const id of args.ids) {
       await ctx.db.delete(id);
@@ -658,7 +629,6 @@ export const ensureSingleRecordForOwner = internalMutation({
     spriteName: v.string(),
     status: v.string(),
   },
-  returns: ensureSingleRecordResultValidator,
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("cloud_devices")
@@ -698,7 +668,6 @@ export const ensureSingleRecordForOwner = internalMutation({
 
 export const deleteCloudDevice = internalMutation({
   args: { id: v.id("cloud_devices") },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
     return null;
@@ -715,7 +684,6 @@ export const setupSprite = internalAction({
     spriteName: v.string(),
     ownerId: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       const spritesToken = await getSpritesTokenForOwner(ctx, args.ownerId);
@@ -810,7 +778,6 @@ export const get247Status = query({
 
 export const getActive = internalQuery({
   args: {},
-  returns: v.union(v.null(), cloudDeviceValidator),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -997,7 +964,6 @@ export const set247Enabled = action({
  */
 export const spawnForOwner = internalAction({
   args: { ownerId: v.string() },
-  returns: enable247ResultValidator,
   handler: async (ctx, args): Promise<Enable247Result> => {
     return await ensure247ForOwner(ctx, args.ownerId);
   },
@@ -1005,7 +971,6 @@ export const spawnForOwner = internalAction({
 
 export const enable247 = internalAction({
   args: {},
-  returns: enable247ResultValidator,
   handler: async (ctx): Promise<Enable247Result> => {
     const ownerId = await requireUserId(ctx);
     return await ensure247ForOwner(ctx, ownerId);
@@ -1014,7 +979,6 @@ export const enable247 = internalAction({
 
 export const disable247 = internalAction({
   args: {},
-  returns: disable247ResultValidator,
   handler: async (ctx): Promise<Disable247Result> => {
     const ownerId = await requireUserId(ctx);
     return await disable247ForOwner(ctx, ownerId);

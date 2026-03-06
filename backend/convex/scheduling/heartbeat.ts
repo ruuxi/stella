@@ -124,43 +124,11 @@ function isWithinActiveHours(
   return currentMin >= startMin || currentMin < endMin;
 }
 
-const heartbeatConfigDocValidator = v.object({
-  _id: v.id("heartbeat_configs"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  conversationId: v.id("conversations"),
-  enabled: v.boolean(),
-  intervalMs: v.number(),
-  prompt: v.optional(v.string()),
-  checklist: v.optional(v.string()),
-  ackMaxChars: v.optional(v.number()),
-  deliver: v.optional(v.boolean()),
-  agentType: v.optional(v.string()),
-  activeHours: v.optional(
-    v.object({
-      start: v.string(),
-      end: v.string(),
-      timezone: v.optional(v.string()),
-    }),
-  ),
-  targetDeviceId: v.optional(v.string()),
-  runningAtMs: v.optional(v.number()),
-  lastRunAtMs: v.optional(v.number()),
-  nextRunAtMs: v.number(),
-  scheduledRunId: v.optional(v.id("_scheduled_functions")),
-  lastStatus: v.optional(v.string()),
-  lastError: v.optional(v.string()),
-  lastSentText: v.optional(v.string()),
-  lastSentAtMs: v.optional(v.number()),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-});
 
 export const getConfig = internalQuery({
   args: {
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.union(v.null(), heartbeatConfigDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const conversationId = await resolveOwnedConversationId(ctx, ownerId, args.conversationId);
@@ -189,7 +157,6 @@ export const upsertConfig = internalMutation({
     activeHours: activeHoursValidator,
     targetDeviceId: v.optional(v.string()),
   },
-  returns: v.union(v.null(), heartbeatConfigDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const conversationId = await resolveOwnedConversationId(ctx, ownerId, args.conversationId);
@@ -287,7 +254,6 @@ export const getById = internalQuery({
   args: {
     id: v.id("heartbeat_configs"),
   },
-  returns: v.union(v.null(), heartbeatConfigDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -301,7 +267,6 @@ export const markRunning = internalMutation({
     lastRunAtMs: v.optional(v.number()),
     expectedRunningAtMs: v.optional(v.number()),
   },
-  returns: v.boolean(),
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = {};
     if (args.nextRunAtMs !== undefined) patch.nextRunAtMs = args.nextRunAtMs;
@@ -327,7 +292,6 @@ export const recordRun = internalMutation({
     lastSentText: v.optional(v.string()),
     lastSentAtMs: v.optional(v.number()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const config = await ctx.db.get(args.id);
     if (!config) {
@@ -378,7 +342,6 @@ export const run = internalAction({
     configId: v.id("heartbeat_configs"),
     reason: v.optional(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const config = await ctx.runQuery(internal.scheduling.heartbeat.getById, {
       id: args.configId,
@@ -547,7 +510,6 @@ export const runNow = internalMutation({
   args: {
     conversationId: v.optional(v.id("conversations")),
   },
-  returns: v.union(v.null(), heartbeatConfigDocValidator),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const conversationId = await resolveOwnedConversationId(ctx, ownerId, args.conversationId);

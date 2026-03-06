@@ -91,7 +91,6 @@ export const setPreference = internalMutation({
     key: v.string(),
     value: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, args.key, args.value);
@@ -105,7 +104,6 @@ export const setPreferenceForOwner = internalMutation({
     key: v.string(),
     value: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await upsertPreferenceRecord(ctx, args.ownerId, args.key, args.value);
     return null;
@@ -116,7 +114,6 @@ export const getPreference = internalQuery({
   args: {
     key: v.string(),
   },
-  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const record = await ctx.db
@@ -198,7 +195,6 @@ export const setRuntimeMode = internalMutation({
   args: {
     mode: runtimeModeValidator,
   },
-  returns: runtimeModeValidator,
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, RUNTIME_MODE_KEY, args.mode);
@@ -223,7 +219,6 @@ export const getRuntimeModeForOwner = internalQuery({
   args: {
     ownerId: v.string(),
   },
-  returns: runtimeModeValidator,
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("user_preferences")
@@ -237,7 +232,6 @@ export const getAccountModeForOwner = internalQuery({
   args: {
     ownerId: v.string(),
   },
-  returns: accountModeValidator,
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("user_preferences")
@@ -251,7 +245,6 @@ export const getSyncModeForOwner = internalQuery({
   args: {
     ownerId: v.string(),
   },
-  returns: syncModeValidator,
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("user_preferences")
@@ -420,7 +413,6 @@ export const getPreferenceForOwner = internalQuery({
     ownerId: v.string(),
     key: v.string(),
   },
-  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("user_preferences")

@@ -116,13 +116,6 @@ export const upsertManagedSecretForOwner = internalMutation({
     plaintext: v.string(),
     metadata: optionalJsonValueValidator,
   },
-  returns: v.object({
-    secretId: v.id("secrets"),
-    provider: v.string(),
-    label: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }),
   handler: async (ctx, args) => {
     const now = Date.now();
     const encryptedPayload = await encryptSecret(args.plaintext);
@@ -228,12 +221,6 @@ export const updateSecret = internalMutation({
     label: v.optional(v.string()),
     metadata: optionalJsonValueValidator,
   },
-  returns: v.object({
-    secretId: v.id("secrets"),
-    provider: v.string(),
-    label: v.string(),
-    updatedAt: v.number(),
-  }),
   handler: async (ctx, args) => {
     requireBoundedString(args.plaintext, "plaintext", MAX_SECRET_PLAINTEXT_CHARS);
     if (args.label !== undefined) {
@@ -288,18 +275,6 @@ export const listSecretsInternal = internalQuery({
   args: {
     ownerId: v.string(),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("secrets"),
-      provider: v.string(),
-      label: v.string(),
-      status: v.string(),
-      metadata: optionalJsonValueValidator,
-      createdAt: v.number(),
-      updatedAt: v.number(),
-      lastUsedAt: v.optional(v.number()),
-    }),
-  ),
   handler: async (ctx, args) => {
     const records = await ctx.db
       .query("secrets")
@@ -325,14 +300,6 @@ export const getSecretForTool = internalQuery({
     ownerId: v.string(),
     secretId: v.id("secrets"),
   },
-  returns: v.object({
-    secretId: v.id("secrets"),
-    provider: v.string(),
-    label: v.string(),
-    plaintext: v.string(),
-    status: v.string(),
-    metadata: optionalJsonValueValidator,
-  }),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== args.ownerId) {
@@ -355,7 +322,6 @@ export const touchSecretUsage = internalMutation({
     ownerId: v.string(),
     secretId: v.id("secrets"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.secretId);
     if (!record || record.ownerId !== args.ownerId) {
@@ -371,7 +337,6 @@ export const getDecryptedLlmKey = internalQuery({
     ownerId: v.string(),
     provider: v.string(),
   },
-  returns: v.union(v.null(), v.string()),
   handler: async (ctx, args) => {
     const record = await ctx.db
       .query("secrets")
@@ -396,7 +361,6 @@ export const auditSecretAccess = internalMutation({
     status: v.string(),
     reason: v.optional(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.insert("secret_access_audit", {
       ownerId: args.ownerId,

@@ -93,7 +93,6 @@ export const handleStartCommand = internalAction({
     codeArg: v.optional(v.string()),
     displayName: v.optional(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     if (!args.codeArg) {
       await sendTelegramMessage(
@@ -150,7 +149,6 @@ export const handleIncomingMessage = internalAction({
     channelEnvelope: optionalChannelEnvelopeValidator,
     respond: v.optional(v.boolean()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
 
@@ -200,7 +198,6 @@ export const handleIncomingMessage = internalAction({
 
 export const registerWebhook = internalAction({
   args: {},
-  returns: v.object({ ok: v.boolean(), description: v.optional(v.string()) }),
   handler: async () => {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET;

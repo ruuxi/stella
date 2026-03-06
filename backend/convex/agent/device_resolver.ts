@@ -145,9 +145,6 @@ export const goOffline = mutation({
  */
 export const resolveExecutionTarget = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.object({
-    targetDeviceId: v.union(v.null(), v.string()),
-  }),
   handler: async (ctx, args): Promise<{
     targetDeviceId: string | null;
   }> => {
@@ -169,9 +166,6 @@ export const resolveExecutionTarget = internalQuery({
  */
 export const getDeviceStatus = internalQuery({
   args: { ownerId: v.string() },
-  returns: v.object({
-    localOnline: v.boolean(),
-  }),
   handler: async (ctx, args) => {
     const device = await ctx.db
       .query("devices")

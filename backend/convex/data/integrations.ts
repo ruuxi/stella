@@ -4,31 +4,9 @@ import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
 import { jsonObjectValidator } from "../shared_validators";
 
-const publicIntegrationDocValidator = v.object({
-  _id: v.id("integrations_public"),
-  _creationTime: v.number(),
-  id: v.string(),
-  provider: v.string(),
-  enabled: v.boolean(),
-  usagePolicy: v.string(),
-  updatedAt: v.number(),
-});
-
-const userIntegrationDocValidator = v.object({
-  _id: v.id("user_integrations"),
-  _creationTime: v.number(),
-  ownerId: v.string(),
-  provider: v.string(),
-  mode: v.string(),
-  externalId: v.optional(v.string()),
-  config: jsonObjectValidator,
-  createdAt: v.number(),
-  updatedAt: v.number(),
-});
 
 export const listPublicIntegrations = internalQuery({
   args: {},
-  returns: v.array(publicIntegrationDocValidator),
   handler: async (ctx) => {
     return await ctx.db.query("integrations_public").take(200);
   },
@@ -41,7 +19,6 @@ export const upsertPublicIntegration = internalMutation({
     enabled: v.boolean(),
     usagePolicy: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("integrations_public")
@@ -173,7 +150,6 @@ export const consumeSlackOAuthState = internalMutation({
   args: {
     state: v.string(),
   },
-  returns: v.union(v.null(), v.object({ ownerId: v.string() })),
   handler: async (ctx, args) => {
     const prefs = await ctx.db
       .query("user_preferences")
@@ -232,23 +208,11 @@ const getPublicIntegrationByIdHandler = async (ctx: Pick<QueryCtx, "db">, args: 
   return record;
 };
 
-const publicIntegrationReturnValidator = v.union(
-  v.null(),
-  v.object({
-    _id: v.id("integrations_public"),
-    id: v.string(),
-    provider: v.string(),
-    enabled: v.boolean(),
-    usagePolicy: v.string(),
-    updatedAt: v.number(),
-  }),
-);
 
 export const getPublicIntegrationById = internalQuery({
   args: {
     id: v.string(),
   },
-  returns: publicIntegrationReturnValidator,
   handler: async (ctx, args) => {
     return await getPublicIntegrationByIdHandler(ctx, args);
   },
@@ -256,7 +220,6 @@ export const getPublicIntegrationById = internalQuery({
 
 export const listUserIntegrations = internalQuery({
   args: {},
-  returns: v.array(userIntegrationDocValidator),
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
     return await ctx.db
@@ -274,7 +237,6 @@ export const upsertUserIntegration = internalMutation({
     externalId: v.optional(v.string()),
     config: jsonObjectValidator,
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const existing = await ctx.db

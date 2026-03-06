@@ -11,13 +11,6 @@ const DEVICE_USAGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;
 const CLIENT_ADDRESS_KEY_PATTERN = /^[0-9a-fA-F:.]+$/;
 
-const consumeDeviceAllowanceResultValidator = v.object({
-  allowed: v.boolean(),
-  requestCount: v.number(),
-  remaining: v.number(),
-  firstRequestAt: v.number(),
-  lastRequestAt: v.number(),
-});
 
 const normalizeClientAddressKey = (value: string | undefined) => {
   if (!value) return undefined;
@@ -54,14 +47,6 @@ export const getDeviceUsage = internalQuery({
     deviceId: v.string(),
     clientAddressKey: v.optional(v.string()),
   },
-  returns: v.union(
-    v.null(),
-    v.object({
-      requestCount: v.number(),
-      firstRequestAt: v.number(),
-      lastRequestAt: v.number(),
-    }),
-  ),
   handler: async (ctx, args) => {
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
     const row = await ctx.db
@@ -85,7 +70,6 @@ export const incrementDeviceUsage = internalMutation({
     deviceId: v.string(),
     clientAddressKey: v.optional(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
     const existing = await ctx.db
@@ -124,7 +108,6 @@ export const consumeDeviceAllowance = internalMutation({
     maxRequests: v.number(),
     clientAddressKey: v.optional(v.string()),
   },
-  returns: consumeDeviceAllowanceResultValidator,
   handler: async (ctx, args) => {
     const maxRequests = clampIntToRange(args.maxRequests, 1, Number.MAX_SAFE_INTEGER);
     const deviceHash = await hashDeviceId(args.deviceId, args.clientAddressKey);
@@ -175,10 +158,6 @@ export const checkProxyRateLimit = internalMutation({
     ownerId: v.string(),
     estimatedTokens: v.optional(v.number()),
   },
-  returns: v.object({
-    allowed: v.boolean(),
-    retryAfterMs: v.optional(v.number()),
-  }),
   handler: async (ctx, args) => {
     const limitStr = process.env.PROXY_TOKENS_PER_MINUTE;
     const limit = limitStr ? parseInt(limitStr, 10) : DEFAULT_PROXY_TOKENS_PER_MINUTE;

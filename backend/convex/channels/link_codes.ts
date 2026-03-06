@@ -64,7 +64,6 @@ export const peekLinkCodeOwner = internalQuery({
     provider: v.string(),
     code: v.string(),
   },
-  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const key = `${args.provider}_link_code`;
     const prefs = await ctx.db
@@ -108,7 +107,6 @@ export const storeLinkCode = internalMutation({
     provider: v.string(),
     code: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const key = `${args.provider}_link_code`;
     const now = Date.now();
@@ -144,7 +142,6 @@ export const consumeLinkCode = internalMutation({
     provider: v.string(),
     code: v.string(),
   },
-  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const key = `${args.provider}_link_code`;
     const prefs = await ctx.db

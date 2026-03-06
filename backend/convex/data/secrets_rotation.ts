@@ -25,14 +25,6 @@ export const rotateEncryptedMaterialBatch = internalMutation({
   args: {
     batchSize: v.optional(v.number()),
   },
-  returns: v.object({
-    activeKeyVersion: v.number(),
-    batchSize: v.number(),
-    rotated: v.number(),
-    failed: v.number(),
-    skipped: v.number(),
-    hasMoreCandidates: v.boolean(),
-  }),
   handler: async (ctx, args) => {
     const activeKeyVersion = getActiveSecretKeyVersion();
     const batchSize = normalizeBatchSize(args.batchSize);
@@ -141,14 +133,6 @@ export const rotateEncryptedMaterial = internalAction({
     batchSize: v.optional(v.number()),
     maxBatches: v.optional(v.number()),
   },
-  returns: v.object({
-    activeKeyVersion: v.number(),
-    batchSize: v.number(),
-    maxBatches: v.number(),
-    rotated: v.number(),
-    failed: v.number(),
-    skipped: v.number(),
-  }),
   handler: async (ctx, args) => {
     const maxBatches = Number.isFinite(args.maxBatches)
       ? Math.max(1, Math.min(50, Math.floor(args.maxBatches as number)))

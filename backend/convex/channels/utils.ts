@@ -79,7 +79,6 @@ export const getConnectionByProviderAndExternalId = internalQuery({
     provider: v.string(),
     externalUserId: v.string(),
   },
-  returns: v.union(v.null(), channelConnectionDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("channel_connections")
@@ -96,7 +95,6 @@ export const getConnectionByOwnerProviderAndExternalId = internalQuery({
     provider: v.string(),
     externalUserId: v.string(),
   },
-  returns: v.union(v.null(), channelConnectionDocValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("channel_connections")
@@ -115,11 +113,6 @@ export const getDmPolicyConfig = internalQuery({
     ownerId: v.string(),
     provider: v.string(),
   },
-  returns: v.object({
-    policy: v.string(),
-    allowlist: v.array(v.string()),
-    denylist: v.array(v.string()),
-  }),
   handler: async (ctx, args) => {
     const policyKey = getDmPolicyKey(args.provider);
     const allowlistKey = getDmAllowlistKey(args.provider);
@@ -165,7 +158,6 @@ export const createConnection = internalMutation({
     externalUserId: v.string(),
     displayName: v.optional(v.string()),
   },
-  returns: v.id("channel_connections"),
   handler: async (ctx, args) => {
     const now = Date.now();
     const existing = await ctx.db
@@ -205,7 +197,6 @@ export const getOrCreateConversationForOwner = internalMutation({
     ownerId: v.string(),
     title: v.optional(v.string()),
   },
-  returns: v.id("conversations"),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("conversations")
@@ -232,7 +223,6 @@ export const createGroupConversation = internalMutation({
     ownerId: v.string(),
     title: v.optional(v.string()),
   },
-  returns: v.id("conversations"),
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("conversations", {
@@ -250,7 +240,6 @@ export const setConnectionConversation = internalMutation({
     connectionId: v.id("channel_connections"),
     conversationId: v.id("conversations"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.connectionId, {
       conversationId: args.conversationId,
@@ -312,7 +301,6 @@ export const setDmPolicy = internalMutation({
       v.literal("disabled"),
     ),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = getDmPolicyKey(args.provider);
@@ -327,7 +315,6 @@ export const setDmAllowlist = internalMutation({
     provider: v.string(),
     externalUserIds: v.array(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = getDmAllowlistKey(args.provider);
@@ -343,7 +330,6 @@ export const setDmDenylist = internalMutation({
     provider: v.string(),
     externalUserIds: v.array(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const key = getDmDenylistKey(args.provider);
