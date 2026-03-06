@@ -112,7 +112,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     const rawResult = piHostRunner.agentHealthCheck()
     const result =
       rawResult?.ready === false &&
-      rawResult.reason === 'Missing proxy token' &&
+      rawResult.reason === 'Missing auth token' &&
       !options.isHostAuthAuthenticated()
         ? { ...rawResult, reason: 'Awaiting auth token' }
         : rawResult
