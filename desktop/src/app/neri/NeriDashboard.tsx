@@ -23,9 +23,9 @@ function getDefaultSize() {
   return { width: _defaultWidth, height: _defaultHeight };
 }
 
-// Mercury-only types excluded from the launcher
-const MERCURY_ONLY = new Set<NeriWindowType>(["search", "canvas"]);
-const WINDOW_TYPE_OPTIONS = (Object.keys(WINDOW_TEMPLATES) as NeriWindowType[]).filter((t) => !MERCURY_ONLY.has(t));
+// Voice-generated types excluded from the launcher
+const GENERATED_WINDOW_TYPES = new Set<NeriWindowType>(["search", "canvas"]);
+const WINDOW_TYPE_OPTIONS = (Object.keys(WINDOW_TEMPLATES) as NeriWindowType[]).filter((t) => !GENERATED_WINDOW_TYPES.has(t));
 
 const WINDOW_ICONS: Record<NeriWindowType, string> = {
   "news-feed": "📰",
