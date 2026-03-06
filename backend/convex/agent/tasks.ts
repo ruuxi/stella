@@ -32,7 +32,7 @@ import {
 } from "./model_execution";
 import { requireConversationOwner, requireConversationOwnerAction } from "../auth";
 import { normalizeOptionalInt } from "../lib/number_utils";
-import { isContextOverflowError } from "@stella/shared";
+import { isContextOverflowError } from "../lib/error_classification";
 import type { ModelMessage } from "@ai-sdk/provider-utils";
 import { PREFERRED_BROWSER_KEY } from "../data/preferences";
 import { BROWSER_AGENT_SAFARI_DENIED_REASON, SUBAGENT_TYPES } from "../lib/agent_constants";

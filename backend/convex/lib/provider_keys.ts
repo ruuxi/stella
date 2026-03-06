@@ -8,7 +8,7 @@
 
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { getProviderSecretKey } from "@stella/shared";
+import { getProviderSecretKey } from "./providers";
 
 type KeyLookupCtx = { runQuery: ActionCtx["runQuery"] };
 

@@ -14,7 +14,7 @@ import {
   isAbortError,
   isContextOverflowError,
   isConvexInternalError,
-} from "@stella/shared";
+} from "../lib/error_classification";
 
 /**
  * Check if an error is a model/API error that should trigger failover.
