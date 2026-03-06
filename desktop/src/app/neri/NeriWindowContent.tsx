@@ -478,7 +478,7 @@ const FILE_TREE = [
   { name: "package.json", type: "file", indent: 2, size: "1.8 KB" },
   { name: "backend/", type: "dir", indent: 1 },
   { name: "convex/", type: "dir", indent: 2 },
-  { name: "shared/", type: "dir", indent: 1 },
+  { name: "docs/", type: "dir", indent: 1 },
 ] as const;
 
 function FileBrowser() {

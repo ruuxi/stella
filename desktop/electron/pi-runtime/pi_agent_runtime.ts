@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { Type } from "@sinclair/typebox";
 import { Agent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
-import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS } from "@stella/shared";
+import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS } from "./extensions/stella/tool_schemas.js";
 import {
   detectSelfModAppliedSince,
   getGitHead,
