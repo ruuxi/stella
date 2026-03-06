@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   estimateContextEventTokens,
   selectRecentByTokenBudget,
-} from "@stella/shared";
+} from "../convex/lib/context_window";
 
 describe("context window selection", () => {
   test("selects newest items within token budget", () => {

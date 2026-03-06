@@ -1,6 +1,6 @@
 
 import { describe, expect, test } from "bun:test";
-import { eventsToHistoryMessages } from "@stella/shared";
+import { eventsToHistoryMessages } from "../convex/lib/history_messages";
 import { createEventFactory, type EventLike } from "./helpers/history_event_fixtures";
 
 const { makeToolPair } = createEventFactory();

@@ -2,7 +2,7 @@ import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
 import { getSpritesTokenForOwner, spritesExec } from "../agent/cloud_devices";
-import { getDangerousCommandReason } from "@stella/shared";
+import { getDangerousCommandReason } from "../agent/tool_schemas";
 
 const MAX_OUTPUT = 30_000;
 

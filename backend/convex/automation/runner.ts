@@ -6,7 +6,6 @@ import { buildSystemPrompt } from "../agent/prompt_builder";
 import {
   AUTOMATION_HISTORY_MAX_TOKENS,
 } from "../agent/context_budget";
-import { CLOUD_ONLY_TOOL_NAMES } from "../agent/device_tools";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
 import {
@@ -142,39 +141,25 @@ export async function runAgentTurn({
     ];
   }
 
-  // When the desktop is offline (no targetDeviceId), restrict to cloud-only
-  // tools since local tools (shell, file system, browser) can't execute.
-  const effectiveToolsAllowlist = targetDeviceId
-    ? promptBuild.toolsAllowlist
-    : [...CLOUD_ONLY_TOOL_NAMES];
-
   const tools = createTools(
     ctx,
-    targetDeviceId
-      ? {
-          conversationId,
-          targetDeviceId,
-          agentType,
-          sourceDeviceId: targetDeviceId,
-          ephemeral: Boolean(transient),
-        }
-      : undefined,
+    undefined,
     {
       agentType,
-      toolsAllowlist: effectiveToolsAllowlist,
-      maxTaskDepth: targetDeviceId ? promptBuild.maxTaskDepth : 0,
+      toolsAllowlist: promptBuild.toolsAllowlist,
+      maxTaskDepth: promptBuild.maxTaskDepth,
       ownerId: resolvedOwnerId,
       conversationId,
+      userMessageId,
+      targetDeviceId,
       transient: Boolean(transient),
     },
   );
 
   const streamLifecycle = createStreamExecutionLifecycle();
 
-  // Append cloud-only notice when desktop is offline
-  const systemPrompt = targetDeviceId
-    ? promptBuild.systemPrompt
-    : `${promptBuild.systemPrompt}\n\n<system-notice>You are running in cloud-only mode. The user's desktop is offline, so local tools (file system, shell, browser, apps) are unavailable. You can only chat and search the web. Let the user know if they ask for something that requires their desktop.</system-notice>`;
+  const systemPrompt =
+    `${promptBuild.systemPrompt}\n\n<system-notice>You are running in backend job mode. Local device tools (file system, shell, browser, apps, and direct user prompts) are unavailable in this run, even if a desktop is online. Use only backend-safe tools and explain when a request requires the user's desktop.</system-notice>`;
 
   const runnerSharedArgs = {
     system: systemPrompt,

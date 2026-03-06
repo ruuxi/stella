@@ -17,7 +17,7 @@ import {
 import {
   estimateContextEventTokens,
   selectRecentByTokenBudget,
-} from "@stella/shared";
+} from "./lib/context_window";
 
 const rateLimiter = new RateLimiter(components.rateLimiter);
 
@@ -1226,4 +1226,3 @@ export const subscribeDashboardGenRequestsForDevice = query({
     maxLimit: 50,
   }),
 });
-

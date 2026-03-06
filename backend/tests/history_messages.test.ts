@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { eventsToHistoryMessages } from "@stella/shared";
+import { eventsToHistoryMessages } from "../convex/lib/history_messages";
 
 const baseEvent = {
   _id: "event_1",
