@@ -20,22 +20,24 @@ const ensureDir = async (dirPath: string) => {
 };
 
 const BUNDLED_SKILLS_DIR = path.resolve(__dirname, "..", "bundled-skills");
+const BUNDLED_AGENTS_DIR = path.resolve(__dirname, "..", "bundled-agents");
 
 /**
- * Copy bundled skills into ~/.stella/skills/ if they don't already exist.
- * Only creates new skill directories — never overwrites user modifications.
+ * Copy bundled directories into a target path if they don't already exist.
+ * Only creates new subdirectories — never overwrites user modifications.
+ * Used for both bundled skills and bundled agents.
  */
-const seedBundledSkills = async (skillsPath: string) => {
+const seedBundledDir = async (sourceRoot: string, targetRoot: string) => {
   let entries: Array<{ name: string; isDirectory: () => boolean }>;
   try {
-    entries = await fs.readdir(BUNDLED_SKILLS_DIR, { withFileTypes: true });
+    entries = await fs.readdir(sourceRoot, { withFileTypes: true });
   } catch {
-    return; // No bundled skills directory (e.g. in tests)
+    return; // No bundled directory (e.g. in tests)
   }
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const targetDir = path.join(skillsPath, entry.name);
+    const targetDir = path.join(targetRoot, entry.name);
     try {
       await fs.access(targetDir);
       continue; // Already exists — don't overwrite
@@ -43,7 +45,7 @@ const seedBundledSkills = async (skillsPath: string) => {
       // Doesn't exist yet — seed it
     }
 
-    const sourceDir = path.join(BUNDLED_SKILLS_DIR, entry.name);
+    const sourceDir = path.join(sourceRoot, entry.name);
     await ensureDir(targetDir);
 
     const files = await fs.readdir(sourceDir);
@@ -55,6 +57,9 @@ const seedBundledSkills = async (skillsPath: string) => {
     }
   }
 };
+
+const seedBundledSkills = (skillsPath: string) =>
+  seedBundledDir(BUNDLED_SKILLS_DIR, skillsPath);
 
 export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   const homePath = path.join(app.getPath("home"), ".stella");
@@ -73,6 +78,7 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   await ensureDir(canvasPath);
 
   await seedBundledSkills(skillsPath);
+  await seedBundledDir(BUNDLED_AGENTS_DIR, agentsPath);
 
   return {
     homePath,
