@@ -40,7 +40,6 @@ const DEFAULT_TOOL_ALLOWLIST = [
   "Edit",
   "Glob",
   "Grep",
-  "OpenApp",
   "Bash",
   "KillShell",
   "ShellStatus",
