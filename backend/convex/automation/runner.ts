@@ -143,7 +143,6 @@ export async function runAgentTurn({
 
   const tools = createTools(
     ctx,
-    undefined,
     {
       agentType,
       toolsAllowlist: promptBuild.toolsAllowlist,

@@ -85,7 +85,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     systemPrompt: ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
     agentTypes: ["orchestrator"],
     toolsAllowlist: [
-      "RecallMemories", "SaveMemory",
       "WebSearch", "WebFetch",
       "HeartbeatGet", "HeartbeatUpsert", "HeartbeatRun",
       "CronList", "CronAdd", "CronUpdate", "CronRemove", "CronRun",

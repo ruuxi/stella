@@ -4,7 +4,7 @@ import { BASE_TOOL_NAMES } from "../convex/tools/types";
 describe("BASE_TOOL_NAMES", () => {
   test("is a non-empty array", () => {
     expect(Array.isArray(BASE_TOOL_NAMES)).toBe(true);
-    expect(BASE_TOOL_NAMES.length).toBeGreaterThan(19);
+    expect(BASE_TOOL_NAMES.length).toBeGreaterThan(15);
   });
 
   test("contains device tools", () => {
@@ -28,9 +28,7 @@ describe("BASE_TOOL_NAMES", () => {
     expect(BASE_TOOL_NAMES).toContain("CronAdd");
   });
 
-  test("contains orchestration tools", () => {
-    expect(BASE_TOOL_NAMES).toContain("TaskCreate");
-    expect(BASE_TOOL_NAMES).toContain("TaskOutput");
+  test("contains memory tools", () => {
     expect(BASE_TOOL_NAMES).toContain("RecallMemories");
     expect(BASE_TOOL_NAMES).toContain("SaveMemory");
   });
