@@ -28,6 +28,7 @@ import * as bridgeManager from './system/bridge-manager.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './system/device.js'
 import { resolveStellaHome } from './system/stella-home.js'
 import { initializeWakeWord } from './wake-word/initialize.js'
+import { startStellaUiServer } from './system/stella-ui-server.js'
 import { WindowManager } from './windows/window-manager.js'
 import { VoiceRuntimeWindowController } from './windows/voice-runtime-window.js'
 import { createHmrMorphOrchestrator } from './self-mod/hmr-morph.js'
@@ -299,6 +300,10 @@ export const bootstrapMainProcess = () => {
     })
 
     windowManager.createInitialWindows()
+
+    // Start stella-ui server for agent UI control
+    const stellaUiPort = startStellaUiServer(() => windowManager?.getFullWindow() ?? null)
+    process.env.STELLA_UI_PORT = String(stellaUiPort)
 
     const hmrMorphOrchestrator = createHmrMorphOrchestrator({
       getFullWindow: () => windowManager?.getFullWindow() ?? null,

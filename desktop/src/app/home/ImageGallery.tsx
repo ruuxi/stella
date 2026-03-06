@@ -6,6 +6,8 @@ export function ImageGallery() {
   return (
     <DashboardCard
       label="Gallery"
+      data-stella-label="Image Gallery"
+      data-stella-state="empty"
       actions={
         <button className="gallery-refresh-btn" disabled aria-label="Refresh gallery">
           <RefreshCw size={12} />

@@ -60,6 +60,9 @@ import './app/chat/welcome-suggestions.css'
 import './app/error-boundary.css'
 
 import './lib/vite-error-recovery'
+import { initStellaUiHandler } from './services/stella-ui-handler'
+
+initStellaUiHandler()
 import { App } from './App.tsx'
 import { ErrorBoundary } from './app/ErrorBoundary'
 import { UiStateProvider } from './providers/ui-state'

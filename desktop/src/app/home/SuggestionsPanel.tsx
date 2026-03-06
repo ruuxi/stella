@@ -15,13 +15,14 @@ type SuggestionsPanelProps = {
 
 function SuggestionsPanelView({ suggestions, onSuggestionClick }: SuggestionsPanelProps) {
   return (
-    <DashboardCard label="Suggestions">
+    <DashboardCard label="Suggestions" data-stella-label="Suggestions" data-stella-state={`${suggestions.length} items`}>
       <div className="home-suggestions">
         {suggestions.map((s) => (
           <button
             key={`${s.category}:${s.title}:${s.prompt}`}
             className="home-suggestion-card"
             onClick={() => onSuggestionClick(s)}
+            data-stella-action={s.title}
           >
             <div className="home-suggestion-content">
               <div className="home-suggestion-header">
