@@ -88,39 +88,18 @@ export const invoke = internalAction({
 
     const promptBuild = await buildSystemPrompt(ctx, args.agentType, { ownerId });
 
-    const deviceContext = await (async () => {
-      const conversationId = args.conversationId;
-      const userMessageId = args.userMessageId;
-      let targetDeviceId = args.targetDeviceId;
-      if (!targetDeviceId && userMessageId) {
-        try {
-          const userEvent = await ctx.runQuery(internal.events.getById, { id: userMessageId });
-          if (userEvent?.deviceId) targetDeviceId = userEvent.deviceId;
-        } catch { /* ignore lookup failures */ }
-      }
-      if (!conversationId || !userMessageId || !targetDeviceId) return null;
-      return { conversationId, userMessageId, targetDeviceId };
-    })();
-
-    const tools = deviceContext
-      ? createTools(
-          ctx,
-          {
-            ...deviceContext,
-            agentType: args.agentType,
-            sourceDeviceId: deviceContext.targetDeviceId,
-          },
-          {
-            agentType: args.agentType,
-            toolsAllowlist: promptBuild.toolsAllowlist,
-            maxTaskDepth: Math.min(promptBuild.maxTaskDepth, 2),
-            ownerId,
-            conversationId: args.conversationId,
-            userMessageId: args.userMessageId,
-            targetDeviceId: deviceContext?.targetDeviceId,
-          },
-        )
-      : undefined;
+    const tools = createTools(
+      ctx,
+      {
+        agentType: args.agentType,
+        toolsAllowlist: promptBuild.toolsAllowlist,
+        maxTaskDepth: Math.min(promptBuild.maxTaskDepth, 2),
+        ownerId,
+        conversationId: args.conversationId,
+        userMessageId: args.userMessageId,
+        targetDeviceId: args.targetDeviceId,
+      },
+    );
 
     const schemaText = truncate(
       stableStringify(args.resultSchema ?? { type: "object" }),

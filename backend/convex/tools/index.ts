@@ -1,16 +1,12 @@
 import { ToolSet } from "ai";
 import type { ActionCtx } from "../_generated/server";
 import {
-  createCoreDeviceTools,
   sanitizeToolName,
-  type DeviceToolContext,
 } from "../agent/device_tools";
 import { createBackendTools } from "./backend";
-import { createOrchestrationTools, createOrchestrationToolsWithoutDevice } from "./orchestration";
 import { type ToolOptions } from "./types";
 
 export { BASE_TOOL_NAMES, type ToolOptions } from "./types";
-export type { DeviceToolContext } from "../agent/device_tools";
 
 const filterTools = (
   tools: ToolSet,
@@ -35,22 +31,12 @@ const TRANSIENT_ALLOWED_TOOLS = new Set<string>([
 
 export const createTools = (
   ctx: ActionCtx,
-  context: DeviceToolContext | undefined,
   options: ToolOptions,
 ): ToolSet => {
-  // Tier 2: Local device tools (if Electron app running)
-  const coreTools = context ? createCoreDeviceTools(ctx, context) : {};
-
-  // Tier 0: Backend tools (always available)
   const backendTools = createBackendTools(ctx, options);
-
-  // Orchestration tools (memory tools always work; Task tools need device context)
-  const orchestrationTools = context
-    ? createOrchestrationTools(ctx, context, options)
-    : createOrchestrationToolsWithoutDevice(ctx, options);
+  const orchestrationTools = createOrchestrationTools(ctx, options);
 
   const allTools: ToolSet = {
-    ...coreTools,
     ...backendTools,
     ...orchestrationTools,
   };

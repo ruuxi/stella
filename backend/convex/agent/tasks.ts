@@ -872,7 +872,6 @@ const executeSubagentRun = async (
       system: effectiveSystemPrompt,
       tools: createTools(
         ctx,
-        toolContext,
         {
           agentType: args.subagentType,
           toolsAllowlist: effectiveAllowlist,
@@ -2028,7 +2027,7 @@ export const deliverTaskResult = internalAction({
     try {
       const deliverySharedArgs = {
         system: promptBuild.systemPrompt,
-        tools: createTools(ctx, toolContext, {
+        tools: createTools(ctx, {
           agentType: "orchestrator",
           toolsAllowlist: promptBuild.toolsAllowlist,
           maxTaskDepth: promptBuild.maxTaskDepth,
