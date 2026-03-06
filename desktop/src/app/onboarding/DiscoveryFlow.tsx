@@ -3,11 +3,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAction, useMutation } from "convex/react";
-import { api } from "@/convex/api";
 import { getOrCreateDeviceId } from "@/services/device";
 import { synthesizeCoreMemory } from "@/services/synthesis";
-import { selectDefaultSkills } from "@/services/skill-selection";
 import { useChatStore } from "@/providers/chat-store";
 import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
 
@@ -30,12 +27,7 @@ export function useDiscoveryFlow({
   conversationId,
 }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
-  const { storageMode, isLocalStorage, isAuthenticated, appendEvent: chatStoreAppendEvent } = useChatStore();
-  const setCoreMemory = useMutation(api.data.preferences.setCoreMemory);
-  const getOrCreateDefaultConversation = useMutation(
-    api.conversations.getOrCreateDefaultConversation,
-  );
-  const startGeneration = useAction(api.personalized_dashboard.startGeneration);
+  const { storageMode, isAuthenticated, appendEvent: chatStoreAppendEvent } = useChatStore();
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
@@ -79,26 +71,11 @@ export function useDiscoveryFlow({
           window.electronAPI?.browser.writeCoreMemory?.(synthesisResult.coreMemory) ??
           Promise.resolve();
 
-        const syncCoreMemoryPromise = isAuthenticated
-          ? setCoreMemory({ content: synthesisResult.coreMemory }).catch(() => {
-              // Non-critical - local file is the source of truth
-            })
-          : Promise.resolve();
-
         // Resolve independent work in parallel to avoid an async waterfall.
         const [deviceId] = await Promise.all([
           getOrCreateDeviceId(),
           writeCoreMemoryPromise,
-          syncCoreMemoryPromise,
         ]);
-
-        // Select default skills based on user profile (fire-and-forget).
-        // Requires auth because endpoint is owner-scoped.
-        if (isAuthenticated) {
-          void selectDefaultSkills(synthesisResult.coreMemory).catch(() => {
-            // Silent fail - skill selection is non-critical
-          });
-        }
 
         if (synthesisResult.welcomeMessage) {
           await chatStoreAppendEvent({
@@ -117,35 +94,6 @@ export function useDiscoveryFlow({
             });
           }
         }
-
-        // Fire-and-forget page generation in both local and cloud modes.
-        if (isAuthenticated && synthesisResult.coreMemory) {
-          let generationConversationId = activeConversationId;
-
-          // In local storage mode we still generate dashboard pages in the cloud.
-          // Resolve the canonical default conversation ID for reliable ownership checks.
-          if (isLocalStorage) {
-            try {
-              const defaultConversation = await getOrCreateDefaultConversation({});
-              if (defaultConversation?._id) {
-                generationConversationId = defaultConversation._id;
-              }
-            } catch {
-              // Fallback to active conversation ID.
-            }
-          }
-
-          if (generationConversationId) {
-            void startGeneration({
-              conversationId: generationConversationId,
-              coreMemory: synthesisResult.coreMemory,
-              targetDeviceId: deviceId,
-              force: isLocalStorage,
-            }).catch(() => {
-              // Silent fail - dashboard generation is non-critical
-            });
-          }
-        }
       } catch {
         // Silent fail - discovery is non-critical
       }
@@ -157,11 +105,7 @@ export function useDiscoveryFlow({
     isAuthenticated,
     activeConversationId,
     storageMode,
-    isLocalStorage,
     chatStoreAppendEvent,
-    setCoreMemory,
-    getOrCreateDefaultConversation,
-    startGeneration,
   ]);
 
   return {
