@@ -222,6 +222,73 @@ export type LocalLlmCredentialSummary = {
   updatedAt: number
 }
 
+export type LocalCronSchedule =
+  | { kind: 'at'; atMs: number }
+  | { kind: 'every'; everyMs: number; anchorMs?: number }
+  | { kind: 'cron'; expr: string; tz?: string }
+
+export type LocalCronPayload =
+  | { kind: 'systemEvent'; text: string; agentType?: string; deliver?: boolean }
+  | { kind: 'agentTurn'; message: string; agentType?: string; deliver?: boolean }
+
+export type LocalHeartbeatActiveHours = {
+  start: string
+  end: string
+  timezone?: string
+}
+
+export type LocalCronJobRecord = {
+  id: string
+  conversationId: string
+  name: string
+  description?: string
+  enabled: boolean
+  schedule: LocalCronSchedule
+  sessionTarget: 'main' | 'isolated'
+  payload: LocalCronPayload
+  deleteAfterRun?: boolean
+  nextRunAtMs: number
+  runningAtMs?: number
+  lastRunAtMs?: number
+  lastStatus?: string
+  lastError?: string
+  lastDurationMs?: number
+  lastOutputPreview?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type LocalHeartbeatConfigRecord = {
+  id: string
+  conversationId: string
+  enabled: boolean
+  intervalMs: number
+  prompt?: string
+  checklist?: string
+  ackMaxChars?: number
+  deliver?: boolean
+  agentType?: string
+  activeHours?: LocalHeartbeatActiveHours
+  targetDeviceId?: string
+  runningAtMs?: number
+  lastRunAtMs?: number
+  nextRunAtMs: number
+  lastStatus?: string
+  lastError?: string
+  lastSentText?: string
+  lastSentAtMs?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type ScheduledConversationEvent = {
+  _id: string
+  conversationId: string
+  timestamp: number
+  type: 'assistant_message'
+  payload: Record<string, unknown>
+}
+
 // ---------------------------------------------------------------------------
 // Namespaced API sub-types
 // ---------------------------------------------------------------------------
@@ -407,6 +474,19 @@ export type ElectronBrowserApi = {
   onWorkspacePanelsChanged: (callback: (panels: Array<{ name: string; title: string }>) => void) => () => void
 }
 
+export type ElectronScheduleApi = {
+  listCronJobs: () => Promise<LocalCronJobRecord[]>
+  listHeartbeats: () => Promise<LocalHeartbeatConfigRecord[]>
+  listConversationEvents: (payload: {
+    conversationId: string
+    maxItems?: number
+  }) => Promise<ScheduledConversationEvent[]>
+  getConversationEventCount: (payload: {
+    conversationId: string
+  }) => Promise<number>
+  onUpdated: (callback: () => void) => () => void
+}
+
 // ---------------------------------------------------------------------------
 // Main ElectronApi — composed from namespaced sub-types
 // ---------------------------------------------------------------------------
@@ -424,6 +504,7 @@ export type ElectronApi = {
   agent: ElectronAgentApi
   system: ElectronSystemApi
   browser: ElectronBrowserApi
+  schedule: ElectronScheduleApi
 }
 
 declare global {

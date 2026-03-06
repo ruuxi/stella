@@ -48,6 +48,16 @@ import {
   type StateContext,
 } from "./tools-state.js";
 import { handleAskUser, handleRequestCredential, type UserToolsConfig } from "./tools-user.js";
+import {
+  handleCronAdd,
+  handleCronList,
+  handleCronRemove,
+  handleCronRun,
+  handleCronUpdate,
+  handleHeartbeatGet,
+  handleHeartbeatRun,
+  handleHeartbeatUpsert,
+} from "./tools-schedule.js";
 
 // Re-export types for external consumers
 export type { ToolContext, ToolResult };
@@ -58,6 +68,7 @@ export const createToolHost = ({
   requestCredential,
   resolveSecret,
   taskApi,
+  scheduleApi,
 }: ToolHostOptions) => {
   const stateRoot = path.join(StellaHome, "state");
 
@@ -169,6 +180,14 @@ export const createToolHost = ({
 
     // Media tools (not yet implemented)
     MediaGenerate: async () => notConfigured("MediaGenerate"),
+    HeartbeatGet: (args, context) => handleHeartbeatGet(scheduleApi, args, context),
+    HeartbeatUpsert: (args, context) => handleHeartbeatUpsert(scheduleApi, args, context),
+    HeartbeatRun: (args, context) => handleHeartbeatRun(scheduleApi, args, context),
+    CronList: () => handleCronList(scheduleApi),
+    CronAdd: (args, context) => handleCronAdd(scheduleApi, args, context),
+    CronUpdate: (args) => handleCronUpdate(scheduleApi, args),
+    CronRemove: (args) => handleCronRemove(scheduleApi, args),
+    CronRun: (args) => handleCronRun(scheduleApi, args),
 
   };
 

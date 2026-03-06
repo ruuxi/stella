@@ -2,6 +2,14 @@
  * Shared type definitions for the tools system.
  */
 
+import type {
+  LocalCronJobCreateInput,
+  LocalCronJobRecord,
+  LocalCronJobUpdatePatch,
+  LocalHeartbeatConfigRecord,
+  LocalHeartbeatUpsertInput,
+} from "../../../scheduling/types.js";
+
 export type ToolContext = {
   conversationId: string;
   deviceId: string;
@@ -101,6 +109,7 @@ export type ToolHostOptions = {
   StellaHome: string;
   frontendRoot?: string;
   taskApi?: TaskToolApi;
+  scheduleApi?: ScheduleToolApi;
   requestCredential?: (payload: {
     provider: string;
     label?: string;
@@ -131,6 +140,26 @@ export type SkillRecord = {
   version: number;
   source: string;
   filePath: string;
+};
+
+export type ScheduleToolApi = {
+  listCronJobs: () => Promise<LocalCronJobRecord[]>;
+  addCronJob: (input: LocalCronJobCreateInput) => Promise<LocalCronJobRecord>;
+  updateCronJob: (
+    jobId: string,
+    patch: LocalCronJobUpdatePatch,
+  ) => Promise<LocalCronJobRecord | null>;
+  removeCronJob: (jobId: string) => Promise<boolean>;
+  runCronJob: (jobId: string) => Promise<LocalCronJobRecord | null>;
+  getHeartbeatConfig: (
+    conversationId: string,
+  ) => Promise<LocalHeartbeatConfigRecord | null>;
+  upsertHeartbeat: (
+    input: LocalHeartbeatUpsertInput,
+  ) => Promise<LocalHeartbeatConfigRecord>;
+  runHeartbeat: (
+    conversationId: string,
+  ) => Promise<LocalHeartbeatConfigRecord | null>;
 };
 
 export type ToolHandler = (

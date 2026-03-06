@@ -22,6 +22,7 @@ import { ExternalLinkService } from './services/external-link-service.js'
 import { MiniBridgeService } from './services/mini-bridge-service.js'
 import { RadialGestureService } from './services/radial-gesture-service.js'
 import { SecurityPolicyService } from './services/security-policy-service.js'
+import { LocalSchedulerService } from './services/local-scheduler-service.js'
 import { UiStateService } from './services/ui-state-service.js'
 import { WorkspaceService } from './services/workspace-service.js'
 import * as bridgeManager from './system/bridge-manager.js'
@@ -46,6 +47,7 @@ export const bootstrapMainProcess = () => {
   let deviceId: string | null = null
   let stellaHomePath: string | null = null
   let piHostRunner: PiHostRunner | null = null
+  let schedulerService: LocalSchedulerService | null = null
   let windowManager: WindowManager | null = null
   let overlayController: OverlayWindowController | null = null
   let voiceRuntimeWindowController: VoiceRuntimeWindowController | null = null
@@ -167,12 +169,31 @@ export const bootstrapMainProcess = () => {
 
     const deviceIdentity = await getOrCreateDeviceIdentity(stellaHome.statePath)
     deviceId = deviceIdentity.deviceId
+    if (!schedulerService) {
+      schedulerService = new LocalSchedulerService({
+        stellaHome: stellaHome.homePath,
+        getRunner: () => piHostRunner,
+      })
+    } else {
+      schedulerService.stop()
+    }
     piHostRunner = createPiHostRunner({
       deviceId,
       StellaHome: stellaHome.homePath,
       frontendRoot: path.resolve(__dirname, '..'),
       getHmrMorphOrchestrator: () => hmrMorphOrchestrator,
       requestCredential: (payload) => credentialService.requestCredential(payload),
+      scheduleApi: {
+        listCronJobs: async () => schedulerService!.listCronJobs(),
+        addCronJob: async (input) => schedulerService!.addCronJob(input),
+        updateCronJob: async (jobId, patch) => schedulerService!.updateCronJob(jobId, patch),
+        removeCronJob: async (jobId) => schedulerService!.removeCronJob(jobId),
+        runCronJob: async (jobId) => schedulerService!.runCronJob(jobId),
+        getHeartbeatConfig: async (conversationId) =>
+          schedulerService!.getHeartbeatConfig(conversationId),
+        upsertHeartbeat: async (input) => schedulerService!.upsertHeartbeat(input),
+        runHeartbeat: async (conversationId) => schedulerService!.runHeartbeat(conversationId),
+      },
       signHeartbeatPayload: async (signedAtMs: number) => ({
         publicKey: deviceIdentity.publicKey,
         signature: signDeviceHeartbeat(deviceIdentity, signedAtMs),
@@ -184,6 +205,7 @@ export const bootstrapMainProcess = () => {
       piHostRunner.setConvexUrl(pendingConvexUrl)
     }
     piHostRunner.start()
+    schedulerService.start()
   }
 
   const hardResetLocalState = async (): Promise<{ ok: true }> => {
@@ -194,6 +216,9 @@ export const bootstrapMainProcess = () => {
     if (piHostRunner) {
       piHostRunner.stop()
       piHostRunner = null
+    }
+    if (schedulerService) {
+      schedulerService.stop()
     }
 
     authService.setHostAuthState(false)
@@ -348,6 +373,11 @@ export const bootstrapMainProcess = () => {
         submitCredential: (payload) => credentialService.submitCredential(payload),
         cancelCredential: (payload) => credentialService.cancelCredential(payload),
       },
+      schedule: {
+        schedulerService: schedulerService!,
+        assertPrivilegedSender: (event, channel) =>
+          externalLinkService.assertPrivilegedSender(event, channel),
+      },
       browser: {
         getStellaHomePath: () => stellaHomePath,
         workspaceService,
@@ -431,6 +461,7 @@ export const bootstrapMainProcess = () => {
     if (piHostRunner) {
       piHostRunner.killAllShells()
     }
+    schedulerService?.stop()
     bridgeManager.stopAll()
     cleanupSelectedTextProcess()
     overlayController?.destroy()
@@ -442,6 +473,9 @@ export const bootstrapMainProcess = () => {
     if (piHostRunner) {
       piHostRunner.stop()
       piHostRunner = null
+    }
+    if (schedulerService) {
+      schedulerService.stop()
     }
   })
 }
