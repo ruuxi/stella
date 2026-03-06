@@ -1169,6 +1169,66 @@ export class RealtimeVoiceSession {
   // Function call execution
   // ---------------------------------------------------------------------------
 
+  /**
+   * Delegate a voice action to the orchestrator in the background.
+   * The tool call already returned a quick acknowledgment so the voice
+   * agent can speak immediately. When the orchestrator responds, inject
+   * the result and trigger a follow-up response.
+   */
+  private runPerformActionAsync(message: string): void {
+    const api = window.electronAPI?.voice;
+    if (!api?.orchestratorChat || !this.conversationId) {
+      console.warn("[realtime-voice] Cannot delegate to orchestrator: missing IPC or conversation ID");
+      return;
+    }
+
+    api
+      .orchestratorChat({
+        conversationId: this.conversationId,
+        message,
+      })
+      .then((reply) => {
+        const spokenResult = reply.trim();
+        window.electronAPI?.voice.persistTranscript?.({
+          conversationId: this.conversationId ?? "voice-rtc",
+          role: "assistant",
+          text: `[ORCHESTRATOR RESULT] ${spokenResult || "(empty)"}`,
+        });
+        if (!spokenResult || spokenResult === "Working on it.") return;
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: the action completed. Here is the result to share with the user: "${spokenResult}"]`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+      })
+      .catch((err) => {
+        console.error("[realtime-voice] Orchestrator delegation error:", err);
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: the action failed with error: "${(err as Error).message}". Let the user know briefly.]`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+      });
+  }
+
   private async handleFunctionCall(item: Record<string, unknown>) {
     const name = item.name as string;
     console.log("[realtime-voice] handleFunctionCall called with tool:", name);
@@ -1224,6 +1284,12 @@ export class RealtimeVoiceSession {
           window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
         }, 2000);
         return;
+      } else if (name === "perform_action") {
+        // Delegate to orchestrator. Use the user's actual transcript
+        // instead of the model's paraphrase for better fidelity.
+        const message = this.lastUserTranscript || (args.message as string) || "";
+        result = "Working on it.";
+        this.runPerformActionAsync(message);
       } else {
         result = `Unknown tool: ${name}`;
       }
@@ -1244,7 +1310,12 @@ export class RealtimeVoiceSession {
       },
     });
 
-    this.sendEvent({ type: "response.create" });
+    // For async perform_action calls, don't request a response here —
+    // runPerformActionAsync will inject the real result and trigger
+    // response.create once the orchestrator responds.
+    if (name !== "perform_action") {
+      this.sendEvent({ type: "response.create" });
+    }
   }
 
   // ---------------------------------------------------------------------------
