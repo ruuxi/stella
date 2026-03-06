@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "description": "Native helper to block Ctrl+right-click events on Windows",
   "scripts": {
-    "build": "powershell -ExecutionPolicy Bypass -File build.ps1"
+    "build": "node build.mjs"
   }
 }

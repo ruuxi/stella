@@ -91,6 +91,8 @@ export const StellaAnimation = React.forwardRef<
     const voiceEnergyRef = useRef(0);
     const voiceModeRef = useRef<VoiceMode>(voiceMode);
     const isUserSpeakingRef = useRef(isUserSpeaking);
+    const externalMicLevelRef = useRef<number | undefined>(externalMicLevel);
+    const externalOutputLevelRef = useRef<number | undefined>(externalOutputLevel);
 
     useImperativeHandle(
       ref,
@@ -133,6 +135,14 @@ export const StellaAnimation = React.forwardRef<
     useEffect(() => {
       isUserSpeakingRef.current = isUserSpeaking;
     }, [isUserSpeaking]);
+
+    useEffect(() => {
+      externalMicLevelRef.current = externalMicLevel;
+    }, [externalMicLevel]);
+
+    useEffect(() => {
+      externalOutputLevelRef.current = externalOutputLevel;
+    }, [externalOutputLevel]);
 
     useEffect(() => {
       pausedRef.current = paused;
@@ -250,13 +260,13 @@ export const StellaAnimation = React.forwardRef<
         // Read analyser refs directly from props (stable ref objects, .current changes)
         const outputAnalyser = externalOutputAnalyserRef?.current ?? null;
         const micAnalyser = externalAnalyserRef?.current ?? null;
-        const outputEnergy = typeof externalOutputLevel === "number"
-          ? externalOutputLevel
+        const outputEnergy = typeof externalOutputLevelRef.current === "number"
+          ? externalOutputLevelRef.current
           : outputAnalyser
             ? computeEnergy(outputAnalyser)
             : 0;
-        const micEnergy = typeof externalMicLevel === "number"
-          ? externalMicLevel
+        const micEnergy = typeof externalMicLevelRef.current === "number"
+          ? externalMicLevelRef.current
           : micAnalyser
             ? computeEnergy(micAnalyser)
             : 0;

@@ -3,10 +3,7 @@ import { randomBytes } from 'crypto'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import path from 'path'
-import { fileURLToPath } from 'url'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+import { resolveNativeHelperPath } from './native-helper-path.js'
 
 export type WindowInfo = {
   title: string
@@ -29,8 +26,7 @@ type QueryWindowInfoOptions = {
 }
 
 const getWindowInfoBin = () => {
-  const ext = process.platform === 'win32' ? '.exe' : ''
-  return path.join(__dirname, `../native/window_info${ext}`)
+  return resolveNativeHelperPath('window_info')
 }
 
 const queryWindowInfo = (x: number, y: number, options?: QueryWindowInfoOptions): Promise<WindowInfo | null> => {
@@ -40,7 +36,13 @@ const queryWindowInfo = (x: number, y: number, options?: QueryWindowInfoOptions)
       args.push(`--exclude-pids=${options.excludePids.join(',')}`)
     }
 
-    execFile(getWindowInfoBin(), args, { timeout: 3000 }, (error, stdout) => {
+    const helperPath = getWindowInfoBin()
+    if (!helperPath) {
+      resolve(null)
+      return
+    }
+
+    execFile(helperPath, args, { timeout: 3000 }, (error, stdout) => {
       if (error) {
         console.warn('window_info failed', error)
         resolve(null)
@@ -86,8 +88,13 @@ export const captureWindowScreenshot = async (
   }
 
   try {
+    const helperPath = getWindowInfoBin()
+    if (!helperPath) {
+      return null
+    }
+
     const stdout = await new Promise<string>((resolve, reject) => {
-      execFile(getWindowInfoBin(), args, { timeout: 5000 }, (error, out) => {
+      execFile(helperPath, args, { timeout: 5000 }, (error, out) => {
         if (error) return reject(error)
         resolve(out)
       })
