@@ -8,8 +8,8 @@
 }
 
 .voice-overlay-creature {
-  width: 101px;
-  height: 101px;
+  width: 60px;
+  height: 60px;
   pointer-events: auto;
   cursor: pointer;
   animation: voice-overlay-in 0.3s ease-out forwards;
