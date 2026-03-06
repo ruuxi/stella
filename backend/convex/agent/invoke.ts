@@ -10,10 +10,12 @@ import { normalizeOptionalInt } from "../lib/number_utils";
 import { stableStringify, extractJsonBlock } from "../lib/json";
 import { validateAgainstSchema } from "../lib/validator";
 import { scrubProviderTerms, scrubValue } from "../lib/provider_redaction";
-import { coerceDeviceContext } from "./execution_context";
-import { executeStream } from "./execution";
+import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
+import { streamTextWithFailover } from "./model_execution";
 import { PREFERRED_BROWSER_KEY } from "../data/preferences";
 import { BROWSER_AGENT_SAFARI_DENIED_REASON } from "../lib/agent_constants";
+import type { ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
@@ -86,11 +88,19 @@ export const invoke = internalAction({
 
     const promptBuild = await buildSystemPrompt(ctx, args.agentType, { ownerId });
 
-    const deviceContext = await coerceDeviceContext(ctx, {
-      conversationId: args.conversationId,
-      userMessageId: args.userMessageId,
-      targetDeviceId: args.targetDeviceId,
-    });
+    const deviceContext = await (async () => {
+      const conversationId = args.conversationId;
+      const userMessageId = args.userMessageId;
+      let targetDeviceId = args.targetDeviceId;
+      if (!targetDeviceId && userMessageId) {
+        try {
+          const userEvent = await ctx.runQuery(internal.events.getById, { id: userMessageId });
+          if (userEvent?.deviceId) targetDeviceId = userEvent.deviceId;
+        } catch { /* ignore lookup failures */ }
+      }
+      if (!conversationId || !userMessageId || !targetDeviceId) return null;
+      return { conversationId, userMessageId, targetDeviceId };
+    })();
 
     const tools = deviceContext
       ? createTools(
@@ -156,10 +166,11 @@ export const invoke = internalAction({
         ],
       };
 
-      const result = await executeStream({
-        ctx,
-        agentType: args.agentType,
-        ownerId,
+      const resolvedConfig = await resolveModelConfig(ctx, args.agentType, ownerId);
+      const fallbackConfig = await resolveFallbackConfig(ctx, args.agentType, ownerId);
+      const result = await streamTextWithFailover({
+        resolvedConfig,
+        fallbackConfig: fallbackConfig ?? undefined,
         sharedArgs: invokeSharedArgs as Record<string, unknown>,
       });
 

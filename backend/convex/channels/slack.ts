@@ -7,6 +7,7 @@ import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 import { constantTimeEqual } from "../lib/crypto_utils";
+import { SLACK_MAX_MESSAGE_CHARS, truncateForConnector } from "./connector_constants";
 
 // ---------------------------------------------------------------------------
 // Slack Signature Verification (HMAC-SHA256)
@@ -70,14 +71,8 @@ async function resolveSlackToken(
   return process.env.SLACK_BOT_TOKEN ?? null;
 }
 
-const SLACK_MAX_MESSAGE_CHARS = 40_000;
-
 const sendSlackMessage = async (channel: string, text: string, token: string) => {
-  // Slack message limit is 40,000 chars
-  const maxLen = SLACK_MAX_MESSAGE_CHARS;
-  const truncated = text.length > maxLen
-    ? text.slice(0, maxLen - 20) + "\n\n... (truncated)"
-    : text;
+  const truncated = truncateForConnector(text, SLACK_MAX_MESSAGE_CHARS);
 
   const res = await retryFetch("https://slack.com/api/chat.postMessage", {
     method: "POST",

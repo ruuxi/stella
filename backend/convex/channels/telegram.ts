@@ -4,12 +4,11 @@ import { processIncomingMessage } from "./message_pipeline";
 import { processLinkCode } from "./link_codes";
 import { retryFetch } from "../lib/retry_fetch";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
+import { TELEGRAM_MAX_MESSAGE_CHARS } from "./connector_constants";
 
 // ---------------------------------------------------------------------------
 // Telegram API Helpers
 // ---------------------------------------------------------------------------
-
-const TELEGRAM_MAX_LEN = 4096;
 
 const escapeMarkdownV2 = (value: string) =>
   value.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
@@ -53,8 +52,8 @@ const sendTelegramMessage = async (chatId: string, text: string) => {
 
   // Split original text into Telegram-size chunks.
   const rawChunks: string[] = [];
-  for (let i = 0; i < text.length; i += TELEGRAM_MAX_LEN) {
-    rawChunks.push(text.slice(i, i + TELEGRAM_MAX_LEN));
+  for (let i = 0; i < text.length; i += TELEGRAM_MAX_MESSAGE_CHARS) {
+    rawChunks.push(text.slice(i, i + TELEGRAM_MAX_MESSAGE_CHARS));
   }
 
   for (const rawChunk of rawChunks) {
@@ -62,7 +61,7 @@ const sendTelegramMessage = async (chatId: string, text: string) => {
     let sent = false;
 
     // Try MarkdownV2 first when escaping fits in Telegram's limit.
-    if (escapedChunk.length <= TELEGRAM_MAX_LEN) {
+    if (escapedChunk.length <= TELEGRAM_MAX_MESSAGE_CHARS) {
       try {
         await sendTelegramChunk(token, chatId, escapedChunk, "MarkdownV2");
         sent = true;
