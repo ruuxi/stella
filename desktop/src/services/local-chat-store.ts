@@ -1,10 +1,12 @@
 import { type EventRecord, getEventText } from "@/lib/event-transforms";
 import {
   eventsToHistoryMessages,
-  selectRecentByTokenBudget,
-  estimateContextEventTokens,
   type ContextEvent,
-} from "@stella/shared";
+} from "@/lib/history-messages";
+import {
+  estimateContextEventTokens,
+  selectRecentByTokenBudget,
+} from "@/lib/context-window";
 
 const STORE_KEY = "stella.localChat.v1";
 const DEFAULT_CONVERSATION_KEY = "stella.localChat.defaultConversationId";

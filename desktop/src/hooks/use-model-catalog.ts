@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { extractProvider as sharedExtractProvider } from "@stella/shared";
+import { extractProvider as localExtractProvider } from "@/lib/model-providers";
 
 export type CatalogModel = {
   id: string;
@@ -43,7 +43,7 @@ let inFlightCatalogRequest: Promise<CatalogModel[] | null> | null = null;
 let cachedCatalog: { models: CatalogModel[]; expiresAt: number } | null = null;
 
 function extractProvider(id: string): string {
-  return sharedExtractProvider(id) ?? "unknown";
+  return localExtractProvider(id) ?? "unknown";
 }
 
 function groupByProvider(models: CatalogModel[]): ProviderGroup[] {
