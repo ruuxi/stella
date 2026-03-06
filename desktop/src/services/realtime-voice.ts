@@ -78,16 +78,17 @@ const PRECONNECT_BOUNDARY_POLL_MS = 40;
 const DATA_CHANNEL_OPEN_TIMEOUT_MS = 8_000;
 const DUPLEX_GATE_ANALYSIS_WINDOW = 8192;
 const DUPLEX_GATE_INTERVAL_MS = 50;
-const DUPLEX_GATE_OPEN_FRAMES = 3;
-const DUPLEX_GATE_CLOSE_FRAMES = 4;
-const DUPLEX_GATE_MIN_MIC_RMS = 0.018;
+const DUPLEX_GATE_OPEN_FRAMES = 4;
+const DUPLEX_GATE_CLOSE_FRAMES = 3;
+const DUPLEX_GATE_MIN_MIC_RMS = 0.025;
 const DUPLEX_GATE_MIN_OUTPUT_RMS = 0.008;
-const DUPLEX_GATE_REOPEN_CORRELATION = 0.28;
-const DUPLEX_GATE_STRONG_ECHO_CORRELATION = 0.62;
+const DUPLEX_GATE_REOPEN_CORRELATION = 0.20;
+const DUPLEX_GATE_STRONG_ECHO_CORRELATION = 0.45;
 const DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO = 3.2;
 const DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES = 1;
 const DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES = 6;
-const DUPLEX_GATE_LAG_MS = [0, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100, 125];
+const DUPLEX_GATE_ECHO_TAIL_MS = 300;
+const DUPLEX_GATE_LAG_MS = [0, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100, 125, 150, 200];
 
 const RTC_CONFIGURATION: RTCConfiguration = {
   // Pre-gather one ICE candidate batch to shorten negotiation time.
@@ -284,6 +285,8 @@ export class RealtimeVoiceSession {
   private destroyed = false;
   private inputActive = false;
   private externalAudioDuckingActive = false;
+  private assistantSpeakingEndTime = 0;
+  private lastAssistantSpeakingState = false;
 
   // Pre-connection audio buffer — captures mic audio while SDP negotiation is in progress
   private preConnectBuffer: string[] = []; // base64-encoded PCM chunks
@@ -883,7 +886,21 @@ export class RealtimeVoiceSession {
       );
       return;
     }
-    if (!assistantSpeaking) {
+
+    // Track transition from speaking → not speaking for echo tail guard
+    if (this.lastAssistantSpeakingState && !assistantSpeaking) {
+      this.assistantSpeakingEndTime = performance.now();
+    }
+    this.lastAssistantSpeakingState = assistantSpeaking;
+
+    // Echo tail guard: keep gate suppressed for a period after assistant stops
+    // to let room reverb and residual echo die out
+    const inEchoTail =
+      !assistantSpeaking &&
+      this.assistantSpeakingEndTime > 0 &&
+      performance.now() - this.assistantSpeakingEndTime < DUPLEX_GATE_ECHO_TAIL_MS;
+
+    if (!assistantSpeaking && !inEchoTail) {
       this.duplexGateOpen = true;
       this.duplexGateOpenFrames = 0;
       this.duplexGateCloseFrames = 0;
@@ -1475,6 +1492,8 @@ export class RealtimeVoiceSession {
     this.inputWindowFilled = false;
     this.outputWindowFilled = false;
     this.duplexGateLagSamples = [0];
+    this.assistantSpeakingEndTime = 0;
+    this.lastAssistantSpeakingState = false;
     this.syncExternalAudioDucking(false);
 
     this.assistantTranscriptBuffer = "";
