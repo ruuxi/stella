@@ -215,6 +215,13 @@ export type AgentHealth =
       engine?: string
     }
 
+export type LocalLlmCredentialSummary = {
+  provider: string
+  label: string
+  status: 'active'
+  updatedAt: number
+}
+
 // ---------------------------------------------------------------------------
 // Namespaced API sub-types
 // ---------------------------------------------------------------------------
@@ -364,6 +371,13 @@ export type ElectronSystemApi = {
   shellKillByPort: (port: number) => Promise<void>
   getLocalSyncMode: () => Promise<string>
   setLocalSyncMode: (mode: string) => Promise<void>
+  listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>
+  saveLlmCredential: (payload: {
+    provider: string
+    label: string
+    plaintext: string
+  }) => Promise<LocalLlmCredentialSummary>
+  deleteLlmCredential: (provider: string) => Promise<{ removed: boolean }>
   onCredentialRequest: (
     callback: (
       event: unknown,

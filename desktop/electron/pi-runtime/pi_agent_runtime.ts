@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import { Type } from "@sinclair/typebox";
 import { Agent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
-import type { Model } from "@mariozechner/pi-ai";
 import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS } from "./extensions/stella/tool_schemas.js";
 import {
   detectSelfModAppliedSince,
@@ -21,6 +20,7 @@ import type { LocalTaskManagerAgentContext } from "./extensions/stella/local-tas
 import { localActivateSkill, localNoResponse, localWebFetch } from "./extensions/stella/local-tool-overrides.js";
 import type { ToolContext, ToolResult } from "./extensions/stella/tools-types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
+import type { ResolvedLlmRoute } from "./model-routing.js";
 
 const DEFAULT_MODEL = "openai/gpt-4.1-mini";
 const DEFAULT_MAX_TURNS = 40;
@@ -122,10 +122,7 @@ type BaseRunOptions = {
   ) => Promise<ToolResult>;
   deviceId: string;
   stellaHome: string;
-  proxyBaseUrl: string;
-  proxyToken: string;
-  /** Returns the current auth token (may be refreshed since turn start). */
-  getProxyToken?: () => string;
+  resolvedLlm: ResolvedLlmRoute;
   store: JsonlRuntimeStore;
   abortSignal?: AbortSignal;
   frontendRoot?: string;
@@ -140,54 +137,6 @@ type SubagentRunOptions = BaseRunOptions & {
 };
 
 const now = () => Date.now();
-
-const parseModel = (rawModel: string | undefined): { provider: string; modelId: string } => {
-  const value = (rawModel ?? DEFAULT_MODEL).trim();
-  if (!value.includes("/")) {
-    return { provider: "openai", modelId: value || "gpt-4.1-mini" };
-  }
-  const parts = value.split("/");
-  const provider = parts.shift() || "openai";
-  const modelId = parts.join("/") || "gpt-4.1-mini";
-  return { provider, modelId };
-};
-
-const createProxyModel = (
-  modelName: string | undefined,
-  proxyBaseUrl: string,
-  proxyToken: string,
-  agentType: string,
-): Model<"openai-completions"> => {
-  const { provider, modelId } = parseModel(modelName);
-  const baseUrl = proxyBaseUrl.replace(/\/+$/, "");
-
-  const fullModelId = `${provider}/${modelId}`;
-  return {
-    id: fullModelId,
-    name: fullModelId,
-    api: "openai-completions",
-    provider,
-    baseUrl,
-    reasoning: true,
-    input: ["text"],
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
-    contextWindow: 256_000,
-    maxTokens: 16_384,
-    headers: {
-      "X-Provider": provider,
-      "X-Model-Id": fullModelId,
-      "X-Agent-Type": agentType,
-    },
-    compat: {
-      supportsStrictMode: false,
-    },
-  };
-};
 
 const toAgentMessages = (
   history: Array<{ role: "user" | "assistant"; content: string }>,
@@ -506,7 +455,6 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
       .map((entry) => ({ role: entry.role, content: entry.content })) ??
     [];
 
-  const model = createProxyModel(opts.agentContext.model, opts.proxyBaseUrl, opts.proxyToken, opts.agentType);
   const tools = createPiTools({
     runId,
     conversationId: opts.conversationId,
@@ -521,14 +469,14 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
   const agent = new Agent({
     initialState: {
       systemPrompt: buildSystemPrompt(opts.agentContext),
-      model,
+      model: opts.resolvedLlm.model,
       thinkingLevel: "medium",
       tools,
       messages: toAgentMessages(historySource),
     },
     convertToLlm: (messages) => messages.filter((msg) =>
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
-    getApiKey: () => (opts.getProxyToken ?? (() => opts.proxyToken))(),
+    getApiKey: () => opts.resolvedLlm.getApiKey(),
   });
 
   if (opts.abortSignal?.aborted) {
@@ -867,7 +815,6 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
     }
   }
 
-  const model = createProxyModel(opts.agentContext.model, opts.proxyBaseUrl, opts.proxyToken, opts.agentType);
   const tools = createPiTools({
     runId,
     conversationId: opts.conversationId,
@@ -889,14 +836,14 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
   const agent = new Agent({
     initialState: {
       systemPrompt: buildSystemPrompt(opts.agentContext),
-      model,
+      model: opts.resolvedLlm.model,
       thinkingLevel: "medium",
       tools,
       messages: toAgentMessages(contextHistory),
     },
     convertToLlm: (messages) => messages.filter((msg) =>
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
-    getApiKey: () => (opts.getProxyToken ?? (() => opts.proxyToken))(),
+    getApiKey: () => opts.resolvedLlm.getApiKey(),
   });
 
   const abortHandler = () => agent.abort();

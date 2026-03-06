@@ -17,7 +17,7 @@ export type LocalTaskManagerAgentContext = {
   activeThreadId?: string;
   generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
   codexLocalMaxConcurrency?: number;
-  proxyToken: {
+  proxyToken?: {
     token: string;
     expiresAt: number;
   };
