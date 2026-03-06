@@ -1,8 +1,5 @@
 import { ToolSet } from "ai";
 import type { ActionCtx } from "../_generated/server";
-import {
-  sanitizeToolName,
-} from "../agent/device_tools";
 import { createBackendTools } from "./backend";
 import { type ToolOptions } from "./types";
 
@@ -20,14 +17,14 @@ const filterTools = (
   return Object.fromEntries(filteredEntries) as ToolSet;
 };
 
-// Privacy-preserving tool subset for transient runs (sync off):
-// avoid local device transport/persistence risk by limiting to backend read-only tools.
 const TRANSIENT_ALLOWED_TOOLS = new Set<string>([
   "WebSearch",
   "WebFetch",
-  "ListResources",
   "NoResponse",
 ]);
+
+const sanitizeToolName = (name: string): string =>
+  name.replace(/\./g, "_");
 
 export const createTools = (
   ctx: ActionCtx,

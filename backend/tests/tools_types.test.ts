@@ -4,21 +4,12 @@ import { BASE_TOOL_NAMES } from "../convex/tools/types";
 describe("BASE_TOOL_NAMES", () => {
   test("is a non-empty array", () => {
     expect(Array.isArray(BASE_TOOL_NAMES)).toBe(true);
-    expect(BASE_TOOL_NAMES.length).toBeGreaterThan(15);
+    expect(BASE_TOOL_NAMES.length).toBeGreaterThan(8);
   });
 
-  test("contains device tools", () => {
-    expect(BASE_TOOL_NAMES).toContain("Read");
-    expect(BASE_TOOL_NAMES).toContain("Edit");
-    expect(BASE_TOOL_NAMES).toContain("Glob");
-    expect(BASE_TOOL_NAMES).toContain("Grep");
-    expect(BASE_TOOL_NAMES).toContain("Bash");
-  });
-
-  test("contains backend tools", () => {
+  test("contains web tools", () => {
     expect(BASE_TOOL_NAMES).toContain("WebSearch");
     expect(BASE_TOOL_NAMES).toContain("WebFetch");
-    expect(BASE_TOOL_NAMES).toContain("IntegrationRequest");
   });
 
   test("contains scheduling tools", () => {
@@ -26,6 +17,10 @@ describe("BASE_TOOL_NAMES", () => {
     expect(BASE_TOOL_NAMES).toContain("HeartbeatUpsert");
     expect(BASE_TOOL_NAMES).toContain("CronList");
     expect(BASE_TOOL_NAMES).toContain("CronAdd");
+  });
+
+  test("contains NoResponse", () => {
+    expect(BASE_TOOL_NAMES).toContain("NoResponse");
   });
 
   test("has no duplicates", () => {
