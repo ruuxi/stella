@@ -88,8 +88,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     systemPrompt: ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
     agentTypes: ["orchestrator"],
     toolsAllowlist: [
-      "Read",
-      "Write",
       "Edit",
       "Bash",
       "TaskCreate", "TaskOutput", "TaskCancel", "AskUserQuestion",
@@ -111,8 +109,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
     systemPrompt: GENERAL_AGENT_SYSTEM_PROMPT,
     agentTypes: ["general"],
     toolsAllowlist: [
-      "Read",
-      "Write",
       "Edit",
       "Glob",
       "Grep",
@@ -165,7 +161,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       "Bash",
       "KillShell",
       "ShellStatus",
-      "Read",
       "ActivateSkill",
     ],
     defaultSkills: [],

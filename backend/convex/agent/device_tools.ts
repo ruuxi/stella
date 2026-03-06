@@ -206,11 +206,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       inputSchema: TOOL_SCHEMAS.Read,
       execute: (args) => call("Read", args),
     }),
-    Write: tool({
-      description: TOOL_DESCRIPTIONS.Write,
-      inputSchema: TOOL_SCHEMAS.Write,
-      execute: (args) => call("Write", args),
-    }),
     Edit: tool({
       description: TOOL_DESCRIPTIONS.Edit,
       inputSchema: TOOL_SCHEMAS.Edit,

@@ -19,7 +19,6 @@ export type ToolOptions = {
 export const BASE_TOOL_NAMES = [
   // Device tools (Electron local execution)
   "Read",
-  "Write",
   "Edit",
   "Glob",
   "Grep",
