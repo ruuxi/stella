@@ -8,8 +8,6 @@ import {
   type PersonalizedDashboardPageAssignment,
 } from "./prompts/personalized_dashboard";
 
-const CORE_MEMORY_KEY = "core_memory";
-
 /** Max dashboard pages to generate (0 = disabled). */
 const MAX_DASHBOARD_PAGES_TO_GENERATE = 0;
 
@@ -229,13 +227,13 @@ const scoreTemplate = (template: PageTemplate, profileText: string): number => {
 
 // --- Planning ---
 
-const buildHeuristicAssignments = (coreMemory: string): PlannedPage[] => {
-  const profileText = coreMemory.toLowerCase();
+const buildHeuristicAssignments = (userProfile: string): PlannedPage[] => {
+  const profileText = userProfile.toLowerCase();
   const scored = PAGE_TEMPLATES
     .map((template) => ({ template, score: scoreTemplate(template, profileText) }))
     .sort((a, b) => b.score - a.score || a.template.title.localeCompare(b.template.title));
 
-  const targetCount = Math.max(2, Math.min(4, coreMemory.length > 1400 ? 4 : 3));
+  const targetCount = Math.max(2, Math.min(4, userProfile.length > 1400 ? 4 : 3));
   const picked: PageTemplate[] = [];
 
   for (const entry of scored) {
@@ -328,7 +326,7 @@ const startGenerationResultValidator = v.object({
 export const startGeneration = action({
   args: {
     conversationId: v.id("conversations"),
-    coreMemory: v.optional(v.string()),
+    userProfile: v.optional(v.string()),
     targetDeviceId: v.optional(v.string()),
     pageAssignments: v.optional(v.array(pageAssignmentInputValidator)),
     force: v.optional(v.boolean()),
@@ -346,34 +344,19 @@ export const startGeneration = action({
       ? buildAssignmentsFromInput(args.pageAssignments)
       : [];
 
-    let normalizedCoreMemory = normalizeText(args.coreMemory ?? "", 12_000);
-    if (!normalizedCoreMemory) {
-      const storedCoreMemory = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
-        ownerId,
-        key: CORE_MEMORY_KEY,
-      });
-      normalizedCoreMemory = normalizeText(storedCoreMemory ?? "", 12_000);
-    }
+    const normalizedUserProfile = normalizeText(args.userProfile ?? "", 12_000);
 
-    if (!normalizedCoreMemory && manualAssignments.length < 2) {
+    if (!normalizedUserProfile && manualAssignments.length < 2) {
       return {
         started: false,
         pageIds: [],
-        skippedReason: "missing_core_memory",
+        skippedReason: "missing_user_profile",
       };
     }
 
     const planned = manualAssignments.length >= 2
       ? manualAssignments.slice(0, 4)
-      : buildHeuristicAssignments(normalizedCoreMemory);
-
-    if (normalizedCoreMemory) {
-      await ctx.runMutation(internal.data.preferences.setPreferenceForOwner, {
-        ownerId,
-        key: CORE_MEMORY_KEY,
-        value: normalizedCoreMemory,
-      });
-    }
+      : buildHeuristicAssignments(normalizedUserProfile);
 
     // Resolve which device to target
     const executionTarget = await ctx.runQuery(internal.agent.device_resolver.resolveExecutionTarget, {
@@ -406,7 +389,7 @@ export const startGeneration = action({
     for (const page of toDispatch) {
       const assignment = toAssignment(page);
       const userPrompt = buildPersonalizedDashboardPageUserMessage({
-        coreMemory: normalizedCoreMemory,
+        userProfile: normalizedUserProfile,
         assignment,
       });
 

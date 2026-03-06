@@ -5,10 +5,8 @@ describe("http_routes module structure", () => {
   const routeFiles = [
     { file: "convex/http_routes/connectors.ts", export: "registerConnectorWebhookRoutes" },
     { file: "convex/http_routes/music.ts", export: "registerMusicRoutes" },
-    { file: "convex/http_routes/seed_memories.ts", export: "registerSeedMemoryRoutes" },
     { file: "convex/http_routes/skills.ts", export: "registerSkillRoutes" },
     { file: "convex/http_routes/speech_to_text.ts", export: "registerSpeechToTextRoutes" },
-    { file: "convex/http_routes/synthesis.ts", export: "registerSynthesisRoutes" },
     { file: "convex/http_routes/voice.ts", export: "registerVoiceRoutes" },
   ];
 

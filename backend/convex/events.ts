@@ -533,9 +533,6 @@ export const saveAssistantMessage = internalMutation({
       },
     });
     await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
-    await ctx.scheduler.runAfter(0, internal.data.event_embeddings.indexEventForSemanticSearch, {
-      eventId,
-    });
     return eventId;
   },
 });
@@ -727,10 +724,6 @@ const deviceRequiredTypes = new Set([
   "tool_result",
   "screen_event",
 ]);
-const SEMANTIC_INDEXED_EVENT_TYPES = new Set([
-  "user_message",
-  "assistant_message",
-]);
 
 type AppendEventArgs = {
   conversationId: Id<"conversations">;
@@ -873,11 +866,6 @@ const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
   });
 
   await ctx.db.patch(args.conversationId, { updatedAt: timestamp });
-  if (SEMANTIC_INDEXED_EVENT_TYPES.has(args.type)) {
-    await ctx.scheduler.runAfter(0, internal.data.event_embeddings.indexEventForSemanticSearch, {
-      eventId,
-    });
-  }
   return sanitizeEventForRead(await ctx.db.get(eventId));
 };
 

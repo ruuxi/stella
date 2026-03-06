@@ -1419,9 +1419,6 @@ export const finalizeDeliveredTaskTurn = internalMutation({
         },
       });
       await ctx.db.patch(args.conversationId, { updatedAt: now });
-      await ctx.scheduler.runAfter(0, internal.data.event_embeddings.indexEventForSemanticSearch, {
-        eventId,
-      });
       assistantSaved = true;
     }
 

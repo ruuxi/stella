@@ -374,26 +374,6 @@ export const clearModelOverride = mutation({
   },
 });
 
-const CORE_MEMORY_KEY = "core_memory";
-
-export const setCoreMemory = mutation({
-  args: {
-    content: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    if (args.content.length > 500_000) {
-      throw new ConvexError({
-        code: "INVALID_ARGUMENT",
-        message: "Core memory content exceeds maximum allowed length of 500,000 characters",
-      });
-    }
-    const ownerId = await requireUserId(ctx);
-    await upsertPreferenceRecord(ctx, ownerId, CORE_MEMORY_KEY, args.content);
-    return null;
-  },
-});
-
 const EXPRESSION_STYLE_KEY = "expression_style";
 
 export const setExpressionStyle = mutation({

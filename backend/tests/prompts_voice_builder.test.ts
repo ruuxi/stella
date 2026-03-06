@@ -35,17 +35,17 @@ describe("buildVoiceSessionInstructions", () => {
     expect(result).toContain("Project Setup");
   });
 
-  test("includes core memory section when provided", () => {
+  test("includes user profile section when provided", () => {
     const result = buildVoiceSessionInstructions({
-      coreMemory: "User is a developer",
+      userProfile: "User is a developer",
     });
-    expect(result).toContain("Core Memory");
+    expect(result).toContain("User Profile");
     expect(result).toContain("User is a developer");
   });
 
   test("omits sections for undefined fields", () => {
     const result = buildVoiceSessionInstructions({});
-    expect(result).not.toContain("Core Memory");
+    expect(result).not.toContain("User Profile");
     expect(result).not.toContain("undefined");
   });
 
@@ -53,7 +53,7 @@ describe("buildVoiceSessionInstructions", () => {
     const result = buildVoiceSessionInstructions({
       userName: "Bob",
       platform: "Windows",
-      coreMemory: "Prefers TypeScript",
+      userProfile: "Prefers TypeScript",
     });
     expect(result).toContain("Bob");
     expect(result).toContain("Windows");

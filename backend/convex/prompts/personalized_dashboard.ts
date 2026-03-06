@@ -55,7 +55,7 @@ Before writing, explore the existing pages directory to match established patter
 Return a short JSON summary in your final message: { status, panel_file_path, title, data_sources }.`;
 
 export const buildPersonalizedDashboardPageUserMessage = (args: {
-  coreMemory: string;
+  userProfile: string;
   assignment: PersonalizedDashboardPageAssignment;
 }) => {
   const { assignment } = args;
@@ -75,8 +75,8 @@ PAGE:
 SUGGESTED DATA SOURCES (adapt or substitute if these are unreliable):
 ${sources}
 
-USER PROFILE (from core memory — tailor content to this person's interests):
-${args.coreMemory}
+USER PROFILE (tailor content to this person's interests):
+${args.userProfile}
 
 REQUIREMENTS:
 1. Write the panel file to the path specified in the task prompt.

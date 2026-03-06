@@ -73,30 +73,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  memory_discovery_fact_extraction: {
-    model: "zai/glm-4.7",
-    fallback: "moonshotai/kimi-k2.5",
-    temperature: 1.0,
-    maxOutputTokens: 12096,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  memory_recall_rerank: {
-    model: "zai/glm-4.7",
-    fallback: "moonshotai/kimi-k2.5",
-    temperature: 1.0,
-    maxOutputTokens: 4096,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
   session_compaction_summary: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
@@ -121,50 +97,14 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  ai_proxy_embedding: {
-    model: "alibaba/qwen3-embedding-8b",
-    providerOptions: {
-      deepinfra: {
-        dimensions: 1536,
-      },
-    },
-  },
-
   mercury: {
     model: "inception/mercury-2",
     fallback: "moonshotai/kimi-k2.5",
   },
 
-  synthesis: {
-    model: "openai/gpt-5.3-codex",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 9500,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "groq"],
-      },
-      openai: {
-        reasoningEffort: "low",
-      },
-    },
-  },
-
   suggestions: {
     model: "moonshotai/kimi-k2.5",
     fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  welcome: {
-    model: "anthropic/claude-opus-4.6",
-    fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
