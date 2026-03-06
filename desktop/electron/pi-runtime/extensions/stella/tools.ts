@@ -6,7 +6,7 @@
  *
  * - tools-types.ts    — Shared type definitions
  * - tools-utils.ts    — Shared utilities (logging, path expansion, truncation, etc.)
- * - tools-file.ts     — Read, Write, Edit handlers
+ * - tools-file.ts     — Read, Edit handlers
  * - tools-search.ts   — Glob, Grep handlers
  * - tools-shell.ts    — Bash, SkillBash handlers
  * - tools-web.ts      — WebFetch, WebSearch handlers
@@ -29,7 +29,7 @@ import type {
 import { log, logError, recoverStaleSecretFiles } from "./tools-utils.js";
 
 // Tool handlers
-import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./tools-file.js";
+import { handleRead, handleEdit, setFileToolsConfig } from "./tools-file.js";
 import { handleGlob, handleGrep } from "./tools-search.js";
 import {
   createShellState,
@@ -136,7 +136,6 @@ export const createToolHost = ({
   > = {
     // File tools
     Read: (args, context) => handleRead(args, context),
-    Write: (args, context) => handleWrite(args, context),
     Edit: (args, context) => handleEdit(args, context),
 
     // Search tools

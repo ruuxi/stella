@@ -28,7 +28,6 @@ type ToolMeta = {
 
 const TOOL_META: Record<string, ToolMeta> = {
   read: { icon: "📖", label: "Read" },
-  write: { icon: "✏️", label: "Write" },
   edit: { icon: "✏️", label: "Edit" },
   grep: { icon: "🔍", label: "Search" },
   glob: { icon: "🔍", label: "Find files" },

@@ -1,10 +1,9 @@
 /**
- * File tools: Read, Write, Edit handlers.
+ * File tools: Read, Edit handlers.
  * Self-mod writes are direct filesystem writes; no staging interception.
  */
 
 import { promises as fs } from "fs";
-import path from "path";
 import type { ToolContext, ToolResult } from "./tools-types.js";
 import {
   ensureAbsolutePath,
@@ -51,30 +50,6 @@ export const handleRead = async (
     };
   } catch (error) {
     return { error: `Error reading file: ${(error as Error).message}` };
-  }
-};
-
-export const handleWrite = async (
-  args: Record<string, unknown>,
-  _context?: ToolContext,
-): Promise<ToolResult> => {
-  const filePath = expandHomePath(String(args.file_path ?? ""));
-  const content = String(args.content ?? "");
-  const pathCheck = ensureAbsolutePath(filePath);
-  if (!pathCheck.ok) return { error: pathCheck.error };
-
-  const pathBlock = isBlockedPath(filePath);
-  if (pathBlock) return { error: pathBlock };
-
-  try {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, content, "utf-8");
-    const lines = content.split("\n").length;
-    return {
-      result: `Wrote ${content.length} characters (${lines} lines) to ${filePath}`,
-    };
-  } catch (error) {
-    return { error: `Error writing file: ${(error as Error).message}` };
   }
 };
 
