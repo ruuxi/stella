@@ -150,15 +150,9 @@ const sanitizeProxyBase = (value: string | null): string | null => {
 
 /** Build a compact panel inventory for the orchestrator's dynamic context. */
 const buildPanelInventory = (frontendRoot: string): string => {
-  // Default home view panels (always present)
   const defaultPanels = [
-    "GenerativeCanvas (greeting/animation)",
-    "News Feed (placeholder)",
-    "Image Gallery (placeholder)",
-    "Music Player (playback controls, mood, vibe prompt)",
-    "Suggestions (onboarding suggestions)",
-    "Active Tasks (running agent tasks)",
-    "Activity Feed (scheduled jobs)",
+    "News Feed", "Image Gallery", "Music Player",
+    "Suggestions", "Active Tasks", "Activity Feed", "GenerativeCanvas",
   ];
 
   // Dynamically created workspace panels
@@ -173,12 +167,8 @@ const buildPanelInventory = (frontendRoot: string): string => {
     // No pages directory yet
   }
 
-  const lines = ["Home view panels: " + defaultPanels.join(", ")];
-  if (userPanels.length > 0) {
-    lines.push("Workspace panels: " + userPanels.join(", "));
-  }
-  lines.push('Use `stella-ui generate "<panel>" "<prompt>"` to populate any panel with content.');
-  return lines.join("\n");
+  const all = [...defaultPanels, ...userPanels];
+  return "Home view panels: " + all.join(", ");
 };
 
 const readCoreMemory = (stellaHome: string): string | undefined => {
