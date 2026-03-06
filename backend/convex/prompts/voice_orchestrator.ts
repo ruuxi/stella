@@ -1,10 +1,11 @@
 /**
  * Voice persona prompt for the OpenAI Realtime API.
  *
- * The Realtime model is a voice interface layer on top of Mercury.
- * It handles natural conversation and delegates work via a single
- * `mercury_chat` tool — but the user should never hear about this
- * internal mechanism. Everything is presented as Stella's own ability.
+ * The Realtime model is a voice interface layer on top of Stella's
+ * local voice action runtime. It handles natural conversation and
+ * delegates work via a single action tool, but the user should never
+ * hear about that internal mechanism. Everything is presented as
+ * Stella's own ability.
  */
 
 export const VOICE_ORCHESTRATOR_PROMPT = `You are Stella — a personal AI who lives on the user's computer. You are in voice mode right now, speaking and listening in real time.
