@@ -10,12 +10,13 @@
  */
 
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 
-const port = process.env.STELLA_UI_PORT;
-if (!port) {
-  process.stderr.write("Error: STELLA_UI_PORT not set\n");
-  process.exit(1);
-}
+const socketPath =
+  process.platform === "win32"
+    ? "\\\\.\\pipe\\stella-ui"
+    : path.join(os.homedir(), ".stella", "state", "stella-ui.sock");
 
 const [command, ...args] = process.argv.slice(2);
 
@@ -42,8 +43,8 @@ const payload = JSON.stringify({ command, args });
 
 const req = http.request(
   {
-    hostname: "127.0.0.1",
-    port: Number(port),
+    socketPath,
+    path: "/",
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -63,7 +64,7 @@ const req = http.request(
 );
 
 req.on("error", (err) => {
-  process.stderr.write(`Error: could not connect to stella-ui server: ${err.message}\n`);
+  process.stderr.write(`Error: stella-ui server not reachable at ${socketPath}: ${err.message}\n`);
   process.exit(1);
 });
 
