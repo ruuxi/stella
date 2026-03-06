@@ -76,18 +76,18 @@ const PRECONNECT_SILENCE_MS = 280;
 const PRECONNECT_BOUNDARY_MAX_WAIT_MS = 1800;
 const PRECONNECT_BOUNDARY_POLL_MS = 40;
 const DATA_CHANNEL_OPEN_TIMEOUT_MS = 8_000;
-const DUPLEX_GATE_ANALYSIS_WINDOW = 2048;
+const DUPLEX_GATE_ANALYSIS_WINDOW = 8192;
 const DUPLEX_GATE_INTERVAL_MS = 50;
-const DUPLEX_GATE_OPEN_FRAMES = 2;
+const DUPLEX_GATE_OPEN_FRAMES = 3;
 const DUPLEX_GATE_CLOSE_FRAMES = 4;
 const DUPLEX_GATE_MIN_MIC_RMS = 0.018;
 const DUPLEX_GATE_MIN_OUTPUT_RMS = 0.008;
-const DUPLEX_GATE_REOPEN_CORRELATION = 0.42;
-const DUPLEX_GATE_STRONG_ECHO_CORRELATION = 0.58;
-const DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO = 2.4;
+const DUPLEX_GATE_REOPEN_CORRELATION = 0.28;
+const DUPLEX_GATE_STRONG_ECHO_CORRELATION = 0.62;
+const DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO = 3.2;
 const DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES = 1;
 const DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES = 6;
-const DUPLEX_GATE_LAGS = [0, 120, 240, 360, 480];
+const DUPLEX_GATE_LAG_MS = [0, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100, 125];
 
 const RTC_CONFIGURATION: RTCConfiguration = {
   // Pre-gather one ICE candidate batch to shorten negotiation time.
@@ -280,6 +280,7 @@ export class RealtimeVoiceSession {
   private outputSampleWriteIndex = 0;
   private inputWindowFilled = false;
   private outputWindowFilled = false;
+  private duplexGateLagSamples: number[] = [0];
   private destroyed = false;
   private inputActive = false;
   private externalAudioDuckingActive = false;
@@ -742,6 +743,16 @@ export class RealtimeVoiceSession {
     try {
       const ctx = new AudioContext();
       this.audioContext = ctx;
+      this.duplexGateLagSamples = DUPLEX_GATE_LAG_MS
+        .map((lagMs) => Math.round((ctx.sampleRate * lagMs) / 1000))
+        .filter((lag, index, values) =>
+          lag >= 0 &&
+          lag < DUPLEX_GATE_ANALYSIS_WINDOW - 64 &&
+          values.indexOf(lag) === index,
+        );
+      if (this.duplexGateLagSamples.length === 0) {
+        this.duplexGateLagSamples = [0];
+      }
 
       const source = ctx.createMediaStreamSource(stream);
       this.analyser = ctx.createAnalyser();
@@ -998,7 +1009,7 @@ export class RealtimeVoiceSession {
   ): number {
     let maxCorrelation = -1;
 
-    for (const lag of DUPLEX_GATE_LAGS) {
+    for (const lag of this.duplexGateLagSamples) {
       const available = micSamples.length - lag;
       if (available <= 32) continue;
 
@@ -1463,6 +1474,7 @@ export class RealtimeVoiceSession {
     this.outputSampleWriteIndex = 0;
     this.inputWindowFilled = false;
     this.outputWindowFilled = false;
+    this.duplexGateLagSamples = [0];
     this.syncExternalAudioDucking(false);
 
     this.assistantTranscriptBuffer = "";
