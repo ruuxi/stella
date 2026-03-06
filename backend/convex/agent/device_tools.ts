@@ -221,11 +221,6 @@ export const createCoreDeviceTools = (ctx: ActionCtx, context: DeviceToolContext
       inputSchema: TOOL_SCHEMAS.Grep,
       execute: (args) => call("Grep", args),
     }),
-    OpenApp: tool({
-      description: TOOL_DESCRIPTIONS.OpenApp,
-      inputSchema: TOOL_SCHEMAS.OpenApp,
-      execute: (args) => call("OpenApp", args),
-    }),
     Bash: tool({
       description: TOOL_DESCRIPTIONS.Bash,
       inputSchema: TOOL_SCHEMAS.Bash,

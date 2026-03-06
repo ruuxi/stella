@@ -14,7 +14,6 @@ export const DEVICE_TOOL_NAMES = [
   "Edit",
   "Glob",
   "Grep",
-  "OpenApp",
   "Bash",
   "KillShell",
   "ShellStatus",
@@ -90,12 +89,6 @@ export const BashSchema = z.object({
   timeout: z.number().optional().describe("Timeout in milliseconds (default 120000, max 600000)"),
   working_directory: z.string().optional().describe("Working directory for the command"),
   run_in_background: z.boolean().optional().describe("Run in background and return a shell_id immediately"),
-});
-
-export const OpenAppSchema = z.object({
-  app: z.string().min(1).describe("Application name or executable path to launch"),
-  args: z.array(z.string()).optional().describe("Optional arguments passed to the app"),
-  working_directory: z.string().optional().describe("Working directory for the launch context"),
 });
 
 export const KillShellSchema = z.object({
@@ -181,13 +174,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "  - \"count\": number of matches per file.\n" +
     "- Use glob to filter by file pattern (e.g. \"*.ts\") or type for standard file types (e.g. \"js\", \"py\").\n" +
     "- Use this instead of Bash with grep or rg.",
-  OpenApp:
-    "Launch an application on the local device.\n\n" +
-    "Usage:\n" +
-    "- Use this for opening desktop apps (e.g. Microsoft Word, VS Code, browser apps).\n" +
-    "- app can be an app name or executable path.\n" +
-    "- args are passed to the launched app.\n" +
-    "- This tool launches and returns immediately (non-blocking).",
   Bash:
     "Execute a shell command on the local device.\n\n" +
     "Usage:\n" +
@@ -246,7 +232,6 @@ export const TOOL_SCHEMAS = {
   Edit: EditSchema,
   Glob: GlobSchema,
   Grep: GrepSchema,
-  OpenApp: OpenAppSchema,
   Bash: BashSchema,
   KillShell: KillShellSchema,
   ShellStatus: ShellStatusSchema,
