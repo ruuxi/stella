@@ -286,7 +286,6 @@ export class RealtimeVoiceSession {
   private inputActive = false;
   private externalAudioDuckingActive = false;
   private assistantSpeakingEndTime = 0;
-  private lastAssistantSpeakingState = false;
 
   // Pre-connection audio buffer — captures mic audio while SDP negotiation is in progress
   private preConnectBuffer: string[] = []; // base64-encoded PCM chunks
@@ -887,13 +886,7 @@ export class RealtimeVoiceSession {
       return;
     }
 
-    // Track transition from speaking → not speaking for echo tail guard
-    if (this.lastAssistantSpeakingState && !assistantSpeaking) {
-      this.assistantSpeakingEndTime = performance.now();
-    }
-    this.lastAssistantSpeakingState = assistantSpeaking;
-
-    // Echo tail guard: keep gate suppressed for a period after assistant stops
+    // Echo tail guard: keep gate suppressed briefly after assistant stops
     // to let room reverb and residual echo die out
     const inEchoTail =
       !assistantSpeaking &&
@@ -1153,6 +1146,7 @@ export class RealtimeVoiceSession {
 
       case "output_audio.done":
         this.assistantServerSpeaking = false;
+        this.assistantSpeakingEndTime = performance.now();
         this.updateOutboundGate();
         this.emit({ type: "speaking-end" });
         break;
@@ -1493,7 +1487,6 @@ export class RealtimeVoiceSession {
     this.outputWindowFilled = false;
     this.duplexGateLagSamples = [0];
     this.assistantSpeakingEndTime = 0;
-    this.lastAssistantSpeakingState = false;
     this.syncExternalAudioDucking(false);
 
     this.assistantTranscriptBuffer = "";

@@ -32,21 +32,22 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
     micLevel: rtcMicLevel,
     outputLevel: rtcOutputLevel,
     isConnected,
+    isSpeaking,
     isUserSpeaking,
   } = useRealtimeVoice();
 
   const isAnyVoiceActive = isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
   const isAudioReady = isRecording || isConnected;
 
-  // Determine voice mode — the animation loop auto-detects speaking vs listening
-  // from the audio analysers, so we just signal "listening" (= voice session active).
+  // Voice mode uses server-reported speaking state for RTC (more reliable
+  // than energy thresholds which decay slowly due to analyser smoothing).
   let voiceMode: VoiceMode = "idle";
   let micAnalyserRef = sttAnalyserRef;
   let micLevel: number | undefined;
   let outputLevel: number | undefined;
 
   if (isAudioReady) {
-    voiceMode = "listening";
+    voiceMode = state.isVoiceRtcActive && isSpeaking ? "speaking" : "listening";
     if (state.isVoiceRtcActive) {
       micLevel = rtcMicLevel;
       outputLevel = rtcOutputLevel;
