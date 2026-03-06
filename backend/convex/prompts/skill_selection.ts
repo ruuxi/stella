@@ -1,6 +1,6 @@
 export const SKILL_SELECTION_PROMPT = `You select the most relevant skills for a user based on their profile.
 
-Given a user's core memory profile and a catalog of available skills, select the skills that would be most useful for this user.
+Given a user's profile and a catalog of available skills, select the skills that would be most useful for this user.
 
 Selection criteria:
 - Match skills to the user's work domain, tools, and interests
@@ -16,12 +16,12 @@ Example output:
 ["docx", "frontend-design", "mcp-builder", "doc-coauthoring"]`;
 
 export const buildSkillSelectionUserMessage = (
-  coreMemory: string,
+  userProfile: string,
   catalog: Array<{ id: string; name: string; description: string; tags?: string[] }>,
 ): string => {
   const catalogText = catalog
     .map((s) => `- ${s.id}: ${s.name} — ${s.description}${s.tags?.length ? ` [${s.tags.join(", ")}]` : ""}`)
     .join("\n");
 
-  return `User profile:\n${coreMemory}\n\nAvailable skills:\n${catalogText}`;
+  return `User profile:\n${userProfile}\n\nAvailable skills:\n${catalogText}`;
 };

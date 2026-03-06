@@ -15,9 +15,8 @@ describe("agent_constants", () => {
     expect(SKILLS_DISABLED_AGENT_TYPES).toBeInstanceOf(Set);
   });
 
-  test("explore and memory agents have skills disabled", () => {
+  test("explore agent has skills disabled", () => {
     expect(SKILLS_DISABLED_AGENT_TYPES.has("explore")).toBe(true);
-    expect(SKILLS_DISABLED_AGENT_TYPES.has("memory")).toBe(true);
   });
 
   test("general agent has skills enabled", () => {

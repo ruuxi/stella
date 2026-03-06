@@ -187,15 +187,15 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
-        let body: { coreMemory?: string } | null = null;
+        let body: { userProfile?: string } | null = null;
         try {
-          body = (await request.json()) as { coreMemory?: string };
+          body = (await request.json()) as { userProfile?: string };
         } catch {
           return errorResponse(400, "Invalid JSON body", origin);
         }
 
-        if (!body?.coreMemory) {
-          return errorResponse(400, "coreMemory is required", origin);
+        if (!body?.userProfile) {
+          return errorResponse(400, "userProfile is required", origin);
         }
 
         const apiKey = process.env.AI_GATEWAY_API_KEY;
@@ -218,7 +218,7 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           // 2. Call LLM to select relevant skills
           const gateway = createGateway({ apiKey });
           const userMessage = buildSkillSelectionUserMessage(
-            body.coreMemory,
+            body.userProfile,
             catalog,
           );
 

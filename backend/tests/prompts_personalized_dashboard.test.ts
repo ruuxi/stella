@@ -38,7 +38,7 @@ describe("buildPersonalizedDashboardPageUserMessage", () => {
 
   test("includes assignment details", () => {
     const result = buildPersonalizedDashboardPageUserMessage({
-      coreMemory: "User is a developer",
+      userProfile: "User is a developer",
       assignment,
     });
     expect(result).toContain("page-1");
@@ -46,9 +46,9 @@ describe("buildPersonalizedDashboardPageUserMessage", () => {
     expect(result).toContain("dev_dashboard");
   });
 
-  test("includes core memory", () => {
+  test("includes user profile", () => {
     const result = buildPersonalizedDashboardPageUserMessage({
-      coreMemory: "Uses TypeScript daily",
+      userProfile: "Uses TypeScript daily",
       assignment,
     });
     expect(result).toContain("Uses TypeScript daily");
@@ -56,7 +56,7 @@ describe("buildPersonalizedDashboardPageUserMessage", () => {
 
   test("includes data sources", () => {
     const result = buildPersonalizedDashboardPageUserMessage({
-      coreMemory: "profile",
+      userProfile: "profile",
       assignment,
     });
     expect(result).toContain("https://api.github.com");
@@ -65,7 +65,7 @@ describe("buildPersonalizedDashboardPageUserMessage", () => {
   test("handles empty data sources", () => {
     const emptyAssignment = { ...assignment, dataSources: [] };
     const result = buildPersonalizedDashboardPageUserMessage({
-      coreMemory: "profile",
+      userProfile: "profile",
       assignment: emptyAssignment,
     });
     expect(result).toContain("Find relevant public");

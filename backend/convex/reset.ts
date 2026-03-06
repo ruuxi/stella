@@ -36,7 +36,7 @@ export const resetAllUserData = action({
       }
     }
 
-    // 3. Delete owner-scoped tables (memories, prefs, devices, etc.)
+    // 3. Delete owner-scoped tables (prefs, devices, etc.)
     let hasMore = true;
     while (hasMore) {
       hasMore = await ctx.runMutation(internal.reset._deleteOwnerBatch, {
@@ -130,26 +130,6 @@ export const _deleteOwnerBatch = internalMutation({
   args: { ownerId: v.string() },
   handler: async (ctx, { ownerId }) => {
     let totalDeleted = 0;
-
-    // Memories
-    const memories = await ctx.db
-      .query("memories")
-      .withIndex("by_ownerId_and_accessedAt", (q) => q.eq("ownerId", ownerId))
-      .take(BATCH);
-    for (const m of memories) {
-      await ctx.db.delete(m._id);
-      totalDeleted++;
-    }
-
-    // Event embeddings
-    const eventEmbeddings = await ctx.db
-      .query("event_embeddings")
-      .withIndex("by_ownerId_and_timestamp", (q) => q.eq("ownerId", ownerId))
-      .take(BATCH);
-    for (const embedding of eventEmbeddings) {
-      await ctx.db.delete(embedding._id);
-      totalDeleted++;
-    }
 
     // User preferences
     const prefs = await ctx.db

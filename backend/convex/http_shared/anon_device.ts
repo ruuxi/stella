@@ -1,7 +1,7 @@
 /**
  * Shared anonymous device identification helpers.
  *
- * Used by synthesis, speech-to-text, and AI proxy route modules to identify
+ * Used by speech-to-text and AI proxy route modules to identify
  * unauthenticated callers via X-Device-ID header and handle missing salt errors.
  */
 

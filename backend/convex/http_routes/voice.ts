@@ -183,7 +183,6 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
             import("../tools/voice_schemas"),
           ]);
 
-        let coreMemory: string | undefined;
         const userName =
           identity.name ?? identity.nickname;
 
@@ -192,7 +191,6 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           platform: "desktop",
           deviceStatus,
           activeThreads,
-          coreMemory,
         });
 
         const tools = getVoiceToolSchemas();
