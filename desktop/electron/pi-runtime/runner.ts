@@ -31,7 +31,6 @@ import {
 import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
 import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
 
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4-6";
 const DEFAULT_MAX_TASK_DEPTH = 8;
 // Minimal fallback prompts — real prompts live in bundled AGENT.md files
 // seeded to ~/.stella/agents/ on first startup.
@@ -324,9 +323,9 @@ export const createPiHostRunner = ({
     return { baseUrl, authToken: nextAuthToken };
   };
 
-  const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string => {
+  const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string | undefined => {
     const modelFromPrefs = getModelOverride(StellaHome, agentType);
-    return modelFromPrefs ?? agent?.model ?? process.env.STELLA_DEFAULT_MODEL ?? DEFAULT_MODEL;
+    return modelFromPrefs ?? agent?.model ?? process.env.STELLA_DEFAULT_MODEL;
   };
 
   const buildAgentContext = async (args: {
@@ -503,6 +502,7 @@ export const createPiHostRunner = ({
     void selfModHmrController.forceResumeAll();
     toolHost.killAllShells();
     shutdownPiSubagentRuntimes();
+    store.close();
   };
 
   const agentHealthCheck = (): AgentHealth => {
@@ -566,6 +566,10 @@ export const createPiHostRunner = ({
         getAuthToken: () => authToken?.trim(),
       },
     });
+
+    console.log(`[stella:trace] handleLocalChat | runId=${runId} | agent=${agentType} | model=${agentContext.model} | resolvedModel=${resolvedLlm.model} | convId=${conversationId}`);
+    console.log(`[stella:trace] handleLocalChat | tools=[${(agentContext.toolsAllowlist ?? []).join(", ")}]`);
+    console.log(`[stella:trace] handleLocalChat | threadHistory=${agentContext.threadHistory?.length ?? 0} messages`);
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;

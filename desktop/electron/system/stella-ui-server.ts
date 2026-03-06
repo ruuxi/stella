@@ -89,6 +89,7 @@ async function callGenerateModel(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Accept-Encoding": "identity",
       "Authorization": `Bearer ${authToken}`,
       "X-Provider": "inception",
       "X-Model-Id": modelId,

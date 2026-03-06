@@ -202,6 +202,7 @@ export function useStreamingChat({
           if (event.chunk) appendStreamingDelta(event.chunk);
           break;
         case "tool-start":
+          console.log(`[stella:trace] tool-start | ${event.toolName} | callId=${event.toolCallId}`);
           appendLocalAgentEvent({
             type: "tool_request",
             toolCallId: event.toolCallId,
@@ -209,6 +210,7 @@ export function useStreamingChat({
           });
           break;
         case "tool-end":
+          console.log(`[stella:trace] tool-end   | ${event.toolName} | callId=${event.toolCallId} | preview=${event.resultPreview?.slice(0, 120)}`);
           appendLocalAgentEvent({
             type: "tool_result",
             toolCallId: event.toolCallId,
@@ -217,6 +219,7 @@ export function useStreamingChat({
           });
           break;
         case "error":
+          console.error(`[stella:trace] error | fatal=${event.fatal} | ${event.error}`);
           if (event.fatal) {
             console.error("Local agent error:", event.error);
             showToast({ title: "Something went wrong", description: event.error || undefined, variant: "error" });
@@ -224,6 +227,7 @@ export function useStreamingChat({
           }
           break;
         case "end":
+          console.log(`[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`);
           appendLocalAgentEvent({
             type: "assistant_message",
             userMessageId: options?.userMessageId,
@@ -543,8 +547,10 @@ export function useStreamingChat({
       const eventId = toEventId(event);
       if (eventId) {
         if (mode === "follow_up") {
+          console.log(`[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId} | eventId=${eventId}`);
           return;
         }
+        console.log(`[stella:trace] sendMessage | convId=${resolvedConversationId} | eventId=${eventId} | text=${combinedText.slice(0, 200)}`);
         opts.onClear();
         startStream({ userMessageId: eventId, userPrompt: combinedText, attachments });
       }

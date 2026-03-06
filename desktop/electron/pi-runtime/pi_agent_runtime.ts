@@ -22,7 +22,6 @@ import type { ToolContext, ToolResult } from "./extensions/stella/tools-types.js
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
-const DEFAULT_MODEL = "openai/gpt-4.1-mini";
 const DEFAULT_MAX_TURNS = 40;
 const MAX_RESULT_PREVIEW = 200;
 
@@ -440,6 +439,9 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
     ? await getGitHead(opts.frontendRoot).catch(() => null)
     : null;
 
+  console.log(`[stella:trace] orchestrator start | runId=${runId} | agent=${opts.agentType} | model=${opts.resolvedLlm.model} | convId=${opts.conversationId}`);
+  console.log(`[stella:trace] user prompt: ${opts.userPrompt.slice(0, 300)}`);
+
   opts.store.recordRunEvent({
     timestamp: now(),
     runId,
@@ -505,6 +507,7 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
     }
 
     if (event.type === "tool_execution_start") {
+      console.log(`[stella:trace] tool exec start | ${event.toolName} | callId=${event.toolCallId} | args=${JSON.stringify(event.args ?? {}).slice(0, 300)}`);
       const s = nextSeq();
       opts.callbacks.onToolStart({
         runId,
@@ -527,6 +530,7 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
 
     if (event.type === "tool_execution_end") {
       const preview = textFromUnknown(event.result).slice(0, MAX_RESULT_PREVIEW);
+      console.log(`[stella:trace] tool exec end   | ${event.toolName} | callId=${event.toolCallId} | result=${preview.slice(0, 200)}`);
       const s = nextSeq();
       opts.callbacks.onToolEnd({
         runId,
@@ -567,6 +571,7 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
       .reverse()
       .find((message) => message.role === "assistant");
     const finalText = extractAssistantText(latestAssistant);
+    console.log(`[stella:trace] orchestrator end | runId=${runId} | finalText=${finalText.slice(0, 300)}`);
     const selfModApplied = opts.frontendRoot
       ? await detectSelfModAppliedSince({
           repoRoot: opts.frontendRoot,
@@ -680,7 +685,7 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
     return { runId, result: "", error: "Aborted" };
   }
 
-  const primaryModelId = opts.agentContext.model ?? DEFAULT_MODEL;
+  const primaryModelId = opts.agentContext.model;
   const isGeneralAgent = opts.agentType === "general";
   const sessionKey = opts.agentContext.activeThreadId
     ? `${opts.conversationId}:${opts.agentContext.activeThreadId}`
@@ -751,13 +756,13 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
 
   if (
     isGeneralAgent &&
-    (opts.agentContext.generalAgentEngine === "claude_code_local" || isClaudeCodeModel(primaryModelId))
+    (opts.agentContext.generalAgentEngine === "claude_code_local" || (primaryModelId && isClaudeCodeModel(primaryModelId)))
   ) {
     try {
       const result = await runClaudeCodeTurn({
         runId,
         sessionKey,
-        modelId: primaryModelId,
+        modelId: primaryModelId!,
         prompt,
         abortSignal: opts.abortSignal,
         onProgress: (chunk) => {

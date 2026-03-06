@@ -7,7 +7,7 @@ export type LocalTaskManagerAgentContext = {
   systemPrompt: string;
   dynamicContext: string;
   toolsAllowlist?: string[];
-  model: string;
+  model?: string;
   fallbackModel?: string;
   maxTaskDepth: number;
   defaultSkills: string[];
