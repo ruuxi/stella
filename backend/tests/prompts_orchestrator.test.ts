@@ -11,11 +11,6 @@ describe("ORCHESTRATOR_AGENT_SYSTEM_PROMPT", () => {
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("Stella");
   });
 
-  test("mentions memory capabilities", () => {
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("RecallMemories");
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("SaveMemory");
-  });
-
   test("describes offline fallback role", () => {
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("offline");
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("WebSearch");

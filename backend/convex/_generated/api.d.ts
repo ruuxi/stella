@@ -137,7 +137,6 @@ import type * as tools_index from "../tools/index.js";
 import type * as tools_integration_proxy from "../tools/integration_proxy.js";
 import type * as tools_integration_request_service from "../tools/integration_request_service.js";
 import type * as tools_network_safety from "../tools/network_safety.js";
-import type * as tools_orchestration from "../tools/orchestration.js";
 import type * as tools_types from "../tools/types.js";
 import type * as tools_voice_schemas from "../tools/voice_schemas.js";
 
@@ -277,7 +276,6 @@ declare const fullApi: ApiFromModules<{
   "tools/integration_proxy": typeof tools_integration_proxy;
   "tools/integration_request_service": typeof tools_integration_request_service;
   "tools/network_safety": typeof tools_network_safety;
-  "tools/orchestration": typeof tools_orchestration;
   "tools/types": typeof tools_types;
   "tools/voice_schemas": typeof tools_voice_schemas;
 }>;
