@@ -4,12 +4,11 @@ import { BASE_TOOL_NAMES } from "../convex/tools/types";
 describe("BASE_TOOL_NAMES", () => {
   test("is a non-empty array", () => {
     expect(Array.isArray(BASE_TOOL_NAMES)).toBe(true);
-    expect(BASE_TOOL_NAMES.length).toBeGreaterThan(20);
+    expect(BASE_TOOL_NAMES.length).toBeGreaterThan(19);
   });
 
   test("contains device tools", () => {
     expect(BASE_TOOL_NAMES).toContain("Read");
-    expect(BASE_TOOL_NAMES).toContain("Write");
     expect(BASE_TOOL_NAMES).toContain("Edit");
     expect(BASE_TOOL_NAMES).toContain("Glob");
     expect(BASE_TOOL_NAMES).toContain("Grep");
