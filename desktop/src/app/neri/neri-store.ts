@@ -97,6 +97,7 @@ export type NeriAction =
   | { type: "focus-column"; index: number }
   | { type: "focus-left" }
   | { type: "focus-right" }
+  | { type: "focus-window-by-type"; windowType: NeriWindowType }
   | { type: "open-window"; windowType: NeriWindowType }
   | { type: "close-window"; columnId: string; windowId: string }
   | { type: "switch-workspace"; index: number }
@@ -139,6 +140,14 @@ export function neriReducer(state: NeriState, action: NeriAction): NeriState {
     case "focus-right": {
       if (ws.focusedColumnIndex >= ws.columns.length - 1) return state;
       return updateActive(state, { ...ws, focusedColumnIndex: ws.focusedColumnIndex + 1 });
+    }
+
+    case "focus-window-by-type": {
+      const index = ws.columns.findIndex((column) =>
+        column.windows.some((window) => window.type === action.windowType),
+      );
+      if (index === -1) return state;
+      return updateActive(state, { ...ws, focusedColumnIndex: index });
     }
 
     case "open-window":
@@ -189,7 +198,7 @@ export function neriReducer(state: NeriState, action: NeriAction): NeriState {
       return { ...state, workspaces: ensureTrailingEmpty(workspaces) };
     }
 
-    // ── Mercury-driven actions ──────────────────────────────────────────
+    // Voice action windows
 
     case "open-search-window":
       return insertColumn(state, ws, makeColumn("search", { title: `Search: ${action.query}`, searchResults: action.results }));
@@ -263,7 +272,7 @@ export function getNeriStore(): NeriStore {
 }
 
 /**
- * Returns a summary of current windows for Mercury context injection.
+ * Returns a summary of current windows for local voice action routing.
  */
 export function getNeriWindowSummary(): Array<{ type: string; title: string }> {
   const s = getNeriStore().getState();

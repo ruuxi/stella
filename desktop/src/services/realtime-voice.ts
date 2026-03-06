@@ -9,7 +9,7 @@
  */
 
 import { createServiceRequest } from "./http/service-request";
-import type { NeriWindowType } from "@/app/neri/neri-types";
+import { runLocalVoiceAction } from "./local-voice-action-router";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,23 +101,6 @@ const VOICE_MIC_CONSTRAINTS: MediaTrackConstraints = {
   noiseSuppression: true,
   autoGainControl: true,
 };
-
-const NERI_WINDOW_TYPES: ReadonlySet<NeriWindowType> = new Set([
-  "news-feed",
-  "music-player",
-  "ai-search",
-  "calendar",
-  "game",
-  "system-monitor",
-  "weather",
-  "notes",
-  "file-browser",
-  "search",
-  "canvas",
-]);
-
-const isNeriWindowType = (value: string): value is NeriWindowType =>
-  NERI_WINDOW_TYPES.has(value as NeriWindowType);
 
 const toConvexConversationId = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -1188,124 +1171,27 @@ export class RealtimeVoiceSession {
   // ---------------------------------------------------------------------------
 
   /**
-   * Call Mercury endpoint directly from the renderer using the same
-   * auth/URL resolution as the voice session endpoint.
-   * Then apply any returned dashboard actions locally in the renderer.
+   * Run the local voice action router in the background. The tool call already
+   * returned a quick acknowledgment so the voice agent can speak immediately.
+   * When the action completes, inject the result and trigger a follow-up
+   * response in the realtime session.
    */
-  private async callMercury(message: string): Promise<string> {
-    const { endpoint, headers } = await createServiceRequest("/api/mercury/chat");
-    const { getNeriWindowSummary } = await import("@/app/neri/neri-store");
-    console.log("[Voice RTC] Mercury call:", message, "→", endpoint);
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        conversationId: this.conversationId,
-        windowState: { windows: getNeriWindowSummary() },
-      }),
-    });
-
-    if (!res.ok) {
-      const detail = await res.text();
-      throw new Error(`Mercury ${res.status}: ${detail}`);
-    }
-
-    const data = (await res.json()) as {
-      toolResults: Array<{
-        action: string;
-        spoken_summary?: string;
-        query?: string;
-        results?: Array<{ title: string; url: string; snippet: string }>;
-        title?: string;
-        html?: string;
-        operation?: string;
-        window_type?: string;
-      }>;
-      text: string | null;
-    };
-
-    // Log to terminal via persistTranscript
-    const actions = data.toolResults.map((tr) => `${tr.action}(${tr.spoken_summary ?? ""})`).join(", ");
-    window.electronAPI?.voice.persistTranscript?.({
-      conversationId: this.conversationId ?? "voice-rtc",
-      role: "assistant",
-      text: `[MERCURY RESULTS: ${actions || "none"}]`,
-    });
-
-    // Dispatch Neri UI commands — store is in the same overlay renderer
-    const api = window.electronAPI;
-    for (const tr of data.toolResults) {
-      switch (tr.action) {
-        case "show_search":
-          console.log("[Voice RTC] Calling showNeri for search");
-          api?.overlay.showNeri?.();
-          import("@/app/neri/neri-store").then(({ getNeriStore }) => {
-            getNeriStore().dispatch({
-              type: "open-search-window",
-              query: tr.query ?? "",
-              results: tr.results ?? [],
-            });
-          });
-          break;
-        case "open_dashboard":
-          window.electronAPI?.voice.persistTranscript?.({
-            conversationId: this.conversationId ?? "voice-rtc",
-            role: "assistant",
-            text: `[DISPATCH: showNeri, api exists=${!!api}, showNeri exists=${!!api?.overlay?.showNeri}]`,
-          });
-          api?.overlay.showNeri?.();
-          break;
-        case "close_dashboard":
-          api?.overlay.hideNeri?.();
-          break;
-        case "create_canvas":
-          api?.overlay.showNeri?.();
-          import("@/app/neri/neri-store").then(({ getNeriStore }) => {
-            getNeriStore().dispatch({
-              type: "open-canvas-window",
-              title: tr.title ?? "Canvas",
-              html: tr.html ?? "",
-            });
-          });
-          break;
-        case "manage_windows":
-          if (tr.operation === "close" && tr.window_type) {
-            const windowType = tr.window_type;
-            if (!isNeriWindowType(windowType)) {
-              break;
-            }
-            import("@/app/neri/neri-store").then(({ getNeriStore }) => {
-              getNeriStore().dispatch({
-                type: "close-window-by-type",
-                windowType,
-              });
-            });
-          }
-          break;
-      }
-    }
-
-    // Return spoken summary for voice agent
-    const spokenParts = data.toolResults
-      .map((tr) => tr.spoken_summary)
-      .filter(Boolean);
-    return spokenParts.join(" ") || data.text || "";
-  }
-
-  /**
-   * Fire Mercury in the background. The tool call already returned a quick
-   * acknowledgment so the voice agent can speak immediately. When Mercury
-   * completes, inject the real result into the conversation and trigger
-   * a follow-up response.
-   */
-  private callMercuryAsync(message: string): void {
-    this.callMercury(message)
-      .then((spokenResult) => {
+  private runLocalActionAsync(message: string): void {
+    import("@/app/neri/neri-store")
+      .then(async ({ getNeriWindowSummary }) =>
+        await runLocalVoiceAction({
+          message,
+          conversationId: this.conversationId ?? undefined,
+          windowState: getNeriWindowSummary(),
+        }),
+      )
+      .then(({ action, spokenResult }) => {
+        window.electronAPI?.voice.persistTranscript?.({
+          conversationId: this.conversationId ?? "voice-rtc",
+          role: "assistant",
+          text: `[VOICE ACTION: ${action}] ${spokenResult || ""}`.trim(),
+        });
         if (!spokenResult || spokenResult === "Working on it.") return;
-        // Inject Mercury's result as a new user-invisible context message
-        // and trigger the model to speak the result
         this.sendEvent({
           type: "conversation.item.create",
           item: {
@@ -1322,7 +1208,7 @@ export class RealtimeVoiceSession {
         this.sendEvent({ type: "response.create" });
       })
       .catch((err) => {
-        console.error("[realtime-voice] Mercury async error:", err);
+        console.error("[realtime-voice] Local action router error:", err);
         this.sendEvent({
           type: "conversation.item.create",
           item: {
@@ -1399,7 +1285,7 @@ export class RealtimeVoiceSession {
         // Use the user's actual transcript instead of the model's paraphrase
         const message = this.lastUserTranscript || (args.message as string) || "";
         result = "Working on it.";
-        this.callMercuryAsync(message);
+        this.runLocalActionAsync(message);
       } else {
         result = `Unknown tool: ${name}`;
       }
@@ -1420,10 +1306,9 @@ export class RealtimeVoiceSession {
       },
     });
 
-    // For async Mercury calls, don't request a response here — the
-    // callMercuryAsync callback will inject the real result and trigger
-    // response.create once Mercury completes. Requesting one now would
-    // cause a premature "it should be open" before Mercury actually returns.
+    // For async local action calls, don't request a response here — the
+    // runLocalActionAsync callback will inject the real result and trigger
+    // response.create once the action actually completes.
     if (name !== "perform_action") {
       this.sendEvent({ type: "response.create" });
     }
