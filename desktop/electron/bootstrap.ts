@@ -329,13 +329,11 @@ export const bootstrapMainProcess = () => {
     windowManager.createInitialWindows()
 
     // Start stella-ui server for agent UI control
-    const stellaUiPort = startStellaUiServer({
+    startStellaUiServer({
       getWindow: () => windowManager?.getFullWindow() ?? null,
       frontendRoot: path.resolve(__dirname, '..'),
       getProxy: () => piHostRunner?.getProxy() ?? null,
     })
-    process.env.STELLA_UI_PORT = String(stellaUiPort)
-
     hmrMorphOrchestrator = createHmrMorphOrchestrator({
       getFullWindow: () => windowManager?.getFullWindow() ?? null,
       getOverlayController: () => overlayController,

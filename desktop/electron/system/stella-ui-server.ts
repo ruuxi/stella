@@ -10,9 +10,18 @@
 import fs from "fs";
 import path from "path";
 import http from "http";
+import os from "os";
 import type { BrowserWindow } from "electron";
 
 let server: http.Server | null = null;
+
+/** Fixed socket path — no port discovery needed. */
+export function getStellaUiSocketPath(): string {
+  if (process.platform === "win32") {
+    return "\\\\.\\pipe\\stella-ui";
+  }
+  return path.join(os.homedir(), ".stella", "state", "stella-ui.sock");
+}
 
 // ---------------------------------------------------------------------------
 // Panel name → file path resolution
@@ -217,10 +226,14 @@ export function startStellaUiServer(opts: {
     }
   });
 
-  server.listen(0, "127.0.0.1");
-  const addr = server.address();
-  const port = typeof addr === "object" && addr ? addr.port : 0;
-  return port;
+  const socketPath = getStellaUiSocketPath();
+
+  // Clean up stale socket file from previous run
+  try { fs.unlinkSync(socketPath); } catch { /* doesn't exist */ }
+  fs.mkdirSync(path.dirname(socketPath), { recursive: true });
+
+  server.listen(socketPath);
+  return 0;
 }
 
 export function stopStellaUiServer() {
