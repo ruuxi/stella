@@ -198,6 +198,8 @@ async function forwardRequest(
       if (
         lower !== "set-cookie" &&
         lower !== "www-authenticate" &&
+        lower !== "content-encoding" &&
+        lower !== "content-length" &&
         !lower.startsWith("access-control-")
       ) {
         responseHeaders[key] = value;
