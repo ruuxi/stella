@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { truncateWithSuffix, stringifyBounded } from "@stella/shared";
+import { truncateWithSuffix, stringifyBounded } from "../convex/lib/text_utils";
 
 describe("truncateWithSuffix", () => {
   test("returns short strings unchanged", () => {

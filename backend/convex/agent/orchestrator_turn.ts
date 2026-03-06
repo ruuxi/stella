@@ -10,7 +10,7 @@ import {
   type HistoryBuildOptions,
   type HistoryMessage,
   type MicrocompactTrigger,
-} from "@stella/shared";
+} from "../lib/history_messages";
 import type { PromptBuildResult } from "./prompt_builder";
 import { buildSystemPrompt } from "./prompt_builder";
 import {

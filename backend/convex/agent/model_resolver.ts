@@ -21,7 +21,7 @@ import { getModelConfig } from "./model";
 import {
   extractProvider,
   extractModelName,
-} from "@stella/shared";
+} from "../lib/providers";
 import { getUserProviderKey, resolveByokApiKey } from "../lib/provider_keys";
 
 export type ResolvedModelConfig = {

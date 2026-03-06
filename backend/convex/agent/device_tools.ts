@@ -8,7 +8,7 @@ import {
   getDangerousCommandReason,
   TOOL_SCHEMAS,
   TOOL_DESCRIPTIONS,
-} from "@stella/shared";
+} from "./tool_schemas";
 import { sleep } from "../lib/async";
 
 /**
@@ -19,7 +19,7 @@ import { sleep } from "../lib/async";
 export const sanitizeToolName = (name: string): string =>
   name.replace(/\./g, "_");
 
-export { DEVICE_TOOL_NAMES as CORE_DEVICE_TOOL_NAMES } from "@stella/shared";
+export { DEVICE_TOOL_NAMES as CORE_DEVICE_TOOL_NAMES } from "./tool_schemas";
 export const CLOUD_ONLY_TOOL_NAMES = ["WebFetch", "WebSearch"] as const;
 
 type DeviceToolName = SharedDeviceToolName | string;
