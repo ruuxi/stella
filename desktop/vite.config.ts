@@ -7,6 +7,7 @@ import { defineConfig, type ModuleNode, type Plugin } from "vite"
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_STATE_FILE = path.resolve(__dirname, '.stella-hmr-state.json')
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
+const SELF_MOD_HMR_STALE_MS = 30_000
 const PACKAGE_MANIFEST_BASENAMES = new Set([
   'package.json',
   'bun.lock',
@@ -101,6 +102,7 @@ function workspacePanelServer(): Plugin {
 type PersistedSelfModHmrState = {
   paused?: boolean
   requiresFullReload?: boolean
+  updatedAtMs?: number
 }
 
 const readPersistedSelfModHmrState = (): PersistedSelfModHmrState => {
@@ -161,8 +163,12 @@ function selfModHmrControl(): Plugin {
     enforce: 'post',
     configureServer(server) {
       const persisted = readPersistedSelfModHmrState()
-      paused = Boolean(persisted.paused)
+      const isFresh =
+        typeof persisted.updatedAtMs === 'number'
+        && Date.now() - persisted.updatedAtMs < SELF_MOD_HMR_STALE_MS
+      paused = Boolean(persisted.paused) && isFresh
       requiresFullReload = Boolean(persisted.requiresFullReload)
+      writePersistedSelfModHmrState({ paused, requiresFullReload })
 
       const flushQueuedUpdates = async () => {
         if (queuedModules.size === 0 && !requiresFullReload) {
