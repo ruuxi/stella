@@ -12,8 +12,7 @@ describe("GENERAL_AGENT_SYSTEM_PROMPT", () => {
   });
 
   test("describes capabilities", () => {
-    expect(GENERAL_AGENT_SYSTEM_PROMPT).toContain("Read");
-    expect(GENERAL_AGENT_SYSTEM_PROMPT).toContain("Write");
+    expect(GENERAL_AGENT_SYSTEM_PROMPT).toContain("Edit");
     expect(GENERAL_AGENT_SYSTEM_PROMPT).toContain("Bash");
   });
 
