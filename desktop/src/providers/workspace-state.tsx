@@ -6,11 +6,15 @@ export type WorkspacePanel = {
   name: string
   /** Optional display title shown in the shell header. */
   title?: string
+  /** Optional source URL for localhost/dev-server backed panels. */
+  url?: string
 }
 
 export type WorkspaceState = {
   /** Active workspace panel. null = show the home dashboard. */
   activePanel: WorkspacePanel | null
+  /** Compatibility alias for legacy canvas-driven consumers. */
+  canvas: WorkspacePanel | null
   /** Chat panel width in pixels */
   chatWidth: number
   /** Whether the chat panel is open */
@@ -23,6 +27,10 @@ type WorkspaceContextValue = {
   openPanel: (panel: WorkspacePanel) => void
   /** Clear the active panel and return to the home dashboard. */
   closePanel: () => void
+  /** Compatibility alias for legacy canvas-driven consumers. */
+  openCanvas: (panel: WorkspacePanel) => void
+  /** Compatibility alias for legacy canvas-driven consumers. */
+  closeCanvas: () => void
   /** Update the chat panel width (called by resize handle) */
   setChatWidth: (width: number) => void
   /** Toggle the chat panel open/closed */
@@ -35,6 +43,7 @@ const MAX_CHAT_WIDTH_RATIO = 0.5 // Never exceed 50% of viewport
 
 const defaultState: WorkspaceState = {
   activePanel: null,
+  canvas: null,
   chatWidth: DEFAULT_CHAT_WIDTH,
   isChatOpen: true,
 }
@@ -48,6 +57,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     setState((prev) => ({
       ...prev,
       activePanel: panel,
+      canvas: panel,
     }))
   }, [])
 
@@ -55,6 +65,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     setState((prev) => ({
       ...prev,
       activePanel: null,
+      canvas: null,
     }))
   }, [])
 
@@ -69,7 +80,15 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   }, [])
 
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ state, openPanel, closePanel, setChatWidth, setChatOpen }),
+    () => ({
+      state,
+      openPanel,
+      closePanel,
+      openCanvas: openPanel,
+      closeCanvas: closePanel,
+      setChatWidth,
+      setChatOpen,
+    }),
     [state, openPanel, closePanel, setChatWidth, setChatOpen],
   )
 
