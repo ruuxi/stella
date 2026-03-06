@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { EventRecord } from "./use-conversation-events";
 
 let mockStorageMode: "local" | "cloud" = "local";
@@ -14,6 +14,13 @@ const mockSubscribeToLocalChatUpdates = vi.fn<(listener: () => void) => () => vo
     return mockUnsubscribe;
   },
 );
+const mockScheduleListConversationEvents = vi.fn<
+  (payload: { conversationId: string; maxItems?: number }) => Promise<EventRecord[]>
+>(() => Promise.resolve([]));
+const mockScheduleGetConversationEventCount = vi.fn<
+  (payload: { conversationId: string }) => Promise<number>
+>(() => Promise.resolve(0));
+const mockScheduleUnsubscribe = vi.fn();
 
 vi.mock("convex/react", () => ({
   usePaginatedQuery: (ref: unknown, args?: unknown, options?: unknown) =>
@@ -66,7 +73,20 @@ describe("useConversationEventFeed", () => {
     mockUsePaginatedQuery.mockReturnValue(undefined);
     mockListLocalEvents.mockReturnValue([]);
     mockGetLocalEventCount.mockReturnValue(0);
+    mockScheduleListConversationEvents.mockResolvedValue([]);
+    mockScheduleGetConversationEventCount.mockResolvedValue(0);
     localUpdateListener = null;
+    window.electronAPI = {
+      schedule: {
+        listCronJobs: vi.fn(),
+        listHeartbeats: vi.fn(),
+        listConversationEvents: (payload: { conversationId: string; maxItems?: number }) =>
+          mockScheduleListConversationEvents(payload),
+        getConversationEventCount: (payload: { conversationId: string }) =>
+          mockScheduleGetConversationEventCount(payload),
+        onUpdated: (_callback: () => void) => mockScheduleUnsubscribe,
+      },
+    } as unknown as typeof window.electronAPI;
   });
 
   it("hydrates local events and refreshes when local chat updates fire", () => {
@@ -131,6 +151,34 @@ describe("useConversationEventFeed", () => {
     expect(mockListLocalEvents).toHaveBeenLastCalledWith("conv-1", 400);
     expect(result.current.events).toHaveLength(400);
     expect(result.current.hasOlderEvents).toBe(false);
+  });
+
+  it("merges local scheduler events into the local event feed", async () => {
+    mockListLocalEvents.mockReturnValue([
+      makeEvent("e-1", 1, "user_message", { text: "hello" }),
+    ]);
+    mockGetLocalEventCount.mockReturnValue(1);
+    mockScheduleListConversationEvents.mockResolvedValue([
+      makeEvent("e-2", 2, "assistant_message", {
+        text: "Scheduled reply",
+        source: "cron",
+      }),
+    ]);
+    mockScheduleGetConversationEventCount.mockResolvedValue(1);
+
+    const { result } = renderHook(() => useConversationEventFeed("conv-1"));
+
+    await waitFor(() => {
+      expect(result.current.events.map((event) => event._id)).toEqual(["e-1", "e-2"]);
+    });
+
+    expect(mockScheduleListConversationEvents).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      maxItems: 200,
+    });
+    expect(mockScheduleGetConversationEventCount).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+    });
   });
 
   it("resets the local window when the conversation changes", () => {

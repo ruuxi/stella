@@ -13,7 +13,7 @@ import {
   getModelOverride,
 } from "./extensions/stella/local-preferences.js";
 import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./extensions/stella/local-task-manager.js";
-import type { ToolContext } from "./extensions/stella/tools-types.js";
+import type { ScheduleToolApi, ToolContext } from "./extensions/stella/tools-types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import {
   runPiOrchestratorTurn,
@@ -57,6 +57,14 @@ const DEFAULT_TOOL_ALLOWLIST = [
   "TaskCancel",
   "TaskOutput",
   "WebFetch",
+  "HeartbeatGet",
+  "HeartbeatUpsert",
+  "HeartbeatRun",
+  "CronList",
+  "CronAdd",
+  "CronUpdate",
+  "CronRemove",
+  "CronRun",
   "ActivateSkill",
   "NoResponse",
   "SaveMemory",
@@ -77,6 +85,7 @@ type HostRunnerOptions = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
+  scheduleApi?: ScheduleToolApi;
 };
 
 type ChatPayload = {
@@ -179,6 +188,7 @@ export const createPiHostRunner = ({
   frontendRoot,
   getHmrMorphOrchestrator,
   requestCredential,
+  scheduleApi,
 }: HostRunnerOptions) => {
   const store = new JsonlRuntimeStore(StellaHome);
 
@@ -209,6 +219,7 @@ export const createPiHostRunner = ({
     StellaHome,
     frontendRoot,
     requestCredential,
+    scheduleApi,
     taskApi: {
       createTask: async (request) => {
         if (!localTaskManager) {
@@ -549,6 +560,119 @@ export const createPiHostRunner = ({
     return { runId };
   };
 
+  const runAutomationTurn = async (payload: {
+    conversationId: string;
+    userPrompt: string;
+    agentType?: string;
+  }): Promise<
+    | { status: "ok"; finalText: string }
+    | { status: "busy"; finalText: ""; error: string }
+    | { status: "error"; finalText: ""; error: string }
+  > => {
+    const health = agentHealthCheck();
+    if (!health.ready) {
+      return {
+        status: "error",
+        finalText: "",
+        error: health.reason ?? "Pi runtime not ready",
+      };
+    }
+
+    if (activeOrchestratorRunId) {
+      return {
+        status: "busy",
+        finalText: "",
+        error: "The orchestrator is already running.",
+      };
+    }
+
+    const conversationId = payload.conversationId.trim();
+    const userPrompt = payload.userPrompt.trim();
+    const agentType = payload.agentType ?? "orchestrator";
+    if (!conversationId) {
+      return { status: "error", finalText: "", error: "Missing conversationId" };
+    }
+    if (!userPrompt) {
+      return { status: "error", finalText: "", error: "Missing user prompt" };
+    }
+
+    const runId = `local:auto:${crypto.randomUUID()}`;
+    const agentContext = await buildAgentContext({
+      conversationId,
+      agentType,
+      runId,
+    });
+    const resolvedLlm = resolveLlmRoute({
+      stellaHomePath: StellaHome,
+      modelName: agentContext.model,
+      agentType,
+      proxy: {
+        baseUrl: proxyBaseUrl,
+        getAuthToken: () => authToken?.trim(),
+      },
+    });
+
+    activeOrchestratorRunId = runId;
+    activeOrchestratorConversationId = conversationId;
+
+    const abortController = new AbortController();
+    activeRunAbortControllers.set(runId, abortController);
+
+    const cleanupRun = () => {
+      activeRunAbortControllers.delete(runId);
+      if (activeOrchestratorRunId === runId) {
+        activeOrchestratorRunId = null;
+        activeOrchestratorConversationId = null;
+      }
+    };
+
+    let finalText = "";
+    let fatalError: string | null = null;
+
+    try {
+      await runPiOrchestratorTurn({
+        runId,
+        conversationId,
+        userMessageId: `automation:${crypto.randomUUID()}`,
+        agentType,
+        userPrompt,
+        agentContext,
+        callbacks: {
+          onStream: () => {},
+          onToolStart: () => {},
+          onToolEnd: () => {},
+          onError: (event) => {
+            if (event.fatal) {
+              fatalError = event.error;
+            }
+          },
+          onEnd: (event) => {
+            finalText = event.finalText;
+          },
+        },
+        toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
+        deviceId,
+        stellaHome: StellaHome,
+        resolvedLlm,
+        store,
+        abortSignal: abortController.signal,
+        frontendRoot,
+      });
+      if (fatalError) {
+        return { status: "error", finalText: "", error: fatalError };
+      }
+      return { status: "ok", finalText };
+    } catch (error) {
+      return {
+        status: "error",
+        finalText: "",
+        error: (error as Error).message || "Pi runtime failed",
+      };
+    } finally {
+      cleanupRun();
+    }
+  };
+
   const cancelLocalChat = (runId: string) => {
     const controller = activeRunAbortControllers.get(runId);
     if (!controller) return;
@@ -595,6 +719,7 @@ export const createPiHostRunner = ({
     ) => toolHost.executeTool(toolName, toolArgs, context),
     agentHealthCheck,
     handleLocalChat,
+    runAutomationTurn,
     cancelLocalChat,
     getActiveOrchestratorRun,
     recoverCrashedRuns,

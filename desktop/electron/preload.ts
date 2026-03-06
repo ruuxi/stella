@@ -286,4 +286,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('workspace:listPanels') as Promise<Array<{ name: string; title: string }>>,
     onWorkspacePanelsChanged: onIpc<Array<{ name: string; title: string }>>('workspace:panelsChanged'),
   },
+
+  schedule: {
+    listCronJobs: () => ipcRenderer.invoke('schedule:listCronJobs'),
+    listHeartbeats: () => ipcRenderer.invoke('schedule:listHeartbeats'),
+    listConversationEvents: (payload: { conversationId: string; maxItems?: number }) =>
+      ipcRenderer.invoke('schedule:listConversationEvents', payload),
+    getConversationEventCount: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke('schedule:getConversationEventCount', payload),
+    onUpdated: onIpcSignal('schedule:updated'),
+  },
 })

@@ -21,6 +21,14 @@ export const DEVICE_TOOL_NAMES = [
   "RequestCredential",
   "SkillBash",
   "MediaGenerate",
+  "HeartbeatGet",
+  "HeartbeatUpsert",
+  "HeartbeatRun",
+  "CronList",
+  "CronAdd",
+  "CronUpdate",
+  "CronRemove",
+  "CronRun",
 ] as const;
 
 export type DeviceToolName = (typeof DEVICE_TOOL_NAMES)[number];
@@ -223,6 +231,36 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- mode=\"edit\": Modify an existing image/video (provide source_url).\n" +
     "- prompt describes what to generate or how to edit.\n" +
     "- media_type: \"image\" or \"video\".",
+  HeartbeatGet:
+    "Get the current heartbeat configuration for this conversation.\n\n" +
+    "Returns the full local heartbeat config or null if none exists.",
+  HeartbeatUpsert:
+    "Create or update the local heartbeat configuration for this conversation.\n\n" +
+    "Usage:\n" +
+    "- One heartbeat per conversation.\n" +
+    "- intervalMs controls how often the local check runs (minimum 60000ms).\n" +
+    "- checklist should be written as instructions Stella will follow on each run.\n" +
+    "- activeHours can restrict runs to a local time window.\n" +
+    "- deliver=false runs silently without posting back into the conversation.",
+  HeartbeatRun:
+    "Trigger the local heartbeat immediately without waiting for the next interval.",
+  CronList:
+    "List all local cron jobs for this device.\n\n" +
+    "Returns the current local schedule state, newest first.",
+  CronAdd:
+    "Create a new local cron job.\n\n" +
+    "Usage:\n" +
+    "- Schedule types: { kind: \"at\", atMs }, { kind: \"every\", everyMs, anchorMs? }, or { kind: \"cron\", expr, tz? }.\n" +
+    "- Payload types: { kind: \"systemEvent\", text } or { kind: \"agentTurn\", message }.\n" +
+    "- sessionTarget=\"main\" requires systemEvent payload. sessionTarget=\"isolated\" requires agentTurn payload.\n" +
+    "- deleteAfterRun=true removes successful one-shot jobs after they run.",
+  CronUpdate:
+    "Update an existing local cron job.\n\n" +
+    "Only include the fields you want to change; omitted fields are preserved.",
+  CronRemove:
+    "Permanently delete a local cron job.",
+  CronRun:
+    "Trigger a local cron job immediately, ignoring its next scheduled time.",
 };
 
 // ─── Schema Map ─────────────────────────────────────────────────────────────

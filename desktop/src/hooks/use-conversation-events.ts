@@ -2,6 +2,7 @@ import { usePaginatedQuery } from "convex/react";
 import {
   startTransition,
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -75,6 +76,30 @@ const getCachedLocalEventsSnapshot = (
   return next;
 };
 
+const mergeEventSources = (
+  primaryEvents: EventRecord[],
+  secondaryEvents: EventRecord[],
+): EventRecord[] => {
+  if (secondaryEvents.length === 0) {
+    return primaryEvents;
+  }
+
+  const merged = new Map<string, EventRecord>();
+  for (const event of primaryEvents) {
+    merged.set(event._id, event);
+  }
+  for (const event of secondaryEvents) {
+    merged.set(event._id, event);
+  }
+
+  return [...merged.values()].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) {
+      return a.timestamp - b.timestamp;
+    }
+    return a._id.localeCompare(b._id);
+  });
+};
+
 export const useConversationEventFeed = (
   conversationId?: string,
 ): ConversationEventFeed => {
@@ -128,16 +153,67 @@ export const useConversationEventFeed = (
     getLocalEventsSnapshot,
     () => EMPTY_EVENTS,
   );
+  const [scheduledEvents, setScheduledEvents] = useState<EventRecord[]>(EMPTY_EVENTS);
+  const [scheduledEventCount, setScheduledEventCount] = useState(0);
+
+  useEffect(() => {
+    if (storageMode !== "local" || !conversationId || !window.electronAPI?.schedule) {
+      setScheduledEvents(EMPTY_EVENTS);
+      setScheduledEventCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const scheduleApi = window.electronAPI.schedule;
+
+    const load = async () => {
+      try {
+        const [events, count] = await Promise.all([
+          scheduleApi.listConversationEvents({
+            conversationId,
+            maxItems: localMaxItems,
+          }),
+          scheduleApi.getConversationEventCount({ conversationId }),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setScheduledEvents(events as EventRecord[]);
+        setScheduledEventCount(count);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setScheduledEvents(EMPTY_EVENTS);
+        setScheduledEventCount(0);
+      }
+    };
+
+    void load();
+    const unsubscribe = scheduleApi.onUpdated(() => {
+      void load();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [conversationId, localMaxItems, storageMode]);
+
+  const mergedLocalEvents = useMemo(
+    () => mergeEventSources(localEvents, scheduledEvents),
+    [localEvents, scheduledEvents],
+  );
 
   const localEventCount =
     storageMode === "local" && conversationId
-      ? getLocalEventCount(conversationId)
+      ? getLocalEventCount(conversationId) + scheduledEventCount
       : 0;
   const isLocalLoadingOlder =
     storageMode === "local" &&
     pendingLocalMaxItems !== null &&
-    localEvents.length < pendingLocalMaxItems &&
-    localEventCount > localEvents.length;
+    mergedLocalEvents.length < pendingLocalMaxItems &&
+    localEventCount > mergedLocalEvents.length;
 
   const cloudResults = cloudResult?.results ?? EMPTY_EVENTS;
   const cloudStatus = cloudResult?.status ?? "Exhausted";
@@ -149,7 +225,7 @@ export const useConversationEventFeed = (
     }
 
     if (storageMode === "local") {
-      if (localEventCount <= localEvents.length) {
+      if (localEventCount <= mergedLocalEvents.length) {
         return;
       }
 
@@ -175,7 +251,7 @@ export const useConversationEventFeed = (
     cloudStatus,
     conversationId,
     localEventCount,
-    localEvents.length,
+    mergedLocalEvents.length,
     localMaxItems,
     localWindowVisitToken,
     storageMode,
@@ -184,8 +260,8 @@ export const useConversationEventFeed = (
   return useMemo(() => {
     if (storageMode === "local") {
       return {
-        events: localEvents,
-        hasOlderEvents: localEventCount > localEvents.length,
+        events: mergedLocalEvents,
+        hasOlderEvents: localEventCount > mergedLocalEvents.length,
         isLoadingOlder: isLocalLoadingOlder,
         isInitialLoading: false,
         loadOlder,
@@ -206,7 +282,7 @@ export const useConversationEventFeed = (
     isLocalLoadingOlder,
     loadOlder,
     localEventCount,
-    localEvents,
+    mergedLocalEvents,
     storageMode,
   ]);
 };
