@@ -7,7 +7,7 @@
 
 import path from "path";
 import os from "os";
-import { getDangerousCommandReason } from "@stella/shared";
+import { getDangerousCommandReason } from "./tool_schemas.js";
 
 // ---------------------------------------------------------------------------
 // 1. Dangerous Command Blocklist

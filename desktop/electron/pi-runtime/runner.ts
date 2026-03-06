@@ -37,7 +37,6 @@ const DEFAULT_SUBAGENT_PROMPT =
 
 const DEFAULT_TOOL_ALLOWLIST = [
   "Read",
-  "Write",
   "Edit",
   "Glob",
   "Grep",
