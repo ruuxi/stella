@@ -33,7 +33,7 @@ export const getCorsHeaders = (origin: string | null) => {
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-Device-ID, X-Provider, X-Original-Path, X-Model-Id, X-Agent-Type",
+      "Content-Type, Authorization, X-Device-ID, X-Provider, X-Model-Id, X-Agent-Type",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",

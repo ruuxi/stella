@@ -142,7 +142,7 @@ function createProviderModel(modelString: string, apiKey: string): LanguageModel
     }
     // Node-only providers — require "use node" runtime.
     // In V8 context, these fall through to OpenRouter/gateway via BYOK chain.
-    // Direct SDK support is available via the llmProxy reverse proxy path.
+    // Direct SDK support is available via the managed AI HTTP path.
     case "amazon-bedrock":
     case "google-vertex":
     case "google-vertex-anthropic":
