@@ -41,6 +41,29 @@ const PI_LOCAL_TOOLS = [
 
 const AnyToolArgsSchema = Type.Object({}, { additionalProperties: true });
 
+// Always loaded — high-frequency tools every agent needs
+const CORE_TOOL_NAMES = new Set([
+  "Read", "Edit", "Glob", "Grep", "Bash", "AskUserQuestion",
+]);
+
+// Deferred — loaded on demand via LoadTools
+const DEFERRED_TOOL_CATALOG: Record<string, string> = {
+  KillShell: "Stop a background shell process",
+  ShellStatus: "Check status of background shell processes",
+  RequestCredential: "Request an API key from the user via secure UI",
+  SkillBash: "Run a shell command with skill secrets auto-mounted",
+  MediaGenerate: "Generate or edit images and video",
+  Task: "Manage subagent tasks (combined create/cancel/output)",
+  TaskCreate: "Delegate a task to a subagent for background execution",
+  TaskCancel: "Cancel a running subagent task",
+  TaskOutput: "Get the result of a background subagent task",
+  WebFetch: "Fetch and read content from a URL",
+  ActivateSkill: "Load a skill's full instructions into context",
+  NoResponse: "Signal that no user-visible response is needed",
+  SaveMemory: "Save information worth remembering across conversations",
+  RecallMemories: "Look up relevant memories from past conversations",
+};
+
 export type PiStreamEvent = {
   runId: string;
   seq: number;
@@ -299,7 +322,8 @@ const createPiTools = (opts: {
 
   const uniqueToolNames = Array.from(new Set(requested));
 
-  return uniqueToolNames.map((toolName) => ({
+  // Build a single AgentTool for a given name
+  const buildTool = (toolName: string): AgentTool => ({
     name: toolName,
     label: toolName,
     description: TOOL_DESCRIPTIONS[toolName] ?? `${toolName} tool`,
@@ -368,7 +392,95 @@ const createPiTools = (opts: {
         details: formatted.details,
       };
     },
-  }));
+  });
+
+  // Separate into core (always loaded), deferred (loaded via LoadTools), and other (eagerly loaded)
+  const coreNames = uniqueToolNames.filter(name => CORE_TOOL_NAMES.has(name));
+  const deferredNames = uniqueToolNames.filter(name => !CORE_TOOL_NAMES.has(name) && name in DEFERRED_TOOL_CATALOG);
+  const otherNames = uniqueToolNames.filter(name => !CORE_TOOL_NAMES.has(name) && !(name in DEFERRED_TOOL_CATALOG));
+
+  // Start with core tools
+  const tools: AgentTool[] = coreNames.map(buildTool);
+
+  // Eagerly load any tools not in the deferred catalog (custom/unknown)
+  for (const name of otherNames) {
+    tools.push(buildTool(name));
+  }
+
+  // Set up deferred loading
+  if (deferredNames.length > 0) {
+    const deferredMap = new Map<string, AgentTool>();
+    for (const name of deferredNames) {
+      deferredMap.set(name, buildTool(name));
+    }
+
+    const catalogText = deferredNames
+      .map(name => `- ${name}: ${DEFERRED_TOOL_CATALOG[name]}`)
+      .join("\n");
+
+    tools.push({
+      name: "LoadTools",
+      label: "LoadTools",
+      description:
+        "Load additional tools to make them available.\n\n" +
+        "Call this before using any tool listed below. " +
+        "Once loaded, tools stay available for the rest of the conversation.\n\n" +
+        "Available tools:\n" + catalogText + "\n\n" +
+        "Usage:\n" +
+        "- Load by name: LoadTools({ names: [\"TaskCreate\", \"WebFetch\"] })\n" +
+        "- Search by keyword: LoadTools({ query: \"task\" })",
+      parameters: AnyToolArgsSchema,
+      execute: async (_toolCallId, params) => {
+        const args = (params as Record<string, unknown>) ?? {};
+        const names = Array.isArray(args.names)
+          ? args.names.filter((n): n is string => typeof n === "string")
+          : [];
+        const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
+
+        let toLoad: string[] = [];
+        if (names.length > 0) {
+          toLoad = names.filter(n => deferredMap.has(n));
+        } else if (query) {
+          toLoad = Array.from(deferredMap.keys()).filter(name =>
+            name.toLowerCase().includes(query) ||
+            (DEFERRED_TOOL_CATALOG[name] ?? "").toLowerCase().includes(query),
+          );
+        }
+
+        if (toLoad.length === 0) {
+          const available = Array.from(deferredMap.keys());
+          return {
+            content: [{ type: "text", text: available.length > 0
+              ? `No matching tools found. Available: ${available.join(", ")}`
+              : "All tools are already loaded." }],
+            details: { loaded: [], available },
+          };
+        }
+
+        const loaded: string[] = [];
+        for (const name of toLoad) {
+          const tool = deferredMap.get(name);
+          if (tool) {
+            tools.push(tool);
+            deferredMap.delete(name);
+            loaded.push(name);
+          }
+        }
+
+        const remaining = Array.from(deferredMap.keys());
+        let text = `Loaded: ${loaded.join(", ")}.`;
+        if (remaining.length > 0) {
+          text += ` Still available: ${remaining.join(", ")}.`;
+        }
+        return {
+          content: [{ type: "text", text }],
+          details: { loaded, remaining },
+        };
+      },
+    });
+  }
+
+  return tools;
 };
 
 export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promise<string> {
