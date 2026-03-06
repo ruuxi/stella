@@ -183,6 +183,9 @@ async function forwardRequest(
   delete forwardHeaders["api-key"];
   delete forwardHeaders["x-goog-api-key"];
   forwardHeaders.Authorization = `Bearer ${upstream.apiKey}`;
+  // Prevent upstream from compressing responses — Convex's fetch doesn't
+  // auto-decompress, so compressed bytes get corrupted by .text() decoding.
+  forwardHeaders["Accept-Encoding"] = "identity";
 
   // When the frontend didn't specify a model, inject the server-side model
   // config into the request body before forwarding to the gateway.
@@ -254,12 +257,16 @@ async function forwardRequest(
       });
     }
 
-    const responseBody = await upstreamResponse.text();
+    // Read as raw bytes to avoid corrupting compressed responses.
+    // upstreamResponse.text() would interpret gzip/br bytes as UTF-8,
+    // replacing invalid sequences with U+FFFD.
+    const rawBytes = new Uint8Array(await upstreamResponse.arrayBuffer());
 
+    // Try to extract usage stats from the response (best-effort)
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
     try {
-      const parsed = JSON.parse(responseBody) as {
+      const parsed = JSON.parse(new TextDecoder().decode(rawBytes)) as {
         usage?: {
           input_tokens?: number;
           prompt_tokens?: number;
@@ -273,7 +280,7 @@ async function forwardRequest(
           parsed.usage.output_tokens ?? parsed.usage.completion_tokens;
       }
     } catch {
-      // Not JSON or no usage field.
+      // Compressed or non-JSON — usage tracking will estimate from request.
     }
 
     void ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
@@ -287,7 +294,14 @@ async function forwardRequest(
       estimateFromRequest: !inputTokens && !outputTokens,
     });
 
-    return new Response(responseBody, {
+    // Forward raw bytes with original content-encoding so the client
+    // can decompress properly.
+    const encoding = upstreamResponse.headers.get("content-encoding");
+    if (encoding) {
+      responseHeaders["content-encoding"] = encoding;
+    }
+
+    return new Response(rawBytes, {
       status: upstreamResponse.status,
       headers: responseHeaders,
     });
