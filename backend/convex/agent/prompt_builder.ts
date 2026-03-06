@@ -246,7 +246,7 @@ export const buildSystemPrompt = async (
 // ─── fetchAgentContext ──────────────────────────────────────────────────────
 // Returns everything the local agent runtime needs in a single round-trip:
 // system prompt, dynamic context, tool allowlist, core memory, skills,
-// thread history, and a proxy token for LLM access.
+// thread history, and managed auth context for LLM access.
 
 const agentContextResultValidator = v.object({
   systemPrompt: v.string(),
