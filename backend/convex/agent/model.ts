@@ -73,6 +73,21 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  synthesis: {
+    model: "openai/gpt-5.4",
+    fallback: "zai/glm-4.7",
+    temperature: 0.8,
+    maxOutputTokens: 9500,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "low",
+      },
+    },
+  },
+
   session_compaction_summary: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
@@ -93,6 +108,18 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     providerOptions: {
       gateway: {
         order: ["cerebras"],
+      },
+    },
+  },
+
+  welcome: {
+    model: "anthropic/claude-sonnet-4-6",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 2400,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
       },
     },
   },
