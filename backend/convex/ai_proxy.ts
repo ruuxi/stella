@@ -21,8 +21,13 @@ import { AGENT_MODELS, DEFAULT_MODEL } from "./agent/model";
 
 const MAX_ANON_REQUESTS = 50_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
+// 1 = Vercel AI Gateway, 2 = OpenRouter
+const GATEWAY = 2;
+
 const GATEWAY_BASE_URL =
-  process.env.AI_GATEWAY_BASE_URL ?? "https://ai-gateway.vercel.sh/v1";
+  GATEWAY === 2
+    ? "https://openrouter.ai/api/v1"
+    : (process.env.AI_GATEWAY_BASE_URL ?? "https://ai-gateway.vercel.sh/v1");
 
 /** Convenience wrapper: error response with CORS extracted from request. */
 function proxyErrorResponse(
@@ -135,7 +140,7 @@ export const managedAi = httpAction(async (ctx, request) => {
     }
   }
 
-  const gatewayKey = process.env.AI_GATEWAY_API_KEY?.trim();
+  const gatewayKey = (GATEWAY === 2 ? process.env.OPENROUTER_API_KEY : process.env.AI_GATEWAY_API_KEY)?.trim();
   if (!gatewayKey) {
     return proxyErrorResponse(
       503,
