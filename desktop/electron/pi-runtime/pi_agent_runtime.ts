@@ -103,6 +103,8 @@ type BaseRunOptions = {
   store: JsonlRuntimeStore;
   abortSignal?: AbortSignal;
   frontendRoot?: string;
+  webSearch?: (query: string) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }>;
+  onSearchResults?: (query: string, results: Array<{ title: string; url: string; snippet: string }>) => void;
 };
 
 type OrchestratorRunOptions = BaseRunOptions & {
@@ -241,6 +243,8 @@ const createPiTools = (opts: {
     args: Record<string, unknown>,
     context: ToolContext,
   ) => Promise<ToolResult>;
+  webSearch?: (query: string) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }>;
+  onSearchResults?: (query: string, results: Array<{ title: string; url: string; snippet: string }>) => void;
 }): AgentTool[] => {
   const requested = Array.isArray(opts.toolsAllowlist) && opts.toolsAllowlist.length > 0
     ? opts.toolsAllowlist
@@ -256,6 +260,18 @@ const createPiTools = (opts: {
     parameters: AnyToolArgsSchema,
     execute: async (toolCallId, params) => {
       const args = (params as Record<string, unknown>) ?? {};
+
+      if (toolName === "WebSearch") {
+        const query = typeof args.query === "string" ? args.query : "";
+        if (!opts.webSearch) {
+          return { content: [{ type: "text", text: "WebSearch is not available." }], details: {} };
+        }
+        const { text, results } = await opts.webSearch(query);
+        if (results.length > 0 && opts.onSearchResults) {
+          opts.onSearchResults(query, results);
+        }
+        return { content: [{ type: "text", text }], details: { text } };
+      }
 
       if (toolName === "WebFetch") {
         const url = typeof args.url === "string" ? args.url : "";
@@ -358,6 +374,8 @@ export async function runPiOrchestratorTurn(opts: OrchestratorRunOptions): Promi
     toolsAllowlist: opts.agentContext.toolsAllowlist,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
+    webSearch: opts.webSearch,
+    onSearchResults: opts.onSearchResults,
   });
 
   const agent = new Agent({
@@ -721,6 +739,8 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
     toolsAllowlist: opts.agentContext.toolsAllowlist,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
+    webSearch: opts.webSearch,
+    onSearchResults: opts.onSearchResults,
   });
 
   const contextHistory =

@@ -21,6 +21,7 @@ export const DEVICE_TOOL_NAMES = [
   "RequestCredential",
   "SkillBash",
   "MediaGenerate",
+  "Display",
   "HeartbeatGet",
   "HeartbeatUpsert",
   "HeartbeatRun",
@@ -147,6 +148,14 @@ export const MediaGenerateSchema = z.object({
   source_url: z.string().optional().describe("URL of source media to edit (required for mode=edit)"),
 });
 
+export const WebSearchSchema = z.object({
+  query: z.string().min(2).describe("Search query (natural language)"),
+});
+
+export const DisplaySchema = z.object({
+  html: z.string().describe("HTML content to render on the canvas panel. Use semantic HTML (headings, paragraphs, lists, tables, divs). Elements are auto-styled to match the app theme. Use inline styles for layout (grid, flexbox). Use var(--foreground) and var(--background) for colors."),
+});
+
 // ─── Tool Descriptions ──────────────────────────────────────────────────────
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -231,6 +240,22 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- mode=\"edit\": Modify an existing image/video (provide source_url).\n" +
     "- prompt describes what to generate or how to edit.\n" +
     "- media_type: \"image\" or \"video\".",
+  WebSearch:
+    "Search the web for current information.\n\n" +
+    "Usage:\n" +
+    "- Returns up to 6 results with title, URL, and text snippet.\n" +
+    "- Use for questions requiring up-to-date information beyond training data.\n" +
+    "- query should be a natural language search phrase.\n" +
+    "- Search results are automatically displayed on the News panel.",
+  Display:
+    "Render HTML on the canvas panel of the home dashboard.\n\n" +
+    "Usage:\n" +
+    "- Outputs rich visual content on the home screen instead of plain text in chat.\n" +
+    "- Use semantic HTML: headings, paragraphs, lists, tables. They are auto-styled to match the app.\n" +
+    "- For layout, use inline styles with CSS grid or flexbox.\n" +
+    "- For colors, use var(--foreground) and var(--background) to respect light/dark themes.\n" +
+    "- Keep HTML self-contained — no external stylesheets or scripts.\n" +
+    "- Use this when information benefits from visual presentation (summaries, overviews, results).",
   HeartbeatGet:
     "Get the current heartbeat configuration for this conversation.\n\n" +
     "Returns the full local heartbeat config or null if none exists.",
@@ -277,5 +302,7 @@ export const TOOL_SCHEMAS = {
   RequestCredential: RequestCredentialSchema,
   SkillBash: SkillBashSchema,
   MediaGenerate: MediaGenerateSchema,
+  WebSearch: WebSearchSchema,
+  Display: DisplaySchema,
 } as const;
 

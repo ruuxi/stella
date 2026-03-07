@@ -69,6 +69,7 @@ export const createToolHost = ({
   resolveSecret,
   taskApi,
   scheduleApi,
+  displayHtml,
 }: ToolHostOptions) => {
   const stateRoot = path.join(StellaHome, "state");
 
@@ -177,6 +178,17 @@ export const createToolHost = ({
     // User tools
     AskUserQuestion: (args) => handleAskUser(args),
     RequestCredential: (args) => handleRequestCredential(userConfig, args),
+
+    // Display tool
+    Display: async (args) => {
+      const html = String(args.html ?? "");
+      if (!html) return { error: "html parameter is required." };
+      if (displayHtml) {
+        displayHtml(html);
+        return { result: "Display updated." };
+      }
+      return { error: "Display is not available (no renderer connected)." };
+    },
 
     // Media tools (not yet implemented)
     MediaGenerate: async () => notConfigured("MediaGenerate"),
