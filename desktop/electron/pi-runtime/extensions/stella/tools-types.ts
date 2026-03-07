@@ -110,6 +110,7 @@ export type ToolHostOptions = {
   frontendRoot?: string;
   taskApi?: TaskToolApi;
   scheduleApi?: ScheduleToolApi;
+  displayHtml?: (html: string) => void;
   requestCredential?: (payload: {
     provider: string;
     label?: string;

@@ -68,6 +68,7 @@ const DEFAULT_TOOL_ALLOWLIST = [
   "CronRemove",
   "CronRun",
   "ActivateSkill",
+  "Display",
   "NoResponse",
   "SaveMemory",
   "RecallMemories",
@@ -88,6 +89,8 @@ type HostRunnerOptions = {
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   scheduleApi?: ScheduleToolApi;
+  displayHtml?: (html: string) => void;
+  newsHtml?: (html: string) => void;
 };
 
 type ChatPayload = {
@@ -195,6 +198,8 @@ export const createPiHostRunner = ({
   getHmrMorphOrchestrator,
   requestCredential,
   scheduleApi,
+  displayHtml,
+  newsHtml,
 }: HostRunnerOptions) => {
   const store = new JsonlRuntimeStore(StellaHome);
   const convexApi = anyApi;
@@ -268,6 +273,7 @@ export const createPiHostRunner = ({
     StellaHome,
     frontendRoot,
     requestCredential,
+    displayHtml,
     scheduleApi,
     taskApi: {
       createTask: async (request) => {
@@ -318,6 +324,102 @@ export const createPiHostRunner = ({
       throw new Error("Pi runtime is missing auth token. Sign in or set STELLA_LLM_PROXY_TOKEN.");
     }
     return { baseUrl, authToken: nextAuthToken };
+  };
+
+  // WebSearch via backend Convex action (Exa API)
+  const webSearch = async (query: string): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }> => {
+    try {
+      const client = ensureConvexClient();
+      if (!client) throw new Error("Not connected to Convex. Sign in or set STELLA_CONVEX_URL.");
+      const result = await client.action(convexApi.web_search.search, { query }) as {
+        text: string;
+        results: Array<{ title: string; url: string; snippet: string }>;
+      };
+      return result;
+    } catch (error) {
+      return { text: `WebSearch failed: ${(error as Error).message}`, results: [] };
+    }
+  };
+
+  // Background news HTML generation from search results
+  // Model is resolved server-side via X-Agent-Type: news_generate (see backend/convex/agent/model.ts)
+  const generateNewsHtml = (query: string, results: Array<{ title: string; url: string; snippet: string }>) => {
+    if (!newsHtml || results.length === 0) return;
+
+    const proxy = (() => {
+      try { return ensureProxyReady(); } catch { return null; }
+    })();
+    if (!proxy) return;
+
+    const resultsText = results
+      .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
+      .join("\n\n");
+
+    const prompt =
+      `Generate a visual HTML news summary for the search query: "${query}"\n\n` +
+      `Search results:\n${resultsText}\n\n` +
+      `Output self-contained HTML that visually presents these results as a news feed. ` +
+      `Use semantic HTML (h2, h3, p, a, small). ` +
+      `For colors use var(--foreground) and var(--background). ` +
+      `Keep it concise and scannable. No scripts. No markdown fences.`;
+
+    // Fire and forget — don't block the agent
+    void (async () => {
+      try {
+        const response = await fetch(`${proxy.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${proxy.authToken}`,
+            "X-Agent-Type": "news_generate",
+          },
+          body: JSON.stringify({
+            messages: [
+              { role: "system", content: "You generate clean, self-contained HTML for a news panel. No markdown fences. No explanation. Just HTML." },
+              { role: "user", content: prompt },
+            ],
+            stream: true,
+          }),
+        });
+
+        if (!response.ok) return;
+
+        const reader = response.body?.getReader();
+        if (!reader) return;
+
+        const decoder = new TextDecoder();
+        let fullContent = "";
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) fullContent += delta;
+            } catch { /* skip */ }
+          }
+        }
+
+        const html = fullContent
+          .trim()
+          .replace(/^```(?:html|tsx?)?\s*\n?/i, "")
+          .replace(/\n?```\s*$/i, "")
+          .trim();
+
+        if (html) newsHtml(html);
+      } catch (error) {
+        console.warn("[news-generate] Failed:", (error as Error).message);
+      }
+    })();
   };
 
   const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string | undefined => {
@@ -403,6 +505,8 @@ export const createPiHostRunner = ({
           store,
           abortSignal,
           onProgress,
+          webSearch,
+          onSearchResults: generateNewsHtml,
         });
       } finally {
         if (shouldControlHmr) {
@@ -613,6 +717,8 @@ export const createPiHostRunner = ({
       store,
       abortSignal: abortController.signal,
       frontendRoot,
+      webSearch,
+      onSearchResults: generateNewsHtml,
     }).catch((error) => {
       cleanupRun();
       callbacks.onError({
@@ -723,6 +829,8 @@ export const createPiHostRunner = ({
         store,
         abortSignal: abortController.signal,
         frontendRoot,
+        webSearch,
+      onSearchResults: generateNewsHtml,
       });
       if (fatalError) {
         return { status: "error", finalText: "", error: fatalError };
