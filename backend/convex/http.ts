@@ -5,6 +5,7 @@ import { corsPreflightHandler } from "./http_shared/cors";
 
 // Route modules
 import { registerConnectorWebhookRoutes } from "./http_routes/connectors";
+import { registerSynthesisRoutes } from "./http_routes/synthesis";
 import { registerSpeechToTextRoutes } from "./http_routes/speech_to_text";
 import { registerSkillRoutes } from "./http_routes/skills";
 import { registerMusicRoutes } from "./http_routes/music";
@@ -25,6 +26,7 @@ authComponent.registerRoutes(http, createAuth, { cors: true });
 // Feature Routes
 // ---------------------------------------------------------------------------
 
+registerSynthesisRoutes(http);
 registerSpeechToTextRoutes(http);
 registerSkillRoutes(http);
 registerConnectorWebhookRoutes(http);
