@@ -148,27 +148,34 @@ const sanitizeProxyBase = (value: string | null): string | null => {
   return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/v1`;
 };
 
-/** Build a compact panel inventory for the orchestrator's dynamic context. */
+/** Scan source files for data-stella-label attributes to build panel inventory. */
 const buildPanelInventory = (frontendRoot: string): string => {
-  const defaultPanels = [
-    "News Feed", "Image Gallery", "Music Player",
-    "Suggestions", "Active Tasks", "Activity Feed", "GenerativeCanvas",
-  ];
+  const labelPattern = /data-stella-label="([^"]+)"/g;
+  const labels = new Set<string>();
 
-  // Dynamically created workspace panels
+  // Scan home view components
+  const homeDir = path.join(frontendRoot, "src", "app", "home");
+  // Scan workspace pages
   const pagesDir = path.join(frontendRoot, "src", "views", "home", "pages");
-  let userPanels: string[] = [];
-  try {
-    const entries = fs.readdirSync(pagesDir, { withFileTypes: true });
-    userPanels = entries
-      .filter((e) => e.isFile() && /\.(tsx|jsx)$/.test(e.name))
-      .map((e) => e.name.replace(/\.(tsx|jsx)$/, ""));
-  } catch {
-    // No pages directory yet
+
+  for (const dir of [homeDir, pagesDir]) {
+    try {
+      const entries = fs.readdirSync(dir);
+      for (const entry of entries) {
+        if (!/\.(tsx|jsx)$/.test(entry)) continue;
+        try {
+          const source = fs.readFileSync(path.join(dir, entry), "utf-8");
+          let match;
+          while ((match = labelPattern.exec(source)) !== null) {
+            labels.add(match[1]);
+          }
+        } catch { /* skip unreadable files */ }
+      }
+    } catch { /* directory doesn't exist */ }
   }
 
-  const all = [...defaultPanels, ...userPanels];
-  return "Home view panels: " + all.join(", ");
+  if (labels.size === 0) return "";
+  return "Current panels on the home view (visible to the user right now): " + [...labels].join(", ");
 };
 
 const readCoreMemory = (stellaHome: string): string | undefined => {
