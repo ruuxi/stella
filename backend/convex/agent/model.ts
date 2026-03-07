@@ -13,38 +13,38 @@ export type ModelConfig = {
 };
 
 const DEFAULT_MODEL: ModelConfig = {
-  model: "anthropic/claude-opus-4.6",
-  fallback: "moonshotai/kimi-k2.5",
+  model: "moonshotai/kimi-k2-0905:exacto",
+  fallback: "anthropic/claude-opus-4.5",
   temperature: 1.0,
-  maxOutputTokens: 16096,
+  maxOutputTokens: 16192,
   providerOptions: {
     gateway: {
-      order: ["cerebras"],
+      order: ["groq"],
     },
   },
 };
 
 const AGENT_MODELS: Record<string, ModelConfig> = {
   orchestrator: {
-    model: "anthropic/claude-opus-4.6",
+    model: "moonshotai/kimi-k2-0905:exacto",
     fallback: "anthropic/claude-opus-4.5",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["groq"],
       },
     },
   },
 
   general: {
-    model: "anthropic/claude-opus-4.6",
+    model: "moonshotai/kimi-k2-0905:exacto",
     fallback: "anthropic/claude-opus-4.5",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["groq"],
       },
     },
   },
@@ -62,8 +62,8 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   browser: {
-    model: "moonshotai/kimi-k2.5",
-    fallback: "anthropic/claude-sonnet-4-5",
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4-6",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
