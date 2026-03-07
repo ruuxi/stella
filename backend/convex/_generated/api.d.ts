@@ -131,6 +131,7 @@ import type * as tools_cloud from "../tools/cloud.js";
 import type * as tools_index from "../tools/index.js";
 import type * as tools_types from "../tools/types.js";
 import type * as tools_voice_schemas from "../tools/voice_schemas.js";
+import type * as web_search from "../web_search.js";
 
 import type {
   ApiFromModules,
@@ -262,6 +263,7 @@ declare const fullApi: ApiFromModules<{
   "tools/index": typeof tools_index;
   "tools/types": typeof tools_types;
   "tools/voice_schemas": typeof tools_voice_schemas;
+  web_search: typeof web_search;
 }>;
 
 /**
