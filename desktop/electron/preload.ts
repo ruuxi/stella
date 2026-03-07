@@ -48,6 +48,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     show: (target: 'mini' | 'full') => ipcRenderer.send('window:show', target),
   },
 
+  display: {
+    onUpdate: onIpc<string>('display:update'),
+  },
+
+  news: {
+    onUpdate: onIpc<string>('news:update'),
+  },
+
   ui: {
     getState: () => ipcRenderer.invoke('ui:getState'),
     setState: (partial: Record<string, unknown>) => ipcRenderer.invoke('ui:setState', partial),

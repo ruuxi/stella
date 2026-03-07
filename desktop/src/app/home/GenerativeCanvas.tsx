@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation"
 import { DashboardCard } from "./DashboardCard"
 
@@ -9,19 +10,36 @@ function getGreeting(): string {
 }
 
 export function GenerativeCanvas() {
+  const [displayHtml, setDisplayHtml] = useState<string | null>(null)
+
+  useEffect(() => {
+    return window.electronAPI?.display.onUpdate((html) => {
+      setDisplayHtml(html)
+    })
+  }, [])
+
   return (
-    <DashboardCard>
-      <div className="canvas-container">
-        <div className="canvas-rings-outer" />
-        <div className="canvas-rings" />
-        <div className="home-stella-orb">
-          <StellaAnimation width={40} height={30} />
+    <DashboardCard
+      data-stella-label="Canvas"
+      data-stella-state={displayHtml ? "has content" : "idle"}
+    >
+      {displayHtml ? (
+        <div
+          className="canvas-display"
+          dangerouslySetInnerHTML={{ __html: displayHtml }}
+        />
+      ) : (
+        <div className="canvas-container">
+          <div className="canvas-rings-outer" />
+          <div className="canvas-rings" />
+          <div className="home-stella-orb">
+            <StellaAnimation width={40} height={30} />
+          </div>
+          <div className="canvas-footer">
+            <span className="canvas-greeting">{getGreeting()}</span>
+          </div>
         </div>
-        <div className="canvas-footer">
-          <span className="canvas-greeting">{getGreeting()}</span>
-        </div>
-      </div>
+      )}
     </DashboardCard>
   )
 }
-

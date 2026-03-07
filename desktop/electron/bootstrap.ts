@@ -183,6 +183,22 @@ export const bootstrapMainProcess = () => {
       frontendRoot: path.resolve(__dirname, '..'),
       getHmrMorphOrchestrator: () => hmrMorphOrchestrator,
       requestCredential: (payload) => credentialService.requestCredential(payload),
+      displayHtml: (html) => {
+        const targets = windowManager ? windowManager.getAllWindows() : BrowserWindow.getAllWindows()
+        for (const win of targets) {
+          if (!win.isDestroyed()) {
+            win.webContents.send('display:update', html)
+          }
+        }
+      },
+      newsHtml: (html) => {
+        const targets = windowManager ? windowManager.getAllWindows() : BrowserWindow.getAllWindows()
+        for (const win of targets) {
+          if (!win.isDestroyed()) {
+            win.webContents.send('news:update', html)
+          }
+        }
+      },
       scheduleApi: {
         listCronJobs: async () => schedulerService!.listCronJobs(),
         addCronJob: async (input) => schedulerService!.addCronJob(input),
