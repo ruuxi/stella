@@ -19,13 +19,15 @@ const ensureDir = async (dirPath: string) => {
   await fs.mkdir(dirPath, { recursive: true });
 };
 
-const BUNDLED_SKILLS_DIR = path.resolve(__dirname, "..", "bundled-skills");
-const BUNDLED_AGENTS_DIR = path.resolve(__dirname, "..", "bundled-agents");
+// In dev mode, __dirname is dist-electron/system/ (compiled output).
+// Bundled .md files live in the source tree, not the compiled output.
+// Go up to frontend/, then into electron/bundled-*.
+const BUNDLED_SKILLS_DIR = path.resolve(__dirname, "..", "..", "electron", "bundled-skills");
+const BUNDLED_AGENTS_DIR = path.resolve(__dirname, "..", "..", "electron", "bundled-agents");
 
 /**
- * Copy bundled directories into a target path if they don't already exist.
- * Only creates new subdirectories — never overwrites user modifications.
- * Used for both bundled skills and bundled agents.
+ * Copy bundled directories into a target path.
+ * Always overwrites — in dev mode we want the latest source to take effect.
  */
 const seedBundledDir = async (sourceRoot: string, targetRoot: string) => {
   let entries: Array<{ name: string; isDirectory: () => boolean }>;
@@ -37,15 +39,8 @@ const seedBundledDir = async (sourceRoot: string, targetRoot: string) => {
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const targetDir = path.join(targetRoot, entry.name);
-    try {
-      await fs.access(targetDir);
-      continue; // Already exists — don't overwrite
-    } catch {
-      // Doesn't exist yet — seed it
-    }
-
     const sourceDir = path.join(sourceRoot, entry.name);
+    const targetDir = path.join(targetRoot, entry.name);
     await ensureDir(targetDir);
 
     const files = await fs.readdir(sourceDir);
