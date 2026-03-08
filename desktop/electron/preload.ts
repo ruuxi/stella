@@ -329,18 +329,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('localChat:getSyncCheckpoint', payload),
     setSyncCheckpoint: (payload: { conversationId: string; localMessageId: string }) =>
       ipcRenderer.invoke('localChat:setSyncCheckpoint', payload),
-    importLegacyData: (payload: {
-      store?: {
-        version?: number
-        conversations?: Record<string, {
-          id?: string
-          updatedAt?: number
-          events?: unknown[]
-        }>
-      } | null
-      syncCheckpoints?: Record<string, unknown> | null
-      defaultConversationId?: unknown
-    }) => ipcRenderer.invoke('localChat:importLegacyData', payload),
     onUpdated: onIpcSignal('localChat:updated'),
   },
 })

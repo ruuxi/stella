@@ -38,24 +38,6 @@ export type LocalChatSyncMessage = {
   deviceId?: string
 }
 
-export type LocalChatLegacyStore = {
-  version?: number
-  conversations?: Record<
-    string,
-    {
-      id?: string
-      updatedAt?: number
-      events?: unknown[]
-    }
-  >
-}
-
-export type ImportLegacyLocalChatPayload = {
-  store?: LocalChatLegacyStore | null
-  syncCheckpoints?: Record<string, unknown> | null
-  defaultConversationId?: unknown
-}
-
 type SqliteStatement = {
   run(...params: unknown[]): unknown
   all(...params: unknown[]): unknown[]
@@ -155,35 +137,6 @@ const toStoredEventRecord = (
   conversationId,
   ...event,
 })
-
-const sanitizeEventRecord = (value: unknown): LocalChatEventRecord | null => {
-  const record = asObject(value)
-  if (!record) return null
-
-  const eventId = asTrimmedString(record._id)
-  const eventType = asTrimmedString(record.type)
-  const timestamp = asFiniteNumber(record.timestamp)
-  if (!eventId || !eventType || timestamp == null) {
-    return null
-  }
-
-  const payload = asObject(record.payload) ?? undefined
-  const channelEnvelope = asObject(record.channelEnvelope) ?? undefined
-  const deviceId = asTrimmedString(record.deviceId) || undefined
-  const requestId = asTrimmedString(record.requestId) || undefined
-  const targetDeviceId = asTrimmedString(record.targetDeviceId) || undefined
-
-  return {
-    _id: eventId,
-    timestamp,
-    type: eventType,
-    ...(deviceId ? { deviceId } : {}),
-    ...(requestId ? { requestId } : {}),
-    ...(targetDeviceId ? { targetDeviceId } : {}),
-    ...(payload ? { payload } : {}),
-    ...(channelEnvelope ? { channelEnvelope } : {}),
-  }
-}
 
 const openDatabase = (dbPath: string): SqliteDatabase => {
   if (typeof globalThis.Bun !== 'undefined') {
@@ -619,84 +572,6 @@ export class LocalChatService {
         local_message_id = excluded.local_message_id,
         updated_at = excluded.updated_at
     `).run(conversationId, localMessageId, Date.now())
-  }
-
-  importLegacyData(payload: ImportLegacyLocalChatPayload) {
-    const store = payload.store
-    const conversations = store?.conversations && typeof store.conversations === 'object'
-      ? store.conversations
-      : {}
-
-    const updatedConversationIds = new Set<string>()
-    let importedEvents = 0
-    let importedCheckpoints = 0
-
-    this.withTransaction(() => {
-      for (const [conversationIdRaw, conversationValue] of Object.entries(conversations)) {
-        const conversationId = asTrimmedString(conversationIdRaw)
-        const conversation = asObject(conversationValue)
-        if (!conversationId || !conversation) continue
-
-        const events = Array.isArray(conversation.events)
-          ? conversation.events
-              .map((value) => sanitizeEventRecord(value))
-              .filter((value): value is LocalChatEventRecord => value !== null)
-              .sort((a, b) => {
-                if (a.timestamp !== b.timestamp) {
-                  return a.timestamp - b.timestamp
-                }
-                return a._id.localeCompare(b._id)
-              })
-              .slice(-MAX_EVENTS_PER_CONVERSATION)
-          : []
-
-        const updatedAt = asFiniteNumber(conversation.updatedAt)
-          ?? events.at(-1)?.timestamp
-          ?? Date.now()
-
-        this.upsertConversation(conversationId, updatedAt)
-        for (const event of events) {
-          this.upsertEvent(conversationId, event)
-          importedEvents += 1
-        }
-        this.trimConversationEvents(conversationId)
-        updatedConversationIds.add(conversationId)
-      }
-
-      const checkpoints =
-        payload.syncCheckpoints && typeof payload.syncCheckpoints === 'object'
-          ? payload.syncCheckpoints
-          : {}
-      for (const [conversationIdRaw, localMessageIdRaw] of Object.entries(checkpoints)) {
-        const conversationId = asTrimmedString(conversationIdRaw)
-        const localMessageId = asTrimmedString(localMessageIdRaw)
-        if (!conversationId || !localMessageId) continue
-        this.db.prepare(`
-          INSERT INTO sync_checkpoints (conversation_id, local_message_id, updated_at)
-          VALUES (?, ?, ?)
-          ON CONFLICT(conversation_id) DO UPDATE SET
-            local_message_id = excluded.local_message_id,
-            updated_at = excluded.updated_at
-        `).run(conversationId, localMessageId, Date.now())
-        importedCheckpoints += 1
-      }
-
-      const defaultConversationId = asTrimmedString(payload.defaultConversationId)
-      if (defaultConversationId) {
-        this.upsertConversation(defaultConversationId, Date.now())
-        this.setSetting(DEFAULT_CONVERSATION_SETTING_KEY, defaultConversationId)
-      }
-    })
-
-    for (const conversationId of updatedConversationIds) {
-      this.rebuildTranscriptFile(conversationId)
-    }
-
-    return {
-      importedConversations: updatedConversationIds.size,
-      importedEvents,
-      importedCheckpoints,
-    }
   }
 
   close() {

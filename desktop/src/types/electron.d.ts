@@ -300,22 +300,6 @@ export type ElectronLocalChatApi = {
     conversationId: string
     localMessageId: string
   }) => Promise<{ ok: boolean }>
-  importLegacyData: (payload: {
-    store?: {
-      version?: number
-      conversations?: Record<string, {
-        id?: string
-        updatedAt?: number
-        events?: EventRecord[]
-      }>
-    } | null
-    syncCheckpoints?: Record<string, unknown> | null
-    defaultConversationId?: unknown
-  }) => Promise<{
-    importedConversations: number
-    importedEvents: number
-    importedCheckpoints: number
-  }>
   onUpdated: (callback: () => void) => () => void
 }
 
