@@ -9,10 +9,8 @@
  * 5. Wait for overlay to signal completion → cleanup
  */
 
-import { app, type BrowserWindow } from "electron";
-import { writeFile, unlink } from "node:fs/promises";
-import path from "node:path";
-import type { NativeOverlayController } from "../windows/native-overlay.js";
+import { ipcMain, type BrowserWindow } from "electron";
+import type { OverlayWindowController } from "../windows/overlay-window.js";
 
 const FORWARD_ANIM_MS = 800;
 const CAPTURE_SETTLE_DELAY_MS = 150;
@@ -26,32 +24,30 @@ export type HmrMorphOrchestrator = {
 
 export function createHmrMorphOrchestrator(deps: {
   getFullWindow: () => BrowserWindow | null;
-  getNativeOverlay: () => NativeOverlayController | null;
+  getOverlayController: () => OverlayWindowController | null;
 }): HmrMorphOrchestrator {
 
-  const captureToFile = async (win: BrowserWindow, label: string): Promise<string | null> => {
+  const captureWindow = async (win: BrowserWindow): Promise<string | null> => {
     try {
       const image = await win.webContents.capturePage();
-      const png = image.toPNG();
-      const filePath = path.join(app.getPath("temp"), `stella_morph_${label}_${Date.now()}.png`);
-      await writeFile(filePath, png);
-      return filePath;
+      return image.toDataURL();
     } catch {
       return null;
     }
   };
 
-  const cleanupFile = (filePath: string | null) => {
-    if (filePath) void unlink(filePath).catch(() => {});
-  };
-
-  const waitForMorphDone = (overlay: NativeOverlayController): Promise<void> => {
+  const waitForMorphDone = (): Promise<void> => {
     return new Promise((resolve) => {
-      const timer = setTimeout(resolve, MORPH_DONE_TIMEOUT_MS);
-      overlay.onMorphDone(() => {
+      const handler = () => {
         clearTimeout(timer);
         resolve();
-      });
+      };
+      const timer = setTimeout(() => {
+        ipcMain.removeListener("overlay:morphDone", handler);
+        resolve();
+      }, MORPH_DONE_TIMEOUT_MS);
+
+      ipcMain.once("overlay:morphDone", handler);
     });
   };
 
@@ -79,23 +75,23 @@ export function createHmrMorphOrchestrator(deps: {
     resumeHmr: () => Promise<void>;
   }): Promise<void> => {
     const fullWindow = deps.getFullWindow();
-    const nativeOverlay = deps.getNativeOverlay();
+    const overlayController = deps.getOverlayController();
 
-    if (!fullWindow || fullWindow.isDestroyed() || !nativeOverlay) {
+    if (!fullWindow || fullWindow.isDestroyed() || !overlayController) {
       await opts.resumeHmr();
       return;
     }
 
-    // 1. Capture old state to temp file
-    const oldScreenshot = await captureToFile(fullWindow, "old");
+    // 1. Capture old state
+    const oldScreenshot = await captureWindow(fullWindow);
     if (!oldScreenshot) {
       await opts.resumeHmr();
       return;
     }
 
-    // 2. Start forward morph on native overlay
+    // 2. Start forward morph on overlay
     const bounds = fullWindow.getBounds();
-    nativeOverlay.startMorphForward(oldScreenshot, bounds);
+    overlayController.startMorphForward(oldScreenshot, bounds);
 
     // 3. While the forward animation plays, resume HMR in parallel
     const hmrDone = (async () => {
@@ -127,29 +123,23 @@ export function createHmrMorphOrchestrator(deps: {
     await hmrDone;
 
     if (fullWindow.isDestroyed()) {
-      nativeOverlay.endMorph();
-      cleanupFile(oldScreenshot);
+      overlayController.endMorph();
       return;
     }
 
-    // 6. Capture new state to temp file
-    const newScreenshot = await captureToFile(fullWindow, "new");
+    // 6. Capture new state
+    const newScreenshot = await captureWindow(fullWindow);
     if (!newScreenshot) {
-      nativeOverlay.endMorph();
-      cleanupFile(oldScreenshot);
+      overlayController.endMorph();
       return;
     }
 
     // 7. Start reverse immediately — no pause
-    nativeOverlay.startMorphReverse(newScreenshot);
+    overlayController.startMorphReverse(newScreenshot);
 
     // 8. Wait for completion
-    await waitForMorphDone(nativeOverlay);
-    nativeOverlay.endMorph();
-
-    // 9. Cleanup temp files
-    cleanupFile(oldScreenshot);
-    cleanupFile(newScreenshot);
+    await waitForMorphDone();
+    overlayController.endMorph();
   };
 
   return { runTransition };
