@@ -2,19 +2,6 @@ import { defineTable } from "convex/server";
 import { v } from "convex/values";
 import { jsonObjectValidator } from "../shared_validators";
 
-export const bridgeAuthStateValidator = v.optional(
-  v.object({
-    qrCode: v.optional(v.string()),
-    linkUri: v.optional(v.string()),
-    generatedAt: v.optional(v.number()),
-    phoneNumber: v.optional(v.string()),
-    externalUserId: v.optional(v.string()),
-    displayName: v.optional(v.string()),
-    jid: v.optional(v.string()),
-    reason: v.optional(v.string()),
-  }),
-);
-
 export const integrationsSchema = {
   integrations_public: defineTable({
     id: v.string(),
@@ -90,30 +77,4 @@ export const integrationsSchema = {
     installedAt: v.number(),
     updatedAt: v.number(),
   }).index("by_teamId", ["teamId"]),
-
-  bridge_sessions: defineTable({
-    ownerId: v.string(),
-    provider: v.string(),
-    status: v.string(),
-    webhookSecret: v.string(),
-    webhookSecretKeyVersion: v.optional(v.number()),
-    authState: bridgeAuthStateValidator,
-    errorMessage: v.optional(v.string()),
-    lastHeartbeatAt: v.optional(v.number()),
-    lastMessageAtMs: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_ownerId_and_provider", ["ownerId", "provider"]),
-
-  bridge_outbound: defineTable({
-    sessionId: v.id("bridge_sessions"),
-    ownerId: v.string(),
-    provider: v.string(),
-    externalUserId: v.string(),
-    text: v.string(),
-    createdAt: v.number(),
-  })
-    .index("by_sessionId_and_createdAt", ["sessionId", "createdAt"])
-    .index("by_createdAt", ["createdAt"]),
 };

@@ -25,6 +25,12 @@ describe("http_routes module structure", () => {
     expect(source).toContain("discord");
   });
 
+  test("connectors.ts does not expose removed bridge routes", () => {
+    const source = fs.readFileSync("convex/http_routes/connectors.ts", "utf-8");
+    expect(source).not.toContain("/api/bridge/poll");
+    expect(source).not.toContain("/api/webhooks/bridge");
+  });
+
   test("all route files register HTTP routes", () => {
     for (const { file } of routeFiles) {
       const source = fs.readFileSync(file, "utf-8");

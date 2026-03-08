@@ -120,10 +120,6 @@ export const deliverToConnector = internalAction({
         case "linq":
           await deliverLinq(meta, args.text);
           break;
-        case "whatsapp":
-        case "signal":
-          await deliverBridge(ctx, meta, args.text, args.provider);
-          break;
         default:
           throw new ConvexError({
             code: "INVALID_ARGUMENT",
@@ -426,43 +422,6 @@ async function deliverLinq(meta: Record<string, unknown>, text: string) {
     );
   }
 }
-async function deliverBridge(
-  ctx: InternalRunCtx,
-  meta: Record<string, unknown>,
-  text: string,
-  provider: string,
-) {
-  const ownerId = meta.ownerId as string;
-  const externalUserId = meta.externalUserId as string;
-  if (!ownerId || !externalUserId) {
-    console.error(
-      "[connector_delivery] Bridge delivery missing ownerId or externalUserId",
-    );
-    return;
-  }
-
-  // Look up the bridge session by ownerId and provider
-  const session = (await ctx.runQuery(
-    internal.channels.bridge.getBridgeSession,
-    { ownerId, provider },
-  )) as { _id: string } | null;
-
-  if (!session) {
-    console.error(
-      `[connector_delivery] No bridge session found for ${provider}/${ownerId}`,
-    );
-    return;
-  }
-
-  await ctx.runMutation(internal.channels.bridge_outbound.enqueue, {
-    sessionId: session._id,
-    ownerId,
-    provider,
-    externalUserId,
-    text,
-  });
-}
-
 /** Fetch the most recent assistant_message text for a conversation. */
 async function getLatestAssistantText(
   ctx: Pick<InternalRunCtx, "runQuery">,

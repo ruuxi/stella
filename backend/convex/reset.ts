@@ -139,27 +139,6 @@ export const _deleteOwnerBatch = internalMutation({
       totalDeleted++;
     }
 
-    // Bridge outbound (must delete before sessions)
-    const bridgeSessions = await ctx.db
-      .query("bridge_sessions")
-      .withIndex("by_ownerId_and_provider", (q) => q.eq("ownerId", ownerId))
-      .take(BATCH);
-    for (const bs of bridgeSessions) {
-      const outbound = await ctx.db
-        .query("bridge_outbound")
-        .withIndex("by_sessionId_and_createdAt", (q) => q.eq("sessionId", bs._id))
-        .take(BATCH);
-      for (const o of outbound) {
-        await ctx.db.delete(o._id);
-        totalDeleted++;
-      }
-      // Only delete session once all its outbound messages are gone
-      if (outbound.length < BATCH) {
-        await ctx.db.delete(bs._id);
-        totalDeleted++;
-      }
-    }
-
     return totalDeleted > 0;
   },
 });
