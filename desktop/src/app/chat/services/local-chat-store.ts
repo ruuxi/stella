@@ -1,4 +1,4 @@
-import { type EventRecord, getEventText } from "@/app/chat/lib/event-transforms";
+import { type ChannelEnvelope, type EventRecord, getEventText } from "@/app/chat/lib/event-transforms";
 import {
   eventsToHistoryMessages,
   type ContextEvent,
@@ -49,6 +49,7 @@ export type LocalAppendEventArgs = {
   deviceId?: string;
   requestId?: string;
   targetDeviceId?: string;
+  channelEnvelope?: unknown;
   timestamp?: number;
   eventId?: string;
 };
@@ -61,9 +62,13 @@ const createEmptyStore = (): LocalStore => ({
 const canUseStorage = () =>
   typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 
-// In-memory cache to avoid re-parsing the entire JSON blob on every operation
+const hasElectronLocalChatApi = () =>
+  typeof window !== "undefined" && Boolean(window.electronAPI?.localChat);
+
+// In-memory cache to avoid re-parsing the entire JSON blob on every operation.
 let _cachedStore: LocalStore | null = null;
 let _cacheRaw: string | null = null;
+let legacyMigrationPromise: Promise<void> | null = null;
 
 const encodeBase32 = (value: number, length: number): string => {
   let remaining = Math.floor(value);
@@ -95,7 +100,6 @@ const readStore = (): LocalStore => {
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
     if (!raw) return createEmptyStore();
-    // Return cached store if the raw string hasn't changed
     if (raw === _cacheRaw && _cachedStore) return _cachedStore;
     const parsed = JSON.parse(raw) as Partial<LocalStore> | null;
     if (!parsed || typeof parsed !== "object") return createEmptyStore();
@@ -163,23 +167,7 @@ const sortEventsAscending = (events: EventRecord[]) =>
     return a._id.localeCompare(b._id);
   });
 
-export const getOrCreateLocalConversationId = (): string => {
-  if (!canUseStorage()) {
-    return generateLocalId();
-  }
-  const existing = window.localStorage.getItem(DEFAULT_CONVERSATION_KEY);
-  if (existing && existing.length > 0) {
-    return existing;
-  }
-  const created = generateLocalId();
-  window.localStorage.setItem(DEFAULT_CONVERSATION_KEY, created);
-  const store = readStore();
-  ensureConversation(store, created);
-  writeStore(store);
-  return created;
-};
-
-export const listLocalEvents = (
+const fallbackListLocalEvents = (
   conversationId: string,
   maxItems = 200,
 ): EventRecord[] => {
@@ -191,13 +179,13 @@ export const listLocalEvents = (
   return sorted.slice(sorted.length - maxItems);
 };
 
-export const getLocalEventCount = (conversationId: string): number => {
+const fallbackGetLocalEventCount = (conversationId: string): number => {
   const store = readStore();
   const conversation = store.conversations[conversationId];
   return conversation?.events.length ?? 0;
 };
 
-export const appendLocalEvent = (args: LocalAppendEventArgs): EventRecord => {
+const fallbackAppendLocalEvent = (args: LocalAppendEventArgs): EventRecord => {
   const store = readStore();
   const conversation = ensureConversation(store, args.conversationId);
   const timestamp = args.timestamp ?? Date.now();
@@ -213,6 +201,9 @@ export const appendLocalEvent = (args: LocalAppendEventArgs): EventRecord => {
   if (args.payload && typeof args.payload === "object") {
     event.payload = args.payload as Record<string, unknown>;
   }
+  if (args.channelEnvelope && typeof args.channelEnvelope === "object") {
+    event.channelEnvelope = args.channelEnvelope as ChannelEnvelope;
+  }
 
   conversation.events.push(event);
   if (conversation.events.length > MAX_EVENTS_PER_CONVERSATION) {
@@ -224,71 +215,11 @@ export const appendLocalEvent = (args: LocalAppendEventArgs): EventRecord => {
   return event;
 };
 
-const CONTEXT_EVENT_TYPES = new Set([
-  "user_message",
-  "assistant_message",
-  "tool_request",
-  "tool_result",
-  "task_started",
-  "task_completed",
-  "task_failed",
-  "microcompact_boundary",
-]);
-
-const DEFAULT_HISTORY_MAX_TOKENS = 24_000;
-const DEFAULT_WARNING_THRESHOLD_TOKENS = 170_000;
-
-/**
- * Build history messages using the same pipeline as the cloud/server-side path:
- * token-budgeted event selection, tool call/result formatting, and micro-compaction.
- *
- * Selection is token-budget-based (default 24 000 tokens, matching the backend).
- */
-export const buildLocalHistoryMessages = (
-  conversationId: string,
-): LocalHistoryMessage[] => {
-  // Fetch a generous window of raw events
-  const events = listLocalEvents(conversationId, 800);
-
-  // Keep only model-context-relevant event types
-  const contextEvents = events.filter((e) => CONTEXT_EVENT_TYPES.has(e.type));
-  if (contextEvents.length === 0) return [];
-
-  // Select a recent tail within the token budget (newest-first input)
-  const newestFirst = [...contextEvents].reverse();
-  const selected = selectRecentByTokenBudget({
-    itemsNewestFirst: newestFirst,
-    maxTokens: DEFAULT_HISTORY_MAX_TOKENS,
-    estimateTokens: (e) =>
-      estimateContextEventTokens({
-        type: e.type,
-        payload: e.payload,
-        requestId: e.requestId,
-      }),
-  });
-
-  // Convert back to chronological order for the formatter
-  const chronological = [...selected].reverse();
-
-  // Run through the shared formatter (tool call/result formatting, micro-compaction)
-  const { messages } = eventsToHistoryMessages(
-    chronological as ContextEvent[],
-    {
-      microcompact: {
-        trigger: "auto",
-        warningThresholdTokens: DEFAULT_WARNING_THRESHOLD_TOKENS,
-      },
-    },
-  );
-
-  return messages;
-};
-
-export const buildLocalSyncMessages = (
+const fallbackBuildLocalSyncMessages = (
   conversationId: string,
   maxMessages = MAX_EVENTS_PER_CONVERSATION,
 ): LocalSyncMessage[] => {
-  const events = listLocalEvents(conversationId, maxMessages * 4);
+  const events = fallbackListLocalEvents(conversationId, maxMessages * 4);
   const messages: LocalSyncMessage[] = [];
   for (const event of events) {
     if (event.type !== "user_message" && event.type !== "assistant_message") {
@@ -311,14 +242,240 @@ export const buildLocalSyncMessages = (
   return messages.slice(messages.length - maxMessages);
 };
 
-export const getLocalSyncCheckpoint = (conversationId: string): string | null => {
+const CONTEXT_EVENT_TYPES = new Set([
+  "user_message",
+  "assistant_message",
+  "tool_request",
+  "tool_result",
+  "task_started",
+  "task_completed",
+  "task_failed",
+  "microcompact_boundary",
+]);
+
+const DEFAULT_HISTORY_MAX_TOKENS = 24_000;
+const DEFAULT_WARNING_THRESHOLD_TOKENS = 170_000;
+
+const parseLegacyStorePayload = (): Record<string, unknown> | undefined => {
+  if (!canUseStorage()) return undefined;
+  const raw = window.localStorage.getItem(STORE_KEY);
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    console.debug("[local-chat-store] Failed to parse legacy local transcript store:", (err as Error).message);
+    return undefined;
+  }
+};
+
+const parseLegacyCheckpointPayload = (): Record<string, unknown> | undefined => {
+  if (!canUseStorage()) return undefined;
+  const raw = window.localStorage.getItem(SYNC_CHECKPOINTS_KEY);
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    console.debug("[local-chat-store] Failed to parse legacy sync checkpoints:", (err as Error).message);
+    return undefined;
+  }
+};
+
+const migrateLegacyLocalStateToElectron = async (): Promise<void> => {
+  if (!hasElectronLocalChatApi() || !canUseStorage()) return;
+  if (!window.localStorage.getItem(STORE_KEY) && !window.localStorage.getItem(SYNC_CHECKPOINTS_KEY)) {
+    return;
+  }
+  if (legacyMigrationPromise) {
+    return legacyMigrationPromise;
+  }
+
+  legacyMigrationPromise = (async () => {
+    const store = parseLegacyStorePayload();
+    const syncCheckpoints = parseLegacyCheckpointPayload();
+    if (!store && !syncCheckpoints) {
+      return;
+    }
+
+    await window.electronAPI!.localChat.importLegacyData({
+      ...(store ? { store: store as {
+        version?: number;
+        conversations?: Record<string, {
+          id?: string;
+          updatedAt?: number;
+          events?: EventRecord[];
+        }>;
+      } } : {}),
+      ...(syncCheckpoints ? { syncCheckpoints } : {}),
+    });
+
+    window.localStorage.removeItem(STORE_KEY);
+    window.localStorage.removeItem(SYNC_CHECKPOINTS_KEY);
+    _cachedStore = null;
+    _cacheRaw = null;
+  })().catch((error) => {
+    legacyMigrationPromise = null;
+    throw error;
+  });
+
+  return legacyMigrationPromise;
+};
+
+export const getOrCreateLocalConversationId = (): string => {
+  if (!canUseStorage()) {
+    return generateLocalId();
+  }
+  const existing = window.localStorage.getItem(DEFAULT_CONVERSATION_KEY);
+  if (existing && existing.length > 0) {
+    return existing;
+  }
+  const created = generateLocalId();
+  window.localStorage.setItem(DEFAULT_CONVERSATION_KEY, created);
+  if (!hasElectronLocalChatApi()) {
+    const store = readStore();
+    ensureConversation(store, created);
+    writeStore(store);
+  }
+  return created;
+};
+
+export const listLocalEvents = async (
+  conversationId: string,
+  maxItems = 200,
+): Promise<EventRecord[]> => {
+  if (hasElectronLocalChatApi()) {
+    try {
+      await migrateLegacyLocalStateToElectron();
+      return await window.electronAPI!.localChat.listEvents({
+        conversationId,
+        maxItems,
+      });
+    } catch (err) {
+      console.debug("[local-chat-store] Falling back to renderer transcript store:", (err as Error).message);
+    }
+  }
+
+  return fallbackListLocalEvents(conversationId, maxItems);
+};
+
+export const getLocalEventCount = async (conversationId: string): Promise<number> => {
+  if (hasElectronLocalChatApi()) {
+    try {
+      await migrateLegacyLocalStateToElectron();
+      return await window.electronAPI!.localChat.getEventCount({ conversationId });
+    } catch (err) {
+      console.debug("[local-chat-store] Falling back to renderer transcript count:", (err as Error).message);
+    }
+  }
+
+  return fallbackGetLocalEventCount(conversationId);
+};
+
+export const appendLocalEvent = async (args: LocalAppendEventArgs): Promise<EventRecord> => {
+  if (hasElectronLocalChatApi()) {
+    try {
+      await migrateLegacyLocalStateToElectron();
+      return await window.electronAPI!.localChat.appendEvent(args);
+    } catch (err) {
+      console.debug("[local-chat-store] Falling back to renderer transcript append:", (err as Error).message);
+    }
+  }
+
+  return fallbackAppendLocalEvent(args);
+};
+
+/**
+ * Build history messages using the same pipeline as the cloud/server-side path:
+ * token-budgeted event selection, tool call/result formatting, and micro-compaction.
+ *
+ * Selection is token-budget-based (default 24 000 tokens, matching the backend).
+ */
+export const buildLocalHistoryMessages = async (
+  conversationId: string,
+): Promise<LocalHistoryMessage[]> => {
+  const events = await listLocalEvents(conversationId, 800);
+  const contextEvents = events.filter((event) => CONTEXT_EVENT_TYPES.has(event.type));
+  if (contextEvents.length === 0) return [];
+
+  const newestFirst = [...contextEvents].reverse();
+  const selected = selectRecentByTokenBudget({
+    itemsNewestFirst: newestFirst,
+    maxTokens: DEFAULT_HISTORY_MAX_TOKENS,
+    estimateTokens: (event) =>
+      estimateContextEventTokens({
+        type: event.type,
+        payload: event.payload,
+        requestId: event.requestId,
+      }),
+  });
+
+  const chronological = [...selected].reverse();
+  const { messages } = eventsToHistoryMessages(
+    chronological as ContextEvent[],
+    {
+      microcompact: {
+        trigger: "auto",
+        warningThresholdTokens: DEFAULT_WARNING_THRESHOLD_TOKENS,
+      },
+    },
+  );
+
+  return messages;
+};
+
+export const buildLocalSyncMessages = async (
+  conversationId: string,
+  maxMessages = MAX_EVENTS_PER_CONVERSATION,
+): Promise<LocalSyncMessage[]> => {
+  if (hasElectronLocalChatApi()) {
+    try {
+      await migrateLegacyLocalStateToElectron();
+      return await window.electronAPI!.localChat.listSyncMessages({
+        conversationId,
+        maxMessages,
+      });
+    } catch (err) {
+      console.debug("[local-chat-store] Falling back to renderer sync message build:", (err as Error).message);
+    }
+  }
+
+  return fallbackBuildLocalSyncMessages(conversationId, maxMessages);
+};
+
+export const getLocalSyncCheckpoint = async (conversationId: string): Promise<string | null> => {
+  if (hasElectronLocalChatApi()) {
+    try {
+      await migrateLegacyLocalStateToElectron();
+      return await window.electronAPI!.localChat.getSyncCheckpoint({ conversationId });
+    } catch (err) {
+      console.debug("[local-chat-store] Falling back to renderer sync checkpoint read:", (err as Error).message);
+    }
+  }
+
   const checkpoints = readSyncCheckpoints();
   const checkpoint = checkpoints[conversationId];
   return typeof checkpoint === "string" && checkpoint.length > 0 ? checkpoint : null;
 };
 
-export const setLocalSyncCheckpoint = (conversationId: string, localMessageId: string) => {
+export const setLocalSyncCheckpoint = async (conversationId: string, localMessageId: string) => {
   if (!conversationId || !localMessageId) return;
+
+  if (hasElectronLocalChatApi()) {
+    try {
+      await migrateLegacyLocalStateToElectron();
+      await window.electronAPI!.localChat.setSyncCheckpoint({
+        conversationId,
+        localMessageId,
+      });
+      return;
+    } catch (err) {
+      console.debug("[local-chat-store] Falling back to renderer sync checkpoint write:", (err as Error).message);
+    }
+  }
+
   const checkpoints = readSyncCheckpoints();
   checkpoints[conversationId] = localMessageId;
   writeSyncCheckpoints(checkpoints);
@@ -335,9 +492,13 @@ export const subscribeToLocalChatUpdates = (listener: () => void): (() => void) 
   window.addEventListener(UPDATE_EVENT_NAME, onCustomEvent);
   window.addEventListener("storage", onStorage);
 
+  const unsubscribeElectron = hasElectronLocalChatApi()
+    ? window.electronAPI!.localChat.onUpdated(listener)
+    : () => {};
+
   return () => {
+    unsubscribeElectron();
     window.removeEventListener(UPDATE_EVENT_NAME, onCustomEvent);
     window.removeEventListener("storage", onStorage);
   };
 };
-

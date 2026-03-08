@@ -40,10 +40,10 @@ describe("local-chat-store", () => {
     expect(getOrCreateLocalConversationId()).toBe("conv-existing");
   });
 
-  it("recovers from malformed persisted store data", () => {
+  it("recovers from malformed persisted store data", async () => {
     localStorage.setItem(STORE_KEY, "{malformed");
 
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId: "conv-1",
       type: "user_message",
       eventId: "e-1",
@@ -51,27 +51,27 @@ describe("local-chat-store", () => {
       payload: { text: "hello" },
     });
 
-    const events = listLocalEvents("conv-1", 10);
+    const events = await listLocalEvents("conv-1", 10);
     expect(events).toHaveLength(1);
     expect(events[0]?._id).toBe("e-1");
   });
 
-  it("lists events sorted by timestamp, then by ID when timestamps tie", () => {
-    appendLocalEvent({
+  it("lists events sorted by timestamp, then by ID when timestamps tie", async () => {
+    await appendLocalEvent({
       conversationId: "conv-sort",
       type: "assistant_message",
       eventId: "b",
       timestamp: 2,
       payload: { text: "second-b" },
     });
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId: "conv-sort",
       type: "assistant_message",
       eventId: "a",
       timestamp: 2,
       payload: { text: "second-a" },
     });
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId: "conv-sort",
       type: "user_message",
       eventId: "c",
@@ -79,14 +79,14 @@ describe("local-chat-store", () => {
       payload: { text: "first" },
     });
 
-    const events = listLocalEvents("conv-sort", 10);
+    const events = await listLocalEvents("conv-sort", 10);
     expect(events.map((event) => event._id)).toEqual(["c", "a", "b"]);
   });
 
-  it("trims oldest events once MAX_EVENTS_PER_CONVERSATION is exceeded", () => {
+  it("trims oldest events once MAX_EVENTS_PER_CONVERSATION is exceeded", async () => {
     const conversationId = "conv-trim";
     for (let i = 1; i <= 2002; i += 1) {
-      appendLocalEvent({
+      await appendLocalEvent({
         conversationId,
         type: "user_message",
         eventId: `e-${i}`,
@@ -95,29 +95,29 @@ describe("local-chat-store", () => {
       });
     }
 
-    const events = listLocalEvents(conversationId, 5000);
+    const events = await listLocalEvents(conversationId, 5000);
     expect(events).toHaveLength(2000);
     expect(events[0]?._id).toBe("e-3");
     expect(events.at(-1)?._id).toBe("e-2002");
   });
 
-  it("builds history from chat messages only and enforces max messages", () => {
+  it("builds history from chat messages only and enforces max messages", async () => {
     const conversationId = "conv-history";
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId,
       type: "user_message",
       eventId: "u-1",
       timestamp: 1000,
       payload: { text: "hello" },
     });
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId,
       type: "assistant_message",
       eventId: "a-1",
       timestamp: 2000,
       payload: { text: "hi there" },
     });
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId,
       type: "tool_request",
       eventId: "tool-1",
@@ -125,7 +125,7 @@ describe("local-chat-store", () => {
       requestId: "req-1",
       payload: { toolName: "Read", args: { path: "/tmp/test" } },
     });
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId,
       type: "tool_result",
       eventId: "tool-1-result",
@@ -133,7 +133,7 @@ describe("local-chat-store", () => {
       requestId: "req-1",
       payload: { toolName: "Read", result: "file contents" },
     });
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId,
       type: "assistant_message",
       eventId: "a-2",
@@ -141,7 +141,7 @@ describe("local-chat-store", () => {
       payload: { text: "done" },
     });
 
-    const history = buildLocalHistoryMessages(conversationId);
+    const history = await buildLocalHistoryMessages(conversationId);
     // Now includes tool calls and results, with timestamps
     expect(history.length).toBe(5); // user + assistant + tool_request + tool_result + assistant
     expect(history[0]!.role).toBe("user");
@@ -156,9 +156,9 @@ describe("local-chat-store", () => {
     expect(history[4]!.content).toContain("done");
   });
 
-  it("builds sync messages and only carries deviceId for user messages", () => {
+  it("builds sync messages and only carries deviceId for user messages", async () => {
     const conversationId = "conv-sync";
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId,
       type: "user_message",
       eventId: "u-1",
@@ -166,7 +166,7 @@ describe("local-chat-store", () => {
       deviceId: "device-1",
       payload: { text: "hello" },
     });
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId,
       type: "assistant_message",
       eventId: "a-1",
@@ -175,7 +175,7 @@ describe("local-chat-store", () => {
       payload: { text: "hi" },
     });
 
-    const messages = buildLocalSyncMessages(conversationId, 10);
+    const messages = await buildLocalSyncMessages(conversationId, 10);
     expect(messages).toEqual([
       {
         localMessageId: "u-1",
@@ -193,21 +193,21 @@ describe("local-chat-store", () => {
     ]);
   });
 
-  it("stores and returns sync checkpoints", () => {
-    expect(getLocalSyncCheckpoint("conv-checkpoint")).toBeNull();
+  it("stores and returns sync checkpoints", async () => {
+    await expect(getLocalSyncCheckpoint("conv-checkpoint")).resolves.toBeNull();
 
-    setLocalSyncCheckpoint("conv-checkpoint", "local-99");
-    expect(getLocalSyncCheckpoint("conv-checkpoint")).toBe("local-99");
+    await setLocalSyncCheckpoint("conv-checkpoint", "local-99");
+    await expect(getLocalSyncCheckpoint("conv-checkpoint")).resolves.toBe("local-99");
 
     const raw = localStorage.getItem(SYNC_CHECKPOINTS_KEY);
     expect(raw).toBeTruthy();
   });
 
-  it("notifies subscribers on custom update and relevant storage events", () => {
+  it("notifies subscribers on custom update and relevant storage events", async () => {
     const listener = vi.fn();
     const unsubscribe = subscribeToLocalChatUpdates(listener);
 
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId: "conv-sub",
       type: "user_message",
       eventId: "sub-1",
@@ -224,7 +224,7 @@ describe("local-chat-store", () => {
 
     unsubscribe();
 
-    appendLocalEvent({
+    await appendLocalEvent({
       conversationId: "conv-sub",
       type: "assistant_message",
       eventId: "sub-2",
@@ -234,4 +234,3 @@ describe("local-chat-store", () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 });
-

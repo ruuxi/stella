@@ -8,12 +8,12 @@ import type { ReactNode } from "react";
 
 const mockAppendLocalEvent = vi.fn((args?: unknown) => {
   void args;
-  return { _id: "local-123" };
+  return Promise.resolve({ _id: "local-123" });
 });
 const mockBuildLocalHistoryMessages = vi.fn((conversationId?: string, max?: number) => {
   void conversationId;
   void max;
-  return [{ role: "user" as const, content: "hello" }];
+  return Promise.resolve([{ role: "user" as const, content: "hello" }]);
 });
 const mockUploadScreenshotAttachments = vi.fn((args?: unknown) => {
   void args;
@@ -416,15 +416,18 @@ describe("ChatStoreProvider", () => {
   // buildHistory
   // ----------------------------------------------------------------
   describe("buildHistory", () => {
-    it("returns local history in cloud mode (both modes use local events)", () => {
+    it("returns local history in cloud mode (both modes use local events)", async () => {
       const { result } = renderHook(() => useChatStore(), { wrapper });
 
-      const history = result.current.buildHistory("conv-1");
+      let history: unknown;
+      await act(async () => {
+        history = await result.current.buildHistory("conv-1");
+      });
       expect(mockBuildLocalHistoryMessages).toHaveBeenCalled();
       expect(history).toEqual([{ role: "user", content: "hello" }]);
     });
 
-    it("returns local history in local mode", () => {
+    it("returns local history in local mode", async () => {
       mockUseConvexAuth.mockReturnValue({
         isAuthenticated: false,
         isLoading: false,
@@ -432,7 +435,10 @@ describe("ChatStoreProvider", () => {
 
       const { result } = renderHook(() => useChatStore(), { wrapper });
 
-      const history = result.current.buildHistory("conv-1");
+      let history: unknown;
+      await act(async () => {
+        history = await result.current.buildHistory("conv-1");
+      });
 
       expect(mockBuildLocalHistoryMessages).toHaveBeenCalled();
       expect(mockBuildLocalHistoryMessages.mock.calls[0]![0]).toBe("conv-1");

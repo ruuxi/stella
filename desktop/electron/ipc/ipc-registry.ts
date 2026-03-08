@@ -1,6 +1,7 @@
 import { registerAgentHandlers } from './handlers/agent-handlers.js'
 import { registerBrowserHandlers } from './handlers/browser-handlers.js'
 import { registerCaptureHandlers } from './handlers/capture-handlers.js'
+import { registerLocalChatHandlers } from './handlers/local-chat-handlers.js'
 import { registerMiniBridgeHandlers } from './handlers/mini-bridge-handlers.js'
 import { registerScheduleHandlers } from './handlers/schedule-handlers.js'
 import { registerStoreHandlers } from './handlers/store-handlers.js'
@@ -15,6 +16,7 @@ type RegistryOptions = {
   schedule: Parameters<typeof registerScheduleHandlers>[0]
   browser: Parameters<typeof registerBrowserHandlers>[0]
   agent: Parameters<typeof registerAgentHandlers>[0]
+  localChat: Parameters<typeof registerLocalChatHandlers>[0]
   miniBridge: Parameters<typeof registerMiniBridgeHandlers>[0]
   store: Parameters<typeof registerStoreHandlers>[0]
   voice: Parameters<typeof registerVoiceHandlers>[0]
@@ -27,6 +29,7 @@ export const registerAllIpcHandlers = (options: RegistryOptions) => {
   registerScheduleHandlers(options.schedule)
   registerBrowserHandlers(options.browser)
   registerAgentHandlers(options.agent)
+  registerLocalChatHandlers(options.localChat)
   registerMiniBridgeHandlers(options.miniBridge)
   registerStoreHandlers(options.store)
   registerVoiceHandlers(options.voice)
