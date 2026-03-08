@@ -15,12 +15,15 @@ const requiredFiles = [
 ]
 const restartDebounceMs = 150
 const forcedShutdownTimeoutMs = 1_500
+const startupWatchDelayMs = 2_500
 
 let shuttingDown = false
 let currentApp = null
 let restartTimer = null
 let watcher = null
 let restartQueue = Promise.resolve()
+let watchReady = false
+let watchReadyTimer = null
 const expectedExits = new WeakSet()
 
 const shouldRestartForPath = (filename) => {
@@ -125,6 +128,17 @@ const scheduleRestart = () => {
   }, restartDebounceMs)
 }
 
+const scheduleWatchReady = () => {
+  if (watchReadyTimer) {
+    clearTimeout(watchReadyTimer)
+  }
+
+  watchReadyTimer = setTimeout(() => {
+    watchReady = true
+    watchReadyTimer = null
+  }, startupWatchDelayMs)
+}
+
 const shutdown = async (exitCode) => {
   if (shuttingDown) {
     return
@@ -135,6 +149,11 @@ const shutdown = async (exitCode) => {
   if (restartTimer) {
     clearTimeout(restartTimer)
     restartTimer = null
+  }
+
+  if (watchReadyTimer) {
+    clearTimeout(watchReadyTimer)
+    watchReadyTimer = null
   }
 
   watcher?.close()
@@ -151,10 +170,16 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
     return
   }
 
+  if (!watchReady) {
+    scheduleWatchReady()
+    return
+  }
+
   scheduleRestart()
 })
 
 startApp()
+scheduleWatchReady()
 
 process.once('SIGINT', () => {
   void shutdown(130)
