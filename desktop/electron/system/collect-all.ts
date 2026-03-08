@@ -25,7 +25,8 @@ import { collectMessagesNotes, formatMessagesNotesForSynthesis } from "./message
 import { addContacts, pseudonymize, loadIdentityMap } from "./identity-map.js";
 
 import type { AllUserSignals, AllUserSignalsResult } from "./types.js";
-import type { DiscoveryCategory, BrowserBookmarks, SafariData, DevEnvironmentSignals, SystemSignals, MessagesNotesSignals } from "./discovery-types.js";
+import type { DiscoveryCategory } from "../../src/shared/contracts/discovery.js";
+import type { BrowserBookmarks, SafariData, DevEnvironmentSignals, SystemSignals, MessagesNotesSignals } from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.log("[collect-all]", ...args);
 

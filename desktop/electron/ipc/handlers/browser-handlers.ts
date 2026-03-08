@@ -12,6 +12,7 @@ import {
 import { collectAllSignals } from '../../system/collect-all.js'
 import type { AllUserSignalsResult } from '../../system/types.js'
 import type { WorkspaceService } from '../../services/workspace-service.js'
+import type { DiscoveryCategory } from '../../../src/shared/contracts/discovery.js'
 
 type BrowserHandlersOptions = {
   getStellaHomePath: () => string | null
@@ -84,7 +85,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     if (!stellaHomePath) {
       return { data: null, formatted: null, error: 'Stella home not initialized' }
     }
-    const categories = ipcOptions?.categories as import('../../system/discovery-types.js').DiscoveryCategory[] | undefined
+    const categories = ipcOptions?.categories as DiscoveryCategory[] | undefined
     return collectAllSignals(stellaHomePath, categories)
   })
 

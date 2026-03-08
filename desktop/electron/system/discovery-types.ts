@@ -7,8 +7,6 @@
 
 import type { DiscoveryCategory } from '../../src/shared/contracts/discovery.js'
 
-export type { DiscoveryCategory }
-
 // ---------------------------------------------------------------------------
 // Discovery Categories
 // ---------------------------------------------------------------------------

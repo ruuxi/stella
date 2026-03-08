@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { OnboardingDiscovery } from "../../../../src/app/onboarding/OnboardingDiscovery";
 import { DISCOVERY_CATEGORIES } from "../../../../src/app/onboarding/use-onboarding-state";
-import type { DiscoveryCategory } from "../../../../src/app/onboarding/use-onboarding-state";
+import type { DiscoveryCategory } from "../../../../src/shared/contracts/discovery";
 
 describe("OnboardingDiscovery", () => {
   const defaultCategoryStates: Record<DiscoveryCategory, boolean> = {
