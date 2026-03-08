@@ -78,7 +78,16 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     const api = window.electronAPI;
-    if (!api?.agent?.startChat || !api?.ui?.getState) {
+    if (!api?.agent?.startChat || !api?.agent?.healthCheck || !api?.ui?.getState) {
+      this.setState({
+        autoRepairStatus: "failed",
+        autoRepairMessage: "Automatic repair is unavailable right now.",
+      });
+      return;
+    }
+
+    const health = await api.agent.healthCheck();
+    if (!health?.ready) {
       this.setState({
         autoRepairStatus: "failed",
         autoRepairMessage: "Automatic repair is unavailable right now.",
