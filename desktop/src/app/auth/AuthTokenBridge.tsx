@@ -13,17 +13,17 @@ export const AuthTokenBridge = () => {
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
     if (!systemApi?.setAuthState) {
-      return undefined;
+      return;
     }
 
     // Avoid clearing host auth while BetterAuth session lookup is still in-flight.
     if (isSessionPending) {
-      return undefined;
+      return;
     }
 
     if (!hasSession) {
       void systemApi.setAuthState({ authenticated: false });
-      return undefined;
+      return;
     }
 
     let cancelled = false;
@@ -80,7 +80,7 @@ export const AuthTokenBridge = () => {
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
     if (!systemApi?.setAuthState) {
-      return undefined;
+      return;
     }
 
     return () => {
