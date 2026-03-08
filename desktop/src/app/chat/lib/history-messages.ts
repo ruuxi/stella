@@ -80,8 +80,6 @@ const MICROCOMPACT_ELIGIBLE_TOOLS = new Set([
   "ShellStatus",
 ]);
 
-const ellipsize = truncateWithSuffix;
-const asObject = asObjectRecord;
 
 /** Browser-safe env var access (works in Node, Convex, and browser). */
 const getEnvVar = (key: string): string | undefined => {
@@ -96,7 +94,7 @@ const normalizeRequestId = (event: ContextEvent): string | undefined => {
   if (event.requestId && event.requestId.trim().length > 0) {
     return event.requestId;
   }
-  const payload = asObject(event.payload);
+  const payload = asObjectRecord(event.payload);
   const fromPayload =
     typeof payload.requestId === "string" ? payload.requestId.trim() : "";
   return fromPayload.length > 0 ? fromPayload : undefined;
@@ -157,7 +155,7 @@ const formatTaskEvent = (
 };
 
 const formatToolRequest = (event: ContextEvent): HistoryMessage => {
-  const payload = asObject(event.payload);
+  const payload = asObjectRecord(event.payload);
   const toolName = normalizeToolName(payload);
   const toolArgs = payload.args ?? {};
   const agentType =
@@ -184,7 +182,7 @@ const formatToolResult = (
   fallbackToolName: string | undefined,
   compactedToolIds: Set<string>,
 ): HistoryMessage => {
-  const payload = asObject(event.payload);
+  const payload = asObjectRecord(event.payload);
   const toolName = normalizeToolName(payload, fallbackToolName);
   const requestId = normalizeRequestId(event);
   const lines = [`[Tool result] ${toolName}`];
@@ -196,7 +194,7 @@ const formatToolResult = (
   }
 
   if (typeof payload.error === "string" && payload.error.trim().length > 0) {
-    lines.push(`error: ${ellipsize(payload.error.trim(), MAX_TEXT_CHARS)}`);
+    lines.push(`error: ${truncateWithSuffix(payload.error.trim(), MAX_TEXT_CHARS)}`);
   } else if ("result" in payload) {
     lines.push(`result: ${stringifyValue(payload.result)}`);
   }
@@ -255,14 +253,14 @@ const formatTextEvent = (
   event: ContextEvent,
   tsState: TimestampState,
 ): HistoryMessage | null => {
-  const payload = asObject(event.payload);
+  const payload = asObjectRecord(event.payload);
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   if (!text) return null;
   const { tag, dateStr } = formatMessageTimestamp(event.timestamp, tsState.prevDate, tsState.timezone);
   tsState.prevDate = dateStr;
   return {
     role: event.type === "assistant_message" ? "assistant" : "user",
-    content: `${ellipsize(text, MAX_TEXT_CHARS)}\n\n${tag}`,
+    content: `${truncateWithSuffix(text, MAX_TEXT_CHARS)}\n\n${tag}`,
   };
 };
 
@@ -275,14 +273,14 @@ const asStringArray = (value: unknown): string[] => {
 };
 
 const collectAttachmentUUIDs = (event: ContextEvent): string[] => {
-  const payload = asObject(event.payload);
+  const payload = asObjectRecord(event.payload);
   const attachments = Array.isArray(payload.attachments)
     ? (payload.attachments as Array<unknown>)
     : [];
 
   const out: string[] = [];
   for (let index = 0; index < attachments.length; index += 1) {
-    const attachment = asObject(attachments[index]);
+    const attachment = asObjectRecord(attachments[index]);
     const id = typeof attachment.id === "string" ? attachment.id.trim() : "";
     const uuid = id || `${event._id}:attachment:${index}`;
     if (uuid.length > 0) out.push(uuid);
@@ -301,7 +299,7 @@ const replayMicrocompactState = (events: ContextEvent[]): MicrocompactState => {
 
   for (const event of events) {
     if (event.type !== "microcompact_boundary") continue;
-    const payload = asObject(event.payload);
+    const payload = asObjectRecord(event.payload);
     const compacted = asStringArray(payload.compactedToolIds);
     const cleared = asStringArray(payload.clearedAttachmentUUIDs);
     for (const id of compacted) compactedToolIds.add(id);
@@ -377,7 +375,7 @@ const collectToolResultCandidates = (
     if (event.type === "tool_request") {
       const requestId = normalizeRequestId(event);
       if (!requestId) continue;
-      const payload = asObject(event.payload);
+      const payload = asObjectRecord(event.payload);
       const toolName = normalizeToolName(payload).trim();
       if (toolName.length > 0) {
         requestToolName.set(requestId, toolName);
@@ -389,7 +387,7 @@ const collectToolResultCandidates = (
     const requestId = normalizeRequestId(event);
     if (!requestId || compactedToolIds.has(requestId)) continue;
 
-    const payload = asObject(event.payload);
+    const payload = asObjectRecord(event.payload);
     if (typeof payload.error === "string" && payload.error.trim().length > 0) {
       continue;
     }
@@ -592,7 +590,7 @@ export const eventsToHistoryMessages = (
     if (event.type === "tool_request") {
       const toolMessage = formatToolRequest(event);
       out.push(toolMessage);
-      const payload = asObject(event.payload);
+      const payload = asObjectRecord(event.payload);
       const toolName = normalizeToolName(payload);
       const pending: PendingToolCall = { toolName };
       const requestId = normalizeRequestId(event);
@@ -625,7 +623,7 @@ export const eventsToHistoryMessages = (
       continue;
     }
 
-    const taskMessage = formatTaskEvent(event.type, asObject(event.payload));
+    const taskMessage = formatTaskEvent(event.type, asObjectRecord(event.payload));
     if (taskMessage) out.push(taskMessage);
   }
 

@@ -178,25 +178,27 @@ export function extractToolTitle(event: EventRecord): string {
 
   const { toolName, args } = event.payload;
 
+  const str = (v: unknown) => v as string;
+
   switch (toolName.toLowerCase()) {
     case "read":
-      return args?.path ? String(args.path).split("/").pop()! : "Reading file";
+      return args?.path ? str(args.path).split("/").pop()! : "Reading file";
     case "write":
-      return args?.path ? String(args.path).split("/").pop()! : "Writing file";
+      return args?.path ? str(args.path).split("/").pop()! : "Writing file";
     case "edit":
-      return args?.path ? String(args.path).split("/").pop()! : "Editing file";
+      return args?.path ? str(args.path).split("/").pop()! : "Editing file";
     case "grep":
-      return args?.pattern ? `"${String(args.pattern).slice(0, 30)}"` : "Searching";
+      return args?.pattern ? `"${str(args.pattern).slice(0, 30)}"` : "Searching";
     case "glob":
-      return args?.pattern ? String(args.pattern) : "Finding files";
+      return args?.pattern ? str(args.pattern) : "Finding files";
     case "bash":
       return args?.command
-        ? String(args.command).slice(0, 40) + (String(args.command).length > 40 ? "..." : "")
+        ? str(args.command).slice(0, 40) + (str(args.command).length > 40 ? "..." : "")
         : "Running command";
     case "webfetch":
-      return args?.url ? new URL(String(args.url)).hostname : "Fetching";
+      return args?.url ? new URL(str(args.url)).hostname : "Fetching";
     case "task":
-      return args?.description ? String(args.description).slice(0, 40) : "Delegating";
+      return args?.description ? str(args.description).slice(0, 40) : "Delegating";
     default:
       return toolName;
   }
