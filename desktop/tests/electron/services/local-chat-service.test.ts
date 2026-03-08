@@ -102,48 +102,31 @@ describe('LocalChatService', () => {
     service.close()
   })
 
-  it('builds sync messages and imports legacy transcript data with checkpoints', () => {
+  it('builds sync messages and persists checkpoints plus the default conversation id', () => {
     const stellaHome = createTempHome()
     const service = new LocalChatService(stellaHome)
 
-    const result = service.importLegacyData({
-      store: {
-        conversations: {
-          'conv-import': {
-            id: 'conv-import',
-            updatedAt: 20,
-            events: [
-              {
-                _id: 'u-1',
-                timestamp: 10,
-                type: 'user_message',
-                deviceId: 'device-1',
-                payload: { text: 'hello' },
-              },
-              {
-                _id: 'a-2',
-                timestamp: 11,
-                type: 'assistant_message',
-                payload: { text: 'hi' },
-              },
-            ],
-          },
-        },
-      },
-      syncCheckpoints: {
-        'conv-import': 'a-2',
-      },
-      defaultConversationId: 'conv-import',
+    service.appendEvent({
+      conversationId: 'conv-sync',
+      type: 'user_message',
+      eventId: 'u-1',
+      timestamp: 10,
+      deviceId: 'device-1',
+      payload: { text: 'hello' },
     })
+    service.appendEvent({
+      conversationId: 'conv-sync',
+      type: 'assistant_message',
+      eventId: 'a-2',
+      timestamp: 11,
+      payload: { text: 'hi' },
+    })
+    service.setSyncCheckpoint('conv-sync', 'a-2')
 
-    expect(result).toEqual({
-      importedConversations: 1,
-      importedEvents: 2,
-      importedCheckpoints: 1,
-    })
-    expect(service.getSyncCheckpoint('conv-import')).toBe('a-2')
-    expect(service.getOrCreateDefaultConversationId()).toBe('conv-import')
-    expect(service.listSyncMessages('conv-import', 10)).toEqual([
+    const defaultConversationId = service.getOrCreateDefaultConversationId()
+    expect(service.getOrCreateDefaultConversationId()).toBe(defaultConversationId)
+    expect(service.getSyncCheckpoint('conv-sync')).toBe('a-2')
+    expect(service.listSyncMessages('conv-sync', 10)).toEqual([
       {
         localMessageId: 'u-1',
         role: 'user',
@@ -160,5 +143,10 @@ describe('LocalChatService', () => {
     ])
 
     service.close()
+
+    const reopened = new LocalChatService(stellaHome)
+    expect(reopened.getOrCreateDefaultConversationId()).toBe(defaultConversationId)
+    expect(reopened.getSyncCheckpoint('conv-sync')).toBe('a-2')
+    reopened.close()
   })
 })
