@@ -1,8 +1,8 @@
-import { Spinner } from "@/ui/spinner";
 import { cn } from "@/shared/lib/utils";
 import { computeStatus } from "./status-utils";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
+import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation";
 import "./indicators.css";
 
 interface WorkingIndicatorProps {
@@ -38,7 +38,11 @@ export function WorkingIndicator({
 
   return (
     <div className={cn("working-indicator", className)}>
-      <Spinner size="sm" />
+      <div className="indicator-stella">
+        <div className="indicator-stella-scale">
+          <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />
+        </div>
+      </div>
       <span className="working-status">{displayStatus}</span>
       {duration && (
         <>
