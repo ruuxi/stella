@@ -19,7 +19,7 @@ const ensureDir = async (dirPath: string) => {
   await fs.mkdir(dirPath, { recursive: true });
 };
 
-// In dev mode, __dirname is dist-electron/system/ (compiled output).
+// In dev mode, __dirname is dist-electron/electron/system/ (compiled output).
 // Bundled .md files live in the source tree, not the compiled output.
 // Go up to frontend/, then into electron/bundled-*.
 const BUNDLED_SKILLS_DIR = path.resolve(__dirname, "..", "..", "electron", "bundled-skills");

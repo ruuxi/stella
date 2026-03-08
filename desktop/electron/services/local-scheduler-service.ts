@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { Cron } from 'croner'
-import type { PiHostRunner } from '../pi-host-runner.js'
+import type { StellaHostRunner } from '../stella-host-runner.js'
 import type {
   LocalCronJobCreateInput,
   LocalCronJobRecord,
@@ -14,7 +14,7 @@ import type {
   LocalHeartbeatUpsertInput,
   LocalSchedulerSnapshot,
   ScheduledConversationEvent,
-} from '../scheduling/types.js'
+} from '../../packages/stella-runtime/src/shared/scheduling.js'
 
 const DEFAULT_HEARTBEAT_PROMPT =
   'Read the heartbeat checklist if provided. Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, call NoResponse().'
@@ -36,7 +36,7 @@ type LocalSchedulerState = {
 
 type LocalSchedulerServiceOptions = {
   stellaHome: string
-  getRunner: () => PiHostRunner | null
+  getRunner: () => StellaHostRunner | null
 }
 
 const createEmptyState = (): LocalSchedulerState => ({

@@ -5,12 +5,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['electron/**/*.test.ts'],
+    include: ['electron/**/*.test.ts', 'packages/**/*.test.ts'],
     exclude: [
       'node_modules',
       'dist',
       'dist-electron',
-      'electron/pi-runtime/vendor/**',
     ],
     testTimeout: 30000,
   },
