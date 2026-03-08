@@ -1,7 +1,7 @@
 import type { ImgHTMLAttributes } from "react";
 import { useMemo } from "react";
 import { Streamdown } from "streamdown";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import {
   createTwitchEmoteRemarkPlugin,
   isMarkedEmoteUrl,

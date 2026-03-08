@@ -10,7 +10,7 @@ vi.mock("convex/react", () => ({
   useAction: vi.fn(),
 }));
 
-vi.mock("@/providers/ui-state", () => ({
+vi.mock("@/context/ui-state", () => ({
   useUiState: vi.fn(() => ({
     state: { mode: "chat", window: "full", view: "chat", conversationId: null },
     setMode: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock("@/providers/ui-state", () => ({
 }));
 
 const mockGetElectronApi = vi.fn(() => undefined);
-vi.mock("@/services/electron", () => ({
+vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: () => mockGetElectronApi(),
 }));
 
@@ -30,7 +30,7 @@ vi.mock("@/app/auth/AuthTokenBridge", () => ({
   AuthTokenBridge: () => <div data-testid="auth-token-bridge" />,
 }));
 
-vi.mock("@/services/CloudSyncBridge", () => ({
+vi.mock("@/app/auth/CloudSyncBridge", () => ({
   CloudSyncBridge: () => <div data-testid="cloud-sync-bridge" />,
 }));
 
@@ -42,7 +42,7 @@ vi.mock("@/app/AppBootstrap", () => ({
   AppBootstrap: () => <div data-testid="app-bootstrap" />,
 }));
 
-vi.mock("@/providers/chat-store", () => ({
+vi.mock("@/context/chat-store", () => ({
   ChatStoreProvider: ({ children }: any) => <>{children}</>,
 }));
 
@@ -67,7 +67,7 @@ vi.mock("@/app/overlay/RegionCapture", () => ({
 }));
 
 import { App } from "./App";
-import { useUiState } from "@/providers/ui-state";
+import { useUiState } from "@/context/ui-state";
 
 // --- Tests ---
 

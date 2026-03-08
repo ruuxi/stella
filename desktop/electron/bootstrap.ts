@@ -56,7 +56,7 @@ export const bootstrapMainProcess = () => {
   // --- Core services (no deps or lightweight deps) ---
 
   const uiStateService = new UiStateService()
-  const workspaceService = new WorkspaceService(__dirname)
+  const workspaceService = new WorkspaceService(() => stellaHomePath)
   const externalLinkService = new ExternalLinkService()
   const miniBridgeService = new MiniBridgeService()
   const audioDuckingService = new AudioDuckingService(
@@ -125,9 +125,9 @@ export const bootstrapMainProcess = () => {
     overlay: {
       showModifierBlock: () => overlayController?.showModifierBlock(),
       hideModifierBlock: () => overlayController?.hideModifierBlock(),
-      showRadial: (x, y) => overlayController?.showRadial(x, y),
+      showRadial: () => overlayController?.showRadial(),
       hideRadial: () => overlayController?.hideRadial(),
-      updateRadialCursor: (x, y) => overlayController?.updateRadialCursor(x, y),
+      updateRadialCursor: () => overlayController?.updateRadialCursor(),
       getRadialBounds: () => overlayController?.getRadialBounds() ?? null,
     },
     window: {

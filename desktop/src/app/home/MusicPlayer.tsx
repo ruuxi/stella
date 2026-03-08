@@ -2,8 +2,8 @@ import Play from "lucide-react/dist/esm/icons/play"
 import Square from "lucide-react/dist/esm/icons/square"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { DashboardCard } from "./DashboardCard"
-import { preloadLyriaMusic, useLyriaMusic } from "@/hooks/use-lyria-music"
-import type { MusicMood } from "@/services/lyria-music"
+import { preloadLyriaMusic, useLyriaMusic } from "@/app/music/hooks/use-lyria-music"
+import type { MusicMood } from "@/app/music/services/lyria-music"
 
 const MOODS: MusicMood[] = ["Auto", "Focus", "Calm", "Energy", "Sleep", "Lo-fi"]
 

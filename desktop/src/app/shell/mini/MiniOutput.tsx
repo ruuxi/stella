@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConversationEvents } from "@/app/chat/ConversationEvents";
-import type { EventRecord } from "@/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
 
 type Props = {
   events: EventRecord[];

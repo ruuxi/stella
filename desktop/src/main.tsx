@@ -5,31 +5,25 @@ import './ui/register-styles'
 import './styles/app-base.css'
 import './styles/app-components.css'
 
-import './lib/vite-error-recovery'
-import { initStellaUiHandler } from './services/stella-ui-handler'
+import './platform/dev/vite-error-recovery'
+import { initStellaUiHandler } from './platform/electron/stella-ui-handler'
 
 initStellaUiHandler()
 import { App } from './App.tsx'
 import { ErrorBoundary } from './app/ErrorBoundary'
-import { UiStateProvider } from './providers/ui-state'
-import { WorkspaceProvider } from './providers/workspace-state'
-import { ThemeProvider } from './theme/theme-context'
-import { convexClient } from './services/convex-client'
-import { authClient } from './lib/auth-client'
+import { AppProviders } from './context/AppProviders'
+import { convexClient } from './infra/convex-client'
+import { authClient } from './app/auth/lib/auth-client'
 const authClientForProvider = authClient as unknown as AuthClient
 
 document.documentElement.dataset.stellaWindow = 'full'
 
 const appTree = (
-  <ThemeProvider>
-    <UiStateProvider>
-      <WorkspaceProvider>
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>
-      </WorkspaceProvider>
-    </UiStateProvider>
-  </ThemeProvider>
+  <AppProviders>
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  </AppProviders>
 )
 
 createRoot(document.getElementById('root')!).render(

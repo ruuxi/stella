@@ -32,7 +32,7 @@ const mockThemeValues = {
   },
 };
 
-vi.mock("@/theme/theme-context", () => ({
+vi.mock("@/context/theme-context", () => ({
   useTheme: () => mockThemeValues,
 }));
 
@@ -48,7 +48,7 @@ vi.mock("@/theme/color", () => ({
 }));
 
 // Mock cn utility
-vi.mock("@/lib/utils", () => ({
+vi.mock("@/shared/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
 }));
 

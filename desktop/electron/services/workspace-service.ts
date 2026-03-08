@@ -29,21 +29,28 @@ const formatWorkspacePanelTitle = (name: string) => {
 export class WorkspaceService {
   private panelWatcher: fsSync.FSWatcher | null = null
 
-  constructor(private readonly electronDir: string) {}
+  constructor(private readonly getStellaHomePath: () => string | null) {}
 
-  private getPagesDir() {
-    return path.resolve(this.electronDir, '..', 'src', 'views', 'home', 'pages')
+  private getPanelsDir() {
+    const stellaHomePath = this.getStellaHomePath()
+    if (!stellaHomePath) {
+      return null
+    }
+    return path.join(stellaHomePath, 'workspace', 'panels')
   }
 
   async listWorkspacePanels(): Promise<WorkspacePanel[]> {
-    const pagesDir = this.getPagesDir()
+    const panelsDir = this.getPanelsDir()
+    if (!panelsDir) {
+      return []
+    }
 
     let entries: Dirent[]
     try {
-      entries = await fs.readdir(pagesDir, { withFileTypes: true, encoding: 'utf8' })
+      entries = await fs.readdir(panelsDir, { withFileTypes: true, encoding: 'utf8' })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.warn('[workspace:listPanels] Failed to read pages directory', error)
+        console.warn('[workspace:listPanels] Failed to read workspace panels directory', error)
       }
       return []
     }
@@ -54,7 +61,7 @@ export class WorkspaceService {
 
     const withMeta = await Promise.all(
       candidates.map(async (entry) => {
-        const fullPath = path.join(pagesDir, entry.name)
+        const fullPath = path.join(panelsDir, entry.name)
         let mtimeMs = 0
         try {
           const stat = await fs.stat(fullPath)
@@ -79,19 +86,22 @@ export class WorkspaceService {
 
   startWorkspacePanelWatcher(mainWindow: BrowserWindow) {
     this.stopWorkspacePanelWatcher()
-    const pagesDir = this.getPagesDir()
+    const panelsDir = this.getPanelsDir()
+    if (!panelsDir) {
+      return
+    }
 
     try {
-      if (!fsSync.existsSync(pagesDir)) {
-        fsSync.mkdirSync(pagesDir, { recursive: true })
+      if (!fsSync.existsSync(panelsDir)) {
+        fsSync.mkdirSync(panelsDir, { recursive: true })
       }
     } catch (err) {
-      console.debug('[workspace] Failed to create pages directory:', err)
+      console.debug('[workspace] Failed to create workspace panels directory:', err)
     }
 
     try {
       let debounceTimer: ReturnType<typeof setTimeout> | null = null
-      this.panelWatcher = fsSync.watch(pagesDir, { persistent: false }, () => {
+      this.panelWatcher = fsSync.watch(panelsDir, { persistent: false }, () => {
         if (debounceTimer) clearTimeout(debounceTimer)
         debounceTimer = setTimeout(async () => {
           debounceTimer = null

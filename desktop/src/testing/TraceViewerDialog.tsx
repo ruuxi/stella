@@ -7,7 +7,7 @@ import {
   subscribeTrace,
   clearTrace,
   formatTraceForClipboard,
-} from "@/services/trace-store";
+} from "@/debug/trace-store";
 import "./trace-viewer-dialog.css";
 
 type Props = {

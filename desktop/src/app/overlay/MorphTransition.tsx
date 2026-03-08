@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { cssToVec3 } from "@/lib/color";
+import { cssToVec3 } from "@/shared/lib/color";
 
 type MorphPhase = "idle" | "rippling" | "crossfading" | "calming";
 

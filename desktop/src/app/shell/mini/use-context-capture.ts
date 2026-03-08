@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getElectronApi } from "@/services/electron";
+import { getElectronApi } from "@/platform/electron/electron";
 import type { ChatContext, ChatContextUpdate } from "@/types/electron";
 
 export function useContextCapture() {

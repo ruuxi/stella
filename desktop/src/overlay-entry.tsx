@@ -1,9 +1,9 @@
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./ui/register-styles";
-import { ThemeProvider } from "./theme/theme-context";
+import { ThemeProvider } from "./context/theme-context";
 import { ErrorBoundary } from "./app/ErrorBoundary";
-import { UiStateProvider } from "./providers/ui-state";
+import { UiStateProvider } from "./context/ui-state";
 import { OverlayRoot } from "./app/overlay/OverlayRoot";
 
 document.documentElement.dataset.stellaWindow = "overlay";

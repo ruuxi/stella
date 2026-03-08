@@ -1,4 +1,4 @@
-import type { CommandSuggestion } from '@/hooks/use-command-suggestions'
+import type { CommandSuggestion } from '@/app/chat/hooks/use-command-suggestions'
 import './command-chips.css'
 
 type CommandChipsProps = {

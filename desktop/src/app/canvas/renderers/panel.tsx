@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type ComponentType } from 'react'
 import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import { Spinner } from '@/ui/spinner'
-import type { WorkspacePanel } from '@/providers/workspace-state'
+import type { WorkspacePanel } from '@/context/workspace-state'
 import './canvas-renderers.css'
 
 const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
@@ -88,17 +88,8 @@ const loadPanelComponent = async (
   let lastError: unknown = null
   for (let attempt = 1; attempt <= PANEL_IMPORT_ATTEMPTS; attempt += 1) {
     try {
-      // Try folder convention first (pages/{name}/index.tsx), then flat file ({name}.tsx)
-      let mod: { default?: unknown } | undefined
-      try {
-        mod = await import(/* @vite-ignore */ `/src/app/home/pages/${normalizedName}/index.tsx?t=${Date.now()}`)
-      } catch {
-        // Fall through to flat file.
-      }
-      if (!mod?.default) {
-        const file = `${normalizedName}.tsx`
-        mod = await import(/* @vite-ignore */ `/src/app/home/pages/${file}?t=${Date.now()}`)
-      }
+      const file = `${normalizedName}.tsx`
+      const mod = await import(/* @vite-ignore */ `/workspace/panels/${file}?t=${Date.now()}`)
 
       if (typeof mod?.default !== 'function') {
         throw new InvalidPanelModuleError('Panel module does not export a default component.')

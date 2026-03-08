@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback, memo, type CSSProperties } from "react";
-import { useTheme } from "@/theme/theme-context";
+import { useTheme } from "@/context/theme-context";
 import { generateGradientTokens } from "@/theme/color";
-import { cssToRgb } from "@/lib/color";
-import { cn } from "@/lib/utils";
+import { cssToRgb } from "@/shared/lib/color";
+import { cn } from "@/shared/lib/utils";
 
 type RGB = { r: number; g: number; b: number };
 

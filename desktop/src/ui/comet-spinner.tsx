@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, useId } from "react";
-import { lerpRgb } from "@/lib/color";
-import { useSpinnerColors } from "@/hooks/use-theme-rgb";
+import { lerpRgb } from "@/shared/lib/color";
+import { useSpinnerColors } from "@/context/use-theme-rgb";
 import "./comet-spinner.css";
 
 const CYCLE_DURATION_MS = 4000;

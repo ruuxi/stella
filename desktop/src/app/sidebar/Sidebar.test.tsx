@@ -12,7 +12,7 @@ vi.mock("@/convex/api", () => ({
   api: { auth: { getCurrentUser: "auth:getCurrentUser" } },
 }));
 
-vi.mock("@/services/auth", () => ({
+vi.mock("@/app/auth/services/auth", () => ({
   secureSignOut: vi.fn(),
 }));
 

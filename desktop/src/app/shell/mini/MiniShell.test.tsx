@@ -4,7 +4,7 @@ import { MiniShell } from "./MiniShell";
 
 const mockSetWindow = vi.fn();
 
-vi.mock("@/providers/ui-state", () => ({
+vi.mock("@/context/ui-state", () => ({
   useUiState: () => ({ setWindow: mockSetWindow }),
 }));
 

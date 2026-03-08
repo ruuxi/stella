@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { authClient } from "@/lib/auth-client";
+import { authClient } from "@/app/auth/lib/auth-client";
 
 const AUTH_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/;
 

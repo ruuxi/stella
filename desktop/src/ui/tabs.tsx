@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 
 export interface TabsProps
   extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> {

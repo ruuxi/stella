@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
-import { useAccountMode } from "@/hooks/use-account-mode";
-import { useModelCatalog } from "@/hooks/use-model-catalog";
+import { useAccountMode } from "@/app/auth/hooks/use-account-mode";
+import { useModelCatalog } from "@/app/settings/hooks/use-model-catalog";
 import type { LocalLlmCredentialSummary } from "@/types/electron";
 import {
   Dialog,

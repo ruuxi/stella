@@ -5,11 +5,11 @@ import { AuthTokenBridge } from "./AuthTokenBridge";
 const mockUseSession = vi.fn();
 
 const mockGetConvexToken = vi.fn();
-vi.mock("@/services/auth-token", () => ({
+vi.mock("@/app/auth/services/auth-token", () => ({
   getConvexToken: () => mockGetConvexToken(),
 }));
 
-vi.mock("@/lib/auth-client", () => ({
+vi.mock("@/app/auth/lib/auth-client", () => ({
   authClient: {
     useSession: () => mockUseSession(),
   },

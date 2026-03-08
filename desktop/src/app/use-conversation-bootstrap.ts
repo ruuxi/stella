@@ -1,16 +1,16 @@
 import { useEffect } from 'react'
 import { useConvexAuth, useMutation } from 'convex/react'
 import { api } from '@/convex/api'
-import { useAccountMode } from '@/hooks/use-account-mode'
-import { configurePiRuntime, getOrCreateDeviceId } from '@/services/device'
+import { useAccountMode } from '@/app/auth/hooks/use-account-mode'
+import { configurePiRuntime, getOrCreateDeviceId } from '@/platform/electron/device'
 import {
   buildLocalSyncMessages,
   getLocalSyncCheckpoint,
   getOrCreateLocalConversationId,
   setLocalSyncCheckpoint,
   type LocalSyncMessage,
-} from '@/services/local-chat-store'
-import { useUiState } from '../providers/ui-state'
+} from '@/app/chat/services/local-chat-store'
+import { useUiState } from '@/context/ui-state'
 
 const LOCAL_SYNC_CHUNK_SIZE = 100
 

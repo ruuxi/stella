@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 
 export interface TagProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: "default" | "primary" | "success" | "warning" | "error" | "info";

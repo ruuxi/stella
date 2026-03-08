@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Markdown } from "./Markdown";
 

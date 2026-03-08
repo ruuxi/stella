@@ -1,10 +1,13 @@
 # Build script for native helpers
 # Tries MSVC first, falls back to MinGW, then clang
 
+$outputDir = Join-Path $PSScriptRoot "out\win32"
+New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
 $targets = @(
-    @{ kind = "cpp"; src = "src\mouse_block.cpp"; out = "mouse_block.exe" },
-    @{ kind = "cpp"; src = "src\window_info.cpp"; out = "window_info.exe" },
-    @{ kind = "csharp"; src = "src\audio_ducking.cs"; out = "audio_ducking.exe" }
+    @{ kind = "cpp"; src = "src\mouse_block.cpp"; out = (Join-Path $outputDir "mouse_block.exe") },
+    @{ kind = "cpp"; src = "src\window_info.cpp"; out = (Join-Path $outputDir "window_info.exe") },
+    @{ kind = "csharp"; src = "src\audio_ducking.cs"; out = (Join-Path $outputDir "audio_ducking.exe") }
 )
 
 function Build-WithMSVC($vcvars, $srcFile, $outFile) {
@@ -79,7 +82,7 @@ if (-not $vcvars -and -not $hasGpp -and -not $hasClang -and -not $cscPath) {
 
 $allOk = $true
 foreach ($t in $targets) {
-    Write-Host "Building $($t.out)..."
+    Write-Host "Building $(Split-Path $t.out -Leaf)..."
     $built = $false
 
     if ($t.kind -eq "csharp") {

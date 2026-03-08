@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, type Dispatch } from "react";
-import { MINI_SHELL_SIZE } from "@/lib/layout";
+import { MINI_SHELL_SIZE } from "@/shared/lib/layout";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "../shell/mini/MiniShell";

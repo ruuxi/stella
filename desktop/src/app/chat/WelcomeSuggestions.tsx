@@ -1,4 +1,4 @@
-import type { WelcomeSuggestion } from '@/services/synthesis'
+import type { WelcomeSuggestion } from '@/app/onboarding/services/synthesis'
 import './welcome-suggestions.css'
 
 const CATEGORY_LABELS: Record<WelcomeSuggestion['category'], string> = {

@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AuthPanel } from "./AuthPanel";
 
 const mockFetch = vi.fn();
-vi.mock("@/lib/auth-client", () => ({
+vi.mock("@/app/auth/lib/auth-client", () => ({
   authClient: {
     $fetch: (...args: unknown[]) => mockFetch(...args),
   },
