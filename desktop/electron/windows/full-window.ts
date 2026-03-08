@@ -17,6 +17,7 @@ type FullWindowControllerOptions = {
 export class FullWindowController {
   private window: BrowserWindow | null = null
   private lastBounds: Electron.Rectangle | null = null
+  private readonly shouldOpenDevTools = process.env.STELLA_OPEN_DEVTOOLS === '1'
 
   constructor(private readonly options: FullWindowControllerOptions) {}
 
@@ -70,7 +71,7 @@ export class FullWindowController {
       getDevServerUrl: this.options.getDevServerUrl,
     })
 
-    if (this.options.isDev) {
+    if (this.options.isDev && this.shouldOpenDevTools) {
       window.webContents.openDevTools()
     }
 
