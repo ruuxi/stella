@@ -17,6 +17,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import type { LaunchCommand } from './types.js';
+import { applySiteModsToPage } from './actions.js';
 import { type RefMap, type EnhancedSnapshot, getEnhancedSnapshot, parseRef } from './snapshot.js';
 
 // Screencast frame data from CDP
@@ -1285,6 +1286,11 @@ export class BrowserManager {
           this.activePageIndex = Math.max(0, this.pages.length - 1);
         }
       }
+    });
+
+    // Auto-apply persistent site mods on navigation
+    page.on('domcontentloaded', () => {
+      applySiteModsToPage(page).catch(() => {});
     });
   }
 
