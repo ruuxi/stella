@@ -304,4 +304,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('schedule:getConversationEventCount', payload),
     onUpdated: onIpcSignal('schedule:updated'),
   },
+
+  localChat: {
+    listEvents: (payload: { conversationId: string; maxItems?: number }) =>
+      ipcRenderer.invoke('localChat:listEvents', payload),
+    getEventCount: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke('localChat:getEventCount', payload),
+    appendEvent: (payload: {
+      conversationId: string
+      type: string
+      payload?: unknown
+      deviceId?: string
+      requestId?: string
+      targetDeviceId?: string
+      channelEnvelope?: unknown
+      timestamp?: number
+      eventId?: string
+    }) => ipcRenderer.invoke('localChat:appendEvent', payload),
+    listSyncMessages: (payload: { conversationId: string; maxMessages?: number }) =>
+      ipcRenderer.invoke('localChat:listSyncMessages', payload),
+    getSyncCheckpoint: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke('localChat:getSyncCheckpoint', payload),
+    setSyncCheckpoint: (payload: { conversationId: string; localMessageId: string }) =>
+      ipcRenderer.invoke('localChat:setSyncCheckpoint', payload),
+    importLegacyData: (payload: {
+      store?: {
+        version?: number
+        conversations?: Record<string, {
+          id?: string
+          updatedAt?: number
+          events?: unknown[]
+        }>
+      } | null
+      syncCheckpoints?: Record<string, unknown> | null
+    }) => ipcRenderer.invoke('localChat:importLegacyData', payload),
+    onUpdated: onIpcSignal('localChat:updated'),
+  },
 })

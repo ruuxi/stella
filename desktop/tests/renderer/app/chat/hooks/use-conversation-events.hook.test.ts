@@ -4,8 +4,12 @@ import type { EventRecord } from "../../../../../src/app/chat/hooks/use-conversa
 
 let mockStorageMode: "local" | "cloud" = "local";
 const mockUsePaginatedQuery = vi.fn<(ref: unknown, args?: unknown, options?: unknown) => unknown>(() => undefined);
-const mockListLocalEvents = vi.fn<(conversationId: string, maxItems: number) => EventRecord[]>(() => []);
-const mockGetLocalEventCount = vi.fn<(conversationId: string) => number>(() => 0);
+const mockListLocalEvents = vi.fn<
+  (conversationId: string, maxItems: number) => Promise<EventRecord[]>
+>(() => Promise.resolve([]));
+const mockGetLocalEventCount = vi.fn<(conversationId: string) => Promise<number>>(
+  () => Promise.resolve(0),
+);
 const mockUnsubscribe = vi.fn();
 let localUpdateListener: (() => void) | null = null;
 const mockSubscribeToLocalChatUpdates = vi.fn<(listener: () => void) => () => void>(
@@ -86,8 +90,8 @@ describe("useConversationEventFeed", () => {
     vi.clearAllMocks();
     mockStorageMode = "local";
     mockUsePaginatedQuery.mockReturnValue(undefined);
-    mockListLocalEvents.mockReturnValue([]);
-    mockGetLocalEventCount.mockReturnValue(0);
+    mockListLocalEvents.mockResolvedValue([]);
+    mockGetLocalEventCount.mockResolvedValue(0);
     mockScheduleListConversationEvents.mockResolvedValue([]);
     mockScheduleGetConversationEventCount.mockResolvedValue(0);
     localUpdateListener = null;
@@ -107,7 +111,7 @@ describe("useConversationEventFeed", () => {
     } as unknown as typeof window.electronAPI;
   });
 
-  it("hydrates local events and refreshes when local chat updates fire", () => {
+  it("hydrates local events and refreshes when local chat updates fire", async () => {
     const initialEvents = [
       makeEvent("e-1", 1, "user_message", { text: "hello" }),
     ];
@@ -116,8 +120,8 @@ describe("useConversationEventFeed", () => {
       makeEvent("e-2", 2, "assistant_message", { text: "hi" }),
     ];
     let currentEvents = initialEvents;
-    mockListLocalEvents.mockImplementation(() => currentEvents);
-    mockGetLocalEventCount.mockReturnValue(refreshedEvents.length);
+    mockListLocalEvents.mockImplementation(async () => currentEvents);
+    mockGetLocalEventCount.mockResolvedValue(refreshedEvents.length);
 
     const { result, unmount } = renderHook(() => useConversationEventFeed("conv-1"));
 
@@ -126,17 +130,21 @@ describe("useConversationEventFeed", () => {
       "skip",
       { initialNumItems: 200 },
     );
-    expect(mockListLocalEvents).toHaveBeenCalledWith("conv-1", 200);
-    expect(mockSubscribeToLocalChatUpdates).toHaveBeenCalledTimes(1);
-    expect(result.current.events).toEqual(initialEvents);
+    await waitFor(() => {
+      expect(mockListLocalEvents).toHaveBeenCalledWith("conv-1", 200);
+      expect(mockSubscribeToLocalChatUpdates).toHaveBeenCalledTimes(1);
+      expect(result.current.events).toEqual(initialEvents);
+    });
 
     act(() => {
       currentEvents = refreshedEvents;
       localUpdateListener?.();
     });
 
-    expect(mockListLocalEvents.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(result.current.events).toEqual(refreshedEvents);
+    await waitFor(() => {
+      expect(mockListLocalEvents.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(result.current.events).toEqual(refreshedEvents);
+    });
 
     unmount();
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
@@ -152,10 +160,10 @@ describe("useConversationEventFeed", () => {
       ),
     );
 
-    mockListLocalEvents.mockImplementation((_conversationId, maxItems) =>
+    mockListLocalEvents.mockImplementation(async (_conversationId, maxItems) =>
       allEvents.slice(Math.max(0, allEvents.length - maxItems)),
     );
-    mockGetLocalEventCount.mockReturnValue(allEvents.length);
+    mockGetLocalEventCount.mockResolvedValue(allEvents.length);
 
     const { result } = renderHook(() => useConversationEventFeed("conv-1"));
 
@@ -176,10 +184,10 @@ describe("useConversationEventFeed", () => {
   });
 
   it("merges local scheduler events into the local event feed", async () => {
-    mockListLocalEvents.mockReturnValue([
+    mockListLocalEvents.mockResolvedValue([
       makeEvent("e-1", 1, "user_message", { text: "hello" }),
     ]);
-    mockGetLocalEventCount.mockReturnValue(1);
+    mockGetLocalEventCount.mockResolvedValue(1);
     mockScheduleListConversationEvents.mockResolvedValue([
       makeEvent("e-2", 2, "assistant_message", {
         text: "Scheduled reply",
@@ -223,12 +231,12 @@ describe("useConversationEventFeed", () => {
       ),
     } satisfies Record<string, EventRecord[]>;
 
-    mockListLocalEvents.mockImplementation((conversationId, maxItems) => {
+    mockListLocalEvents.mockImplementation(async (conversationId, maxItems) => {
       const events = eventsByConversation[conversationId as keyof typeof eventsByConversation] ?? [];
       return events.slice(Math.max(0, events.length - maxItems));
     });
     mockGetLocalEventCount.mockImplementation(
-      (conversationId) =>
+      async (conversationId) =>
         eventsByConversation[conversationId as keyof typeof eventsByConversation]?.length ?? 0,
     );
 

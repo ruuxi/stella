@@ -55,8 +55,8 @@ const syncLocalMessages = async (
   cancelled: () => boolean,
 ) => {
   const localConversationId = getOrCreateLocalConversationId()
-  const localMessages = buildLocalSyncMessages(localConversationId)
-  const checkpoint = getLocalSyncCheckpoint(localConversationId)
+  const localMessages = await buildLocalSyncMessages(localConversationId)
+  const checkpoint = await getLocalSyncCheckpoint(localConversationId)
   const unsyncedMessages = getUnsyncedMessages(localMessages, checkpoint)
 
   if (unsyncedMessages.length === 0) {
@@ -78,7 +78,7 @@ const syncLocalMessages = async (
 
     const lastSyncedMessage = unsyncedMessages[unsyncedMessages.length - 1]
     if (!cancelled() && lastSyncedMessage) {
-      setLocalSyncCheckpoint(localConversationId, lastSyncedMessage.localMessageId)
+      await setLocalSyncCheckpoint(localConversationId, lastSyncedMessage.localMessageId)
     }
   } catch (syncError) {
     console.error('[useConversationBootstrap] Local message sync failed:', syncError)

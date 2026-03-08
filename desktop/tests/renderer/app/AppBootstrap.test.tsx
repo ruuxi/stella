@@ -57,9 +57,9 @@ vi.mock("@/platform/electron/device", () => ({
 }));
 vi.mock("@/app/chat/services/local-chat-store", () => ({
   getOrCreateLocalConversationId: () => mockGetOrCreateLocalConversationId(),
-  buildLocalSyncMessages: () => mockBuildLocalSyncMessages(),
-  getLocalSyncCheckpoint: () => mockGetLocalSyncCheckpoint(),
-  setLocalSyncCheckpoint: (...args: [string, string]) => mockSetLocalSyncCheckpoint(...args),
+  buildLocalSyncMessages: () => Promise.resolve(mockBuildLocalSyncMessages()),
+  getLocalSyncCheckpoint: () => Promise.resolve(mockGetLocalSyncCheckpoint()),
+  setLocalSyncCheckpoint: (...args: [string, string]) => Promise.resolve(mockSetLocalSyncCheckpoint(...args)),
 }));
 
 describe("AppBootstrap", () => {

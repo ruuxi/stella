@@ -19,6 +19,7 @@ import { AudioDuckingService } from './services/audio-ducking-service.js'
 import { CaptureService } from './services/capture-service.js'
 import { CredentialService } from './services/credential-service.js'
 import { ExternalLinkService } from './services/external-link-service.js'
+import { LocalChatService } from './services/local-chat-service.js'
 import { MiniBridgeService } from './services/mini-bridge-service.js'
 import { RadialGestureService } from './services/radial-gesture-service.js'
 import { SecurityPolicyService } from './services/security-policy-service.js'
@@ -48,6 +49,7 @@ export const bootstrapMainProcess = () => {
   let stellaHomePath: string | null = null
   let stellaHostRunner: StellaHostRunner | null = null
   let schedulerService: LocalSchedulerService | null = null
+  let localChatService: LocalChatService | null = null
   let windowManager: WindowManager | null = null
   let overlayController: OverlayWindowController | null = null
   let voiceRuntimeWindowController: VoiceRuntimeWindowController | null = null
@@ -154,6 +156,8 @@ export const bootstrapMainProcess = () => {
   const initializeStellaHostRunner = async () => {
     const stellaHome = await resolveStellaHome(app)
     stellaHomePath = stellaHome.homePath
+    localChatService?.close()
+    localChatService = new LocalChatService(stellaHome.homePath)
     try {
       await ensureLastResortRecoveryScripts({
         stellaHomePath: stellaHome.homePath,
@@ -233,6 +237,8 @@ export const bootstrapMainProcess = () => {
       stellaHostRunner.stop()
       stellaHostRunner = null
     }
+    localChatService?.close()
+    localChatService = null
     if (schedulerService) {
       schedulerService.stop()
     }
@@ -405,6 +411,11 @@ export const bootstrapMainProcess = () => {
         assertPrivilegedSender: (event, channel) =>
           externalLinkService.assertPrivilegedSender(event, channel),
         hmrMorphOrchestrator,
+      },
+      localChat: {
+        getLocalChatService: () => localChatService,
+        assertPrivilegedSender: (event, channel) =>
+          externalLinkService.assertPrivilegedSender(event, channel),
       },
       miniBridge: {
         miniBridgeService,

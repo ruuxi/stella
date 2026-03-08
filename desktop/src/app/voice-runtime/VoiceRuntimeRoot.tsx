@@ -34,7 +34,7 @@ const appendEventLocalFallback = async (args: {
   requestId?: string;
   targetDeviceId?: string;
 }) => {
-  appendLocalEvent(args);
+  await appendLocalEvent(args);
   return null;
 };
 

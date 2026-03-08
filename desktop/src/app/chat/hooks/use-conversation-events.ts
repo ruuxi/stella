@@ -5,7 +5,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { api } from "@/convex/api";
 import {
@@ -22,7 +21,6 @@ export type { EventRecord };
 
 const EVENT_PAGE_SIZE = 200;
 const EMPTY_EVENTS: EventRecord[] = [];
-const localEventsSnapshotCache = new Map<string, EventRecord[]>();
 const NO_OP = () => {};
 
 type PaginatedStatus =
@@ -43,37 +41,6 @@ export type ConversationEventFeed = {
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
   loadOlder: () => void;
-};
-
-const areEventListsEqual = (current: EventRecord[], next: EventRecord[]) => {
-  if (current.length !== next.length) {
-    return false;
-  }
-
-  for (let i = 0; i < current.length; i += 1) {
-    if (current[i] !== next[i]) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-const getLocalSnapshotCacheKey = (conversationId: string, maxItems: number) =>
-  `${conversationId}:${maxItems}`;
-
-const getCachedLocalEventsSnapshot = (
-  conversationId: string,
-  maxItems: number,
-): EventRecord[] => {
-  const cacheKey = getLocalSnapshotCacheKey(conversationId, maxItems);
-  const current = localEventsSnapshotCache.get(cacheKey) ?? EMPTY_EVENTS;
-  const next = listLocalEvents(conversationId, maxItems);
-  if (areEventListsEqual(current, next)) {
-    return current;
-  }
-  localEventsSnapshotCache.set(cacheKey, next);
-  return next;
 };
 
 const mergeEventSources = (
@@ -114,6 +81,15 @@ export const useConversationEventFeed = (
     visitToken: localWindowVisitToken,
     maxItems: null as number | null,
   }));
+  const [localSnapshot, setLocalSnapshot] = useState(() => ({
+    visitToken: localWindowVisitToken,
+    events: EMPTY_EVENTS,
+    count: 0,
+    hasLoaded: false,
+  }));
+  const [scheduledEvents, setScheduledEvents] = useState<EventRecord[]>(EMPTY_EVENTS);
+  const [scheduledEventCount, setScheduledEventCount] = useState(0);
+
   const localMaxItems =
     localWindowState.visitToken === localWindowVisitToken
       ? localWindowState.maxItems
@@ -122,6 +98,10 @@ export const useConversationEventFeed = (
     pendingLocalWindowState.visitToken === localWindowVisitToken
       ? pendingLocalWindowState.maxItems
       : null;
+  const activeLocalSnapshot =
+    localSnapshot.visitToken === localWindowVisitToken
+      ? localSnapshot
+      : { visitToken: localWindowVisitToken, events: EMPTY_EVENTS, count: 0, hasLoaded: false };
 
   const cloudResult = usePaginatedQuery(
     api.events.listEvents,
@@ -131,30 +111,66 @@ export const useConversationEventFeed = (
     { initialNumItems: EVENT_PAGE_SIZE },
   ) as PaginatedEventsResult | undefined;
 
-  const subscribeToLocalEvents = useCallback(
-    (onStoreChange: () => void) => {
-      if (storageMode !== "local" || !conversationId) {
-        return () => {};
-      }
-      return subscribeToLocalChatUpdates(onStoreChange);
-    },
-    [conversationId, storageMode],
-  );
+  useEffect(() => {
+    setLocalSnapshot({
+      visitToken: localWindowVisitToken,
+      events: EMPTY_EVENTS,
+      count: 0,
+      hasLoaded: false,
+    });
+  }, [localWindowVisitToken]);
 
-  const getLocalEventsSnapshot = useCallback(() => {
+  useEffect(() => {
     if (storageMode !== "local" || !conversationId) {
-      return EMPTY_EVENTS;
+      setLocalSnapshot({
+        visitToken: localWindowVisitToken,
+        events: EMPTY_EVENTS,
+        count: 0,
+        hasLoaded: true,
+      });
+      return;
     }
-    return getCachedLocalEventsSnapshot(conversationId, localMaxItems);
-  }, [conversationId, localMaxItems, storageMode]);
 
-  const localEvents = useSyncExternalStore(
-    subscribeToLocalEvents,
-    getLocalEventsSnapshot,
-    () => EMPTY_EVENTS,
-  );
-  const [scheduledEvents, setScheduledEvents] = useState<EventRecord[]>(EMPTY_EVENTS);
-  const [scheduledEventCount, setScheduledEventCount] = useState(0);
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const [events, count] = await Promise.all([
+          listLocalEvents(conversationId, localMaxItems),
+          getLocalEventCount(conversationId),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setLocalSnapshot({
+          visitToken: localWindowVisitToken,
+          events,
+          count,
+          hasLoaded: true,
+        });
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setLocalSnapshot({
+          visitToken: localWindowVisitToken,
+          events: EMPTY_EVENTS,
+          count: 0,
+          hasLoaded: true,
+        });
+      }
+    };
+
+    void load();
+    const unsubscribe = subscribeToLocalChatUpdates(() => {
+      void load();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [conversationId, localMaxItems, localWindowVisitToken, storageMode]);
 
   useEffect(() => {
     if (storageMode !== "local" || !conversationId || !window.electronAPI?.schedule) {
@@ -201,23 +217,48 @@ export const useConversationEventFeed = (
   }, [conversationId, localMaxItems, storageMode]);
 
   const mergedLocalEvents = useMemo(
-    () => mergeEventSources(localEvents, scheduledEvents),
-    [localEvents, scheduledEvents],
+    () => mergeEventSources(activeLocalSnapshot.events, scheduledEvents),
+    [activeLocalSnapshot.events, scheduledEvents],
   );
 
   const localEventCount =
     storageMode === "local" && conversationId
-      ? getLocalEventCount(conversationId) + scheduledEventCount
+      ? activeLocalSnapshot.count + scheduledEventCount
       : 0;
   const isLocalLoadingOlder =
-    storageMode === "local" &&
-    pendingLocalMaxItems !== null &&
-    mergedLocalEvents.length < pendingLocalMaxItems &&
-    localEventCount > mergedLocalEvents.length;
+    storageMode === "local"
+    && pendingLocalMaxItems !== null
+    && mergedLocalEvents.length < pendingLocalMaxItems
+    && localEventCount > mergedLocalEvents.length;
 
   const cloudResults = cloudResult?.results ?? EMPTY_EVENTS;
   const cloudStatus = cloudResult?.status ?? "Exhausted";
   const cloudLoadMore = cloudResult?.loadMore ?? NO_OP;
+
+  useEffect(() => {
+    if (
+      pendingLocalWindowState.visitToken !== localWindowVisitToken
+      || pendingLocalWindowState.maxItems === null
+    ) {
+      return;
+    }
+    if (
+      activeLocalSnapshot.events.length >= pendingLocalWindowState.maxItems
+      || localEventCount <= mergedLocalEvents.length
+    ) {
+      setPendingLocalWindowState({
+        visitToken: localWindowVisitToken,
+        maxItems: null,
+      });
+    }
+  }, [
+    activeLocalSnapshot.events.length,
+    localEventCount,
+    localWindowVisitToken,
+    mergedLocalEvents.length,
+    pendingLocalWindowState.maxItems,
+    pendingLocalWindowState.visitToken,
+  ]);
 
   const loadOlder = useCallback(() => {
     if (!conversationId) {
@@ -251,9 +292,9 @@ export const useConversationEventFeed = (
     cloudStatus,
     conversationId,
     localEventCount,
-    mergedLocalEvents.length,
     localMaxItems,
     localWindowVisitToken,
+    mergedLocalEvents.length,
     storageMode,
   ]);
 
@@ -263,7 +304,10 @@ export const useConversationEventFeed = (
         events: mergedLocalEvents,
         hasOlderEvents: localEventCount > mergedLocalEvents.length,
         isLoadingOlder: isLocalLoadingOlder,
-        isInitialLoading: false,
+        isInitialLoading:
+          Boolean(conversationId)
+          && !activeLocalSnapshot.hasLoaded
+          && pendingLocalMaxItems === null,
         loadOlder,
       };
     }
@@ -277,12 +321,15 @@ export const useConversationEventFeed = (
       loadOlder,
     };
   }, [
+    activeLocalSnapshot.hasLoaded,
     cloudResults,
     cloudStatus,
+    conversationId,
     isLocalLoadingOlder,
     loadOlder,
     localEventCount,
     mergedLocalEvents,
+    pendingLocalMaxItems,
     storageMode,
   ]);
 };
