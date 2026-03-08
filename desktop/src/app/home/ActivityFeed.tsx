@@ -1,16 +1,5 @@
 import { DashboardCard } from "./DashboardCard"
-
-type ScheduleItem = {
-  id: string
-  kind: "scheduled" | "monitoring"
-  name: string
-  description?: string
-  enabled: boolean
-  nextRunAtMs: number
-  lastRunAtMs?: number
-  lastStatus?: string
-  outputPreview?: string
-}
+import type { ScheduleItem } from "./schedule-item"
 
 function formatRelativeTime(ms: number): string {
   const now = Date.now()

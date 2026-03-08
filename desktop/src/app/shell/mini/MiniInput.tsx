@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ChatContext } from "@/types/electron";
+import {
+  clearComposerSelectedTextContext,
+  clearComposerWindowContext,
+  removeComposerScreenshotContext,
+  resolveComposerContextState,
+  resolveComposerPlaceholder,
+} from "@/app/chat/composer-context";
 
 type Props = {
   message: string;
@@ -37,8 +44,9 @@ export const MiniInput = ({
   }, [shellVisible]);
 
   const regionScreenshots = chatContext?.regionScreenshots ?? [];
-  const hasScreenshots = regionScreenshots.length > 0;
   const isCapturePending = Boolean(chatContext?.capturePending);
+  const composerContextState = resolveComposerContextState(chatContext, selectedText);
+  const hasScreenshots = composerContextState.hasScreenshotContext;
 
   const canSend =
     Boolean(message.trim()) ||
@@ -46,37 +54,21 @@ export const MiniInput = ({
     hasScreenshots;
 
   const clearWindowContext = useCallback(() => {
-    setChatContext((prev) =>
-      prev ? { ...prev, window: null } : prev,
-    );
+    clearComposerWindowContext(setChatContext);
   }, [setChatContext]);
 
   const clearSelectedTextContext = useCallback(() => {
-    setSelectedText(null);
-    setChatContext((prev) =>
-      prev ? { ...prev, selectedText: null } : prev,
-    );
+    clearComposerSelectedTextContext(setSelectedText, setChatContext);
   }, [setSelectedText, setChatContext]);
 
   const removeScreenshotContext = useCallback((index: number) => {
-    window.electronAPI?.capture.removeScreenshot?.(index);
-    setChatContext((prev) => {
-      if (!prev) return prev;
-      const next = [...(prev.regionScreenshots ?? [])];
-      next.splice(index, 1);
-      return { ...prev, regionScreenshots: next };
-    });
+    removeComposerScreenshotContext(index, setChatContext);
   }, [setChatContext]);
 
-  const placeholder = isCapturePending
-    ? "Capturing screen..."
-    : hasScreenshots
-      ? "Ask about the capture..."
-      : chatContext?.window
-        ? "Ask about this window..."
-        : selectedText
-          ? "Ask about the selection..."
-          : "Ask for follow-up changes";
+  const placeholder = resolveComposerPlaceholder({
+    chatContext,
+    contextState: composerContextState,
+  });
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setMessage(e.target.value);

@@ -1,3 +1,4 @@
+import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/types/electron";
 
 export type ComposerContextState = {
@@ -6,6 +7,9 @@ export type ComposerContextState = {
   hasSelectedTextContext: boolean;
   hasComposerContext: boolean;
 };
+
+type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
+type SetSelectedText = Dispatch<SetStateAction<string | null>>;
 
 type ComposerPlaceholderOptions = {
   chatContext: ChatContext | null;
@@ -50,6 +54,31 @@ export const resolveComposerPlaceholder = ({
     return "Ask about the selection...";
   }
   return "Ask anything";
+};
+
+export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
+  setChatContext((prev) => (prev ? { ...prev, window: null } : prev));
+};
+
+export const clearComposerSelectedTextContext = (
+  setSelectedText: SetSelectedText,
+  setChatContext: SetChatContext,
+) => {
+  setSelectedText(null);
+  setChatContext((prev) => (prev ? { ...prev, selectedText: null } : prev));
+};
+
+export const removeComposerScreenshotContext = (
+  index: number,
+  setChatContext: SetChatContext,
+) => {
+  window.electronAPI?.capture.removeScreenshot?.(index);
+  setChatContext((prev) => {
+    if (!prev) return prev;
+    const next = [...(prev.regionScreenshots ?? [])];
+    next.splice(index, 1);
+    return { ...prev, regionScreenshots: next };
+  });
 };
 
 

@@ -48,11 +48,19 @@ function SkeletonLoader() {
 }
 
 export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) {
-  const [streamingText, setStreamingText] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [streamState, setStreamState] = useState<{
+    requestKey: string | null;
+    text: string;
+    error: string | null;
+    complete: boolean;
+  }>({
+    requestKey: null,
+    text: "",
+    error: null,
+    complete: false,
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef(false);
+  const requestIdRef = useRef(0);
 
   const [atTop, setAtTop] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
@@ -64,14 +72,17 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
     setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
   }, []);
 
+  const requestKey = windowText ? `${windowTitle ?? ""}\u0000${windowText}` : null;
+
   // Start LLM stream when windowText arrives (non-empty)
   useEffect(() => {
-    if (!windowText) return;
+    if (!windowText || !requestKey) {
+      requestIdRef.current += 1;
+      return;
+    }
 
-    abortRef.current = false;
-    setStreamingText("");
-    setIsStreaming(true);
-    setError(null);
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
 
     const userContent = windowTitle
       ? `[${windowTitle}]\n\n${windowText}`
@@ -94,25 +105,44 @@ Keep it short. 2-4 paragraphs max. No bullet-point dumps unless the content genu
         { role: "user", content: userContent },
       ],
       onChunk: (chunk) => {
-        if (abortRef.current) return;
-        setStreamingText((prev) => prev + chunk);
+        if (requestId !== requestIdRef.current) return;
+        setStreamState((prev) =>
+          prev.requestKey === requestKey
+            ? { ...prev, text: prev.text + chunk, error: null, complete: false }
+            : { requestKey, text: chunk, error: null, complete: false },
+        );
       },
     })
       .catch((err) => {
-        if (!abortRef.current) {
-          setError(String((err as Error).message || err));
-        }
+        if (requestId !== requestIdRef.current) return;
+        setStreamState((prev) => ({
+          requestKey,
+          text: prev.requestKey === requestKey ? prev.text : "",
+          error: String((err as Error).message || err),
+          complete: false,
+        }));
       })
       .finally(() => {
-        if (!abortRef.current) {
-          setIsStreaming(false);
-        }
+        if (requestId !== requestIdRef.current) return;
+        setStreamState((prev) =>
+          prev.requestKey === requestKey
+            ? { ...prev, complete: true }
+            : { requestKey, text: "", error: null, complete: true },
+        );
       });
 
     return () => {
-      abortRef.current = true;
+      if (requestIdRef.current === requestId) {
+        requestIdRef.current += 1;
+      }
     };
-  }, [windowText, windowTitle]);
+  }, [requestKey, windowText, windowTitle]);
+
+  const activeStreamState =
+    streamState.requestKey === requestKey ? streamState : null;
+  const streamingText = activeStreamState?.text ?? "";
+  const error = activeStreamState?.error ?? null;
+  const isStreaming = Boolean(requestKey) && !activeStreamState?.complete;
 
   // Update fade edges as content grows
   useEffect(() => {

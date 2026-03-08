@@ -32,7 +32,7 @@ describe("MiniInput", () => {
   it("renders input with default placeholder", () => {
     render(<MiniInput {...defaultProps()} />);
     expect(
-      screen.getByPlaceholderText("Ask for follow-up changes"),
+      screen.getByPlaceholderText("Ask anything"),
     ).toBeTruthy();
   });
 
@@ -67,7 +67,7 @@ describe("MiniInput", () => {
   it("calls onSend on Enter key", () => {
     const onSend = vi.fn();
     render(<MiniInput {...defaultProps({ onSend })} />);
-    const input = screen.getByPlaceholderText("Ask for follow-up changes");
+    const input = screen.getByPlaceholderText("Ask anything");
 
     fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
     expect(onSend).toHaveBeenCalledTimes(1);
@@ -78,7 +78,7 @@ describe("MiniInput", () => {
     ((window as unknown as Record<string, unknown>)).electronAPI = { window: { close } };
 
     render(<MiniInput {...defaultProps()} />);
-    const input = screen.getByPlaceholderText("Ask for follow-up changes");
+    const input = screen.getByPlaceholderText("Ask anything");
 
     fireEvent.keyDown(input, { key: "Escape" });
     expect(close).toHaveBeenCalled();
@@ -305,7 +305,7 @@ describe("MiniInput", () => {
       />,
     );
 
-    const input = screen.getByPlaceholderText("Ask for follow-up changes");
+    const input = screen.getByPlaceholderText("Ask anything");
     fireEvent.keyDown(input, { key: "Escape" });
     expect(setPreviewIndex).toHaveBeenCalledWith(null);
     expect(close).not.toHaveBeenCalled();
@@ -461,7 +461,7 @@ describe("MiniInput", () => {
   it("onChange updates message via setMessage", () => {
     const setMessage = vi.fn();
     render(<MiniInput {...defaultProps({ setMessage })} />);
-    const input = screen.getByPlaceholderText("Ask for follow-up changes");
+    const input = screen.getByPlaceholderText("Ask anything");
     fireEvent.change(input, { target: { value: "hello" } });
     expect(setMessage).toHaveBeenCalledWith("hello");
   });
