@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
-import { createBackendTools } from "../tools/backend";
+import { createBackendTools, executeWebSearch } from "../tools/backend";
 import { jsonValueValidator } from "../shared_validators";
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
@@ -83,18 +83,26 @@ export const webSearch = action({
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
   },
-  returns: v.string(),
+  returns: v.object({
+    text: v.string(),
+    results: v.array(
+      v.object({
+        title: v.string(),
+        url: v.string(),
+        snippet: v.string(),
+      }),
+    ),
+    html: v.optional(v.string()),
+  }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     if (args.conversationId) {
       await requireConversationOwnerAction(ctx, args.conversationId);
     }
-    return await executeBackendTool(
-      ctx,
-      { ownerId, conversationId: args.conversationId, agentType: args.agentType },
-      "WebSearch",
-      { query: args.query },
-    );
+    return await executeWebSearch(ctx, args.query, {
+      ownerId,
+      includeHtml: true,
+    });
   },
 });
 
