@@ -24,6 +24,10 @@
     "matches": ["<all_urls>"],
     "js": ["keepalive.js"],
     "run_at": "document_start"
+  }, {
+    "matches": ["<all_urls>"],
+    "js": ["site-mods.js"],
+    "run_at": "document_start"
   }],
   "action": {
     "default_popup": "popup.html",
