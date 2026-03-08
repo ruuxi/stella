@@ -1,5 +1,5 @@
 import { app, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
-import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '../../../packages/stella-runtime/src/extensions/stella/local-preferences.js'
+import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '../../../packages/stella-runtime/src/preferences/local-preferences.js'
 import type { StellaHostRunner } from '../../stella-host-runner.js'
 import type { AuthService } from '../../services/auth-service.js'
 import type { ExternalLinkService } from '../../services/external-link-service.js'

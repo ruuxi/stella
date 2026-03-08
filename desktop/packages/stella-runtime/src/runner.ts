@@ -3,16 +3,16 @@ import fs from "fs";
 import path from "path";
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
-import { createToolHost } from "./extensions/stella/tools.js";
-import { loadAgentsFromHome } from "./extensions/stella/agents.js";
-import { loadSkillsFromHome } from "./extensions/stella/skills.js";
+import { createToolHost } from "./tools/host.js";
+import { loadAgentsFromHome } from "./agents/agents.js";
+import { loadSkillsFromHome } from "./agents/skills.js";
 import {
   getCodexLocalMaxConcurrency,
   getGeneralAgentEngine,
   getModelOverride,
-} from "./extensions/stella/local-preferences.js";
-import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./extensions/stella/local-task-manager.js";
-import type { ScheduleToolApi, ToolContext } from "./extensions/stella/tools-types.js";
+} from "./preferences/local-preferences.js";
+import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./tasks/local-task-manager.js";
+import type { ScheduleToolApi, ToolContext } from "./tools/types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import {
   runOrchestratorTurn,

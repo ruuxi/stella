@@ -4,7 +4,7 @@
  */
 
 import { promises as fs } from "fs";
-import type { ToolContext, ToolResult } from "./tools-types.js";
+import type { ToolContext, ToolResult } from "./types.js";
 import {
   ensureAbsolutePath,
   expandHomePath,
@@ -15,7 +15,7 @@ import {
   normalizeToLF,
   restoreLineEndings,
   stripBom,
-} from "./tools-utils.js";
+} from "./utils.js";
 import { isBlockedPath } from "./command-safety.js";
 
 export type FileToolsConfig = {
