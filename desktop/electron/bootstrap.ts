@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url'
 import { getDevServerUrl } from './dev-url.js'
 import { registerAllIpcHandlers } from './ipc/ipc-registry.js'
 import { OverlayWindowController } from './windows/overlay-window.js'
+import { NativeOverlayController } from './windows/native-overlay.js'
 import type { StellaHostRunner } from './stella-host-runner.js'
 import { createStellaHostRunner } from './stella-host-runner.js'
 import { ensureLastResortRecoveryScripts } from './self-mod/recovery-script.js'
@@ -52,6 +53,7 @@ export const bootstrapMainProcess = () => {
   let localChatService: LocalChatService | null = null
   let windowManager: WindowManager | null = null
   let overlayController: OverlayWindowController | null = null
+  let nativeOverlay: NativeOverlayController | null = null
   let hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null = null
   let deferredStartupSequence: Promise<void> | null = null
 
@@ -85,11 +87,15 @@ export const bootstrapMainProcess = () => {
       restoreMiniWindowAfterCapture: () => { windowManager?.restoreMiniWindowAfterCapture() },
     },
     overlay: {
-      hideRadial: () => overlayController?.hideRadial(),
-      hideModifierBlock: () => overlayController?.hideModifierBlock(),
-      startRegionCapture: () => overlayController?.startRegionCapture(),
-      endRegionCapture: () => overlayController?.endRegionCapture(),
-      getOverlayBounds: () => overlayController?.getWindow()?.getBounds() ?? null,
+      hideRadial: () => nativeOverlay?.hideRadial(),
+      hideModifierBlock: () => nativeOverlay?.hideModifierBlock(),
+      startRegionCapture: () => nativeOverlay?.startRegionCapture(),
+      endRegionCapture: () => nativeOverlay?.endRegionCapture(),
+      getOverlayBounds: () => {
+        // Native overlay coords are overlay-relative; origin = virtual screen origin
+        const origin = nativeOverlay?.getOverlayOrigin()
+        return origin ? { x: origin.x, y: origin.y, width: 0, height: 0 } : null
+      },
     },
     updateUiState: (partial) => uiStateService.update(partial),
   })
@@ -125,12 +131,12 @@ export const bootstrapMainProcess = () => {
       broadcastChatContext: () => captureService.broadcastChatContext(),
     },
     overlay: {
-      showModifierBlock: () => overlayController?.showModifierBlock(),
-      hideModifierBlock: () => overlayController?.hideModifierBlock(),
-      showRadial: () => overlayController?.showRadial(),
-      hideRadial: () => overlayController?.hideRadial(),
-      updateRadialCursor: () => overlayController?.updateRadialCursor(),
-      getRadialBounds: () => overlayController?.getRadialBounds() ?? null,
+      showModifierBlock: () => nativeOverlay?.showModifierBlock(),
+      hideModifierBlock: () => nativeOverlay?.hideModifierBlock(),
+      showRadial: () => nativeOverlay?.showRadial(),
+      hideRadial: () => nativeOverlay?.hideRadial(),
+      updateRadialCursor: () => nativeOverlay?.updateRadialCursor(),
+      getRadialBounds: () => nativeOverlay?.getRadialBounds() ?? null,
     },
     window: {
       isMiniShowing: () => windowManager?.isMiniShowing() ?? false,
@@ -201,8 +207,8 @@ export const bootstrapMainProcess = () => {
               uiStateService,
               isAppReady: () => appReady,
               getVoiceTargetWindow: () =>
-                overlayController?.getWindow()
-                ?? windowManager?.getMiniWindow()
+                windowManager?.getMiniWindow()
+                ?? windowManager?.getFullWindow()
                 ?? null,
             })
           } catch (error) {
@@ -366,6 +372,16 @@ export const bootstrapMainProcess = () => {
 
     await initializeStellaHostRunner()
 
+    // Native D3D11 overlay for radial, morph, modifier, voice, region capture
+    nativeOverlay = new NativeOverlayController()
+    nativeOverlay.create()
+
+    // Wire native region capture events → capture service
+    nativeOverlay.onRegionSelect((sel) => { void captureService.finalizeRegionCapture(sel) })
+    nativeOverlay.onRegionClick((point) => { void captureService.handleRegionClick(point) })
+    nativeOverlay.onRegionCancel(() => { captureService.cancelRegionCapture() })
+
+    // Chromium overlay for mini shell (region capture now handled by native overlay)
     overlayController = new OverlayWindowController({
       preloadPath: path.join(__dirname, 'preload.js'),
       sessionPartition: STELLA_SESSION_PARTITION,
@@ -401,9 +417,9 @@ export const bootstrapMainProcess = () => {
       broadcastTarget: {
         getAllWindows: () => windowManager ? windowManager.getAllWindows() : BrowserWindow.getAllWindows(),
       },
-      getOverlayTarget: () => overlayController ? {
-        showVoice: (x, y, mode) => overlayController!.showVoice(x, y, mode),
-        hideVoice: () => overlayController!.hideVoice(),
+      getOverlayTarget: () => nativeOverlay ? {
+        showVoice: (x, y, mode) => nativeOverlay!.showVoice(x, y, mode),
+        hideVoice: () => nativeOverlay!.hideVoice(),
       } : null,
     })
 
@@ -417,7 +433,7 @@ export const bootstrapMainProcess = () => {
     })
     hmrMorphOrchestrator = createHmrMorphOrchestrator({
       getFullWindow: () => windowManager?.getFullWindow() ?? null,
-      getOverlayController: () => overlayController,
+      getNativeOverlay: () => nativeOverlay,
     })
 
     registerAllIpcHandlers({
@@ -539,6 +555,7 @@ export const bootstrapMainProcess = () => {
     schedulerService?.stop()
     bridgeManager.stopAll()
     cleanupSelectedTextProcess()
+    nativeOverlay?.destroy()
     overlayController?.destroy()
   })
 

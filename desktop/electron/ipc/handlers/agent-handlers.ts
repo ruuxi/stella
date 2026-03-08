@@ -168,9 +168,15 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       throw new Error('Stella runtime not available')
     }
 
-    const healthCheck = stellaHostRunner.agentHealthCheck()
-    if (!healthCheck?.ready) {
-      throw new Error('Agent runtime not ready')
+    // Allow a brief grace period for auth state to settle (renderer health
+    // check may have just synced the token via setAuthState IPC).
+    let health = stellaHostRunner.agentHealthCheck()
+    if (!health?.ready) {
+      await new Promise((r) => setTimeout(r, 250))
+      health = stellaHostRunner.agentHealthCheck()
+    }
+    if (!health?.ready) {
+      throw new Error(health?.reason ?? 'Agent runtime not ready')
     }
 
     console.log(`[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | msgId=${payload.userMessageId} | prompt=${payload.userPrompt.slice(0, 200)}`)
