@@ -3,7 +3,11 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-crons.interval("bridge wake tick", { minutes: 1 }, internal.channels.bridge.bridgeWakeTick);
+crons.interval(
+  "bridge maintenance tick",
+  { minutes: 1 },
+  internal.channels.bridge.bridgeMaintenanceTick,
+);
 crons.interval(
   "transient connector cleanup",
   { minutes: 5 },
@@ -17,13 +21,6 @@ crons.interval(
   { maxBatches: 10 },
 );
 crons.interval("thread lifecycle sweep", { hours: 24 }, internal.data.threads.sweepThreadLifecycle, {});
-
-crons.cron(
-  "cleanup inactive cloud devices",
-  "0 5 * * *",
-  internal.agent.cloud_device_cleanup.cleanupInactive,
-  {},
-);
 
 crons.interval(
   "rescue orphaned remote turns",

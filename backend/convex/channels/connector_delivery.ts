@@ -651,7 +651,7 @@ export const rescueOrphanedTurns = internalAction({
             },
           );
           console.log(
-            `[watchdog] Rescued cron orphan ${orphan.requestId} (cloud fallback execution)`,
+            `[watchdog] Rescued cron orphan ${orphan.requestId} (backend fallback execution)`,
           );
           continue;
         }
@@ -674,7 +674,7 @@ export const rescueOrphanedTurns = internalAction({
           );
         } else {
           // Case 2: Not claimed — device went offline before picking up the
-          // request. Run the full turn through cloud + deliver.
+          // request. Run the full turn through backend fallback + deliver.
           const conversation = await ctx.runQuery(
             internal.conversations.getById,
             { id: conversationId },

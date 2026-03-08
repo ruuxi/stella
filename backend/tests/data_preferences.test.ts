@@ -1,22 +1,16 @@
 import { describe, test, expect } from "bun:test";
 import {
-  RUNTIME_MODE_KEY,
   GENERAL_AGENT_ENGINE_KEY,
   CODEX_LOCAL_MAX_CONCURRENCY_KEY,
   DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY,
   MIN_CODEX_LOCAL_MAX_CONCURRENCY,
   MAX_CODEX_LOCAL_MAX_CONCURRENCY,
   PREFERRED_BROWSER_KEY,
-  normalizeRuntimeMode,
   normalizeGeneralAgentEngine,
   normalizeCodexLocalMaxConcurrency,
 } from "../convex/data/preferences";
 
 describe("preference key constants", () => {
-  test("RUNTIME_MODE_KEY is a string", () => {
-    expect(RUNTIME_MODE_KEY).toBe("runtime_mode");
-  });
-
   test("GENERAL_AGENT_ENGINE_KEY is a string", () => {
     expect(GENERAL_AGENT_ENGINE_KEY).toBe("general_agent_engine");
   });
@@ -32,28 +26,6 @@ describe("preference key constants", () => {
   test("concurrency bounds are consistent", () => {
     expect(MIN_CODEX_LOCAL_MAX_CONCURRENCY).toBeLessThanOrEqual(DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY);
     expect(DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY).toBeLessThanOrEqual(MAX_CODEX_LOCAL_MAX_CONCURRENCY);
-  });
-});
-
-describe("normalizeRuntimeMode", () => {
-  test("returns cloud_247 for cloud_247", () => {
-    expect(normalizeRuntimeMode("cloud_247")).toBe("cloud_247");
-  });
-
-  test("returns local for local", () => {
-    expect(normalizeRuntimeMode("local")).toBe("local");
-  });
-
-  test("returns local for null", () => {
-    expect(normalizeRuntimeMode(null)).toBe("local");
-  });
-
-  test("returns local for undefined", () => {
-    expect(normalizeRuntimeMode(undefined)).toBe("local");
-  });
-
-  test("returns local for unknown string", () => {
-    expect(normalizeRuntimeMode("unknown")).toBe("local");
   });
 });
 

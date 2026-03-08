@@ -1873,7 +1873,7 @@ export const registerConnectorWebhookRoutes = (http: HttpRouter) => {
   });
   
   // ---------------------------------------------------------------------------
-  // Bridge Webhook (WhatsApp, Signal ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â persistent processes in Sprites)
+  // Bridge webhook for local WhatsApp and Signal bridge processes.
   // ---------------------------------------------------------------------------
   
   http.route({
