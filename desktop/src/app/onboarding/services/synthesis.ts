@@ -7,6 +7,7 @@
  */
 
 import { createServiceRequest } from "@/infra/http/service-request";
+import { getPromptOverridesPayload } from "@/prompts";
 
 export type WelcomeSuggestion = {
   category: "cron" | "skill" | "app";
@@ -42,7 +43,15 @@ export async function synthesizeCoreMemory(
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
-    body: JSON.stringify({ formattedSignals }),
+    body: JSON.stringify({
+      formattedSignals,
+      ...getPromptOverridesPayload([
+        "synthesis.core_memory.system",
+        "synthesis.core_memory.user",
+        "synthesis.welcome_message.user",
+        "synthesis.welcome_suggestions.user",
+      ]),
+    }),
   });
 
   if (!response.ok) {
