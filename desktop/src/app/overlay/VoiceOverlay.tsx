@@ -42,7 +42,7 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   // Voice mode uses server-reported speaking state for RTC (more reliable
   // than energy thresholds which decay slowly due to analyser smoothing).
   let voiceMode: VoiceMode = "idle";
-  let micAnalyserRef = sttAnalyserRef;
+  const micAnalyserRef = sttAnalyserRef;
   let micLevel: number | undefined;
   let outputLevel: number | undefined;
 

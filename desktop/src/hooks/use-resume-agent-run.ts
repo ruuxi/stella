@@ -115,13 +115,17 @@ export function useResumeAgentRun({
   }, [
     isAuthenticated,
     activeConversationId,
+    agentStreamCleanupRef,
     handleAgentEvent,
     isStreaming,
+    localRunIdRef,
+    localSeqRef,
     resetReasoningText,
     resetStreamingState,
     resetStreamingText,
     setIsStreaming,
     setPendingUserMessageId,
+    streamRunIdRef,
   ]);
 }
 

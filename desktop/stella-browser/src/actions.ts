@@ -1,4 +1,4 @@
-import type { Page, Frame } from 'playwright-core';
+import type { Page } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { BrowserManager, ScreencastFrame } from './browser.js';
@@ -869,10 +869,17 @@ async function handleDrag(command: DragCommand, browser: BrowserManager): Promis
     command.endX != null &&
     command.endY != null
   ) {
-    const steps = command.steps || 5;
+    const steps = Math.max(command.steps ?? 5, 1);
+    const body = frame.locator('body');
     await frame
       .locator('body')
       .dispatchEvent('mousedown', { clientX: command.startX, clientY: command.startY });
+    for (let step = 1; step < steps; step++) {
+      const progress = step / steps;
+      const clientX = command.startX + (command.endX - command.startX) * progress;
+      const clientY = command.startY + (command.endY - command.startY) * progress;
+      await body.dispatchEvent('mousemove', { clientX, clientY });
+    }
     await frame
       .locator('body')
       .dispatchEvent('mouseup', { clientX: command.endX, clientY: command.endY });
@@ -907,7 +914,9 @@ async function handleGetByRole(
   browser: BrowserManager
 ): Promise<Response> {
   const page = browser.getPage();
-  const locator = page.getByRole(command.role as any, { name: command.name });
+  const locator = page.getByRole(command.role as Parameters<Page['getByRole']>[0], {
+    name: command.name,
+  });
 
   switch (command.subaction) {
     case 'click':
@@ -1168,8 +1177,7 @@ async function handleUserAgent(
   command: Command & { action: 'useragent'; userAgent: string },
   browser: BrowserManager
 ): Promise<Response> {
-  const page = browser.getPage();
-  const context = page.context();
+  void browser;
   // Note: Can't change user agent after context is created, but we can for new pages
   return successResponse(command.id, {
     note: 'User agent can only be set at launch time. Use device command instead.',
@@ -1373,8 +1381,9 @@ async function handleStyles(
 
 async function handleVideoStart(
   command: Command & { action: 'video_start'; path: string },
-  browser: BrowserManager
+  _browser: BrowserManager
 ): Promise<Response> {
+  void _browser;
   // Video recording requires context-level setup at launch
   // For now, return a note about this limitation
   return successResponse(command.id, {
@@ -1444,8 +1453,9 @@ async function handleStateSave(
 
 async function handleStateLoad(
   command: Command & { action: 'state_load'; path: string },
-  browser: BrowserManager
+  _browser: BrowserManager
 ): Promise<Response> {
+  void _browser;
   // Storage state is loaded at context creation
   return successResponse(command.id, {
     note: 'Storage state must be loaded at browser launch. Use --state flag.',
@@ -1513,9 +1523,10 @@ async function handleClipboard(
     case 'paste':
       await page.keyboard.press('Control+v');
       return successResponse(command.id, { pasted: true });
-    case 'read':
+    case 'read': {
       const text = await page.evaluate('navigator.clipboard.readText()');
       return successResponse(command.id, { text });
+    }
     default:
       return errorResponse(command.id, 'Unknown clipboard operation');
   }
@@ -1750,9 +1761,10 @@ async function handleNth(command: NthCommand, browser: BrowserManager): Promise<
     case 'hover':
       await locator.hover();
       return successResponse(command.id, { hovered: true });
-    case 'text':
+    case 'text': {
       const text = await locator.textContent();
       return successResponse(command.id, { text });
+    }
   }
 }
 
@@ -1797,7 +1809,8 @@ async function handleTimezone(
   });
 }
 
-async function handleLocale(command: LocaleCommand, browser: BrowserManager): Promise<Response> {
+async function handleLocale(command: LocaleCommand, _browser: BrowserManager): Promise<Response> {
+  void _browser;
   // Locale must be set at context creation
   return successResponse(command.id, {
     note: 'Locale must be set at browser launch. Use --locale flag.',

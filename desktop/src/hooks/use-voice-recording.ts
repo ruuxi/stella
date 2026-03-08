@@ -32,7 +32,10 @@ export function useVoiceRecording({
 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const onTranscriptRef = useRef(onTranscript);
-  onTranscriptRef.current = onTranscript;
+
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript;
+  }, [onTranscript]);
 
   // Refs to hold session across the effect boundary so cleanup can commit
   const sessionRef = useRef<StreamingTranscribeSession | null>(null);

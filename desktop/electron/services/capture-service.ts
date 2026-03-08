@@ -365,7 +365,11 @@ export class CaptureService {
   private resetRegionCapture() {
     this.pendingRegionCaptureResolve = null
     this.pendingRegionCapturePromise = null
-    try { globalShortcut.unregister('Escape') } catch {}
+    try {
+      globalShortcut.unregister('Escape')
+    } catch {
+      // Shortcut may already be gone if capture was interrupted externally.
+    }
     this.options.overlay.endRegionCapture()
   }
 

@@ -16,6 +16,8 @@ export function getDevServerUrl(): string {
   try {
     const url = fs.readFileSync(DEV_URL_FILE, 'utf-8').trim()
     if (url) return url
-  } catch {}
+  } catch {
+    // Fall back to the default local dev server port when the marker file is absent.
+  }
   return `http://localhost:${FALLBACK_PORT}`
 }

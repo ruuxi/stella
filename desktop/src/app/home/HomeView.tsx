@@ -40,8 +40,6 @@ function useScheduleData(): ScheduleItem[] {
   useEffect(() => {
     const scheduleApi = window.electronAPI?.schedule
     if (!scheduleApi) {
-      setCronJobs([])
-      setHeartbeats([])
       return
     }
 

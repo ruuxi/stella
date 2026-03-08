@@ -54,7 +54,7 @@ import { RadialDial } from "./RadialDial";
 
 let showCallback: ((event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number }) => void) | null = null;
 let hideCallback: (() => void) | null = null;
-let cursorCallback: ((event: unknown, data: { x: number; y: number; centerX: number; centerY: number }) => void) | null = null;
+let _cursorCallback: ((event: unknown, data: { x: number; y: number; centerX: number; centerY: number }) => void) | null = null;
 let rafCallbacks: FrameRequestCallback[] = [];
 
 describe("RadialDial close races", () => {
@@ -79,8 +79,8 @@ describe("RadialDial close races", () => {
           hideCallback = cb;
           return vi.fn();
         }),
-        onCursor: vi.fn((cb: typeof cursorCallback) => {
-          cursorCallback = cb;
+        onCursor: vi.fn((cb: typeof _cursorCallback) => {
+          _cursorCallback = cb;
           return vi.fn();
         }),
         animDone: vi.fn(),

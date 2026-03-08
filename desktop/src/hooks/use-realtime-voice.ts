@@ -35,7 +35,7 @@ const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
 interface VoiceSessionManagerDeps {
   conversationIdRef: { current: string };
   inputActiveRef: { current: boolean };
-  appendEventRef: { current: (...args: any[]) => any };
+  appendEventRef: { current: (...args: unknown[]) => unknown };
   deviceIdRef: { current: string | null };
   analyserRef: { current: AnalyserNode | null };
   outputAnalyserRef: { current: AnalyserNode | null };
@@ -283,7 +283,6 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
   useEffect(() => {
     const api = window.electronAPI;
     if (!api?.voice) {
-      setRuntimeState(DEFAULT_RUNTIME_STATE);
       return;
     }
 

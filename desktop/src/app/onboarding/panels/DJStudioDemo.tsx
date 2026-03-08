@@ -602,7 +602,7 @@ export function DJStudio() {
     stepRef.current = 0;
   }, []);
 
-  const scheduleNext = useCallback(() => {
+  const scheduleNext = useCallback(function scheduleNextLoop() {
     const basMs = (60 / bpmRef.current / 4) * 1000;
     const isOffbeat = stepRef.current % 2 === 1;
     const swingDelay = isOffbeat ? basMs * (swingRef.current / 100) * 0.33 : 0;
@@ -623,7 +623,7 @@ export function DJStudio() {
         }
       }
       stepRef.current++;
-      scheduleNext();
+      scheduleNextLoop();
     }, basMs + swingDelay);
   }, []);
 

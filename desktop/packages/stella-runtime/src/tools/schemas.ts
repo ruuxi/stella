@@ -314,6 +314,6 @@ export const TOOL_SCHEMAS = {
 export const TOOL_JSON_SCHEMAS: Record<string, object> = Object.fromEntries(
   Object.entries(TOOL_SCHEMAS).map(([name, schema]) => [
     name,
-    zodToJsonSchema(schema as any, { target: "openApi3" }),
+    zodToJsonSchema(schema as unknown as Parameters<typeof zodToJsonSchema>[0], { target: "openApi3" }),
   ]),
 );

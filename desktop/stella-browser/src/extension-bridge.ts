@@ -10,14 +10,95 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSocketDir, getSession } from './daemon.js';
-import type { Command } from './types.js';
+import type { Command, Response } from './types.js';
+
+interface PendingCommand {
+  resolve: (response: Response) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+interface BridgeHelloMessage {
+  type: 'hello';
+  token?: string;
+}
+
+interface BridgePingMessage {
+  type: 'ping';
+}
+
+interface BridgeResponseMessage {
+  type: 'response';
+  id: string;
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+type BridgeMessage = BridgeHelloMessage | BridgePingMessage | BridgeResponseMessage;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseBridgeMessage(raw: string): BridgeMessage | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(parsed) || typeof parsed.type !== 'string') {
+    return null;
+  }
+
+  switch (parsed.type) {
+    case 'hello':
+      return {
+        type: 'hello',
+        token: typeof parsed.token === 'string' ? parsed.token : undefined,
+      };
+    case 'ping':
+      return { type: 'ping' };
+    case 'response':
+      if (typeof parsed.id !== 'string' || typeof parsed.success !== 'boolean') {
+        return null;
+      }
+      return {
+        type: 'response',
+        id: parsed.id,
+        success: parsed.success,
+        data: parsed.data,
+        error: typeof parsed.error === 'string' ? parsed.error : undefined,
+      };
+    default:
+      return null;
+  }
+}
+
+function toCommandResponse(message: BridgeResponseMessage): Response {
+  if (message.success) {
+    return {
+      id: message.id,
+      success: true,
+      data: message.data,
+    };
+  }
+
+  return {
+    id: message.id,
+    success: false,
+    error: message.error ?? 'Unknown extension error',
+  };
+}
 
 export class ExtensionBridge {
   private wss: WebSocketServer | null = null;
   private ws: WebSocket | null = null;
   private port: number;
   private token: string;
-  private pending: Map<string, { resolve: (response: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }> = new Map();
+  private pending: Map<string, PendingCommand> = new Map();
   private connected = false;
   private commandTimeout: number;
   private lastHealthCheckSuccess: number = 0;
@@ -81,7 +162,7 @@ export class ExtensionBridge {
    */
   async stop(): Promise<void> {
     // Reject all pending commands
-    for (const [id, pending] of this.pending) {
+    for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(new Error('Extension bridge shutting down'));
     }
@@ -106,10 +187,14 @@ export class ExtensionBridge {
     const portFile = path.join(socketDir, `${session}.ext-port`);
     try {
       fs.unlinkSync(tokenFile);
-    } catch {}
+    } catch (_error) {
+      void _error;
+    }
     try {
       fs.unlinkSync(portFile);
-    } catch {}
+    } catch (_error) {
+      void _error;
+    }
   }
 
   /**
@@ -160,7 +245,7 @@ export class ExtensionBridge {
   /**
    * Send a command to the extension and wait for the response.
    */
-  async executeCommand(command: Command): Promise<any> {
+  async executeCommand(command: Command): Promise<Response> {
     if (!this.connected || !this.ws) {
       throw new Error(
         'Extension not connected. Install the Stella Browser Bridge extension and connect it.'
@@ -208,7 +293,7 @@ export class ExtensionBridge {
       }
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise<Response>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(command.id);
         reject(new Error(`Command '${command.action}' timed out after ${this.commandTimeout}ms`));
@@ -247,10 +332,8 @@ export class ExtensionBridge {
     let authenticated = false;
 
     ws.on('message', (data) => {
-      let msg: any;
-      try {
-        msg = JSON.parse(data.toString());
-      } catch {
+      const msg = parseBridgeMessage(data.toString());
+      if (!msg) {
         return;
       }
 
@@ -267,7 +350,6 @@ export class ExtensionBridge {
               session: getSession(),
             })
           );
-
         } else {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'Invalid token' }));
           ws.close(4001, 'Invalid token');
@@ -295,8 +377,7 @@ export class ExtensionBridge {
           this.pending.delete(msg.id);
           // Successful response means connection is alive
           this.lastHealthCheckSuccess = Date.now();
-          // Return the response as-is (it already has success/error fields)
-          pending.resolve(msg);
+          pending.resolve(toCommandResponse(msg));
         }
         return;
       }
@@ -309,7 +390,7 @@ export class ExtensionBridge {
         this.lastHealthCheckSuccess = 0;
 
         // Reject all pending commands
-        for (const [id, pending] of this.pending) {
+        for (const pending of this.pending.values()) {
           clearTimeout(pending.timer);
           pending.reject(new Error('Extension disconnected'));
         }
@@ -317,7 +398,8 @@ export class ExtensionBridge {
       }
     });
 
-    ws.on('error', (err) => {
+    ws.on('error', (_err) => {
+      void _err;
     });
 
     // Give the extension 10 seconds to authenticate

@@ -4,6 +4,8 @@
  */
 
 import {
+	type Api,
+	type AssistantMessage,
 	getModel,
 	type ImageContent,
 	type Message,
@@ -28,8 +30,16 @@ import type {
 /**
  * Default convertToLlm: Keep only LLM-compatible messages, convert attachments.
  */
+function isBaseMessage(message: AgentMessage): message is Message {
+	return message.role === "user" || message.role === "assistant" || message.role === "toolResult";
+}
+
+function isAssistantMessage(message: AgentMessage): message is AssistantMessage {
+	return message.role === "assistant" && "usage" in message;
+}
+
 function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
-	return messages.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "toolResult");
+	return messages.filter(isBaseMessage);
 }
 
 export interface AgentOptions {
@@ -209,7 +219,7 @@ export class Agent {
 		this._state.systemPrompt = v;
 	}
 
-	setModel(m: Model<any>) {
+	setModel(m: Model<Api>) {
 		this._state.model = m;
 	}
 
@@ -233,7 +243,7 @@ export class Agent {
 		return this.followUpMode;
 	}
 
-	setTools(t: AgentTool<any>[]) {
+	setTools(t: AgentTool[]) {
 		this._state.tools = t;
 	}
 
@@ -378,7 +388,8 @@ export class Agent {
 		if (messages.length === 0) {
 			throw new Error("No messages to continue from");
 		}
-		if (messages[messages.length - 1].role === "assistant") {
+		const lastMessage = messages[messages.length - 1];
+		if (lastMessage && lastMessage.role === "assistant") {
 			const queuedSteering = this.dequeueSteeringMessages();
 			if (queuedSteering.length > 0) {
 				await this._runLoop(queuedSteering, { skipInitialSteeringPoll: true });
@@ -486,8 +497,8 @@ export class Agent {
 					}
 
 					case "turn_end":
-						if (event.message.role === "assistant" && (event.message as any).errorMessage) {
-							this._state.error = (event.message as any).errorMessage;
+						if (isAssistantMessage(event.message) && event.message.errorMessage) {
+							this._state.error = event.message.errorMessage;
 						}
 						break;
 
@@ -517,8 +528,9 @@ export class Agent {
 					}
 				}
 			}
-		} catch (err: any) {
-			const errorMsg: AgentMessage = {
+		} catch (err: unknown) {
+			const errorMessage = err instanceof Error ? err.message : String(err);
+			const errorMsg: AssistantMessage = {
 				role: "assistant",
 				content: [{ type: "text", text: "" }],
 				api: model.api,
@@ -533,12 +545,12 @@ export class Agent {
 					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 				},
 				stopReason: this.abortController?.signal.aborted ? "aborted" : "error",
-				errorMessage: err?.message || String(err),
+				errorMessage,
 				timestamp: Date.now(),
-			} as AgentMessage;
+			};
 
 			this.appendMessage(errorMsg);
-			this._state.error = err?.message || String(err);
+			this._state.error = errorMessage;
 			this.emit({ type: "agent_end", messages: [errorMsg] });
 		} finally {
 			this._state.isStreaming = false;

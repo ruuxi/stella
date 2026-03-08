@@ -1,5 +1,5 @@
 import { getModels, type Api, type Model } from "@stella/stella-ai";
-import { getLocalLlmCredential, hasLocalLlmCredential } from "./storage/llm-credentials.js";
+import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 
 type ManagedProxyConfig = {
   baseUrl: string | null;
@@ -48,10 +48,6 @@ const unique = (values: string[]): string[] => Array.from(new Set(values.filter(
 
 const getCredential = (stellaHomePath: string, providerId: string): string | null => {
   return getLocalLlmCredential(stellaHomePath, providerId);
-};
-
-const hasCredential = (stellaHomePath: string, providerId: string): boolean => {
-  return hasLocalLlmCredential(stellaHomePath, providerId);
 };
 
 const getDirectProviderCandidates = (
@@ -162,9 +158,6 @@ const createManagedProxyModel = (
 
 const getGatewayCredential = (stellaHomePath: string): string | null =>
   getCredential(stellaHomePath, "vercel-ai-gateway");
-
-const hasGatewayCredential = (stellaHomePath: string): boolean =>
-  hasCredential(stellaHomePath, "vercel-ai-gateway");
 
 export const canResolveLlmRoute = (args: {
   stellaHomePath: string;

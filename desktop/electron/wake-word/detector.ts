@@ -98,7 +98,7 @@ export async function createWakeWordDetector(
   let wakewordSession: ort.InferenceSession;
   let vadSession: ort.InferenceSession;
 
-  let silenceEmbedding = new Float32Array(EMBEDDING_DIM);
+  const silenceEmbedding = new Float32Array(EMBEDDING_DIM);
 
   async function createAllSessions() {
     [melspecSession, embeddingSession, wakewordSession, vadSession] =
@@ -132,16 +132,16 @@ export async function createWakeWordDetector(
   let lastActivationTime = 0;
   let warmupFrames = WARMUP_FRAMES;
 
-  let rawBuffer = new Int16Array(RAW_BUFFER_MAX);
+  const rawBuffer = new Int16Array(RAW_BUFFER_MAX);
   let rawBufferLen = 0;
 
   let rawRemainder = new Int16Array(0);
   let accumulatedSamples = 0;
 
-  let melBuffer = new Float32Array(MEL_BUFFER_MAX * MEL_BINS).fill(1.0);
+  const melBuffer = new Float32Array(MEL_BUFFER_MAX * MEL_BINS).fill(1.0);
   let melRows = EMBEDDING_WINDOW;
 
-  let featureBuffer = new Float32Array(FEATURE_BUFFER_MAX * EMBEDDING_DIM);
+  const featureBuffer = new Float32Array(FEATURE_BUFFER_MAX * EMBEDDING_DIM);
   let featureRows = 0;
 
   const recentScores: number[] = [];
