@@ -105,11 +105,13 @@ export const useConversationBootstrap = () => {
       const settleRuntime = () => Promise.allSettled([hostPromise, devicePromise])
 
       if (!isAuthenticated || accountMode === 'private_local') {
-        const localConversationId = await getOrCreateLocalConversationId()
+        const [localConversationId] = await Promise.all([
+          getOrCreateLocalConversationId(),
+          settleRuntime(),
+        ])
         if (!cancelled) {
           setConversationId(localConversationId)
         }
-        await settleRuntime()
         return
       }
 
@@ -119,7 +121,10 @@ export const useConversationBootstrap = () => {
       }
 
       try {
-        const conversation = await getOrCreateDefaultConversation({})
+        const [conversation] = await Promise.all([
+          getOrCreateDefaultConversation({}),
+          settleRuntime(),
+        ])
         if (!cancelled && conversation?._id) {
           await syncLocalMessages(
             conversation._id,
@@ -136,8 +141,6 @@ export const useConversationBootstrap = () => {
       } catch (error) {
         console.error('[useConversationBootstrap] Cloud conversation setup failed:', error)
       }
-
-      await settleRuntime()
     }
 
     void run()
