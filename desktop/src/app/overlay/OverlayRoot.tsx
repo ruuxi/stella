@@ -347,6 +347,7 @@ function useMiniDrag(
 function useOverlayHitTesting(
   state: OverlayState,
   miniRef: React.RefObject<HTMLDivElement | null>,
+  autoPanelRef: React.RefObject<HTMLDivElement | null>,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
   const {
@@ -357,9 +358,11 @@ function useOverlayHitTesting(
     miniVisible,
     voiceVisible,
     voicePosition,
+    autoPanel,
   } = state;
   const voiceX = voicePosition?.x ?? null;
   const voiceY = voicePosition?.y ?? null;
+  const autoPanelActive = autoPanel !== null;
 
   useEffect(() => {
     // When region capture is active, the entire overlay must be interactive
@@ -385,9 +388,9 @@ function useOverlayHitTesting(
       return;
     }
 
-    // For mini shell and standalone voice: only interactive when cursor
+    // For mini shell, voice, and auto panel: only interactive when cursor
     // is over an active interactive region.
-    if (!miniVisible && !voiceVisible) {
+    if (!miniVisible && !voiceVisible && !autoPanelActive) {
       updateInteractive(false);
       return;
     }
@@ -417,7 +420,20 @@ function useOverlayHitTesting(
           e.clientY <= top + VOICE_CREATURE_SIZE.height;
       }
 
-      updateInteractive(isOverMini || isOverVoice);
+      let isOverAutoPanel = false;
+      if (autoPanelActive) {
+        const autoPanelEl = autoPanelRef.current;
+        if (autoPanelEl) {
+          const rect = autoPanelEl.getBoundingClientRect();
+          isOverAutoPanel =
+            e.clientX >= rect.left &&
+            e.clientX <= rect.right &&
+            e.clientY >= rect.top &&
+            e.clientY <= rect.bottom;
+        }
+      }
+
+      updateInteractive(isOverMini || isOverVoice || isOverAutoPanel);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -431,7 +447,9 @@ function useOverlayHitTesting(
     voiceVisible,
     voiceX,
     voiceY,
+    autoPanelActive,
     miniRef,
+    autoPanelRef,
     updateInteractive,
   ]);
 
@@ -443,7 +461,7 @@ function useOverlayHitTesting(
       miniPreviewVisible ||
       miniVisible ||
       voiceVisible ||
-      state.autoPanel !== null;
+      autoPanelActive;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -455,6 +473,7 @@ function useOverlayHitTesting(
     miniPreviewVisible,
     miniVisible,
     voiceVisible,
+    autoPanelActive,
     updateInteractive,
   ]);
 }
@@ -468,6 +487,7 @@ export function OverlayRoot() {
   const interactiveRef = useRef(false);
   const miniRef = useRef<HTMLDivElement>(null);
   const radialRef = useRef<HTMLDivElement>(null);
+  const autoPanelRef = useRef<HTMLDivElement>(null);
   const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
 
   // Wire up all IPC subscriptions (radial, modifier, region, mini, voice)
@@ -480,10 +500,13 @@ export function OverlayRoot() {
   const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
     if (interactiveRef.current === shouldBeInteractive) return;
     interactiveRef.current = shouldBeInteractive;
-    window.electronAPI?.overlay.setInteractive?.(shouldBeInteractive);
+    // Safety check to ensure electronAPI is available and properly initialized
+    if (typeof window !== 'undefined' && window.electronAPI?.overlay?.setInteractive) {
+      window.electronAPI.overlay.setInteractive(shouldBeInteractive);
+    }
   }, []);
 
-  useOverlayHitTesting(state, miniRef, updateInteractive);
+  useOverlayHitTesting(state, miniRef, autoPanelRef, updateInteractive);
 
   const handleMiniPreviewVisibilityChange = useCallback((visible: boolean) => {
     dispatch({ type: "mini:preview", visible });
@@ -565,6 +588,7 @@ export function OverlayRoot() {
       {/* Auto panel: right-side response panel for Auto mode */}
       {state.autoPanel && (
         <div
+          ref={autoPanelRef}
           style={{
             position: "absolute",
             left: state.autoPanel.x,
