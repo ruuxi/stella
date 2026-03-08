@@ -20,7 +20,7 @@ describe("useTurnViewModels", () => {
         _id: userId,
         timestamp: 1,
         type: "user_message",
-        payload: { text: "[8:00 PM] hello" },
+        payload: { text: "[8:00 PM] hello\n\n[1:00 PM, Mar 8]" },
         channelEnvelope: {
           provider: "discord",
           kind: "message",
@@ -30,7 +30,15 @@ describe("useTurnViewModels", () => {
       },
       createEvent({
         type: "assistant_message",
-        payload: { text: "world" },
+        payload: {
+          text: "[8:05 PM] world\n\n[1:05 PM, Mar 8]",
+          source: "channel:discord",
+        },
+        channelEnvelope: {
+          provider: "discord",
+          kind: "message",
+          sourceTimestamp: Date.UTC(2026, 2, 8, 20, 5, 0),
+        },
       }),
     ];
 
@@ -45,12 +53,7 @@ describe("useTurnViewModels", () => {
       kind: "message",
       externalUserId: "ext-1",
     });
-    expect(result.current.turns[0].userLocalTimeLabel).toBe(
-      `[${new Date(sourceTimestamp).toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      })}]`,
-    );
+    expect(result.current.turns[0].assistantText).toBe("world");
   });
 
   it("hides streaming state when pending user already has assistant reply", () => {
