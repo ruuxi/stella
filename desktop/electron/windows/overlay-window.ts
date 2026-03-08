@@ -68,6 +68,7 @@ class OverlayWindow {
         contextIsolation: true,
         nodeIntegration: false,
         partition: this.options.sessionPartition,
+        backgroundThrottling: false,
       },
     })
 

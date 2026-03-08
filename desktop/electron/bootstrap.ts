@@ -32,7 +32,6 @@ import { resolveStellaHome } from './system/stella-home.js'
 import { initializeWakeWord } from './wake-word/initialize.js'
 import { startStellaUiServer } from './system/stella-ui-server.js'
 import { WindowManager } from './windows/window-manager.js'
-import { VoiceRuntimeWindowController } from './windows/voice-runtime-window.js'
 import { createHmrMorphOrchestrator } from './self-mod/hmr-morph.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -53,7 +52,6 @@ export const bootstrapMainProcess = () => {
   let localChatService: LocalChatService | null = null
   let windowManager: WindowManager | null = null
   let overlayController: OverlayWindowController | null = null
-  let voiceRuntimeWindowController: VoiceRuntimeWindowController | null = null
   let hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null = null
   let deferredStartupSequence: Promise<void> | null = null
 
@@ -176,13 +174,6 @@ export const bootstrapMainProcess = () => {
         },
       },
       {
-        label: 'voice-runtime-window',
-        delayMs: STARTUP_STAGE_DELAY_MS,
-        run: () => {
-          voiceRuntimeWindowController?.create()
-        },
-      },
-      {
         label: 'selected-text',
         delayMs: STARTUP_STAGE_DELAY_MS,
         run: () => {
@@ -210,8 +201,7 @@ export const bootstrapMainProcess = () => {
               uiStateService,
               isAppReady: () => appReady,
               getVoiceTargetWindow: () =>
-                voiceRuntimeWindowController?.getWindow()
-                ?? overlayController?.getWindow()
+                overlayController?.getWindow()
                 ?? windowManager?.getMiniWindow()
                 ?? null,
             })
@@ -384,17 +374,6 @@ export const bootstrapMainProcess = () => {
       getDevServerUrl,
     })
 
-    voiceRuntimeWindowController = new VoiceRuntimeWindowController({
-      preloadPath: path.join(__dirname, 'preload.js'),
-      sessionPartition: STELLA_SESSION_PARTITION,
-      electronDir: __dirname,
-      isDev,
-      getDevServerUrl,
-      onRenderProcessGone: (details) => {
-        console.error('[voice-runtime] Renderer process gone:', details.reason)
-      },
-    })
-
     windowManager = new WindowManager({
       electronDir: __dirname,
       preloadPath: path.join(__dirname, 'preload.js'),
@@ -560,7 +539,6 @@ export const bootstrapMainProcess = () => {
     schedulerService?.stop()
     bridgeManager.stopAll()
     cleanupSelectedTextProcess()
-    voiceRuntimeWindowController?.destroy()
     overlayController?.destroy()
   })
 

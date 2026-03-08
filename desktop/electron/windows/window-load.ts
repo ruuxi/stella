@@ -1,14 +1,12 @@
 import type { BrowserWindow } from 'electron'
 import path from 'path'
 
-export type WindowLoadMode = 'full' | 'overlay' | 'voice-runtime'
+export type WindowLoadMode = 'full' | 'overlay'
 
 const getWindowEntryFile = (windowMode: WindowLoadMode) => {
   switch (windowMode) {
     case 'overlay':
       return 'overlay.html'
-    case 'voice-runtime':
-      return 'voice-runtime.html'
     case 'full':
     default:
       return 'index.html'
