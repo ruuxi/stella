@@ -14,6 +14,10 @@ import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import { streamTextWithFailover } from "./model_execution";
 import { PREFERRED_BROWSER_KEY } from "../data/preferences";
 import { BROWSER_AGENT_SAFARI_DENIED_REASON } from "../lib/agent_constants";
+import {
+  AGENT_INVOKE_SYSTEM_INSTRUCTIONS,
+  buildAgentInvokeUserPrompt,
+} from "../prompts/index";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 
@@ -94,20 +98,12 @@ export const invoke = internalAction({
     const mode = args.mode?.trim();
     const prompt = args.prompt?.trim();
 
-    const invocationInstructions = [
-      "You are being invoked as a bounded agent tool.",
-      "Return JSON only. Do not include markdown or explanation outside JSON.",
-      "Never mention providers, model identifiers, or internal infrastructure.",
-      "If you cannot comply, return {\"ok\":false,\"reason\":\"...\"}.",
-    ].join("\n");
-
-    const userBlocks = [
-      mode ? `Mode:\n${mode}` : null,
-      prompt ? `Task:\n${prompt}` : null,
-      `Input (JSON):\n${inputText}`,
-      `Result schema (JSON Schema subset):\n${schemaText}`,
-      "Return a single JSON object that matches the schema.",
-    ].filter((block): block is string => Boolean(block));
+    const userPrompt = buildAgentInvokeUserPrompt({
+      mode,
+      prompt,
+      inputText,
+      schemaText,
+    });
 
     const maxSteps = normalizeOptionalInt({
       value: args.maxSteps,
@@ -119,13 +115,13 @@ export const invoke = internalAction({
     let rawText = "";
     try {
       const invokeSharedArgs = {
-        system: `${promptBuild.systemPrompt}\n\n${invocationInstructions}`.trim(),
+        system: `${promptBuild.systemPrompt}\n\n${AGENT_INVOKE_SYSTEM_INSTRUCTIONS}`.trim(),
         tools,
         stopWhen: stepCountIs(maxSteps),
         messages: [
           {
             role: "user" as const,
-            content: [{ type: "text" as const, text: userBlocks.join("\n\n") }],
+            content: [{ type: "text" as const, text: userPrompt }],
           },
         ],
       };

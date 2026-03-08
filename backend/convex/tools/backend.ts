@@ -3,6 +3,10 @@ import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
 import { generateTextWithFailover } from "../agent/model_execution";
 import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
+import {
+  NEWS_HTML_SYSTEM_PROMPT,
+  buildNewsHtmlUserPrompt,
+} from "../prompts/index";
 import type { ToolOptions } from "./types";
 
 const MAX_WEB_SEARCH_RESULTS = 6;
@@ -67,13 +71,10 @@ const generateNewsHtml = async (
     .map((result, index) => `${index + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet}`)
     .join("\n\n");
 
-  const prompt =
-    `Generate a visual HTML news summary for the search query: "${options.query}"\n\n` +
-    `Search results:\n${resultsText}\n\n` +
-    "Output self-contained HTML that visually presents these results as a news feed. " +
-    "Use semantic HTML (h2, h3, p, a, small). " +
-    "For colors use var(--foreground) and var(--background). " +
-    "Keep it concise and scannable. No scripts. No markdown fences.";
+  const prompt = buildNewsHtmlUserPrompt({
+    query: options.query,
+    resultsText,
+  });
 
   const resolvedConfig = await resolveModelConfig(ctx, "news_generate", options.ownerId);
   const fallbackConfig = await resolveFallbackConfig(ctx, "news_generate", options.ownerId);
@@ -81,7 +82,7 @@ const generateNewsHtml = async (
     resolvedConfig,
     fallbackConfig,
     sharedArgs: {
-      system: "You generate clean, self-contained HTML for a news panel. No markdown fences. No explanation. Just HTML.",
+      system: NEWS_HTML_SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }],
     },
   });
