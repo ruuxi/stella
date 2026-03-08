@@ -1,5 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+
+const mockAreLocalWorkspacePanelsEnabled = vi.fn(() => true);
+
+vi.mock("@/shared/lib/local-workspace-panels", () => ({
+  LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE:
+    "Local workspace panels are only available while running the Vite dev server.",
+  areLocalWorkspacePanelsEnabled: () => mockAreLocalWorkspacePanelsEnabled(),
+}));
 
 // Mock the error boundary to pass through children
 vi.mock("../../../../../src/app/canvas/WorkspaceErrorBoundary", () => ({
@@ -23,6 +31,11 @@ vi.mock("@/ui/spinner", () => ({
 import PanelRenderer from "../../../../../src/app/canvas/renderers/panel";
 
 describe("PanelRenderer", () => {
+  afterEach(() => {
+    mockAreLocalWorkspacePanelsEnabled.mockReset();
+    mockAreLocalWorkspacePanelsEnabled.mockReturnValue(true);
+  });
+
   it("shows loading state initially", () => {
     render(<PanelRenderer panel={{ name: "test-panel" }} />);
     expect(screen.getByTestId("spinner")).toBeTruthy();
@@ -122,6 +135,19 @@ describe("PanelRenderer", () => {
       <PanelRenderer panel={{ name: "test" }} />
     );
     expect(container.querySelector(".canvas-vite-loading")).toBeTruthy();
+  });
+
+  it("shows a dev-only error outside the Vite dev server", async () => {
+    mockAreLocalWorkspacePanelsEnabled.mockReturnValue(false);
+
+    render(<PanelRenderer panel={{ name: "my-chart" }} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Panel Error")).toBeTruthy();
+    });
+    expect(
+      screen.getByText("Local workspace panels are only available while running the Vite dev server."),
+    ).toBeTruthy();
   });
 });
 

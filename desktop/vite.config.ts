@@ -3,7 +3,7 @@ import os from "os"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig, type ModuleNode, type Plugin } from "vite"
+import { defineConfig, searchForWorkspaceRoot, type ModuleNode, type Plugin } from "vite"
 
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_STATE_FILE = path.resolve(__dirname, '.stella-hmr-state.json')
@@ -15,6 +15,7 @@ const STELLA_WORKSPACE_PANELS_DIR = path.resolve(
   'workspace',
   'panels',
 )
+const VITE_WORKSPACE_ROOT = searchForWorkspaceRoot(__dirname)
 const PACKAGE_MANIFEST_BASENAMES = new Set([
   'package.json',
   'bun.lock',
@@ -326,7 +327,7 @@ export default defineConfig({
     port: 5714,
     strictPort: false,
     fs: {
-      allow: [STELLA_WORKSPACE_PANELS_DIR],
+      allow: [VITE_WORKSPACE_ROOT, STELLA_WORKSPACE_PANELS_DIR],
     },
   },
   resolve: {
