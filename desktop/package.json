@@ -2,6 +2,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -29,9 +32,9 @@
     "postinstall": "electron-rebuild --build-from-source -o better-sqlite3"
   },
   "dependencies": {
-    "@stella/stella-agent-core": "file:./packages/stella-agent-core",
-    "@stella/stella-ai": "file:./packages/stella-ai",
-    "@stella/stella-runtime": "file:./packages/stella-runtime",
+    "@stella/stella-agent-core": "workspace:*",
+    "@stella/stella-ai": "workspace:*",
+    "@stella/stella-runtime": "workspace:*",
     "@ai-sdk/amazon-bedrock": "^4.0.69",
     "@ai-sdk/anthropic": "^3.0.50",
     "@ai-sdk/openai": "^3.0.37",
