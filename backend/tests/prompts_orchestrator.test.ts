@@ -13,7 +13,7 @@ describe("ORCHESTRATOR_AGENT_SYSTEM_PROMPT", () => {
 
   test("describes offline fallback role", () => {
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("offline");
-    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("WebSearch");
+    expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("backend fallback responder");
     expect(ORCHESTRATOR_AGENT_SYSTEM_PROMPT).toContain("NoResponse");
   });
 });

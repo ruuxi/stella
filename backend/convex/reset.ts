@@ -25,7 +25,7 @@ export const resetAllUserData = action({
       { ownerId },
     );
 
-    // 2. Delete per-conversation data (events, threads+messages, tasks)
+    // 2. Delete per-conversation data (events, threads+messages)
     for (const conversationId of conversationIds) {
       let hasMore = true;
       while (hasMore) {
@@ -103,20 +103,8 @@ export const _deleteConversationBatch = internalMutation({
       }
     }
 
-    // Tasks
-    const tasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_conversationId_and_createdAt", (q) =>
-        q.eq("conversationId", conversationId),
-      )
-      .take(BATCH);
-    for (const t of tasks) {
-      await ctx.db.delete(t._id);
-      deleted++;
-    }
-
     // When all linked data is gone, delete the conversation itself
-    if (events.length === 0 && threads.length === 0 && tasks.length === 0) {
+    if (events.length === 0 && threads.length === 0) {
       const conv = await ctx.db.get(conversationId);
       if (conv) await ctx.db.delete(conversationId);
       return false;

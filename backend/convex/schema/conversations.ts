@@ -43,32 +43,6 @@ export const conversationsSchema = {
     .index("by_conversationId", ["conversationId"])
     .index("by_deviceId", ["deviceId"]),
 
-  tasks: defineTable({
-    conversationId: v.id("conversations"),
-    parentTaskId: v.optional(v.id("tasks")),
-    description: v.string(),
-    prompt: v.string(),
-    agentType: v.string(),
-    status: v.string(),
-    taskDepth: v.number(),
-    model: v.optional(v.string()),
-    commandId: v.optional(v.string()),
-    result: v.optional(v.string()),
-    error: v.optional(v.string()),
-    statusUpdates: v.optional(v.array(v.object({
-      text: v.string(),
-      timestamp: v.number(),
-    }))),
-    deliveryCompletedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    completedAt: v.optional(v.number()),
-  })
-    .index("by_conversationId_and_createdAt", ["conversationId", "createdAt"])
-    .index("by_conversationId_and_updatedAt", ["conversationId", "updatedAt"])
-    .index("by_status_and_updatedAt", ["status", "updatedAt"])
-    .index("by_parentTaskId_and_createdAt", ["parentTaskId", "createdAt"]),
-
   threads: defineTable({
     conversationId: v.id("conversations"),
     name: v.string(),

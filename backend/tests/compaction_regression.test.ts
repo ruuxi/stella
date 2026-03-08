@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 
 const backendRoot = path.resolve(import.meta.dir, "..");
@@ -25,16 +25,14 @@ describe("compaction regressions", () => {
     expect(source).not.toContain("ctx.runMutation(internal.conversations.setActiveThreadId");
   });
 
-  test("orchestrator turn preparation is shared by chat and task-delivery paths", () => {
+  test("automation runner no longer routes backend fallback through orchestrator turn helpers", () => {
     const turnSource = readBackendFile("convex/agent/orchestrator_turn.ts");
-    const taskSource = readBackendFile("convex/agent/tasks.ts");
     const automationSource = readBackendFile("convex/automation/runner.ts");
     expect(turnSource).toContain("export const prepareOrchestratorTurn");
     expect(turnSource).toContain("export const finalizeOrchestratorTurn");
-    expect(taskSource).toContain("prepareOrchestratorTurn");
-    expect(taskSource).toContain("finalizeDeliveredTaskTurn");
-    expect(automationSource).toContain("prepareOrchestratorTurn");
-    expect(automationSource).toContain("finalizeOrchestratorTurn");
+    expect(existsSync(path.join(backendRoot, "convex/agent/tasks.ts"))).toBe(false);
+    expect(automationSource).not.toContain("prepareOrchestratorTurn");
+    expect(automationSource).not.toContain("finalizeOrchestratorTurn");
   });
 
   test("shared orchestrator core marks reminders independently from assistant text persistence", () => {
@@ -44,10 +42,11 @@ describe("compaction regressions", () => {
     );
   });
 
-  test("automation orchestrator turns route through shared prepare/finalize helpers", () => {
+  test("automation runner uses direct prompt building for backend fallback", () => {
     const source = readBackendFile("convex/automation/runner.ts");
-    expect(source).toContain("prepareOrchestratorTurn");
-    expect(source).toContain("finalizeOrchestratorTurn");
+    expect(source).toContain("buildSystemPrompt");
+    expect(source).not.toContain("prepareOrchestratorTurn");
+    expect(source).not.toContain("finalizeOrchestratorTurn");
   });
 
   test("channel inbound user events are not duplicated into prompt history", () => {
@@ -56,13 +55,10 @@ describe("compaction regressions", () => {
     expect(source).toContain("userMessageId: userMessageId ?? undefined");
   });
 
-  test("task delivery persistence is idempotent via task-level completion marker", () => {
-    const taskSource = readBackendFile("convex/agent/tasks.ts");
+  test("task delivery persistence was removed from backend conversation schema", () => {
     const schemaSource = readBackendFile("convex/schema/conversations.ts");
-    expect(taskSource).toContain("export const finalizeDeliveredTaskTurn = internalMutation");
-    expect(taskSource).toContain("typeof task.deliveryCompletedAt === \"number\"");
-    expect(taskSource).toContain("deliveryCompletedAt: now");
-    expect(taskSource).toContain("isTaskDeliveryCompleted");
-    expect(schemaSource).toContain("deliveryCompletedAt: v.optional(v.number())");
+    expect(existsSync(path.join(backendRoot, "convex/agent/tasks.ts"))).toBe(false);
+    expect(schemaSource).not.toContain("tasks: defineTable");
+    expect(schemaSource).not.toContain("deliveryCompletedAt");
   });
 });
