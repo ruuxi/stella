@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { showToast } from "@/ui/toast";
+import "./selfmod-undo.css";
 
 export type SelfModApplied = {
   featureId: string;

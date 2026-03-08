@@ -6,6 +6,7 @@ import Link2 from "lucide-react/dist/esm/icons/link-2";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import User from "lucide-react/dist/esm/icons/user";
 import LogIn from "lucide-react/dist/esm/icons/log-in";
+import "./sidebar.css";
 
 interface SidebarProps {
   hideThemePicker?: boolean;

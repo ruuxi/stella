@@ -33,6 +33,15 @@ function formatTs(ts: number): string {
   );
 }
 
+function formatTraceData(data: unknown): string {
+  if (typeof data === "string") return data;
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data);
+  }
+}
+
 function TraceEntryRow({ entry }: { entry: TraceEntry }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -57,11 +66,9 @@ function TraceEntryRow({ entry }: { entry: TraceEntry }) {
         )}
         <span className="trace-summary">{entry.summary}</span>
       </div>
-      {expanded && entry.data && (
+      {expanded && entry.data != null && (
         <div className="trace-entry-data">
-          {typeof entry.data === "string"
-            ? entry.data
-            : JSON.stringify(entry.data, null, 2)}
+          {formatTraceData(entry.data)}
         </div>
       )}
     </div>

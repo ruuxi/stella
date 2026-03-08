@@ -3,6 +3,7 @@ import { useTheme, useThemeControl } from "@/theme/theme-context";
 import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "@/ui/popover";
 import { Button } from "@/ui/button";
 import { ChevronUp, Check } from "lucide-react";
+import "./ThemePicker.css";
 
 type ColorScheme = "light" | "dark" | "system";
 type GradientMode = "soft" | "crisp";

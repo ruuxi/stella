@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { Spinner } from "@/ui/spinner";
 import type { TaskItem } from "@/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
+import "./indicators.css";
 
 interface TaskIndicatorProps {
   tasks: TaskItem[];

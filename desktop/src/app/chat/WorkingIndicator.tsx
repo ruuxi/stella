@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { computeStatus } from "./status-utils";
 import type { TaskItem } from "@/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
+import "./indicators.css";
 
 interface WorkingIndicatorProps {
   status?: string;

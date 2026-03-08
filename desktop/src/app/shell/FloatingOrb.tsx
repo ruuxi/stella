@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
 import { StellaAnimation, type StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
+import "./floating-orb.css";
 
 const ORB_POSITION_KEY = "stella:orb-position";
 const DEFAULT_OFFSET = { right: 32, bottom: 32 };

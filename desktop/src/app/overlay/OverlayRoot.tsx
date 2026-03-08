@@ -5,6 +5,7 @@ import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "../shell/mini/MiniShell";
 import { VoiceOverlay } from "@/app/overlay/VoiceOverlay";
 import { MorphTransition } from "@/app/overlay/MorphTransition";
+import "./overlays.css";
 
 /**
  * OverlayRoot manages the unified transparent overlay window.

@@ -17,6 +17,7 @@ import {
   MIN_CHAT_WIDTH,
   useWorkspace,
 } from '@/providers/workspace-state'
+import './chat-panel.css'
 
 const ANIM_DURATION = 350 // ms, matches CSS chat-slide-out duration
 const OPEN_CHAT_ICON = (
@@ -70,18 +71,25 @@ export function ChatPanel({ children }: { children: ReactNode }) {
     wasOpenRef.current = isChatOpen
 
     if (isChatOpen) {
-      setClosing(false)
-      const frame = requestAnimationFrame(() => setVisible(true))
+      const frame = requestAnimationFrame(() => {
+        setClosing(false)
+        setVisible(true)
+      })
       return () => cancelAnimationFrame(frame)
     }
 
     if (wasOpen) {
-      setClosing(true)
+      const frame = requestAnimationFrame(() => {
+        setClosing(true)
+      })
       const timer = setTimeout(() => {
         setVisible(false)
         setClosing(false)
       }, ANIM_DURATION)
-      return () => clearTimeout(timer)
+      return () => {
+        cancelAnimationFrame(frame)
+        clearTimeout(timer)
+      }
     }
   }, [isChatOpen])
 
@@ -120,14 +128,16 @@ export function ChatPanel({ children }: { children: ReactNode }) {
     }
   }, [resetResizeUi, teardownResizeListeners])
 
+  useEffect(() => {
+    isChatOpenRef.current = isChatOpen
+    widthRef.current = chatWidth
+  }, [chatWidth, isChatOpen])
+
   const handleToggle = useCallback(() => {
     setChatOpen(!isChatOpenRef.current)
   }, [setChatOpen])
 
   // --- Resize ---
-  isChatOpenRef.current = isChatOpen
-  widthRef.current = chatWidth
-
   const handleMouseDown = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       if (event.button !== 0) return

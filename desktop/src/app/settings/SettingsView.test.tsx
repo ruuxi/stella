@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import { useQuery, useMutation } from "convex/react";
 import SettingsDialog from "../settings/SettingsView";
 
@@ -192,12 +192,20 @@ function setupElectronApi(
   } as any;
 }
 
-async function renderModelsTab() {
-  render(<SettingsDialog {...defaultProps()} />);
+async function openModelsTab() {
   await act(async () => {
     fireEvent.click(screen.getByText("Models"));
     await Promise.resolve();
   });
+  await waitFor(() => {
+    expect(mockListLlmCredentials).toHaveBeenCalled();
+    expect(screen.getByText("API Keys")).toBeTruthy();
+  });
+}
+
+async function renderModelsTab() {
+  render(<SettingsDialog {...defaultProps()} />);
+  await openModelsTab();
 }
 
 const LLM_PROVIDER_ROW_COUNT = 12;
@@ -282,10 +290,10 @@ describe("Tab switching", () => {
     expect(signOutElements.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("switches to Models tab when clicked", () => {
+  it("switches to Models tab when clicked", async () => {
     render(<SettingsDialog {...defaultProps()} />);
 
-    fireEvent.click(screen.getByText("Models"));
+    await openModelsTab();
 
     // Models tab should now be active
     expect(screen.getByText("Models").className).toContain("settings-sidebar-tab--active");
@@ -299,10 +307,10 @@ describe("Tab switching", () => {
     expect(screen.queryByText("Account Mode")).toBeNull();
   });
 
-  it("switches back to Basic tab from Models", () => {
+  it("switches back to Basic tab from Models", async () => {
     render(<SettingsDialog {...defaultProps()} />);
 
-    fireEvent.click(screen.getByText("Models"));
+    await openModelsTab();
     expect(screen.queryByText("Account Mode")).toBeNull();
 
     fireEvent.click(screen.getByText("Basic"));
@@ -426,27 +434,24 @@ describe("GeneralAgentRuntimeSection", () => {
     } as unknown as typeof globalThis.ResizeObserver;
   });
 
-  it("renders General Agent Runtime section on Models tab", () => {
+  it("renders General Agent Runtime section on Models tab", async () => {
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     expect(screen.getByText("General Agent Runtime")).toBeTruthy();
     expect(screen.getByText("Engine")).toBeTruthy();
   });
 
-  it("hides Codex concurrency control when engine is default", () => {
+  it("hides Codex concurrency control when engine is default", async () => {
     setupUseQuery({ generalAgentEngine: "default" });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     expect(screen.queryByText("Parallel Codex Sessions")).toBeNull();
   });
 
-  it("shows Codex concurrency control when engine is codex_local", () => {
+  it("shows Codex concurrency control when engine is codex_local", async () => {
     setupUseQuery({ generalAgentEngine: "codex_local", codexLocalMaxConcurrency: 2 });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     expect(screen.getByText("Parallel Codex Sessions")).toBeTruthy();
     const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
@@ -454,7 +459,7 @@ describe("GeneralAgentRuntimeSection", () => {
     expect(selects[1].value).toBe("2");
   });
 
-  it("calls setGeneralAgentEngine when engine is changed", () => {
+  it("calls setGeneralAgentEngine when engine is changed", async () => {
     const mockSetGeneralAgentEngine = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
@@ -462,8 +467,7 @@ describe("GeneralAgentRuntimeSection", () => {
       return vi.fn();
     });
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
     fireEvent.change(selects[0], { target: { value: "codex_local" } });
@@ -471,10 +475,9 @@ describe("GeneralAgentRuntimeSection", () => {
     expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({ engine: "codex_local" });
   });
 
-  it("shows Claude Code option in General Agent Runtime engine select", () => {
+  it("shows Claude Code option in General Agent Runtime engine select", async () => {
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
     expect(selects.length).toBeGreaterThanOrEqual(1);
@@ -482,7 +485,7 @@ describe("GeneralAgentRuntimeSection", () => {
     expect(options).toContain("claude_code_local");
   });
 
-  it("calls setGeneralAgentEngine when engine is changed to claude_code_local", () => {
+  it("calls setGeneralAgentEngine when engine is changed to claude_code_local", async () => {
     const mockSetGeneralAgentEngine = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
@@ -490,8 +493,7 @@ describe("GeneralAgentRuntimeSection", () => {
       return vi.fn();
     });
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
     fireEvent.change(selects[0], { target: { value: "claude_code_local" } });
@@ -499,7 +501,7 @@ describe("GeneralAgentRuntimeSection", () => {
     expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({ engine: "claude_code_local" });
   });
 
-  it("calls setCodexLocalMaxConcurrency when Codex concurrency changes", () => {
+  it("calls setCodexLocalMaxConcurrency when Codex concurrency changes", async () => {
     const mockSetCodexLocalMaxConcurrency = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
@@ -507,8 +509,7 @@ describe("GeneralAgentRuntimeSection", () => {
       return vi.fn();
     });
     setupUseQuery({ generalAgentEngine: "codex_local", codexLocalMaxConcurrency: 3 });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
     fireEvent.change(selects[1], { target: { value: "1" } });
@@ -528,19 +529,17 @@ describe("ModelConfigSection", () => {
     } as unknown as typeof globalThis.ResizeObserver;
   });
 
-  it("renders Model Configuration title and description", () => {
+  it("renders Model Configuration title and description", async () => {
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     expect(screen.getByText("Model Configuration")).toBeTruthy();
     expect(screen.getByText("Override the default model for each agent type.")).toBeTruthy();
   });
 
-  it("renders all configurable agents with labels and descriptions", () => {
+  it("renders all configurable agents with labels and descriptions", async () => {
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     // Agent labels
     expect(screen.getByText("Orchestrator")).toBeTruthy();
@@ -559,10 +558,9 @@ describe("ModelConfigSection", () => {
     expect(screen.getByText("Memory search and retrieval")).toBeTruthy();
   });
 
-  it("shows default model labels in select dropdowns", () => {
+  it("shows default model labels in select dropdowns", async () => {
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
     expect(selects.length).toBe(6);
@@ -578,10 +576,9 @@ describe("ModelConfigSection", () => {
     expect(defaultTexts).toContain("zai/glm-4.7");
   });
 
-  it("shows model options from the catalog in optgroups", () => {
+  it("shows model options from the catalog in optgroups", async () => {
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const optgroups = document.querySelectorAll("optgroup");
     expect(optgroups.length).toBeGreaterThanOrEqual(2);
@@ -592,12 +589,11 @@ describe("ModelConfigSection", () => {
   });
 
 
-  it("selects have current value from overrides", () => {
+  it("selects have current value from overrides", async () => {
     setupUseQuery({
       modelOverrides: JSON.stringify({ orchestrator: "openai/gpt-4o" }),
     });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
     // First select is orchestrator
@@ -606,49 +602,45 @@ describe("ModelConfigSection", () => {
     expect(selects[1].value).toBe("");
   });
 
-  it("shows reset icon when agent has an override", () => {
+  it("shows reset icon when agent has an override", async () => {
     setupUseQuery({
       modelOverrides: JSON.stringify({ orchestrator: "openai/gpt-4o" }),
     });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     // Reset icons should exist for agents with overrides
     const resetIcons = document.querySelectorAll(".settings-model-reset-icon");
     expect(resetIcons.length).toBe(1);
   });
 
-  it("does not show reset icon when agent has no override", () => {
+  it("does not show reset icon when agent has no override", async () => {
     setupUseQuery({ modelOverrides: undefined });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const resetIcons = document.querySelectorAll(".settings-model-reset-icon");
     expect(resetIcons.length).toBe(0);
   });
 
-  it("shows Reset All button when there are overrides", () => {
+  it("shows Reset All button when there are overrides", async () => {
     setupUseQuery({
       modelOverrides: JSON.stringify({ orchestrator: "openai/gpt-4o" }),
     });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const resetAllBtn = screen.getByText("Reset All");
     expect(resetAllBtn).toBeTruthy();
     expect((resetAllBtn as HTMLElement).style.visibility).toBe("visible");
   });
 
-  it("hides Reset All button when there are no overrides", () => {
+  it("hides Reset All button when there are no overrides", async () => {
     setupUseQuery({ modelOverrides: undefined });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const resetAllBtn = screen.getByText("Reset All");
     expect((resetAllBtn as HTMLElement).style.visibility).toBe("hidden");
   });
 
-  it("calls setModelOverride mutation when a model is selected", () => {
+  it("calls setModelOverride mutation when a model is selected", async () => {
     const mockSetOverride = vi.fn();
     const mockClearOverride = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
@@ -659,8 +651,7 @@ describe("ModelConfigSection", () => {
     });
 
     setupUseQuery();
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
     fireEvent.change(selects[0], { target: { value: "openai/gpt-4o" } });
@@ -671,7 +662,7 @@ describe("ModelConfigSection", () => {
     });
   });
 
-  it("calls clearModelOverride mutation when empty value is selected", () => {
+  it("calls clearModelOverride mutation when empty value is selected", async () => {
     const mockSetOverride = vi.fn();
     const mockClearOverride = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
@@ -684,8 +675,7 @@ describe("ModelConfigSection", () => {
     setupUseQuery({
       modelOverrides: JSON.stringify({ orchestrator: "openai/gpt-4o" }),
     });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
     fireEvent.change(selects[0], { target: { value: "" } });
@@ -693,7 +683,7 @@ describe("ModelConfigSection", () => {
     expect(mockClearOverride).toHaveBeenCalledWith({ agentType: "orchestrator" });
   });
 
-  it("calls clearModelOverride when reset icon is clicked", () => {
+  it("calls clearModelOverride when reset icon is clicked", async () => {
     const mockClearOverride = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
@@ -704,8 +694,7 @@ describe("ModelConfigSection", () => {
     setupUseQuery({
       modelOverrides: JSON.stringify({ orchestrator: "openai/gpt-4o" }),
     });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     const resetIcon = document.querySelector(".settings-model-reset-icon") as HTMLElement;
     fireEvent.click(resetIcon);
@@ -713,7 +702,7 @@ describe("ModelConfigSection", () => {
     expect(mockClearOverride).toHaveBeenCalledWith({ agentType: "orchestrator" });
   });
 
-  it("Reset All clears all overrides", () => {
+  it("Reset All clears all overrides", async () => {
     const mockClearOverride = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
@@ -727,8 +716,7 @@ describe("ModelConfigSection", () => {
         general: "anthropic/claude-3",
       }),
     });
-    render(<SettingsDialog {...defaultProps()} />);
-    fireEvent.click(screen.getByText("Models"));
+    await renderModelsTab();
 
     fireEvent.click(screen.getByText("Reset All"));
 
