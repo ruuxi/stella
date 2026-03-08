@@ -25,21 +25,18 @@ describe("compaction regressions", () => {
     expect(source).not.toContain("ctx.runMutation(internal.conversations.setActiveThreadId");
   });
 
-  test("automation runner no longer routes backend fallback through orchestrator turn helpers", () => {
-    const turnSource = readBackendFile("convex/agent/orchestrator_turn.ts");
+  test("backend fallback no longer depends on orchestrator turn helpers", () => {
     const automationSource = readBackendFile("convex/automation/runner.ts");
-    expect(turnSource).toContain("export const prepareOrchestratorTurn");
-    expect(turnSource).toContain("export const finalizeOrchestratorTurn");
+    expect(existsSync(path.join(backendRoot, "convex/agent/orchestrator_turn.ts"))).toBe(false);
     expect(existsSync(path.join(backendRoot, "convex/agent/tasks.ts"))).toBe(false);
     expect(automationSource).not.toContain("prepareOrchestratorTurn");
     expect(automationSource).not.toContain("finalizeOrchestratorTurn");
   });
 
-  test("shared orchestrator core marks reminders independently from assistant text persistence", () => {
-    const source = readBackendFile("convex/agent/orchestrator_turn.ts");
-    expect(source).toMatch(
-      /const persistAssistantMessage[\s\S]*?if \(args\.persistThreadFirst\)[\s\S]*?if \(args\.reminderState\.shouldInjectDynamicReminder\)[\s\S]*?updateReminderTokenCounter/,
-    );
+  test("orchestrator reminder helpers were removed from backend conversations", () => {
+    const source = readBackendFile("convex/conversations.ts");
+    expect(source).not.toContain("updateReminderTokenCounter");
+    expect(source).not.toContain("forceReminderOnNextTurn");
   });
 
   test("automation runner uses direct prompt building for backend fallback", () => {

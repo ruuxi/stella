@@ -13,6 +13,10 @@ import {
   normalizeCodexLocalMaxConcurrency,
 } from "../data/preferences";
 import { SKILLS_DISABLED_AGENT_TYPES } from "../lib/agent_constants";
+import {
+  buildSkillsPromptSection,
+  getPlatformSystemGuidance,
+} from "../prompts/index";
 
 export type PromptBuildResult = {
   systemPrompt: string;
@@ -24,7 +28,6 @@ export type PromptBuildResult = {
   timezone: string;
 };
 
-const MAX_ACTIVE_THREADS_IN_PROMPT = 12;
 type FetchAgentContextSharedArgs = {
   ownerId: string;
   conversationId: Id<"conversations">;
@@ -36,83 +39,15 @@ type FetchAgentContextSharedArgs = {
   timezone?: string;
 };
 
-const buildSkillsSection = (
-  skills: Array<{
-    id: string;
-    name: string;
-    description: string;
-    execution?: string;
-    requiresSecrets?: string[];
-    publicIntegration?: boolean;
-    secretMounts?: Record<string, unknown>;
-  }>,
-) => {
-  if (skills.length === 0) return "";
-
-  const lines = skills.map((skill) => {
-    const tags: string[] = [];
-    if (skill.publicIntegration) tags.push("public");
-    if (skill.requiresSecrets && skill.requiresSecrets.length > 0) tags.push("requires credentials");
-    if (skill.execution === "backend") tags.push("backend-only");
-    if (skill.execution === "device") tags.push("device-only");
-    if (skill.secretMounts) tags.push("has secret mounts");
-    const suffix = tags.length > 0 ? ` [${tags.join(", ")}]` : "";
-    return `- **${skill.name}** (${skill.id}): ${skill.description}${suffix} Activate skill.`;
-  });
-
-  return [
-    "# Skills",
-    "Skills are listed by name and description only. Use ActivateSkill to load a skill's full instructions when needed.",
-    "",
-    ...lines,
-  ].join("\n");
-};
-
-const getPlatformGuidance = (platform: string): string => {
-  if (platform === "win32") {
-    return `
-## Platform: Windows
-
-You are running on Windows. Use Windows-compatible commands:
-- Shell: Git Bash (bash syntax works)
-- Open apps: \`start <app>\` or \`cmd /c start "" <app>\` (NOT \`open -a\`)
-- Open URLs: \`start <url>\`
-- File paths: Use forward slashes in bash, or escape backslashes
-- Common paths: \`$USERPROFILE\` (home), \`$APPDATA\`, \`$LOCALAPPDATA\`
-`.trim();
-  }
-
-  if (platform === "darwin") {
-    return `
-## Platform: macOS
-
-You are running on macOS. Use macOS-compatible commands:
-- Shell: bash/zsh
-- Open apps: \`open -a <app>\`
-- Open URLs: \`open <url>\`
-- Common paths: \`$HOME\`, \`~/Library/Application Support\`
-`.trim();
-  }
-
-  if (platform === "linux") {
-    return `
-## Platform: Linux
-
-You are running on Linux. Use Linux-compatible commands:
-- Shell: bash
-- Open apps: \`xdg-open\` or app-specific launchers
-- Open URLs: \`xdg-open <url>\`
-- Common paths: \`$HOME\`, \`~/.config\`, \`~/.local/share\`
-`.trim();
-  }
-
-  return "";
-};
-
 export const buildSystemPrompt = async (
   ctx: ActionCtx,
   agentType: string,
-  options?: { ownerId?: string; conversationId?: Id<"conversations">; platform?: string; timezone?: string },
+  options?: {
+    ownerId?: string;
+    conversationId?: Id<"conversations">;
+    platform?: string;
+    timezone?: string;
+  },
 ): Promise<PromptBuildResult> => {
   const agent = await ctx.runQuery(internal.agent.agents.getAgentConfigInternal, {
     agentType,
@@ -126,8 +61,18 @@ export const buildSystemPrompt = async (
         ownerId: options?.ownerId,
       });
 
-  const skillsSection = buildSkillsSection(
-    skills.map((skill: { id: string; name: string; description: string; execution?: string; requiresSecrets?: string[]; publicIntegration?: boolean; secretMounts?: Record<string, unknown> }) => ({
+  const skillsSection = buildSkillsPromptSection(
+    skills.map((
+      skill: {
+        id: string;
+        name: string;
+        description: string;
+        execution?: string;
+        requiresSecrets?: string[];
+        publicIntegration?: boolean;
+        secretMounts?: Record<string, unknown>;
+      },
+    ) => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,
@@ -143,74 +88,14 @@ export const buildSystemPrompt = async (
     systemParts.push(skillsSection);
   }
 
-  // Platform guidance — stable per device, belongs in system prompt
   if (options?.platform) {
-    const guidance = getPlatformGuidance(options.platform);
+    const guidance = getPlatformSystemGuidance(options.platform);
     if (guidance) {
       systemParts.push(guidance);
     }
   }
 
-  // Dynamic context — injected into last user message for prompt caching
   const dynamicParts: string[] = [];
-
-  // Current date — included in dynamic context so the model knows the date
-  if (agentType === "orchestrator") {
-    const tz = options?.timezone ?? "UTC";
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      timeZone: tz,
-    });
-    dynamicParts.push(`Today is ${dateStr}.`);
-  }
-
-  // Inject active threads for orchestrator
-  if (agentType === "orchestrator" && options?.conversationId && options.ownerId) {
-    try {
-      const activeThreads = await ctx.runQuery(internal.data.threads.listActiveThreads, {
-        ownerId: options.ownerId,
-        conversationId: options.conversationId,
-      });
-      const subagentThreads = activeThreads.filter((t: { name: string }) => t.name !== "Main");
-      if (subagentThreads.length > 0) {
-        const visibleThreads = subagentThreads.slice(0, MAX_ACTIVE_THREADS_IN_PROMPT);
-        const lines = visibleThreads.map((t: { _id: string; name: string }) => {
-          return `- **${t.name}** (id: ${t._id})`;
-        });
-        if (subagentThreads.length > visibleThreads.length) {
-          lines.push(
-            `- ...and ${subagentThreads.length - visibleThreads.length} more active thread(s). Use thread_name to reuse by name.`,
-          );
-        }
-        dynamicParts.push(
-          `# Active Threads\nContinue with thread_id, or create new with thread_name.\n${lines.join("\n")}`,
-        );
-      }
-    } catch {
-      // Thread query failed — skip
-    }
-  }
-
-  // Expression style — stable preference, belongs in system prompt
-  if (agentType === "orchestrator" && options?.ownerId) {
-    try {
-      const style = await ctx.runQuery(
-        internal.data.preferences.getPreferenceForOwner,
-        { ownerId: options.ownerId, key: "expression_style" },
-      );
-      if (style === "none") {
-        systemParts.push("The user prefers responses without emoji.");
-      } else if (style === "emoji") {
-        systemParts.push("The user prefers responses with emoji.");
-      }
-    } catch {
-      // Preference query failed — skip
-    }
-  }
 
   const maxTaskDepthValue = Number(agent.maxTaskDepth);
   const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
@@ -228,7 +113,7 @@ export const buildSystemPrompt = async (
   };
 };
 
-// ─── fetchAgentContext ──────────────────────────────────────────────────────
+// fetchAgentContext
 // Returns everything the local agent runtime needs in a single round-trip:
 // system prompt, dynamic context, tool allowlist, skills,
 // thread history, and managed auth context for LLM access.
@@ -335,9 +220,9 @@ const fetchAgentContextForOwner = async (
     { conversationId: args.conversationId },
   );
 
-    if (resolvedThreadId) {
-      activeThreadId = resolvedThreadId;
-      try {
+  if (resolvedThreadId) {
+    activeThreadId = resolvedThreadId;
+    try {
       const messages = await ctx.runQuery(
         internal.data.threads.loadThreadMessages,
         {
@@ -465,5 +350,17 @@ export const fetchLocalAgentContextForRuntime = action({
       generalAgentEngine,
       codexLocalMaxConcurrency,
     };
+  },
+});
+
+export const getGatewayApiKey = internalAction({
+  args: {},
+  returns: v.string(),
+  handler: async () => {
+    const key = process.env.AI_GATEWAY_API_KEY;
+    if (!key) {
+      throw new ConvexError("AI_GATEWAY_API_KEY is not configured");
+    }
+    return key;
   },
 });

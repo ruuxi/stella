@@ -25,9 +25,8 @@ describe("AGENT_MODELS", () => {
     expect(Object.keys(AGENT_MODELS).length).toBeGreaterThan(0);
   });
 
-  test("includes orchestrator config", () => {
-    expect(AGENT_MODELS.orchestrator).toBeDefined();
-    expect(typeof AGENT_MODELS.orchestrator.model).toBe("string");
+  test("does not include orchestrator config", () => {
+    expect(AGENT_MODELS.orchestrator).toBeUndefined();
   });
 
   test("includes general config", () => {
@@ -49,9 +48,10 @@ describe("AGENT_MODELS", () => {
 });
 
 describe("getModelConfig", () => {
-  test("returns orchestrator config for orchestrator", () => {
-    const config = getModelConfig("orchestrator");
-    expect(config).toBe(AGENT_MODELS.orchestrator);
+  test("throws for removed orchestrator agent type", () => {
+    expect(() => getModelConfig("orchestrator")).toThrow(
+      "No model config for agent type: orchestrator",
+    );
   });
 
   test("returns general config for general", () => {
@@ -71,7 +71,7 @@ describe("getModelConfig", () => {
   });
 
   test("returned config satisfies ModelConfig type", () => {
-    const config: ModelConfig = getModelConfig("orchestrator");
+    const config: ModelConfig = getModelConfig("general");
     expect(typeof config.model).toBe("string");
   });
 });

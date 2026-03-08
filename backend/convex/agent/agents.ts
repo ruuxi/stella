@@ -7,8 +7,8 @@ import {
 } from "../_generated/server";
 import { v, Infer } from "convex/values";
 import {
-  ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
   OFFLINE_RESPONDER_SYSTEM_PROMPT,
+  buildFallbackAgentSystemPrompt,
 } from "../prompts/index";
 import { requireUserId } from "../auth";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
@@ -78,17 +78,9 @@ type AgentRecord = {
   updatedAt: number;
 };
 
+const REMOVED_AGENT_IDS = new Set(["orchestrator"]);
+
 const BUILTIN_AGENT_DEFS: AgentRecord[] = [
-  {
-    id: "orchestrator",
-    name: "Orchestrator",
-    description: "Top-level local Stella coordinator.",
-    systemPrompt: ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
-    agentTypes: ["orchestrator"],
-    version: 2,
-    source: "builtin",
-    updatedAt: 0,
-  },
   {
     id: "offline_responder",
     name: "Offline Responder",
@@ -112,7 +104,7 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
   const record = value as Record<string, unknown>;
 
   const id = typeof record.id === "string" ? record.id.trim() : "";
-  if (!id) return null;
+  if (!id || REMOVED_AGENT_IDS.has(id)) return null;
 
   const name =
     typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
@@ -123,7 +115,7 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
   const systemPrompt =
     typeof record.systemPrompt === "string" && record.systemPrompt.trim()
       ? record.systemPrompt
-      : `You are the ${id} agent.`;
+      : buildFallbackAgentSystemPrompt(id);
 
   const agentTypes = coerceStringArray(record.agentTypes);
   const toolsAllowlist = coerceStringArray(record.toolsAllowlist);
@@ -202,6 +194,18 @@ const upsertAgent = async (
 export const ensureBuiltins = internalMutation({
   args: {},
   handler: async (ctx) => {
+    for (const removedId of REMOVED_AGENT_IDS) {
+      const staleBuiltin = await ctx.db
+        .query("agents")
+        .withIndex("by_ownerId_and_id", (q) =>
+          q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", removedId),
+        )
+        .unique();
+      if (staleBuiltin) {
+        await ctx.db.delete(staleBuiltin._id);
+      }
+    }
+
     for (const builtin of BUILTIN_AGENT_DEFS) {
       await upsertAgent(ctx, BUILTIN_OWNER_ID, {
         ...builtin,
@@ -235,6 +239,10 @@ const getAgentConfigHandler = async (
   ctx: QueryCtx,
   args: { agentType: string; ownerId?: string },
 ) => {
+  if (REMOVED_AGENT_IDS.has(args.agentType)) {
+    throw new Error(`Unknown agent type: "${args.agentType}"`);
+  }
+
   if (args.ownerId) {
     const ownerRecord = await ctx.db
       .query("agents")
@@ -242,7 +250,7 @@ const getAgentConfigHandler = async (
         q.eq("ownerId", args.ownerId!).eq("id", args.agentType),
       )
       .unique();
-    if (ownerRecord) {
+    if (ownerRecord && !REMOVED_AGENT_IDS.has(ownerRecord.id)) {
       return toAgentConfig(ownerRecord);
     }
   }
@@ -253,7 +261,7 @@ const getAgentConfigHandler = async (
       q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", args.agentType),
     )
     .unique();
-  if (builtinRecord) {
+  if (builtinRecord && !REMOVED_AGENT_IDS.has(builtinRecord.id)) {
     return toAgentConfig(builtinRecord);
   }
 
@@ -306,8 +314,16 @@ export const listAgents = internalQuery({
     ]);
 
     const merged = new Map<string, (typeof ownerRecords)[number]>();
-    for (const record of builtinRecords) merged.set(record.id, record);
-    for (const record of ownerRecords) merged.set(record.id, record);
+    for (const record of builtinRecords) {
+      if (!REMOVED_AGENT_IDS.has(record.id)) {
+        merged.set(record.id, record);
+      }
+    }
+    for (const record of ownerRecords) {
+      if (!REMOVED_AGENT_IDS.has(record.id)) {
+        merged.set(record.id, record);
+      }
+    }
 
     return Array.from(merged.values())
       .sort((a, b) => b.updatedAt - a.updatedAt)
