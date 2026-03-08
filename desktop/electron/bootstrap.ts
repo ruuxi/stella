@@ -41,6 +41,7 @@ const __dirname = path.dirname(__filename)
 const isDev = process.env.NODE_ENV === 'development'
 const AUTH_PROTOCOL = 'Stella'
 const STELLA_SESSION_PARTITION = 'persist:Stella'
+const STARTUP_STAGE_DELAY_MS = 250
 
 export const bootstrapMainProcess = () => {
   let appReady = false
@@ -54,6 +55,7 @@ export const bootstrapMainProcess = () => {
   let overlayController: OverlayWindowController | null = null
   let voiceRuntimeWindowController: VoiceRuntimeWindowController | null = null
   let hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null = null
+  let deferredStartupSequence: Promise<void> | null = null
 
   // --- Core services (no deps or lightweight deps) ---
 
@@ -151,6 +153,90 @@ export const bootstrapMainProcess = () => {
     for (const window of targets) {
       window.webContents.send('auth:callback', { url })
     }
+  }
+
+  const wait = (ms: number) => new Promise<void>((resolve) => {
+    setTimeout(resolve, ms)
+  })
+
+  const startDeferredStartup = () => {
+    if (deferredStartupSequence) {
+      return deferredStartupSequence
+    }
+
+    const startupTasks: Array<{
+      label: string
+      delayMs?: number
+      run: () => Promise<void> | void
+    }> = [
+      {
+        label: 'overlay-window',
+        run: () => {
+          overlayController?.create()
+        },
+      },
+      {
+        label: 'voice-runtime-window',
+        delayMs: STARTUP_STAGE_DELAY_MS,
+        run: () => {
+          voiceRuntimeWindowController?.create()
+        },
+      },
+      {
+        label: 'selected-text',
+        delayMs: STARTUP_STAGE_DELAY_MS,
+        run: () => {
+          initSelectedTextProcess()
+          if (process.platform === 'win32') {
+            setTimeout(() => { void getSelectedText() }, 250)
+          }
+        },
+      },
+      {
+        label: 'global-input-hooks',
+        delayMs: STARTUP_STAGE_DELAY_MS,
+        run: () => {
+          radialGestureService.start()
+        },
+      },
+      {
+        label: 'wake-word',
+        delayMs: STARTUP_STAGE_DELAY_MS,
+        run: async () => {
+          try {
+            await initializeWakeWord({
+              isDev,
+              electronDir: __dirname,
+              uiStateService,
+              isAppReady: () => appReady,
+              getVoiceTargetWindow: () =>
+                voiceRuntimeWindowController?.getWindow()
+                ?? overlayController?.getWindow()
+                ?? windowManager?.getMiniWindow()
+                ?? null,
+            })
+          } catch (error) {
+            console.error('[WakeWord] Failed to initialize:', (error as Error).message)
+          }
+        },
+      },
+    ]
+
+    deferredStartupSequence = (async () => {
+      for (const task of startupTasks) {
+        if (task.delayMs) {
+          await wait(task.delayMs)
+        }
+        if (isQuitting) {
+          return
+        }
+        await task.run()
+      }
+    })().catch((error) => {
+      console.error('[startup] Deferred startup failed:', (error as Error).message)
+    })
+
+    return deferredStartupSequence
   }
 
   const initializeStellaHostRunner = async () => {
@@ -288,11 +374,6 @@ export const bootstrapMainProcess = () => {
     authService.registerAuthProtocol()
     authService.captureInitialAuthUrl(process.argv)
 
-    initSelectedTextProcess()
-    if (process.platform === 'win32') {
-      setTimeout(() => { void getSelectedText() }, 250)
-    }
-
     await initializeStellaHostRunner()
 
     overlayController = new OverlayWindowController({
@@ -302,7 +383,6 @@ export const bootstrapMainProcess = () => {
       isDev,
       getDevServerUrl,
     })
-    overlayController.create()
 
     voiceRuntimeWindowController = new VoiceRuntimeWindowController({
       preloadPath: path.join(__dirname, 'preload.js'),
@@ -442,10 +522,6 @@ export const bootstrapMainProcess = () => {
       },
     })
 
-    voiceRuntimeWindowController.create()
-
-    windowManager.showWindow('full')
-
     const pendingAuthCallback = authService.consumePendingAuthCallback()
     const fullWindow = windowManager.getFullWindow()
     if (pendingAuthCallback && fullWindow) {
@@ -454,20 +530,15 @@ export const bootstrapMainProcess = () => {
       })
     }
 
-    radialGestureService.start()
-
-    try {
-      await initializeWakeWord({
-        isDev,
-        electronDir: __dirname,
-        uiStateService,
-        isAppReady: () => appReady,
-        getVoiceTargetWindow: () =>
-          overlayController?.getWindow() ?? windowManager?.getMiniWindow() ?? null,
+    if (fullWindow) {
+      fullWindow.webContents.once('did-finish-load', () => {
+        void startDeferredStartup()
       })
-    } catch (error) {
-      console.error('[WakeWord] Failed to initialize:', (error as Error).message)
     }
+    windowManager.showWindow('full')
+    setTimeout(() => {
+      void startDeferredStartup()
+    }, STARTUP_STAGE_DELAY_MS)
 
     app.on('activate', () => {
       windowManager?.onActivate()
@@ -489,6 +560,7 @@ export const bootstrapMainProcess = () => {
     schedulerService?.stop()
     bridgeManager.stopAll()
     cleanupSelectedTextProcess()
+    voiceRuntimeWindowController?.destroy()
     overlayController?.destroy()
   })
 
