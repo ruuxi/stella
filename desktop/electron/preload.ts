@@ -251,6 +251,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     shellKillByPort: (port: number) => ipcRenderer.invoke('shell:killByPort', { port }),
     getLocalSyncMode: () => ipcRenderer.invoke('preferences:getSyncMode') as Promise<string>,
     setLocalSyncMode: (mode: string) => ipcRenderer.invoke('preferences:setSyncMode', mode),
+    syncLocalModelPreferences: (payload: {
+      modelOverrides: Record<string, string>;
+      generalAgentEngine: 'default' | 'codex_local' | 'claude_code_local';
+      codexLocalMaxConcurrency: number;
+    }) => ipcRenderer.invoke('preferences:syncLocalModelPreferences', payload) as Promise<{ ok: boolean }>,
     listLlmCredentials: () =>
       ipcRenderer.invoke('llmCredentials:list') as Promise<Array<{
         provider: string;

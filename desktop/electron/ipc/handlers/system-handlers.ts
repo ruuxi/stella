@@ -153,6 +153,41 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     saveLocalPreferences(stellaHomePath, prefs)
   })
 
+  ipcMain.handle('preferences:syncLocalModelPreferences', (_event, payload: {
+    modelOverrides?: Record<string, string>
+    generalAgentEngine?: string
+    codexLocalMaxConcurrency?: number
+  }) => {
+    const stellaHomePath = options.getStellaHomePath()
+    if (!stellaHomePath) return { ok: true }
+
+    const prefs = loadLocalPreferences(stellaHomePath)
+    const nextOverrides: Record<string, string> = {}
+    for (const [agentType, model] of Object.entries(payload?.modelOverrides ?? {})) {
+      const trimmedAgentType = asTrimmedString(agentType)
+      const trimmedModel = asTrimmedString(model)
+      if (!trimmedAgentType || !trimmedModel) {
+        continue
+      }
+      nextOverrides[trimmedAgentType] = trimmedModel
+    }
+
+    const generalAgentEngine =
+      payload?.generalAgentEngine === 'codex_local' || payload?.generalAgentEngine === 'claude_code_local'
+        ? payload.generalAgentEngine
+        : 'default'
+    const parsedConcurrency = Number(payload?.codexLocalMaxConcurrency)
+    const codexLocalMaxConcurrency = Number.isFinite(parsedConcurrency)
+      ? Math.max(1, Math.min(3, Math.floor(parsedConcurrency)))
+      : 3
+
+    prefs.modelOverrides = nextOverrides
+    prefs.generalAgentEngine = generalAgentEngine
+    prefs.codexLocalMaxConcurrency = codexLocalMaxConcurrency
+    saveLocalPreferences(stellaHomePath, prefs)
+    return { ok: true }
+  })
+
   ipcMain.handle('llmCredentials:list', (event) => {
     if (!options.externalLinkService.assertPrivilegedSender(event, 'llmCredentials:list')) {
       throw new Error('Blocked untrusted credential request.')

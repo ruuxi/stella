@@ -571,9 +571,9 @@ describe("ModelConfigSection", () => {
       return firstOption?.textContent;
     });
 
-    expect(defaultTexts).toContain("anthropic/claude-opus-4.6");
-    expect(defaultTexts).toContain("moonshotai/kimi-k2.5");
-    expect(defaultTexts).toContain("zai/glm-4.7");
+    expect(defaultTexts).toContain("Default (moonshotai/kimi-k2-0905:exacto)");
+    expect(defaultTexts).toContain("Default (openai/gpt-5.4)");
+    expect(defaultTexts).toContain("Default (zai/glm-4.7)");
   });
 
   it("shows model options from the catalog in optgroups", async () => {
@@ -600,6 +600,17 @@ describe("ModelConfigSection", () => {
     expect(selects[0].value).toBe("openai/gpt-4o");
     // Second select (general) should be empty (default)
     expect(selects[1].value).toBe("");
+  });
+
+  it("treats explicit default overrides as the default option", async () => {
+    setupUseQuery({
+      modelOverrides: JSON.stringify({ orchestrator: "moonshotai/kimi-k2-0905:exacto" }),
+    });
+    await renderModelsTab();
+
+    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
+    expect(selects[0].value).toBe("");
+    expect(document.querySelectorAll(".settings-model-reset-icon")).toHaveLength(0);
   });
 
   it("shows reset icon when agent has an override", async () => {
