@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["electron/preload.ts"]
+  "include": ["electron/preload.ts", "src/shared/contracts/**/*"]
 }

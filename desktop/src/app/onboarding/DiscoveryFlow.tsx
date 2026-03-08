@@ -6,9 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
 import { synthesizeCoreMemory } from "@/app/onboarding/services/synthesis";
 import { useChatStore } from "@/context/chat-store";
-import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
-
-const BROWSER_SELECTION_KEY = "stella-selected-browser";
+import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import { BROWSER_SELECTION_KEY } from "@/shared/contracts/discovery";
 
 const withBrowserDiscoveryCategory = (
   categories: DiscoveryCategory[],
