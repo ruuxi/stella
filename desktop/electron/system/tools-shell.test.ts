@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { createShellState, handleSkillBash } from "../../packages/stella-runtime/src/extensions/stella/tools-shell.js";
+import { createShellState, handleSkillBash } from "../../packages/stella-runtime/src/tools/shell.js";
 
 const { writeSecretFileMock, removeSecretFileMock } = vi.hoisted(() => ({
   writeSecretFileMock: vi.fn(),
   removeSecretFileMock: vi.fn(),
 }));
 
-vi.mock("../../packages/stella-runtime/src/extensions/stella/tools-utils.js", async () => {
-  const actual = await vi.importActual<typeof import("../../packages/stella-runtime/src/extensions/stella/tools-utils.js")>(
-    "../../packages/stella-runtime/src/extensions/stella/tools-utils.js",
+vi.mock("../../packages/stella-runtime/src/tools/utils.js", async () => {
+  const actual = await vi.importActual<typeof import("../../packages/stella-runtime/src/tools/utils.js")>(
+    "../../packages/stella-runtime/src/tools/utils.js",
   );
   return {
     ...actual,

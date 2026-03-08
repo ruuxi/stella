@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocalTaskManagerAgentContext } from "../src/extensions/stella/local-task-manager.js";
+import type { LocalTaskManagerAgentContext } from "../src/tasks/local-task-manager.js";
 import type { JsonlRuntimeStore } from "../src/jsonl_store.js";
 import type { ResolvedLlmRoute } from "../src/model-routing.js";
 
@@ -13,12 +13,12 @@ const {
   isClaudeCodeModelMock: vi.fn(),
 }));
 
-vi.mock("../src/extensions/stella/codex-app-server-runtime.js", () => ({
+vi.mock("../src/integrations/codex-app-server-runtime.js", () => ({
   runCodexAppServerTurn: runCodexAppServerTurnMock,
   shutdownCodexAppServerRuntime: vi.fn(),
 }));
 
-vi.mock("../src/extensions/stella/claude-code-session-runtime.js", () => ({
+vi.mock("../src/integrations/claude-code-session-runtime.js", () => ({
   isClaudeCodeModel: isClaudeCodeModelMock,
   runClaudeCodeTurn: runClaudeCodeTurnMock,
   shutdownClaudeCodeRuntime: vi.fn(),
