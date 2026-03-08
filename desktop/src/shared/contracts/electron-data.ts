@@ -18,6 +18,8 @@ export type ChatContext = {
     height: number
   }[]
   capturePending?: boolean
+  /** Text content extracted from a window via accessibility APIs (used by Auto mode). */
+  windowText?: string | null
 }
 
 export type ChatContextUpdate = {

@@ -9,6 +9,7 @@ import type {
 } from '../types.js'
 import { toChatContextWindow } from '../types.js'
 import { captureWindowScreenshot } from '../window-capture.js'
+import { getWindowText } from '../window-text.js'
 
 const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
 
@@ -481,6 +482,20 @@ export class CaptureService {
     })
     this.pendingRegionCaptureResolve = null
     this.pendingRegionCapturePromise = null
+  }
+
+  async captureAutoWindowText(): Promise<{ text: string; title: string; app: string } | null> {
+    const point = this.lastRadialPoint
+    if (!point) return null
+
+    const display = this.getDisplayForPoint(point)
+    const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
+    const capturePoint = {
+      x: Math.round(point.x * scaleFactor),
+      y: Math.round(point.y * scaleFactor),
+    }
+
+    return getWindowText(capturePoint.x, capturePoint.y, { excludePids: [process.pid] })
   }
 
   async captureScreenshot(point?: { x: number; y: number }) {
