@@ -9,6 +9,7 @@ import {
   createStreamExecutionLifecycle,
   streamTextWithFailover,
 } from "../agent/model_execution";
+import { buildBackendJobModeSystemPrompt } from "../prompts/index";
 
 export type RunAgentTurnResult = {
   text: string;
@@ -104,8 +105,9 @@ export async function runAgentTurn({
 
   const streamLifecycle = createStreamExecutionLifecycle();
 
-  const systemPrompt =
-    `${promptBuild.systemPrompt}\n\n<system-notice>You are running in backend job mode. Local device tools (file system, shell, browser, apps, and direct user prompts) are unavailable in this run, even if a desktop is online. Use only backend-safe tools and explain when a request requires the user's desktop.</system-notice>`;
+  const systemPrompt = buildBackendJobModeSystemPrompt(
+    promptBuild.systemPrompt,
+  );
 
   const runnerSharedArgs = {
     system: systemPrompt,
