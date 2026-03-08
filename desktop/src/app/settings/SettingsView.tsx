@@ -3,6 +3,10 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useAccountMode } from "@/app/auth/hooks/use-account-mode";
 import { useModelCatalog } from "@/app/settings/hooks/use-model-catalog";
+import {
+  getDefaultModelOptionLabel,
+  normalizeModelOverrides,
+} from "@/app/settings/lib/model-defaults";
 import type { LocalLlmCredentialSummary } from "@/types/electron";
 import {
   Dialog,
@@ -38,15 +42,6 @@ const CONFIGURABLE_AGENTS = [
   { key: "explore", label: "Explore", desc: "Lightweight read-only exploration" },
   { key: "memory", label: "Memory", desc: "Memory search and retrieval" },
 ] as const;
-
-const AGENT_DEFAULTS: Record<string, string> = {
-  orchestrator: "anthropic/claude-opus-4.6",
-  general: "anthropic/claude-opus-4.6",
-  self_mod: "anthropic/claude-opus-4.6",
-  browser: "moonshotai/kimi-k2.5",
-  explore: "zai/glm-4.7",
-  memory: "zai/glm-4.7",
-};
 
 const GENERAL_AGENT_ENGINE_OPTIONS = [
   { id: "default", name: "Stella" },
@@ -246,6 +241,15 @@ function ModelConfigSection() {
   const codexLocalMaxConcurrency = useQuery(api.data.preferences.getCodexLocalMaxConcurrency) as number | undefined;
   const setCodexLocalMaxConcurrency = useMutation(api.data.preferences.setCodexLocalMaxConcurrency);
   const { groups } = useModelCatalog();
+  const modelNamesById = useMemo(() => {
+    const next = new Map<string, string>();
+    for (const group of groups) {
+      for (const model of group.models) {
+        next.set(model.id, model.name);
+      }
+    }
+    return next;
+  }, [groups]);
 
   const serverOverrides = useMemo<Record<string, string>>(() => {
     if (!overridesJson) {
@@ -253,7 +257,7 @@ function ModelConfigSection() {
     }
 
     try {
-      return JSON.parse(overridesJson) as Record<string, string>;
+      return normalizeModelOverrides(JSON.parse(overridesJson) as Record<string, string>);
     } catch {
       return {};
     }
@@ -418,7 +422,6 @@ function ModelConfigSection() {
         <p className="settings-card-desc">Override the default model for each agent type.</p>
         {CONFIGURABLE_AGENTS.map((agent) => {
           const current = overrides[agent.key] ?? "";
-          const defaultModel = AGENT_DEFAULTS[agent.key];
           return (
             <div key={agent.key} className="settings-row">
               <div className="settings-row-info">
@@ -443,7 +446,7 @@ function ModelConfigSection() {
                 value={current}
                 onChange={(e) => handleChange(agent.key, e.target.value)}
               >
-                <option value="">{defaultModel}</option>
+                <option value="">{getDefaultModelOptionLabel(agent.key, modelNamesById)}</option>
                 {groups.map((group) => (
                   <optgroup key={group.provider} label={group.provider}>
                     {group.models.map((model) => (

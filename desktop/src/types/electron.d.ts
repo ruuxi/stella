@@ -214,6 +214,11 @@ export type ElectronSystemApi = {
   shellKillByPort: (port: number) => Promise<void>
   getLocalSyncMode: () => Promise<string>
   setLocalSyncMode: (mode: string) => Promise<void>
+  syncLocalModelPreferences: (payload: {
+    modelOverrides: Record<string, string>
+    generalAgentEngine: "default" | "codex_local" | "claude_code_local"
+    codexLocalMaxConcurrency: number
+  }) => Promise<{ ok: boolean }>
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>
   saveLlmCredential: (payload: {
     provider: string
