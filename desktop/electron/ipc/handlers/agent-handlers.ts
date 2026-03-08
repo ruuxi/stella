@@ -1,16 +1,16 @@
 import { ipcMain, webContents, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
-import type { PiHostRunner } from '../../pi-host-runner.js'
+import type { StellaHostRunner } from '../../stella-host-runner.js'
 import {
   getLastGitFeatureId,
   listRecentGitFeatures,
   revertGitFeature,
-} from '../../self-mod/git.js'
+} from '../../../packages/stella-runtime/src/self-mod/git.js'
 import type { HmrMorphOrchestrator } from '../../self-mod/hmr-morph.js'
 
 type AgentHandlersOptions = {
-  getPiHostRunner: () => PiHostRunner | null
+  getStellaHostRunner: () => StellaHostRunner | null
   isHostAuthAuthenticated: () => boolean
   frontendRoot: string
   assertPrivilegedSender: (event: IpcMainEvent | IpcMainInvokeEvent, channel: string) => boolean
@@ -111,11 +111,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   }
 
   ipcMain.handle('agent:healthCheck', async () => {
-    const piHostRunner = options.getPiHostRunner()
-    if (!piHostRunner) {
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (!stellaHostRunner) {
       return null
     }
-    const rawResult = piHostRunner.agentHealthCheck()
+    const rawResult = stellaHostRunner.agentHealthCheck()
     const result =
       rawResult?.ready === false &&
       rawResult.reason === 'Missing auth token' &&
@@ -127,11 +127,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   })
 
   ipcMain.handle('agent:getActiveRun', async () => {
-    const piHostRunner = options.getPiHostRunner()
-    if (!piHostRunner) return null
-    const health = piHostRunner.agentHealthCheck()
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (!stellaHostRunner) return null
+    const health = stellaHostRunner.agentHealthCheck()
     if (!health?.ready) return null
-    return piHostRunner.getActiveOrchestratorRun()
+    return stellaHostRunner.getActiveOrchestratorRun()
   })
 
   ipcMain.handle('agent:resume', async (_event, payload: { runId: string; lastSeq: number }) => {
@@ -163,19 +163,19 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     if (!options.assertPrivilegedSender(event, 'agent:startChat')) {
       throw new Error('Blocked untrusted request.')
     }
-    const piHostRunner = options.getPiHostRunner()
-    if (!piHostRunner) {
-      throw new Error('Pi runtime not available')
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (!stellaHostRunner) {
+      throw new Error('Stella runtime not available')
     }
 
-    const healthCheck = piHostRunner.agentHealthCheck()
+    const healthCheck = stellaHostRunner.agentHealthCheck()
     if (!healthCheck?.ready) {
       throw new Error('Agent runtime not ready')
     }
 
     console.log(`[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | msgId=${payload.userMessageId} | prompt=${payload.userPrompt.slice(0, 200)}`)
     const senderWebContentsId = event.sender.id
-    const result = await piHostRunner.handleLocalChat(payload, {
+    const result = await stellaHostRunner.handleLocalChat(payload, {
       onStream: (ev) => emitAgentEvent(ev.runId, { type: 'stream', ...ev }, senderWebContentsId),
       onToolStart: (ev) => emitAgentEvent(ev.runId, { type: 'tool-start', ...ev }, senderWebContentsId),
       onToolEnd: (ev) => emitAgentEvent(ev.runId, { type: 'tool-end', ...ev }, senderWebContentsId),
@@ -216,9 +216,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     if (!options.assertPrivilegedSender(event, 'agent:cancelChat')) {
       return
     }
-    const piHostRunner = options.getPiHostRunner()
-    if (piHostRunner && typeof runId === 'string') {
-      piHostRunner.cancelLocalChat(runId)
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (stellaHostRunner && typeof runId === 'string') {
+      stellaHostRunner.cancelLocalChat(runId)
       agentRunOwners.delete(runId)
     }
   })

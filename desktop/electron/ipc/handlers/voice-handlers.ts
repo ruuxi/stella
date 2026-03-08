@@ -1,5 +1,5 @@
 import { globalShortcut, ipcMain } from 'electron'
-import type { PiHostRunner } from '../../pi-host-runner.js'
+import type { StellaHostRunner } from '../../stella-host-runner.js'
 import type { UiState } from '../../types.js'
 import type { WindowManager } from '../../windows/window-manager.js'
 import type { OverlayWindowController } from '../../windows/overlay-window.js'
@@ -11,7 +11,7 @@ type VoiceHandlersOptions = {
   broadcastUiState: () => void
   scheduleResumeWakeWord: () => void
   syncVoiceOverlay: () => void
-  getPiHostRunner: () => PiHostRunner | null
+  getStellaHostRunner: () => StellaHostRunner | null
   getOverlayController: () => OverlayWindowController | null
   getConvexSiteUrl: () => string | null
   getAuthToken: () => Promise<string | null> | string | null
@@ -117,10 +117,10 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     text: string;
   }) => {
     console.log(`[${ts()}] [Voice RTC] ${payload.role.toUpperCase()}: ${payload.text}`)
-    const piHostRunner = options.getPiHostRunner()
-    if (!piHostRunner) return
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (!stellaHostRunner) return
     try {
-      piHostRunner.appendThreadMessage({
+      stellaHostRunner.appendThreadMessage({
         conversationId: payload.conversationId,
         role: payload.role,
         content: payload.text,
@@ -132,9 +132,9 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
 
   ipcMain.handle('voice:orchestratorChat', async (_event, payload: { conversationId: string; message: string }) => {
     console.log(`[${ts()}] [Voice] orchestratorChat request:`, payload.message)
-    const piHostRunner = options.getPiHostRunner()
-    if (!piHostRunner) {
-      throw new Error('Pi runtime not initialized')
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (!stellaHostRunner) {
+      throw new Error('Stella runtime not initialized')
     }
 
     // Emit agent events to the full window so the trace viewer can capture them
@@ -147,7 +147,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
 
     return new Promise<string>((resolve, reject) => {
       let fullText = ''
-      piHostRunner.handleLocalChat(
+      stellaHostRunner.handleLocalChat(
         {
           conversationId: payload.conversationId,
           userMessageId: `voice-${Date.now()}`,

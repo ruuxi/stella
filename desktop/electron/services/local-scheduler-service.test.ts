@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PiHostRunner } from '../pi-host-runner.js'
+import type { StellaHostRunner } from '../stella-host-runner.js'
 import { LocalSchedulerService } from './local-scheduler-service.js'
 
 const tempHomes: string[] = []
@@ -87,7 +87,7 @@ describe('LocalSchedulerService', () => {
       getRunner: () =>
         ({
           runAutomationTurn,
-        }) as unknown as PiHostRunner,
+        }) as unknown as StellaHostRunner,
     })
 
     service.start()
@@ -142,7 +142,7 @@ describe('LocalSchedulerService', () => {
       getRunner: () =>
         ({
           runAutomationTurn,
-        }) as unknown as PiHostRunner,
+        }) as unknown as StellaHostRunner,
     })
 
     service.start()
