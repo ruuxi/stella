@@ -211,19 +211,11 @@ const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
   return sections.filter(Boolean).join("\n\n");
 };
 
-const getRecallQuery = (args: Record<string, unknown>): string => {
-  const direct = typeof args.query === "string" ? args.query : "";
-  if (direct.trim()) return direct;
-  const fallback = typeof args.prompt === "string" ? args.prompt : "";
-  return fallback;
-};
+const getRecallQuery = (args: Record<string, unknown>): string =>
+  typeof args.query === "string" ? args.query : "";
 
-const getSaveMemoryText = (args: Record<string, unknown>): string => {
-  const direct = typeof args.content === "string" ? args.content : "";
-  if (direct.trim()) return direct;
-  const fallback = typeof args.text === "string" ? args.text : "";
-  return fallback;
-};
+const getSaveMemoryText = (args: Record<string, unknown>): string =>
+  typeof args.content === "string" ? args.content : "";
 
 const formatToolResult = (toolResult: ToolResult): { text: string; details: unknown } => {
   if (toolResult.error) {
