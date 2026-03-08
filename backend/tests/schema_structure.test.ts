@@ -35,9 +35,9 @@ describe("schema modules export table definitions", () => {
     expect(Object.keys(integrationsSchema).length).toBeGreaterThan(0);
   });
 
-  test("schedulingSchema is a non-empty object", () => {
+  test("schedulingSchema is an empty object after backend scheduler removal", () => {
     expect(typeof schedulingSchema).toBe("object");
-    expect(Object.keys(schedulingSchema).length).toBeGreaterThan(0);
+    expect(Object.keys(schedulingSchema).length).toBe(0);
   });
 
   test("telemetrySchema is a non-empty object", () => {

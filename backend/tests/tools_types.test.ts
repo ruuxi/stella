@@ -4,7 +4,7 @@ import { BASE_TOOL_NAMES } from "../convex/tools/types";
 describe("BASE_TOOL_NAMES", () => {
   test("is a non-empty array", () => {
     expect(Array.isArray(BASE_TOOL_NAMES)).toBe(true);
-    expect(BASE_TOOL_NAMES.length).toBeGreaterThan(8);
+    expect(BASE_TOOL_NAMES.length).toBeGreaterThan(0);
   });
 
   test("contains web tools", () => {
@@ -12,11 +12,11 @@ describe("BASE_TOOL_NAMES", () => {
     expect(BASE_TOOL_NAMES).toContain("WebFetch");
   });
 
-  test("contains scheduling tools", () => {
-    expect(BASE_TOOL_NAMES).toContain("HeartbeatGet");
-    expect(BASE_TOOL_NAMES).toContain("HeartbeatUpsert");
-    expect(BASE_TOOL_NAMES).toContain("CronList");
-    expect(BASE_TOOL_NAMES).toContain("CronAdd");
+  test("does not expose legacy scheduling tools", () => {
+    expect(BASE_TOOL_NAMES).not.toContain("HeartbeatGet");
+    expect(BASE_TOOL_NAMES).not.toContain("HeartbeatUpsert");
+    expect(BASE_TOOL_NAMES).not.toContain("CronList");
+    expect(BASE_TOOL_NAMES).not.toContain("CronAdd");
   });
 
   test("contains NoResponse", () => {

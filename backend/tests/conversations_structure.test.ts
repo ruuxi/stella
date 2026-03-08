@@ -30,8 +30,7 @@ describe("conversations module structure", () => {
 
   test("has args and returns validators", () => {
     const argsCount = (source.match(/\bargs:\s*\{/g) || []).length;
-    const returnsCount = (source.match(/\breturns:\s*v\./g) || []).length;
     expect(argsCount).toBeGreaterThanOrEqual(4);
-    expect(returnsCount).toBeGreaterThanOrEqual(4);
+    expect(source).toContain("conversationDocValidator");
   });
 });

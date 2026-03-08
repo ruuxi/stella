@@ -26,6 +26,8 @@ import {
 } from "./connector_constants";
 import { getGoogleAccessToken, getTeamsBotToken } from "./connector_auth";
 
+const BACKEND_FALLBACK_AGENT_TYPE = "offline_responder";
+
 // ─── Public Mutation (called by local device via HTTP) ──────────────────────
 export const completeRemoteTurn = mutation({
   args: {
@@ -634,7 +636,7 @@ export const rescueOrphanedTurns = internalAction({
             ctx,
             conversationId,
             prompt,
-            agentType: "orchestrator",
+            agentType: BACKEND_FALLBACK_AGENT_TYPE,
             ownerId: conversation.ownerId,
             userMessageId: userMessageId as Id<"events"> | undefined,
           });
@@ -688,7 +690,7 @@ export const rescueOrphanedTurns = internalAction({
             ctx,
             conversationId,
             prompt,
-            agentType: "orchestrator",
+            agentType: BACKEND_FALLBACK_AGENT_TYPE,
             ownerId: conversation.ownerId,
             userMessageId: userMessageId as Id<"events"> | undefined,
           });

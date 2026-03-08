@@ -31,13 +31,11 @@ const OWNER_TABLES: Array<{
   { table: "remote_computers", index: "by_ownerId_and_updatedAt" },
   { table: "usage_logs", index: "by_ownerId_and_createdAt" },
   { table: "persist_chunks", index: "by_chunkKey" },
-  { table: "heartbeat_configs", index: "by_ownerId_and_updatedAt" },
   { table: "channel_connections", index: "by_ownerId_and_provider" },
   { table: "transient_channel_events", index: "by_ownerId_and_createdAt" },
   { table: "transient_cleanup_failures", index: "by_ownerId_and_createdAt" },
   { table: "bridge_sessions", index: "by_ownerId_and_provider" },
   { table: "bridge_outbound", index: "by_ownerId_and_createdAt" },
-  { table: "cron_jobs", index: "by_ownerId_and_updatedAt" },
   { table: "skills", index: "by_ownerId_and_updatedAt" },
   { table: "agents", index: "by_ownerId_and_updatedAt" },
 ];

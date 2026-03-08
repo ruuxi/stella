@@ -8,6 +8,7 @@ import {
 import { v, Infer } from "convex/values";
 import {
   ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
+  OFFLINE_RESPONDER_SYSTEM_PROMPT,
 } from "../prompts/index";
 import { requireUserId } from "../auth";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
@@ -81,17 +82,25 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
   {
     id: "orchestrator",
     name: "Orchestrator",
-    description: "Responds to the user when their local machine is offline.",
+    description: "Top-level local Stella coordinator.",
     systemPrompt: ORCHESTRATOR_AGENT_SYSTEM_PROMPT,
     agentTypes: ["orchestrator"],
+    version: 2,
+    source: "builtin",
+    updatedAt: 0,
+  },
+  {
+    id: "offline_responder",
+    name: "Offline Responder",
+    description: "Minimal backend fallback that replies while the local runtime is offline.",
+    systemPrompt: OFFLINE_RESPONDER_SYSTEM_PROMPT,
+    agentTypes: ["offline_responder"],
     toolsAllowlist: [
       "WebSearch", "WebFetch",
-      "HeartbeatGet", "HeartbeatUpsert", "HeartbeatRun",
-      "CronList", "CronAdd", "CronUpdate", "CronRemove", "CronRun",
       "NoResponse",
     ],
     defaultSkills: [],
-    maxTaskDepth: 2,
+    maxTaskDepth: 0,
     version: 1,
     source: "builtin",
     updatedAt: 0,
