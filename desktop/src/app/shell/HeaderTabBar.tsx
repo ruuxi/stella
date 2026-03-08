@@ -1,12 +1,7 @@
 import { useRef } from "react";
 import type { ViewType } from "@/types/ui";
-
-type PersonalPage = {
-  pageId: string;
-  panelName: string;
-  title: string;
-  order: number;
-};
+import type { PersonalPage } from "./types";
+import "./header-tab-bar.css";
 
 interface HeaderTabBarProps {
   activeView: ViewType;

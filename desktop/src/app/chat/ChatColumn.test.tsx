@@ -147,7 +147,7 @@ describe("ChatColumn", () => {
     expect(screen.getByLabelText("Scroll to bottom")).toBeTruthy();
   });
 
-  it('calls scrollToBottom("smooth") when scroll button clicked', () => {
+  it('calls scrollToBottom("instant") when scroll button clicked', () => {
     const scrollToBottom = vi.fn();
     const events: EventRecord[] = [
       { _id: "event-1", timestamp: 1, type: "user_message", payload: { text: "hi" } },
@@ -163,7 +163,7 @@ describe("ChatColumn", () => {
       />,
     );
     fireEvent.click(screen.getByLabelText("Scroll to bottom"));
-    expect(scrollToBottom).toHaveBeenCalledWith("smooth");
+    expect(scrollToBottom).toHaveBeenCalledWith("instant");
   });
 
   it("has class full-body-main", () => {

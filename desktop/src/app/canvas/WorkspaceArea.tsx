@@ -9,6 +9,7 @@ import { Spinner } from '@/ui/spinner'
 import type { OnboardingDemo } from '@/app/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/types/ui'
 import { HomeView } from '@/app/home/HomeView'
+import './workspace.css'
 
 const PanelRenderer = lazy(() => import('@/app/canvas/renderers/panel'))
 const OnboardingCanvas = lazy(() =>

@@ -4,6 +4,7 @@ import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";
 import { MiniOutput } from "./MiniOutput";
+import "./mini-shell.css";
 
 type MiniShellProps = {
   onPreviewVisibilityChange?: (visible: boolean) => void;

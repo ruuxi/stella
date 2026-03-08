@@ -9,6 +9,7 @@ import {
   resolveComposerContextState,
   resolveComposerPlaceholder,
 } from "./composer-context";
+import "./full-shell.composer.css";
 
 type ComposerProps = {
   message: string;

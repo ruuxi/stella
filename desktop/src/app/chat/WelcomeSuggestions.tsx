@@ -1,4 +1,5 @@
 import type { WelcomeSuggestion } from '@/services/synthesis'
+import './welcome-suggestions.css'
 
 const CATEGORY_LABELS: Record<WelcomeSuggestion['category'], string> = {
   cron: 'Automation',

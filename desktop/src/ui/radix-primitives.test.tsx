@@ -5,6 +5,61 @@
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import React from "react";
+
+type MockPrimitiveProps = Record<string, unknown> & {
+  children?: React.ReactNode;
+};
+
+vi.mock("@radix-ui/react-dialog", () => {
+  const passthrough =
+    (tag = "div") =>
+    ({ children, ...props }: MockPrimitiveProps) =>
+      React.createElement(tag, props, children);
+
+  return {
+    Root: passthrough(),
+    Trigger: passthrough("button"),
+    Portal: ({ children }: MockPrimitiveProps) => <>{children}</>,
+    Overlay: passthrough(),
+    Content: passthrough(),
+    Title: passthrough(),
+    Description: passthrough(),
+    Close: passthrough("button"),
+  };
+});
+
+vi.mock("@radix-ui/react-dropdown-menu", () => {
+  const passthrough =
+    (tag = "div") =>
+    ({ children, ...props }: MockPrimitiveProps) =>
+      React.createElement(tag, props, children);
+
+  const content = ({
+    children,
+    sideOffset: _sideOffset,
+    ...props
+  }: MockPrimitiveProps & { sideOffset?: unknown }) =>
+    React.createElement("div", props, children);
+
+  return {
+    Root: passthrough(),
+    Trigger: passthrough("button"),
+    Portal: ({ children }: MockPrimitiveProps) => <>{children}</>,
+    Content: content,
+    Separator: passthrough(),
+    Label: passthrough(),
+    Item: passthrough(),
+    RadioGroup: passthrough(),
+    RadioItem: passthrough(),
+    CheckboxItem: passthrough(),
+    ItemIndicator: passthrough(),
+    Group: passthrough(),
+    Sub: passthrough(),
+    SubTrigger: passthrough("button"),
+    SubContent: passthrough(),
+  };
+});
 
 // Radix Slider uses ResizeObserver internally, which is not available in jsdom.
 beforeAll(() => {
@@ -438,7 +493,7 @@ describe("Icon", () => {
 
   it("returns null and warns for unknown icon name", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { container } = render(<Icon name={"nonexistent" as any} />);
+    const { container } = render(<Icon name={"nonexistent" as never} />);
     expect(container.querySelector("[data-component='icon']")).toBeNull();
     expect(warnSpy).toHaveBeenCalledWith('Icon "nonexistent" not found');
     warnSpy.mockRestore();

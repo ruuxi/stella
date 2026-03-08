@@ -1,5 +1,6 @@
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
+import "./auth-panel.css";
 import { useMagicLinkAuth } from "./useMagicLinkAuth";
 
 export const AuthPanel = () => {
@@ -37,4 +38,3 @@ export const AuthPanel = () => {
     </div>
   );
 };
-

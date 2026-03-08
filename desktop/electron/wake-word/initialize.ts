@@ -16,7 +16,7 @@ export const initializeWakeWord = async (deps: WakeWordDeps) => {
   const { createAudioCaptureManager } = await import('./audio-capture.js')
 
   const modelsDir = deps.isDev
-    ? path.join(deps.electronDir, '..', 'resources', 'models')
+    ? path.join(deps.electronDir, '..', '..', 'resources', 'models')
     : path.join(process.resourcesPath, 'models')
 
   const detector = await createWakeWordDetector(modelsDir)
