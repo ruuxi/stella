@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Type } from "@sinclair/typebox";
 import { Agent, type AgentMessage, type AgentTool } from "../../stella-agent-core/src/index.js";
-import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./extensions/stella/tool_schemas.js";
+import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./tools/schemas.js";
 import {
   detectSelfModAppliedSince,
   getGitHead,
@@ -11,14 +11,14 @@ import {
   isClaudeCodeModel,
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
-} from "./extensions/stella/claude-code-session-runtime.js";
+} from "./integrations/claude-code-session-runtime.js";
 import {
   runCodexAppServerTurn,
   shutdownCodexAppServerRuntime,
-} from "./extensions/stella/codex-app-server-runtime.js";
-import type { LocalTaskManagerAgentContext } from "./extensions/stella/local-task-manager.js";
-import { localActivateSkill, localNoResponse, localWebFetch } from "./extensions/stella/local-tool-overrides.js";
-import type { ToolContext, ToolResult } from "./extensions/stella/tools-types.js";
+} from "./integrations/codex-app-server-runtime.js";
+import type { LocalTaskManagerAgentContext } from "./tasks/local-task-manager.js";
+import { localActivateSkill, localNoResponse, localWebFetch } from "./tools/local-tool-overrides.js";
+import type { ToolContext, ToolResult } from "./tools/types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 

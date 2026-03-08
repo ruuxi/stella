@@ -8,8 +8,8 @@ import type {
   TaskRecord,
   TaskToolApi,
   TaskToolSnapshot,
-} from "./tools-types.js";
-import { truncate } from "./tools-utils.js";
+} from "./types.js";
+import { truncate } from "./utils.js";
 
 export type StateContext = {
   stateRoot: string;

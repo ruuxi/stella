@@ -2,7 +2,7 @@ import type {
   ScheduleToolApi,
   ToolContext,
   ToolResult,
-} from "./tools-types.js";
+} from "./types.js";
 
 const formatResult = (value: unknown) =>
   typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);

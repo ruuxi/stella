@@ -6,9 +6,9 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord } from "./tools-types.js";
-import type { SecretFileMountHandle } from "./tools-utils.js";
-import { removeSecretFile, truncate, writeSecretFile } from "./tools-utils.js";
+import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord } from "./types.js";
+import type { SecretFileMountHandle } from "./utils.js";
+import { removeSecretFile, truncate, writeSecretFile } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
 
 export type ShellState = {

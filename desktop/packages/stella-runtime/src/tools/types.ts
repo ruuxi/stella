@@ -8,7 +8,7 @@ import type {
   LocalCronJobUpdatePatch,
   LocalHeartbeatConfigRecord,
   LocalHeartbeatUpsertInput,
-} from "../../shared/scheduling.js";
+} from "../shared/scheduling.js";
 
 export type ToolContext = {
   conversationId: string;

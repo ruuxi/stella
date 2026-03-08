@@ -23,14 +23,14 @@ import type {
   ToolHostOptions,
   SkillRecord,
   SecretMountSpec,
-} from "./tools-types.js";
+} from "./types.js";
 
 // Utilities
-import { log, logError, recoverStaleSecretFiles } from "./tools-utils.js";
+import { log, logError, recoverStaleSecretFiles } from "./utils.js";
 
 // Tool handlers
-import { handleRead, handleEdit, setFileToolsConfig } from "./tools-file.js";
-import { handleGlob, handleGrep } from "./tools-search.js";
+import { handleRead, handleEdit, setFileToolsConfig } from "./file.js";
+import { handleGlob, handleGrep } from "./search.js";
 import {
   createShellState,
   handleBash,
@@ -38,7 +38,7 @@ import {
   handleShellStatus,
   handleSkillBash,
   type ShellState,
-} from "./tools-shell.js";
+} from "./shell.js";
 // WebFetch and WebSearch have been promoted to backend tools (Convex actions).
 // import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import {
@@ -46,8 +46,8 @@ import {
   handleTask,
   handleTaskOutput,
   type StateContext,
-} from "./tools-state.js";
-import { handleAskUser, handleRequestCredential, type UserToolsConfig } from "./tools-user.js";
+} from "./state.js";
+import { handleAskUser, handleRequestCredential, type UserToolsConfig } from "./user.js";
 import {
   handleCronAdd,
   handleCronList,
@@ -57,7 +57,7 @@ import {
   handleHeartbeatGet,
   handleHeartbeatRun,
   handleHeartbeatUpsert,
-} from "./tools-schedule.js";
+} from "./schedule.js";
 
 // Re-export types for external consumers
 export type { ToolContext, ToolResult };

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import path from "path";
-import type { ToolContext, ToolResult, TaskToolApi, TaskToolRequest, TaskToolSnapshot } from "./tools-types.js";
-import { truncate } from "./tools-utils.js";
+import type { ToolContext, ToolResult, TaskToolApi, TaskToolRequest, TaskToolSnapshot } from "../tools/types.js";
+import { truncate } from "../tools/utils.js";
 
 export type LocalTaskManagerAgentContext = {
   systemPrompt: string;

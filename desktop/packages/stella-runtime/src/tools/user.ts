@@ -2,8 +2,8 @@
  * User interaction tools: AskUser, RequestCredential handlers.
  */
 
-import type { ToolResult } from "./tools-types.js";
-import { truncate } from "./tools-utils.js";
+import type { ToolResult } from "./types.js";
+import { truncate } from "./utils.js";
 
 export type UserToolsConfig = {
   requestCredential?: (payload: {

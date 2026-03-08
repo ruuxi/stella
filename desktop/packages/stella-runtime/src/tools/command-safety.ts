@@ -7,7 +7,7 @@
 
 import path from "path";
 import os from "os";
-import { getDangerousCommandReason } from "./tool_schemas.js";
+import { getDangerousCommandReason } from "./schemas.js";
 
 // ---------------------------------------------------------------------------
 // 1. Dangerous Command Blocklist

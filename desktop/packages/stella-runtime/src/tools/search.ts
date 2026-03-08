@@ -5,7 +5,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { spawn } from "child_process";
-import type { ToolResult } from "./tools-types.js";
+import type { ToolResult } from "./types.js";
 import {
   expandHomePath,
   toPosix,
@@ -13,7 +13,7 @@ import {
   walkFiles,
   readFileSafe,
   truncate,
-} from "./tools-utils.js";
+} from "./utils.js";
 import { isBlockedPath } from "./command-safety.js";
 
 export const handleGlob = async (args: Record<string, unknown>): Promise<ToolResult> => {
