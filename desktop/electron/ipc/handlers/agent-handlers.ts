@@ -18,7 +18,7 @@ type AgentHandlersOptions = {
 }
 
 type AgentEventPayload = {
-  type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end'
+  type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end' | 'task-started' | 'task-completed' | 'task-failed' | 'task-progress'
   runId: string
   seq: number
   chunk?: string
@@ -30,6 +30,12 @@ type AgentEventPayload = {
   finalText?: string
   persisted?: boolean
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number }
+  taskId?: string
+  agentType?: string
+  description?: string
+  parentTaskId?: string
+  result?: string
+  statusText?: string
 }
 
 type SelfModHmrStatePayload = {
@@ -174,6 +180,21 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       onToolStart: (ev) => emitAgentEvent(ev.runId, { type: 'tool-start', ...ev }, senderWebContentsId),
       onToolEnd: (ev) => emitAgentEvent(ev.runId, { type: 'tool-end', ...ev }, senderWebContentsId),
       onError: (ev) => emitAgentEvent(ev.runId, { type: 'error', ...ev }, senderWebContentsId),
+      onTaskEvent: (ev) => {
+        const runId = [...agentRunOwners.keys()].find((id) => agentRunOwners.get(id) === senderWebContentsId) ?? 'unknown'
+        emitAgentEvent(runId, {
+          type: ev.type,
+          runId,
+          seq: Date.now(),
+          taskId: ev.taskId,
+          agentType: ev.agentType,
+          description: ev.description,
+          parentTaskId: ev.parentTaskId,
+          result: ev.result,
+          error: ev.error,
+          statusText: ev.statusText,
+        }, senderWebContentsId)
+      },
       onEnd: (ev) => {
         emitAgentEvent(ev.runId, { type: 'end', ...ev }, senderWebContentsId)
         setTimeout(() => {

@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 // ─── Device Tool Names ──────────────────────────────────────────────────────
 
@@ -306,3 +307,13 @@ export const TOOL_SCHEMAS = {
   Display: DisplaySchema,
 } as const;
 
+// ─── JSON Schema Map (for LLM tool definitions) ────────────────────────────
+// Converts the Zod schemas above into JSON Schema objects that can be sent
+// directly to LLM APIs as tool parameter definitions.
+
+export const TOOL_JSON_SCHEMAS: Record<string, object> = Object.fromEntries(
+  Object.entries(TOOL_SCHEMAS).map(([name, schema]) => [
+    name,
+    zodToJsonSchema(schema as any, { target: "openApi3" }),
+  ]),
+);
