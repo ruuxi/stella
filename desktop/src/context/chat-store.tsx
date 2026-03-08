@@ -1,7 +1,7 @@
 /**
- * ChatStoreProvider — single source of truth for storageMode derivation
+ * ChatStoreProvider - single source of truth for storageMode derivation
  * and unified chat storage operations. Consumers call chatStore methods
- * without knowing whether data goes to Convex or localStorage.
+ * without knowing whether data goes to Convex or the local transcript store.
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
@@ -44,7 +44,7 @@ type UploadAttachmentsArgs = {
 }
 
 type ChatStoreContextValue = {
-  /** Controls event persistence: 'cloud' syncs to Convex, 'local' uses localStorage only. Orchestration is always local. */
+  /** Controls event persistence: 'cloud' syncs to Convex, 'local' stays local-only. Orchestration is always local. */
   storageMode: ChatStorageMode
   isLocalStorage: boolean
   cloudFeaturesEnabled: boolean
@@ -211,7 +211,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
 
   const buildHistory = useCallback(
     async (conversationId: string): Promise<LocalHistoryMessage[] | undefined> => {
-      // Always build from local events — both modes write to localStorage
+      // Always build from local events - both modes write to the local transcript store
       // so the desktop runtime always has message history available.
       return await buildLocalHistoryMessages(conversationId)
     },

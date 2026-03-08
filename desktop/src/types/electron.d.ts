@@ -264,6 +264,7 @@ export type ElectronScheduleApi = {
 }
 
 export type ElectronLocalChatApi = {
+  getOrCreateDefaultConversationId: () => Promise<string>
   listEvents: (payload: {
     conversationId: string
     maxItems?: number
@@ -309,6 +310,7 @@ export type ElectronLocalChatApi = {
       }>
     } | null
     syncCheckpoints?: Record<string, unknown> | null
+    defaultConversationId?: unknown
   }) => Promise<{
     importedConversations: number
     importedEvents: number

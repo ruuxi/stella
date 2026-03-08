@@ -286,7 +286,11 @@ const parseLegacyCheckpointPayload = (): Record<string, unknown> | undefined => 
 
 const migrateLegacyLocalStateToElectron = async (): Promise<void> => {
   if (!hasElectronLocalChatApi() || !canUseStorage()) return;
-  if (!window.localStorage.getItem(STORE_KEY) && !window.localStorage.getItem(SYNC_CHECKPOINTS_KEY)) {
+  if (
+    !window.localStorage.getItem(STORE_KEY)
+    && !window.localStorage.getItem(SYNC_CHECKPOINTS_KEY)
+    && !window.localStorage.getItem(DEFAULT_CONVERSATION_KEY)
+  ) {
     return;
   }
   if (legacyMigrationPromise) {
@@ -296,7 +300,8 @@ const migrateLegacyLocalStateToElectron = async (): Promise<void> => {
   legacyMigrationPromise = (async () => {
     const store = parseLegacyStorePayload();
     const syncCheckpoints = parseLegacyCheckpointPayload();
-    if (!store && !syncCheckpoints) {
+    const defaultConversationId = window.localStorage.getItem(DEFAULT_CONVERSATION_KEY);
+    if (!store && !syncCheckpoints && !defaultConversationId) {
       return;
     }
 
@@ -306,14 +311,16 @@ const migrateLegacyLocalStateToElectron = async (): Promise<void> => {
         conversations?: Record<string, {
           id?: string;
           updatedAt?: number;
-          events?: EventRecord[];
-        }>;
+        events?: EventRecord[];
+      }>;
       } } : {}),
       ...(syncCheckpoints ? { syncCheckpoints } : {}),
+      ...(defaultConversationId ? { defaultConversationId } : {}),
     });
 
     window.localStorage.removeItem(STORE_KEY);
     window.localStorage.removeItem(SYNC_CHECKPOINTS_KEY);
+    window.localStorage.removeItem(DEFAULT_CONVERSATION_KEY);
     _cachedStore = null;
     _cacheRaw = null;
   })().catch((error) => {
@@ -324,7 +331,16 @@ const migrateLegacyLocalStateToElectron = async (): Promise<void> => {
   return legacyMigrationPromise;
 };
 
-export const getOrCreateLocalConversationId = (): string => {
+export const getOrCreateLocalConversationId = async (): Promise<string> => {
+  if (hasElectronLocalChatApi()) {
+    try {
+      await migrateLegacyLocalStateToElectron();
+      return await window.electronAPI!.localChat.getOrCreateDefaultConversationId();
+    } catch (err) {
+      console.debug("[local-chat-store] Falling back to renderer default conversation ID:", (err as Error).message);
+    }
+  }
+
   if (!canUseStorage()) {
     return generateLocalId();
   }
@@ -334,11 +350,9 @@ export const getOrCreateLocalConversationId = (): string => {
   }
   const created = generateLocalId();
   window.localStorage.setItem(DEFAULT_CONVERSATION_KEY, created);
-  if (!hasElectronLocalChatApi()) {
-    const store = readStore();
-    ensureConversation(store, created);
-    writeStore(store);
-  }
+  const store = readStore();
+  ensureConversation(store, created);
+  writeStore(store);
   return created;
 };
 

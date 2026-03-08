@@ -17,11 +17,12 @@ const SYNC_CHECKPOINTS_KEY = "stella.localChat.syncCheckpoints.v1";
 describe("local-chat-store", () => {
   beforeEach(() => {
     localStorage.clear();
+    delete window.electronAPI;
     vi.restoreAllMocks();
   });
 
-  it("creates a default conversation ID and initializes its conversation bucket", () => {
-    const conversationId = getOrCreateLocalConversationId();
+  it("creates a default conversation ID and initializes its conversation bucket", async () => {
+    const conversationId = await getOrCreateLocalConversationId();
 
     expect(conversationId.length).toBeGreaterThan(0);
     expect(localStorage.getItem(DEFAULT_CONVERSATION_KEY)).toBe(conversationId);
@@ -34,10 +35,34 @@ describe("local-chat-store", () => {
     expect(parsedStore.conversations?.[conversationId]).toBeTruthy();
   });
 
-  it("reuses existing default conversation ID when present", () => {
+  it("reuses existing default conversation ID when present", async () => {
     localStorage.setItem(DEFAULT_CONVERSATION_KEY, "conv-existing");
 
-    expect(getOrCreateLocalConversationId()).toBe("conv-existing");
+    await expect(getOrCreateLocalConversationId()).resolves.toBe("conv-existing");
+  });
+
+  it("migrates the legacy default conversation ID into the Electron transcript store", async () => {
+    const importLegacyData = vi.fn(() => Promise.resolve({
+      importedConversations: 0,
+      importedEvents: 0,
+      importedCheckpoints: 0,
+    }));
+    const getOrCreateDefaultConversationId = vi.fn(() => Promise.resolve("conv-electron"));
+
+    window.electronAPI = {
+      localChat: {
+        importLegacyData,
+        getOrCreateDefaultConversationId,
+      },
+    } as unknown as typeof window.electronAPI;
+
+    localStorage.setItem(DEFAULT_CONVERSATION_KEY, "conv-legacy");
+
+    await expect(getOrCreateLocalConversationId()).resolves.toBe("conv-electron");
+    expect(importLegacyData).toHaveBeenCalledWith({
+      defaultConversationId: "conv-legacy",
+    });
+    expect(localStorage.getItem(DEFAULT_CONVERSATION_KEY)).toBeNull();
   });
 
   it("recovers from malformed persisted store data", async () => {
