@@ -20,7 +20,7 @@
       "@stella/stella-runtime/*": ["./packages/stella-runtime/src/*"]
     }
   },
-  "include": ["electron/**/*"],
+  "include": ["electron/**/*", "src/shared/contracts/**/*"],
   "exclude": ["electron/preload.ts", "**/*.test.ts"],
   "references": [
     { "path": "./packages/stella-ai" },

@@ -2,293 +2,77 @@ import type { UiState, WindowMode } from './ui'
 import type { Theme } from '@/theme/themes/types'
 import type { AgentStreamEvent } from '@/app/chat/streaming/streaming-types'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
-import type { DiscoveryCategory } from '@/app/onboarding/use-onboarding-state'
+import type {
+  RadialWedge as SharedRadialWedge,
+  ChatContext as SharedChatContext,
+  ChatContextUpdate as SharedChatContextUpdate,
+  MiniBridgeEventRecord as SharedMiniBridgeEventRecord,
+  MiniBridgeSnapshot as SharedMiniBridgeSnapshot,
+  MiniBridgeRequest as SharedMiniBridgeRequest,
+  MiniBridgeResponse as SharedMiniBridgeResponse,
+  MiniBridgeRequestEnvelope as SharedMiniBridgeRequestEnvelope,
+  MiniBridgeResponseEnvelope as SharedMiniBridgeResponseEnvelope,
+  MiniBridgeUpdate as SharedMiniBridgeUpdate,
+  BrowserType as SharedBrowserType,
+  DomainVisit as SharedDomainVisit,
+  DomainDetail as SharedDomainDetail,
+  BrowserData as SharedBrowserData,
+  BrowserDataResult as SharedBrowserDataResult,
+  PreferredBrowserProfile as SharedPreferredBrowserProfile,
+  BrowserProfile as SharedBrowserProfile,
+  DevProject as SharedDevProject,
+  CommandFrequency as SharedCommandFrequency,
+  ShellAnalysis as SharedShellAnalysis,
+  DiscoveredApp as SharedDiscoveredApp,
+  AllUserSignals as SharedAllUserSignals,
+  AllUserSignalsResult as SharedAllUserSignalsResult,
+  SelfModFeatureSummary as SharedSelfModFeatureSummary,
+  AgentHealth as SharedAgentHealth,
+  LocalLlmCredentialSummary as SharedLocalLlmCredentialSummary,
+  LocalCronSchedule as SharedLocalCronSchedule,
+  LocalCronPayload as SharedLocalCronPayload,
+  LocalHeartbeatActiveHours as SharedLocalHeartbeatActiveHours,
+  LocalCronJobRecord as SharedLocalCronJobRecord,
+  LocalHeartbeatConfigRecord as SharedLocalHeartbeatConfigRecord,
+  ScheduledConversationEvent as SharedScheduledConversationEvent,
+  VoiceRuntimeSnapshot as SharedVoiceRuntimeSnapshot,
+} from '@/shared/contracts/electron-data'
+import type { DiscoveryCategory } from '@/shared/contracts/discovery'
 
-export type RadialWedge = 'capture' | 'chat' | 'full' | 'voice' | 'auto' | 'dismiss'
-
-/** Must stay in sync with electron/chat-context.ts (source of truth). */
-export type ChatContext = {
-  window: {
-    title: string
-    app: string
-    bounds: { x: number; y: number; width: number; height: number }
-  } | null
-  browserUrl?: string | null
-  selectedText?: string | null
-  regionScreenshots?: {
-    dataUrl: string
-    width: number
-    height: number
-  }[]
-  capturePending?: boolean
-}
-
-export type ChatContextUpdate = {
-  context: ChatContext | null
-  version: number
-}
-
-export type MiniBridgeEventRecord = {
-  _id: string
-  timestamp: number
-  type: string
-  deviceId?: string
-  requestId?: string
-  targetDeviceId?: string
-  payload?: Record<string, unknown>
-  channelEnvelope?: Record<string, unknown>
-}
-
-export type MiniBridgeSnapshot = {
-  conversationId: string | null
-  events: MiniBridgeEventRecord[]
-  streamingText: string
-  reasoningText: string
-  isStreaming: boolean
-  pendingUserMessageId: string | null
-}
-
-export type MiniBridgeRequest =
-  | {
-      type: 'query:snapshot'
-      conversationId: string | null
-    }
-  | {
-      type: 'mutation:sendMessage'
-      conversationId: string
-      text: string
-      selectedText: string | null
-      chatContext: ChatContext | null
-    }
-
-export type MiniBridgeResponse =
-  | {
-      type: 'query:snapshot'
-      snapshot: MiniBridgeSnapshot
-    }
-  | {
-      type: 'mutation:sendMessage'
-      accepted: boolean
-    }
-  | {
-      type: 'error'
-      message: string
-    }
-
-export type MiniBridgeRequestEnvelope = {
-  requestId: string
-  request: MiniBridgeRequest
-}
-
-export type MiniBridgeResponseEnvelope = {
-  requestId: string
-  response: MiniBridgeResponse
-}
-
-export type MiniBridgeUpdate = {
-  type: 'snapshot'
-  snapshot: MiniBridgeSnapshot
-}
-
-// ---------------------------------------------------------------------------
-// Browser Data Types
-// ---------------------------------------------------------------------------
-
-export type BrowserType = 'chrome' | 'edge' | 'brave' | 'arc' | 'opera' | 'vivaldi'
-
-export type DomainVisit = {
-  domain: string
-  visits: number
-}
-
-export type DomainDetail = {
-  title: string
-  url: string
-  visitCount: number
-}
-
-export type BrowserData = {
-  browser: BrowserType | null
-  clusterDomains: string[]
-  recentDomains: DomainVisit[]
-  allTimeDomains: DomainVisit[]
-  domainDetails: Record<string, DomainDetail[]>
-}
-
-export type BrowserDataResult = {
-  data: BrowserData | null
-  formatted: string | null
-  error?: string
-}
-
-export type PreferredBrowserProfile = {
-  browser: BrowserType | null
-  profile: string | null
-}
-
-export type BrowserProfile = {
-  id: string       // e.g. "Default", "Profile 1"
-  name: string     // display name, e.g. "Work", "Personal"
-}
-
-// ---------------------------------------------------------------------------
-// Dev Projects Types
-// ---------------------------------------------------------------------------
-
-export type DevProject = {
-  name: string
-  path: string
-  lastActivity: number // timestamp in ms
-}
-
-// ---------------------------------------------------------------------------
-// Shell History Types
-// ---------------------------------------------------------------------------
-
-export type CommandFrequency = {
-  command: string
-  count: number
-}
-
-export type ShellAnalysis = {
-  topCommands: CommandFrequency[]
-  projectPaths: string[]
-  toolsUsed: string[]
-}
-
-// ---------------------------------------------------------------------------
-// App Discovery Types
-// ---------------------------------------------------------------------------
-
-export type DiscoveredApp = {
-  name: string
-  executablePath: string
-  source: 'running' | 'recent'
-  lastUsed?: number
-}
-
-// ---------------------------------------------------------------------------
-// Combined User Signals Types
-// ---------------------------------------------------------------------------
-
-export type AllUserSignals = {
-  browser: BrowserData
-  devProjects: DevProject[]
-  shell: ShellAnalysis
-  apps: DiscoveredApp[]
-}
-
-export type { DiscoveryCategory } from '@/app/onboarding/use-onboarding-state'
-
-export type AllUserSignalsResult = {
-  data: AllUserSignals | null
-  formatted: string | null
-  formattedSections?: Partial<Record<DiscoveryCategory, string>> | null
-  error?: string
-}
-
-// ---------------------------------------------------------------------------
-// Agent Types
-// ---------------------------------------------------------------------------
-
+export type RadialWedge = SharedRadialWedge
+export type ChatContext = SharedChatContext
+export type ChatContextUpdate = SharedChatContextUpdate
+export type MiniBridgeEventRecord = SharedMiniBridgeEventRecord
+export type MiniBridgeSnapshot = SharedMiniBridgeSnapshot
+export type MiniBridgeRequest = SharedMiniBridgeRequest
+export type MiniBridgeResponse = SharedMiniBridgeResponse
+export type MiniBridgeRequestEnvelope = SharedMiniBridgeRequestEnvelope
+export type MiniBridgeResponseEnvelope = SharedMiniBridgeResponseEnvelope
+export type MiniBridgeUpdate = SharedMiniBridgeUpdate
+export type BrowserType = SharedBrowserType
+export type DomainVisit = SharedDomainVisit
+export type DomainDetail = SharedDomainDetail
+export type BrowserData = SharedBrowserData
+export type BrowserDataResult = SharedBrowserDataResult
+export type PreferredBrowserProfile = SharedPreferredBrowserProfile
+export type BrowserProfile = SharedBrowserProfile
+export type DevProject = SharedDevProject
+export type CommandFrequency = SharedCommandFrequency
+export type ShellAnalysis = SharedShellAnalysis
+export type DiscoveredApp = SharedDiscoveredApp
+export type AllUserSignals = SharedAllUserSignals
+export type AllUserSignalsResult = SharedAllUserSignalsResult
 export type AgentStreamIpcEvent = AgentStreamEvent
-
-export type SelfModFeatureSummary = {
-  featureId: string
-  name: string
-  description: string
-  latestCommit: string
-  latestTimestampMs: number
-  commitCount: number
-  tainted?: boolean
-  taintedFiles?: string[]
-}
-
-export type AgentHealth =
-  | {
-      ready: true
-      runnerVersion?: string
-      engine?: string
-    }
-  | {
-      ready: false
-      reason?: string
-      engine?: string
-    }
-
-export type LocalLlmCredentialSummary = {
-  provider: string
-  label: string
-  status: 'active'
-  updatedAt: number
-}
-
-export type LocalCronSchedule =
-  | { kind: 'at'; atMs: number }
-  | { kind: 'every'; everyMs: number; anchorMs?: number }
-  | { kind: 'cron'; expr: string; tz?: string }
-
-export type LocalCronPayload =
-  | { kind: 'systemEvent'; text: string; agentType?: string; deliver?: boolean }
-  | { kind: 'agentTurn'; message: string; agentType?: string; deliver?: boolean }
-
-export type LocalHeartbeatActiveHours = {
-  start: string
-  end: string
-  timezone?: string
-}
-
-export type LocalCronJobRecord = {
-  id: string
-  conversationId: string
-  name: string
-  description?: string
-  enabled: boolean
-  schedule: LocalCronSchedule
-  sessionTarget: 'main' | 'isolated'
-  payload: LocalCronPayload
-  deleteAfterRun?: boolean
-  nextRunAtMs: number
-  runningAtMs?: number
-  lastRunAtMs?: number
-  lastStatus?: string
-  lastError?: string
-  lastDurationMs?: number
-  lastOutputPreview?: string
-  createdAt: number
-  updatedAt: number
-}
-
-export type LocalHeartbeatConfigRecord = {
-  id: string
-  conversationId: string
-  enabled: boolean
-  intervalMs: number
-  prompt?: string
-  checklist?: string
-  ackMaxChars?: number
-  deliver?: boolean
-  agentType?: string
-  activeHours?: LocalHeartbeatActiveHours
-  targetDeviceId?: string
-  runningAtMs?: number
-  lastRunAtMs?: number
-  nextRunAtMs: number
-  lastStatus?: string
-  lastError?: string
-  lastSentText?: string
-  lastSentAtMs?: number
-  createdAt: number
-  updatedAt: number
-}
-
-export type ScheduledConversationEvent = {
-  _id: string
-  conversationId: string
-  timestamp: number
-  type: 'assistant_message'
-  payload: Record<string, unknown>
-}
+export type SelfModFeatureSummary = SharedSelfModFeatureSummary
+export type AgentHealth = SharedAgentHealth
+export type LocalLlmCredentialSummary = SharedLocalLlmCredentialSummary
+export type LocalCronSchedule = SharedLocalCronSchedule
+export type LocalCronPayload = SharedLocalCronPayload
+export type LocalHeartbeatActiveHours = SharedLocalHeartbeatActiveHours
+export type LocalCronJobRecord = SharedLocalCronJobRecord
+export type LocalHeartbeatConfigRecord = SharedLocalHeartbeatConfigRecord
+export type ScheduledConversationEvent = SharedScheduledConversationEvent
+export type VoiceRuntimeSnapshot = SharedVoiceRuntimeSnapshot
 
 // ---------------------------------------------------------------------------
 // Namespaced API sub-types
@@ -377,15 +161,6 @@ export type ElectronThemeApi = {
   listInstalled: () => Promise<Theme[]>
 }
 
-export type VoiceRuntimeSnapshot = {
-  sessionState: 'idle' | 'connecting' | 'connected' | 'error' | 'disconnecting'
-  isConnected: boolean
-  isSpeaking: boolean
-  isUserSpeaking: boolean
-  micLevel: number
-  outputLevel: number
-}
-
 export type ElectronVoiceApi = {
   submitTranscript: (transcript: string) => void
   setShortcut: (shortcut: string) => void
@@ -470,7 +245,7 @@ export type ElectronBrowserApi = {
   detectPreferred: () => Promise<PreferredBrowserProfile>
   listProfiles: (browserType: string) => Promise<BrowserProfile[]>
   writeCoreMemory: (content: string) => Promise<{ ok: boolean; error?: string }>
-  collectAllSignals: (options?: { categories?: string[] }) => Promise<AllUserSignalsResult>
+  collectAllSignals: (options?: { categories?: DiscoveryCategory[] }) => Promise<AllUserSignalsResult>
   listWorkspacePanels: () => Promise<Array<{ name: string; title: string }>>
   onWorkspacePanelsChanged: (callback: (panels: Array<{ name: string; title: string }>) => void) => () => void
 }

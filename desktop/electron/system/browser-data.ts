@@ -14,6 +14,23 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
+import type {
+  BrowserType,
+  DomainVisit,
+  DomainDetail,
+  BrowserData,
+  PreferredBrowserProfile,
+  BrowserProfile,
+} from "../../src/shared/contracts/electron-data.js";
+
+export type {
+  BrowserType,
+  DomainVisit,
+  DomainDetail,
+  BrowserData,
+  PreferredBrowserProfile,
+  BrowserProfile,
+}
 
 // Declare Bun on globalThis for runtime detection
 declare const globalThis: typeof global & { Bun?: unknown };
@@ -34,41 +51,6 @@ const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
 };
 
 const log = (...args: unknown[]) => console.log("[browser-data]", ...args);
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type BrowserType = "chrome" | "edge" | "brave" | "arc" | "opera" | "vivaldi";
-
-export type DomainVisit = {
-  domain: string;
-  visits: number;
-};
-
-export type DomainDetail = {
-  title: string;
-  url: string;
-  visitCount: number;
-};
-
-export type BrowserData = {
-  browser: BrowserType | null;
-  clusterDomains: string[];
-  recentDomains: DomainVisit[];
-  allTimeDomains: DomainVisit[]; // All-time top domains (excluding those in recentDomains)
-  domainDetails: Record<string, DomainDetail[]>;
-};
-
-export type PreferredBrowserProfile = {
-  browser: BrowserType | null;
-  profile: string | null;
-};
-
-export type BrowserProfile = {
-  id: string;       // e.g. "Default", "Profile 1"
-  name: string;     // display name from Local State, e.g. "Work", "Personal"
-};
 
 // ---------------------------------------------------------------------------
 // Platform Paths

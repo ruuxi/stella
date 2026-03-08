@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
+import { DISCOVERY_CATEGORIES_CHANGED_EVENT } from "@/shared/contracts/discovery";
 import {
   SPLIT_PHASES,
   SPLIT_STEP_ORDER,
@@ -24,7 +25,6 @@ import "@/app/onboarding/selfmod-demo.css";
 
 const FADE_OUT_MS = 400;
 const FADE_GAP_MS = 200;
-const DISCOVERY_CATEGORIES_CHANGED_EVENT = "stella:discovery-categories-changed";
 
 /* ── Step title text (shown on left in split mode) ── */
 const STEP_TITLES: Partial<Record<Phase, string>> = {

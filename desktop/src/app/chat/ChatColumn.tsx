@@ -12,7 +12,7 @@ import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
 import type { ChatContext } from "@/types/electron";
 import type { SelfModAppliedData } from "@/app/chat/hooks/use-streaming-chat";
-import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
+import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import "./full-shell.chat.css";
 
 export type StreamingState = {
@@ -175,5 +175,4 @@ export const ChatColumn = memo(function ChatColumn({
     </div>
   );
 });
-
 

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
+import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import {
+  DISCOVERY_CATEGORIES_KEY,
+  DISCOVERY_CATEGORIES_CHANGED_EVENT,
+} from "@/shared/contracts/discovery";
 
 type Replacement = { pattern: RegExp; replacement: string };
-
-const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
-const DISCOVERY_CATEGORIES_CHANGED_EVENT = "stella:discovery-categories-changed";
 const EMPTY_REPLACEMENTS: Replacement[] = [];
 
 function isMessagesNotesEnabled(): boolean {
