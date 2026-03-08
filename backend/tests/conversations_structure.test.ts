@@ -20,10 +20,6 @@ describe("conversations module structure", () => {
     expect(source).toContain("export const getActiveThreadId =");
   });
 
-  test("exports updateReminderTokenCounter", () => {
-    expect(source).toContain("export const updateReminderTokenCounter =");
-  });
-
   test("uses requireUserId for auth", () => {
     expect(source).toContain("requireUserId");
   });

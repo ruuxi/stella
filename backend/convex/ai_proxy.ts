@@ -90,7 +90,7 @@ export const managedAi = httpAction(async (ctx, request) => {
   const ownerId = identity.subject;
   const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
   const agentType =
-    request.headers.get("X-Agent-Type")?.trim() || "orchestrator";
+    request.headers.get("X-Agent-Type")?.trim() || "general";
   const requestedProvider =
     request.headers.get("X-Provider")?.trim()?.toLowerCase() || "vercel";
 

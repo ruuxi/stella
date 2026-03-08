@@ -36,7 +36,7 @@ const executeBackendTool = async (
   const tools = createBackendTools(ctx, {
     ownerId: args.ownerId,
     conversationId: args.conversationId,
-    agentType: args.agentType ?? "orchestrator",
+    agentType: args.agentType ?? "general",
     maxTaskDepth: DEFAULT_MAX_TASK_DEPTH,
   }) as Record<string, { execute?: (input: Record<string, unknown>) => Promise<unknown> }>;
 

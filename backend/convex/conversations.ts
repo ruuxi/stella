@@ -17,8 +17,6 @@ const conversationDocValidator = v.union(v.null(), v.object({
   title: v.optional(v.string()),
   isDefault: v.boolean(),
   activeThreadId: v.optional(v.id("threads")),
-  reminderTokensSinceLastInjection: v.optional(v.number()),
-  forceReminderOnNextTurn: v.optional(v.boolean()),
   createdAt: v.number(),
   updatedAt: v.number(),
 }));
@@ -183,38 +181,4 @@ export const setActiveThreadId = internalMutation({
   },
 });
 
-export const updateReminderTokenCounter = internalMutation({
-  args: {
-    conversationId: v.id("conversations"),
-    resetTo: v.optional(v.number()),
-    incrementBy: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation) return null;
-    const current = conversation.reminderTokensSinceLastInjection ?? 0;
-    const newValue = args.resetTo !== undefined
-      ? args.resetTo
-      : current + (args.incrementBy ?? 0);
-    await ctx.db.patch(args.conversationId, {
-      reminderTokensSinceLastInjection: newValue,
-      ...(args.resetTo !== undefined ? { forceReminderOnNextTurn: false } : {}),
-      updatedAt: Date.now(),
-    });
-    return null;
-  },
-});
-
-export const forceReminderOnNextTurn = internalMutation({
-  args: {
-    conversationId: v.id("conversations"),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.conversationId, {
-      forceReminderOnNextTurn: true,
-      updatedAt: Date.now(),
-    });
-    return null;
-  },
-});
 

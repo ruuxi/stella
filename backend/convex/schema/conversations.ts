@@ -8,8 +8,6 @@ export const conversationsSchema = {
     title: v.optional(v.string()),
     isDefault: v.boolean(),
     activeThreadId: v.optional(v.id("threads")),
-    reminderTokensSinceLastInjection: v.optional(v.number()),
-    forceReminderOnNextTurn: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

@@ -18,18 +18,17 @@ describe("compaction acceptance", () => {
     expect(source).toContain("140_000");
   });
 
-  test("dynamic reminder injection is token-interval gated and persisted", () => {
-    const promptSource = readBackendFile("convex/agent/orchestrator_prompt_context.ts");
+  test("backend orchestrator reminder path was removed", () => {
     const conversationSource = readBackendFile("convex/conversations.ts");
 
-    expect(promptSource).toContain("reminderTokensSinceLastInjection");
-    expect(promptSource).toContain("forceReminderOnNextTurn");
-    expect(promptSource).toContain("shouldInjectDynamicReminder");
-    expect(conversationSource).toContain("updateReminderTokenCounter");
+    expect(conversationSource).not.toContain("reminderTokensSinceLastInjection");
+    expect(conversationSource).not.toContain("forceReminderOnNextTurn");
+    expect(conversationSource).not.toContain("updateReminderTokenCounter");
   });
 
-  test("microcompact boundary events continue to be emitted", () => {
-    const source = readBackendFile("convex/agent/orchestrator_turn.ts");
-    expect(source).toContain('type: "microcompact_boundary"');
+  test("backend orchestrator files are absent", () => {
+    expect(readBackendFile("convex/agent/prompt_builder.ts")).not.toContain('agentType === "orchestrator"');
+    expect(() => readBackendFile("convex/agent/orchestrator_turn.ts")).toThrow();
+    expect(() => readBackendFile("convex/agent/orchestrator_prompt_context.ts")).toThrow();
   });
 });

@@ -235,7 +235,7 @@ export const logUsageAsync = internalMutation({
       createdAt: Date.now(),
     });
 
-    // Removed session token counting since orchestrator uses threads now
+    // Session token counting was removed after thread-based context handling replaced it
 
     return null;
   },
