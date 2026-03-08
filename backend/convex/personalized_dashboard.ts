@@ -7,6 +7,8 @@ import {
   buildPersonalizedDashboardPageUserMessage,
   type PersonalizedDashboardPageAssignment,
 } from "./prompts/personalized_dashboard";
+import { normalizePromptOverrides, resolvePromptText } from "./prompts/registry";
+import { jsonValueValidator } from "./shared_validators";
 
 /** Max dashboard pages to generate (0 = disabled). */
 const MAX_DASHBOARD_PAGES_TO_GENERATE = 0;
@@ -330,6 +332,7 @@ export const startGeneration = action({
     targetDeviceId: v.optional(v.string()),
     pageAssignments: v.optional(v.array(pageAssignmentInputValidator)),
     force: v.optional(v.boolean()),
+    promptOverrides: v.optional(jsonValueValidator),
   },
   returns: startGenerationResultValidator,
   handler: async (ctx, args): Promise<{
@@ -339,6 +342,7 @@ export const startGeneration = action({
   }> => {
     const ownerId = await requireUserId(ctx);
     await requireConversationOwnerAction(ctx, args.conversationId);
+    const promptOverrides = normalizePromptOverrides(args.promptOverrides);
 
     const manualAssignments = args.pageAssignments
       ? buildAssignmentsFromInput(args.pageAssignments)
@@ -391,6 +395,7 @@ export const startGeneration = action({
       const userPrompt = buildPersonalizedDashboardPageUserMessage({
         userProfile: normalizedUserProfile,
         assignment,
+        promptTemplate: resolvePromptText("personalized_dashboard.user", promptOverrides),
       });
 
       await ctx.runMutation(internal.events.appendInternalEvent, {
@@ -405,7 +410,7 @@ export const startGeneration = action({
           topic: page.topic,
           focus: page.focus,
           dataSources: page.dataSources,
-          systemPrompt: PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
+          systemPrompt: resolvePromptText("personalized_dashboard.system", promptOverrides),
           userPrompt,
         },
       });

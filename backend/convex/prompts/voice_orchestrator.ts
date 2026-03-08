@@ -96,8 +96,9 @@ export function buildVoiceSessionInstructions(context: {
   deviceStatus?: string;
   activeThreads?: string;
   userProfile?: string;
+  basePrompt?: string;
 }): string {
-  const parts = [VOICE_ORCHESTRATOR_PROMPT];
+  const parts = [context.basePrompt?.trim() || VOICE_ORCHESTRATOR_PROMPT];
 
   if (context.userName) {
     parts.push(`\nThe user's name is ${context.userName}.`);

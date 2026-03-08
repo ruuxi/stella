@@ -8,20 +8,24 @@ Selection criteria:
 - Designers: prioritize design, frontend, and visual skills
 - Writers: prioritize document creation, communication, and content skills
 - Always include broadly useful skills (document creation, web search, etc.)
-- Select 6-10 skills as defaults — not too few, not overwhelming
+- Select 6-10 skills as defaults - not too few, not overwhelming
 
 Output ONLY a JSON array of skill IDs. No explanation. No markdown fences.
 
 Example output:
 ["docx", "frontend-design", "mcp-builder", "doc-coauthoring"]`;
 
+export const SKILL_SELECTION_USER_PROMPT_TEMPLATE =
+  "User profile and available skill catalog are provided below.";
+
 export const buildSkillSelectionUserMessage = (
   userProfile: string,
   catalog: Array<{ id: string; name: string; description: string; tags?: string[] }>,
+  promptTemplate = SKILL_SELECTION_USER_PROMPT_TEMPLATE,
 ): string => {
   const catalogText = catalog
-    .map((s) => `- ${s.id}: ${s.name} — ${s.description}${s.tags?.length ? ` [${s.tags.join(", ")}]` : ""}`)
+    .map((s) => `- ${s.id}: ${s.name} - ${s.description}${s.tags?.length ? ` [${s.tags.join(", ")}]` : ""}`)
     .join("\n");
 
-  return `User profile:\n${userProfile}\n\nAvailable skills:\n${catalogText}`;
+  return `${promptTemplate}\n\nUser profile:\n${userProfile}\n\nAvailable skills:\n${catalogText}`;
 };

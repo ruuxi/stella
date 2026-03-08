@@ -96,6 +96,7 @@ import type * as prompts_invoke from "../prompts/invoke.js";
 import type * as prompts_news_html from "../prompts/news_html.js";
 import type * as prompts_offline_responder from "../prompts/offline_responder.js";
 import type * as prompts_personalized_dashboard from "../prompts/personalized_dashboard.js";
+import type * as prompts_registry from "../prompts/registry.js";
 import type * as prompts_skill_metadata from "../prompts/skill_metadata.js";
 import type * as prompts_skill_selection from "../prompts/skill_selection.js";
 import type * as prompts_suggestions from "../prompts/suggestions.js";
@@ -216,6 +217,7 @@ declare const fullApi: ApiFromModules<{
   "prompts/news_html": typeof prompts_news_html;
   "prompts/offline_responder": typeof prompts_offline_responder;
   "prompts/personalized_dashboard": typeof prompts_personalized_dashboard;
+  "prompts/registry": typeof prompts_registry;
   "prompts/skill_metadata": typeof prompts_skill_metadata;
   "prompts/skill_selection": typeof prompts_skill_selection;
   "prompts/suggestions": typeof prompts_suggestions;

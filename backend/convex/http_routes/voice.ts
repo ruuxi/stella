@@ -3,6 +3,7 @@ import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction } from "../auth";
+import { normalizePromptOverrides, resolvePromptText } from "../prompts/registry";
 import {
   errorResponse,
   jsonResponse,
@@ -80,6 +81,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           model?: string;
           turnDetection?: "semantic_vad" | "server_vad";
           turnEagerness?: "low" | "medium" | "high";
+          promptOverrides?: unknown;
         };
         let body: VoiceSessionBody | null = null;
         try {
@@ -167,6 +169,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           resolveDeviceStatus(),
           resolveActiveThreads(),
         ]);
+        const promptOverrides = normalizePromptOverrides(body?.promptOverrides);
 
         if (!openaiApiKey) {
           return errorResponse(
@@ -187,6 +190,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           identity.name ?? identity.nickname;
 
         const instructions = buildVoiceSessionInstructions({
+          basePrompt: resolvePromptText("voice_orchestrator.base", promptOverrides),
           userName,
           platform: "desktop",
           deviceStatus,
