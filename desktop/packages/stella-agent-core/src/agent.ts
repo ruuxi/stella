@@ -12,7 +12,7 @@ import {
 	type TextContent,
 	type ThinkingBudgets,
 	type Transport,
-} from "../../stella-ai/src/index.js";
+} from "@stella/stella-ai";
 import { agentLoop, agentLoopContinue } from "./agent-loop.js";
 import type {
 	AgentContext,

@@ -304,8 +304,15 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      { find: /^@\//, replacement: `${path.resolve(__dirname, "./src")}/` },
+      { find: /^@stella\/stella-ai$/, replacement: path.resolve(__dirname, "./packages/stella-ai/src/index.ts") },
+      { find: /^@stella\/stella-agent-core$/, replacement: path.resolve(__dirname, "./packages/stella-agent-core/src/index.ts") },
+      { find: /^@stella\/stella-runtime$/, replacement: path.resolve(__dirname, "./packages/stella-runtime/src/index.ts") },
+      {
+        find: /^@stella\/stella-runtime\/(.*)$/,
+        replacement: `${path.resolve(__dirname, "./packages/stella-runtime/src")}/$1`,
+      },
+    ],
   },
 })

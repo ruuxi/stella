@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocalTaskManagerAgentContext } from "../src/tasks/local-task-manager.js";
+import type { LocalTaskManagerAgentContext } from "@stella/stella-runtime/tasks";
 import type { JsonlRuntimeStore } from "../src/jsonl_store.js";
 import type { ResolvedLlmRoute } from "../src/model-routing.js";
 
@@ -13,18 +13,21 @@ const {
   isClaudeCodeModelMock: vi.fn(),
 }));
 
-vi.mock("../src/integrations/codex-app-server-runtime.js", () => ({
-  runCodexAppServerTurn: runCodexAppServerTurnMock,
-  shutdownCodexAppServerRuntime: vi.fn(),
-}));
+vi.mock("@stella/stella-runtime/integrations", async () => {
+  const actual = await vi.importActual<typeof import("@stella/stella-runtime/integrations")>(
+    "@stella/stella-runtime/integrations",
+  );
+  return {
+    ...actual,
+    runCodexAppServerTurn: runCodexAppServerTurnMock,
+    shutdownCodexAppServerRuntime: vi.fn(),
+    isClaudeCodeModel: isClaudeCodeModelMock,
+    runClaudeCodeTurn: runClaudeCodeTurnMock,
+    shutdownClaudeCodeRuntime: vi.fn(),
+  };
+});
 
-vi.mock("../src/integrations/claude-code-session-runtime.js", () => ({
-  isClaudeCodeModel: isClaudeCodeModelMock,
-  runClaudeCodeTurn: runClaudeCodeTurnMock,
-  shutdownClaudeCodeRuntime: vi.fn(),
-}));
-
-import { runSubagentTask } from "../src/agent-runtime.js";
+import { runSubagentTask } from "@stella/stella-runtime/agent-runtime";
 
 type StoreStub = {
   appendThreadMessage: ReturnType<typeof vi.fn>;

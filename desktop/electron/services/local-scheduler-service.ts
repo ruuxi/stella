@@ -14,7 +14,7 @@ import type {
   LocalHeartbeatUpsertInput,
   LocalSchedulerSnapshot,
   ScheduledConversationEvent,
-} from '../../packages/stella-runtime/src/shared/scheduling.js'
+} from '@stella/stella-runtime/shared'
 
 const DEFAULT_HEARTBEAT_PROMPT =
   'Read the heartbeat checklist if provided. Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, call NoResponse().'

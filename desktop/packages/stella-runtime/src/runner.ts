@@ -3,21 +3,20 @@ import fs from "fs";
 import path from "path";
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
-import { createToolHost } from "./tools/host.js";
-import { loadAgentsFromHome } from "./agents/agents.js";
-import { loadSkillsFromHome } from "./agents/skills.js";
+import { createToolHost, type ScheduleToolApi, type ToolContext } from "./tools/index.js";
+import { loadAgentsFromHome, loadSkillsFromHome } from "./agents/index.js";
 import {
   getCodexLocalMaxConcurrency,
   getGeneralAgentEngine,
   getModelOverride,
-} from "./preferences/local-preferences.js";
-import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./tasks/local-task-manager.js";
-import type { ScheduleToolApi, ToolContext } from "./tools/types.js";
+} from "./preferences/index.js";
+import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./tasks/index.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import {
   runOrchestratorTurn,
   runSubagentTask,
   shutdownSubagentRuntimes,
+  type SelfModMonitor,
   type RuntimeEndEvent,
   type RuntimeErrorEvent,
   type RuntimeRunCallbacks,
@@ -78,6 +77,7 @@ export type StellaHostRunnerOptions = {
   frontendRoot?: string;
   stellaBrowserBinPath?: string;
   stellaUiCliPath?: string;
+  selfModMonitor?: SelfModMonitor | null;
   selfModHmrController?: {
     pause: (runId: string) => Promise<boolean>;
     resume: (runId: string) => Promise<boolean>;
@@ -206,6 +206,7 @@ export const createStellaHostRunner = ({
   frontendRoot,
   stellaBrowserBinPath,
   stellaUiCliPath,
+  selfModMonitor,
   selfModHmrController,
   getHmrMorphOrchestrator,
   requestCredential,
@@ -537,6 +538,7 @@ export const createStellaHostRunner = ({
           resolvedLlm,
           store,
           abortSignal,
+          selfModMonitor,
           onProgress,
           callbacks: activeCallbacksRef ? {
             onStream: () => {},
@@ -759,6 +761,7 @@ export const createStellaHostRunner = ({
       store,
       abortSignal: abortController.signal,
       frontendRoot,
+      selfModMonitor,
       webSearch,
       onSearchResults: generateNewsHtml,
     }).catch((error) => {
@@ -871,8 +874,9 @@ export const createStellaHostRunner = ({
         store,
         abortSignal: abortController.signal,
         frontendRoot,
+        selfModMonitor,
         webSearch,
-      onSearchResults: generateNewsHtml,
+        onSearchResults: generateNewsHtml,
       });
       if (fatalError) {
         return { status: "error", finalText: "", error: fatalError };
