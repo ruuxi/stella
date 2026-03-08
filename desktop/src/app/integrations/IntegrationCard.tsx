@@ -5,15 +5,11 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";
 import type { Integration } from "./integration-configs";
-import {
-  deployAndStartLocalBridge,
-  type BridgeProvider,
-} from "@/platform/electron/bridge-local";
 import { sanitizeExternalLinkUrl } from "@/shared/lib/url-safety";
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -27,10 +23,6 @@ function isConnectedConnection(connection: unknown) {
 function useIntegrationConnectionStatus(provider: string) {
   const connection = useQuery(api.channels.utils.getConnection, { provider });
   return isConnectedConnection(connection);
-}
-
-function isBridgeProvider(provider: string): provider is BridgeProvider {
-  return provider === "whatsapp" || provider === "signal";
 }
 
 function SetupContent({
@@ -51,64 +43,13 @@ function SetupContent({
   );
 }
 
-function useBridgeSetup(provider: BridgeProvider, isExpanded: boolean) {
-  const setupBridge = useAction(api.channels.bridge_actions.setupBridge);
-  const getBridgeBundle = useAction(api.channels.bridge_actions.getBridgeBundle);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const result = await setupBridge({ provider });
-        if (cancelled) return;
-
-        const electronApi = window.electronAPI;
-        const bridgeStatus = electronApi
-          ? await electronApi.system.bridgeStatus({ provider }).catch(() => null)
-          : null;
-        if (cancelled) return;
-
-        const shouldStartLocal =
-          result.status === "initializing" || !bridgeStatus?.running;
-        if (shouldStartLocal) {
-          await deployAndStartLocalBridge(provider, getBridgeBundle);
-        }
-        if (!cancelled) setError(null);
-      } catch (err) {
-        if (!cancelled) setError(getErrorMessage(err, "Failed to start bridge"));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [provider, isExpanded, setupBridge, getBridgeBundle]);
-
-  return error;
-}
-
 function ConnectedView({ integration }: { integration: Integration }) {
   const deleteConnection = useMutation(api.channels.utils.deleteConnection);
-  const stopBridge = useAction(api.channels.bridge_actions.stopBridge);
   const [disconnecting, setDisconnecting] = useState(false);
-
-  const isBridge = isBridgeProvider(integration.provider);
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      if (isBridge) {
-        try {
-          await window.electronAPI?.system.bridgeStop({ provider: integration.provider });
-        } catch {
-          // Ignore; bridge may not be running locally.
-        }
-        await stopBridge({ provider: integration.provider });
-      }
       await deleteConnection({ provider: integration.provider });
       showToast(`Disconnected from ${integration.displayName}`);
     } catch {
@@ -258,69 +199,6 @@ function BotSetupView({
   );
 }
 
-function WhatsAppBridgeView({ isExpanded }: { isExpanded: boolean }) {
-  const error = useBridgeSetup("whatsapp", isExpanded);
-
-  const qrCode = useQuery(
-    api.channels.whatsapp.getQrCode,
-    isExpanded ? {} : "skip",
-  ) as string | null | undefined;
-
-  return (
-    <SetupContent
-      instructions="Scan the QR code below with your WhatsApp app to link your account."
-      error={error}
-    >
-      <div className="connect-qr">
-        {qrCode ? (
-          <img
-            src={qrCode}
-            alt="WhatsApp QR Code"
-            width={200}
-            height={200}
-          />
-        ) : (
-            <div className="connect-skeleton connect-skeleton-qr" />
-          )}
-      </div>
-    </SetupContent>
-  );
-}
-
-function SignalBridgeView({ isExpanded }: { isExpanded: boolean }) {
-  const error = useBridgeSetup("signal", isExpanded);
-
-  const linkUri = useQuery(
-    api.channels.signal.getLinkUri,
-    isExpanded ? {} : "skip",
-  ) as string | null | undefined;
-
-  const handleCopy = useCallback(() => {
-    if (linkUri) {
-      navigator.clipboard.writeText(linkUri);
-      showToast("Link copied to clipboard");
-    }
-  }, [linkUri]);
-
-  return (
-    <SetupContent
-      instructions="Open Signal on your phone, go to Settings > Linked Devices, then scan or tap the link below."
-      error={error}
-    >
-      {linkUri ? (
-        <div className="connect-link-uri">
-          <div className="connect-link-uri-value">{linkUri}</div>
-          <Button variant="ghost" size="small" onClick={handleCopy}>
-            Copy link
-          </Button>
-        </div>
-      ) : (
-        <div className="connect-skeleton connect-skeleton-link" />
-      )}
-    </SetupContent>
-  );
-}
-
 type IntegrationGridCardProps = {
   integration: Integration;
   isSelected: boolean;
@@ -359,17 +237,9 @@ export function IntegrationDetailArea({
   integration: Integration;
 }) {
   const isConnected = useIntegrationConnectionStatus(integration.provider);
-  let detailContent: ReactNode = null;
-
-  if (isConnected) {
-    detailContent = <ConnectedView integration={integration} />;
-  } else if (integration.type === "bot") {
-    detailContent = <BotSetupView integration={integration} isExpanded={true} />;
-  } else if (integration.provider === "whatsapp") {
-    detailContent = <WhatsAppBridgeView isExpanded={true} />;
-  } else {
-    detailContent = <SignalBridgeView isExpanded={true} />;
-  }
+  const detailContent = isConnected
+    ? <ConnectedView integration={integration} />
+    : <BotSetupView integration={integration} isExpanded={true} />;
 
   return (
     <div className="connect-detail-area">

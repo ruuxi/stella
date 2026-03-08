@@ -231,12 +231,6 @@ export type ElectronSystemApi = {
   cancelCredential: (payload: { requestId: string }) => Promise<{ ok: boolean; error?: string }>
   getIdentityMap: () => Promise<{ version: number; mappings: { real: { name: string; identifier: string }; alias: { name: string; identifier: string }; source: string }[] }>
   depseudonymize: (text: string) => Promise<string>
-  bridgeDeploy: (payload: {
-    provider: string; code: string; env: Record<string, string>; dependencies: string
-  }) => Promise<{ ok: boolean; error?: string }>
-  bridgeStart: (payload: { provider: string }) => Promise<{ ok: boolean; error?: string }>
-  bridgeStop: (payload: { provider: string }) => Promise<{ ok: boolean }>
-  bridgeStatus: (payload: { provider: string }) => Promise<{ running: boolean }>
 }
 
 export type ElectronBrowserApi = {

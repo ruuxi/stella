@@ -121,10 +121,6 @@ vi.mock("@/platform/electron/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
-vi.mock("@/app/integrations/hooks/use-bridge-reconnect", () => ({
-  useBridgeAutoReconnect: vi.fn(),
-}));
-
 // Sub-components
 vi.mock("@/app/shell/background/ShiftingGradient", () => ({
   ShiftingGradient: ({ mode, colorMode }: any) => (

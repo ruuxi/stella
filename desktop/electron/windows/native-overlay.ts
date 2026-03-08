@@ -7,10 +7,15 @@
  */
 
 import { ChildProcess, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { createInterface } from 'node:readline'
+import { fileURLToPath } from 'node:url'
 import { screen } from 'electron'
-import { resolveNativeHelperPath } from '../native-helper-path.js'
 import { RADIAL_SIZE } from '../layout-constants.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 export class NativeOverlayController {
   private proc: ChildProcess | null = null
@@ -94,7 +99,20 @@ export class NativeOverlayController {
   onRegionCancel(cb: () => void) { this.regionCancelCallback = cb }
 
   private defaultExePath(): string | null {
-    return resolveNativeHelperPath('stella_overlay')
+    const platformDir = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : process.platform
+    const ext = process.platform === 'win32' ? '.exe' : ''
+    const fileName = `stella_overlay${ext}`
+
+    // At runtime __dirname is dist-electron/electron/windows/ — go up 3 levels to project root
+    const candidates = [
+      path.join(__dirname, '..', '..', '..', 'native', 'out', platformDir, fileName),
+      path.join(process.resourcesPath, 'native', 'out', platformDir, fileName),
+    ]
+
+    for (const c of candidates) {
+      if (existsSync(c)) return c
+    }
+    return null
   }
 
   private send(msg: Record<string, unknown>) {
