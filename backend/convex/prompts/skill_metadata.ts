@@ -12,11 +12,15 @@ Rules:
 
 Output ONLY the JSON object. No markdown code fences. No explanation.`;
 
+export const SKILL_METADATA_USER_PROMPT_TEMPLATE =
+  "Directory name and skill content are provided below.";
+
 export const buildSkillMetadataUserMessage = (
   skillDirName: string,
   markdown: string,
+  promptTemplate = SKILL_METADATA_USER_PROMPT_TEMPLATE,
 ): string => {
   // Truncate markdown to avoid token limits (keep first ~4000 chars)
   const truncated = markdown.length > 4000 ? markdown.slice(0, 4000) + "\n..." : markdown;
-  return `Directory name: ${skillDirName}\n\nSkill content:\n${truncated}`;
+  return `${promptTemplate}\n\nDirectory name: ${skillDirName}\n\nSkill content:\n${truncated}`;
 };

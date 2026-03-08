@@ -4,9 +4,10 @@ import type { ActionCtx } from "../_generated/server";
 import { generateTextWithFailover } from "../agent/model_execution";
 import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
 import {
-  NEWS_HTML_SYSTEM_PROMPT,
   buildNewsHtmlUserPrompt,
 } from "../prompts/index";
+import { resolvePromptText } from "../prompts/registry";
+import type { PromptOverrideMap } from "../prompts/registry";
 import type { ToolOptions } from "./types";
 
 const MAX_WEB_SEARCH_RESULTS = 6;
@@ -63,6 +64,7 @@ const generateNewsHtml = async (
     ownerId?: string;
     query: string;
     results: SearchHit[];
+    promptOverrides?: PromptOverrideMap;
   },
 ): Promise<string | undefined> => {
   if (options.results.length === 0) return undefined;
@@ -74,6 +76,7 @@ const generateNewsHtml = async (
   const prompt = buildNewsHtmlUserPrompt({
     query: options.query,
     resultsText,
+    promptTemplate: resolvePromptText("news_html.user", options.promptOverrides),
   });
 
   const resolvedConfig = await resolveModelConfig(ctx, "news_generate", options.ownerId);
@@ -82,7 +85,7 @@ const generateNewsHtml = async (
     resolvedConfig,
     fallbackConfig,
     sharedArgs: {
-      system: NEWS_HTML_SYSTEM_PROMPT,
+      system: resolvePromptText("news_html.system", options.promptOverrides),
       messages: [{ role: "user", content: prompt }],
     },
   });
@@ -97,6 +100,7 @@ export const executeWebSearch = async (
   options: {
     ownerId?: string;
     includeHtml?: boolean;
+    promptOverrides?: PromptOverrideMap;
   } = {},
 ): Promise<WebSearchResponse> => {
   const query = queryInput.trim();
@@ -164,6 +168,7 @@ export const executeWebSearch = async (
           ownerId: options.ownerId,
           query,
           results,
+          promptOverrides: options.promptOverrides,
         });
       } catch (error) {
         console.warn(

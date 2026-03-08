@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
+import { normalizePromptOverrides } from "../prompts/registry";
 import { createBackendTools, executeWebSearch } from "../tools/backend";
 import { jsonValueValidator } from "../shared_validators";
 
@@ -82,6 +83,7 @@ export const webSearch = action({
     query: v.string(),
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
+    promptOverrides: v.optional(jsonValueValidator),
   },
   returns: v.object({
     text: v.string(),
@@ -99,9 +101,11 @@ export const webSearch = action({
     if (args.conversationId) {
       await requireConversationOwnerAction(ctx, args.conversationId);
     }
+    const promptOverrides = normalizePromptOverrides(args.promptOverrides);
     return await executeWebSearch(ctx, args.query, {
       ownerId,
       includeHtml: true,
+      promptOverrides,
     });
   },
 });

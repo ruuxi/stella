@@ -4,12 +4,12 @@ import { internal } from "../_generated/api";
 import { createGateway, generateText } from "ai";
 import { resolveModelConfig } from "../agent/model_resolver";
 import {
-  CORE_MEMORY_SYNTHESIS_PROMPT,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
   buildWelcomeSuggestionsPrompt,
 } from "../prompts/index";
 import type { WelcomeSuggestion } from "../prompts/index";
+import { normalizePromptOverrides, resolvePromptText } from "../prompts/registry";
 import {
   corsPreflightHandler,
   errorResponse,
@@ -25,6 +25,7 @@ import { getClientAddressKey } from "../lib/http_utils";
 
 type SynthesizeRequest = {
   formattedSignals: string;
+  promptOverrides?: unknown;
 };
 
 type SynthesizeResponse = {
@@ -72,6 +73,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
         if (!body?.formattedSignals) {
           return errorResponse(400, "formattedSignals is required", origin);
         }
+        const promptOverrides = normalizePromptOverrides(body.promptOverrides);
 
         const apiKey = process.env.AI_GATEWAY_API_KEY;
         if (!apiKey) {
@@ -116,8 +118,14 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
           const synthesisResult = await generateText({
             model: synthesisModel,
-            system: CORE_MEMORY_SYNTHESIS_PROMPT,
-            messages: [{ role: "user", content: buildCoreSynthesisUserMessage(body.formattedSignals) }],
+            system: resolvePromptText("synthesis.core_memory.system", promptOverrides),
+            messages: [{
+              role: "user",
+              content: buildCoreSynthesisUserMessage(
+                body.formattedSignals,
+                resolvePromptText("synthesis.core_memory.user", promptOverrides),
+              ),
+            }],
             maxOutputTokens: synthesisConfig.maxOutputTokens,
             temperature: synthesisConfig.temperature,
             providerOptions: synthesisConfig.providerOptions,
@@ -137,14 +145,26 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           const [welcomeResult, suggestionsResult] = await Promise.all([
             generateText({
               model: welcomeModel,
-              messages: [{ role: "user", content: buildWelcomeMessagePrompt(coreMemory) }],
+              messages: [{
+                role: "user",
+                content: buildWelcomeMessagePrompt(
+                  coreMemory,
+                  resolvePromptText("synthesis.welcome_message.user", promptOverrides),
+                ),
+              }],
               maxOutputTokens: welcomeConfig.maxOutputTokens,
               temperature: welcomeConfig.temperature,
               providerOptions: welcomeConfig.providerOptions,
             }),
             generateText({
               model: welcomeModel,
-              messages: [{ role: "user", content: buildWelcomeSuggestionsPrompt(coreMemory) }],
+              messages: [{
+                role: "user",
+                content: buildWelcomeSuggestionsPrompt(
+                  coreMemory,
+                  resolvePromptText("synthesis.welcome_suggestions.user", promptOverrides),
+                ),
+              }],
               maxOutputTokens: 1024,
               temperature: 0.7,
               providerOptions: welcomeConfig.providerOptions,

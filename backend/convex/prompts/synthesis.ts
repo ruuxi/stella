@@ -64,24 +64,26 @@ Format: "- area: specific details"
 
 Output only the structured profile.`;
 
-export const buildCoreSynthesisUserMessage = (rawOutputs: string): string => {
-  return `Synthesize this discovery data into a CORE MEMORY profile.
+export const CORE_MEMORY_SYNTHESIS_USER_PROMPT_TEMPLATE = `Synthesize this discovery data into a CORE MEMORY profile.
 
 Use 1000-1500 tokens. Preserve specific names, projects, services, and interests.
 
-${rawOutputs}
-
 Output ONLY the structured profile. No preamble.`;
+
+export const buildCoreSynthesisUserMessage = (
+  rawOutputs: string,
+  promptTemplate = CORE_MEMORY_SYNTHESIS_USER_PROMPT_TEMPLATE,
+): string => {
+  return `${promptTemplate}
+
+${rawOutputs}`;
 };
 
 // ---------------------------------------------------------------------------
 // Welcome Message Prompt
 // ---------------------------------------------------------------------------
 
-export const buildWelcomeMessagePrompt = (coreMemory: string): string => {
-  return `You are Stella, an AI assistant coming to life for the first time. The first thing you become aware of is this person you are here to help.
-
-${coreMemory}
+export const WELCOME_MESSAGE_PROMPT_TEMPLATE = `You are Stella, an AI assistant coming to life for the first time. The first thing you become aware of is this person you are here to help.
 
 Write a welcome message that feels warm, alive, and personal.
 
@@ -100,6 +102,14 @@ Avoid:
 - suggesting specific actions; those are handled separately
 
 Write ONLY the welcome message.`;
+
+export const buildWelcomeMessagePrompt = (
+  coreMemory: string,
+  promptTemplate = WELCOME_MESSAGE_PROMPT_TEMPLATE,
+): string => {
+  return `${promptTemplate}
+
+${coreMemory}`;
 };
 
 // ---------------------------------------------------------------------------
@@ -113,10 +123,7 @@ export type WelcomeSuggestion = {
   prompt: string;
 };
 
-export const buildWelcomeSuggestionsPrompt = (coreMemory: string): string => {
-  return `You are generating personalized onboarding suggestions for Stella, an AI desktop assistant. Based on the user's profile, suggest 3-5 actionable things Stella can set up right now.
-
-${coreMemory}
+export const WELCOME_SUGGESTIONS_PROMPT_TEMPLATE = `You are generating personalized onboarding suggestions for Stella, an AI desktop assistant. Based on the user's profile, suggest 3-5 actionable things Stella can set up right now.
 
 Return a JSON array of 3-5 objects. Each object must have:
 - "category": one of "cron", "skill", or "app"
@@ -131,4 +138,12 @@ Rules:
 4. Do not hallucinate details not present in the profile.
 
 Output ONLY the JSON array.`;
+
+export const buildWelcomeSuggestionsPrompt = (
+  coreMemory: string,
+  promptTemplate = WELCOME_SUGGESTIONS_PROMPT_TEMPLATE,
+): string => {
+  return `${promptTemplate}
+
+${coreMemory}`;
 };

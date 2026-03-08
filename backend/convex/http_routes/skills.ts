@@ -3,11 +3,10 @@ import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { generateText, createGateway } from "ai";
 import {
-  SKILL_METADATA_PROMPT,
   buildSkillMetadataUserMessage,
-  SKILL_SELECTION_PROMPT,
   buildSkillSelectionUserMessage,
 } from "../prompts/index";
+import { normalizePromptOverrides, resolvePromptText } from "../prompts/registry";
 import {
   errorResponse,
   jsonResponse,
@@ -27,6 +26,7 @@ const SKILL_RATE_WINDOW_MS = 60_000;
 type SkillMetadataRequest = {
   markdown: string;
   skillDirName: string;
+  promptOverrides?: unknown;
 };
 
 type SkillMetadataResponse = {
@@ -91,6 +91,7 @@ export const registerSkillRoutes = (http: HttpRouter) => {
             origin,
           );
         }
+        const promptOverrides = normalizePromptOverrides(body.promptOverrides);
 
         const apiKey = process.env.AI_GATEWAY_API_KEY;
         if (!apiKey) {
@@ -106,11 +107,12 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           const userMessage = buildSkillMetadataUserMessage(
             body.skillDirName,
             body.markdown,
+            resolvePromptText("skill_metadata.user", promptOverrides),
           );
 
           const result = await generateText({
             model: gateway("openai/gpt-4o-mini"),
-            system: SKILL_METADATA_PROMPT,
+            system: resolvePromptText("skill_metadata.system", promptOverrides),
             messages: [{ role: "user", content: userMessage }],
             maxOutputTokens: 200,
             temperature: 0.3,
@@ -187,7 +189,7 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
-        let body: { userProfile?: string } | null = null;
+        let body: { userProfile?: string; promptOverrides?: unknown } | null = null;
         try {
           body = (await request.json()) as { userProfile?: string };
         } catch {
@@ -197,6 +199,7 @@ export const registerSkillRoutes = (http: HttpRouter) => {
         if (!body?.userProfile) {
           return errorResponse(400, "userProfile is required", origin);
         }
+        const promptOverrides = normalizePromptOverrides(body.promptOverrides);
 
         const apiKey = process.env.AI_GATEWAY_API_KEY;
         if (!apiKey) {
@@ -220,11 +223,12 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           const userMessage = buildSkillSelectionUserMessage(
             body.userProfile,
             catalog,
+            resolvePromptText("skill_selection.user", promptOverrides),
           );
 
           const result = await generateText({
             model: gateway("openai/gpt-4o-mini"),
-            system: SKILL_SELECTION_PROMPT,
+            system: resolvePromptText("skill_selection.system", promptOverrides),
             messages: [{ role: "user", content: userMessage }],
             maxOutputTokens: 300,
             temperature: 0.3,
