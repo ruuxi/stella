@@ -54,29 +54,20 @@ Before writing, explore the existing pages directory to match established patter
 
 Return a short JSON summary in your final message: { status, panel_file_path, title, data_sources }.`;
 
-export const buildPersonalizedDashboardPageUserMessage = (args: {
-  userProfile: string;
-  assignment: PersonalizedDashboardPageAssignment;
-}) => {
-  const { assignment } = args;
-  const sources = assignment.dataSources.length > 0
-    ? assignment.dataSources.map((source) => `- ${source}`).join("\n")
-    : "- Find relevant public/free sources matching the page topic.";
-
-  return `Build one dashboard page for this assignment.
+export const PERSONALIZED_DASHBOARD_PAGE_USER_PROMPT_TEMPLATE = `Build one dashboard page for this assignment.
 
 PAGE:
-- page_id: ${assignment.pageId}
-- title: ${assignment.title}
-- panel_filename: ${assignment.panelName}.tsx
-- topic: ${assignment.topic}
-- focus: ${assignment.focus}
+- page_id: {{pageId}}
+- title: {{title}}
+- panel_filename: {{panelName}}.tsx
+- topic: {{topic}}
+- focus: {{focus}}
 
 SUGGESTED DATA SOURCES (adapt or substitute if these are unreliable):
-${sources}
+{{suggestedSources}}
 
 USER PROFILE (tailor content to this person's interests):
-${args.userProfile}
+{{userProfile}}
 
 REQUIREMENTS:
 1. Write the panel file to the path specified in the task prompt.
@@ -84,4 +75,24 @@ REQUIREMENTS:
 3. Fetch live data. Show loading and error states.
 4. Include at least one stella:send-message action relevant to the page content.
 5. End your response with a JSON summary: { "status": "ok", "panel_file_path": "...", "title": "...", "data_sources": [...] }`;
+
+export const buildPersonalizedDashboardPageUserMessage = (args: {
+  userProfile: string;
+  assignment: PersonalizedDashboardPageAssignment;
+  promptTemplate?: string;
+}) => {
+  const { assignment } = args;
+  const sources = assignment.dataSources.length > 0
+    ? assignment.dataSources.map((source) => `- ${source}`).join("\n")
+    : "- Find relevant public/free sources matching the page topic.";
+
+  const template = args.promptTemplate ?? PERSONALIZED_DASHBOARD_PAGE_USER_PROMPT_TEMPLATE;
+  return template
+    .replaceAll("{{pageId}}", assignment.pageId)
+    .replaceAll("{{title}}", assignment.title)
+    .replaceAll("{{panelName}}", assignment.panelName)
+    .replaceAll("{{topic}}", assignment.topic)
+    .replaceAll("{{focus}}", assignment.focus)
+    .replaceAll("{{suggestedSources}}", sources)
+    .replaceAll("{{userProfile}}", args.userProfile);
 };
