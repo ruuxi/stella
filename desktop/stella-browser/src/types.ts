@@ -829,6 +829,30 @@ export interface WindowNewCommand extends BaseCommand {
   viewport?: { width: number; height: number };
 }
 
+// Site Mods (persistent per-site CSS/JS overrides)
+export interface SiteModSetCommand extends BaseCommand {
+  action: 'site_mod_set';
+  pattern: string; // URL glob, e.g. "x.com/*", "*.github.com/*/pull/*"
+  css?: string;
+  js?: string;
+  label?: string;
+}
+
+export interface SiteModListCommand extends BaseCommand {
+  action: 'site_mod_list';
+}
+
+export interface SiteModRemoveCommand extends BaseCommand {
+  action: 'site_mod_remove';
+  pattern: string;
+}
+
+export interface SiteModToggleCommand extends BaseCommand {
+  action: 'site_mod_toggle';
+  pattern: string;
+  enabled?: boolean; // If omitted, toggles current state
+}
+
 export interface ChainStep {
   action: string;
   [key: string]: unknown;
@@ -972,6 +996,10 @@ export type Command =
   | InputTouchCommand
   | SwipeCommand
   | DeviceListCommand
+  | SiteModSetCommand
+  | SiteModListCommand
+  | SiteModRemoveCommand
+  | SiteModToggleCommand
   | ChainCommand;
 
 // Response types
