@@ -129,6 +129,19 @@ describe("security regressions", () => {
     expect(source).toContain("BACKEND_FALLBACK_AGENT_TYPE");
   });
 
+  test("bridge-based connector runtime is removed", () => {
+    const connectorRoutes = readBackendFile("convex/http_routes/connectors.ts");
+    const deliverySource = readBackendFile("convex/channels/connector_delivery.ts");
+
+    expect(connectorRoutes).not.toContain("/api/bridge/poll");
+    expect(connectorRoutes).not.toContain("/api/webhooks/bridge");
+    expect(deliverySource).not.toContain('case "whatsapp"');
+    expect(deliverySource).not.toContain('case "signal"');
+    expect(existsSync(path.join(backendRoot, "convex/channels/bridge.ts"))).toBe(false);
+    expect(existsSync(path.join(backendRoot, "convex/channels/whatsapp.ts"))).toBe(false);
+    expect(existsSync(path.join(backendRoot, "convex/channels/signal.ts"))).toBe(false);
+  });
+
   test("cron compatibility module is limited to remote turn completion", () => {
     const cronSource = readBackendFile("convex/scheduling/cron_jobs.ts");
 

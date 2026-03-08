@@ -35,6 +35,11 @@ describe("schema modules export table definitions", () => {
     expect(Object.keys(integrationsSchema).length).toBeGreaterThan(0);
   });
 
+  test("integrationsSchema does not include removed bridge tables", () => {
+    expect(Object.keys(integrationsSchema)).not.toContain("bridge_sessions");
+    expect(Object.keys(integrationsSchema)).not.toContain("bridge_outbound");
+  });
+
   test("schedulingSchema is an empty object after backend scheduler removal", () => {
     expect(typeof schedulingSchema).toBe("object");
     expect(Object.keys(schedulingSchema).length).toBe(0);
