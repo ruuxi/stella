@@ -6,6 +6,7 @@ import { CloudSyncBridge } from '@/app/auth/CloudSyncBridge'
 import { AutoAnonAuth } from './app/auth/AutoAnonAuth'
 import { AuthDeepLinkHandler } from './app/auth/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
+import { ModelPreferencesBridge } from '@/app/settings/ModelPreferencesBridge'
 import { ChatStoreProvider } from '@/context/chat-store'
 
 type WindowType = 'full' | 'mini'
@@ -58,6 +59,7 @@ function App() {
       <AutoAnonAuth />
       <AuthTokenBridge />
       <CloudSyncBridge />
+      <ModelPreferencesBridge />
       <Suspense fallback={<div className={`app window-${windowType}`} />}>{shell}</Suspense>
     </>
   )
