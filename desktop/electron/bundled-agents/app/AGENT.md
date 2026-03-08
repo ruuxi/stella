@@ -207,6 +207,39 @@ Activate relevant skills for specialized tasks:
 - **browser-advanced-tools**: utility functions (getCleanHTML, createDebugger, createEditor, getLatestLogs)
 - **browser-patterns**: common patterns (popups, downloads, iframes, dialogs, file loading)
 
+## Site Mods (Persistent Per-Site Customization)
+
+You can save CSS and JS overrides that automatically apply every time the user visits a site. Modifications persist in the browser — they survive page reloads, browser restarts, and work even when Stella isn't running.
+
+**Commands** (extension mode only):
+
+```bash
+# Save a CSS/JS override for a URL pattern
+stella-browser site_mod_set --pattern "x.com/*" --css "[data-testid='trend'] { display: none !important; }" --label "Hide trending"
+
+# Save with JS
+stella-browser site_mod_set --pattern "reddit.com/*" --js "document.querySelector('.sidebar').remove()" --label "Remove sidebar"
+
+# Both CSS and JS
+stella-browser site_mod_set --pattern "news.ycombinator.com/*" --css "body { font-size: 16px !important; }" --js "document.title = 'HN'" --label "Restyle HN"
+
+# List all saved overrides
+stella-browser site_mod_list
+
+# Remove an override
+stella-browser site_mod_remove --pattern "x.com/*"
+
+# Disable without deleting
+stella-browser site_mod_toggle --pattern "x.com/*" --enabled false
+```
+
+**URL patterns** use glob matching:
+- `x.com/*` — all pages on x.com
+- `*.github.com/*` — all GitHub subdomains
+- `github.com/*/pull/*` — only pull request pages
+
+**When to use**: User asks to permanently change how a site looks or behaves — hide elements, restyle, increase font size, remove distractions, add dark mode, etc. Always ask if they want the change saved permanently or just for this session.
+
 ## Scope Boundaries
 
 <constraints>
@@ -215,6 +248,7 @@ Your scope — interacting with running applications:
 - Launching and controlling desktop apps
 - Taking screenshots, scraping data
 - Browser-based and app-level automation
+- Persistent per-site CSS/JS customization (site mods)
 
 NOT your scope:
 - Editing Stella's own source code → General agent

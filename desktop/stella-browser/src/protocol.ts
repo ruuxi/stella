@@ -797,6 +797,30 @@ const windowNewSchema = baseCommandSchema.extend({
     .optional(),
 });
 
+// Site Mods: persistent per-site CSS/JS overrides
+const siteModSetSchema = baseCommandSchema.extend({
+  action: z.literal('site_mod_set'),
+  pattern: z.string().min(1),
+  css: z.string().optional(),
+  js: z.string().optional(),
+  label: z.string().optional(),
+});
+
+const siteModListSchema = baseCommandSchema.extend({
+  action: z.literal('site_mod_list'),
+});
+
+const siteModRemoveSchema = baseCommandSchema.extend({
+  action: z.literal('site_mod_remove'),
+  pattern: z.string().min(1),
+});
+
+const siteModToggleSchema = baseCommandSchema.extend({
+  action: z.literal('site_mod_toggle'),
+  pattern: z.string().min(1),
+  enabled: z.boolean().optional(),
+});
+
 // Chain command: execute multiple steps sequentially with delays
 const chainStepSchema = z
   .object({
@@ -947,6 +971,10 @@ const commandSchema = z.discriminatedUnion('action', [
   inputTouchSchema,
   swipeSchema,
   deviceListSchema,
+  siteModSetSchema,
+  siteModListSchema,
+  siteModRemoveSchema,
+  siteModToggleSchema,
   chainSchema,
 ]);
 

@@ -31,6 +31,9 @@ import {
 } from './commands/network.js';
 import { handleDownload } from './commands/downloads.js';
 import { handleChain } from './commands/chain.js';
+import {
+  handleSiteModSet, handleSiteModList, handleSiteModRemove, handleSiteModToggle,
+} from './commands/site-mods.js';
 
 // --- Command Router ---
 
@@ -121,6 +124,12 @@ const HANDLERS = {
 
   // Chain (batched sequential execution)
   chain: (cmd) => handleChain(cmd, HANDLERS),
+
+  // Site Mods (persistent per-site CSS/JS overrides)
+  site_mod_set: handleSiteModSet,
+  site_mod_list: handleSiteModList,
+  site_mod_remove: handleSiteModRemove,
+  site_mod_toggle: handleSiteModToggle,
 };
 
 // Commands that we acknowledge but don't support in extension mode
