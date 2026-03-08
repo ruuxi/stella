@@ -270,7 +270,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     }
     try {
       await fs.unlink(TEST_BROKEN_FILE)
-    } catch {}
+    } catch {
+      // Ignore missing temp files during cleanup.
+    }
     return { ok: true }
   })
 

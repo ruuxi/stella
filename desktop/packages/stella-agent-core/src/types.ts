@@ -1,4 +1,5 @@
 import type {
+	Api,
 	AssistantMessageEvent,
 	ImageContent,
 	Message,
@@ -20,7 +21,7 @@ export type StreamFn = (
  * Configuration for the agent loop.
  */
 export interface AgentLoopConfig extends SimpleStreamOptions {
-	model: Model<any>;
+	model: Model<Api>;
 
 	/**
 	 * Converts AgentMessage[] to LLM-compatible Message[] before each LLM call.
@@ -118,7 +119,8 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
  * ```
  */
 export interface CustomAgentMessages {
-	// Empty by default - apps extend via declaration merging
+	/** Preserves declaration merging without widening the indexed union. */
+	__customAgentMessagesBrand?: never;
 }
 
 /**
@@ -126,16 +128,16 @@ export interface CustomAgentMessages {
  * This abstraction allows apps to add custom message types while maintaining
  * type safety and compatibility with the base LLM messages.
  */
-export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages];
+export type AgentMessage = Message | NonNullable<CustomAgentMessages[keyof CustomAgentMessages]>;
 
 /**
  * Agent state containing all configuration and conversation data.
  */
 export interface AgentState {
 	systemPrompt: string;
-	model: Model<any>;
+	model: Model<Api>;
 	thinkingLevel: ThinkingLevel;
-	tools: AgentTool<any>[];
+	tools: AgentTool[];
 	messages: AgentMessage[]; // Can include attachments + custom message types
 	isStreaming: boolean;
 	streamMessage: AgentMessage | null;
@@ -151,10 +153,10 @@ export interface AgentToolResult<T> {
 }
 
 // Callback for streaming tool execution updates
-export type AgentToolUpdateCallback<T = any> = (partialResult: AgentToolResult<T>) => void;
+export type AgentToolUpdateCallback<T = unknown> = (partialResult: AgentToolResult<T>) => void;
 
 // AgentTool extends Tool but adds the execute function
-export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = any> extends Tool<TParameters> {
+export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unknown> extends Tool<TParameters> {
 	// A human-readable label for the tool to be displayed in UI
 	label: string;
 	execute: (
@@ -169,7 +171,7 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = any
 export interface AgentContext {
 	systemPrompt: string;
 	messages: AgentMessage[];
-	tools?: AgentTool<any>[];
+	tools?: AgentTool[];
 }
 
 /**
@@ -189,6 +191,18 @@ export type AgentEvent =
 	| { type: "message_update"; message: AgentMessage; assistantMessageEvent: AssistantMessageEvent }
 	| { type: "message_end"; message: AgentMessage }
 	// Tool execution lifecycle
-	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: any }
-	| { type: "tool_execution_update"; toolCallId: string; toolName: string; args: any; partialResult: any }
-	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: any; isError: boolean };
+	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: Record<string, unknown> }
+	| {
+			type: "tool_execution_update";
+			toolCallId: string;
+			toolName: string;
+			args: Record<string, unknown>;
+			partialResult: AgentToolResult<unknown>;
+	  }
+	| {
+			type: "tool_execution_end";
+			toolCallId: string;
+			toolName: string;
+			result: AgentToolResult<unknown>;
+			isError: boolean;
+	  };

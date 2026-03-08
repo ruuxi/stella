@@ -23,7 +23,13 @@ function devServerUrl(): Plugin {
   return {
     name: 'dev-server-url',
     configureServer(server) {
-      try { fs.unlinkSync(DEV_URL_FILE) } catch {}
+      try {
+        fs.unlinkSync(DEV_URL_FILE)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error
+        }
+      }
       server.httpServer?.once('listening', () => {
         const addr = server.httpServer?.address()
         if (addr && typeof addr === 'object') {

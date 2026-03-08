@@ -32,6 +32,16 @@ import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copi
 import { adjustMaxTokensForThinking, buildBaseOptions } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
 
+type AnthropicToolSchema = {
+	properties?: Record<string, unknown>;
+	required?: string[];
+};
+
+type CacheControlBlock =
+	| Extract<ContentBlockParam, { type: "text" }>
+	| Extract<ContentBlockParam, { type: "image" }>
+	| Extract<ContentBlockParam, { type: "tool_result" }>;
+
 /**
  * Resolve cache retention preference.
  * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
@@ -240,7 +250,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			const anthropicStream = client.messages.stream({ ...params, stream: true }, { signal: options?.signal });
 			stream.push({ type: "start", partial: output });
 
-			type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson: string })) & { index: number };
+			type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson?: string })) & { index?: number };
 			const blocks = output.content as Block[];
 
 			for await (const event of anthropicStream) {
@@ -290,7 +300,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 							name: isOAuthToken
 								? fromClaudeCodeName(event.content_block.name, context.tools)
 								: event.content_block.name,
-							arguments: (event.content_block.input as Record<string, any>) ?? {},
+							arguments: (event.content_block.input as Record<string, unknown>) ?? {},
 							partialJson: "",
 							index: event.index,
 						};
@@ -326,7 +336,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 						const index = blocks.findIndex((b) => b.index === event.index);
 						const block = blocks[index];
 						if (block && block.type === "toolCall") {
-							block.partialJson += event.delta.partial_json;
+							block.partialJson = `${block.partialJson ?? ""}${event.delta.partial_json}`;
 							block.arguments = parseStreamingJson(block.partialJson);
 							stream.push({
 								type: "toolcall_delta",
@@ -347,7 +357,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 					const index = blocks.findIndex((b) => b.index === event.index);
 					const block = blocks[index];
 					if (block) {
-						delete (block as any).index;
+						delete block.index;
 						if (block.type === "text") {
 							stream.push({
 								type: "text_end",
@@ -364,7 +374,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 							});
 						} else if (block.type === "toolCall") {
 							block.arguments = parseStreamingJson(block.partialJson);
-							delete (block as any).partialJson;
+							delete block.partialJson;
 							stream.push({
 								type: "toolcall_end",
 								contentIndex: index,
@@ -409,7 +419,9 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			for (const block of output.content) delete (block as any).index;
+			for (const block of output.content as Array<{ index?: number }>) {
+				delete block.index;
+			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -822,7 +834,7 @@ function convertMessages(
 					lastBlock &&
 					(lastBlock.type === "text" || lastBlock.type === "image" || lastBlock.type === "tool_result")
 				) {
-					(lastBlock as any).cache_control = cacheControl;
+					(lastBlock as CacheControlBlock & { cache_control?: typeof cacheControl }).cache_control = cacheControl;
 				}
 			} else if (typeof lastMessage.content === "string") {
 				lastMessage.content = [
@@ -831,7 +843,7 @@ function convertMessages(
 						text: lastMessage.content,
 						cache_control: cacheControl,
 					},
-				] as any;
+				];
 			}
 		}
 	}
@@ -843,7 +855,7 @@ function convertTools(tools: Tool[], isOAuthToken: boolean): Anthropic.Messages.
 	if (!tools) return [];
 
 	return tools.map((tool) => {
-		const jsonSchema = tool.parameters as any; // TypeBox already generates JSON Schema
+		const jsonSchema = tool.parameters as AnthropicToolSchema; // TypeBox already generates JSON Schema
 
 		return {
 			name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,

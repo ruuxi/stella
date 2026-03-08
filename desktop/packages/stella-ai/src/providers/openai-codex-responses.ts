@@ -414,7 +414,9 @@ async function* parseSSE(response: Response): AsyncGenerator<Record<string, unkn
 				if (data && data !== "[DONE]") {
 					try {
 						yield JSON.parse(data);
-					} catch {}
+					} catch {
+						continue;
+					}
 				}
 			}
 			idx = buffer.indexOf("\n\n");
@@ -480,7 +482,9 @@ function isWebSocketReusable(socket: WebSocketLike): boolean {
 function closeWebSocketSilently(socket: WebSocketLike, code = 1000, reason = "done"): void {
 	try {
 		socket.close(code, reason);
-	} catch {}
+	} catch {
+		// Some runtimes throw when closing an already-closed socket.
+	}
 }
 
 function scheduleSessionWebSocketExpiry(sessionId: string, entry: CachedWebSocketConnection): void {
@@ -696,7 +700,9 @@ async function* parseWebSocket(socket: WebSocketLike, signal?: AbortSignal): Asy
 				}
 				queue.push(parsed);
 				wake();
-			} catch {}
+			} catch {
+				return;
+			}
 		})();
 	};
 
@@ -813,7 +819,9 @@ async function parseErrorResponse(response: Response): Promise<{ message: string
 			}
 			message = err.message || friendlyMessage || message;
 		}
-	} catch {}
+	} catch {
+		// Preserve the raw response text when the error body is not valid JSON.
+	}
 
 	return { message, friendlyMessage };
 }

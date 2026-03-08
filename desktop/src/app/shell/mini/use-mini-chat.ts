@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUiState } from "@/providers/ui-state";
 import { useIpcQuery } from "@/hooks/use-ipc-query";
 import type {
@@ -27,18 +27,16 @@ export function useMiniChat(opts: {
   const { isActive = true, chatContext, selectedText, setChatContext, setSelectedText } = opts;
   const { state } = useUiState();
   const activeConversationId = state.conversationId;
+  const currentConversationId = activeConversationId ?? null;
 
   const [message, setMessage] = useState("");
-  const [snapshot, setSnapshot] = useState<MiniBridgeSnapshot>(() =>
-    createEmptySnapshot(activeConversationId ?? null),
-  );
-  const receivedLiveSnapshotRef = useRef(false);
+  const [liveSnapshot, setLiveSnapshot] = useState<MiniBridgeSnapshot | null>(null);
   const snapshotRequest = useMemo(
     () => ({
       type: "query:snapshot" as const,
-      conversationId: activeConversationId ?? null,
+      conversationId: currentConversationId,
     }),
-    [activeConversationId],
+    [currentConversationId],
   );
   const selectSnapshot = useCallback((response: MiniBridgeResponse) => {
     if (response.type !== "query:snapshot") {
@@ -58,29 +56,17 @@ export function useMiniChat(opts: {
     select: selectSnapshot,
   });
 
-  useEffect(() => {
-    setSnapshot((prev) => {
-      const nextConversationId = activeConversationId ?? null;
-      if (prev.conversationId === nextConversationId) {
-        return prev;
-      }
-      return createEmptySnapshot(nextConversationId);
-    });
-    receivedLiveSnapshotRef.current = false;
-  }, [activeConversationId]);
-
-  useEffect(() => {
-    if (!initialSnapshot) {
-      return;
+  const snapshot = useMemo(() => {
+    if (liveSnapshot?.conversationId === currentConversationId) {
+      return liveSnapshot;
     }
 
-    // Avoid clobbering fresher bridge updates with an older query response.
-    if (receivedLiveSnapshotRef.current) {
-      return;
+    if (initialSnapshot?.conversationId === currentConversationId) {
+      return initialSnapshot;
     }
 
-    setSnapshot(initialSnapshot);
-  }, [initialSnapshot]);
+    return createEmptySnapshot(currentConversationId);
+  }, [currentConversationId, initialSnapshot, liveSnapshot]);
 
   useEffect(() => {
     if (!isActive) {
@@ -98,8 +84,7 @@ export function useMiniChat(opts: {
         return;
       }
 
-      receivedLiveSnapshotRef.current = true;
-      setSnapshot(update.snapshot);
+      setLiveSnapshot(update.snapshot);
     });
 
     return () => {

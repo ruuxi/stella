@@ -1410,9 +1410,7 @@ describe("twitch-emotes", () => {
 
   describe("in-flight request deduplication", () => {
     it("deduplicates concurrent calls to loadTwitchEmoteLookup", async () => {
-      let fetchCallCount = 0;
       mockFetch.mockImplementation((url: string) => {
-        fetchCallCount++;
         if (url.includes("api.betterttv.net/3/cached/emotes/global")) {
           return jsonResponse([makeBttvEmote("e1", "Dedup", false)]);
         }

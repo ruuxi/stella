@@ -6,7 +6,17 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['coverage', 'dist', 'dist-electron', 'release']),
+  globalIgnores([
+    'coverage',
+    'dist',
+    'dist-electron',
+    'release',
+    '**/dist/**',
+    '.eslint-browser.json',
+    '.eslint-focus.json',
+    '.eslint-packages.json',
+    '.eslint-report.json',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -20,6 +30,14 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
       'no-restricted-imports': [
         'error',
         {
@@ -51,6 +69,13 @@ export default defineConfig([
           ],
         },
       ],
+    },
+  },
+  {
+    files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-function-type': 'off',
     },
   },
 ])

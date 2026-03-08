@@ -105,7 +105,10 @@ type BlobRefs = {
   colorsRef: React.RefObject<BlobColors>
 }
 
-function useRadialBlob(colors: ReturnType<typeof useTheme>['colors']): BlobRefs {
+function useRadialBlob(
+  colors: ReturnType<typeof useTheme>['colors'],
+  selectedIdx: number,
+): BlobRefs {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const blobReady = useRef(false)
   const selectedIdxRef = useRef(-1)
@@ -132,13 +135,15 @@ function useRadialBlob(colors: ReturnType<typeof useTheme>['colors']): BlobRefs 
 
   useEffect(() => {
     const cardVec = cssToVec3(colors.card)
+    const interactiveVec = cssToVec3(colors.interactive)
+    selectedIdxRef.current = selectedIdx
     colorsRef.current = {
-      fills: Array(5).fill(cardVec),
-      selectedFill: cssToVec3(colors.interactive),
+      fills: WEDGES.map((_, i) => (i === selectedIdx ? interactiveVec : cardVec)),
+      selectedFill: interactiveVec,
       centerBg: cssToVec3(colors.background),
       stroke: cssToVec3(colors.border),
     }
-  }, [colors])
+  }, [colors.background, colors.border, colors.card, colors.interactive, selectedIdx])
 
   return useMemo(() => ({ canvasRef, blobReady, selectedIdxRef, colorsRef }), [])
 }
@@ -278,8 +283,16 @@ export function RadialDial() {
   const [contentVisible, setContentVisible] = useState(false)
   const { colors } = useTheme()
 
-  const blob = useRadialBlob(colors)
+  const selectedBlobIndex = useMemo(
+    () =>
+      phase === 'open' || phase === 'closing'
+        ? WEDGES.findIndex((w) => w.id === selectedWedge)
+        : -1,
+    [phase, selectedWedge],
+  )
+  const blob = useRadialBlob(colors, selectedBlobIndex)
   useRadialIPC(blob, setSelectedWedge, setPhase, setContentVisible)
+  const { canvasRef } = blob
   const palette = useMemo(() => {
     const interactive = toRgba(colors.interactive, 1)
     const interactiveStroke = toRgba(colors.interactive, 0.9)
@@ -292,27 +305,15 @@ export function RadialDial() {
       card,
       border,
       background,
-      cardVec: cssToVec3(colors.card),
-      interactiveVec: cssToVec3(colors.interactive),
     }
   }, [colors.background, colors.border, colors.card, colors.interactive])
-
-  useEffect(() => {
-    const idx = WEDGES.findIndex((w) => w.id === selectedWedge)
-    blob.selectedIdxRef.current = phase === 'open' || phase === 'closing' ? idx : -1
-
-    blob.colorsRef.current = {
-      ...blob.colorsRef.current,
-      fills: WEDGES.map((_, i) => (i === idx ? palette.interactiveVec : palette.cardVec)),
-    }
-  }, [selectedWedge, phase, blob, palette.cardVec, palette.interactiveVec])
 
   const showCanvas = phase !== 'hidden'
 
   return (
     <div className="radial-dial-container">
       <canvas
-        ref={blob.canvasRef}
+        ref={canvasRef}
         className="radial-blob-canvas"
         style={{
           width: SIZE,

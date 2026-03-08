@@ -75,6 +75,32 @@ export interface OpenAICompletionsOptions extends StreamOptions {
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
 }
 
+type ReasoningField = "reasoning_content" | "reasoning" | "reasoning_text";
+type ReasoningDetail = { type?: string; id?: string; data?: string };
+type CompletionDeltaWithReasoning = NonNullable<ChatCompletionChunk.Choice["delta"]> &
+	Partial<Record<ReasoningField, string | null>> & {
+		reasoning_details?: ReasoningDetail[];
+	};
+type OpenAICompletionsRequest = OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming & {
+	stream_options?: { include_usage: true };
+	max_tokens?: number;
+	enable_thinking?: boolean;
+	provider?: NonNullable<Required<OpenAICompletionsCompat>["openRouterRouting"]>;
+	providerOptions?: { gateway: Record<string, string[]> };
+};
+type AssistantMessageWithExtras = ChatCompletionAssistantMessageParam &
+	Partial<Record<ReasoningField, string>> & {
+		reasoning_details?: ReasoningDetail[];
+	};
+type ToolResultMessageWithName = ChatCompletionToolMessageParam & { name?: string };
+type OpenAIErrorWithMetadata = {
+	error?: {
+		metadata?: {
+			raw?: string;
+		};
+	};
+};
+
 export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenAICompletionsOptions> = (
 	model: Model<"openai-completions">,
 	context: Context,
@@ -175,6 +201,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 				}
 
 				if (choice.delta) {
+					const deltaWithReasoning = choice.delta as CompletionDeltaWithReasoning;
 					if (
 						choice.delta.content !== null &&
 						choice.delta.content !== undefined &&
@@ -202,14 +229,11 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 					// or reasoning (other openai compatible endpoints)
 					// Use the first non-empty reasoning field to avoid duplication
 					// (e.g., chutes.ai returns both reasoning_content and reasoning with same content)
-					const reasoningFields = ["reasoning_content", "reasoning", "reasoning_text"];
-					let foundReasoningField: string | null = null;
+					const reasoningFields: ReasoningField[] = ["reasoning_content", "reasoning", "reasoning_text"];
+					let foundReasoningField: ReasoningField | null = null;
 					for (const field of reasoningFields) {
-						if (
-							(choice.delta as any)[field] !== null &&
-							(choice.delta as any)[field] !== undefined &&
-							(choice.delta as any)[field].length > 0
-						) {
+						const reasoningDelta = deltaWithReasoning[field];
+						if (reasoningDelta !== null && reasoningDelta !== undefined && reasoningDelta.length > 0) {
 							if (!foundReasoningField) {
 								foundReasoningField = field;
 								break;
@@ -230,7 +254,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 						}
 
 						if (currentBlock.type === "thinking") {
-							const delta = (choice.delta as any)[foundReasoningField];
+							const delta = deltaWithReasoning[foundReasoningField] ?? "";
 							currentBlock.thinking += delta;
 							stream.push({
 								type: "thinking_delta",
@@ -267,7 +291,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 								if (toolCall.function?.arguments) {
 									delta = toolCall.function.arguments;
 									currentBlock.partialArgs += toolCall.function.arguments;
-									currentBlock.arguments = parseStreamingJson(currentBlock.partialArgs);
+									currentBlock.arguments = parseStreamingJson<Record<string, unknown>>(currentBlock.partialArgs);
 								}
 								stream.push({
 									type: "toolcall_delta",
@@ -279,7 +303,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 						}
 					}
 
-					const reasoningDetails = (choice.delta as any).reasoning_details;
+					const reasoningDetails = deltaWithReasoning.reasoning_details;
 					if (reasoningDetails && Array.isArray(reasoningDetails)) {
 						for (const detail of reasoningDetails) {
 							if (detail.type === "reasoning.encrypted" && detail.id && detail.data) {
@@ -308,11 +332,10 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			for (const block of output.content) delete (block as any).index;
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
 			// Some providers via OpenRouter give additional information in this field.
-			const rawMetadata = (error as any)?.error?.metadata?.raw;
+			const rawMetadata = (error as OpenAIErrorWithMetadata | null)?.error?.metadata?.raw;
 			if (rawMetadata) output.errorMessage += `\n${rawMetadata}`;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
@@ -386,14 +409,14 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
 	const messages = convertMessages(model, context, compat);
 	maybeAddOpenRouterAnthropicCacheControl(model, messages);
 
-	const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
+	const params: OpenAICompletionsRequest = {
 		model: model.id,
 		messages,
 		stream: true,
 	};
 
 	if (compat.supportsUsageInStreaming !== false) {
-		(params as any).stream_options = { include_usage: true };
+		params.stream_options = { include_usage: true };
 	}
 
 	if (compat.supportsStore) {
@@ -402,7 +425,7 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
 
 	if (options?.maxTokens) {
 		if (compat.maxTokensField === "max_tokens") {
-			(params as any).max_tokens = options.maxTokens;
+			params.max_tokens = options.maxTokens;
 		} else {
 			params.max_completion_tokens = options.maxTokens;
 		}
@@ -425,7 +448,7 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
 
 	if ((compat.thinkingFormat === "zai" || compat.thinkingFormat === "qwen") && model.reasoning) {
 		// Both Z.ai and Qwen use enable_thinking: boolean
-		(params as any).enable_thinking = !!options?.reasoningEffort;
+		params.enable_thinking = !!options?.reasoningEffort;
 	} else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
 		// OpenAI-style reasoning_effort
 		params.reasoning_effort = options.reasoningEffort;
@@ -433,7 +456,7 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
 
 	// OpenRouter provider routing preferences
 	if (model.baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
-		(params as any).provider = model.compat.openRouterRouting;
+		params.provider = model.compat.openRouterRouting;
 	}
 
 	// Vercel AI Gateway provider routing preferences
@@ -443,7 +466,7 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
 			const gatewayOptions: Record<string, string[]> = {};
 			if (routing.only) gatewayOptions.only = routing.only;
 			if (routing.order) gatewayOptions.order = routing.order;
-			(params as any).providerOptions = { gateway: gatewayOptions };
+			params.providerOptions = { gateway: gatewayOptions };
 		}
 	}
 
@@ -561,7 +584,7 @@ export function convertMessages(
 			}
 		} else if (msg.role === "assistant") {
 			// Some providers (e.g. Mistral) don't accept null content, use empty string instead
-			const assistantMsg: ChatCompletionAssistantMessageParam = {
+			const assistantMsg: AssistantMessageWithExtras = {
 				role: "assistant",
 				content: compat.requiresAssistantAfterToolResult ? "" : null,
 			};
@@ -599,7 +622,7 @@ export function convertMessages(
 					// Use the signature from the first thinking block if available (for llama.cpp server + gpt-oss)
 					const signature = nonEmptyThinkingBlocks[0].thinkingSignature;
 					if (signature && signature.length > 0) {
-						(assistantMsg as any)[signature] = nonEmptyThinkingBlocks.map((b) => b.thinking).join("\n");
+						assistantMsg[signature as ReasoningField] = nonEmptyThinkingBlocks.map((b) => b.thinking).join("\n");
 					}
 				}
 			}
@@ -625,7 +648,7 @@ export function convertMessages(
 					})
 					.filter(Boolean);
 				if (reasoningDetails.length > 0) {
-					(assistantMsg as any).reasoning_details = reasoningDetails;
+					assistantMsg.reasoning_details = reasoningDetails;
 				}
 			}
 			// Skip assistant messages that have no content and no tool calls.
@@ -650,21 +673,21 @@ export function convertMessages(
 
 				// Extract text and image content
 				const textResult = toolMsg.content
-					.filter((c) => c.type === "text")
-					.map((c) => (c as any).text)
+					.filter((c): c is TextContent => c.type === "text")
+					.map((c) => c.text)
 					.join("\n");
 				const hasImages = toolMsg.content.some((c) => c.type === "image");
 
 				// Always send tool result with text (or placeholder if only images)
 				const hasText = textResult.length > 0;
 				// Some providers (e.g. Mistral) require the 'name' field in tool results
-				const toolResultMsg: ChatCompletionToolMessageParam = {
+				const toolResultMsg: ToolResultMessageWithName = {
 					role: "tool",
 					content: sanitizeSurrogates(hasText ? textResult : "(see attached image)"),
 					tool_call_id: toolMsg.toolCallId,
 				};
 				if (compat.requiresToolResultName && toolMsg.toolName) {
-					(toolResultMsg as any).name = toolMsg.toolName;
+					toolResultMsg.name = toolMsg.toolName;
 				}
 				params.push(toolResultMsg);
 
@@ -674,7 +697,7 @@ export function convertMessages(
 							imageBlocks.push({
 								type: "image_url",
 								image_url: {
-									url: `data:${(block as any).mimeType};base64,${(block as any).data}`,
+									url: `data:${block.mimeType};base64,${block.data}`,
 								},
 							});
 						}
@@ -724,7 +747,7 @@ function convertTools(
 		function: {
 			name: tool.name,
 			description: tool.description,
-			parameters: tool.parameters as any, // TypeBox already generates JSON Schema
+			parameters: tool.parameters as Record<string, unknown>, // TypeBox already generates JSON Schema
 			// Only include strict if provider supports it. Some reject unknown fields.
 			...(compat.supportsStrictMode !== false && { strict: false }),
 		},

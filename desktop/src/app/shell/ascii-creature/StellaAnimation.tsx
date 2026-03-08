@@ -369,7 +369,7 @@ export const StellaAnimation = React.forwardRef<
         observer.disconnect();
         mainRenderer.destroy();
       };
-    }, [width, height]);
+    }, [width, height, externalAnalyserRef, externalOutputAnalyserRef, frameSkip, maxDpr]);
 
     return (
       <div ref={containerRef} className="stella-animation-container">

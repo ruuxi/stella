@@ -5,6 +5,7 @@
 
 // Internal import for JSON parsing utility
 import {
+	type Api,
 	type AssistantMessage,
 	type AssistantMessageEvent,
 	type Context,
@@ -15,6 +16,8 @@ import {
 	type StopReason,
 	type ToolCall,
 } from "@stella/stella-ai";
+
+type StreamingToolCall = ToolCall & { partialJson?: string };
 
 // Create stream class matching ProxyMessageEventStream
 class ProxyMessageEventStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
@@ -82,7 +85,7 @@ export interface ProxyStreamOptions extends SimpleStreamOptions {
  * });
  * ```
  */
-export function streamProxy(model: Model<any>, context: Context, options: ProxyStreamOptions): ProxyMessageEventStream {
+export function streamProxy(model: Model<Api>, context: Context, options: ProxyStreamOptions): ProxyMessageEventStream {
 	const stream = new ProxyMessageEventStream();
 
 	(async () => {
@@ -281,20 +284,24 @@ function processProxyEvent(
 		}
 
 		case "toolcall_start":
-			partial.content[proxyEvent.contentIndex] = {
-				type: "toolCall",
-				id: proxyEvent.id,
-				name: proxyEvent.toolName,
-				arguments: {},
-				partialJson: "",
-			} satisfies ToolCall & { partialJson: string } as ToolCall;
+			{
+				const toolCall: StreamingToolCall = {
+					type: "toolCall",
+					id: proxyEvent.id,
+					name: proxyEvent.toolName,
+					arguments: {},
+					partialJson: "",
+				};
+				partial.content[proxyEvent.contentIndex] = toolCall;
+			}
 			return { type: "toolcall_start", contentIndex: proxyEvent.contentIndex, partial };
 
 		case "toolcall_delta": {
 			const content = partial.content[proxyEvent.contentIndex];
 			if (content?.type === "toolCall") {
-				(content as any).partialJson += proxyEvent.delta;
-				content.arguments = parseStreamingJson((content as any).partialJson) || {};
+				const streamingContent = content as StreamingToolCall;
+				streamingContent.partialJson = `${streamingContent.partialJson ?? ""}${proxyEvent.delta}`;
+				content.arguments = parseStreamingJson<Record<string, unknown>>(streamingContent.partialJson) || {};
 				partial.content[proxyEvent.contentIndex] = { ...content }; // Trigger reactivity
 				return {
 					type: "toolcall_delta",
@@ -309,7 +316,7 @@ function processProxyEvent(
 		case "toolcall_end": {
 			const content = partial.content[proxyEvent.contentIndex];
 			if (content?.type === "toolCall") {
-				delete (content as any).partialJson;
+				delete (content as StreamingToolCall).partialJson;
 				return {
 					type: "toolcall_end",
 					contentIndex: proxyEvent.contentIndex,
@@ -333,7 +340,7 @@ function processProxyEvent(
 
 		default: {
 			const _exhaustiveCheck: never = proxyEvent;
-			console.warn(`Unhandled proxy event type: ${(proxyEvent as any).type}`);
+			console.warn("Unhandled proxy event type", _exhaustiveCheck);
 			return undefined;
 		}
 	}

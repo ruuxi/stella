@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useAccountMode } from "@/hooks/use-account-mode";
@@ -247,53 +247,60 @@ function ModelConfigSection() {
   const setCodexLocalMaxConcurrency = useMutation(api.data.preferences.setCodexLocalMaxConcurrency);
   const { groups } = useModelCatalog();
 
-  let serverOverrides: Record<string, string> = {};
-  if (overridesJson) {
-    try { serverOverrides = JSON.parse(overridesJson); } catch { /* malformed JSON from server — use empty */ }
-  }
+  const serverOverrides = useMemo<Record<string, string>>(() => {
+    if (!overridesJson) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(overridesJson) as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }, [overridesJson]);
   const [localOverrides, setLocalOverrides] = useState<Record<string, string | null>>({});
   const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
     "default" | "codex_local" | "claude_code_local" | null
   >(null);
   const [localCodexLocalMaxConcurrency, setLocalCodexLocalMaxConcurrency] = useState<number | null>(null);
 
-  // Merge: local optimistic values take precedence, null means cleared
-  const overrides: Record<string, string> = { ...serverOverrides };
-  for (const [k, v] of Object.entries(localOverrides)) {
-    if (v === null) delete overrides[k];
-    else overrides[k] = v;
-  }
+  const pendingLocalOverrides = useMemo(() => {
+    const next: Record<string, string | null> = {};
 
-  // Clear optimistic state once server catches up
-  useEffect(() => {
-    setLocalOverrides((prev) => {
-      const next: Record<string, string | null> = {};
-      for (const [k, v] of Object.entries(prev)) {
-        const serverVal = serverOverrides[k];
-        if (v === null && serverVal === undefined) continue; // server caught up (cleared)
-        if (v !== null && serverVal === v) continue; // server caught up (set)
-        next[k] = v;
+    for (const [key, value] of Object.entries(localOverrides)) {
+      const serverValue = serverOverrides[key];
+      if (value === null && serverValue === undefined) continue;
+      if (value !== null && serverValue === value) continue;
+      next[key] = value;
+    }
+
+    return next;
+  }, [localOverrides, serverOverrides]);
+
+  const overrides = useMemo<Record<string, string>>(() => {
+    const merged: Record<string, string> = { ...serverOverrides };
+
+    for (const [key, value] of Object.entries(pendingLocalOverrides)) {
+      if (value === null) {
+        delete merged[key];
+      } else {
+        merged[key] = value;
       }
-      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
-    });
-  }, [overridesJson]);
-
-  useEffect(() => {
-    if (!localGeneralAgentEngine || !generalAgentEngine) return;
-    if (localGeneralAgentEngine === generalAgentEngine) {
-      setLocalGeneralAgentEngine(null);
     }
-  }, [localGeneralAgentEngine, generalAgentEngine]);
 
-  useEffect(() => {
-    if (localCodexLocalMaxConcurrency === null || codexLocalMaxConcurrency === undefined) return;
-    if (localCodexLocalMaxConcurrency === codexLocalMaxConcurrency) {
-      setLocalCodexLocalMaxConcurrency(null);
-    }
-  }, [localCodexLocalMaxConcurrency, codexLocalMaxConcurrency]);
+    return merged;
+  }, [pendingLocalOverrides, serverOverrides]);
 
-  const effectiveGeneralAgentEngine = localGeneralAgentEngine ?? generalAgentEngine ?? "default";
-  const effectiveCodexLocalMaxConcurrency = localCodexLocalMaxConcurrency ?? codexLocalMaxConcurrency ?? 3;
+  const effectiveGeneralAgentEngine =
+    (localGeneralAgentEngine !== null && localGeneralAgentEngine !== generalAgentEngine
+      ? localGeneralAgentEngine
+      : null) ?? generalAgentEngine ?? "default";
+  const effectiveCodexLocalMaxConcurrency =
+    (localCodexLocalMaxConcurrency !== null
+    && localCodexLocalMaxConcurrency !== codexLocalMaxConcurrency
+      ? localCodexLocalMaxConcurrency
+      : null) ?? codexLocalMaxConcurrency ?? 3;
+
   const hasAnyOverride = Object.keys(overrides).length > 0;
 
   const handleChange = useCallback(

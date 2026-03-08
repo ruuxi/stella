@@ -195,7 +195,7 @@ export class RadialGestureService {
       onMouseMove: (x: number, y: number) => {
         overlay.updateRadialCursor(x, y)
       },
-      onMouseUp: (_x: number, _y: number) => {
+      onMouseUp: () => {
         const radialBounds = overlay.getRadialBounds()
         if (!radialBounds) {
           return
