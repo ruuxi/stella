@@ -26,7 +26,7 @@ export function useDiscoveryFlow({
   conversationId,
 }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
-  const { storageMode, isAuthenticated, appendEvent: chatStoreAppendEvent } = useChatStore();
+  const { isAuthenticated, appendEvent: chatStoreAppendEvent } = useChatStore();
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
@@ -44,7 +44,6 @@ export function useDiscoveryFlow({
   // Collect signals -> synthesize -> post welcome as soon as collection finishes
   useEffect(() => {
     if (!discoveryCategories || !activeConversationId) return;
-    if (storageMode === "cloud" && !isAuthenticated) return;
     if (synthesizedRef.current) return;
     synthesizedRef.current = true;
 
@@ -103,7 +102,6 @@ export function useDiscoveryFlow({
     discoveryCategories,
     isAuthenticated,
     activeConversationId,
-    storageMode,
     chatStoreAppendEvent,
   ]);
 
