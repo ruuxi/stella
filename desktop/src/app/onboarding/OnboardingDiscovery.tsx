@@ -1,5 +1,6 @@
 import React from "react";
-import { type DiscoveryCategory, DISCOVERY_CATEGORIES } from "./use-onboarding-state";
+import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import { DISCOVERY_CATEGORIES } from "./use-onboarding-state";
 import { getPlatform } from "@/platform/electron/platform";
 
 interface OnboardingDiscoveryProps {

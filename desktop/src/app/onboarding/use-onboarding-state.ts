@@ -1,19 +1,7 @@
 import { useState, useCallback } from "react";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
-import {
-  DISCOVERY_CATEGORIES_KEY,
-  BROWSER_SELECTION_KEY,
-  BROWSER_PROFILE_KEY,
-} from "@/shared/contracts/discovery";
 
 const ONBOARDING_KEY = "stella-onboarding-complete";
-
-export type { DiscoveryCategory } from "@/shared/contracts/discovery";
-export {
-  DISCOVERY_CATEGORIES_KEY,
-  BROWSER_SELECTION_KEY,
-  BROWSER_PROFILE_KEY,
-};
 
 export type Phase =
   | "start"
