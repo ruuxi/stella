@@ -26,10 +26,9 @@ describe("BUILTIN_SKILLS", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  test("includes scheduling skill", () => {
+  test("does not include removed backend scheduling skill", () => {
     const scheduling = BUILTIN_SKILLS.find((s) => s.id === "scheduling");
-    expect(scheduling).toBeDefined();
-    expect(scheduling!.agentTypes).toContain("orchestrator");
+    expect(scheduling).toBeUndefined();
   });
 
   test("each skill has non-empty markdown", () => {

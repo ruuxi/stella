@@ -173,7 +173,7 @@ describe("security regressions", () => {
     expect(routingFlowSource).toContain("resolveConnectionForIncomingMessage");
     expect(pipelineSource).toContain("const candidates = buildDesktopTurnCandidates({");
     expect(pipelineSource).not.toContain("runtimeMode === \"cloud_247\"");
-    expect(pipelineSource).toContain("const usedCloudFallback =");
+    expect(pipelineSource).toContain("const usedBackendFallback =");
   });
 
   test("connection resolver does not auto-create links when account mode is private local", () => {

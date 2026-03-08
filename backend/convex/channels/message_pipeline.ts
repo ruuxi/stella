@@ -12,7 +12,7 @@ import {
 import { sleep } from "../lib/async";
 import {
   buildDesktopTurnCandidates,
-  runAgentTurnWithCloudFallback,
+  runAgentTurnWithBackendFallback,
 } from "../scheduling/desktop_handoff_policy";
 
 const BACKEND_FALLBACK_AGENT_TYPE = "offline_responder";
@@ -436,9 +436,9 @@ export async function processIncomingMessage(
     }
 
     let result: RunAgentTurnResult | null = null;
-    let selectedMode: "desktop" | "cloud" | null = null;
+    let selectedMode: "desktop" | "backend" | null = null;
     try {
-      const outcome = await runAgentTurnWithCloudFallback({
+      const outcome = await runAgentTurnWithBackendFallback({
         ctx: args.ctx,
         conversationId,
         prompt: args.text,
@@ -465,15 +465,15 @@ export async function processIncomingMessage(
     }
 
     const responseText = result.text.trim() || "(Stella had nothing to say.)";
-    const usedCloudFallback =
+    const usedBackendFallback =
       !executionTarget.targetDeviceId &&
-      selectedMode === "cloud";
+      selectedMode === "backend";
 
     await persistAssistant({
       text: responseText,
       usage: result.usage,
       silent: result.silent,
-      fallback: usedCloudFallback ? "cloud" : selectedMode ?? undefined,
+      fallback: usedBackendFallback ? "backend" : selectedMode ?? undefined,
     });
 
     return { text: responseText };

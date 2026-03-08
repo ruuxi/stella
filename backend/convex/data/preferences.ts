@@ -2,8 +2,6 @@ import { internalMutation, internalQuery, mutation, query, type MutationCtx } fr
 import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
 
-const runtimeModeValidator = v.union(v.literal("local"), v.literal("cloud_247"));
-export const RUNTIME_MODE_KEY = "runtime_mode";
 const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
 const ACCOUNT_MODE_KEY = "account_mode";
 const syncModeValidator = v.union(v.literal("on"), v.literal("off"));
@@ -30,9 +28,6 @@ const preferredBrowserValidator = v.union(
   v.literal("vivaldi"),
   v.literal("none"),
 );
-
-export const normalizeRuntimeMode = (value: string | null | undefined): "local" | "cloud_247" =>
-  value === "cloud_247" ? "cloud_247" : "local";
 
 const normalizeAccountMode = (
   value: string | null | undefined,
@@ -124,19 +119,6 @@ export const getPreference = internalQuery({
   },
 });
 
-export const getRuntimeMode = query({
-  args: {},
-  returns: runtimeModeValidator,
-  handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
-    const record = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", RUNTIME_MODE_KEY))
-      .unique();
-    return normalizeRuntimeMode(record?.value ?? null);
-  },
-});
-
 export const getAccountMode = query({
   args: {},
   returns: accountModeValidator,
@@ -191,17 +173,6 @@ export const setSyncMode = mutation({
   },
 });
 
-export const setRuntimeMode = internalMutation({
-  args: {
-    mode: runtimeModeValidator,
-  },
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await upsertPreferenceRecord(ctx, ownerId, RUNTIME_MODE_KEY, args.mode);
-    return args.mode;
-  },
-});
-
 export const setPreferredBrowser = mutation({
   args: {
     browser: preferredBrowserValidator,
@@ -212,19 +183,6 @@ export const setPreferredBrowser = mutation({
     await upsertPreferenceRecord(ctx, ownerId, PREFERRED_BROWSER_KEY, args.browser);
 
     return null;
-  },
-});
-
-export const getRuntimeModeForOwner = internalQuery({
-  args: {
-    ownerId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const record = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", RUNTIME_MODE_KEY))
-      .unique();
-    return normalizeRuntimeMode(record?.value ?? null);
   },
 });
 

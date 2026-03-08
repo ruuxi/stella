@@ -94,8 +94,6 @@ export const integrationsSchema = {
   bridge_sessions: defineTable({
     ownerId: v.string(),
     provider: v.string(),
-    spriteName: v.optional(v.string()),
-    mode: v.optional(v.string()),
     status: v.string(),
     webhookSecret: v.string(),
     webhookSecretKeyVersion: v.optional(v.number()),
@@ -103,16 +101,10 @@ export const integrationsSchema = {
     errorMessage: v.optional(v.string()),
     lastHeartbeatAt: v.optional(v.number()),
     lastMessageAtMs: v.optional(v.number()),
-    nextWakeAtMs: v.optional(v.number()),
-    wakeIntervalMs: v.optional(v.number()),
-    wakeTier: v.optional(v.string()),
-    consecutiveEmptyWakes: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_ownerId_and_provider", ["ownerId", "provider"])
-    .index("by_spriteName_and_provider", ["spriteName", "provider"])
-    .index("by_nextWakeAtMs", ["nextWakeAtMs"]),
+    .index("by_ownerId_and_provider", ["ownerId", "provider"]),
 
   bridge_outbound: defineTable({
     sessionId: v.id("bridge_sessions"),

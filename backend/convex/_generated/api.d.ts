@@ -9,8 +9,6 @@
  */
 
 import type * as agent_agents from "../agent/agents.js";
-import type * as agent_cloud_device_cleanup from "../agent/cloud_device_cleanup.js";
-import type * as agent_cloud_devices from "../agent/cloud_devices.js";
 import type * as agent_context_budget from "../agent/context_budget.js";
 import type * as agent_device_resolver from "../agent/device_resolver.js";
 import type * as agent_hooks from "../agent/hooks.js";
@@ -31,7 +29,6 @@ import type * as auth from "../auth.js";
 import type * as auth_migration from "../auth_migration.js";
 import type * as automation_index from "../automation/index.js";
 import type * as automation_runner from "../automation/runner.js";
-import type * as automation_utils from "../automation/utils.js";
 import type * as channels_bridge from "../channels/bridge.js";
 import type * as channels_bridge_code_shared from "../channels/bridge_code_shared.js";
 import type * as channels_bridge_code_signal from "../channels/bridge_code_signal.js";
@@ -124,7 +121,6 @@ import type * as schema_telemetry from "../schema/telemetry.js";
 import type * as schema_users from "../schema/users.js";
 import type * as shared_validators from "../shared_validators.js";
 import type * as tools_backend from "../tools/backend.js";
-import type * as tools_cloud from "../tools/cloud.js";
 import type * as tools_index from "../tools/index.js";
 import type * as tools_types from "../tools/types.js";
 import type * as tools_voice_schemas from "../tools/voice_schemas.js";
@@ -138,8 +134,6 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "agent/agents": typeof agent_agents;
-  "agent/cloud_device_cleanup": typeof agent_cloud_device_cleanup;
-  "agent/cloud_devices": typeof agent_cloud_devices;
   "agent/context_budget": typeof agent_context_budget;
   "agent/device_resolver": typeof agent_device_resolver;
   "agent/hooks": typeof agent_hooks;
@@ -160,7 +154,6 @@ declare const fullApi: ApiFromModules<{
   auth_migration: typeof auth_migration;
   "automation/index": typeof automation_index;
   "automation/runner": typeof automation_runner;
-  "automation/utils": typeof automation_utils;
   "channels/bridge": typeof channels_bridge;
   "channels/bridge_code_shared": typeof channels_bridge_code_shared;
   "channels/bridge_code_signal": typeof channels_bridge_code_signal;
@@ -253,7 +246,6 @@ declare const fullApi: ApiFromModules<{
   "schema/users": typeof schema_users;
   shared_validators: typeof shared_validators;
   "tools/backend": typeof tools_backend;
-  "tools/cloud": typeof tools_cloud;
   "tools/index": typeof tools_index;
   "tools/types": typeof tools_types;
   "tools/voice_schemas": typeof tools_voice_schemas;

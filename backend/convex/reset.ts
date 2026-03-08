@@ -139,16 +139,6 @@ export const _deleteOwnerBatch = internalMutation({
       totalDeleted++;
     }
 
-    // Cloud devices
-    const cloudDevices = await ctx.db
-      .query("cloud_devices")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .take(BATCH);
-    for (const cd of cloudDevices) {
-      await ctx.db.delete(cd._id);
-      totalDeleted++;
-    }
-
     // Bridge outbound (must delete before sessions)
     const bridgeSessions = await ctx.db
       .query("bridge_sessions")

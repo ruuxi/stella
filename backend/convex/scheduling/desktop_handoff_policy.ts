@@ -11,7 +11,7 @@ import { requireConversationOwner } from "../auth";
  */
 export type DesktopTurnCandidate =
   | { mode: "desktop"; targetDeviceId: string }
-  | { mode: "cloud" };
+  | { mode: "backend" };
 
 export const buildDesktopTurnCandidates = (args: {
   targetDeviceId?: string | null;
@@ -20,7 +20,7 @@ export const buildDesktopTurnCandidates = (args: {
   if (args.targetDeviceId) {
     candidates.push({ mode: "desktop", targetDeviceId: args.targetDeviceId });
   }
-  candidates.push({ mode: "cloud" });
+  candidates.push({ mode: "backend" });
   return candidates;
 };
 
@@ -40,7 +40,7 @@ export const resolveOwnedConversationId = async (
   return conversation?._id ?? null;
 };
 
-export const runAgentTurnWithCloudFallback = async (args: {
+export const runAgentTurnWithBackendFallback = async (args: {
   ctx: ActionCtx;
   conversationId: Id<"conversations">;
   prompt: string;
