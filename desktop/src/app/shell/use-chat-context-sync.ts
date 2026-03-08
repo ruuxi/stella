@@ -11,7 +11,7 @@ export function useChatContextSync() {
     if (!electronApi) return
 
     electronApi.capture
-      .getContext?.()
+      .getContext()
       .then((context) => {
         if (!context) return
         setChatContext(context)
@@ -21,16 +21,8 @@ export function useChatContextSync() {
         console.warn('Failed to load chat context', error)
       })
 
-    if (!electronApi.capture.onContext) return
-
     const unsubscribe = electronApi.capture.onContext((payload) => {
-      let context: ChatContext | null = null
-
-      if (payload && typeof payload === 'object' && 'context' in payload) {
-        context = (payload as ChatContextUpdate).context ?? null
-      } else {
-        context = (payload as ChatContext | null) ?? null
-      }
+      const context = (payload as ChatContextUpdate | null)?.context ?? null
 
       setChatContext(context)
       setSelectedText(context?.selectedText ?? null)

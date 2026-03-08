@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useWorkspace } from '@/context/workspace-state'
 import { useUiState } from '@/context/ui-state'
 import { getLocalhostPort } from '@/shared/lib/utils'
-import type { EventRecord } from '@/app/chat/hooks/use-conversation-events'
+import type { EventRecord } from '@/app/chat/lib/event-transforms'
 
 type CanvasCommandPayload = {
   action: 'open' | 'close'

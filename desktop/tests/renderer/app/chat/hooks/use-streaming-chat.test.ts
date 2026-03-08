@@ -58,7 +58,7 @@ vi.mock("../../../../../src/app/chat/hooks/use-raf-state", async () => {
 
 import { useStreamingChat } from "../../../../../src/app/chat/hooks/use-streaming-chat";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
-import type { EventRecord } from "../../../../../src/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "../../../../../src/app/chat/lib/event-transforms";
 
 // ----------------------------------------------------------------
 // Helper: build an EventRecord

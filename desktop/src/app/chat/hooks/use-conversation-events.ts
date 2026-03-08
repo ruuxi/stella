@@ -17,8 +17,6 @@ import { useChatStore } from "@/context/chat-store";
 import type { EventRecord, MessageTurn } from "@/app/chat/lib/event-transforms";
 import { extractStepsFromEvents, groupEventsIntoTurns } from "@/app/chat/lib/event-transforms";
 
-export type { EventRecord };
-
 const EVENT_PAGE_SIZE = 200;
 const EMPTY_EVENTS: EventRecord[] = [];
 const NO_OP = () => {};

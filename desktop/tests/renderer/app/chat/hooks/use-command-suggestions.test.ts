@@ -3,7 +3,7 @@ import {
   type CommandSuggestion,
   useCommandSuggestions,
 } from "../../../../../src/app/chat/hooks/use-command-suggestions";
-import type { EventRecord } from "../../../../../src/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "../../../../../src/app/chat/lib/event-transforms";
 
 const createEvent = (overrides: Partial<EventRecord> & { type: string }): EventRecord => ({
   _id: `event-${Math.random().toString(36).slice(2)}`,

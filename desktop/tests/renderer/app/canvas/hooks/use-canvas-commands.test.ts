@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import { useCanvasCommands } from "../../../../../src/app/canvas/hooks/use-canvas-commands";
 
 const mockUseCanvas = vi.fn();

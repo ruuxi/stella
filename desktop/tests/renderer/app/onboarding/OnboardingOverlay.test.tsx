@@ -16,7 +16,7 @@ vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
   }),
 }));
 
-vi.mock("@/app/onboarding", () => ({
+vi.mock("@/app/onboarding/OnboardingStep1", () => ({
   OnboardingStep1: (props: any) => (
     <div data-testid="onboarding-step1">
       <button data-testid="complete-btn" onClick={props.onComplete}>
@@ -36,6 +36,9 @@ vi.mock("@/app/onboarding", () => ({
       </button>
     </div>
   ),
+}));
+
+vi.mock("@/app/onboarding/use-onboarding-state", () => ({
   useOnboardingState: vi.fn(),
 }));
 
@@ -52,7 +55,7 @@ vi.mock("@/convex/api", () => ({
 
 // Re-import mock references for per-test overrides
 import { useConvexAuth } from "convex/react";
-import { useOnboardingState } from "@/app/onboarding";
+import { useOnboardingState } from "@/app/onboarding/use-onboarding-state";
 
 const mockedUseConvexAuth = vi.mocked(useConvexAuth);
 const mockedUseOnboardingState = vi.mocked(useOnboardingState) as any;

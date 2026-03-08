@@ -1,5 +1,4 @@
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
-import type { MessagePayload, Attachment } from "@/app/chat/lib/event-transforms";
+import type { Attachment, EventRecord, MessagePayload } from "@/app/chat/lib/event-transforms";
 import { WorkingIndicator } from "./WorkingIndicator";
 import { Markdown } from "./Markdown";
 import { isOrchestratorChatMessagePayload } from "./emotes/message-source";
@@ -120,4 +119,3 @@ export function MessageGroup({
     </div>
   );
 }
-
