@@ -1,0 +1,301 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+
+// ---------- Mocks ----------
+
+// Mock getElectronApi to return undefined (no API)
+vi.mock("@/platform/electron/electron", () => ({
+  getElectronApi: () => undefined,
+}));
+
+vi.mock("@/context/ui-state", () => ({
+  useUiState: () => ({ state: { isVoiceActive: false } }),
+}));
+
+// Mock useTheme to return fake colors
+vi.mock("@/context/theme-context", () => ({
+  useTheme: () => ({
+    colors: {
+      interactive: "#ff0000",
+      card: "#111111",
+      border: "#333333",
+      primaryForeground: "#ffffff",
+      mutedForeground: "#888888",
+      background: "#000000",
+    },
+  }),
+}));
+
+// Mock StellaAnimation as a simple div
+vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
+  StellaAnimation: () => <div data-testid="stella-animation" />,
+}));
+
+vi.mock("@/context/ui-state", () => ({
+  useUiState: () => ({ state: { isVoiceActive: false } }),
+}));
+
+// We need to test helper functions directly, so we import the module
+// and also mock hexToRgb at the color module level
+vi.mock("@/theme/color", () => ({
+  hexToRgb: (hex: string) => {
+    // Simple implementation for testing
+    const h = hex.replace("#", "");
+    const num = parseInt(h, 16);
+    return {
+      r: ((num >> 16) & 255) / 255,
+      g: ((num >> 8) & 255) / 255,
+      b: (num & 255) / 255,
+    };
+  },
+  generateGradientTokens: vi.fn(),
+}));
+
+import { RadialDial } from "../../../../src/app/overlay/RadialDial";
+
+// ---------- Tests ----------
+
+describe("RadialDial", () => {
+  // ---- Basic rendering ----
+
+  it("renders the container with the correct class", () => {
+    const { container } = render(<RadialDial />);
+    expect(
+      container.querySelector(".radial-dial-container"),
+    ).toBeTruthy();
+  });
+
+  it("renders an SVG element with correct class", () => {
+    const { container } = render(<RadialDial />);
+    const svg = container.querySelector("svg.radial-dial");
+    expect(svg).toBeTruthy();
+  });
+
+  it("renders SVG with correct size attributes (280x280)", () => {
+    const { container } = render(<RadialDial />);
+    const svg = container.querySelector("svg.radial-dial")!;
+    expect(svg.getAttribute("width")).toBe("280");
+    expect(svg.getAttribute("height")).toBe("280");
+  });
+
+  it("renders SVG with correct viewBox", () => {
+    const { container } = render(<RadialDial />);
+    const svg = container.querySelector("svg.radial-dial")!;
+    expect(svg.getAttribute("viewBox")).toBe("0 0 280 280");
+  });
+
+  it("renders a center circle", () => {
+    const { container } = render(<RadialDial />);
+    const circle = container.querySelector("circle");
+    expect(circle).toBeTruthy();
+  });
+
+  it("renders center circle at CENTER coordinates (140, 140)", () => {
+    const { container } = render(<RadialDial />);
+    const svg = container.querySelector("svg.radial-dial")!;
+    const circle = svg.querySelector(":scope > circle")!;
+    expect(circle.getAttribute("cx")).toBe("140");
+    expect(circle.getAttribute("cy")).toBe("140");
+  });
+
+  it("renders center circle with radius of INNER_RADIUS - 5 = 35", () => {
+    const { container } = render(<RadialDial />);
+    const svg = container.querySelector("svg.radial-dial")!;
+    const circle = svg.querySelector(":scope > circle")!;
+    expect(circle.getAttribute("r")).toBe("35");
+  });
+
+  // ---- Wedge labels ----
+
+  it("renders all 5 wedge labels", () => {
+    render(<RadialDial />);
+    expect(screen.getByText("Capture")).toBeInTheDocument();
+    expect(screen.getByText("Chat")).toBeInTheDocument();
+    expect(screen.getByText("Full")).toBeInTheDocument();
+    expect(screen.getByText("Voice")).toBeInTheDocument();
+    expect(screen.getByText("Auto")).toBeInTheDocument();
+  });
+
+  it("renders exactly 5 wedge paths", () => {
+    const { container } = render(<RadialDial />);
+    const wedgePaths = container.querySelectorAll("path.wedge-path");
+    expect(wedgePaths).toHaveLength(5);
+  });
+
+  it("each wedge path has a valid d attribute", () => {
+    const { container } = render(<RadialDial />);
+    const wedgePaths = container.querySelectorAll("path.wedge-path");
+    wedgePaths.forEach((path) => {
+      const d = path.getAttribute("d");
+      expect(d).toBeTruthy();
+      // Should contain M, L, A, Z commands
+      expect(d).toContain("M");
+      expect(d).toContain("L");
+      expect(d).toContain("A");
+      expect(d).toContain("Z");
+    });
+  });
+
+  it("each wedge path has a fill attribute", () => {
+    const { container } = render(<RadialDial />);
+    const wedgePaths = container.querySelectorAll("path.wedge-path");
+    wedgePaths.forEach((path) => {
+      expect(path.getAttribute("fill")).toBeTruthy();
+    });
+  });
+
+  it("each wedge path has a stroke attribute", () => {
+    const { container } = render(<RadialDial />);
+    const wedgePaths = container.querySelectorAll("path.wedge-path");
+    wedgePaths.forEach((path) => {
+      expect(path.getAttribute("stroke")).toBeTruthy();
+    });
+  });
+
+  it("each wedge path has stroke-width of 1.5", () => {
+    const { container } = render(<RadialDial />);
+    const wedgePaths = container.querySelectorAll("path.wedge-path");
+    wedgePaths.forEach((path) => {
+      expect(path.getAttribute("stroke-width")).toBe("1.5");
+    });
+  });
+
+  // ---- StellaAnimation ----
+
+  it("renders the StellaAnimation mock", () => {
+    render(<RadialDial />);
+    expect(screen.getByTestId("stella-animation")).toBeInTheDocument();
+  });
+
+  it("renders the center stella animation wrapper", () => {
+    const { container } = render(<RadialDial />);
+    expect(
+      container.querySelector(".radial-center-stella-animation"),
+    ).toBeTruthy();
+  });
+
+  // ---- Frame visibility ----
+
+  it("renders with radial-dial-frame class (not visible initially)", () => {
+    const { container } = render(<RadialDial />);
+    const frame = container.querySelector(".radial-dial-frame");
+    expect(frame).toBeTruthy();
+    // Initially should NOT have the visible class
+    expect(frame!.classList.contains("radial-dial-frame--visible")).toBe(false);
+  });
+
+  // ---- Wedge content ----
+
+  it("renders 5 wedge content containers", () => {
+    const { container } = render(<RadialDial />);
+    const wedgeContent = container.querySelectorAll(".radial-wedge-content");
+    expect(wedgeContent).toHaveLength(5);
+  });
+
+  it("wedge content containers render labels", () => {
+    const { container } = render(<RadialDial />);
+    const labels = container.querySelectorAll(".radial-wedge-label");
+    expect(labels).toHaveLength(5);
+  });
+
+  // ---- Wedge groups ----
+
+  it("renders 5 g (group) elements for wedges", () => {
+    const { container } = render(<RadialDial />);
+    const svg = container.querySelector("svg.radial-dial")!;
+    // g elements directly under svg (one per wedge)
+    const groups = svg.querySelectorAll(":scope > g");
+    expect(groups).toHaveLength(5);
+  });
+
+  // ---- Default selection state ----
+
+  it("default selectedWedge is 'dismiss' so no wedge has the interactive fill", () => {
+    const { container } = render(<RadialDial />);
+    const wedgePaths = container.querySelectorAll("path.wedge-path");
+    // With selectedWedge='dismiss', all wedges should use the card color as fill
+    // The mock card color is "#111111" → opaque rgba via toRgba
+    wedgePaths.forEach((path) => {
+      const fill = path.getAttribute("fill");
+      // Should be the card color made opaque, not the interactive color
+      expect(fill).toBe("rgba(17, 17, 17, 1)");
+    });
+  });
+
+  it("no wedge stroke uses interactive color when none is selected", () => {
+    const { container } = render(<RadialDial />);
+    const wedgePaths = container.querySelectorAll("path.wedge-path");
+    wedgePaths.forEach((path) => {
+      const stroke = path.getAttribute("stroke");
+      // Should be using border color as rgba, not the interactive color directly
+      expect(stroke).toContain("rgba");
+      expect(stroke).not.toContain("255, 0, 0"); // not the #ff0000 interactive color
+    });
+  });
+});
+
+describe("RadialDial helper functions (via rendering)", () => {
+  it("wedge paths contain arc segments with OUTER_RADIUS=125", () => {
+    const { container } = render(<RadialDial />);
+    const paths = container.querySelectorAll("path.wedge-path");
+    paths.forEach((path) => {
+      const d = path.getAttribute("d")!;
+      // Arc commands should reference the outer radius 125
+      expect(d).toContain("125");
+    });
+  });
+
+  it("wedge paths contain arc segments with INNER_RADIUS=40", () => {
+    const { container } = render(<RadialDial />);
+    const paths = container.querySelectorAll("path.wedge-path");
+    paths.forEach((path) => {
+      const d = path.getAttribute("d")!;
+      // Arc commands should reference the inner radius 40
+      expect(d).toContain("40");
+    });
+  });
+
+  it("wedge content positions are within SVG bounds (0-280)", () => {
+    const { container } = render(<RadialDial />);
+    const wedgeContent = container.querySelectorAll<HTMLElement>(".radial-wedge-content");
+    wedgeContent.forEach((item) => {
+      const x = parseFloat(item.style.left);
+      const y = parseFloat(item.style.top);
+      // Content position should be roughly between inner and outer radius from center
+      expect(x).toBeGreaterThan(0);
+      expect(x).toBeLessThan(280);
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThan(280);
+    });
+  });
+
+  it("wedge content positions are written inline for each wedge", () => {
+    const { container } = render(<RadialDial />);
+    const wedgeContent = container.querySelectorAll<HTMLElement>(".radial-wedge-content");
+    wedgeContent.forEach((item) => {
+      expect(item.style.left).toMatch(/px$/);
+      expect(item.style.top).toMatch(/px$/);
+    });
+  });
+
+  it("center circle fill uses opaque rgba of background color", () => {
+    const { container } = render(<RadialDial />);
+    const svg = container.querySelector("svg.radial-dial")!;
+    const circle = svg.querySelector(":scope > circle")!;
+    const fill = circle.getAttribute("fill")!;
+    // Background is #000000 -> rgb(0, 0, 0), fully opaque for transparent window
+    expect(fill).toBe("rgba(0, 0, 0, 1)");
+  });
+
+  it("center circle stroke uses rgba of border color with 0.5 alpha", () => {
+    const { container } = render(<RadialDial />);
+    const svg = container.querySelector("svg.radial-dial")!;
+    const circle = svg.querySelector(":scope > circle")!;
+    const stroke = circle.getAttribute("stroke")!;
+    // Border is #333333 -> rgb(51, 51, 51)
+    expect(stroke).toBe("rgba(51, 51, 51, 0.5)");
+  });
+});
+
+
+

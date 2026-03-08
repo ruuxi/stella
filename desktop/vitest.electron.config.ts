@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['electron/**/*.test.ts', 'packages/**/*.test.ts'],
+    include: ['tests/electron/**/*.test.ts', 'tests/packages/**/*.test.ts'],
     exclude: [
       'node_modules',
       'dist',
