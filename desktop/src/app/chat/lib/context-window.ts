@@ -40,7 +40,7 @@ export const estimateContextEventTokens = (event: ContextEventLike): number => {
   }
 
   if (event.type === "user_message" || event.type === "assistant_message") {
-    const textTokens = estimateTextTokens(payload.text);
+    const textTokens = estimateTextTokens(payload.contextText ?? payload.text);
     const usageTokens = payload.usage ? estimateJsonTokens(payload.usage) : 0;
     return clampEventTokens(textTokens + usageTokens + 8);
   }

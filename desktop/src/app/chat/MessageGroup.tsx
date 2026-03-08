@@ -3,6 +3,7 @@ import { WorkingIndicator } from "./WorkingIndicator";
 import { Markdown } from "./Markdown";
 import { isOrchestratorChatMessagePayload } from "./emotes/message-source";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
+import { getDisplayMessageText } from "./MessageTurn";
 
 type MessageGroupProps = {
   userMessage: EventRecord;
@@ -11,14 +12,6 @@ type MessageGroupProps = {
   streamingText?: string;
   currentToolName?: string;
   onOpenAttachment?: (attachment: Attachment) => void;
-};
-
-const getMessageText = (event: EventRecord): string => {
-  if (event.payload && typeof event.payload === "object") {
-    const payload = event.payload as MessagePayload;
-    return payload.text ?? "";
-  }
-  return "";
 };
 
 const getAttachments = (event: EventRecord): Attachment[] => {
@@ -36,9 +29,9 @@ export function MessageGroup({
   currentToolName,
   onOpenAttachment,
 }: MessageGroupProps) {
-  const userText = getMessageText(userMessage);
+  const userText = getDisplayMessageText(userMessage);
   const userAttachments = getAttachments(userMessage);
-  const assistantText = assistantMessage ? getMessageText(assistantMessage) : "";
+  const assistantText = assistantMessage ? getDisplayMessageText(assistantMessage) : "";
   const assistantPayload =
     assistantMessage?.payload && typeof assistantMessage.payload === "object"
       ? (assistantMessage.payload as MessagePayload)

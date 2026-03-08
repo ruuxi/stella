@@ -5,10 +5,10 @@ import { getEventText } from "@/app/chat/lib/event-transforms";
 import {
   TurnItem,
   attachmentsEqual,
+  getDisplayMessageText,
   getDisplayUserText,
   getAttachments,
   getChannelEnvelope,
-  getLocalTimeLabel,
 } from "../../../../src/app/chat/MessageTurn";
 
 const createEvent = (
@@ -32,17 +32,20 @@ describe("MessageTurn helpers", () => {
     expect(
       getEventText(
         createEvent({
-          payload: { text: "[8:00 PM] hello there", source: "channel:discord" },
+          payload: { text: "[8:00 PM] hello there\n\n[1:00 PM, Mar 8]", source: "channel:discord" },
         }),
       ),
-    ).toBe("[8:00 PM] hello there");
+    ).toBe("[8:00 PM] hello there\n\n[1:00 PM, Mar 8]");
   });
 
-  it("strips the stored bracketed time only in rendered channel text", () => {
+  it("strips stored channel timestamps only in rendered text", () => {
     expect(
       getDisplayUserText(
         createEvent({
-          payload: { text: "[8:00 PM] hello there", source: "channel:discord" },
+          payload: {
+            text: "[8:00 PM] hello there\n\n[1:00 PM, Mar 8]",
+            source: "channel:discord",
+          },
         }),
       ),
     ).toBe("hello there");
@@ -50,7 +53,7 @@ describe("MessageTurn helpers", () => {
     expect(
       getDisplayUserText(
         createEvent({
-          payload: { text: "[08:00 pm] hello again" },
+          payload: { text: "[08:00 pm] hello again\n\n[1:00 PM, Mar 8]" },
           channelEnvelope: {
             provider: "discord",
             kind: "message",
@@ -58,20 +61,32 @@ describe("MessageTurn helpers", () => {
         }),
       ),
     ).toBe("hello again");
+
+    expect(
+      getDisplayMessageText(
+        createEvent({
+          type: "assistant_message",
+          payload: {
+            text: "[8:00 PM] channel reply\n\n[1:05 PM, Mar 8]",
+            source: "channel:discord",
+          },
+        }),
+      ),
+    ).toBe("channel reply");
   });
 
-  it("preserves leading bracketed time tags for non-channel messages", () => {
+  it("preserves intentional leading time tags but strips stored suffix tags for non-channel messages", () => {
     expect(
       getEventText(
         createEvent({
-          payload: { text: "[8:00 PM] this is intentional" },
+          payload: { text: "[8:00 PM] this is intentional\n\n[1:00 PM, Mar 8]" },
         }),
       ),
-    ).toBe("[8:00 PM] this is intentional");
+    ).toBe("[8:00 PM] this is intentional\n\n[1:00 PM, Mar 8]");
     expect(
       getDisplayUserText(
         createEvent({
-          payload: { text: "[8:00 PM] this is intentional" },
+          payload: { text: "[8:00 PM] this is intentional\n\n[1:00 PM, Mar 8]" },
         }),
       ),
     ).toBe("[8:00 PM] this is intentional");
@@ -115,27 +130,6 @@ describe("MessageTurn helpers", () => {
     expect(getChannelEnvelope(createEvent({ channelEnvelope: undefined }))).toBeUndefined();
   });
 
-  it("formats channel timestamps in the user's local time", () => {
-    const sourceTimestamp = Date.UTC(2026, 2, 8, 20, 0, 0);
-    expect(
-      getLocalTimeLabel(
-        createEvent({
-          timestamp: sourceTimestamp,
-          channelEnvelope: {
-            provider: "discord",
-            kind: "message",
-            sourceTimestamp,
-          },
-        }),
-      ),
-    ).toBe(
-      `[${new Date(sourceTimestamp).toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      })}]`,
-    );
-  });
-
   it("compares attachment arrays by relevant fields", () => {
     const a = [{ id: "1", url: "u", mimeType: "image/png", name: "n" }];
     const b = [{ id: "1", url: "u", mimeType: "image/png", name: "n" }];
@@ -159,7 +153,6 @@ describe("TurnItem", () => {
             kind: "reaction",
             reactions: [{ emoji: "??", action: "add" }],
           },
-          userLocalTimeLabel: "[1:00 PM]",
           assistantText: "",
           assistantMessageId: null,
           assistantEmotesEnabled: false,
@@ -168,7 +161,6 @@ describe("TurnItem", () => {
     );
 
     expect(screen.getByText("Google Chat")).toBeInTheDocument();
-    expect(screen.getByText("[1:00 PM]")).toBeInTheDocument();
     expect(screen.getByText("reaction")).toBeInTheDocument();
     expect(screen.getByText("Reactions +??")).toBeInTheDocument();
     expect(screen.getByText("Voice note")).toBeInTheDocument();
@@ -183,7 +175,6 @@ describe("TurnItem", () => {
           id: "turn-2",
           userText: "image",
           userAttachments: [{ id: "img-1", url: "https://cdn.example.com/img.png" }],
-          userLocalTimeLabel: null,
           assistantText: "",
           assistantMessageId: null,
           assistantEmotesEnabled: false,
@@ -205,7 +196,6 @@ describe("TurnItem", () => {
           id: "turn-unsafe",
           userText: "unsafe",
           userAttachments: [{ id: "img-1", url: "javascript:alert(1)" }],
-          userLocalTimeLabel: null,
           assistantText: "",
           assistantMessageId: null,
           assistantEmotesEnabled: false,
