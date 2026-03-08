@@ -1,7 +1,10 @@
-import { createServiceRequest } from "@/infra/http/service-request"
+import {
+  callChatCompletion,
+  extractChatText,
+  type ChatCompletionResponse,
+} from "@/infra/ai/llm"
 
 const MUSIC_PROMPT_MODEL = "google/gemini-3-flash"
-const MUSIC_PROMPT_ENDPOINT = "/api/ai/v1/chat/completions"
 
 export type MusicMood = "Auto" | "Focus" | "Calm" | "Energy" | "Sleep" | "Lo-fi"
 
@@ -15,30 +18,6 @@ export type PromptSet = {
     guidance: number
     temperature: number
   }
-}
-
-type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>
-    }
-  }>
-}
-
-function extractChatMessageText(response: ChatCompletionResponse): string {
-  const content = response.choices?.[0]?.message?.content
-  if (typeof content === "string") {
-    return content.trim()
-  }
-  if (Array.isArray(content)) {
-    return content
-      .filter((part) => part?.type === "text" && typeof part.text === "string")
-      .map((part) => part.text!.trim())
-      .filter(Boolean)
-      .join("\n")
-      .trim()
-  }
-  return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -171,34 +150,22 @@ export async function generateMusicPrompt(
   }
 
   try {
-    const { endpoint, headers } = await createServiceRequest(MUSIC_PROMPT_ENDPOINT, {
-      "Content-Type": "application/json",
-      "X-Provider": "vercel",
-      "X-Model-Id": MUSIC_PROMPT_MODEL,
-      "X-Agent-Type": "music_prompt",
-    })
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
+    const json = await callChatCompletion<ChatCompletionResponse>({
+      provider: "vercel",
+      model: MUSIC_PROMPT_MODEL,
+      agentType: "music_prompt",
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      body: {
         model: MUSIC_PROMPT_MODEL,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userMessage },
-        ],
         max_tokens: 16192,
         temperature: 1,
         stream: false,
-      }),
+      },
     })
-
-    if (!res.ok) {
-      return getFallbackPrompt(mood)
-    }
-
-    const json = (await res.json()) as ChatCompletionResponse
-    const responseText = extractChatMessageText(json)
+    const responseText = extractChatText(json)
     if (!responseText) {
       return getFallbackPrompt(mood)
     }
