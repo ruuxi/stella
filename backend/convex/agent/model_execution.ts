@@ -45,16 +45,9 @@ export function hasNoResponseInSteps(steps?: StepLike[]): boolean {
 }
 
 export function usageSummaryFromFinish(
-  usage: LanguageModelUsage,
   totalUsage: LanguageModelUsage,
 ): ReturnType<typeof toUsageSummary> {
   return toUsageSummary(totalUsage);
-}
-
-export function usageSummaryFromUsage(
-  usage: LanguageModelUsage,
-): ReturnType<typeof toUsageSummary> {
-  return toUsageSummary(usage);
 }
 
 export function createStreamExecutionLifecycle() {
@@ -72,10 +65,10 @@ export function createStreamExecutionLifecycle() {
         };
       }
     },
-    onFinish: ({ usage, totalUsage }: { usage: LanguageModelUsage; totalUsage: LanguageModelUsage }) => {
+    onFinish: ({ totalUsage }: { usage: LanguageModelUsage; totalUsage: LanguageModelUsage }) => {
       state = {
         ...state,
-        usageSummary: usageSummaryFromFinish(usage, totalUsage),
+        usageSummary: usageSummaryFromFinish(totalUsage),
       };
     },
     getState: (): StreamExecutionLifecycleState => state,

@@ -24,30 +24,22 @@ const DEFAULT_MODEL: ModelConfig = {
   },
 };
 
-const AGENT_MODELS: Record<string, ModelConfig> = {
-  offline_responder: {
-    model: "moonshotai/kimi-k2-0905:exacto",
-    fallback: "anthropic/claude-opus-4.5",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["groq"],
-      },
+const COMPACTION_MODEL: ModelConfig = {
+  model: "zai/glm-4.7",
+  fallback: "moonshotai/kimi-k2.5",
+  temperature: 1.0,
+  maxOutputTokens: 12096,
+  providerOptions: {
+    gateway: {
+      order: ["cerebras"],
     },
   },
+};
 
-  general: {
-    model: "moonshotai/kimi-k2-0905:exacto",
-    fallback: "anthropic/claude-opus-4.5",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["groq"],
-      },
-    },
-  },
+const AGENT_MODELS: Record<string, ModelConfig> = {
+  offline_responder: DEFAULT_MODEL,
+
+  general: DEFAULT_MODEL,
 
   explore: {
     model: "zai/glm-4.7",
@@ -88,29 +80,9 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  session_compaction_summary: {
-    model: "zai/glm-4.7",
-    fallback: "moonshotai/kimi-k2.5",
-    temperature: 1.0,
-    maxOutputTokens: 12096,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
+  session_compaction_summary: COMPACTION_MODEL,
 
-  thread_compaction_summary: {
-    model: "zai/glm-4.7",
-    fallback: "moonshotai/kimi-k2.5",
-    temperature: 1.0,
-    maxOutputTokens: 12096,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
+  thread_compaction_summary: COMPACTION_MODEL,
 
   welcome: {
     model: "anthropic/claude-sonnet-4-6",
