@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import type { ViewType } from "@/types/ui";
+import type { ViewType } from "@/shared/contracts/ui";
 import type { PersonalPage } from "./types";
 import "./header-tab-bar.css";
 

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { UiMode, UiState, ViewType, WindowMode } from '@/types/ui'
+import type { UiMode, UiState, ViewType, WindowMode } from '@/shared/contracts/ui'
 import { getElectronApi } from '@/platform/electron/electron'
 
 type UiStateContextValue = {

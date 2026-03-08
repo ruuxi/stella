@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { Dispatch, RefObject, SetStateAction } from 'react'
-import type { ViewType } from '@/types/ui'
+import type { ViewType } from '@/shared/contracts/ui'
 import type { FloatingOrbHandle } from './FloatingOrb'
 
 type UseFullShellVoiceTranscriptOptions = {
