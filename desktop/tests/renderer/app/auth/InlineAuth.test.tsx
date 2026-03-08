@@ -41,20 +41,21 @@ describe("InlineAuth", () => {
     expect(onSkip).toHaveBeenCalledOnce();
   });
 
-  it("does nothing when submitting empty email", async () => {
+  it("shows a validation error when submitting empty email", async () => {
     render(<InlineAuth />);
     fireEvent.click(screen.getByText("Send"));
-    // Should not send request for empty email
     expect(mockFetch).not.toHaveBeenCalled();
+    expect(screen.getByText("Enter an email address.")).toBeTruthy();
   });
 
-  it("does nothing when submitting whitespace-only email", async () => {
+  it("shows a validation error when submitting whitespace-only email", async () => {
     render(<InlineAuth />);
     fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
       target: { value: "   " },
     });
     fireEvent.click(screen.getByText("Send"));
     expect(mockFetch).not.toHaveBeenCalled();
+    expect(screen.getByText("Enter an email address.")).toBeTruthy();
   });
 
   it("sends magic link request on valid email", async () => {
@@ -143,7 +144,7 @@ describe("InlineAuth", () => {
     fireEvent.click(screen.getByText("Send"));
 
     await waitFor(() => {
-      expect(screen.getByText("Something went wrong, try again")).toBeTruthy();
+      expect(screen.getByText("network error")).toBeTruthy();
     });
   });
 

@@ -1,5 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/types/electron";
+import {
+  clearComposerSelectedTextContext,
+  clearComposerWindowContext,
+  removeComposerScreenshotContext,
+} from "./composer-context";
 
 type ComposerContextRowProps = {
   chatContext: ChatContext | null;
@@ -32,13 +37,7 @@ export function ComposerContextRow({
             aria-label="Remove screenshot"
             onClick={(event) => {
               event.stopPropagation();
-              window.electronAPI?.capture.removeScreenshot?.(index);
-              setChatContext((prev) => {
-                if (!prev) return prev;
-                const next = [...(prev.regionScreenshots ?? [])];
-                next.splice(index, 1);
-                return { ...prev, regionScreenshots: next };
-              });
+              removeComposerScreenshotContext(index, setChatContext);
             }}
           >
             &times;
@@ -61,10 +60,7 @@ export function ComposerContextRow({
             aria-label="Remove selected text"
             onClick={(event) => {
               event.stopPropagation();
-              setSelectedText(null);
-              setChatContext((prev) =>
-                prev ? { ...prev, selectedText: null } : prev,
-              );
+              clearComposerSelectedTextContext(setSelectedText, setChatContext);
             }}
           >
             &times;
@@ -84,7 +80,7 @@ export function ComposerContextRow({
             aria-label="Remove window context"
             onClick={(event) => {
               event.stopPropagation();
-              setChatContext((prev) => (prev ? { ...prev, window: null } : prev));
+              clearComposerWindowContext(setChatContext);
             }}
           >
             &times;

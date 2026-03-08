@@ -14,20 +14,9 @@ import { SuggestionsPanel } from "./SuggestionsPanel"
 import { ActiveTasks } from "./ActiveTasks"
 import { ActivityFeed } from "./ActivityFeed"
 import { DashboardCard } from "./DashboardCard"
+import type { ScheduleItem } from "./schedule-item"
 import "./home-view.css"
 import "./home-dashboard.css"
-
-type ScheduleItem = {
-  id: string
-  kind: "scheduled" | "monitoring"
-  name: string
-  description?: string
-  enabled: boolean
-  nextRunAtMs: number
-  lastRunAtMs?: number
-  lastStatus?: string
-  outputPreview?: string
-}
 
 const MusicPlayer = lazy(() =>
   import("./MusicPlayer").then((module) => ({ default: module.MusicPlayer })),

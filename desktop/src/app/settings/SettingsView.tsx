@@ -200,10 +200,15 @@ function BasicTab({ onSignOut }: {
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Delete Data</div>
-            <div className="settings-row-sublabel">Erase all conversations and memories</div>
+            <div className="settings-row-sublabel">
+              Erase all conversations and memories.
+            </div>
+            <div className="settings-row-sublabel">
+              This action is not available in the desktop app yet.
+            </div>
           </div>
           <div className="settings-row-control">
-            <button className="settings-btn settings-btn--danger">
+            <button className="settings-btn settings-btn--danger" disabled>
               Delete
             </button>
           </div>
@@ -211,10 +216,15 @@ function BasicTab({ onSignOut }: {
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Delete Account</div>
-            <div className="settings-row-sublabel">Permanently remove your account and all data</div>
+            <div className="settings-row-sublabel">
+              Permanently remove your account and all data.
+            </div>
+            <div className="settings-row-sublabel">
+              This action is not available in the desktop app yet.
+            </div>
           </div>
           <div className="settings-row-control">
-            <button className="settings-btn settings-btn--danger">
+            <button className="settings-btn settings-btn--danger" disabled>
               Delete
             </button>
           </div>

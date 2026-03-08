@@ -387,22 +387,26 @@ describe("BasicTab", () => {
     expect(onSignOut).toHaveBeenCalledTimes(1);
   });
 
-  it("renders Delete Data row with danger-styled Delete button", () => {
+  it("renders Delete Data row as disabled until the feature is implemented", () => {
     render(<SettingsDialog {...defaultProps()} />);
     expect(screen.getByText("Delete Data")).toBeTruthy();
-    expect(screen.getByText("Erase all conversations and memories")).toBeTruthy();
+    expect(screen.getByText("Erase all conversations and memories.")).toBeTruthy();
+    expect(
+      screen.getAllByText("This action is not available in the desktop app yet.")[0],
+    ).toBeTruthy();
 
     const deleteButtons = screen.getAllByRole("button").filter(
       (btn) => btn.textContent === "Delete",
     );
     expect(deleteButtons.length).toBeGreaterThanOrEqual(1);
     expect(deleteButtons[0].className).toContain("settings-btn--danger");
+    expect(deleteButtons[0]).toBeDisabled();
   });
 
-  it("renders Delete Account row with danger-styled Delete button", () => {
+  it("renders Delete Account row as disabled until the feature is implemented", () => {
     render(<SettingsDialog {...defaultProps()} />);
     expect(screen.getByText("Delete Account")).toBeTruthy();
-    expect(screen.getByText("Permanently remove your account and all data")).toBeTruthy();
+    expect(screen.getByText("Permanently remove your account and all data.")).toBeTruthy();
 
     const deleteButtons = screen.getAllByRole("button").filter(
       (btn) => btn.textContent === "Delete",
@@ -410,6 +414,7 @@ describe("BasicTab", () => {
     // There should be two Delete buttons: Delete Data and Delete Account
     expect(deleteButtons.length).toBe(2);
     expect(deleteButtons[1].className).toContain("settings-btn--danger");
+    expect(deleteButtons[1]).toBeDisabled();
   });
 
   it("renders all five BasicTab rows", () => {
