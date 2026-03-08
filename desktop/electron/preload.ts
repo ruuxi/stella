@@ -109,6 +109,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMorphReverse: onIpc<{ screenshotDataUrl: string }>('overlay:morphReverse'),
     onMorphEnd: onIpcSignal('overlay:morphEnd'),
     morphDone: () => ipcRenderer.send('overlay:morphDone'),
+    onShowAutoPanel: onIpc<{ x: number; y: number; width: number; height: number; windowText: string; windowTitle: string | null }>('overlay:showAutoPanel'),
+    onHideAutoPanel: onIpcSignal('overlay:hideAutoPanel'),
+    hideAutoPanel: () => ipcRenderer.send('overlay:hideAutoPanel'),
   },
 
   mini: {

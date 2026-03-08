@@ -18,6 +18,7 @@ export type RadialCaptureBridge = {
     screenshot: { dataUrl: string; width: number; height: number } | null
     window: ChatContext['window']
   } | null>
+  captureAutoWindowText: () => Promise<{ text: string; title: string; app: string } | null>
   emptyContext: () => ChatContext
   broadcastChatContext: () => void
 }
@@ -29,6 +30,7 @@ export type RadialOverlayBridge = {
   hideRadial: () => void
   updateRadialCursor: (x: number, y: number) => void
   getRadialBounds: () => { x: number; y: number } | null
+  showAutoPanel: (data: { x: number; y: number; width: number; height: number; windowText: string; windowTitle: string | null }) => void
 }
 
 export type RadialWindowBridge = {
@@ -107,8 +109,7 @@ export class RadialGestureService {
         }
         break
       }
-      case 'chat':
-      case 'auto': {
+      case 'chat': {
         if (win.isMiniShowing()) {
           win.hideMiniWindow(true)
         } else {
@@ -117,6 +118,36 @@ export class RadialGestureService {
           updateUiState({ mode: 'chat' })
           win.showWindow('mini')
         }
+        break
+      }
+      case 'auto': {
+        capture.cancelRadialContextCapture()
+
+        // Extract text content from the window under the cursor
+        const windowTextResult = await capture.captureAutoWindowText()
+        if (!windowTextResult?.text) break
+
+        // Position panel on the right side of the current display, 70% height, centered
+        const cursorPoint = screen.getCursorScreenPoint()
+        const display = screen.getDisplayNearestPoint(cursorPoint)
+        const workArea = display.workArea
+        const panelWidth = 420
+        const panelHeight = Math.round(workArea.height * 0.7)
+        const panelX = workArea.x + workArea.width - panelWidth - 16
+        const panelY = workArea.y + Math.round((workArea.height - panelHeight) / 2)
+
+        const windowTitle = [windowTextResult.app, windowTextResult.title]
+          .filter(Boolean)
+          .join(' - ') || null
+
+        overlay.showAutoPanel({
+          x: panelX,
+          y: panelY,
+          width: panelWidth,
+          height: panelHeight,
+          windowText: windowTextResult.text,
+          windowTitle: windowTitle,
+        })
         break
       }
       case 'voice':
