@@ -22,7 +22,7 @@ const IDLE_STATE: MorphState = {
 const RAMP_UP_MS = 600;
 const CROSSFADE_MS = 800;
 const CALM_DOWN_MS = 600;
-const STEADY_STRENGTH = 1.0;
+const STEADY_STRENGTH = 0.65;
 
 const VERT = `
 attribute vec2 a_pos;
