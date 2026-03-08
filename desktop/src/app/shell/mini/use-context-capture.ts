@@ -32,19 +32,10 @@ export function useContextCapture() {
         console.warn("Failed to load chat context", error);
       });
 
-    // Subscribe to context updates
-    if (!electronApi.capture.onContext) return;
     const unsubscribe = electronApi.capture.onContext((payload) => {
-      let context: ChatContext | null = null;
-      let version: number | null = null;
-
-      if (payload && typeof payload === "object" && "context" in payload) {
-        const update = payload as ChatContextUpdate;
-        context = update.context ?? null;
-        version = typeof update.version === "number" ? update.version : null;
-      } else {
-        context = (payload as ChatContext | null) ?? null;
-      }
+      const update = payload as ChatContextUpdate | null;
+      const context = update?.context ?? null;
+      const version = typeof update?.version === "number" ? update.version : null;
 
       setChatContext(context);
       setSelectedText(context?.selectedText ?? null);
@@ -52,7 +43,7 @@ export function useContextCapture() {
       if (version !== null) {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            window.electronAPI?.capture.ackContext?.({ version });
+            electronApi.capture.ackContext({ version });
           });
         });
       }

@@ -1,6 +1,7 @@
 import { desktopCapturer, screen, type BrowserWindow, type Display } from 'electron'
-import { captureChatContext, type ChatContext } from '../chat-context.js'
+import { captureChatContext } from '../chat-context.js'
 import { globalShortcut } from 'electron'
+import type { ChatContext } from '../../src/shared/contracts/electron-data.js'
 import type {
   RegionCaptureResult,
   RegionSelection,

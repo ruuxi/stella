@@ -2,8 +2,6 @@ import { getSelectedText } from './selected-text.js'
 import { getWindowInfoAtPoint } from './window-capture.js'
 import type { ChatContext } from '../src/shared/contracts/electron-data.js'
 
-export type { ChatContext } from '../src/shared/contracts/electron-data.js'
-
 type CaptureChatContextOptions = {
   excludeCurrentProcessWindows?: boolean
 }

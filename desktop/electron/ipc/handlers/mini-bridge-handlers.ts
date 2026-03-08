@@ -1,5 +1,9 @@
 import { BrowserWindow, ipcMain } from 'electron'
-import type { MiniBridgeRequest, MiniBridgeResponseEnvelope, MiniBridgeUpdate } from '../../mini-bridge.js'
+import type {
+  MiniBridgeRequest,
+  MiniBridgeResponseEnvelope,
+  MiniBridgeUpdate,
+} from '../../../src/shared/contracts/electron-data.js'
 import type { MiniBridgeService } from '../../services/mini-bridge-service.js'
 import type { WindowManager } from '../../windows/window-manager.js'
 

@@ -619,4 +619,4 @@ export const isPromptId = (value: string): value is PromptId => value in PROMPT_
 
 export const getPromptDefinition = <TId extends PromptId>(
   promptId: TId,
-): PromptDefinition<TId> => PROMPT_CATALOG[promptId]
+): PromptDefinition<TId> => PROMPT_CATALOG[promptId] as unknown as PromptDefinition<TId>

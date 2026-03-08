@@ -5,7 +5,7 @@ import type {
   MiniBridgeResponse,
   MiniBridgeResponseEnvelope,
   MiniBridgeUpdate,
-} from '../mini-bridge.js'
+} from '../../src/shared/contracts/electron-data.js'
 
 const MINI_BRIDGE_REQUEST_TIMEOUT_MS = 15_000
 

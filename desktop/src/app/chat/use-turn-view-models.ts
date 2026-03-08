@@ -1,5 +1,5 @@
 import { useMemo, useDeferredValue } from "react";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { MessagePayload } from "@/app/chat/lib/event-transforms";
 import {
   groupEventsIntoTurns,
@@ -14,7 +14,7 @@ import {
   getAttachments,
   getChannelEnvelope,
 } from "./MessageTurn";
-import type { SelfModAppliedData } from "@/app/chat/hooks/use-streaming-chat";
+import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 
 type BaseTurnViewModel = Omit<TurnViewModel, "selfModApplied">;
 
