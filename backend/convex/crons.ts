@@ -4,11 +4,6 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 
 crons.interval(
-  "bridge maintenance tick",
-  { minutes: 1 },
-  internal.channels.bridge.bridgeMaintenanceTick,
-);
-crons.interval(
   "transient connector cleanup",
   { minutes: 5 },
   internal.channels.transient_data.purgeExpired,

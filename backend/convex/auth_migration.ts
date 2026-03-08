@@ -32,8 +32,6 @@ const OWNER_TABLES: Array<{
   { table: "channel_connections", index: "by_ownerId_and_provider" },
   { table: "transient_channel_events", index: "by_ownerId_and_createdAt" },
   { table: "transient_cleanup_failures", index: "by_ownerId_and_createdAt" },
-  { table: "bridge_sessions", index: "by_ownerId_and_provider" },
-  { table: "bridge_outbound", index: "by_ownerId_and_createdAt" },
   { table: "skills", index: "by_ownerId_and_updatedAt" },
   { table: "agents", index: "by_ownerId_and_updatedAt" },
 ];

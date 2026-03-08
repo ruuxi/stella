@@ -90,33 +90,6 @@ export const rotateEncryptedMaterialBatch = internalMutation({
       }
     }
 
-    if (remaining > 0) {
-      const sessions = await ctx.db.query("bridge_sessions").collect();
-      const candidates = sessions.filter((record) =>
-        shouldRotateByVersion(record.webhookSecretKeyVersion, activeKeyVersion),
-      );
-
-      for (const candidate of candidates) {
-        if (remaining <= 0) break;
-        try {
-          const result = await rotateSecretToActiveKey(candidate.webhookSecret);
-          if (!result.changed) {
-            skipped += 1;
-            continue;
-          }
-          await ctx.db.patch(candidate._id, {
-            webhookSecret: result.serialized,
-            webhookSecretKeyVersion: result.keyVersion,
-            updatedAt: now,
-          });
-          rotated += 1;
-          remaining -= 1;
-        } catch {
-          failed += 1;
-        }
-      }
-    }
-
     return {
       activeKeyVersion,
       batchSize,
