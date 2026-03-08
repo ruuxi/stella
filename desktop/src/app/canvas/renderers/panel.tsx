@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, type ComponentType } from 'react'
 import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import { Spinner } from '@/ui/spinner'
 import type { WorkspacePanel } from '@/context/workspace-state'
+import {
+  areLocalWorkspacePanelsEnabled,
+  LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE,
+} from '@/shared/lib/local-workspace-panels'
 import './canvas-renderers.css'
 
 const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
@@ -51,6 +55,15 @@ class InvalidPanelModuleError extends Error {
   }
 }
 
+class UnsupportedPanelRuntimeError extends Error {
+  readonly _tag = 'UnsupportedPanelRuntimeError'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'UnsupportedPanelRuntimeError'
+  }
+}
+
 const normalizePanelName = (value: string): string | null => {
   const base = value.trim().replace(/\.tsx$/i, '')
   if (!PANEL_NAME_PATTERN.test(base)) {
@@ -83,6 +96,10 @@ const loadPanelComponent = async (
   const normalizedName = normalizePanelName(panelName)
   if (!normalizedName) {
     throw new InvalidPanelNameError('Invalid panel name. Use letters, numbers, "_" or "-".')
+  }
+
+  if (!areLocalWorkspacePanelsEnabled()) {
+    throw new UnsupportedPanelRuntimeError(LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE)
   }
 
   let lastError: unknown = null
@@ -121,6 +138,7 @@ const toPanelLoadMessage = (error: unknown): string => {
   if (error instanceof MissingPanelNameError) return error.message
   if (error instanceof InvalidPanelNameError) return error.message
   if (error instanceof InvalidPanelModuleError) return error.message
+  if (error instanceof UnsupportedPanelRuntimeError) return error.message
   if (error instanceof PanelImportError) {
     return `Failed to load panel: ${formatUnknownError(error.cause)}`
   }

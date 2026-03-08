@@ -29,9 +29,16 @@ const formatWorkspacePanelTitle = (name: string) => {
 export class WorkspaceService {
   private panelWatcher: fsSync.FSWatcher | null = null
 
-  constructor(private readonly getStellaHomePath: () => string | null) {}
+  constructor(
+    private readonly getStellaHomePath: () => string | null,
+    private readonly isEnabled: () => boolean = () => true,
+  ) {}
 
   private getPanelsDir() {
+    if (!this.isEnabled()) {
+      return null
+    }
+
     const stellaHomePath = this.getStellaHomePath()
     if (!stellaHomePath) {
       return null

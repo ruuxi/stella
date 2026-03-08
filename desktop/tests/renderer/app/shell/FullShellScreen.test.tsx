@@ -4,6 +4,8 @@ import { createRef } from "react";
 
 // --- Mocks ---
 
+const mockAreLocalWorkspacePanelsEnabled = vi.fn(() => true);
+
 const mockSendMessage = vi.fn();
 const mockUseConversationEventFeed = vi.fn((conversationId?: string) => {
   void conversationId;
@@ -103,6 +105,12 @@ vi.mock("@/app/canvas/hooks/use-canvas-commands", () => ({
 
 vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: vi.fn(() => undefined),
+}));
+
+vi.mock("@/shared/lib/local-workspace-panels", () => ({
+  LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE:
+    "Local workspace panels are only available while running the Vite dev server.",
+  areLocalWorkspacePanelsEnabled: () => mockAreLocalWorkspacePanelsEnabled(),
 }));
 
 vi.mock("@/app/auth/services/auth", () => ({
@@ -246,6 +254,7 @@ import { getElectronApi } from "@/platform/electron/electron";
 describe("FullShell (full-shell/FullShell.tsx)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAreLocalWorkspacePanelsEnabled.mockReturnValue(true);
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
       setMode: vi.fn(),
@@ -356,6 +365,23 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(listWorkspacePanels).toHaveBeenCalled();
     expect(mockOpenPanel).toHaveBeenCalledWith({ name: "pd_focus", title: "Focus" });
     expect(mockSetView).toHaveBeenCalledWith("app");
+  });
+
+  it("does not list local workspace pages outside dev mode", () => {
+    mockAreLocalWorkspacePanelsEnabled.mockReturnValue(false);
+    const listWorkspacePanels = vi.fn(() =>
+      Promise.resolve([{ name: "pd_focus", title: "Focus" }]),
+    );
+
+    vi.mocked(getElectronApi).mockReturnValue({
+      browser: { listWorkspacePanels },
+      capture: { getContext: vi.fn().mockResolvedValue(null), onContext: vi.fn(() => vi.fn()) },
+    } as any);
+
+    render(<FullShell />);
+
+    expect(screen.queryByTestId("tab-page-local_panel:pd_focus")).not.toBeInTheDocument();
+    expect(listWorkspacePanels).not.toHaveBeenCalled();
   });
 });
 

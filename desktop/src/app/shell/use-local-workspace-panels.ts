@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getElectronApi } from '@/platform/electron/electron'
+import { areLocalWorkspacePanelsEnabled } from '@/shared/lib/local-workspace-panels'
 import type { PersonalPage } from './types'
 
 type LocalWorkspacePanel = {
@@ -9,6 +10,7 @@ type LocalWorkspacePanel = {
 
 const LOCAL_PANEL_PAGE_PREFIX = 'local_panel:'
 const LOCAL_PANELS_POLL_INTERVAL_MS = 3_000
+const EMPTY_PERSONAL_PAGES: PersonalPage[] = []
 
 const arePanelListsEqual = (
   left: LocalWorkspacePanel[],
@@ -45,11 +47,16 @@ const normalizePanels = (result: unknown): LocalWorkspacePanel[] =>
     .filter((panel) => panel.name.length > 0)
 
 export function useLocalWorkspacePanels() {
+  const isLocalWorkspacePanelsEnabled = areLocalWorkspacePanelsEnabled()
   const [localWorkspacePanels, setLocalWorkspacePanels] = useState<LocalWorkspacePanel[]>(
     [],
   )
 
   useEffect(() => {
+    if (!isLocalWorkspacePanelsEnabled) {
+      return
+    }
+
     const electronApi = getElectronApi()
     if (!electronApi?.browser.listWorkspacePanels) {
       return
@@ -98,17 +105,22 @@ export function useLocalWorkspacePanels() {
         window.clearInterval(intervalId)
       }
     }
-  }, [])
+  }, [isLocalWorkspacePanelsEnabled])
 
   const personalPages = useMemo<PersonalPage[]>(
-    () =>
-      localWorkspacePanels.map((panel, index) => ({
+    () => {
+      if (!isLocalWorkspacePanelsEnabled) {
+        return EMPTY_PERSONAL_PAGES
+      }
+
+      return localWorkspacePanels.map((panel, index) => ({
         pageId: `${LOCAL_PANEL_PAGE_PREFIX}${panel.name}`,
         panelName: panel.name,
         title: panel.title,
         order: index,
-      })),
-    [localWorkspacePanels],
+      }))
+    },
+    [isLocalWorkspacePanelsEnabled, localWorkspacePanels],
   )
 
   return { personalPages }

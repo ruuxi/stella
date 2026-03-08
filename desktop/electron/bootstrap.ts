@@ -56,7 +56,7 @@ export const bootstrapMainProcess = () => {
   // --- Core services (no deps or lightweight deps) ---
 
   const uiStateService = new UiStateService()
-  const workspaceService = new WorkspaceService(() => stellaHomePath)
+  const workspaceService = new WorkspaceService(() => stellaHomePath, () => isDev)
   const externalLinkService = new ExternalLinkService()
   const miniBridgeService = new MiniBridgeService()
   const audioDuckingService = new AudioDuckingService(
