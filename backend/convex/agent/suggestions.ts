@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { generateText } from "ai";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { buildSuggestionUserMessage } from "../prompts/index";
 import { resolveModelConfig } from "./model_resolver";
 
 type Suggestion = {
@@ -16,18 +17,6 @@ type Suggestion = {
   name: string;
   description: string;
 };
-
-const SUGGESTION_PROMPT = `Based on the recent conversation, suggest 0-3 commands the user might want to run next.
-Only suggest commands that are clearly relevant to the conversation context. Return an empty array if nothing fits.
-
-## Available Commands
-{catalog}
-
-## Recent Conversation
-{messages}
-
-Return ONLY a JSON array (no markdown fences). Each element: {"commandId": "...", "name": "...", "description": "..."}
-If no commands are relevant, return: []`;
 
 export const generateSuggestions = internalAction({
   args: {
@@ -74,9 +63,10 @@ export const generateSuggestions = internalAction({
       .join("\n");
 
     // 4. Build prompt
-    const prompt = SUGGESTION_PROMPT
-      .replace("{catalog}", catalogText)
-      .replace("{messages}", messageParts.join("\n"));
+    const prompt = buildSuggestionUserMessage({
+      catalogText,
+      messagesText: messageParts.join("\n"),
+    });
 
     // 5. Call lightweight LLM
     try {
