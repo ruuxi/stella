@@ -1,14 +1,5 @@
-import { useState, type FormEvent } from "react";
 import { cn } from "@/shared/lib/utils";
-import { authClient } from "@/app/auth/lib/auth-client";
-
-const getCallbackUrl = () => {
-  if (window.electronAPI) {
-    const protocol = (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined) ?? "Stella";
-    return `${protocol}://auth`;
-  }
-  return (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
-};
+import { useMagicLinkAuth } from "./useMagicLinkAuth";
 
 interface InlineAuthProps {
   className?: string;
@@ -16,25 +7,7 @@ interface InlineAuthProps {
 }
 
 export function InlineAuth({ className, onSkip }: InlineAuthProps) {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [callbackURL] = useState(getCallbackUrl);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    setStatus("sending");
-    try {
-      await authClient.$fetch("/sign-in/magic-link", {
-        method: "POST",
-        body: { email: trimmed, callbackURL },
-      });
-      setStatus("sent");
-    } catch {
-      setStatus("error");
-    }
-  };
+  const { email, setEmail, status, error, handleMagicLinkSubmit, reset } = useMagicLinkAuth();
 
   return (
     <div className={cn("onboarding-inline-auth", className)}>
@@ -46,7 +19,7 @@ export function InlineAuth({ className, onSkip }: InlineAuthProps) {
           <button
             type="button"
             className="onboarding-inline-auth-retry"
-            onClick={() => { setStatus("idle"); setEmail(""); }}
+            onClick={reset}
           >
             Go Back
           </button>
@@ -54,7 +27,7 @@ export function InlineAuth({ className, onSkip }: InlineAuthProps) {
       ) : (
         <>
           <div className="onboarding-inline-auth-label">Enter email to get started</div>
-          <form className="onboarding-inline-auth-form" onSubmit={handleSubmit}>
+          <form className="onboarding-inline-auth-form" onSubmit={handleMagicLinkSubmit}>
             <input
               type="email"
               className="onboarding-inline-auth-input"
@@ -72,9 +45,7 @@ export function InlineAuth({ className, onSkip }: InlineAuthProps) {
               {status === "sending" ? "Sending..." : "Send"}
             </button>
           </form>
-          {status === "error" && (
-            <div className="onboarding-inline-auth-error">Something went wrong, try again</div>
-          )}
+          {error && <div className="onboarding-inline-auth-error">{error}</div>}
         </>
       )}
       {onSkip && (

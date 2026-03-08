@@ -231,6 +231,16 @@
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
+.settings-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.settings-btn:disabled:hover {
+  color: var(--text-weak);
+  background: transparent;
+}
+
 .settings-btn--danger:hover {
   color: var(--destructive);
   border-color: var(--destructive);

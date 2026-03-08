@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
-import { DISCOVERY_CATEGORIES_CHANGED_EVENT } from "@/shared/contracts/discovery";
+import {
+  BROWSER_PROFILE_KEY,
+  BROWSER_SELECTION_KEY,
+  DISCOVERY_CATEGORIES_CHANGED_EVENT,
+  DISCOVERY_CATEGORIES_KEY,
+  type DiscoveryCategory,
+} from "@/shared/contracts/discovery";
 import {
   SPLIT_PHASES,
   SPLIT_STEP_ORDER,
-  DISCOVERY_CATEGORIES_KEY,
-  BROWSER_SELECTION_KEY,
-  BROWSER_PROFILE_KEY,
   DISCOVERY_CATEGORIES,
   BROWSERS,
   type Phase,
-  type DiscoveryCategory,
   type BrowserId,
   type OnboardingStep1Props,
 } from "./use-onboarding-state";
@@ -71,6 +73,10 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chatReplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selfmodFadeSwapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selfmodFadeCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selfmodExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Browser selection
   const [browserEnabled, setBrowserEnabled] = useState(false);
@@ -114,16 +120,52 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const [chatTyping, setChatTyping] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const [selfmodLevel, setSelfmodLevel] = useState<"low" | "medium" | "high" | null>(null);
+  const [lastActiveSelfmodLevel, setLastActiveSelfmodLevel] = useState<"low" | "medium" | "high" | null>(null);
+  const [selfmodIsFading, setSelfmodIsFading] = useState(false);
+
+  const clearChatReplyTimer = useCallback(() => {
+    if (chatReplyTimerRef.current) {
+      clearTimeout(chatReplyTimerRef.current);
+      chatReplyTimerRef.current = null;
+    }
+  }, []);
+
+  const clearSelfmodFadeTimers = useCallback(() => {
+    if (selfmodFadeSwapTimerRef.current) {
+      clearTimeout(selfmodFadeSwapTimerRef.current);
+      selfmodFadeSwapTimerRef.current = null;
+    }
+    if (selfmodFadeCleanupTimerRef.current) {
+      clearTimeout(selfmodFadeCleanupTimerRef.current);
+      selfmodFadeCleanupTimerRef.current = null;
+    }
+  }, []);
+
+  const clearSelfmodExitTimer = useCallback(() => {
+    if (selfmodExitTimer.current) {
+      clearTimeout(selfmodExitTimer.current);
+      selfmodExitTimer.current = null;
+    }
+  }, []);
+
+  const applySelfmodLevel = useCallback((nextLevel: "low" | "medium" | "high" | null) => {
+    if (nextLevel) {
+      setLastActiveSelfmodLevel(nextLevel);
+    }
+    setSelfmodLevel(nextLevel);
+  }, []);
 
   const handleChatSend = useCallback(() => {
     if (chatStep >= CREATION_STEPS.length || chatTyping) return;
     const step = CREATION_STEPS[chatStep];
     setChatMessages((prev) => [...prev, { role: "user", text: step.userText }]);
     setChatTyping(true);
-    setTimeout(() => {
+    clearChatReplyTimer();
+    chatReplyTimerRef.current = setTimeout(() => {
       setChatMessages((prev) => [...prev, { role: "stella", text: step.stellaReply }]);
       setChatTyping(false);
       setChatStep((prev) => prev + 1);
+      chatReplyTimerRef.current = null;
       if (step.action === "djstudio") {
         onDemoChange?.("dj-studio");
       } else if (step.action === "weather") {
@@ -132,7 +174,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
         onDemoChange?.(null);
       }
     }, 700);
-  }, [chatStep, chatTyping, onDemoChange]);
+  }, [chatStep, chatTyping, clearChatReplyTimer, onDemoChange]);
 
   // Auto-scroll chat to bottom
   useEffect(() => {
@@ -149,63 +191,49 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     return () => shell.removeAttribute("data-onboarding");
   }, []);
 
-  const selfmodFading = useRef(false);
-
   // Fade-through when transitioning to/from "high" (layout changes can't CSS-transition)
   const handleSelfmodLevel = useCallback((next: "low" | "medium" | "high" | null) => {
     const prev = selfmodLevel;
     if (next === prev) next = null; // toggle off
 
     const needsFade = prev === "high" || next === "high";
-    if (!needsFade || selfmodFading.current) {
-      setSelfmodLevel(next);
+    if (!needsFade) {
+      clearSelfmodFadeTimers();
+      setSelfmodIsFading(false);
+      applySelfmodLevel(next);
       return;
     }
 
-    const shell = document.querySelector(".window-shell");
-    if (!shell) { setSelfmodLevel(next); return; }
+    if (selfmodIsFading) {
+      return;
+    }
 
-    selfmodFading.current = true;
-    shell.setAttribute("data-selfmod-fading", "");
-    setTimeout(() => {
-      setSelfmodLevel(next);
-      setTimeout(() => {
-        shell.removeAttribute("data-selfmod-fading");
-        selfmodFading.current = false;
+    setSelfmodIsFading(true);
+    clearSelfmodFadeTimers();
+    selfmodFadeSwapTimerRef.current = setTimeout(() => {
+      applySelfmodLevel(next);
+      selfmodFadeCleanupTimerRef.current = setTimeout(() => {
+        setSelfmodIsFading(false);
       }, 50);
     }, 300);
-  }, [selfmodLevel]);
+  }, [applySelfmodLevel, clearSelfmodFadeTimers, selfmodIsFading, selfmodLevel]);
 
-  // Apply/remove selfmod demo on the actual app shell
-  const selfmodExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Apply/remove selfmod demo on the onboarding surface only.
   useEffect(() => {
-    const shell = document.querySelector(".window-shell");
-    if (!shell) return;
-    if (phase === "creation" && selfmodLevel) {
-      if (selfmodExitTimer.current) {
-        clearTimeout(selfmodExitTimer.current);
-        selfmodExitTimer.current = null;
-      }
-      shell.removeAttribute("data-selfmod-exiting");
-      shell.setAttribute("data-selfmod-demo", selfmodLevel);
-    } else if (shell.hasAttribute("data-selfmod-demo")) {
-      // Smooth exit: keep demo attr so pseudo-elements still exist, overlay exiting to fade out
-      shell.setAttribute("data-selfmod-exiting", "");
-      selfmodExitTimer.current = setTimeout(() => {
-        shell.removeAttribute("data-selfmod-demo");
-        shell.removeAttribute("data-selfmod-exiting");
-        selfmodExitTimer.current = null;
-      }, 600);
+    const selfmodExiting = !(phase === "creation" && selfmodLevel) && Boolean(lastActiveSelfmodLevel);
+
+    if (!selfmodExiting) {
+      clearSelfmodExitTimer();
+      return;
     }
-    return () => {
-      shell.removeAttribute("data-selfmod-demo");
-      shell.removeAttribute("data-selfmod-exiting");
-      if (selfmodExitTimer.current) {
-        clearTimeout(selfmodExitTimer.current);
-        selfmodExitTimer.current = null;
-      }
-    };
-  }, [phase, selfmodLevel]);
+
+    selfmodExitTimer.current = setTimeout(() => {
+      setLastActiveSelfmodLevel(null);
+      selfmodExitTimer.current = null;
+    }, 600);
+
+    return clearSelfmodExitTimer;
+  }, [clearSelfmodExitTimer, lastActiveSelfmodLevel, phase, selfmodLevel]);
 
   // Close demo panel when leaving creation phase
   useEffect(() => {
@@ -241,16 +269,18 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   }, []);
 
   const transitionTo = useCallback((next: Phase) => {
+    clearTimeoutRef();
     setLeaving(true);
     timeoutRef.current = setTimeout(() => {
       setLeaving(false);
       setPhase(next);
     }, FADE_OUT_MS + FADE_GAP_MS);
-  }, []);
+  }, [clearTimeoutRef]);
 
   /* ── Center phase handlers ── */
 
   const handleStart = () => {
+    clearTimeoutRef();
     setLeaving(true);
     onAccept?.();
     onInteract?.();
@@ -326,16 +356,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   // Load profiles when browser selection changes
   useEffect(() => {
-    if (!selectedBrowser) {
-      if (availableProfiles.length === 0 && selectedProfile === null) {
-        return;
-      }
-      const timeout = setTimeout(() => {
-        setAvailableProfiles([]);
-        setSelectedProfile(null);
-      }, 0);
-      return () => clearTimeout(timeout);
-    }
+    if (!selectedBrowser) return;
 
     let cancelled = false;
 
@@ -344,7 +365,12 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
         const profiles = await window.electronAPI?.browser.listProfiles?.(selectedBrowser);
         if (!cancelled && profiles) {
           setAvailableProfiles(profiles);
-          setSelectedProfile(profiles.length > 0 ? profiles[0].id : null);
+          setSelectedProfile((currentProfile) => {
+            if (currentProfile && profiles.some((profile) => profile.id === currentProfile)) {
+              return currentProfile;
+            }
+            return profiles.length > 0 ? profiles[0].id : null;
+          });
         }
       } catch {
         if (!cancelled) {
@@ -359,7 +385,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     return () => {
       cancelled = true;
     };
-  }, [availableProfiles.length, selectedBrowser, selectedProfile]);
+  }, [selectedBrowser]);
 
   const nextSplitStep = () => {
     const idx = SPLIT_STEP_ORDER.indexOf(phase);
@@ -384,6 +410,20 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
     return clearTimeoutRef;
   }, [phase, onComplete, clearTimeoutRef]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeoutRef();
+      clearChatReplyTimer();
+      clearSelfmodFadeTimers();
+      clearSelfmodExitTimer();
+    };
+  }, [
+    clearChatReplyTimer,
+    clearSelfmodExitTimer,
+    clearSelfmodFadeTimers,
+    clearTimeoutRef,
+  ]);
 
   /* ── Discovery confirm ── */
   const handleDiscoveryConfirm = () => {
@@ -451,6 +491,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   const isSplit = SPLIT_PHASES.has(phase);
   const isComplete = phase === "complete";
+  const selfmodActive = phase === "creation" && Boolean(selfmodLevel);
+  const renderedSelfmodLevel = selfmodActive ? selfmodLevel : lastActiveSelfmodLevel;
+  const selfmodExiting = !selfmodActive && Boolean(lastActiveSelfmodLevel);
 
   const sortedThemes = [...themes].sort((a, b) => a.name.localeCompare(b.name));
   const platform = getPlatform();
@@ -482,6 +525,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       className={`onboarding-dialogue ${isSplit ? "onboarding-dialogue--split" : ""}`}
       data-phase={phase}
       data-leaving={leaving}
+      data-selfmod-demo={renderedSelfmodLevel ?? undefined}
+      data-selfmod-fading={selfmodIsFading || undefined}
+      data-selfmod-exiting={selfmodExiting || undefined}
       style={{ display: isComplete ? "none" : undefined }}
     >
       {/* ════ CENTER PHASES ════ */}
@@ -795,7 +841,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   className="onboarding-confirm" 
                   data-visible={true} 
                   onClick={() => {
-                    const finalShortcut = platform === "darwin" ? "CommandOrControl+Shift+V" : "CommandOrControl+Shift+V"
+                    const finalShortcut = "CommandOrControl+Shift+V"
                     localStorage.setItem("stella-voice-shortcut", finalShortcut)
                     window.electronAPI?.voice.setShortcut?.(finalShortcut)
                     nextSplitStep()
