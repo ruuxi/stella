@@ -6,7 +6,11 @@ import { Markdown } from "@/app/chat/Markdown";
 import { ReasoningSection } from "@/app/chat/ReasoningSection";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
-import type { EventRecord, MessagePayload } from "@/app/chat/lib/event-transforms";
+import {
+  getEventText,
+  type EventRecord,
+  type MessagePayload,
+} from "@/app/chat/lib/event-transforms";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 
 export type TurnViewModel = {
@@ -14,6 +18,7 @@ export type TurnViewModel = {
   userText: string;
   userAttachments: Attachment[];
   userChannelEnvelope?: ChannelEnvelope;
+  userLocalTimeLabel?: string | null;
   assistantText: string;
   assistantMessageId: string | null;
   assistantEmotesEnabled: boolean;
@@ -92,6 +97,43 @@ const formatProvider = (provider: string) =>
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join(" ");
 
+const LEADING_TIME_TAG_RE = /^\[(?:1[0-2]|0?[1-9]):[0-5]\d\s?(?:AM|PM)\]\s*/i;
+
+const isChannelMessageEvent = (event: EventRecord): boolean => {
+  if (event.channelEnvelope && typeof event.channelEnvelope === "object") {
+    return true;
+  }
+  if (!event.payload || typeof event.payload !== "object") {
+    return false;
+  }
+  const source = (event.payload as MessagePayload).source;
+  return typeof source === "string" && source.trim().toLowerCase().startsWith("channel:");
+};
+
+const formatLocalChannelTimestamp = (timestamp: number | null | undefined) => {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return null;
+  return `[${new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  })}]`;
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const getDisplayUserText = (event: EventRecord): string => {
+  const text = getEventText(event);
+  if (!isChannelMessageEvent(event)) {
+    return text;
+  }
+  return text.replace(LEADING_TIME_TAG_RE, "");
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const getLocalTimeLabel = (event: EventRecord): string | null => {
+  if (!isChannelMessageEvent(event)) return null;
+  const timestamp = event.channelEnvelope?.sourceTimestamp ?? event.timestamp;
+  return formatLocalChannelTimestamp(timestamp);
+};
+
 const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
   const reactions = envelope.reactions ?? [];
   if (reactions.length === 0) return null;
@@ -134,11 +176,12 @@ export const TurnItem = memo(function TurnItem({
   const userText = turn.userText;
   const userAttachments = turn.userAttachments;
   const userChannelEnvelope = turn.userChannelEnvelope;
+  const userLocalTimeLabel = turn.userLocalTimeLabel;
   const assistantText = turn.assistantText;
   const hasAssistantContent = assistantText.trim().length > 0;
   const hasUserContent =
     userText.trim().length > 0 || userAttachments.length > 0;
-  const hasChannelMeta = Boolean(userChannelEnvelope?.provider);
+  const hasChannelMeta = Boolean(userChannelEnvelope?.provider || userLocalTimeLabel);
   const reactionSummary = userChannelEnvelope
     ? summarizeReactions(userChannelEnvelope)
     : null;
@@ -182,17 +225,24 @@ export const TurnItem = memo(function TurnItem({
                 {windowContext && (
                   <span className="event-window-badge">{windowContext}</span>
                 )}
-                {hasChannelMeta && userChannelEnvelope && (
+                {hasChannelMeta && (
                   <div className="event-channel-meta">
-                    <span className="event-channel-badge provider">
-                      {formatProvider(userChannelEnvelope.provider)}
-                    </span>
-                    {userChannelEnvelope.kind !== "message" && (
+                    {userLocalTimeLabel && (
+                      <span className="event-channel-badge time">
+                        {userLocalTimeLabel}
+                      </span>
+                    )}
+                    {userChannelEnvelope?.provider && (
+                      <span className="event-channel-badge provider">
+                        {formatProvider(userChannelEnvelope.provider)}
+                      </span>
+                    )}
+                    {userChannelEnvelope && userChannelEnvelope.kind !== "message" && (
                       <span className="event-channel-badge kind">
                         {formatChannelKind(userChannelEnvelope.kind)}
                       </span>
                     )}
-                    {reactionSummary && (
+                    {userChannelEnvelope && reactionSummary && (
                       <span className="event-channel-badge reaction">
                         {reactionSummary}
                       </span>

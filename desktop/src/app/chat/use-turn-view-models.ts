@@ -11,8 +11,10 @@ import { useDepseudonymize } from "@/app/chat/hooks/use-depseudonymize";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
 import {
   type TurnViewModel,
+  getDisplayUserText,
   getAttachments,
   getChannelEnvelope,
+  getLocalTimeLabel,
 } from "./MessageTurn";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 
@@ -90,9 +92,10 @@ export function useTurnViewModels(opts: {
 
   const baseTurns = useMemo(() => {
     return slicedTurns.map((turn): BaseTurnViewModel => {
-      const userText = getEventText(turn.userMessage);
+      const userText = getDisplayUserText(turn.userMessage);
       const userAttachments = getAttachments(turn.userMessage);
       const userChannelEnvelope = getChannelEnvelope(turn.userMessage);
+      const userLocalTimeLabel = getLocalTimeLabel(turn.userMessage);
       const assistantText = turn.assistantMessage
         ? depseudonymize(getEventText(turn.assistantMessage))
         : "";
@@ -106,6 +109,7 @@ export function useTurnViewModels(opts: {
         userText,
         userAttachments,
         userChannelEnvelope,
+        userLocalTimeLabel,
         assistantText,
         assistantMessageId,
         assistantEmotesEnabled,
