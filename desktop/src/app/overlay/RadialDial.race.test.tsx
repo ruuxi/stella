@@ -1,11 +1,11 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/services/electron", () => ({
+vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: () => ({ platform: "win32" }),
 }));
 
-vi.mock("@/theme/theme-context", () => ({
+vi.mock("@/context/theme-context", () => ({
   useTheme: () => ({
     colors: {
       interactive: "#ff0000",

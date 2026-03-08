@@ -13,8 +13,8 @@ import type { Integration } from "./integration-configs";
 import {
   deployAndStartLocalBridge,
   type BridgeProvider,
-} from "@/lib/bridge-local";
-import { sanitizeExternalLinkUrl } from "@/lib/url-safety";
+} from "@/platform/electron/bridge-local";
+import { sanitizeExternalLinkUrl } from "@/shared/lib/url-safety";
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;

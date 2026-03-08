@@ -16,7 +16,7 @@ import {
   MAX_CHAT_WIDTH_RATIO,
   MIN_CHAT_WIDTH,
   useWorkspace,
-} from '@/providers/workspace-state'
+} from '@/context/workspace-state'
 import './chat-panel.css'
 
 const ANIM_DURATION = 350 // ms, matches CSS chat-slide-out duration

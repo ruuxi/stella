@@ -1,4 +1,5 @@
 import fs from "fs"
+import os from "os"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
@@ -8,6 +9,12 @@ const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_STATE_FILE = path.resolve(__dirname, '.stella-hmr-state.json')
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
 const SELF_MOD_HMR_STALE_MS = 30_000
+const STELLA_WORKSPACE_PANELS_DIR = path.resolve(
+  os.homedir(),
+  '.stella',
+  'workspace',
+  'panels',
+)
 const PACKAGE_MANIFEST_BASENAMES = new Set([
   'package.json',
   'bun.lock',
@@ -41,16 +48,23 @@ function devServerUrl(): Plugin {
 }
 
 const PANEL_FILE_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\.tsx$/
+const toViteFsPath = (filePath: string) => `/@fs/${filePath.replace(/\\/g, '/')}`
 
 /**
  * Serves workspace panel .tsx files through Vite's transform pipeline.
- * Path containment: only files inside <projectRoot>/workspace/panels/ are served.
+ * Path containment: only files inside ~/.stella/workspace/panels/ are served.
  * Filename validation: must match PANEL_FILE_PATTERN.
  */
 function workspacePanelServer(): Plugin {
   return {
     name: 'workspace-panel-server',
     configureServer(server) {
+      try {
+        fs.mkdirSync(STELLA_WORKSPACE_PANELS_DIR, { recursive: true })
+      } catch (error) {
+        console.warn('[workspace-panel-server] Failed to create runtime panels directory:', error)
+      }
+
       server.middlewares.use(async (req, res, next) => {
         if (!req.url || !req.url.startsWith('/workspace/panels/')) return next()
 
@@ -65,8 +79,8 @@ function workspacePanelServer(): Plugin {
           return
         }
 
-        // Resolve and contain path within workspace/panels/
-        const panelsDir = path.resolve(server.config.root, 'workspace', 'panels')
+        // Resolve and contain path within ~/.stella/workspace/panels/
+        const panelsDir = STELLA_WORKSPACE_PANELS_DIR
         const resolved = path.resolve(panelsDir, filename)
         const relative = path.relative(panelsDir, resolved)
 
@@ -84,8 +98,9 @@ function workspacePanelServer(): Plugin {
         }
 
         try {
-          // Transform the TSX file through Vite's pipeline
-          const result = await server.transformRequest(urlPath)
+          // Transform the runtime TSX file through Vite's pipeline.
+          const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+          const result = await server.transformRequest(`${toViteFsPath(resolved)}${query}`)
           if (!result) {
             res.statusCode = 500
             res.end('Transform failed')
@@ -310,8 +325,8 @@ export default defineConfig({
   server: {
     port: 5714,
     strictPort: false,
-    watch: {
-      ignored: ['**/workspace/**'],
+    fs: {
+      allow: [STELLA_WORKSPACE_PANELS_DIR],
     },
   },
   resolve: {

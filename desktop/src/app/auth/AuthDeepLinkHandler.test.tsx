@@ -4,7 +4,7 @@ import { AuthDeepLinkHandler } from "./AuthDeepLinkHandler";
 
 const mockClientFetch = vi.fn();
 const mockGetSession = vi.fn();
-vi.mock("@/lib/auth-client", () => ({
+vi.mock("@/app/auth/lib/auth-client", () => ({
   authClient: {
     $fetch: (...args: unknown[]) => mockClientFetch(...args),
     getSession: () => mockGetSession(),

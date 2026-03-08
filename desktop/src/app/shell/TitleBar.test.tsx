@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { WorkspaceProvider, useWorkspace } from "@/providers/workspace-state";
+import { WorkspaceProvider, useWorkspace } from "@/context/workspace-state";
 import { TitleBar } from "./TitleBar";
 import { useEffect } from "react";
 

@@ -38,7 +38,7 @@ vi.mock("@/convex/api", () => ({
   },
 }));
 
-vi.mock("@/hooks/use-model-catalog", () => ({
+vi.mock("@/app/settings/hooks/use-model-catalog", () => ({
   useModelCatalog: vi.fn(() => ({
     models: [
       { id: "anthropic/claude-3", name: "Claude 3", provider: "anthropic" },

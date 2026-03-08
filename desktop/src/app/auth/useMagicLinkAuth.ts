@@ -1,5 +1,5 @@
 import { useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
-import { authClient } from "@/lib/auth-client";
+import { authClient } from "@/app/auth/lib/auth-client";
 
 type Status = "idle" | "sending" | "sent" | "error";
 

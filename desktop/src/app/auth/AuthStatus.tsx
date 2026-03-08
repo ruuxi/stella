@@ -1,5 +1,5 @@
-import { useCurrentUser } from "@/hooks/use-current-user";
-import { secureSignOut } from "@/services/auth";
+import { useCurrentUser } from "@/app/auth/hooks/use-current-user";
+import { secureSignOut } from "@/app/auth/services/auth";
 
 export const AuthStatus = () => {
   const { user, isAuthenticated } = useCurrentUser();

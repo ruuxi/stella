@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { getConvexToken } from "@/services/auth-token";
-import { authClient } from "@/lib/auth-client";
+import { getConvexToken } from "@/app/auth/services/auth-token";
+import { authClient } from "@/app/auth/lib/auth-client";
 
 const TOKEN_REFRESH_MS = 3 * 60 * 1000;
 const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;

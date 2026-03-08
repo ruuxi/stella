@@ -15,6 +15,7 @@
     "test:electron": "bun run build:packages && vitest run --config vitest.electron.config.ts",
     "preview": "vite preview",
     "native:build": "cd native && npm install && npm run build",
+    "workspace:create-app": "node scripts/create-workspace-app.mjs",
     "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"cd ../frontend && bun run build:packages && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && wait-on file:.vite-dev-url && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run native:build && cd ../frontend && bun run build:packages && bunx --package typescript@5.9.3 tsc --build && vite build && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron-builder",
     "electron:preview": "cd ../frontend && bun run build:packages && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron .",
@@ -170,14 +171,10 @@
     ],
     "extraResources": [
       {
-        "from": "native",
-        "to": "native",
+        "from": "native/out",
+        "to": "native/out",
         "filter": [
-          "mouse_block.exe",
-          "window_info.exe",
-          "audio_ducking.exe",
-          "window_info",
-          "audio_ducking"
+          "**/*"
         ]
       },
       {

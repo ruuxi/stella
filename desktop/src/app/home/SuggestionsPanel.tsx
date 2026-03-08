@@ -1,5 +1,5 @@
 import { memo } from "react"
-import type { WelcomeSuggestion } from "@/services/synthesis"
+import type { WelcomeSuggestion } from "@/app/onboarding/services/synthesis"
 import { DashboardCard } from "./DashboardCard"
 
 const CATEGORY_LABELS: Record<WelcomeSuggestion["category"], string> = {

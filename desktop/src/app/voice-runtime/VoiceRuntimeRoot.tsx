@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
-import { useUiState } from "@/providers/ui-state";
-import { getOrCreateDeviceId } from "@/services/device";
-import { appendLocalEvent } from "@/services/local-chat-store";
-import { initRealtimeVoiceIpc, type VoiceSessionState } from "@/services/realtime-voice";
-import { VoiceSessionManager } from "@/hooks/use-realtime-voice";
+import { useUiState } from "@/context/ui-state";
+import { getOrCreateDeviceId } from "@/platform/electron/device";
+import { appendLocalEvent } from "@/app/chat/services/local-chat-store";
+import { initRealtimeVoiceIpc, type VoiceSessionState } from "@/app/voice/services/realtime-voice";
+import { VoiceSessionManager } from "@/app/voice/hooks/use-realtime-voice";
 
 type RuntimeVoiceState = {
   sessionState: VoiceSessionState;

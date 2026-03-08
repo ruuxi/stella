@@ -1,9 +1,9 @@
-import type { EventRecord } from "@/hooks/use-conversation-events";
-import type { MessagePayload, Attachment } from "@/lib/event-transforms";
+import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { MessagePayload, Attachment } from "@/app/chat/lib/event-transforms";
 import { WorkingIndicator } from "./WorkingIndicator";
 import { Markdown } from "./Markdown";
 import { isOrchestratorChatMessagePayload } from "./emotes/message-source";
-import { sanitizeAttachmentImageUrl } from "@/lib/url-safety";
+import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 
 type MessageGroupProps = {
   userMessage: EventRecord;

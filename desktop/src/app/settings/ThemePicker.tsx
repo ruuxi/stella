@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useTheme, useThemeControl } from "@/theme/theme-context";
+import { useTheme, useThemeControl } from "@/context/theme-context";
 import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "@/ui/popover";
 import { Button } from "@/ui/button";
 import { ChevronUp, Check } from "lucide-react";

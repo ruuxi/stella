@@ -4,16 +4,16 @@ import { render, screen } from "@testing-library/react";
 // ---------- Mocks ----------
 
 // Mock getElectronApi to return undefined (no API)
-vi.mock("@/services/electron", () => ({
+vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: () => undefined,
 }));
 
-vi.mock("@/providers/ui-state", () => ({
+vi.mock("@/context/ui-state", () => ({
   useUiState: () => ({ state: { isVoiceActive: false } }),
 }));
 
 // Mock useTheme to return fake colors
-vi.mock("@/theme/theme-context", () => ({
+vi.mock("@/context/theme-context", () => ({
   useTheme: () => ({
     colors: {
       interactive: "#ff0000",
@@ -31,7 +31,7 @@ vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
-vi.mock("@/providers/ui-state", () => ({
+vi.mock("@/context/ui-state", () => ({
   useUiState: () => ({ state: { isVoiceActive: false } }),
 }));
 

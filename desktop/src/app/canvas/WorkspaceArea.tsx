@@ -4,7 +4,7 @@
  */
 
 import { lazy, Suspense, useCallback } from 'react'
-import { useWorkspace, type WorkspacePanel } from '@/providers/workspace-state'
+import { useWorkspace, type WorkspacePanel } from '@/context/workspace-state'
 import { Spinner } from '@/ui/spinner'
 import type { OnboardingDemo } from '@/app/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/types/ui'

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { cn } from "@/lib/utils";
-import { authClient } from "@/lib/auth-client";
+import { cn } from "@/shared/lib/utils";
+import { authClient } from "@/app/auth/lib/auth-client";
 
 const getCallbackUrl = () => {
   if (window.electronAPI) {

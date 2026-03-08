@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useWorkspace } from '@/providers/workspace-state';
-import { getPlatform } from '@/lib/platform';
+import { useWorkspace } from '@/context/workspace-state';
+import { getPlatform } from '@/platform/electron/platform';
 
 const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
 

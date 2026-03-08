@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import { authClient } from "@/lib/auth-client";
+import { authClient } from "@/app/auth/lib/auth-client";
 
 export const AutoAnonAuth = () => {
   const session = authClient.useSession();

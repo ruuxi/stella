@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { ThemeProvider } from "@/theme/theme-context";
+import { ThemeProvider } from "@/context/theme-context";
 import { ThemePicker } from "../settings/ThemePicker";
 
 beforeEach(() => {
