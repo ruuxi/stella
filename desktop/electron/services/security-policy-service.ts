@@ -32,7 +32,11 @@ export class SecurityPolicyService {
         }
       }
     } catch (err) {
-      console.debug('[security-policy] Policy file missing or invalid, treating as no approvals:', err)
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        console.debug('[security-policy] No persisted policy yet, treating as no approvals')
+        return
+      }
+      console.debug('[security-policy] Policy file invalid, treating as no approvals:', err)
     }
   }
 

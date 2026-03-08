@@ -1,16 +1,12 @@
 import { spawn } from 'node:child_process'
 import { watch } from 'node:fs'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import waitOn from 'wait-on'
 
+const require = createRequire(import.meta.url)
 const projectDir = process.cwd()
-const isWindows = process.platform === 'win32'
-const electronBinary = path.join(
-  projectDir,
-  'node_modules',
-  '.bin',
-  isWindows ? 'electron.cmd' : 'electron',
-)
+const electronBinary = require('electron')
 const watchedDir = path.join(projectDir, 'dist-electron', 'electron')
 const requiredFiles = [
   path.join(projectDir, '.vite-dev-url'),
