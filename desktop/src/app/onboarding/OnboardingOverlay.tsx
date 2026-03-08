@@ -10,7 +10,8 @@ import {
   StellaAnimation,
   type StellaAnimationHandle,
 } from "@/app/shell/ascii-creature/StellaAnimation";
-import { OnboardingStep1, useOnboardingState } from "@/app/onboarding";
+import { OnboardingStep1 } from "@/app/onboarding/OnboardingStep1";
+import { useOnboardingState } from "@/app/onboarding/use-onboarding-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
 const CREATURE_INITIAL_SIZE = 0.22;

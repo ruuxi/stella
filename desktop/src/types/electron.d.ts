@@ -97,7 +97,7 @@ export type ElectronUiApi = {
 
 export type ElectronCaptureApi = {
   getContext: () => Promise<ChatContext | null>
-  onContext: (callback: (payload: ChatContext | null | ChatContextUpdate) => void) => () => void
+  onContext: (callback: (payload: ChatContextUpdate | null) => void) => () => void
   ackContext: (payload: { version: number }) => void
   screenshot: (point?: { x: number; y: number }) => Promise<{
     dataUrl: string

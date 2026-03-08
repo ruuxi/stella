@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WelcomeSuggestion } from "@/app/onboarding/services/synthesis";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import { useWelcomeSuggestions } from "../../../../../src/app/home/hooks/use-welcome-suggestions";
 
 const createEvent = (overrides: Partial<EventRecord> & { type: string }): EventRecord => ({

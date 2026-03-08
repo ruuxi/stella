@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 
 const STORAGE_KEY = "stella:orb-last-seen-message";
 

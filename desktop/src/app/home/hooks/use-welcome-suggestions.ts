@@ -1,5 +1,5 @@
 import type { WelcomeSuggestion } from '@/app/onboarding/services/synthesis'
-import type { EventRecord } from '@/app/chat/hooks/use-conversation-events'
+import type { EventRecord } from '@/app/chat/lib/event-transforms'
 
 /**
  * Derives welcome suggestions from conversation events.

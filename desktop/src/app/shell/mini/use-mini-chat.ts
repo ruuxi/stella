@@ -6,7 +6,7 @@ import type {
   MiniBridgeResponse,
   MiniBridgeSnapshot,
 } from "@/types/electron";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 
 const createEmptySnapshot = (conversationId: string | null): MiniBridgeSnapshot => ({
   conversationId,

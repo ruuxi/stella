@@ -6,8 +6,7 @@ import { Markdown } from "@/app/chat/Markdown";
 import { ReasoningSection } from "@/app/chat/ReasoningSection";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
-import type { MessagePayload } from "@/app/chat/lib/event-transforms";
+import type { EventRecord, MessagePayload } from "@/app/chat/lib/event-transforms";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 
 export type TurnViewModel = {

@@ -1,4 +1,4 @@
-import type { EventRecord } from './use-conversation-events'
+import type { EventRecord } from '@/app/chat/lib/event-transforms'
 
 export type CommandSuggestion = {
   commandId: string
