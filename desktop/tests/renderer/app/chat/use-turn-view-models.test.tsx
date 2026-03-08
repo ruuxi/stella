@@ -14,16 +14,18 @@ const createEvent = (
 describe("useTurnViewModels", () => {
   it("maps channel envelope metadata into turn view model", () => {
     const userId = "user-1";
+    const sourceTimestamp = Date.UTC(2026, 2, 8, 20, 0, 0);
     const events: EventRecord[] = [
       {
         _id: userId,
         timestamp: 1,
         type: "user_message",
-        payload: { text: "hello" },
+        payload: { text: "[8:00 PM] hello" },
         channelEnvelope: {
           provider: "discord",
           kind: "message",
           externalUserId: "ext-1",
+          sourceTimestamp,
         },
       },
       createEvent({
@@ -37,11 +39,18 @@ describe("useTurnViewModels", () => {
     );
 
     expect(result.current.turns).toHaveLength(1);
+    expect(result.current.turns[0].userText).toBe("hello");
     expect(result.current.turns[0].userChannelEnvelope).toMatchObject({
       provider: "discord",
       kind: "message",
       externalUserId: "ext-1",
     });
+    expect(result.current.turns[0].userLocalTimeLabel).toBe(
+      `[${new Date(sourceTimestamp).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      })}]`,
+    );
   });
 
   it("hides streaming state when pending user already has assistant reply", () => {
