@@ -159,6 +159,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     userPrompt: string
     agentType?: string
     storageMode?: 'cloud' | 'local'
+    promptOverrides?: Record<string, string>
   }) => {
     if (!options.assertPrivilegedSender(event, 'agent:startChat')) {
       throw new Error('Blocked untrusted request.')

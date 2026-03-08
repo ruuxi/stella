@@ -188,6 +188,7 @@ export type ElectronAgentApi = {
     userPrompt: string
     agentType?: string
     storageMode?: "cloud" | "local"
+    promptOverrides?: Record<string, string>
   }) => Promise<{ runId: string }>
   cancelChat: (runId: string) => void
   resumeStream: (payload: {

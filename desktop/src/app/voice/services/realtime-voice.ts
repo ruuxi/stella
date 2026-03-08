@@ -9,6 +9,7 @@
  */
 
 import { createServiceRequest } from "@/infra/http/service-request";
+import { getPromptOverridesPayload } from "@/prompts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,9 +111,12 @@ const toConvexConversationId = (value: unknown): string | null => {
 
 const buildVoiceSessionRequestBody = (
   conversationId?: string,
-): { conversationId?: string } => {
+): { conversationId?: string; promptOverrides?: Record<string, string> } => {
   const convexConversationId = toConvexConversationId(conversationId);
-  return convexConversationId ? { conversationId: convexConversationId } : {};
+  return {
+    ...(convexConversationId ? { conversationId: convexConversationId } : {}),
+    ...getPromptOverridesPayload(["voice_orchestrator.base"]),
+  };
 };
 
 async function prefetchToken(): Promise<void> {
