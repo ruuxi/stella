@@ -1,4 +1,4 @@
-import { useState, useMemo, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 
@@ -18,7 +18,7 @@ interface InlineAuthProps {
 export function InlineAuth({ className, onSkip }: InlineAuthProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const callbackURL = useMemo(getCallbackUrl, []);
+  const [callbackURL] = useState(getCallbackUrl);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

@@ -17,14 +17,18 @@ export const TitleBar = () => {
     ? <span className="title-bar-workspace-label">{panelTitle}</span>
     : null;
 
-  const syncMaximizedState = useCallback(async () => {
+  const getMaximizedState = useCallback(async () => {
     const maximized = await window.electronAPI?.window.isMaximized?.();
-    setIsMaximized(maximized ?? false);
+    return maximized ?? false;
   }, []);
 
   useEffect(() => {
-    void syncMaximizedState();
-  }, [syncMaximizedState]);
+    queueMicrotask(() => {
+      void getMaximizedState().then((maximized) => {
+        setIsMaximized(maximized);
+      });
+    });
+  }, [getMaximizedState]);
 
   const handleMinimize = () => {
     window.electronAPI?.window.minimize?.();
@@ -32,8 +36,10 @@ export const TitleBar = () => {
 
   const handleMaximize = async () => {
     window.electronAPI?.window.maximize?.();
-    setTimeout(async () => {
-      await syncMaximizedState();
+    setTimeout(() => {
+      void getMaximizedState().then((maximized) => {
+        setIsMaximized(maximized);
+      });
     }, MAXIMIZE_STATE_SYNC_DELAY_MS);
   };
 

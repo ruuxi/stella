@@ -144,7 +144,7 @@ export interface ToolCall {
 	type: "toolCall";
 	id: string;
 	name: string;
-	arguments: Record<string, any>;
+	arguments: Record<string, unknown>;
 	thoughtSignature?: string; // Google-specific: opaque signature for reusing thought context
 }
 
@@ -183,7 +183,7 @@ export interface AssistantMessage {
 	timestamp: number; // Unix timestamp in milliseconds
 }
 
-export interface ToolResultMessage<TDetails = any> {
+export interface ToolResultMessage<TDetails = unknown> {
 	role: "toolResult";
 	toolCallId: string;
 	toolName: string;
@@ -257,6 +257,7 @@ export interface OpenAICompletionsCompat {
 }
 
 /** Compatibility settings for OpenAI Responses APIs. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface OpenAIResponsesCompat {
 	// Reserved for future use
 }

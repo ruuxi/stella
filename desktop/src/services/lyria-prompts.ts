@@ -225,7 +225,7 @@ export async function generateMusicPrompt(
     parsed.config.temperature = clamp(parsed.config.temperature, 0.6, 1.4)
 
     return parsed
-  } catch (err) {
+  } catch {
     return getFallbackPrompt(mood)
   }
 }

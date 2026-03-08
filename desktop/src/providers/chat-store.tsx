@@ -59,6 +59,7 @@ type ChatStoreContextValue = {
 // --- Context ---
 
 const ChatStoreContext = createContext<ChatStoreContextValue | null>(null)
+const createOptimisticTimestamp = () => Date.now()
 
 // --- Provider ---
 
@@ -97,7 +98,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
 
         const optimisticEvent = {
           _id: `optimistic-${crypto.randomUUID()}`,
-          timestamp: Date.now(),
+          timestamp: createOptimisticTimestamp(),
           type: args.type,
           deviceId: args.deviceId,
           payload: args.payload,

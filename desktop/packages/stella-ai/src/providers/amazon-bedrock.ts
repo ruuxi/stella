@@ -19,6 +19,7 @@ import {
 	type ToolConfiguration,
 	ToolResultStatus,
 } from "@aws-sdk/client-bedrock-runtime";
+import type { DocumentType } from "@smithy/types";
 
 import { calculateCost } from "../models.js";
 import type {
@@ -515,7 +516,7 @@ function convertMessages(
 							break;
 						case "toolCall":
 							contentBlocks.push({
-								toolUse: { toolUseId: c.id, name: c.name, input: c.arguments },
+								toolUse: { toolUseId: c.id, name: c.name, input: c.arguments as DocumentType },
 							});
 							break;
 						case "thinking":
@@ -667,13 +668,13 @@ function mapStopReason(reason: string | undefined): StopReason {
 function buildAdditionalModelRequestFields(
 	model: Model<"bedrock-converse-stream">,
 	options: BedrockOptions,
-): Record<string, any> | undefined {
+): DocumentType | undefined {
 	if (!options.reasoning || !model.reasoning) {
 		return undefined;
 	}
 
 	if (model.id.includes("anthropic.claude") || model.id.includes("anthropic/claude")) {
-		const result: Record<string, any> = supportsAdaptiveThinking(model.id)
+		const result: DocumentType = supportsAdaptiveThinking(model.id)
 			? {
 					thinking: { type: "adaptive" },
 					output_config: { effort: mapThinkingLevelToEffort(options.reasoning, model.id) },

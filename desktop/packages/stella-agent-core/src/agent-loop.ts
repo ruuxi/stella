@@ -72,7 +72,8 @@ export function agentLoopContinue(
 		throw new Error("Cannot continue: no messages in context");
 	}
 
-	if (context.messages[context.messages.length - 1].role === "assistant") {
+	const lastMessage = context.messages[context.messages.length - 1];
+	if (lastMessage && lastMessage.role === "assistant") {
 		throw new Error("Cannot continue from message role: assistant");
 	}
 
@@ -292,7 +293,7 @@ async function streamAssistantResponse(
  * Execute tool calls from an assistant message.
  */
 async function executeToolCalls(
-	tools: AgentTool<any>[] | undefined,
+	tools: AgentTool[] | undefined,
 	assistantMessage: AssistantMessage,
 	signal: AbortSignal | undefined,
 	stream: EventStream<AgentEvent, AgentMessage[]>,
@@ -313,7 +314,7 @@ async function executeToolCalls(
 			args: toolCall.arguments,
 		});
 
-		let result: AgentToolResult<any>;
+		let result: AgentToolResult<unknown>;
 		let isError = false;
 
 		try {
@@ -381,7 +382,7 @@ function skipToolCall(
 	toolCall: Extract<AssistantMessage["content"][number], { type: "toolCall" }>,
 	stream: EventStream<AgentEvent, AgentMessage[]>,
 ): ToolResultMessage {
-	const result: AgentToolResult<any> = {
+	const result: AgentToolResult<unknown> = {
 		content: [{ type: "text", text: "Skipped due to queued user message." }],
 		details: {},
 	};

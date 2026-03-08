@@ -12,7 +12,6 @@ import {
   type Route,
   type Locator,
   type CDPSession,
-  type Video,
 } from 'playwright-core';
 import path from 'node:path';
 import os from 'node:os';
@@ -63,6 +62,12 @@ interface PageError {
   timestamp: number;
 }
 
+interface ScreencastFrameParams {
+  data: string;
+  metadata: ScreencastFrame['metadata'];
+  sessionId: number;
+}
+
 /**
  * Manages the Playwright browser lifecycle with multiple tabs/windows
  */
@@ -95,7 +100,7 @@ export class BrowserManager {
   private screencastActive: boolean = false;
   private screencastSessionId: number = 0;
   private frameCallback: ((frame: ScreencastFrame) => void) | null = null;
-  private screencastFrameHandler: ((params: any) => void) | null = null;
+  private screencastFrameHandler: ((params: ScreencastFrameParams) => void) | null = null;
 
   // Video recording (Playwright native)
   private recordingContext: BrowserContext | null = null;
@@ -155,11 +160,12 @@ export class BrowserManager {
     }
 
     // Build locator with exact: true to avoid substring matches
+    const role = refData.role as Parameters<Page['getByRole']>[0];
     let locator: Locator;
     if (refData.name) {
-      locator = page.getByRole(refData.role as any, { name: refData.name, exact: true });
+      locator = page.getByRole(role, { name: refData.name, exact: true });
     } else {
-      locator = page.getByRole(refData.role as any);
+      locator = page.getByRole(role);
     }
 
     // If an nth index is stored (for disambiguation), use it
@@ -1472,7 +1478,7 @@ export class BrowserManager {
     this.screencastActive = true;
 
     // Create and store the frame handler so we can remove it later
-    this.screencastFrameHandler = async (params: any) => {
+    this.screencastFrameHandler = async (params: ScreencastFrameParams) => {
       const frame: ScreencastFrame = {
         data: params.data,
         metadata: params.metadata,

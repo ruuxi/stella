@@ -258,7 +258,7 @@ export class OverlayWindowController {
   private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
   private static readonly CLOSE_ANIM_FALLBACK = 350
 
-  showRadial(physX: number, physY: number) {
+  showRadial() {
     if (!this.overlayWindow.getWindow()) return
 
     if (this.radialHideTimeout) {
@@ -307,7 +307,7 @@ export class OverlayWindowController {
     }, OverlayWindowController.CLOSE_ANIM_FALLBACK)
   }
 
-  updateRadialCursor(x: number, y: number) {
+  updateRadialCursor() {
     if (!this.overlayWindow.getWindow() || !this.radialBounds) return
 
     const cursorDip = screen.getCursorScreenPoint()

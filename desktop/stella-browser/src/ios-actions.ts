@@ -18,15 +18,16 @@ function errorResponse(id: string, error: string): Response {
  * Execute a command on the iOS manager
  */
 export async function executeIOSCommand(command: Command, manager: IOSManager): Promise<Response> {
-  const { id, action } = command;
+  const { id } = command;
 
   try {
-    switch (action) {
+    switch (command.action) {
       case 'launch': {
-        const cmd = command as any;
+        const device = 'device' in command ? command.device : undefined;
+        const udid = 'udid' in command ? command.udid : undefined;
         await manager.launch({
-          device: cmd.device,
-          udid: cmd.udid,
+          device: typeof device === 'string' ? device : undefined,
+          udid: typeof udid === 'string' ? udid : undefined,
         });
         const info = manager.getDeviceInfo();
         return successResponse(id, {
@@ -37,128 +38,110 @@ export async function executeIOSCommand(command: Command, manager: IOSManager): 
       }
 
       case 'navigate': {
-        const cmd = command as any;
-        const result = await manager.navigate(cmd.url);
+        const result = await manager.navigate(command.url);
         return successResponse(id, result);
       }
 
       case 'click': {
-        const cmd = command as any;
-        await manager.click(cmd.selector);
+        await manager.click(command.selector);
         return successResponse(id, { clicked: true });
       }
 
       case 'tap': {
-        const cmd = command as any;
-        await manager.tap(cmd.selector);
+        await manager.tap(command.selector);
         return successResponse(id, { tapped: true });
       }
 
       case 'type': {
-        const cmd = command as any;
-        await manager.type(cmd.selector, cmd.text, {
-          delay: cmd.delay,
-          clear: cmd.clear,
+        await manager.type(command.selector, command.text, {
+          delay: command.delay,
+          clear: command.clear,
         });
         return successResponse(id, { typed: true });
       }
 
       case 'fill': {
-        const cmd = command as any;
-        await manager.fill(cmd.selector, cmd.value);
+        await manager.fill(command.selector, command.value);
         return successResponse(id, { filled: true });
       }
 
       case 'screenshot': {
-        const cmd = command as any;
         const result = await manager.screenshot({
-          path: cmd.path,
-          fullPage: cmd.fullPage,
+          path: command.path,
+          fullPage: command.fullPage,
         });
         return successResponse(id, result);
       }
 
       case 'snapshot': {
-        const cmd = command as any;
         const result = await manager.getSnapshot({
-          interactive: cmd.interactive,
+          interactive: command.interactive,
         });
         return successResponse(id, { snapshot: result.tree, refs: result.refs });
       }
 
       case 'scroll': {
-        const cmd = command as any;
         await manager.scroll({
-          selector: cmd.selector,
-          x: cmd.x,
-          y: cmd.y,
-          direction: cmd.direction,
-          amount: cmd.amount,
+          selector: command.selector,
+          x: command.x,
+          y: command.y,
+          direction: command.direction,
+          amount: command.amount,
         });
         return successResponse(id, { scrolled: true });
       }
 
       case 'swipe': {
-        const cmd = command as any;
-        await manager.swipe(cmd.direction, { distance: cmd.distance });
+        await manager.swipe(command.direction, { distance: command.distance });
         return successResponse(id, { swiped: true });
       }
 
       case 'evaluate': {
-        const cmd = command as any;
-        const result = await manager.evaluate(cmd.script, ...(cmd.args ?? []));
+        const result = await manager.evaluate(command.script, ...(command.args ?? []));
         return successResponse(id, { result });
       }
 
       case 'wait': {
-        const cmd = command as any;
         await manager.wait({
-          selector: cmd.selector,
-          timeout: cmd.timeout,
-          state: cmd.state,
+          selector: command.selector,
+          timeout: command.timeout,
+          state: command.state,
         });
         return successResponse(id, { waited: true });
       }
 
       case 'press': {
-        const cmd = command as any;
-        await manager.press(cmd.key);
+        await manager.press(command.key);
         return successResponse(id, { pressed: true });
       }
 
       case 'hover': {
-        const cmd = command as any;
-        await manager.hover(cmd.selector);
+        await manager.hover(command.selector);
         return successResponse(id, { hovered: true });
       }
 
       case 'content': {
-        const cmd = command as any;
-        const html = await manager.getContent(cmd.selector);
+        const html = await manager.getContent(command.selector);
         return successResponse(id, { html });
       }
 
       case 'gettext': {
-        const cmd = command as any;
-        const text = await manager.getText(cmd.selector);
+        const text = await manager.getText(command.selector);
         return successResponse(id, { text });
       }
 
       case 'getattribute': {
-        const cmd = command as any;
-        const value = await manager.getAttribute(cmd.selector, cmd.attribute);
+        const value = await manager.getAttribute(command.selector, command.attribute);
         return successResponse(id, { value });
       }
 
       case 'isvisible': {
-        const cmd = command as any;
-        const visible = await manager.isVisible(cmd.selector);
+        const visible = await manager.isVisible(command.selector);
         return successResponse(id, { visible });
       }
 
       case 'isenabled': {
-        const cmd = command as any;
-        const enabled = await manager.isEnabled(cmd.selector);
+        const enabled = await manager.isEnabled(command.selector);
         return successResponse(id, { enabled });
       }
 
@@ -188,44 +171,37 @@ export async function executeIOSCommand(command: Command, manager: IOSManager): 
       }
 
       case 'select': {
-        const cmd = command as any;
-        await manager.select(cmd.selector, cmd.values);
+        await manager.select(command.selector, command.values);
         return successResponse(id, { selected: true });
       }
 
       case 'check': {
-        const cmd = command as any;
-        await manager.check(cmd.selector);
+        await manager.check(command.selector);
         return successResponse(id, { checked: true });
       }
 
       case 'uncheck': {
-        const cmd = command as any;
-        await manager.uncheck(cmd.selector);
+        await manager.uncheck(command.selector);
         return successResponse(id, { unchecked: true });
       }
 
       case 'focus': {
-        const cmd = command as any;
-        await manager.focus(cmd.selector);
+        await manager.focus(command.selector);
         return successResponse(id, { focused: true });
       }
 
       case 'clear': {
-        const cmd = command as any;
-        await manager.clear(cmd.selector);
+        await manager.clear(command.selector);
         return successResponse(id, { cleared: true });
       }
 
       case 'count': {
-        const cmd = command as any;
-        const count = await manager.count(cmd.selector);
+        const count = await manager.count(command.selector);
         return successResponse(id, { count });
       }
 
       case 'boundingbox': {
-        const cmd = command as any;
-        const box = await manager.getBoundingBox(cmd.selector);
+        const box = await manager.getBoundingBox(command.selector);
         return successResponse(id, { box });
       }
 
@@ -248,7 +224,7 @@ export async function executeIOSCommand(command: Command, manager: IOSManager): 
       case 'window_new':
         return errorResponse(
           id,
-          `Command '${action}' is not supported on iOS Safari. Mobile Safari does not support programmatic tab management.`
+          `Command '${command.action}' is not supported on iOS Safari. Mobile Safari does not support programmatic tab management.`
         );
 
       case 'pdf':
@@ -264,7 +240,7 @@ export async function executeIOSCommand(command: Command, manager: IOSManager): 
         return errorResponse(id, 'Video recording is not yet supported on iOS.');
 
       default:
-        return errorResponse(id, `Unknown or unsupported iOS command: ${action}`);
+        return errorResponse(id, `Unknown or unsupported iOS command: ${command.action}`);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

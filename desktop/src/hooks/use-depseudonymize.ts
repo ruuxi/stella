@@ -112,19 +112,14 @@ export function useDepseudonymize(): (text: string) => string {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     if (!isEnabled) {
       cachedReplacements = null;
       loadPromise = null;
-      setReplacements([]);
       return;
     }
+    if (cachedReplacements !== null) return;
 
-    if (cachedReplacements !== null) {
-      setReplacements(cachedReplacements);
-      return;
-    }
-
-    let cancelled = false;
     loadReplacements().then((loaded) => {
       if (!cancelled) {
         setReplacements(loaded);
@@ -136,7 +131,9 @@ export function useDepseudonymize(): (text: string) => string {
     };
   }, [isEnabled]);
 
-  const resolvedReplacements = replacements ?? EMPTY_REPLACEMENTS;
+  const resolvedReplacements = !isEnabled
+    ? EMPTY_REPLACEMENTS
+    : replacements ?? cachedReplacements ?? EMPTY_REPLACEMENTS;
 
   return useCallback(
     (text: string) => applyReplacements(text, resolvedReplacements),

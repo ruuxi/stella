@@ -23,9 +23,6 @@ let currentSession = process.env.STELLA_BROWSER_SESSION || 'default';
 // Stream server for browser preview
 let streamServer: StreamServer | null = null;
 
-// Default stream port (can be overridden with STELLA_BROWSER_STREAM_PORT)
-const DEFAULT_STREAM_PORT = 9223;
-
 /**
  * Set the current session
  */

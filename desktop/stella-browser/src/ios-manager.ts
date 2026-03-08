@@ -4,16 +4,80 @@
  * This provides 1:1 command parity with BrowserManager for iOS Safari.
  */
 
-// Declare browser globals used in execute() callbacks - these run in browser context, not Node
-declare const document: any;
-declare const window: any;
-
 import { Simctl } from 'node-simctl';
 import type { Browser as WDIOBrowser } from 'webdriverio';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+
+interface BrowserDomElement {
+  id: string;
+  tagName: string;
+  nodeName: string;
+  nodeType: number;
+  textContent: string | null;
+  placeholder?: string;
+  type?: string;
+  children: Iterable<BrowserDomElement>;
+  previousElementSibling: BrowserDomElement | null;
+  parentElement: BrowserDomElement | null;
+  getAttribute(name: string): string | null;
+  hasAttribute(name: string): boolean;
+  focus(): void;
+}
+
+interface BrowserDocumentLike {
+  body: BrowserDomElement;
+  querySelector(selector: string): BrowserDomElement | null;
+  getElementById(id: string): BrowserDomElement | null;
+}
+
+interface BrowserWindowLike {
+  getComputedStyle(element: BrowserDomElement): {
+    display?: string;
+    visibility?: string;
+  };
+  scrollBy(x: number, y: number): void;
+}
+
+interface SimctlDeviceRecord {
+  name?: string;
+  udid: string;
+  state?: string;
+  isAvailable?: boolean;
+}
+
+interface IOSSnapshotNode {
+  tag: string;
+  role: string | null;
+  name: string;
+  text: string;
+  isInteractive: boolean;
+  xpath: string;
+  children: IOSSnapshotNode[];
+}
+
+declare const document: BrowserDocumentLike;
+declare const window: BrowserWindowLike;
+
+function isSimctlDeviceRecord(value: unknown): value is SimctlDeviceRecord {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'udid' in value &&
+    typeof value.udid === 'string'
+  );
+}
+
+function findSimctlDevice(deviceList: unknown, udid: string): SimctlDeviceRecord | undefined {
+  if (!Array.isArray(deviceList)) {
+    return undefined;
+  }
+
+  return deviceList.find(
+    (device): device is SimctlDeviceRecord => isSimctlDeviceRecord(device) && device.udid === udid
+  );
+}
 
 // Ref map for element targeting (mirrors snapshot.ts)
 export interface IOSRefMap {
@@ -333,8 +397,7 @@ export class IOSManager {
 
       // Find current device state
       for (const deviceList of Object.values(devices)) {
-        if (!Array.isArray(deviceList)) continue;
-        const device = (deviceList as any[]).find((d: any) => d.udid === udid);
+        const device = findSimctlDevice(deviceList, udid);
         if (device) {
           currentState = device.state;
           break;
@@ -354,8 +417,7 @@ export class IOSManager {
       while (attempts < 60) {
         const updatedDevices = await this.simctl.getDevices();
         for (const deviceList of Object.values(updatedDevices)) {
-          if (!Array.isArray(deviceList)) continue;
-          const device = (deviceList as any[]).find((d: any) => d.udid === udid);
+          const device = findSimctlDevice(deviceList, udid);
           if (device?.state === 'Booted') {
             return;
           }
@@ -650,8 +712,9 @@ export class IOSManager {
     this.refMap = {};
 
     // Get page structure via JavaScript execution
-    // Note: The function runs in browser context, so we use 'any' for DOM types
-    const snapshot = await this.browser.execute(function (interactiveOnly: boolean): any {
+    const snapshot = await this.browser.execute(function (
+      interactiveOnly: boolean
+    ): IOSSnapshotNode | null {
       const INTERACTIVE_ROLES = new Set([
         'button',
         'link',
@@ -680,18 +743,18 @@ export class IOSManager {
         'SUMMARY',
       ]);
 
-      function getXPath(element: any): string {
+      function getXPath(element: BrowserDomElement): string {
         if (element.id) {
           return `//*[@id="${element.id}"]`;
         }
 
         const parts: string[] = [];
-        let current: any = element;
+        let current: BrowserDomElement | null = element;
 
         while (current && current.nodeType === 1) {
           // Node.ELEMENT_NODE = 1
           let index = 1;
-          let sibling: any = current.previousElementSibling;
+          let sibling: BrowserDomElement | null = current.previousElementSibling;
 
           while (sibling) {
             if (sibling.nodeName === current.nodeName) {
@@ -708,7 +771,7 @@ export class IOSManager {
         return '/' + parts.join('/');
       }
 
-      function getAccessibleName(element: any): string {
+      function getAccessibleName(element: BrowserDomElement): string {
         // aria-label takes precedence
         const ariaLabel = element.getAttribute('aria-label');
         if (ariaLabel) return ariaLabel;
@@ -718,7 +781,7 @@ export class IOSManager {
         if (tagName === 'INPUT' || tagName === 'TEXTAREA') {
           const id = element.id;
           if (id) {
-            const label = (document as any).querySelector(`label[for="${id}"]`);
+            const label = document.querySelector(`label[for="${id}"]`);
             if (label) return label.textContent?.trim() || '';
           }
           if (element.placeholder) return element.placeholder;
@@ -732,14 +795,14 @@ export class IOSManager {
         // aria-labelledby
         const labelledBy = element.getAttribute('aria-labelledby');
         if (labelledBy) {
-          const labelElement = (document as any).getElementById(labelledBy);
+          const labelElement = document.getElementById(labelledBy);
           if (labelElement) return labelElement.textContent?.trim() || '';
         }
 
         return element.textContent?.trim().slice(0, 50) || '';
       }
 
-      function getRole(element: any): string | null {
+      function getRole(element: BrowserDomElement): string | null {
         // Explicit role
         const role = element.getAttribute('role');
         if (role) return role;
@@ -776,7 +839,7 @@ export class IOSManager {
         return null;
       }
 
-      function traverse(element: any, depth: number): any {
+      function traverse(element: BrowserDomElement, depth: number): IOSSnapshotNode | null {
         if (depth > 10) return null; // Limit depth
 
         const tag = element.tagName;
@@ -786,12 +849,12 @@ export class IOSManager {
           INTERACTIVE_TAGS.has(tag) || (role !== null && INTERACTIVE_ROLES.has(role));
 
         // Skip hidden elements
-        const style = (window as any).getComputedStyle(element);
+        const style = window.getComputedStyle(element);
         if (style.display === 'none' || style.visibility === 'hidden') {
           return null;
         }
 
-        const children: any[] = [];
+        const children: IOSSnapshotNode[] = [];
         for (const child of element.children) {
           const childInfo = traverse(child, depth + 1);
           if (childInfo) {
@@ -815,13 +878,13 @@ export class IOSManager {
         };
       }
 
-      const root = traverse((document as any).body, 0);
+      const root = traverse(document.body, 0);
       return root;
     }, options?.interactive ?? false);
 
     // Build tree string and refs
     const lines: string[] = [];
-    const buildTree = (node: any, indent: number) => {
+    const buildTree = (node: IOSSnapshotNode | null, indent: number): void => {
       if (!node) return;
 
       const prefix = '  '.repeat(indent) + '- ';
@@ -840,7 +903,7 @@ export class IOSManager {
 
         this.refMap[ref] = {
           selector: node.xpath.startsWith('/') ? node.xpath : `#${node.xpath}`,
-          role: node.role,
+          role: node.role ?? undefined,
           name: node.name,
           xpath: node.xpath,
         };
@@ -915,7 +978,7 @@ export class IOSManager {
 
     await this.browser.execute(
       function (x: number, y: number) {
-        (window as any).scrollBy(x, y);
+        window.scrollBy(x, y);
       },
       deltaX,
       deltaY
@@ -956,9 +1019,9 @@ export class IOSManager {
 
     // Execute the script directly - WebdriverIO handles the context
     const result = await this.browser.execute(
-      function (code: string, evalArgs: any[]) {
+      function (code: string, evalArgs: unknown[]) {
         // Create a function from the code and execute it
-        const fn = new Function(...evalArgs.map((_: any, i: number) => `arg${i}`), code);
+        const fn = new Function(...evalArgs.map((_arg: unknown, i: number) => `arg${i}`), code);
         return fn(...evalArgs);
       },
       script.includes('return') ? script : `return (${script})`,
@@ -1196,9 +1259,9 @@ export class IOSManager {
     }
 
     const element = await this.getElement(selector);
-    await this.browser.execute(function (el: any) {
+    await this.browser.execute(function (el: { focus(): void }) {
       el.focus();
-    }, element as any);
+    }, element);
   }
 
   /**

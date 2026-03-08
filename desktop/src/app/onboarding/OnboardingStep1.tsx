@@ -268,10 +268,16 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   // Auto-advance from auth to start once signed in
   useEffect(() => {
-    if (isAuthenticated && phase === "auth" && !leaving) {
+    if (!(isAuthenticated && phase === "auth" && !leaving)) return;
+
+    const timeout = setTimeout(() => {
       onInteract?.();
       transitionTo("start");
-    }
+    }, 0);
+
+    return () => {
+      clearTimeout(timeout);
+    };
   }, [isAuthenticated, phase, leaving, onInteract, transitionTo]);
 
   // Intro fade-in
@@ -321,9 +327,14 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   // Load profiles when browser selection changes
   useEffect(() => {
     if (!selectedBrowser) {
-      setAvailableProfiles([]);
-      setSelectedProfile(null);
-      return;
+      if (availableProfiles.length === 0 && selectedProfile === null) {
+        return;
+      }
+      const timeout = setTimeout(() => {
+        setAvailableProfiles([]);
+        setSelectedProfile(null);
+      }, 0);
+      return () => clearTimeout(timeout);
     }
 
     let cancelled = false;
@@ -348,7 +359,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     return () => {
       cancelled = true;
     };
-  }, [selectedBrowser]);
+  }, [availableProfiles.length, selectedBrowser, selectedProfile]);
 
   const nextSplitStep = () => {
     const idx = SPLIT_STEP_ORDER.indexOf(phase);
@@ -571,7 +582,11 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                           key={b.id}
                           className="onboarding-pill onboarding-pill--sm"
                           data-active={selectedBrowser === b.id}
-                          onClick={() => setSelectedBrowser(b.id)}
+                      onClick={() => {
+                        setAvailableProfiles([]);
+                        setSelectedProfile(null);
+                        setSelectedBrowser(b.id);
+                      }}
                         >
                           {b.label}
                         </button>
@@ -752,7 +767,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                         const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
                         stream.getTracks().forEach(t => t.stop())
                         setVoicePermissionGranted(true)
-                      } catch (err) {
+                      } catch {
                         setVoicePermissionGranted(false)
                       }
                     }}

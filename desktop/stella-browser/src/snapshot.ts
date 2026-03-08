@@ -17,7 +17,7 @@
  *   stella-browser click @e2             # Click element by ref
  */
 
-import type { Page, Locator } from 'playwright-core';
+import type { Page } from 'playwright-core';
 
 export interface RefMap {
   [ref: string]: {
@@ -242,7 +242,6 @@ async function findCursorInteractiveElements(
     return results;
   }`;
 
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const fn = new Function('return ' + scriptBody)();
   return page.evaluate(fn, rootSelector);
 }

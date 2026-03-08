@@ -30,12 +30,16 @@ export const useReturnDetection = ({
   onReturn,
   enabled = true,
 }: UseReturnDetectionOptions) => {
-  const lastActiveRef = useRef(Date.now());
+  const lastActiveRef = useRef(0);
   const onReturnRef = useRef(onReturn);
-  onReturnRef.current = onReturn;
+
+  useEffect(() => {
+    onReturnRef.current = onReturn;
+  }, [onReturn]);
 
   useEffect(() => {
     if (!enabled) return;
+    lastActiveRef.current = Date.now();
 
     // Update last active time on any user interaction
     const updateActivity = () => {

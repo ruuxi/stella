@@ -22,8 +22,8 @@ export function useOrbMessage(
 
   useEffect(() => {
     if (!isVisible) {
-      setText(null);
-      setOpacity(0);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
       return;
     }
 
@@ -48,8 +48,10 @@ export function useOrbMessage(
       ? rawText.slice(0, 147) + "..."
       : rawText;
 
-    setText(displayText);
-    setOpacity(1);
+    queueMicrotask(() => {
+      setText(displayText);
+      setOpacity(1);
+    });
 
     // Clear previous timers
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -74,5 +76,5 @@ export function useOrbMessage(
     };
   }, [events, isVisible]);
 
-  return { text, opacity };
+  return isVisible ? { text, opacity } : { text: null, opacity: 0 };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/api";
 import {
@@ -15,10 +15,13 @@ export function useBridgeAutoReconnect() {
   const whatsappSession = useQuery(api.channels.bridge.getBridgeStatus, { provider: "whatsapp" });
   const signalSession = useQuery(api.channels.bridge.getBridgeStatus, { provider: "signal" });
 
-  const sessionsByProvider: Record<BridgeProvider, typeof whatsappSession> = {
-    whatsapp: whatsappSession,
-    signal: signalSession,
-  };
+  const sessionsByProvider: Record<BridgeProvider, typeof whatsappSession> = useMemo(
+    () => ({
+      whatsapp: whatsappSession,
+      signal: signalSession,
+    }),
+    [signalSession, whatsappSession],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -67,5 +70,5 @@ export function useBridgeAutoReconnect() {
     return () => {
       cancelled = true;
     };
-  }, [whatsappSession, signalSession, getBridgeBundle]);
+  }, [getBridgeBundle, sessionsByProvider]);
 }

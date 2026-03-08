@@ -64,6 +64,8 @@ export interface ConvertResponsesToolsOptions {
 	strict?: boolean | null;
 }
 
+type ResponseToolParameters = Record<string, unknown>;
+
 // =============================================================================
 // Message conversion
 // =============================================================================
@@ -249,7 +251,7 @@ export function convertResponsesTools(tools: Tool[], options?: ConvertResponsesT
 		type: "function",
 		name: tool.name,
 		description: tool.description,
-		parameters: tool.parameters as any, // TypeBox already generates JSON Schema
+		parameters: tool.parameters as ResponseToolParameters, // TypeBox already generates JSON Schema
 		strict,
 	}));
 }
@@ -451,7 +453,8 @@ export async function processResponsesStream<TApi extends Api>(
 				output.stopReason = "toolUse";
 			}
 		} else if (event.type === "error") {
-			throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
+			const message = event.message ? `Error Code ${event.code}: ${event.message}` : "Unknown error";
+			throw new Error(message);
 		} else if (event.type === "response.failed") {
 			throw new Error("Unknown error");
 		}

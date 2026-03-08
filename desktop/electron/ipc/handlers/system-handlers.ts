@@ -1,4 +1,4 @@
-import { app, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '@stella/stella-runtime/preferences'
 import type { StellaHostRunner } from '../../stella-host-runner.js'
 import type { AuthService } from '../../services/auth-service.js'

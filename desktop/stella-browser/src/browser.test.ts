@@ -125,7 +125,6 @@ describe('BrowserManager', () => {
 
     it('should close tab', async () => {
       // Switch to second tab and close it
-      const page = browser.getPage();
       const tabs = await browser.listTabs();
       if (tabs.length > 1) {
         const result = await browser.closeTab(1);
