@@ -274,12 +274,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('credential:cancel', payload),
     getIdentityMap: () => ipcRenderer.invoke('identity:getMap'),
     depseudonymize: (text: string) => ipcRenderer.invoke('identity:depseudonymize', text),
-    bridgeDeploy: (payload: {
-      provider: string; code: string; env: Record<string, string>; dependencies: string
-    }) => ipcRenderer.invoke('bridge:deploy', payload),
-    bridgeStart: (payload: { provider: string }) => ipcRenderer.invoke('bridge:start', payload),
-    bridgeStop: (payload: { provider: string }) => ipcRenderer.invoke('bridge:stop', payload),
-    bridgeStatus: (payload: { provider: string }) => ipcRenderer.invoke('bridge:status', payload),
   },
 
   browser: {

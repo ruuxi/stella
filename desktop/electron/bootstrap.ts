@@ -27,7 +27,6 @@ import { SecurityPolicyService } from './services/security-policy-service.js'
 import { LocalSchedulerService } from './services/local-scheduler-service.js'
 import { UiStateService } from './services/ui-state-service.js'
 import { WorkspaceService } from './services/workspace-service.js'
-import * as bridgeManager from './system/bridge-manager.js'
 import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './system/device.js'
 import { resolveStellaHome } from './system/stella-home.js'
 import { initializeWakeWord } from './wake-word/initialize.js'
@@ -497,10 +496,6 @@ export const bootstrapMainProcess = () => {
         windowManager,
       },
       store: {
-        assertPrivilegedSender: (event, channel) =>
-          externalLinkService.assertPrivilegedSender(event, channel),
-        ensurePrivilegedActionApproval: (action, message, detail, event) =>
-          securityPolicyService.ensureApproval(action, message, detail, event),
       },
       voice: {
         uiState: uiStateService.state,
@@ -553,7 +548,6 @@ export const bootstrapMainProcess = () => {
       stellaHostRunner.killAllShells()
     }
     schedulerService?.stop()
-    bridgeManager.stopAll()
     cleanupSelectedTextProcess()
     nativeOverlay?.destroy()
     overlayController?.destroy()
