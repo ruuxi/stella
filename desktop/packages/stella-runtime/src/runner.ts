@@ -338,121 +338,26 @@ export const createStellaHostRunner = ({
   };
 
   // WebSearch via backend Convex action (Exa API)
-  const webSearch = async (query: string): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }> => {
+  const webSearch = async (query: string): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }> => {
     try {
       const client = ensureConvexClient();
       if (!client) throw new Error("Not connected to Convex. Sign in or set STELLA_CONVEX_URL.");
       const result = await client.action(convexApi.agent.local_runtime.webSearch, { query }) as {
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
+        html?: string;
       };
+      if (result.html && newsHtml) {
+        newsHtml(result.html);
+      }
       return result;
     } catch (error) {
       return { text: `WebSearch failed: ${(error as Error).message}`, results: [] };
     }
   };
 
-  // Background news HTML generation from search results
-  // Model is resolved server-side via X-Agent-Type: news_generate (see backend/convex/agent/model.ts)
-  const generateNewsHtml = (query: string, results: Array<{ title: string; url: string; snippet: string }>) => {
-    if (!newsHtml) {
-      console.log("[stella:trace] news html skipped | reason=no-renderer");
-      return;
-    }
-    if (results.length === 0) {
-      console.log(`[stella:trace] news html skipped | reason=no-results | query=${query}`);
-      return;
-    }
-
-    const proxy = (() => {
-      try { return ensureProxyReady(); } catch { return null; }
-    })();
-    if (!proxy) {
-      console.log(`[stella:trace] news html skipped | reason=no-proxy | query=${query}`);
-      return;
-    }
-
-    console.log(`[stella:trace] news html start | query=${query} | results=${results.length}`);
-
-    const resultsText = results
-      .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
-      .join("\n\n");
-
-    const prompt =
-      `Generate a visual HTML news summary for the search query: "${query}"\n\n` +
-      `Search results:\n${resultsText}\n\n` +
-      `Output self-contained HTML that visually presents these results as a news feed. ` +
-      `Use semantic HTML (h2, h3, p, a, small). ` +
-      `For colors use var(--foreground) and var(--background). ` +
-      `Keep it concise and scannable. No scripts. No markdown fences.`;
 
     // Fire and forget â€” don't block the agent
-    void (async () => {
-      try {
-        const response = await fetch(`${proxy.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${proxy.authToken}`,
-            "X-Agent-Type": "news_generate",
-          },
-          body: JSON.stringify({
-            messages: [
-              { role: "system", content: "You generate clean, self-contained HTML for a news panel. No markdown fences. No explanation. Just HTML." },
-              { role: "user", content: prompt },
-            ],
-            stream: true,
-          }),
-        });
-
-        if (!response.ok) {
-          console.warn(`[stella:trace] news html failed | status=${response.status} | query=${query}`);
-          return;
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) return;
-
-        const decoder = new TextDecoder();
-        let fullContent = "";
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6).trim();
-            if (data === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
-              const delta = parsed.choices?.[0]?.delta?.content;
-              if (delta) fullContent += delta;
-            } catch { /* skip */ }
-          }
-        }
-
-        const html = fullContent
-          .trim()
-          .replace(/^```(?:html|tsx?)?\s*\n?/i, "")
-          .replace(/\n?```\s*$/i, "")
-          .trim();
-
-        if (html) {
-          console.log(`[stella:trace] news html ready | query=${query} | length=${html.length}`);
-          newsHtml(html);
-          return;
-        }
-        console.warn(`[stella:trace] news html empty | query=${query}`);
-      } catch (error) {
-        console.warn(`[stella:trace] news html failed | query=${query} | error=${(error as Error).message}`);
-      }
-    })();
-  };
-
   const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string | undefined => {
     const modelFromPrefs = getModelOverride(StellaHome, agentType);
     return modelFromPrefs ?? agent?.model ?? process.env.STELLA_DEFAULT_MODEL;
@@ -548,7 +453,6 @@ export const createStellaHostRunner = ({
             onEnd: () => {},
           } : undefined,
           webSearch,
-          onSearchResults: generateNewsHtml,
         });
       } finally {
         if (shouldControlHmr && selfModHmrController) {
@@ -763,7 +667,6 @@ export const createStellaHostRunner = ({
       frontendRoot,
       selfModMonitor,
       webSearch,
-      onSearchResults: generateNewsHtml,
     }).catch((error) => {
       cleanupRun();
       callbacks.onError({
@@ -876,7 +779,6 @@ export const createStellaHostRunner = ({
         frontendRoot,
         selfModMonitor,
         webSearch,
-        onSearchResults: generateNewsHtml,
       });
       if (fatalError) {
         return { status: "error", finalText: "", error: fatalError };
