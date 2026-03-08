@@ -1,4 +1,5 @@
 import type { CommandSuggestion } from '@/hooks/use-command-suggestions'
+import './command-chips.css'
 
 type CommandChipsProps = {
   suggestions: CommandSuggestion[]

@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['coverage', 'dist', 'dist-electron', 'release']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +18,39 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/ui',
+              message: 'Import UI primitives directly from their module instead of the barrel.',
+            },
+            {
+              name: '@/ui/index',
+              message: 'Import UI primitives directly from their module instead of the barrel.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/ui/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/app/*'],
+              message: 'Keep the UI layer independent from app-level features.',
+            },
+          ],
+        },
+      ],
     },
   },
 ])

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { UiStateProvider, useUiState } from "./ui-state";
 
@@ -99,7 +99,7 @@ describe("UiStateProvider + useUiState", () => {
     expect(result.current.state.mode).toBe("voice");
   });
 
-  it("setWindow calls showWindow on electron API", () => {
+  it("setWindow calls showWindow on electron API", async () => {
     const mockShowWindow = vi.fn();
     ((window as unknown as Record<string, unknown>)).electronAPI = {
       ui: {
@@ -118,6 +118,10 @@ describe("UiStateProvider + useUiState", () => {
     };
 
     const { result } = renderHook(() => useUiState(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.state.view).toBe("chat");
+    });
 
     act(() => {
       result.current.setWindow("mini");

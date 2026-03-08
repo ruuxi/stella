@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "bun run build:packages && bunx --package typescript@5.9.3 tsc --build && vite build",
     "build:packages": "bunx --package typescript@5.9.3 tsc --build packages/stella-ai/tsconfig.json packages/stella-agent-core/tsconfig.json packages/stella-runtime/tsconfig.json",
+    "format": "bunx prettier@3.6.2 --write .",
+    "format:check": "bunx prettier@3.6.2 --check .",
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",

@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef, type ComponentType } from 'react'
+import { useState, useEffect, useCallback, type ComponentType } from 'react'
 import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import { Spinner } from '@/ui/spinner'
 import type { WorkspacePanel } from '@/providers/workspace-state'
+import './canvas-renderers.css'
 
 const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 const PANEL_IMPORT_ATTEMPTS = 3
@@ -140,40 +141,50 @@ const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
   const [Component, setComponent] = useState<PanelComponent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const retryKeyRef = useRef(0)
-
-  const loadModule = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    setComponent(null)
-
-    try {
-      const loaded = await loadPanelComponent(name)
-      setComponent(() => loaded.component)
-      setLoading(false)
-      return
-    } catch (caughtError) {
-      const message = toPanelLoadMessage(caughtError)
-      setError(message)
-      if (caughtError instanceof PanelImportError) {
-        window.dispatchEvent(
-          new CustomEvent('stella:panel-load-failed', {
-            detail: { panelName: caughtError.panelName, error: message },
-          }),
-        )
-      }
-      setLoading(false)
-    }
-  }, [name])
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
-    void loadModule()
-  }, [loadModule])
+    let cancelled = false
+
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+
+      setLoading(true)
+      setError(null)
+      setComponent(null)
+
+      try {
+        const loaded = await loadPanelComponent(name)
+        if (cancelled) return
+
+        setComponent(() => loaded.component)
+        setLoading(false)
+        return
+      } catch (caughtError) {
+        if (cancelled) return
+
+        const message = toPanelLoadMessage(caughtError)
+        setError(message)
+        if (caughtError instanceof PanelImportError) {
+          window.dispatchEvent(
+            new CustomEvent('stella:panel-load-failed', {
+              detail: { panelName: caughtError.panelName, error: message },
+            }),
+          )
+        }
+        setLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [name, retryKey])
 
   const handleRetry = useCallback(() => {
-    retryKeyRef.current += 1
-    void loadModule()
-  }, [loadModule])
+    setRetryKey((current) => current + 1)
+  }, [])
 
   if (loading) {
     return (
@@ -210,7 +221,7 @@ const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
 
   return (
     <div className="canvas-vite-wrap">
-      <WorkspaceErrorBoundary key={retryKeyRef.current} onRetry={handleRetry}>
+      <WorkspaceErrorBoundary key={retryKey} onRetry={handleRetry}>
         <div className="canvas-vite-content">
           <Component />
         </div>

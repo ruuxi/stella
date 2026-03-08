@@ -1,5 +1,5 @@
-// Core UI Components
-export { Button, type ButtonProps } from "@/ui/button";
+// Core UI components
+export { Button, type ButtonProps } from './button'
 export {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -14,27 +14,77 @@ export {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-} from "./dropdown-menu";
-export { Spinner, type SpinnerProps } from "./spinner";
+} from './dropdown-menu'
+export { Spinner, type SpinnerProps } from './spinner'
 
-// Form & Input Components
-export { TextField, type TextFieldProps } from "./text-field";
-export { Checkbox, type CheckboxProps } from "./checkbox";
-export { Switch, type SwitchProps } from "./switch";
-export { RadioGroup, RadioGroupItem, type RadioGroupProps, type RadioGroupItemProps } from "./radio-group";
-export { Select, SelectItem, SelectGroup, SelectLabel, SelectSeparator, type SelectProps, type SelectItemProps } from "./select";
-export { Slider, type SliderProps } from "./slider";
-export { IconButton, type IconButtonProps } from "./icon-button";
-export { InlineInput, type InlineInputProps } from "./inline-input";
+// Form and input components
+export { TextField, type TextFieldProps } from './text-field'
+export { Checkbox, type CheckboxProps } from './checkbox'
+export { Switch, type SwitchProps } from './switch'
+export {
+  RadioGroup,
+  RadioGroupItem,
+  type RadioGroupProps,
+  type RadioGroupItemProps,
+} from './radio-group'
+export {
+  Select,
+  SelectItem,
+  SelectGroup,
+  SelectLabel,
+  SelectSeparator,
+  type SelectProps,
+  type SelectItemProps,
+} from './select'
+export { Slider, type SliderProps } from './slider'
+export { IconButton, type IconButtonProps } from './icon-button'
+export { InlineInput, type InlineInputProps } from './inline-input'
 
-// Layout & Container Components
-export { Card, type CardProps } from "./card";
-export { Accordion, AccordionItem, AccordionTrigger, AccordionContent, type AccordionProps, type AccordionItemProps, type AccordionTriggerProps, type AccordionContentProps } from "./accordion";
-export { Collapsible, CollapsibleTrigger, CollapsibleContent, CollapsibleArrow, type CollapsibleProps } from "./collapsible";
-export { Tabs, TabsList, TabsTrigger, TabsContent, TabsSectionTitle, type TabsProps } from "./tabs";
-export { List, ListItem, ListHeader, ListGroup, ListScroll, ListItems, ListEmptyState, type ListProps, type ListItemProps, type ListHeaderProps, type ListGroupProps, type ListScrollProps, type ListItemsProps, type ListEmptyStateProps } from "./list";
+// Layout and container components
+export { Card, type CardProps } from './card'
+export {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+  type AccordionProps,
+  type AccordionItemProps,
+  type AccordionTriggerProps,
+  type AccordionContentProps,
+} from './accordion'
+export {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+  CollapsibleArrow,
+  type CollapsibleProps,
+} from './collapsible'
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  TabsSectionTitle,
+  type TabsProps,
+} from './tabs'
+export {
+  List,
+  ListItem,
+  ListHeader,
+  ListGroup,
+  ListScroll,
+  ListItems,
+  ListEmptyState,
+  type ListProps,
+  type ListItemProps,
+  type ListHeaderProps,
+  type ListGroupProps,
+  type ListScrollProps,
+  type ListItemsProps,
+  type ListEmptyStateProps,
+} from './list'
 
-// Overlay & Popup Components
+// Overlay and popup components
 export {
   Dialog,
   DialogTrigger,
@@ -49,7 +99,7 @@ export {
   DialogCloseButton,
   type DialogProps,
   type DialogContentProps,
-} from "@/ui/dialog";
+} from './dialog'
 export {
   Popover,
   PopoverTrigger,
@@ -62,24 +112,35 @@ export {
   PopoverBody,
   PopoverClose,
   PopoverCloseButton,
-} from "@/ui/popover";
-export { HoverCard, HoverCardRoot, HoverCardTrigger, HoverCardContent, type HoverCardProps } from "./hover-card";
-export { Tooltip, TooltipProvider, TooltipRoot, TooltipTrigger, TooltipPortal, TooltipContent, type TooltipProps, type TooltipContentProps } from "./tooltip";
-export { ToastProvider, useToast, showToast, setToastFn, type ToastOptions } from "./toast";
+} from './popover'
+export {
+  HoverCard,
+  HoverCardRoot,
+  HoverCardTrigger,
+  HoverCardContent,
+  type HoverCardProps,
+} from './hover-card'
+export {
+  Tooltip,
+  TooltipProvider,
+  TooltipRoot,
+  TooltipTrigger,
+  TooltipPortal,
+  TooltipContent,
+  type TooltipProps,
+  type TooltipContentProps,
+} from './tooltip'
+export { ToastProvider, useToast, showToast, setToastFn, type ToastOptions } from './toast'
 
-// Icon System
-export { Icon, type IconProps, type IconName } from "./icon";
-export { Avatar, type AvatarProps } from "./avatar";
+// Icon and media components
+export { Icon, type IconProps, type IconName } from './icon'
+export { Avatar, type AvatarProps } from './avatar'
+export { Code, type CodeProps } from './code'
+export { ImagePreview, type ImagePreviewProps } from './image-preview'
+export { Tag, type TagProps } from './tag'
+export { ProgressCircle, type ProgressCircleProps } from './progress-circle'
 
-// Content Display Components
-export { Code, type CodeProps } from "./code";
-export { OnboardingStep1, useOnboardingState } from "@/app/onboarding/Onboarding";
-export { ImagePreview, type ImagePreviewProps } from "./image-preview";
-export { Tag, type TagProps } from "./tag";
-export { ProgressCircle, type ProgressCircleProps } from "./progress-circle";
-
-// Desktop-Specific Components
-export { Keybind, type KeybindProps } from "./keybind";
-export { ResizeHandle, type ResizeHandleProps } from "./resize-handle";
-export { TitleBar } from "@/app/shell/TitleBar";
+// Desktop-specific primitives
+export { Keybind, type KeybindProps } from './keybind'
+export { ResizeHandle, type ResizeHandleProps } from './resize-handle'
 

@@ -1,374 +1,210 @@
-/**
- * FullShell: Layout shell that imports sub-components, holds top-level state,
- * renders .full-body grid: Sidebar | WorkspaceArea | ChatPanel.
- */
-
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useUiState } from "@/providers/ui-state";
-import { useWorkspace } from "@/providers/workspace-state";
-import { useTheme } from "@/theme/theme-context";
-import { useConversationEventFeed } from "@/hooks/use-conversation-events";
-import { secureSignOut } from "@/services/auth";
-import { ShiftingGradient } from "@/app/shell/background/ShiftingGradient";
-import { TitleBar } from "@/app/shell/TitleBar";
-import { Sidebar } from "@/app/sidebar/Sidebar";
-import { WorkspaceArea } from "@/app/canvas/WorkspaceArea";
-import { HeaderTabBar } from "@/app/shell/HeaderTabBar";
-import { FloatingOrb, type FloatingOrbHandle } from "@/app/shell/FloatingOrb";
-import { useOrbMessage } from "@/hooks/use-orb-message";
-
-import { ChatColumn } from "../chat/ChatColumn";
-import type { ChatColumnProps } from "../chat/ChatColumn";
-import { useOnboardingOverlay } from "../onboarding/OnboardingOverlay";
-import { useDiscoveryFlow } from "../onboarding/DiscoveryFlow";
-import { useStreamingChat } from "@/hooks/use-streaming-chat";
-import { useScrollManagement } from "./use-full-shell";
-import { useBridgeAutoReconnect } from "@/hooks/use-bridge-reconnect";
-import { useReturnDetection, formatDuration } from "@/hooks/use-return-detection";
-import type { CommandSuggestion } from "@/hooks/use-command-suggestions";
-import { MiniBridgeRelay } from "@/services/MiniBridgeRelay";
-import { useTraceIpcListener, useTraceEventMonitor } from "@/hooks/use-trace-listener";
-
-import {
-  useLocalWorkspacePanels,
-  useChatContextSync,
-  useDemoAnimation,
-  useDialogManager,
-  type PersonalPage,
-} from "./hooks";
-
-const SettingsDialog = lazy(() => import("../settings/SettingsView"));
-const AuthDialog = lazy(() => import("@/app/auth/AuthDialog").then(m => ({ default: m.AuthDialog })));
-const ConnectDialog = lazy(() => import("@/app/integrations/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
-const SelfModTestDialog = lazy(() => import("@/testing/SelfModTestDialog"));
-const TraceViewerDialog = lazy(() => import("@/testing/TraceViewerDialog"));
-const NO_OP = () => {};
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useBridgeAutoReconnect } from '@/hooks/use-bridge-reconnect'
+import { useOrbMessage } from '@/hooks/use-orb-message'
+import { useUiState } from '@/providers/ui-state'
+import { useWorkspace } from '@/providers/workspace-state'
+import { secureSignOut } from '@/services/auth'
+import { MiniBridgeRelay } from '@/services/MiniBridgeRelay'
+import { useTheme } from '@/theme/theme-context'
+import { WorkspaceArea } from '../canvas/WorkspaceArea'
+import { ChatColumn, type ChatColumnProps } from '../chat/ChatColumn'
+import { useDiscoveryFlow } from '../onboarding/DiscoveryFlow'
+import { useOnboardingOverlay } from '../onboarding/OnboardingOverlay'
+import { Sidebar } from '../sidebar/Sidebar'
+import { FloatingOrb, type FloatingOrbHandle } from './FloatingOrb'
+import { FullShellDialogs } from './full-shell-dialogs'
+import { HeaderTabBar } from './HeaderTabBar'
+import './full-shell.layout.css'
+import './full-shell.panels.css'
+import { ShiftingGradient } from './background/ShiftingGradient'
+import { TitleBar } from './TitleBar'
+import type { PersonalPage } from './types'
+import { useDemoAnimation } from './use-demo-animation'
+import { useDialogManager } from './use-dialog-manager'
+import { useFullShellChat } from './use-full-shell-chat'
+import { useFullShellVoiceTranscript } from './use-full-shell-voice-transcript'
+import { useLocalWorkspacePanels } from './use-local-workspace-panels'
 
 export const FullShell = () => {
-  const { state, setView } = useUiState();
-  const activeConversationId = state.conversationId;
-  const { state: workspaceState, openPanel } = useWorkspace();
-  const activePanel = workspaceState.activePanel;
-  const { gradientMode, gradientColor } = useTheme();
-  const isDev = import.meta.env.DEV;
-  const activeViewRef = useRef(state.view);
-  const orbRef = useRef<FloatingOrbHandle>(null);
+  const { state, setView } = useUiState()
+  const activeConversationId = state.conversationId
+  const { state: workspaceState, openPanel } = useWorkspace()
+  const activePanel = workspaceState.activePanel
+  const { gradientMode, gradientColor } = useTheme()
+  const isDev = import.meta.env.DEV
+  const orbRef = useRef<FloatingOrbHandle>(null)
 
-  const [message, setMessage] = useState("");
+  useBridgeAutoReconnect()
 
-  useBridgeAutoReconnect();
+  const onboarding = useOnboardingOverlay()
+  const { personalPages } = useLocalWorkspacePanels()
+  const { activeDemo, demoClosing, handleDemoChange } = useDemoAnimation()
+  const { activeDialog, setActiveDialog } = useDialogManager()
+  const { handleDiscoveryConfirm } = useDiscoveryFlow({
+    conversationId: activeConversationId,
+  })
 
-  useEffect(() => {
-    activeViewRef.current = state.view;
-  }, [state.view]);
+  const chat = useFullShellChat({
+    activeConversationId,
+    activeView: state.view,
+    isDev,
+  })
 
-  const onboarding = useOnboardingOverlay();
-  const { personalPages } = useLocalWorkspacePanels();
-  const { chatContext, setChatContext, selectedText, setSelectedText } = useChatContextSync();
-  const { activeDemo, demoClosing, handleDemoChange } = useDemoAnimation();
-  const { activeDialog, setActiveDialog } = useDialogManager();
+  useFullShellVoiceTranscript({
+    activeView: state.view,
+    orbRef,
+    setMessage: chat.composer.setMessage,
+  })
+
   const showAuthDialog = useCallback(() => {
-    setActiveDialog("auth");
-  }, [setActiveDialog]);
+    setActiveDialog('auth')
+  }, [setActiveDialog])
+
   const showConnectDialog = useCallback(() => {
-    setActiveDialog("connect");
-  }, [setActiveDialog]);
+    setActiveDialog('connect')
+  }, [setActiveDialog])
+
   const showSettingsDialog = useCallback(() => {
-    setActiveDialog("settings");
-  }, [setActiveDialog]);
+    setActiveDialog('settings')
+  }, [setActiveDialog])
+
+  const showTestDialog = useCallback(() => {
+    setActiveDialog('test')
+  }, [setActiveDialog])
+
+  const showTraceDialog = useCallback(() => {
+    setActiveDialog('trace')
+  }, [setActiveDialog])
+
   const showHomeView = useCallback(() => {
-    setView("home");
-  }, [setView]);
+    setView('home')
+  }, [setView])
+
   const handleDialogOpenChange = useCallback(
     (open: boolean) => {
       if (!open) {
-        setActiveDialog(null);
+        setActiveDialog(null)
       }
     },
     [setActiveDialog],
-  );
+  )
+
   const handleSettingsSignOut = useCallback(() => {
-    setActiveDialog(null);
-    void secureSignOut();
-  }, [setActiveDialog]);
-  const showTestDialog = useCallback(() => {
-    setActiveDialog("test");
-  }, [setActiveDialog]);
-  const showTraceDialog = useCallback(() => {
-    setActiveDialog("trace");
-  }, [setActiveDialog]);
+    setActiveDialog(null)
+    void secureSignOut()
+  }, [setActiveDialog])
+
   const handleTabSelect = useCallback(
-    (view: "home" | "app" | "chat", page?: PersonalPage) => {
-      if (view === "app" && page) {
-        openPanel({ name: page.panelName, title: page.title });
-        setView("app");
-      } else {
-        setView(view);
+    (view: 'home' | 'app' | 'chat', page?: PersonalPage) => {
+      if (view === 'app' && page) {
+        openPanel({ name: page.panelName, title: page.title })
+        setView('app')
+        return
       }
+
+      setView(view)
     },
     [openPanel, setView],
-  );
-
-  const { handleDiscoveryConfirm } = useDiscoveryFlow({
-    conversationId: activeConversationId,
-  });
-
-  const {
-    events,
-    hasOlderEvents,
-    isLoadingOlder,
-    isInitialLoading,
-    loadOlder,
-  } = useConversationEventFeed(activeConversationId ?? undefined);
-
-  const {
-    streamingText,
-    reasoningText,
-    isStreaming,
-    pendingUserMessageId,
-    selfModMap,
-    sendMessage,
-  } = useStreamingChat({
-    conversationId: activeConversationId,
-    events,
-  });
-  // Trace hooks — capture all agent events for the debug viewer
-  useTraceIpcListener(isDev);
-  useTraceEventMonitor(isDev, events);
-
-  const sendMessageRef = useRef(sendMessage);
+  )
 
   useEffect(() => {
-    sendMessageRef.current = sendMessage;
-  }, [sendMessage]);
+    window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone)
+  }, [onboarding.onboardingDone])
 
-  const sendContextlessMessage = useCallback(
-    (text: string) => {
-      void sendMessageRef.current({
-        text,
-        selectedText: null,
-        chatContext: null,
-        onClear: NO_OP,
-      });
-    },
-    [],
-  );
+  const isOrbVisible = state.view !== 'chat' && onboarding.onboardingDone
+  const orbMessage = useOrbMessage(chat.conversation.events, isOrbVisible)
+  const appReady = onboarding.onboardingDone
 
-  const handleUserReturn = useCallback(
-    (awayMs: number) => {
-      sendContextlessMessage(`[System: The user has returned after being away for ${formatDuration(awayMs)}.]`);
-    },
-    [sendContextlessMessage],
-  );
-
-  useReturnDetection({
-    enabled: !!activeConversationId,
-    onReturn: handleUserReturn,
-  });
-
-  const {
-    scrollContainerRef,
-    isNearBottomRef,
-    showScrollButton,
-    scrollToBottom,
-    handleScroll,
-    resetScrollState,
-  } = useScrollManagement({
-    itemCount: events.length,
-    hasOlderEvents,
-    isLoadingOlder,
-    onLoadOlder: loadOlder,
-  });
-
-  useLayoutEffect(() => {
-    resetScrollState();
-    scrollToBottom("instant");
-    const raf = requestAnimationFrame(() => {
-      scrollToBottom("instant");
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [activeConversationId, resetScrollState, scrollToBottom]);
-
-  useLayoutEffect(() => {
-    if (state.view !== "chat") return;
-    resetScrollState();
-    scrollToBottom("instant");
-    const raf = requestAnimationFrame(() => {
-      scrollToBottom("instant");
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [state.view, resetScrollState, scrollToBottom]);
-
-  const isOrbVisible = state.view !== "chat" && onboarding.onboardingDone;
-  const orbMessage = useOrbMessage(events, isOrbVisible);
-
-  const handleVoiceTranscript = useCallback(
-    (text: string) => {
-      if (activeViewRef.current === "chat") {
-        setMessage(text);
-      } else {
-        orbRef.current?.openWithText(text);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
-  }, [onboarding.onboardingDone]);
-
-  useEffect(() => {
-    const unsubscribe = window.electronAPI?.voice.onTranscript?.(handleVoiceTranscript);
-    return () => unsubscribe?.();
-  }, [handleVoiceTranscript]);
-
-  useLayoutEffect(() => {
-    if (isNearBottomRef.current) {
-      scrollToBottom("instant");
-    }
-  }, [events.length, scrollToBottom, isNearBottomRef]);
-
-  useLayoutEffect(() => {
-    if (isStreaming && isNearBottomRef.current) {
-      scrollToBottom("instant");
-    }
-  }, [streamingText, reasoningText, isStreaming, scrollToBottom, isNearBottomRef]);
-
-  const handleSend = useCallback(() => {
-    void sendMessage({
-      text: message,
-      selectedText,
-      chatContext,
-      onClear: () => {
-        setMessage("");
-        setSelectedText(null);
-        setChatContext(null);
+  const chatColumnProps = useMemo<ChatColumnProps>(
+    () => ({
+      events: chat.conversation.events,
+      streaming: {
+        text: chat.conversation.streamingText,
+        reasoningText: chat.conversation.reasoningText,
+        isStreaming: chat.conversation.isStreaming,
+        pendingUserMessageId: chat.conversation.pendingUserMessageId,
+        selfModMap: chat.conversation.selfModMap,
       },
-    });
-  }, [message, selectedText, chatContext, sendMessage, setSelectedText, setChatContext]);
-
-  const handleCommandSelect = useCallback(
-    (suggestion: CommandSuggestion) => {
-      sendContextlessMessage(
-        `Run the command "${suggestion.name}" (${suggestion.description}). Create a task for the general agent with command_id "${suggestion.commandId}", using the current or most recently used thread.`,
-      );
-    },
-    [sendContextlessMessage],
-  );
-
-  // Listen for custom events from the home view (suggestion clicks)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ text: string }>).detail;
-      if (detail?.text) {
-        sendContextlessMessage(detail.text);
-      }
-    };
-    window.addEventListener("stella:send-message", handler);
-    return () => window.removeEventListener("stella:send-message", handler);
-  }, [sendContextlessMessage]);
-
-  const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
-  const hasWindowContext = Boolean(chatContext?.window);
-  const hasSelectedTextContext = Boolean(selectedText);
-  const hasComposerContext = Boolean(
-    hasScreenshotContext ||
-      hasWindowContext ||
-      hasSelectedTextContext ||
-      chatContext?.capturePending,
-  );
-  const canSubmit = Boolean(
-    activeConversationId && (message.trim() || hasComposerContext),
-  );
-
-  const appReady = onboarding.onboardingDone;
-
-  const chatColumnProps = useMemo<ChatColumnProps>(() => ({
-    events,
-    streaming: {
-      text: streamingText,
-      reasoningText,
-      isStreaming,
-      pendingUserMessageId,
-      selfModMap,
-    },
-    history: {
-      hasOlderEvents,
-      isLoadingOlder,
-      isInitialLoading,
-    },
-    composer: {
-      message,
-      setMessage,
-      chatContext,
-      setChatContext,
-      selectedText,
-      setSelectedText,
-      canSubmit,
-      onSend: handleSend,
-    },
-    scrollContainerRef,
-    onScroll: handleScroll,
-    showScrollButton,
-    scrollToBottom,
-    onboarding: {
-      done: onboarding.onboardingDone,
-      exiting: onboarding.onboardingExiting,
-      isAuthenticated: onboarding.isAuthenticated,
-      hasExpanded: onboarding.hasExpanded,
-      splitMode: onboarding.splitMode,
-      hasDiscoverySelections: onboarding.hasDiscoverySelections,
-      key: onboarding.onboardingKey,
-      stellaAnimationRef: onboarding.stellaAnimationRef,
-      triggerFlash: onboarding.triggerFlash,
-      startBirthAnimation: onboarding.startBirthAnimation,
-      completeOnboarding: onboarding.completeOnboarding,
-      handleEnterSplit: onboarding.handleEnterSplit,
-      onDiscoveryConfirm: handleDiscoveryConfirm,
-      onSelectionChange: onboarding.setHasDiscoverySelections,
-      onDemoChange: handleDemoChange,
-    },
-    conversationId: activeConversationId,
-    onCommandSelect: handleCommandSelect,
-  }), [
-    events,
-    streamingText,
-    reasoningText,
-    isStreaming,
-    pendingUserMessageId,
-    selfModMap,
-    hasOlderEvents,
-    isLoadingOlder,
-    isInitialLoading,
-    message,
-    chatContext,
-    setChatContext,
-    selectedText,
-    setSelectedText,
-    scrollContainerRef,
-    handleScroll,
-    showScrollButton,
-    scrollToBottom,
-    activeConversationId,
-    onboarding.onboardingDone,
-    onboarding.onboardingExiting,
-    onboarding.isAuthenticated,
-    canSubmit,
-    handleSend,
-    onboarding.hasExpanded,
-    onboarding.splitMode,
-    onboarding.hasDiscoverySelections,
-    onboarding.onboardingKey,
-    onboarding.stellaAnimationRef,
-    onboarding.triggerFlash,
-    onboarding.startBirthAnimation,
-    onboarding.completeOnboarding,
-    onboarding.handleEnterSplit,
-    handleDiscoveryConfirm,
-    onboarding.setHasDiscoverySelections,
-    handleDemoChange,
-    handleCommandSelect,
-  ]);
+      history: {
+        hasOlderEvents: chat.conversation.hasOlderEvents,
+        isLoadingOlder: chat.conversation.isLoadingOlder,
+        isInitialLoading: chat.conversation.isInitialLoading,
+      },
+      composer: {
+        message: chat.composer.message,
+        setMessage: chat.composer.setMessage,
+        chatContext: chat.composer.chatContext,
+        setChatContext: chat.composer.setChatContext,
+        selectedText: chat.composer.selectedText,
+        setSelectedText: chat.composer.setSelectedText,
+        canSubmit: chat.composer.canSubmit,
+        onSend: chat.composer.handleSend,
+      },
+      scrollContainerRef: chat.scroll.scrollContainerRef,
+      onScroll: chat.scroll.handleScroll,
+      showScrollButton: chat.scroll.showScrollButton,
+      scrollToBottom: chat.scroll.scrollToBottom,
+      onboarding: {
+        done: onboarding.onboardingDone,
+        exiting: onboarding.onboardingExiting,
+        isAuthenticated: onboarding.isAuthenticated,
+        hasExpanded: onboarding.hasExpanded,
+        splitMode: onboarding.splitMode,
+        hasDiscoverySelections: onboarding.hasDiscoverySelections,
+        key: onboarding.onboardingKey,
+        stellaAnimationRef: onboarding.stellaAnimationRef,
+        triggerFlash: onboarding.triggerFlash,
+        startBirthAnimation: onboarding.startBirthAnimation,
+        completeOnboarding: onboarding.completeOnboarding,
+        handleEnterSplit: onboarding.handleEnterSplit,
+        onDiscoveryConfirm: handleDiscoveryConfirm,
+        onSelectionChange: onboarding.setHasDiscoverySelections,
+        onDemoChange: handleDemoChange,
+      },
+      conversationId: activeConversationId,
+      onCommandSelect: chat.composer.handleCommandSelect,
+    }),
+    [
+      activeConversationId,
+      chat.composer.canSubmit,
+      chat.composer.chatContext,
+      chat.composer.handleCommandSelect,
+      chat.composer.handleSend,
+      chat.composer.message,
+      chat.composer.selectedText,
+      chat.composer.setChatContext,
+      chat.composer.setMessage,
+      chat.composer.setSelectedText,
+      chat.conversation.events,
+      chat.conversation.hasOlderEvents,
+      chat.conversation.isInitialLoading,
+      chat.conversation.isLoadingOlder,
+      chat.conversation.isStreaming,
+      chat.conversation.pendingUserMessageId,
+      chat.conversation.reasoningText,
+      chat.conversation.selfModMap,
+      chat.conversation.streamingText,
+      chat.scroll.handleScroll,
+      chat.scroll.scrollContainerRef,
+      chat.scroll.scrollToBottom,
+      chat.scroll.showScrollButton,
+      handleDemoChange,
+      handleDiscoveryConfirm,
+      onboarding.completeOnboarding,
+      onboarding.handleEnterSplit,
+      onboarding.hasDiscoverySelections,
+      onboarding.hasExpanded,
+      onboarding.isAuthenticated,
+      onboarding.onboardingDone,
+      onboarding.onboardingExiting,
+      onboarding.onboardingKey,
+      onboarding.setHasDiscoverySelections,
+      onboarding.splitMode,
+      onboarding.startBirthAnimation,
+      onboarding.stellaAnimationRef,
+      onboarding.triggerFlash,
+    ],
+  )
 
   return (
     <div className="window-shell full">
@@ -376,12 +212,12 @@ export const FullShell = () => {
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
       <MiniBridgeRelay
         conversationId={activeConversationId}
-        events={events}
-        streamingText={streamingText}
-        reasoningText={reasoningText}
-        isStreaming={isStreaming}
-        pendingUserMessageId={pendingUserMessageId}
-        sendMessage={sendMessage}
+        events={chat.conversation.events}
+        streamingText={chat.conversation.streamingText}
+        reasoningText={chat.conversation.reasoningText}
+        isStreaming={chat.conversation.isStreaming}
+        pendingUserMessageId={chat.conversation.pendingUserMessageId}
+        sendMessage={chat.conversation.sendMessage}
       />
 
       <div className="full-body">
@@ -402,7 +238,7 @@ export const FullShell = () => {
                 onTabSelect={handleTabSelect}
               />
 
-              {state.view === "chat" ? (
+              {state.view === 'chat' ? (
                 <ChatColumn {...chatColumnProps} />
               ) : (
                 <WorkspaceArea
@@ -418,10 +254,9 @@ export const FullShell = () => {
                 visible={isOrbVisible}
                 bubbleText={orbMessage.text}
                 bubbleOpacity={orbMessage.opacity}
-                isStreaming={isStreaming}
-                onSend={sendContextlessMessage}
+                isStreaming={chat.conversation.isStreaming}
+                onSend={chat.conversation.sendContextlessMessage}
               />
-
             </div>
           </>
         ) : (
@@ -429,70 +264,15 @@ export const FullShell = () => {
         )}
       </div>
 
-      {activeDialog === "auth" && (
-        <Suspense fallback={null}>
-          <AuthDialog open onOpenChange={handleDialogOpenChange} />
-        </Suspense>
-      )}
-      {activeDialog === "connect" && (
-        <Suspense fallback={null}>
-          <ConnectDialog
-            open
-            onOpenChange={handleDialogOpenChange}
-          />
-        </Suspense>
-      )}
-      {activeDialog === "settings" && (
-        <Suspense fallback={null}>
-          <SettingsDialog
-            open
-            onOpenChange={handleDialogOpenChange}
-            onSignOut={handleSettingsSignOut}
-          />
-        </Suspense>
-      )}
-
-      {isDev && (
-        <div className="dev-controls">
-          <button
-            className="onboarding-reset"
-            onClick={onboarding.handleResetOnboarding}
-          >
-            Reset Onboarding
-          </button>
-          <button
-            className="onboarding-reset"
-            onClick={showTestDialog}
-          >
-            Test UI
-          </button>
-          <button
-            className="onboarding-reset"
-            onClick={showTraceDialog}
-          >
-            Trace
-          </button>
-        </div>
-      )}
-
-      {isDev && activeDialog === "test" && (
-        <Suspense fallback={null}>
-          <SelfModTestDialog
-            open
-            onOpenChange={handleDialogOpenChange}
-          />
-        </Suspense>
-      )}
-
-      {isDev && activeDialog === "trace" && (
-        <Suspense fallback={null}>
-          <TraceViewerDialog
-            open
-            onOpenChange={handleDialogOpenChange}
-          />
-        </Suspense>
-      )}
-
+      <FullShellDialogs
+        activeDialog={activeDialog}
+        isDev={isDev}
+        onDialogOpenChange={handleDialogOpenChange}
+        onSignOut={handleSettingsSignOut}
+        onResetOnboarding={onboarding.handleResetOnboarding}
+        onShowTestDialog={showTestDialog}
+        onShowTraceDialog={showTraceDialog}
+      />
     </div>
-  );
-};
+  )
+}

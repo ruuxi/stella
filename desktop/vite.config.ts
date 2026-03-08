@@ -295,6 +295,11 @@ export default defineConfig({
       'zod',
       'date-fns',
     ],
+    exclude: [
+      '@convex-dev/better-auth',
+      '@convex-dev/better-auth/react',
+      'convex',
+    ],
   },
   server: {
     port: 5714,
@@ -306,6 +311,11 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^@\//, replacement: `${path.resolve(__dirname, "./src")}/` },
+      { find: /^react$/, replacement: path.resolve(__dirname, "./node_modules/react/index.js") },
+      { find: /^react\/jsx-runtime$/, replacement: path.resolve(__dirname, "./node_modules/react/jsx-runtime.js") },
+      { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(__dirname, "./node_modules/react/jsx-dev-runtime.js") },
+      { find: /^react-dom$/, replacement: path.resolve(__dirname, "./node_modules/react-dom/index.js") },
+      { find: /^react-dom\/client$/, replacement: path.resolve(__dirname, "./node_modules/react-dom/client.js") },
       { find: /^@stella\/stella-ai$/, replacement: path.resolve(__dirname, "./packages/stella-ai/src/index.ts") },
       { find: /^@stella\/stella-agent-core$/, replacement: path.resolve(__dirname, "./packages/stella-agent-core/src/index.ts") },
       { find: /^@stella\/stella-runtime$/, replacement: path.resolve(__dirname, "./packages/stella-runtime/src/index.ts") },
@@ -314,5 +324,6 @@ export default defineConfig({
         replacement: `${path.resolve(__dirname, "./packages/stella-runtime/src")}/$1`,
       },
     ],
+    dedupe: ["react", "react-dom"],
   },
 })

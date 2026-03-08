@@ -66,6 +66,21 @@ const makeEvent = (
   ...(payload ? { payload } : {}),
 });
 
+async function waitForScheduleRefresh(
+  conversationId: string,
+  maxItems = 200,
+) {
+  await waitFor(() => {
+    expect(mockScheduleListConversationEvents).toHaveBeenLastCalledWith({
+      conversationId,
+      maxItems,
+    });
+    expect(mockScheduleGetConversationEventCount).toHaveBeenLastCalledWith({
+      conversationId,
+    });
+  });
+}
+
 describe("useConversationEventFeed", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -124,7 +139,7 @@ describe("useConversationEventFeed", () => {
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("expands the local window when loading older history", () => {
+  it("expands the local window when loading older history", async () => {
     const allEvents = Array.from({ length: 400 }, (_, index) =>
       makeEvent(
         `e-${index + 1}`,
@@ -141,12 +156,16 @@ describe("useConversationEventFeed", () => {
 
     const { result } = renderHook(() => useConversationEventFeed("conv-1"));
 
+    await waitForScheduleRefresh("conv-1");
+
     expect(result.current.events).toHaveLength(200);
     expect(result.current.hasOlderEvents).toBe(true);
 
     act(() => {
       result.current.loadOlder();
     });
+
+    await waitForScheduleRefresh("conv-1", 400);
 
     expect(mockListLocalEvents).toHaveBeenLastCalledWith("conv-1", 400);
     expect(result.current.events).toHaveLength(400);
@@ -181,7 +200,7 @@ describe("useConversationEventFeed", () => {
     });
   });
 
-  it("resets the local window when the conversation changes", () => {
+  it("resets the local window when the conversation changes", async () => {
     const eventsByConversation = {
       "conv-1": Array.from({ length: 400 }, (_, index) =>
         makeEvent(
@@ -218,17 +237,23 @@ describe("useConversationEventFeed", () => {
       },
     );
 
+    await waitForScheduleRefresh("conv-1");
+
     expect(result.current.events).toHaveLength(200);
 
     act(() => {
       result.current.loadOlder();
     });
+
+    await waitForScheduleRefresh("conv-1", 400);
     expect(result.current.events).toHaveLength(400);
 
     rerender({ conversationId: "conv-2" });
+    await waitForScheduleRefresh("conv-2");
     expect(result.current.events).toHaveLength(50);
 
     rerender({ conversationId: "conv-1" });
+    await waitForScheduleRefresh("conv-1");
     expect(result.current.events).toHaveLength(200);
     expect(mockListLocalEvents).toHaveBeenLastCalledWith("conv-1", 200);
   });
