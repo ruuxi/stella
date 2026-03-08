@@ -188,6 +188,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       userPrompt: string;
       agentType?: string;
       storageMode?: 'cloud' | 'local';
+      promptOverrides?: Record<string, string>;
     }) => ipcRenderer.invoke('agent:startChat', payload) as Promise<{ runId: string }>,
     cancelChat: (runId: string) => ipcRenderer.send('agent:cancelChat', runId),
     resumeStream: (payload: { runId: string; lastSeq: number }) =>

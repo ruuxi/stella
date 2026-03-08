@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { showToast } from '@/ui/toast'
+import { getPromptOverridesPayload } from '@/prompts'
 import { useRafStringAccumulator } from '@/shared/hooks/use-raf-state'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
 import type { AgentStreamEvent, SelfModAppliedData } from './streaming-types'
@@ -205,6 +206,7 @@ export function useLocalAgentStream({
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
           storageMode,
+          ...getPromptOverridesPayload(["news_html.system", "news_html.user"]),
         })
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return
