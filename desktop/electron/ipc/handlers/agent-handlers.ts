@@ -168,11 +168,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       throw new Error('Stella runtime not available')
     }
 
-    // Allow a brief grace period for auth state to settle (renderer health
-    // check may have just synced the token via setAuthState IPC).
+    // The renderer may call startChat right after syncing the auth token via
+    // setAuthState IPC. Poll briefly so the token has time to propagate.
+    const deadline = Date.now() + 5_000
     let health = stellaHostRunner.agentHealthCheck()
-    if (!health?.ready) {
-      await new Promise((r) => setTimeout(r, 250))
+    while (!health?.ready && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 200))
       health = stellaHostRunner.agentHealthCheck()
     }
     if (!health?.ready) {
