@@ -122,8 +122,12 @@ import type {
   RecordingRestartData,
   InputEventData,
   StylesData,
+  SiteModSetCommand,
+  SiteModRemoveCommand,
+  SiteModToggleCommand,
 } from './types.js';
 import { successResponse, errorResponse } from './protocol.js';
+import * as siteModsStore from './site-mods-store.js';
 
 // Callback for screencast frames - will be set by the daemon when streaming is active
 let screencastFrameCallback: ((frame: ScreencastFrame) => void) | null = null;
@@ -455,6 +459,14 @@ export async function executeCommand(command: Command, browser: BrowserManager):
         return await handleRecordingStop(command, browser);
       case 'recording_restart':
         return await handleRecordingRestart(command, browser);
+      case 'site_mod_set':
+        return await handleSiteModSet(command, browser);
+      case 'site_mod_list':
+        return await handleSiteModList(command);
+      case 'site_mod_remove':
+        return await handleSiteModRemove(command);
+      case 'site_mod_toggle':
+        return await handleSiteModToggle(command);
       default: {
         // TypeScript narrows to never here, but we handle it for safety
         const unknownCommand = command as { id: string; action: string };
@@ -2075,4 +2087,89 @@ async function handleRecordingRestart(
     previousPath: result.previousPath,
     stopped: result.stopped,
   });
+}
+
+// ─── Site Mods ──────────────────────────────────────────────────────────
+
+/**
+ * Apply matching site mods to a page (CSS via style tag, JS via evaluate).
+ * Called on page navigation and after site_mod_set.
+ */
+export async function applySiteModsToPage(page: Page): Promise<void> {
+  let url: string;
+  try {
+    url = page.url();
+  } catch {
+    return; // page may be closed
+  }
+  if (!url || url === 'about:blank') return;
+
+  const matching = siteModsStore.getMatchingMods(url);
+  for (const mod of matching) {
+    try {
+      if (mod.css) {
+        await page.addStyleTag({ content: mod.css });
+      }
+      if (mod.js) {
+        await page.evaluate(mod.js);
+      }
+    } catch {
+      // Page may have navigated away during injection — ignore
+    }
+  }
+}
+
+async function handleSiteModSet(
+  command: SiteModSetCommand,
+  browser: BrowserManager,
+): Promise<Response> {
+  if (!command.pattern) throw new Error('pattern is required for site_mod_set');
+  if (!command.css && !command.js) throw new Error('At least one of css or js is required');
+
+  const { mod, total } = siteModsStore.setMod(command.pattern, {
+    css: command.css,
+    js: command.js,
+    label: command.label,
+  });
+
+  // Apply immediately to the active page if its URL matches
+  try {
+    const page = browser.getPage();
+    await applySiteModsToPage(page);
+  } catch {
+    // Browser may not be launched yet — that's fine
+  }
+
+  return successResponse(command.id, { pattern: command.pattern, mod, total });
+}
+
+async function handleSiteModList(
+  command: { id: string },
+): Promise<Response> {
+  const mods = siteModsStore.getMods();
+  const rules = Object.entries(mods).map(([pattern, mod]) => ({
+    pattern,
+    label: mod.label || null,
+    hasCSS: !!mod.css,
+    hasJS: !!mod.js,
+    enabled: mod.enabled,
+    updatedAt: mod.updatedAt || null,
+  }));
+  return successResponse(command.id, { rules, total: rules.length });
+}
+
+async function handleSiteModRemove(
+  command: SiteModRemoveCommand,
+): Promise<Response> {
+  if (!command.pattern) throw new Error('pattern is required for site_mod_remove');
+  const { removed, total } = siteModsStore.removeMod(command.pattern);
+  return successResponse(command.id, { pattern: command.pattern, removed, total });
+}
+
+async function handleSiteModToggle(
+  command: SiteModToggleCommand,
+): Promise<Response> {
+  if (!command.pattern) throw new Error('pattern is required for site_mod_toggle');
+  const { enabled } = siteModsStore.toggleMod(command.pattern, command.enabled);
+  return successResponse(command.id, { pattern: command.pattern, enabled });
 }
