@@ -37,10 +37,12 @@ vi.mock("@radix-ui/react-dropdown-menu", () => {
 
   const content = ({
     children,
-    sideOffset: _sideOffset,
+    sideOffset,
     ...props
-  }: MockPrimitiveProps & { sideOffset?: unknown }) =>
-    React.createElement("div", props, children);
+  }: MockPrimitiveProps & { sideOffset?: unknown }) => {
+    void sideOffset;
+    return React.createElement("div", props, children);
+  };
 
   return {
     Root: passthrough(),

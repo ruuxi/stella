@@ -118,13 +118,13 @@ function defaultProps(
 function mockUseQuery(
   impl: (queryPath: unknown, args?: unknown) => unknown,
 ) {
-  vi.mocked(useQuery).mockImplementation(impl as any);
+  vi.mocked(useQuery).mockImplementation(impl as never);
 }
 
 function mockUseMutation(
   impl: (mutationPath: unknown) => unknown,
 ) {
-  vi.mocked(useMutation).mockImplementation(impl as any);
+  vi.mocked(useMutation).mockImplementation(impl as never);
 }
 
 /**
@@ -189,7 +189,7 @@ function setupElectronApi(
       saveLlmCredential: mockSaveLlmCredential,
       deleteLlmCredential: mockDeleteLlmCredential,
     },
-  } as any;
+  } as unknown as typeof window.electronAPI;
 }
 
 async function openModelsTab() {
