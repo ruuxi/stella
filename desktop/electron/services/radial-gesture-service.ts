@@ -31,6 +31,7 @@ export type RadialOverlayBridge = {
   updateRadialCursor: (x: number, y: number) => void
   getRadialBounds: () => { x: number; y: number } | null
   showAutoPanel: (data: { x: number; y: number; width: number; height: number; windowText: string; windowTitle: string | null }) => void
+  hideAutoPanel: () => void
 }
 
 export type RadialWindowBridge = {
@@ -123,18 +124,31 @@ export class RadialGestureService {
       case 'auto': {
         capture.cancelRadialContextCapture()
 
-        // Extract text content from the window under the cursor
-        const windowTextResult = await capture.captureAutoWindowText()
-        if (!windowTextResult?.text) break
-
         // Position panel on the right side of the current display, 70% height, centered
         const cursorPoint = screen.getCursorScreenPoint()
         const display = screen.getDisplayNearestPoint(cursorPoint)
         const workArea = display.workArea
-        const panelWidth = 420
+        const panelWidth = 520
         const panelHeight = Math.round(workArea.height * 0.7)
         const panelX = workArea.x + workArea.width - panelWidth - 16
         const panelY = workArea.y + Math.round((workArea.height - panelHeight) / 2)
+
+        // Show panel immediately with skeleton loader
+        overlay.showAutoPanel({
+          x: panelX,
+          y: panelY,
+          width: panelWidth,
+          height: panelHeight,
+          windowText: '',
+          windowTitle: null,
+        })
+
+        // Extract text content in background, then update panel
+        const windowTextResult = await capture.captureAutoWindowText()
+        if (!windowTextResult?.text) {
+          overlay.hideAutoPanel()
+          break
+        }
 
         const windowTitle = [windowTextResult.app, windowTextResult.title]
           .filter(Boolean)
