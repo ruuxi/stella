@@ -38,7 +38,6 @@ export const appendTransientEvent = internalMutation({
     metadata: v.optional(v.object({
       source: v.optional(v.string()),
       syncMode: v.optional(v.string()),
-      runtimeMode: v.optional(v.string()),
       fallback: v.optional(v.string()),
     })),
     ttlMs: v.optional(v.number()),

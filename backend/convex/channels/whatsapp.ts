@@ -4,8 +4,9 @@ import { v } from "convex/values";
 // ---------------------------------------------------------------------------
 // WhatsApp Connector (Baileys bridge)
 //
-// The WhatsApp bridge runs as a persistent process in a Sprites.dev container.
-// Setup and lifecycle are managed by bridge.ts. This module provides
+// The WhatsApp bridge runs as a local persistent process started from the
+// desktop bridge bundle. Setup and lifecycle are managed by bridge.ts.
+// This module provides
 // frontend-facing queries specific to the WhatsApp auth flow (QR code).
 // ---------------------------------------------------------------------------
 
