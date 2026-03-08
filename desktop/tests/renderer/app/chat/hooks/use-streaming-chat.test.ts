@@ -24,8 +24,8 @@ const mockBuildHistory = vi.fn(() => undefined);
 
 vi.mock("@/context/chat-store", () => ({
   useChatStore: vi.fn(() => ({
-    storageMode: "cloud",
-    isLocalStorage: false,
+    storageMode: "local",
+    isLocalStorage: true,
     cloudFeaturesEnabled: true,
     appendEvent: mockAppendEvent,
     appendAgentEvent: mockAppendAgentEvent,

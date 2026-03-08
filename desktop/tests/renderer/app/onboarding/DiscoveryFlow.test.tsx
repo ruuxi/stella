@@ -5,8 +5,8 @@ import { useDiscoveryFlow } from "../../../../src/app/onboarding/DiscoveryFlow";
 const mockChatStoreAppendEvent = vi.fn(() => Promise.resolve({ _id: "event-123" }));
 
 const mockUseChatStore = vi.fn(() => ({
-  storageMode: "cloud",
-  isLocalStorage: false,
+  storageMode: "local",
+  isLocalStorage: true,
   cloudFeaturesEnabled: true,
   isAuthenticated: true,
   appendEvent: mockChatStoreAppendEvent,
@@ -39,8 +39,8 @@ function defaultOptions() {
 
 function setCloudMode(isAuthenticated = true) {
   mockUseChatStore.mockReturnValue({
-    storageMode: "cloud",
-    isLocalStorage: false,
+    storageMode: "local",
+    isLocalStorage: true,
     cloudFeaturesEnabled: isAuthenticated,
     isAuthenticated,
     appendEvent: mockChatStoreAppendEvent,
@@ -54,7 +54,7 @@ function setLocalMode(isAuthenticated = false) {
   mockUseChatStore.mockReturnValue({
     storageMode: "local",
     isLocalStorage: true,
-    cloudFeaturesEnabled: false,
+    cloudFeaturesEnabled: isAuthenticated,
     isAuthenticated,
     appendEvent: mockChatStoreAppendEvent,
     appendAgentEvent: vi.fn(),
@@ -153,12 +153,19 @@ describe("useDiscoveryFlow", () => {
     expect(first).toBe(second);
   });
 
-  it("does not run effect when not authenticated", async () => {
-    const checkCoreMemoryExists = vi.fn();
+  it("still runs synthesis when not authenticated", async () => {
+    const checkCoreMemoryExists = vi.fn(() => Promise.resolve(false));
+    const collectAllSignals = vi.fn(() =>
+      Promise.resolve({ formatted: "signals", error: null }),
+    );
     (window as unknown as Record<string, unknown>).electronAPI = {
-      browser: { checkCoreMemoryExists },
+      browser: {
+        checkCoreMemoryExists,
+        collectAllSignals,
+        writeCoreMemory: vi.fn(() => Promise.resolve()),
+      },
     };
-    setCloudMode(false);
+    setLocalMode(false);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -171,7 +178,8 @@ describe("useDiscoveryFlow", () => {
     });
 
     await vi.waitFor(() => {
-      expect(checkCoreMemoryExists).not.toHaveBeenCalled();
+      expect(checkCoreMemoryExists).toHaveBeenCalled();
+      expect(collectAllSignals).toHaveBeenCalled();
     });
   });
 

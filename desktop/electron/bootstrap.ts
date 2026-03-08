@@ -281,6 +281,8 @@ export const bootstrapMainProcess = () => {
           }
         }
       },
+      listLocalChatEvents: (conversationId, maxItems) =>
+        localChatService?.listEvents(conversationId, maxItems) ?? [],
       scheduleApi: {
         listCronJobs: async () => schedulerService!.listCronJobs(),
         addCronJob: async (input) => schedulerService!.addCronJob(input),
