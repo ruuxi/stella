@@ -9,76 +9,139 @@ import {
   setLocalSyncCheckpoint,
   subscribeToLocalChatUpdates,
 } from "../../../../../src/app/chat/services/local-chat-store";
+import type { EventRecord } from "../../../../../src/app/chat/lib/event-transforms";
 
-const STORE_KEY = "stella.localChat.v1";
-const DEFAULT_CONVERSATION_KEY = "stella.localChat.defaultConversationId";
-const SYNC_CHECKPOINTS_KEY = "stella.localChat.syncCheckpoints.v1";
+type LocalChatApiMock = NonNullable<typeof window.electronAPI>["localChat"];
+
+const sortEventsAscending = (events: EventRecord[]) =>
+  [...events].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) {
+      return a.timestamp - b.timestamp;
+    }
+    return a._id.localeCompare(b._id);
+  });
+
+const installLocalChatApiMock = (initialDefaultConversationId = "conv-default") => {
+  const listeners = new Set<() => void>();
+  const conversations = new Map<string, EventRecord[]>();
+  const checkpoints = new Map<string, string>();
+  let defaultConversationId = initialDefaultConversationId;
+  let generatedId = 0;
+
+  const ensureConversation = (conversationId: string) => {
+    const existing = conversations.get(conversationId);
+    if (existing) return existing;
+    const created: EventRecord[] = [];
+    conversations.set(conversationId, created);
+    return created;
+  };
+
+  const emitUpdated = () => {
+    for (const listener of listeners) {
+      listener();
+    }
+  };
+
+  const api: LocalChatApiMock = {
+    getOrCreateDefaultConversationId: vi.fn(async () => {
+      ensureConversation(defaultConversationId);
+      return defaultConversationId;
+    }),
+    listEvents: vi.fn(async ({ conversationId, maxItems = 200 }) => {
+      const sorted = sortEventsAscending(conversations.get(conversationId) ?? []);
+      return sorted.length <= maxItems ? sorted : sorted.slice(sorted.length - maxItems);
+    }),
+    getEventCount: vi.fn(async ({ conversationId }) => (conversations.get(conversationId) ?? []).length),
+    appendEvent: vi.fn(async (args) => {
+      const event: EventRecord = {
+        _id: args.eventId ?? `event-${++generatedId}`,
+        timestamp: args.timestamp ?? Date.now(),
+        type: args.type,
+        ...(args.deviceId ? { deviceId: args.deviceId } : {}),
+        ...(args.requestId ? { requestId: args.requestId } : {}),
+        ...(args.targetDeviceId ? { targetDeviceId: args.targetDeviceId } : {}),
+        ...(args.payload && typeof args.payload === "object"
+          ? { payload: args.payload as Record<string, unknown> }
+          : {}),
+        ...(args.channelEnvelope && typeof args.channelEnvelope === "object"
+          ? { channelEnvelope: args.channelEnvelope as Record<string, unknown> }
+          : {}),
+      };
+
+      const events = ensureConversation(args.conversationId);
+      events.push(event);
+      const sorted = sortEventsAscending(events);
+      conversations.set(
+        args.conversationId,
+        sorted.length <= 2000 ? sorted : sorted.slice(sorted.length - 2000),
+      );
+      emitUpdated();
+      return event;
+    }),
+    listSyncMessages: vi.fn(async ({ conversationId, maxMessages = 2000 }) => {
+      const events = sortEventsAscending(conversations.get(conversationId) ?? []);
+      const messages = events.flatMap((event) => {
+        if (event.type !== "user_message" && event.type !== "assistant_message") {
+          return [];
+        }
+        const text = typeof event.payload?.text === "string" ? event.payload.text : "";
+        if (!text) return [];
+
+        const role = event.type === "user_message" ? "user" : "assistant";
+        return [{
+          localMessageId: event._id,
+          role,
+          text,
+          timestamp: event.timestamp,
+          ...(role === "user" && event.deviceId ? { deviceId: event.deviceId } : {}),
+        }];
+      });
+      return messages.length <= maxMessages ? messages : messages.slice(messages.length - maxMessages);
+    }),
+    getSyncCheckpoint: vi.fn(async ({ conversationId }) => checkpoints.get(conversationId) ?? null),
+    setSyncCheckpoint: vi.fn(async ({ conversationId, localMessageId }) => {
+      checkpoints.set(conversationId, localMessageId);
+      return { ok: true };
+    }),
+    onUpdated: vi.fn((callback: () => void) => {
+      listeners.add(callback);
+      return () => {
+        listeners.delete(callback);
+      };
+    }),
+  };
+
+  window.electronAPI = {
+    localChat: api,
+  } as unknown as typeof window.electronAPI;
+
+  return {
+    api,
+    setDefaultConversationId: (conversationId: string) => {
+      defaultConversationId = conversationId;
+    },
+  };
+};
 
 describe("local-chat-store", () => {
   beforeEach(() => {
-    localStorage.clear();
-    delete window.electronAPI;
     vi.restoreAllMocks();
+    installLocalChatApiMock();
   });
 
-  it("creates a default conversation ID and initializes its conversation bucket", async () => {
+  it("gets the default conversation ID from the Electron transcript store", async () => {
     const conversationId = await getOrCreateLocalConversationId();
 
-    expect(conversationId.length).toBeGreaterThan(0);
-    expect(localStorage.getItem(DEFAULT_CONVERSATION_KEY)).toBe(conversationId);
-
-    const rawStore = localStorage.getItem(STORE_KEY);
-    expect(rawStore).toBeTruthy();
-    const parsedStore = JSON.parse(rawStore ?? "{}") as {
-      conversations?: Record<string, unknown>;
-    };
-    expect(parsedStore.conversations?.[conversationId]).toBeTruthy();
+    expect(conversationId).toBe("conv-default");
+    expect(window.electronAPI?.localChat.getOrCreateDefaultConversationId).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses existing default conversation ID when present", async () => {
-    localStorage.setItem(DEFAULT_CONVERSATION_KEY, "conv-existing");
+  it("reuses the Electron default conversation ID when requested again", async () => {
+    const { setDefaultConversationId } = installLocalChatApiMock("conv-existing");
+    setDefaultConversationId("conv-existing");
 
     await expect(getOrCreateLocalConversationId()).resolves.toBe("conv-existing");
-  });
-
-  it("migrates the legacy default conversation ID into the Electron transcript store", async () => {
-    const importLegacyData = vi.fn(() => Promise.resolve({
-      importedConversations: 0,
-      importedEvents: 0,
-      importedCheckpoints: 0,
-    }));
-    const getOrCreateDefaultConversationId = vi.fn(() => Promise.resolve("conv-electron"));
-
-    window.electronAPI = {
-      localChat: {
-        importLegacyData,
-        getOrCreateDefaultConversationId,
-      },
-    } as unknown as typeof window.electronAPI;
-
-    localStorage.setItem(DEFAULT_CONVERSATION_KEY, "conv-legacy");
-
-    await expect(getOrCreateLocalConversationId()).resolves.toBe("conv-electron");
-    expect(importLegacyData).toHaveBeenCalledWith({
-      defaultConversationId: "conv-legacy",
-    });
-    expect(localStorage.getItem(DEFAULT_CONVERSATION_KEY)).toBeNull();
-  });
-
-  it("recovers from malformed persisted store data", async () => {
-    localStorage.setItem(STORE_KEY, "{malformed");
-
-    await appendLocalEvent({
-      conversationId: "conv-1",
-      type: "user_message",
-      eventId: "e-1",
-      timestamp: 1,
-      payload: { text: "hello" },
-    });
-
-    const events = await listLocalEvents("conv-1", 10);
-    expect(events).toHaveLength(1);
-    expect(events[0]?._id).toBe("e-1");
+    await expect(getOrCreateLocalConversationId()).resolves.toBe("conv-existing");
   });
 
   it("lists events sorted by timestamp, then by ID when timestamps tie", async () => {
@@ -126,7 +189,7 @@ describe("local-chat-store", () => {
     expect(events.at(-1)?._id).toBe("e-2002");
   });
 
-  it("builds history from chat messages only and enforces max messages", async () => {
+  it("builds history from local transcript events", async () => {
     const conversationId = "conv-history";
     await appendLocalEvent({
       conversationId,
@@ -167,15 +230,14 @@ describe("local-chat-store", () => {
     });
 
     const history = await buildLocalHistoryMessages(conversationId);
-    // Now includes tool calls and results, with timestamps
-    expect(history.length).toBe(5); // user + assistant + tool_request + tool_result + assistant
+    expect(history).toHaveLength(5);
     expect(history[0]!.role).toBe("user");
     expect(history[0]!.content).toContain("hello");
     expect(history[1]!.role).toBe("assistant");
     expect(history[1]!.content).toContain("hi there");
-    expect(history[2]!.role).toBe("assistant"); // tool call -> assistant role
+    expect(history[2]!.role).toBe("assistant");
     expect(history[2]!.content).toContain("[Tool call] Read");
-    expect(history[3]!.role).toBe("user"); // tool result -> user role
+    expect(history[3]!.role).toBe("user");
     expect(history[3]!.content).toContain("[Tool result] Read");
     expect(history[4]!.role).toBe("assistant");
     expect(history[4]!.content).toContain("done");
@@ -218,17 +280,18 @@ describe("local-chat-store", () => {
     ]);
   });
 
-  it("stores and returns sync checkpoints", async () => {
+  it("stores and returns sync checkpoints via the Electron transcript store", async () => {
     await expect(getLocalSyncCheckpoint("conv-checkpoint")).resolves.toBeNull();
 
     await setLocalSyncCheckpoint("conv-checkpoint", "local-99");
     await expect(getLocalSyncCheckpoint("conv-checkpoint")).resolves.toBe("local-99");
-
-    const raw = localStorage.getItem(SYNC_CHECKPOINTS_KEY);
-    expect(raw).toBeTruthy();
+    expect(window.electronAPI?.localChat.setSyncCheckpoint).toHaveBeenCalledWith({
+      conversationId: "conv-checkpoint",
+      localMessageId: "local-99",
+    });
   });
 
-  it("notifies subscribers on custom update and relevant storage events", async () => {
+  it("notifies subscribers from the Electron local chat update stream", async () => {
     const listener = vi.fn();
     const unsubscribe = subscribeToLocalChatUpdates(listener);
 
@@ -241,12 +304,6 @@ describe("local-chat-store", () => {
     });
     expect(listener).toHaveBeenCalledTimes(1);
 
-    window.dispatchEvent(new StorageEvent("storage", { key: STORE_KEY }));
-    expect(listener).toHaveBeenCalledTimes(2);
-
-    window.dispatchEvent(new StorageEvent("storage", { key: "unrelated" }));
-    expect(listener).toHaveBeenCalledTimes(2);
-
     unsubscribe();
 
     await appendLocalEvent({
@@ -256,6 +313,6 @@ describe("local-chat-store", () => {
       timestamp: 2,
       payload: { text: "bye" },
     });
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

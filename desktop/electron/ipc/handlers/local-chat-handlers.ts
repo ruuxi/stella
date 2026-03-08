@@ -116,34 +116,4 @@ export const registerLocalChatHandlers = (options: LocalChatHandlersOptions) => 
     )
     return { ok: true }
   })
-
-  ipcMain.handle('localChat:importLegacyData', (event, payload: {
-    store?: {
-      version?: number
-      conversations?: Record<string, {
-        id?: string
-        updatedAt?: number
-        events?: unknown[]
-      }>
-    } | null
-    syncCheckpoints?: Record<string, unknown> | null
-    defaultConversationId?: unknown
-  }) => {
-    if (!options.assertPrivilegedSender(event, 'localChat:importLegacyData')) {
-      throw new Error('Blocked untrusted localChat:importLegacyData request.')
-    }
-    const result = getService(options).importLegacyData({
-      store: payload?.store,
-      syncCheckpoints: payload?.syncCheckpoints,
-      defaultConversationId: payload?.defaultConversationId,
-    })
-    if (
-      result.importedConversations > 0
-      || result.importedCheckpoints > 0
-      || Boolean(payload?.defaultConversationId)
-    ) {
-      broadcastUpdated()
-    }
-    return result
-  })
 }
