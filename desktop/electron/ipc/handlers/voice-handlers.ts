@@ -137,6 +137,14 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       throw new Error('Pi runtime not initialized')
     }
 
+    // Emit agent events to the full window so the trace viewer can capture them
+    const emitToFrontend = (eventPayload: Record<string, unknown>) => {
+      const fullWindow = options.windowManager.getFullWindow()
+      if (fullWindow && !fullWindow.isDestroyed()) {
+        fullWindow.webContents.send('agent:event', eventPayload)
+      }
+    }
+
     return new Promise<string>((resolve, reject) => {
       let fullText = ''
       piHostRunner.handleLocalChat(
@@ -151,8 +159,26 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
           onStream: (ev) => {
             if (ev.chunk) fullText += ev.chunk
           },
-          onToolStart: () => {},
-          onToolEnd: () => {},
+          onToolStart: (ev) => {
+            emitToFrontend({ type: 'tool-start', ...ev })
+          },
+          onToolEnd: (ev) => {
+            emitToFrontend({ type: 'tool-end', ...ev })
+          },
+          onTaskEvent: (ev) => {
+            emitToFrontend({
+              type: ev.type,
+              runId: 'voice',
+              seq: Date.now(),
+              taskId: ev.taskId,
+              agentType: ev.agentType,
+              description: ev.description,
+              parentTaskId: ev.parentTaskId,
+              result: ev.result,
+              error: ev.error,
+              statusText: ev.statusText,
+            })
+          },
           onSelfModHmrState: (state) => {
             const miniWindow = options.windowManager.getMiniWindow()
             const fullWindow = options.windowManager.getFullWindow()
@@ -166,10 +192,12 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
           onEnd: (ev) => {
             const result = (ev.finalText ?? fullText) || 'Done.'
             console.log(`[${ts()}] [Voice] orchestratorChat result:`, result.slice(0, 300))
+            emitToFrontend({ type: 'end', ...ev })
             resolve(result)
           },
           onError: (ev) => {
             console.error(`[${ts()}] [Voice] orchestratorChat error:`, ev.error)
+            emitToFrontend({ type: 'error', ...ev })
             reject(new Error(ev.error ?? 'Unknown error'))
           },
         },

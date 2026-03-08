@@ -61,8 +61,20 @@ type FsLock = {
   key: string;
 };
 
+export type TaskLifecycleEvent = {
+  type: "task-started" | "task-completed" | "task-failed" | "task-progress";
+  taskId: string;
+  agentType: string;
+  description?: string;
+  parentTaskId?: string;
+  result?: string;
+  error?: string;
+  statusText?: string;
+};
+
 type LocalTaskManagerOpts = {
   maxConcurrent?: number;
+  onTaskEvent?: (event: TaskLifecycleEvent) => void;
   fetchAgentContext: (args: {
     conversationId: string;
     agentType: string;
@@ -81,6 +93,8 @@ type LocalTaskManagerOpts = {
     enableRemoteTools: boolean;
     abortSignal: AbortSignal;
     onProgress?: (chunk: string) => void;
+    onToolStart?: (event: { runId: string; seq: number; toolCallId: string; toolName: string }) => void;
+    onToolEnd?: (event: { runId: string; seq: number; toolCallId: string; toolName: string; resultPreview: string }) => void;
     toolExecutor: (
       toolName: string,
       args: Record<string, unknown>,
@@ -186,6 +200,13 @@ export class LocalTaskManager implements TaskToolApi {
       }
       this.runningCount += 1;
       task.status = "running";
+      this.opts.onTaskEvent?.({
+        type: "task-started",
+        taskId: task.id,
+        agentType: task.agentType,
+        description: task.description,
+        parentTaskId: task.parentTaskId,
+      });
       void this.executeTask(task)
         .catch(() => undefined)
         .finally(() => {
@@ -262,6 +283,12 @@ export class LocalTaskManager implements TaskToolApi {
           if (!compact) return;
           task.recentActivity = [truncate(compact, 500)];
         },
+        onToolStart: (ev) => this.opts.onTaskEvent?.({
+          type: "task-progress",
+          taskId: task.id,
+          agentType: task.agentType,
+          statusText: `Using ${ev.toolName}`,
+        }),
         toolExecutor: async (toolName, toolArgs, toolContext) => {
           const scopedContext: ToolContext = {
             ...toolContext,
@@ -300,6 +327,23 @@ export class LocalTaskManager implements TaskToolApi {
         task.status = "error";
         task.error = (error as Error).message ?? "Task failed";
       }
+    }
+
+    // Emit task lifecycle event
+    if (task.status === "completed") {
+      this.opts.onTaskEvent?.({
+        type: "task-completed",
+        taskId: task.id,
+        agentType: task.agentType,
+        result: task.result ? truncate(task.result, 500) : undefined,
+      });
+    } else if (task.status === "error" || task.status === "canceled") {
+      this.opts.onTaskEvent?.({
+        type: "task-failed",
+        taskId: task.id,
+        agentType: task.agentType,
+        error: task.error,
+      });
     }
 
     // Sync task completion to Convex in background (non-blocking)

@@ -286,6 +286,7 @@ export class RealtimeVoiceSession {
   // Accumulated transcript fragments
   private assistantTranscriptBuffer = "";
   private lastUserTranscript = "";
+  private pendingNoToolResponseReasons: string[] = [];
 
   // Conversation trace log — sequential record of every event for debugging
   private static readonly MAX_TRACE_ENTRIES = 500;
@@ -1030,6 +1031,25 @@ export class RealtimeVoiceSession {
     }
   }
 
+  private requestNarrationResponse(text: string, reason: string) {
+    const normalized = text.trim();
+    if (!normalized) return;
+    this.pendingNoToolResponseReasons.push(reason);
+    this.trace("NARRATE", `${reason}: ${normalized.slice(0, 300)}`);
+    this.sendEvent({
+      type: "response.create",
+      response: {
+        conversation: "none",
+        input: [],
+        output_modalities: ["audio", "text"],
+        instructions:
+          "Speak exactly the text between BEGIN_SPEECH and END_SPEECH. " +
+          "Do not add or remove information. Do not mention the delimiters.\n\n" +
+          `BEGIN_SPEECH\n${normalized}\nEND_SPEECH`,
+      },
+    });
+  }
+
   private syncExternalAudioDucking(active: boolean) {
     if (this.externalAudioDuckingActive === active) return;
     this.externalAudioDuckingActive = active;
@@ -1147,12 +1167,21 @@ export class RealtimeVoiceSession {
         const outputItems = (output?.output as Array<Record<string, unknown>>) ?? [];
         const toolCalls = outputItems.filter((o) => o.type === "function_call");
         if (toolCalls.length === 0) {
-          // Model responded without calling a tool — persist for terminal visibility
-          window.electronAPI?.voice.persistTranscript?.({
-            conversationId: this.conversationId ?? "voice-rtc",
-            role: "assistant",
-            text: "[NO TOOL CALL — model responded conversationally]",
-          });
+          const expectedReason = this.pendingNoToolResponseReasons.shift();
+          if (expectedReason) {
+            window.electronAPI?.voice.persistTranscript?.({
+              conversationId: this.conversationId ?? "voice-rtc",
+              role: "assistant",
+              text: `[VOICE FOLLOW-UP — ${expectedReason}]`,
+            });
+          } else {
+            // Model responded without calling a tool — persist for terminal visibility
+            window.electronAPI?.voice.persistTranscript?.({
+              conversationId: this.conversationId ?? "voice-rtc",
+              role: "assistant",
+              text: "[NO TOOL CALL — model responded conversationally]",
+            });
+          }
         }
         break;
       }
@@ -1195,37 +1224,14 @@ export class RealtimeVoiceSession {
           text: `[ORCHESTRATOR RESULT] ${spokenResult || "(empty)"}`,
         });
         if (!spokenResult || spokenResult === "Working on it.") return;
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `[System: the action completed. Here is the result to share with the user: "${spokenResult}"]`,
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
+        this.requestNarrationResponse(spokenResult, "spoke orchestrator result");
       })
       .catch((err) => {
         console.error("[realtime-voice] Orchestrator delegation error:", err);
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `[System: the action failed with error: "${(err as Error).message}". Let the user know briefly.]`,
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
+        this.requestNarrationResponse(
+          `I ran into an error while doing that: ${(err as Error).message}`,
+          "spoke orchestrator error",
+        );
       });
   }
 

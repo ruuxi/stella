@@ -27,6 +27,7 @@ import { useBridgeAutoReconnect } from "@/hooks/use-bridge-reconnect";
 import { useReturnDetection, formatDuration } from "@/hooks/use-return-detection";
 import type { CommandSuggestion } from "@/hooks/use-command-suggestions";
 import { MiniBridgeRelay } from "@/services/MiniBridgeRelay";
+import { useTraceIpcListener, useTraceEventMonitor } from "@/hooks/use-trace-listener";
 
 import {
   useLocalWorkspacePanels,
@@ -40,6 +41,7 @@ const SettingsDialog = lazy(() => import("../settings/SettingsView"));
 const AuthDialog = lazy(() => import("@/app/auth/AuthDialog").then(m => ({ default: m.AuthDialog })));
 const ConnectDialog = lazy(() => import("@/app/integrations/ConnectDialog").then(m => ({ default: m.ConnectDialog })));
 const SelfModTestDialog = lazy(() => import("@/testing/SelfModTestDialog"));
+const TraceViewerDialog = lazy(() => import("@/testing/TraceViewerDialog"));
 const NO_OP = () => {};
 
 export const FullShell = () => {
@@ -92,6 +94,9 @@ export const FullShell = () => {
   const showTestDialog = useCallback(() => {
     setActiveDialog("test");
   }, [setActiveDialog]);
+  const showTraceDialog = useCallback(() => {
+    setActiveDialog("trace");
+  }, [setActiveDialog]);
   const handleTabSelect = useCallback(
     (view: "home" | "app" | "chat", page?: PersonalPage) => {
       if (view === "app" && page) {
@@ -127,6 +132,10 @@ export const FullShell = () => {
     conversationId: activeConversationId,
     events,
   });
+  // Trace hooks — capture all agent events for the debug viewer
+  useTraceIpcListener(isDev);
+  useTraceEventMonitor(isDev, events);
+
   const sendMessageRef = useRef(sendMessage);
 
   useEffect(() => {
@@ -457,12 +466,27 @@ export const FullShell = () => {
           >
             Test UI
           </button>
+          <button
+            className="onboarding-reset"
+            onClick={showTraceDialog}
+          >
+            Trace
+          </button>
         </div>
       )}
 
       {isDev && activeDialog === "test" && (
         <Suspense fallback={null}>
           <SelfModTestDialog
+            open
+            onOpenChange={handleDialogOpenChange}
+          />
+        </Suspense>
+      )}
+
+      {isDev && activeDialog === "trace" && (
+        <Suspense fallback={null}>
+          <TraceViewerDialog
             open
             onOpenChange={handleDialogOpenChange}
           />

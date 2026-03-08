@@ -29,6 +29,52 @@ describe('LocalSchedulerService', () => {
     vi.useRealTimers()
   })
 
+  it('creates the local scheduler state file on startup and reloads persisted records', () => {
+    const stellaHome = createTempHome()
+    const statePath = path.join(stellaHome, 'state', 'local-scheduler.json')
+
+    const service = new LocalSchedulerService({
+      stellaHome,
+      getRunner: () => null,
+    })
+
+    service.start()
+    expect(fs.existsSync(statePath)).toBe(true)
+
+    const cronJob = service.addCronJob({
+      name: 'Morning review',
+      conversationId: 'conv-startup',
+      sessionTarget: 'main',
+      schedule: {
+        kind: 'every',
+        everyMs: 60_000,
+      },
+      payload: {
+        kind: 'systemEvent',
+        text: 'Check in on open tasks.',
+      },
+    })
+
+    const heartbeat = service.upsertHeartbeat({
+      conversationId: 'conv-startup',
+      intervalMs: 120_000,
+      checklist: '- Check for anything urgent',
+    })
+
+    service.stop()
+
+    const reloaded = new LocalSchedulerService({
+      stellaHome,
+      getRunner: () => null,
+    })
+    reloaded.start()
+
+    expect(reloaded.listCronJobs()).toEqual([cronJob])
+    expect(reloaded.listHeartbeats()).toEqual([heartbeat])
+
+    reloaded.stop()
+  })
+
   it('executes a one-shot cron job locally and emits a local assistant event', async () => {
     const stellaHome = createTempHome()
     const runAutomationTurn = vi.fn().mockResolvedValue({

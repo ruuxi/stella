@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Type } from "@sinclair/typebox";
 import { Agent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
-import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS } from "./extensions/stella/tool_schemas.js";
+import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./extensions/stella/tool_schemas.js";
 import {
   detectSelfModAppliedSince,
   getGitHead,
@@ -113,6 +113,7 @@ type OrchestratorRunOptions = BaseRunOptions & {
 
 type SubagentRunOptions = BaseRunOptions & {
   onProgress?: (chunk: string) => void;
+  callbacks?: Partial<PiRunCallbacks>;
 };
 
 const now = () => Date.now();
@@ -257,7 +258,7 @@ const createPiTools = (opts: {
     name: toolName,
     label: toolName,
     description: TOOL_DESCRIPTIONS[toolName] ?? `${toolName} tool`,
-    parameters: AnyToolArgsSchema,
+    parameters: (TOOL_JSON_SCHEMAS[toolName] ?? AnyToolArgsSchema) as typeof AnyToolArgsSchema,
     execute: async (toolCallId, params) => {
       const args = (params as Record<string, unknown>) ?? {};
 
@@ -797,6 +798,12 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
         toolCallId: event.toolCallId,
         toolName: event.toolName,
       });
+      opts.callbacks?.onToolStart?.({
+        runId,
+        seq: s,
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+      });
       return;
     }
 
@@ -810,6 +817,13 @@ export async function runPiSubagentTask(opts: SubagentRunOptions): Promise<{
         agentType: opts.agentType,
         seq: s,
         type: "tool_end",
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        resultPreview: preview,
+      });
+      opts.callbacks?.onToolEnd?.({
+        runId,
+        seq: s,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
