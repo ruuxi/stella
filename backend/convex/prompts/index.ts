@@ -1,4 +1,3 @@
-export { ORCHESTRATOR_AGENT_SYSTEM_PROMPT } from "./orchestrator";
 export { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "./offline_responder";
 export { buildSuggestionUserMessage } from "./suggestions";
 export {

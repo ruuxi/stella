@@ -250,32 +250,6 @@ type RecentConversationEventsArgs = {
 
 type ContextEventFilterOptions = {
   includeOperationalEvents?: boolean;
-  contextAgentType?: string;
-};
-
-const filterOrchestratorContextEvents = (
-  eventsNewestFirst: ContextEvent[],
-): ContextEvent[] => {
-  return eventsNewestFirst.filter((event) => {
-    if (event.type === "microcompact_boundary") {
-      return true;
-    }
-
-    if (event.type === "user_message" || event.type === "assistant_message") {
-      return true;
-    }
-
-    if (
-      event.type === "task_started" ||
-      event.type === "task_completed" ||
-      event.type === "task_failed"
-    ) {
-      // Subagent task lifecycle should not pollute orchestrator context.
-      return false;
-    }
-
-    return false;
-  });
 };
 
 const fetchRecentConversationEvents = async (
@@ -304,9 +278,6 @@ const filterContextEvents = (
   const modelEvents = eventsNewestFirst.filter((event) => MODEL_CONTEXT_EVENT_TYPES.has(event.type));
   if (options?.includeOperationalEvents === false) {
     return modelEvents.filter((event) => CHAT_CONTEXT_EVENT_TYPES.has(event.type));
-  }
-  if (options?.contextAgentType === "orchestrator") {
-    return filterOrchestratorContextEvents(modelEvents);
   }
   return modelEvents;
 };
@@ -358,7 +329,6 @@ export const listSessionContextEvents = internalQuery({
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
     includeOperationalEvents: v.optional(v.boolean()),
-    contextAgentType: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -376,7 +346,6 @@ export const listSessionContextEvents = internalQuery({
     });
     events = orderEventsChronologically(filterContextEvents(events, {
       includeOperationalEvents: args.includeOperationalEvents,
-      contextAgentType: args.contextAgentType,
     }));
     return events.map((event) => sanitizeEventForRead(event));
   },
@@ -389,7 +358,6 @@ export const listRecentContextEventsByTokens = internalQuery({
     beforeTimestamp: v.optional(v.number()),
     excludeEventId: v.optional(v.id("events")),
     includeOperationalEvents: v.optional(v.boolean()),
-    contextAgentType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const maxTokens = Math.min(
@@ -410,7 +378,6 @@ export const listRecentContextEventsByTokens = internalQuery({
     });
     const contextEvents = filterContextEvents(events, {
       includeOperationalEvents: args.includeOperationalEvents,
-      contextAgentType: args.contextAgentType,
     });
 
     const selectedNewestFirst = selectRecentByTokenBudget({

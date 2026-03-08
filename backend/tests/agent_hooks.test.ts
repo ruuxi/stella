@@ -11,11 +11,11 @@ describe("hook type contracts", () => {
     const params: BeforeChatParams = {
       ownerId: "user-1",
       conversationId: "conv-1" as any,
-      agentType: "orchestrator",
+      agentType: "general",
       modelString: "claude-opus-4.6",
     };
     expect(params.ownerId).toBe("user-1");
-    expect(params.agentType).toBe("orchestrator");
+    expect(params.agentType).toBe("general");
   });
 
   test("BeforeChatResult can be allowed", () => {

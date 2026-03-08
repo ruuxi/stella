@@ -1,6 +1,5 @@
 import { generateText, streamText, type LanguageModelUsage } from "ai";
 import { withModelFailover, withModelFailoverAsync } from "./model_failover";
-import { toUsageSummary } from "./orchestrator_turn";
 import type { ResolvedModelConfig } from "./model_resolver";
 
 type ToolCallLike = {
@@ -12,6 +11,21 @@ type StepLike = {
 };
 
 const NO_RESPONSE_TOOL_NAME = "NoResponse";
+
+function toUsageSummary(usage?: LanguageModelUsage | null) {
+  if (!usage) {
+    return undefined;
+  }
+
+  return {
+    inputTokens:
+      typeof usage.inputTokens === "number" ? usage.inputTokens : undefined,
+    outputTokens:
+      typeof usage.outputTokens === "number" ? usage.outputTokens : undefined,
+    totalTokens:
+      typeof usage.totalTokens === "number" ? usage.totalTokens : undefined,
+  };
+}
 
 export type StreamExecutionLifecycleState = {
   noResponseCalled: boolean;
