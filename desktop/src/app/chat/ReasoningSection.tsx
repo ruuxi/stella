@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/shared/lib/utils";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Markdown } from "./Markdown";
+import { GrowIn } from "./GrowIn";
+import { TextShimmer } from "./TextShimmer";
 
 interface ReasoningSectionProps {
   content: string;
@@ -19,6 +21,7 @@ export function ReasoningSection({
   const contentRef = useRef<HTMLDivElement>(null);
   // Determine if expanded: streaming always shows, or user hasn't collapsed
   const expanded = isStreaming || !userCollapsed;
+  const visible = isStreaming || expanded;
 
   // Auto-scroll to bottom when content updates during streaming
   useEffect(() => {
@@ -34,45 +37,49 @@ export function ReasoningSection({
   if (!content && !isStreaming) return null;
 
   return (
-    <div
-      className={cn("reasoning-section", className)}
-      data-streaming={isStreaming}
-      data-expanded={expanded}
-    >
-      {/* Streaming: show animated "Thinking" heading */}
-      {isStreaming && (
-        <div className="reasoning-heading-stream">
-          <span className="reasoning-heading-text">Thinking</span>
-        </div>
-      )}
+    <GrowIn animate={isStreaming}>
+      <div
+        className={cn("reasoning-section", className)}
+        data-streaming={isStreaming}
+        data-expanded={expanded}
+      >
+        {/* Streaming: show animated "Thinking" heading with per-char shimmer */}
+        {isStreaming && (
+          <div className="reasoning-heading-stream">
+            <TextShimmer text="Thinking" active={isStreaming} className="reasoning-heading-text" />
+          </div>
+        )}
 
-      {/* Only show trigger button when not streaming */}
-      {!isStreaming && (
-        <button
-          type="button"
-          className="reasoning-trigger"
-          onClick={handleToggle}
+        {/* Only show trigger button when not streaming */}
+        {!isStreaming && (
+          <button
+            type="button"
+            className="reasoning-trigger"
+            onClick={handleToggle}
+          >
+            <span>Reasoning</span>
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
+        )}
+
+        {/* Use data-visible transition for smooth show/hide */}
+        <div
+          className="reasoning-body"
+          data-visible={visible}
         >
-          <span>Reasoning</span>
-          {expanded ? (
-            <ChevronUp className="h-4 w-4" />
-          ) : (
-            <ChevronDown className="h-4 w-4" />
-          )}
-        </button>
-      )}
-
-      {(isStreaming || expanded) && (
-        <div className="reasoning-body">
           <div ref={contentRef} className="reasoning-content">
             {content ? (
               <Markdown text={content} isAnimating={isStreaming} />
             ) : (
-              <span className="reasoning-placeholder">Thinking...</span>
+              <TextShimmer text="Thinking..." active={isStreaming} className="reasoning-placeholder-shimmer" />
             )}
           </div>
         </div>
-      )}
-    </div>
+      </div>
+    </GrowIn>
   );
 }
