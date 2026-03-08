@@ -12,6 +12,12 @@ import path from "path";
 import http from "http";
 import os from "os";
 import type { BrowserWindow } from "electron";
+import {
+  buildChatHeaders,
+  buildChatRequestBody,
+  readChatCompletionStream,
+  readChatErrorDetail,
+} from "../../src/shared/ai/chat-completions.js";
 
 let server: http.Server | null = null;
 
@@ -94,13 +100,14 @@ async function callGenerateModel(
   const response = await fetch(`${proxyBaseUrl}/chat/completions`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
       "Authorization": `Bearer ${authToken}`,
-      "X-Provider": "inception",
-      "X-Model-Id": modelId,
-      "X-Agent-Type": "panel-generate",
+      ...buildChatHeaders({
+        provider: "inception",
+        model: modelId,
+        agentType: "panel-generate",
+      }),
     },
-    body: JSON.stringify({
+    body: JSON.stringify(buildChatRequestBody({
       model: modelId,
       messages: [
         { role: "system", content: GENERATE_SYSTEM_PROMPT },
@@ -109,48 +116,19 @@ async function callGenerateModel(
           content: `Current component source:\n\`\`\`tsx\n${currentSource}\n\`\`\`\n\nUpdate this component to: ${prompt}`,
         },
       ],
-      max_tokens: 8192,
-      temperature: 0.3,
       stream: true,
-    }),
+      body: {
+        maxOutputTokens: 8192,
+        temperature: 1.0,
+      },
+    })),
   });
 
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await readChatErrorDetail(response);
     throw new Error(`Generate model call failed (${response.status}): ${detail}`);
   }
-
-  // Read SSE stream and collect content deltas
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("No response body");
-
-  const decoder = new TextDecoder();
-  let fullContent = "";
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const data = line.slice(6).trim();
-      if (data === "[DONE]") continue;
-      try {
-        const parsed = JSON.parse(data) as {
-          choices?: Array<{ delta?: { content?: string } }>;
-        };
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) fullContent += delta;
-      } catch {
-        // Skip malformed SSE chunks
-      }
-    }
-  }
+  const fullContent = await readChatCompletionStream(response, () => {});
 
   const content = fullContent.trim();
   if (!content) {
