@@ -136,7 +136,10 @@ class OverlayWindow {
         this.window.show()
       }
     }
-    this.window.setOpacity(1)
+    // Use 0.99 instead of 1 so Chrome's occlusion tracker doesn't consider
+    // this window as fully opaque (alpha < 255 = not occluding). Without this,
+    // Chrome stops rendering video when the overlay becomes visible.
+    this.window.setOpacity(0.99)
     if (options?.focus) {
       this.window.focus()
     }
