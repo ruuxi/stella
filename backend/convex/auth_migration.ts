@@ -28,7 +28,6 @@ const OWNER_TABLES: Array<{
   { table: "secret_access_audit", index: "by_ownerId_and_createdAt" },
   { table: "user_integrations", index: "by_ownerId_and_updatedAt" },
   { table: "usage_logs", index: "by_ownerId_and_createdAt" },
-  { table: "persist_chunks", index: "by_chunkKey" },
   { table: "channel_connections", index: "by_ownerId_and_provider" },
   { table: "transient_channel_events", index: "by_ownerId_and_createdAt" },
   { table: "transient_cleanup_failures", index: "by_ownerId_and_createdAt" },
@@ -113,12 +112,6 @@ export const migrateOwnership = internalAction({
     if (args.fromOwnerId === args.toOwnerId) return null;
 
     for (const { table, index } of OWNER_TABLES) {
-      // persist_chunks doesn't have an ownerId-first index, skip index query
-      // and use a scan-based fallback
-      if (table === "persist_chunks") {
-        continue;
-      }
-
       let hasMore = true;
       while (hasMore) {
         hasMore = await ctx.runMutation(

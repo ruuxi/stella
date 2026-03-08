@@ -129,7 +129,7 @@ export async function runAgentTurn({
 
   // Fire afterChat hook asynchronously for usage logging + token tracking
   if (!transient) {
-    await ctx.scheduler.runAfter(0, internal.agent.hooks.logUsageAsync, {
+    await ctx.scheduler.runAfter(0, internal.agent.hooks.logUsage, {
       ownerId: resolvedOwnerId,
       conversationId,
       agentType,

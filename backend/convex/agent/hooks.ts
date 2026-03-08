@@ -25,19 +25,6 @@ const chatRateLimiter = new RateLimiter(components.rateLimiter);
 // Types
 // ---------------------------------------------------------------------------
 
-export type BeforeChatParams = {
-  ownerId: string;
-  conversationId: Id<"conversations">;
-  agentType: string;
-  modelString: string;
-};
-
-export type BeforeChatResult = {
-  allowed: boolean;
-  reason?: string;
-  retryAfterMs?: number;
-};
-
 export type AfterChatParams = {
   ownerId: string;
   conversationId: Id<"conversations">;
@@ -63,23 +50,8 @@ export type AfterToolParams = {
 };
 
 // ---------------------------------------------------------------------------
-// beforeChat — rate limiting + pre-flight checks
+// Rate Limiting
 // ---------------------------------------------------------------------------
-
-/**
- * Check chat rate limit for an owner. Must be called from an ActionCtx
- * (http handler) via ctx.runMutation.
- */
-export async function beforeChat(
-  ctx: ActionCtx,
-  params: BeforeChatParams,
-): Promise<BeforeChatResult> {
-  const result = await ctx.runMutation(
-    internal.agent.hooks.checkChatRateLimit,
-    { ownerId: params.ownerId },
-  );
-  return result;
-}
 
 // 30 requests per minute per owner
 const CHAT_RATE_LIMIT = 30;
@@ -199,44 +171,6 @@ export const logUsage = internalMutation({
       toolCalls: args.toolCalls,
       createdAt: Date.now(),
     });
-    return null;
-  },
-});
-
-/**
- * Async variant for use with ctx.scheduler.runAfter(0, ...) from action contexts
- * that cannot call afterChat directly (e.g., generateText in tasks/runner).
- */
-export const logUsageAsync = internalMutation({
-  args: {
-    ownerId: v.string(),
-    conversationId: v.id("conversations"),
-    agentType: v.string(),
-    model: v.string(),
-    inputTokens: v.optional(v.number()),
-    outputTokens: v.optional(v.number()),
-    totalTokens: v.optional(v.number()),
-    durationMs: v.number(),
-    success: v.boolean(),
-    fallbackUsed: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.insert("usage_logs", {
-      ownerId: args.ownerId,
-      conversationId: args.conversationId,
-      agentType: args.agentType,
-      model: args.model,
-      inputTokens: args.inputTokens,
-      outputTokens: args.outputTokens,
-      totalTokens: args.totalTokens,
-      durationMs: args.durationMs,
-      success: args.success,
-      fallbackUsed: args.fallbackUsed,
-      createdAt: Date.now(),
-    });
-
-    // Session token counting was removed after thread-based context handling replaced it
-
     return null;
   },
 });
