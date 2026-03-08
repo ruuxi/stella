@@ -12,9 +12,9 @@ describe("integrations module structure", () => {
     expect(source).toContain("export const upsertPublicIntegration =");
   });
 
-  test("defines validators for doc shapes", () => {
-    expect(source).toContain("publicIntegrationDocValidator");
-    expect(source).toContain("userIntegrationDocValidator");
+  test("defines integration validation helpers", () => {
+    expect(source).toContain("jsonObjectValidator");
+    expect(source).toContain("parseSlackState");
   });
 
   test("uses requireUserId for auth", () => {

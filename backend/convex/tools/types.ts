@@ -4,7 +4,6 @@ export type ToolOptions = {
   agentType: string;
   toolsAllowlist?: string[];
   maxTaskDepth: number;
-  currentTaskId?: Id<"tasks">;
   ownerId?: string;
   conversationId?: Id<"conversations">;
   userMessageId?: Id<"events">;
@@ -16,16 +15,8 @@ export type ToolOptions = {
  * Not used for logic — only for documentation and type hints.
  */
 export const BASE_TOOL_NAMES = [
-  // Backend tools (server-side, used by offline fallback orchestrator)
+  // Backend tools (server-side, used by the offline fallback responder)
   "WebSearch",
   "WebFetch",
-  "HeartbeatGet",
-  "HeartbeatUpsert",
-  "HeartbeatRun",
-  "CronList",
-  "CronAdd",
-  "CronUpdate",
-  "CronRemove",
-  "CronRun",
   "NoResponse",
 ] as const;

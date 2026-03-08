@@ -37,6 +37,18 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  offline_responder: {
+    model: "moonshotai/kimi-k2-0905:exacto",
+    fallback: "anthropic/claude-opus-4.5",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["groq"],
+      },
+    },
+  },
+
   general: {
     model: "moonshotai/kimi-k2-0905:exacto",
     fallback: "anthropic/claude-opus-4.5",

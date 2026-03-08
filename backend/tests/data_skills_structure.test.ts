@@ -12,8 +12,8 @@ describe("skills module structure", () => {
     expect(source).toContain("BUILTIN_OWNER_ID");
   });
 
-  test("defines skill doc validator", () => {
-    expect(source).toContain("skillDocValidator");
+  test("defines skill import validator", () => {
+    expect(source).toContain("skillImportValidator");
   });
 
   test("exports upsertMany for skill import", () => {

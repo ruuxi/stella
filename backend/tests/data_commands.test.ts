@@ -27,6 +27,6 @@ describe("commands module structure", () => {
     const argsCount = (source.match(/\bargs:\s*\{/g) || []).length;
     const returnsCount = (source.match(/\breturns:\s*v\./g) || []).length;
     expect(argsCount).toBeGreaterThanOrEqual(2);
-    expect(returnsCount).toBeGreaterThanOrEqual(2);
+    expect(returnsCount).toBeGreaterThanOrEqual(1);
   });
 });

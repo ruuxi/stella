@@ -1,6 +1,6 @@
 # Backend
 
-Convex serverless backend. Offline fallback orchestrator defined in `agent/agents.ts`. Entry point: `http.ts`. All agent execution happens on the local PI runtime — the backend only responds when the user's machine is offline (web search, scheduling, NoResponse).
+Convex serverless backend. Offline fallback responder is defined in `agent/agents.ts`. Entry point: `http.ts`. All primary agent execution happens on the local PI runtime; the backend only responds when the user's machine is offline, handles managed AI/auth HTTP endpoints, and preserves connector delivery handoff.
 
 ## Commands
 

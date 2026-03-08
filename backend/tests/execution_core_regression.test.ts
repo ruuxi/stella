@@ -11,7 +11,6 @@ describe("execution core regressions", () => {
     const automationRunner = readBackendFile("convex/automation/runner.ts");
     const httpSource = readBackendFile("convex/http.ts");
     const invokeSource = readBackendFile("convex/agent/invoke.ts");
-    const tasksSource = readBackendFile("convex/agent/tasks.ts");
 
     expect(automationRunner).toContain('from "../agent/model_execution"');
     // http.ts no longer imports model_execution directly — it delegates through ai_proxy
@@ -19,7 +18,7 @@ describe("execution core regressions", () => {
     // invoke.ts now directly uses model_execution (execution.ts wrapper was removed)
     expect(invokeSource).toContain('from "./model_execution"');
     expect(invokeSource).toContain('from "./model_resolver"');
-    expect(tasksSource).toContain('from "./model_execution"');
+    expect(fs.existsSync(path.join(backendRoot, "convex/agent/tasks.ts"))).toBe(false);
   });
 
   test("model execution core stays free of Convex action/electron runtime imports", () => {

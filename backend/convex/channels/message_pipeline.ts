@@ -15,6 +15,8 @@ import {
   runAgentTurnWithCloudFallback,
 } from "../scheduling/desktop_handoff_policy";
 
+const BACKEND_FALLBACK_AGENT_TYPE = "offline_responder";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -440,7 +442,7 @@ export async function processIncomingMessage(
         ctx: args.ctx,
         conversationId,
         prompt: args.text,
-        agentType: "orchestrator",
+        agentType: BACKEND_FALLBACK_AGENT_TYPE,
         ownerId: connection.ownerId,
         userMessageId: userMessageId ?? undefined,
         transient,

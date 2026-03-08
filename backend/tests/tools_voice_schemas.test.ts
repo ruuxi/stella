@@ -7,10 +7,10 @@ describe("getVoiceToolSchemas", () => {
     expect(Array.isArray(schemas)).toBe(true);
   });
 
-  test("contains orchestrator_chat tool", () => {
+  test("contains perform_action tool", () => {
     const schemas = getVoiceToolSchemas();
-    const chat = schemas.find((s) => s.name === "orchestrator_chat");
-    expect(chat).toBeDefined();
+    const action = schemas.find((s) => s.name === "perform_action");
+    expect(action).toBeDefined();
   });
 
   test("each schema has required fields", () => {
@@ -23,11 +23,11 @@ describe("getVoiceToolSchemas", () => {
     }
   });
 
-  test("orchestrator_chat has message parameter", () => {
+  test("perform_action uses an object parameter schema", () => {
     const schemas = getVoiceToolSchemas();
-    const chat = schemas.find((s) => s.name === "orchestrator_chat")!;
-    const props = chat.parameters as { properties?: Record<string, unknown> };
-    expect(props.properties).toBeDefined();
-    expect(props.properties!.message).toBeDefined();
+    const action = schemas.find((s) => s.name === "perform_action")!;
+    const params = action.parameters as { type?: string; properties?: Record<string, unknown> };
+    expect(params.type).toBe("object");
+    expect(params.properties).toBeDefined();
   });
 });

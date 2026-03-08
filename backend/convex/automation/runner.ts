@@ -3,15 +3,8 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "../agent/prompt_builder";
-import {
-  AUTOMATION_HISTORY_MAX_TOKENS,
-} from "../agent/context_budget";
 import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
-import {
-  finalizeOrchestratorTurn,
-  prepareOrchestratorTurn,
-} from "../agent/orchestrator_turn";
 import {
   createStreamExecutionLifecycle,
   streamTextWithFailover,
@@ -85,59 +78,16 @@ export async function runAgentTurn({
   const resolvedOwnerId = ownerId ?? conversation.ownerId;
   const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
   const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId);
-  let promptBuild: Awaited<ReturnType<typeof buildSystemPrompt>>;
-  let requestMessages: ModelMessage[];
-  let orchestratorTurn: Awaited<ReturnType<typeof prepareOrchestratorTurn>> | null = null;
-
-  if (agentType === "orchestrator") {
-    let historyBeforeTimestamp: number | undefined;
-    let historyExcludeEventId: Id<"events"> | undefined;
-    if (userMessageId) {
-      const userEvent = await ctx.runQuery(internal.events.getById, { id: userMessageId });
-      if (
-        userEvent &&
-        userEvent.type === "user_message" &&
-        userEvent.conversationId === conversationId
-      ) {
-        historyBeforeTimestamp = userEvent.timestamp;
-        historyExcludeEventId = userMessageId;
-      }
-    }
-
-    orchestratorTurn = await prepareOrchestratorTurn(ctx, {
-      conversation,
-      conversationId,
-      ownerId: resolvedOwnerId,
-      userPayload: {
-        kind: "task_delivery",
-        text: prompt,
-      },
-      history: {
-        enabled: !transient,
-        maxTokens: AUTOMATION_HISTORY_MAX_TOKENS,
-        beforeTimestamp: historyBeforeTimestamp,
-        excludeEventId: historyExcludeEventId,
-        microcompact: {
-          trigger: "auto",
-          modelForWarningThreshold:
-            typeof resolvedConfig.model === "string" ? resolvedConfig.model : undefined,
-        },
-      },
-    });
-    promptBuild = orchestratorTurn.promptBuild;
-    requestMessages = orchestratorTurn.messages as ModelMessage[];
-  } else {
-    promptBuild = await buildSystemPrompt(ctx, agentType, {
-      ownerId: resolvedOwnerId,
-      conversationId,
-    });
-    requestMessages = [
-      {
-        role: "user" as const,
-        content: [{ type: "text" as const, text: prompt.trim() || " " }],
-      },
-    ];
-  }
+  const promptBuild = await buildSystemPrompt(ctx, agentType, {
+    ownerId: resolvedOwnerId,
+    conversationId,
+  });
+  const requestMessages: ModelMessage[] = [
+    {
+      role: "user" as const,
+      content: [{ type: "text" as const, text: prompt.trim() || " " }],
+    },
+  ];
 
   const tools = createTools(
     ctx,
@@ -174,25 +124,6 @@ export async function runAgentTurn({
 
   const text = await result.text;
   const { noResponseCalled, usageSummary } = streamLifecycle.getState();
-  if (agentType === "orchestrator" && orchestratorTurn) {
-    const response = await result.response;
-    const reminderState = transient
-      ? { shouldInjectDynamicReminder: false }
-      : orchestratorTurn.reminderState;
-    await finalizeOrchestratorTurn(ctx, {
-      conversationId,
-      ownerId: resolvedOwnerId,
-      userMessageId,
-      activeThreadId: transient ? null : orchestratorTurn.activeThreadId,
-      threadUserMessage: orchestratorTurn.threadUserMessage,
-      responseMessages: transient ? undefined : response?.messages,
-      assistantText: text,
-      usage: usageSummary,
-      saveAssistantMessage: false,
-      scheduleSuggestions: !transient,
-      reminderState,
-    });
-  }
 
   // Fire afterChat hook asynchronously for usage logging + token tracking
   if (!transient) {

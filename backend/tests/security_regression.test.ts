@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 
 const backendRoot = path.resolve(import.meta.dir, "..");
@@ -98,15 +98,12 @@ describe("security regressions", () => {
     expect(source).toContain("Explicitly blocked in sync-off");
   });
 
-  test("cron tick requires successful claim before scheduling execution", () => {
+  test("backend scheduling modules are explicitly retired", () => {
     const cronSource = readBackendFile("convex/scheduling/cron_jobs.ts");
-    const claimFlowSource = readBackendFile("convex/scheduling/claim_flow.ts");
 
-    // claimAndScheduleDueRuns was renamed to claimAndScheduleSingleRun.
-    expect(cronSource).toContain("claimAndScheduleSingleRun");
-    expect(claimFlowSource).toContain("expectedRunningAtMs");
-    expect(claimFlowSource).toContain("const claimed = await args.markRunning");
-    expect(claimFlowSource).toContain("if (!claimed) {");
+    expect(cronSource).toContain("BACKEND_CRON_RUNTIME_REMOVED");
+    expect(existsSync(path.join(backendRoot, "convex/scheduling/claim_flow.ts"))).toBe(false);
+    expect(existsSync(path.join(backendRoot, "convex/scheduling/heartbeat.ts"))).toBe(false);
   });
 
   test("connector transient batches are cleaned in finally", () => {
@@ -125,37 +122,29 @@ describe("security regressions", () => {
     expect(source).toMatch(/\}\s*finally\s*\{/);
   });
 
-  test("cron sync-off mode avoids persisting output previews", () => {
-    const source = readBackendFile("convex/scheduling/cron_jobs.ts");
+  test("connector watchdog still uses the cron completion compatibility hook", () => {
+    const source = readBackendFile("convex/channels/connector_delivery.ts");
 
-    expect(source).toContain("const persistedOutputPreview =");
-    expect(source).toContain('syncMode === "off"');
-    expect(source).toContain("lastOutputPreview: persistedOutputPreview");
-    expect(source).toContain("const persistedError =");
-    expect(source).toContain("lastError: persistedError");
+    expect(source).toContain("completeCronTurnResultFromWatchdog");
+    expect(source).toContain("BACKEND_FALLBACK_AGENT_TYPE");
   });
 
-  test("scheduler error persistence is redacted in sync-off mode", () => {
+  test("cron compatibility module is limited to remote turn completion", () => {
     const cronSource = readBackendFile("convex/scheduling/cron_jobs.ts");
-    const heartbeatSource = readBackendFile("convex/scheduling/heartbeat.ts");
 
-    expect(cronSource).toContain("const toPersistedError = (rawError?: string) =>");
-    expect(cronSource).toContain(
-      "transient && rawError ? \"run failed while sync is off\" : rawError",
-    );
-    expect(heartbeatSource).toMatch(
-      /syncMode === "off"[\s\S]*\? "run failed while sync is off"/,
-    );
+    expect(cronSource).toContain("completeCronTurnResult");
+    expect(cronSource).toContain("completeCronTurnResultFromWatchdog");
+    expect(cronSource).not.toContain("query(\"cron_jobs\")");
+    expect(cronSource).not.toContain("claimAndScheduleSingleRun");
   });
 
-  test("heartbeat and cron suppress durable assistant delivery when sync is off", () => {
-    const heartbeatSource = readBackendFile("convex/scheduling/heartbeat.ts");
-    const cronSource = readBackendFile("convex/scheduling/cron_jobs.ts");
+  test("local runtime backend bridge excludes legacy schedule tools", () => {
+    const source = readBackendFile("convex/agent/local_runtime.ts");
 
-    expect(heartbeatSource).toContain("const transient = syncMode === \"off\"");
-    expect(heartbeatSource).toContain("const deliver = config.deliver !== false && syncMode !== \"off\"");
-    expect(cronSource).toContain("const transient = syncMode === \"off\"");
-    expect(cronSource).toContain("if (deliver && outputText && syncMode !== \"off\")");
+    expect(source).not.toContain("\"HeartbeatGet\"");
+    expect(source).not.toContain("\"HeartbeatUpsert\"");
+    expect(source).not.toContain("\"CronList\"");
+    expect(source).not.toContain("\"CronAdd\"");
   });
 
   test("transient tool allowlist excludes local device transport tools", () => {
