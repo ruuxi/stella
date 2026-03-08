@@ -12,11 +12,37 @@ type AutoPanelProps = {
 function SkeletonLoader() {
   return (
     <div className="auto-panel-skeleton">
-      <div className="auto-panel-skeleton-line" style={{ width: "90%" }} />
-      <div className="auto-panel-skeleton-line" style={{ width: "75%" }} />
-      <div className="auto-panel-skeleton-line" style={{ width: "85%" }} />
-      <div className="auto-panel-skeleton-line" style={{ width: "60%" }} />
-      <div className="auto-panel-skeleton-line" style={{ width: "80%" }} />
+      <div className="auto-panel-skeleton-block">
+        <div className="auto-panel-skeleton-line" style={{ width: "45%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "92%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "80%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "88%" }} />
+      </div>
+      <div className="auto-panel-skeleton-block">
+        <div className="auto-panel-skeleton-line" style={{ width: "35%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "95%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "70%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "85%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "60%" }} />
+      </div>
+      <div className="auto-panel-skeleton-block">
+        <div className="auto-panel-skeleton-line" style={{ width: "40%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "90%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "78%" }} />
+      </div>
+      <div className="auto-panel-skeleton-block">
+        <div className="auto-panel-skeleton-line" style={{ width: "50%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "88%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "82%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "65%" }} />
+      </div>
+      <div className="auto-panel-skeleton-block">
+        <div className="auto-panel-skeleton-line" style={{ width: "38%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "93%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "75%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "85%" }} />
+        <div className="auto-panel-skeleton-line" style={{ width: "55%" }} />
+      </div>
     </div>
   );
 }
@@ -58,8 +84,12 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
       messages: [
         {
           role: "system",
-          content:
-            "You are a helpful assistant. The user is looking at a window on their computer. Provide a brief, helpful summary or relevant assistance based on the content.",
+          content: `You receive text from near the user's cursor on their screen. Be useful like a smart friend glancing over their shoulder.
+
+Do: summarize, explain, give your take, fact-check, suggest a reply, translate, recommend — whatever fits.
+Don't: describe the UI, list generic tips, repeat back what they can already see, or pad your response.
+
+Keep it short. 2-4 paragraphs max. No bullet-point dumps unless the content genuinely calls for it.`,
         },
         { role: "user", content: userContent },
       ],
