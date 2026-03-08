@@ -278,25 +278,4 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
     ),
   });
 
-  // --- Voice Transcript Logging ---
-
-  http.route({
-    path: "/api/voice/log",
-    method: "OPTIONS",
-    handler: httpAction(async (_ctx, request) =>
-      corsPreflightHandler(request),
-    ),
-  });
-
-  http.route({
-    path: "/api/voice/log",
-    method: "POST",
-    handler: httpAction(async (_ctx, request) =>
-      handleCorsRequest(request, async (origin) => {
-        // Voice transcript/event logging is intentionally disabled.
-        // Keep this endpoint as a no-op for older clients.
-        return jsonResponse({ ok: true, skipped: true }, 200, origin);
-      }),
-    ),
-  });
 };
