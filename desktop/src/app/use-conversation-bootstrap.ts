@@ -54,7 +54,7 @@ const syncLocalMessages = async (
   importLocalMessagesChunk: ReturnType<typeof useMutation>,
   cancelled: () => boolean,
 ) => {
-  const localConversationId = getOrCreateLocalConversationId()
+  const localConversationId = await getOrCreateLocalConversationId()
   const localMessages = await buildLocalSyncMessages(localConversationId)
   const checkpoint = await getLocalSyncCheckpoint(localConversationId)
   const unsyncedMessages = getUnsyncedMessages(localMessages, checkpoint)
@@ -105,8 +105,9 @@ export const useConversationBootstrap = () => {
       const settleRuntime = () => Promise.allSettled([hostPromise, devicePromise])
 
       if (!isAuthenticated || accountMode === 'private_local') {
+        const localConversationId = await getOrCreateLocalConversationId()
         if (!cancelled) {
-          setConversationId(getOrCreateLocalConversationId())
+          setConversationId(localConversationId)
         }
         await settleRuntime()
         return

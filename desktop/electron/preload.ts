@@ -306,6 +306,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   localChat: {
+    getOrCreateDefaultConversationId: () =>
+      ipcRenderer.invoke('localChat:getOrCreateDefaultConversationId'),
     listEvents: (payload: { conversationId: string; maxItems?: number }) =>
       ipcRenderer.invoke('localChat:listEvents', payload),
     getEventCount: (payload: { conversationId: string }) =>
@@ -337,6 +339,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }>
       } | null
       syncCheckpoints?: Record<string, unknown> | null
+      defaultConversationId?: unknown
     }) => ipcRenderer.invoke('localChat:importLegacyData', payload),
     onUpdated: onIpcSignal('localChat:updated'),
   },

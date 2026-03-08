@@ -53,6 +53,7 @@ export type LocalChatLegacyStore = {
 export type ImportLegacyLocalChatPayload = {
   store?: LocalChatLegacyStore | null
   syncCheckpoints?: Record<string, unknown> | null
+  defaultConversationId?: unknown
 }
 
 type SqliteStatement = {
@@ -80,6 +81,7 @@ type EventRow = {
 
 const DB_FILE = 'local-chat.sqlite'
 const MAX_EVENTS_PER_CONVERSATION = 2000
+const DEFAULT_CONVERSATION_SETTING_KEY = 'default_conversation_id'
 const ULID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
 const asTrimmedString = (value: unknown) =>
@@ -194,6 +196,17 @@ const openDatabase = (dbPath: string): SqliteDatabase => {
     return new bunSqlite.Database(dbPath, { create: true })
   }
 
+  if (!process.versions?.electron) {
+    try {
+      const nodeSqlite = require('node:sqlite') as {
+        DatabaseSync: new (filePath: string) => SqliteDatabase
+      }
+      return new nodeSqlite.DatabaseSync(dbPath)
+    } catch {
+      // Fall through to better-sqlite3 when node:sqlite is unavailable.
+    }
+  }
+
   const BetterSqliteDatabase = require('better-sqlite3') as new (
     filePath: string,
   ) => SqliteDatabase
@@ -250,6 +263,13 @@ export class LocalChatService {
         updated_at INTEGER NOT NULL
       );
     `)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `)
   }
 
   private withTransaction(work: () => void) {
@@ -265,6 +285,27 @@ export class LocalChatService {
 
   private transcriptFilePath(conversationId: string) {
     return path.join(this.transcriptsDir, `${fileSafeId(conversationId)}.jsonl`)
+  }
+
+  private getSetting(key: string): string | null {
+    const row = this.db.prepare(`
+      SELECT value
+      FROM settings
+      WHERE key = ?
+    `).get(key) as { value?: unknown } | undefined
+    return typeof row?.value === 'string' && row.value.length > 0
+      ? row.value
+      : null
+  }
+
+  private setSetting(key: string, value: string) {
+    this.db.prepare(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = excluded.updated_at
+    `).run(key, value, Date.now())
   }
 
   private upsertConversation(conversationId: string, updatedAt: number) {
@@ -441,6 +482,22 @@ export class LocalChatService {
 
     this.rebuildTranscriptFile(conversationId)
     return event
+  }
+
+  getOrCreateDefaultConversationId(): string {
+    const existing = this.getSetting(DEFAULT_CONVERSATION_SETTING_KEY)
+    if (existing) {
+      this.upsertConversation(existing, Date.now())
+      return existing
+    }
+
+    const created = generateLocalId()
+    const createdAt = Date.now()
+    this.withTransaction(() => {
+      this.upsertConversation(created, createdAt)
+      this.setSetting(DEFAULT_CONVERSATION_SETTING_KEY, created)
+    })
+    return created
   }
 
   listEvents(conversationIdInput: string, maxItems = 200): LocalChatEventRecord[] {
@@ -622,6 +679,12 @@ export class LocalChatService {
             updated_at = excluded.updated_at
         `).run(conversationId, localMessageId, Date.now())
         importedCheckpoints += 1
+      }
+
+      const defaultConversationId = asTrimmedString(payload.defaultConversationId)
+      if (defaultConversationId) {
+        this.upsertConversation(defaultConversationId, Date.now())
+        this.setSetting(DEFAULT_CONVERSATION_SETTING_KEY, defaultConversationId)
       }
     })
 
