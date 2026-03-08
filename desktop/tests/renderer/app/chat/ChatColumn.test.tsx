@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import { ChatColumn } from "../../../../src/app/chat/ChatColumn";
 import type { ChatColumnProps } from "../../../../src/app/chat/ChatColumn";
 

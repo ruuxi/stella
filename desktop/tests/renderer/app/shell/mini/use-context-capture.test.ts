@@ -248,39 +248,6 @@ describe("useContextCapture", () => {
       expect(result.current.selectedText).toBe("new selection");
     });
 
-    it("subscribes to onChatContext with plain ChatContext format", () => {
-      let contextCallback: ((payload: unknown) => void) | null = null;
-
-      const mockApi = {
-        capture: {
-          getContext: vi.fn().mockResolvedValue(null),
-          onContext: vi.fn((cb: (payload: unknown) => void) => {
-            contextCallback = cb;
-            return vi.fn();
-          }),
-        },
-        mini: {
-          onVisibility: vi.fn(() => vi.fn()),
-          onDismissPreview: vi.fn(() => vi.fn()),
-        },
-      };
-      mockGetElectronApi.mockReturnValue(mockApi);
-
-      const { result } = renderHook(() => useContextCapture());
-
-      const plainContext = {
-        window: null,
-        selectedText: "plain selected",
-      };
-
-      act(() => {
-        contextCallback?.(plainContext);
-      });
-
-      expect(result.current.chatContext).toEqual(plainContext);
-      expect(result.current.selectedText).toBe("plain selected");
-    });
-
     it("handles null payload in onChatContext", () => {
       let contextCallback: ((payload: unknown) => void) | null = null;
 

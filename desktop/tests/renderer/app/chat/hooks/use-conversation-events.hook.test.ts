@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import type { EventRecord } from "../../../../../src/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "../../../../../src/app/chat/lib/event-transforms";
 
 let mockStorageMode: "local" | "cloud" = "local";
 const mockUsePaginatedQuery = vi.fn<(ref: unknown, args?: unknown, options?: unknown) => unknown>(() => undefined);
