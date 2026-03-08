@@ -215,10 +215,15 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
+  private readonly handleHideAutoPanel = () => {
+    this.hideAutoPanel()
+  }
+
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.on('radial:animDone', this.handleRadialAnimDone)
+    ipcMain.on('overlay:hideAutoPanel', this.handleHideAutoPanel)
   }
 
   getWindow() { return this.overlayWindow.getWindow() }
@@ -227,7 +232,7 @@ export class OverlayWindowController {
   create() { return this.overlayWindow.create() }
 
   private get isAnyActive() {
-    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph
+    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeAutoPanel || this.activeMorph
   }
 
   private hideOverlayIfIdle() {
@@ -387,6 +392,34 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
+  // ─── Auto Panel ──────────────────────────────────────────────────────
+
+  private activeAutoPanel = false
+
+  showAutoPanel(data: { x: number; y: number; width: number; height: number; windowText: string; windowTitle: string | null }) {
+    this.activeAutoPanel = true
+    const origin = this.overlayWindow.getOverlayOrigin()
+    this.overlayWindow.send('overlay:showAutoPanel', {
+      x: data.x - origin.x,
+      y: data.y - origin.y,
+      width: data.width,
+      height: data.height,
+      windowText: data.windowText,
+      windowTitle: data.windowTitle,
+    })
+    this.overlayWindow.show({ inactive: true })
+    this.overlayWindow.setIgnoreMouseEvents(false)
+    this.overlayWindow.setFocusable(true)
+  }
+
+  hideAutoPanel() {
+    this.activeAutoPanel = false
+    this.overlayWindow.send('overlay:hideAutoPanel')
+    this.overlayWindow.setIgnoreMouseEvents(true)
+    this.overlayWindow.setFocusable(false)
+    this.hideOverlayIfIdle()
+  }
+
   // ─── Morph Transition (HMR Resume) ───────────────────────────────────
 
   private activeMorph = false
@@ -419,6 +452,7 @@ export class OverlayWindowController {
   destroy() {
     ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
+    ipcMain.removeListener('overlay:hideAutoPanel', this.handleHideAutoPanel)
     this.overlayWindow.destroy()
   }
 }

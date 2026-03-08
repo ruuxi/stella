@@ -23,7 +23,8 @@ export const hasComposerContext = (
     chatContext?.regionScreenshots?.length
       || chatContext?.window
       || selectedText
-      || chatContext?.capturePending,
+      || chatContext?.capturePending
+      || chatContext?.windowText,
   )
 
 export const buildCombinedPrompt = ({
@@ -40,6 +41,12 @@ export const buildCombinedPrompt = ({
   if (windowSnippet) {
     contextParts.push(
       `<active-window context="The user's currently focused window. May or may not be relevant to their request.">${windowSnippet}</active-window>`,
+    )
+  }
+
+  if (chatContext?.windowText) {
+    contextParts.push(
+      `<window-content context="Text content extracted from the user's active window. Summarize or help the user with what they're looking at.">${chatContext.windowText}</window-content>`,
     )
   }
 

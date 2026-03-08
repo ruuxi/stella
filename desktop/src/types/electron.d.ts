@@ -142,6 +142,9 @@ export type ElectronOverlayApi = {
   onMorphReverse: (callback: (data: { screenshotDataUrl: string }) => void) => () => void
   onMorphEnd: (callback: () => void) => () => void
   morphDone: () => void
+  onShowAutoPanel: (callback: (data: { x: number; y: number; width: number; height: number; windowText: string; windowTitle: string | null }) => void) => () => void
+  onHideAutoPanel: (callback: () => void) => () => void
+  hideAutoPanel: () => void
 }
 
 export type ElectronMiniApi = {

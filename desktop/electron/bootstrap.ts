@@ -120,6 +120,7 @@ export const bootstrapMainProcess = () => {
       hasPendingRadialCapture: () => captureService.hasPendingRadialCapture(),
       captureRadialContext: (x, y, before) => captureService.captureRadialContext(x, y, before),
       startRegionCapture: () => captureService.startRegionCapture(),
+      captureAutoWindowText: () => captureService.captureAutoWindowText(),
       emptyContext: () => captureService.emptyContext(),
       broadcastChatContext: () => captureService.broadcastChatContext(),
     },
@@ -130,6 +131,7 @@ export const bootstrapMainProcess = () => {
       hideRadial: () => overlayController?.hideRadial(),
       updateRadialCursor: () => overlayController?.updateRadialCursor(),
       getRadialBounds: () => overlayController?.getRadialBounds() ?? null,
+      showAutoPanel: (data) => overlayController?.showAutoPanel(data),
     },
     window: {
       isMiniShowing: () => windowManager?.isMiniShowing() ?? false,
