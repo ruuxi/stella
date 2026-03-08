@@ -103,10 +103,13 @@ export class RadialGestureService {
         if (miniWasConcealed) {
           win.restoreMiniWindowAfterCapture()
         }
-        if (!win.isMiniShowing()) {
-          win.showWindow('mini')
-        } else {
-          capture.broadcastChatContext()
+        // Only open mini shell if capture returned something (not cancelled)
+        if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
+          if (!win.isMiniShowing()) {
+            win.showWindow('mini')
+          } else {
+            capture.broadcastChatContext()
+          }
         }
         break
       }
