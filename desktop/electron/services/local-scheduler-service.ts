@@ -488,6 +488,9 @@ export class LocalSchedulerService {
     }
     this.started = true
     this.state = this.readState()
+    if (!fs.existsSync(this.statePath)) {
+      this.persistState()
+    }
     if (this.clearRecoveredRunningFlags()) {
       this.persistState()
     }

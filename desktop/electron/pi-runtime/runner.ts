@@ -14,7 +14,7 @@ import {
   getGeneralAgentEngine,
   getModelOverride,
 } from "./extensions/stella/local-preferences.js";
-import { LocalTaskManager, type LocalTaskManagerAgentContext } from "./extensions/stella/local-task-manager.js";
+import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./extensions/stella/local-task-manager.js";
 import type { ScheduleToolApi, ToolContext } from "./extensions/stella/tools-types.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import {
@@ -59,6 +59,7 @@ const DEFAULT_TOOL_ALLOWLIST = [
   "TaskCancel",
   "TaskOutput",
   "WebFetch",
+  "WebSearch",
   "HeartbeatGet",
   "HeartbeatUpsert",
   "HeartbeatRun",
@@ -113,6 +114,7 @@ type AgentCallbacks = {
   onToolEnd: (event: PiToolEndEvent) => void;
   onError: (event: PiErrorEvent) => void;
   onEnd: (event: PiEndEvent) => void;
+  onTaskEvent?: (event: TaskLifecycleEvent) => void;
   onSelfModHmrState?: (event: { paused: boolean; message: string }) => void;
   onHmrResume?: (resumeHmr: () => Promise<void>) => Promise<void>;
 };
@@ -217,6 +219,7 @@ export const createPiHostRunner = ({
   let isRunning = false;
 
   let localTaskManager: LocalTaskManager | null = null;
+  let activeCallbacksRef: AgentCallbacks | null = null;
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
   const activeRunAbortControllers = new Map<string, AbortController>();
@@ -344,12 +347,24 @@ export const createPiHostRunner = ({
   // Background news HTML generation from search results
   // Model is resolved server-side via X-Agent-Type: news_generate (see backend/convex/agent/model.ts)
   const generateNewsHtml = (query: string, results: Array<{ title: string; url: string; snippet: string }>) => {
-    if (!newsHtml || results.length === 0) return;
+    if (!newsHtml) {
+      console.log("[stella:trace] news html skipped | reason=no-renderer");
+      return;
+    }
+    if (results.length === 0) {
+      console.log(`[stella:trace] news html skipped | reason=no-results | query=${query}`);
+      return;
+    }
 
     const proxy = (() => {
       try { return ensureProxyReady(); } catch { return null; }
     })();
-    if (!proxy) return;
+    if (!proxy) {
+      console.log(`[stella:trace] news html skipped | reason=no-proxy | query=${query}`);
+      return;
+    }
+
+    console.log(`[stella:trace] news html start | query=${query} | results=${results.length}`);
 
     const resultsText = results
       .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
@@ -382,7 +397,10 @@ export const createPiHostRunner = ({
           }),
         });
 
-        if (!response.ok) return;
+        if (!response.ok) {
+          console.warn(`[stella:trace] news html failed | status=${response.status} | query=${query}`);
+          return;
+        }
 
         const reader = response.body?.getReader();
         if (!reader) return;
@@ -415,9 +433,14 @@ export const createPiHostRunner = ({
           .replace(/\n?```\s*$/i, "")
           .trim();
 
-        if (html) newsHtml(html);
+        if (html) {
+          console.log(`[stella:trace] news html ready | query=${query} | length=${html.length}`);
+          newsHtml(html);
+          return;
+        }
+        console.warn(`[stella:trace] news html empty | query=${query}`);
       } catch (error) {
-        console.warn("[news-generate] Failed:", (error as Error).message);
+        console.warn(`[stella:trace] news html failed | query=${query} | error=${(error as Error).message}`);
       }
     })();
   };
@@ -459,6 +482,9 @@ export const createPiHostRunner = ({
 
   localTaskManager = new LocalTaskManager({
     maxConcurrent: 3,
+    onTaskEvent: (event) => {
+      activeCallbacksRef?.onTaskEvent?.(event);
+    },
     fetchAgentContext: buildAgentContext,
     runSubagent: async ({
       conversationId,
@@ -505,6 +531,13 @@ export const createPiHostRunner = ({
           store,
           abortSignal,
           onProgress,
+          callbacks: activeCallbacksRef ? {
+            onStream: () => {},
+            onToolStart: (ev) => activeCallbacksRef?.onToolStart?.(ev),
+            onToolEnd: (ev) => activeCallbacksRef?.onToolEnd?.(ev),
+            onError: (ev) => activeCallbacksRef?.onError?.({ ...ev, fatal: false }),
+            onEnd: () => {},
+          } : undefined,
           webSearch,
           onSearchResults: generateNewsHtml,
         });
@@ -674,6 +707,7 @@ export const createPiHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
+    activeCallbacksRef = callbacks;
 
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
@@ -683,6 +717,7 @@ export const createPiHostRunner = ({
       if (activeOrchestratorRunId === runId) {
         activeOrchestratorRunId = null;
         activeOrchestratorConversationId = null;
+        activeCallbacksRef = null;
       }
     };
 

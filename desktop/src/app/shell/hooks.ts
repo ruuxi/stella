@@ -22,7 +22,7 @@ type LocalWorkspacePanel = {
   title: string;
 };
 
-export type DialogType = "auth" | "connect" | "settings" | "test" | null;
+export type DialogType = "auth" | "connect" | "settings" | "test" | "trace" | null;
 
 // ── Constants ───────────────────────────────────────────────────────────
 
