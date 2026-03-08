@@ -99,7 +99,10 @@ describe("useConversationEventFeed", () => {
           mockScheduleListConversationEvents(payload),
         getConversationEventCount: (payload: { conversationId: string }) =>
           mockScheduleGetConversationEventCount(payload),
-        onUpdated: (_callback: () => void) => mockScheduleUnsubscribe,
+        onUpdated: (callback: () => void) => {
+          void callback;
+          return mockScheduleUnsubscribe;
+        },
       },
     } as unknown as typeof window.electronAPI;
   });
