@@ -11,6 +11,14 @@ echo "Building window_info (macOS)..."
 swiftc -O -o "$OUTPUT_DIR/window_info" src/window_info.swift -framework CoreGraphics -framework AppKit
 echo "Build successful: $OUTPUT_DIR/window_info"
 
+echo "Building window_text (macOS)..."
+swiftc -O -o "$OUTPUT_DIR/window_text" src/window_text.swift -framework ApplicationServices -framework Foundation
+echo "Build successful: $OUTPUT_DIR/window_text"
+
+echo "Building selected_text (macOS)..."
+swiftc -O -o "$OUTPUT_DIR/selected_text" src/selected_text.swift -framework ApplicationServices -framework AppKit
+echo "Build successful: $OUTPUT_DIR/selected_text"
+
 echo "Building audio_ducking (macOS)..."
 swiftc -O -o "$OUTPUT_DIR/audio_ducking" src/audio_ducking.swift
 echo "Build successful: $OUTPUT_DIR/audio_ducking"

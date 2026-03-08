@@ -7,6 +7,8 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 $targets = @(
     @{ kind = "cpp"; src = "src\mouse_block.cpp"; out = (Join-Path $outputDir "mouse_block.exe") },
     @{ kind = "cpp"; src = "src\window_info.cpp"; out = (Join-Path $outputDir "window_info.exe") },
+    @{ kind = "cpp"; src = "src\window_text.cpp"; out = (Join-Path $outputDir "window_text.exe") },
+    @{ kind = "cpp"; src = "src\selected_text.cpp"; out = (Join-Path $outputDir "selected_text.exe") },
     @{ kind = "csharp"; src = "src\audio_ducking.cs"; out = (Join-Path $outputDir "audio_ducking.exe") }
 )
 
@@ -15,7 +17,7 @@ function Build-WithMSVC($vcvars, $srcFile, $outFile) {
         Remove-Item $outFile -Force
     }
     $cwd = (Get-Location).Path
-    $cmd = "call `"$vcvars`" && cd /d `"$cwd`" && cl /O2 /EHsc /nologo `"$srcFile`" /link user32.lib gdi32.lib gdiplus.lib ole32.lib uuid.lib /OUT:`"$outFile`""
+    $cmd = "call `"$vcvars`" && cd /d `"$cwd`" && cl /O2 /EHsc /nologo `"$srcFile`" /link user32.lib gdi32.lib gdiplus.lib ole32.lib oleaut32.lib uuid.lib /OUT:`"$outFile`""
     cmd /c $cmd
     return ($LASTEXITCODE -eq 0 -and (Test-Path $outFile))
 }
@@ -24,7 +26,7 @@ function Build-WithGpp($srcFile, $outFile) {
     if (Test-Path $outFile) {
         Remove-Item $outFile -Force
     }
-    & g++ -O2 -static $srcFile -o $outFile -luser32 -lgdi32 -lgdiplus -lole32 -luuid
+    & g++ -O2 -static $srcFile -o $outFile -luser32 -lgdi32 -lgdiplus -lole32 -loleaut32 -luuid
     return ($LASTEXITCODE -eq 0 -and (Test-Path $outFile))
 }
 
@@ -32,7 +34,7 @@ function Build-WithClang($srcFile, $outFile) {
     if (Test-Path $outFile) {
         Remove-Item $outFile -Force
     }
-    & clang++ -O2 $srcFile -o $outFile -luser32 -lgdi32 -lgdiplus -lole32 -luuid
+    & clang++ -O2 $srcFile -o $outFile -luser32 -lgdi32 -lgdiplus -lole32 -loleaut32 -luuid
     return ($LASTEXITCODE -eq 0 -and (Test-Path $outFile))
 }
 
