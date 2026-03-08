@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
-import { getElectronApi } from "@/services/electron";
+import { getElectronApi } from "@/platform/electron/electron";
 import { CredentialModal } from "@/app/integrations/CredentialModal";
 
 export type PendingCredentialRequest = {

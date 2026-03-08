@@ -3,7 +3,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 
 let mockConversationId: string | null = "conv-123";
 
-vi.mock("@/providers/ui-state", () => ({
+vi.mock("@/context/ui-state", () => ({
   useUiState: vi.fn(() => ({
     state: {
       get conversationId() {

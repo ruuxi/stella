@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { useUiState } from "@/providers/ui-state";
-import { useVoiceRecording } from "@/hooks/use-voice-recording";
-import { useRealtimeVoice } from "@/hooks/use-realtime-voice";
-import { useWindowType } from "@/hooks/use-window-type";
+import { useUiState } from "@/context/ui-state";
+import { useVoiceRecording } from "@/app/voice/hooks/use-voice-recording";
+import { useRealtimeVoice } from "@/app/voice/hooks/use-realtime-voice";
+import { useWindowType } from "@/shared/hooks/use-window-type";
 import { StellaAnimation, type VoiceMode } from "@/app/shell/ascii-creature/StellaAnimation";
 import "./voice-overlay.css";
 

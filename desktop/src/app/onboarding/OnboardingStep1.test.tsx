@@ -38,7 +38,7 @@ vi.mock("../auth/InlineAuth", () => ({
   ),
 }));
 
-vi.mock("@/theme/theme-context", () => ({
+vi.mock("@/context/theme-context", () => ({
   useTheme: vi.fn(() => ({
     themeId: "oc1",
     themes: [
@@ -80,7 +80,7 @@ vi.mock("@/convex/api", () => ({
   },
 }));
 
-vi.mock("@/providers/ui-state", () => ({
+vi.mock("@/context/ui-state", () => ({
   useUiState: () => ({ state: { isVoiceActive: false }, updateState: vi.fn() }),
 }));
 

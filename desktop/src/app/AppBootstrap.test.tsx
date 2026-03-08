@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AppBootstrap } from "./AppBootstrap";
 
 const mockSetConversationId = vi.fn();
-vi.mock("../providers/ui-state", () => ({
+vi.mock("../context/ui-state", () => ({
   useUiState: () => ({ setConversationId: mockSetConversationId }),
 }));
 
@@ -51,11 +51,11 @@ const mockBuildLocalSyncMessages = vi.fn(() => [] as Array<{
 }>);
 const mockGetLocalSyncCheckpoint = vi.fn((): string | null => null);
 const mockSetLocalSyncCheckpoint = vi.fn();
-vi.mock("@/services/device", () => ({
+vi.mock("@/platform/electron/device", () => ({
   configurePiRuntime: () => mockConfigurePiRuntime(),
   getOrCreateDeviceId: () => mockGetOrCreateDeviceId(),
 }));
-vi.mock("@/services/local-chat-store", () => ({
+vi.mock("@/app/chat/services/local-chat-store", () => ({
   getOrCreateLocalConversationId: () => mockGetOrCreateLocalConversationId(),
   buildLocalSyncMessages: () => mockBuildLocalSyncMessages(),
   getLocalSyncCheckpoint: () => mockGetLocalSyncCheckpoint(),

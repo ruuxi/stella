@@ -18,7 +18,7 @@ vi.mock("@/convex/api", () => ({
 }));
 
 const mockSecureSignOut = vi.fn();
-vi.mock("@/services/auth", () => ({
+vi.mock("@/app/auth/services/auth", () => ({
   secureSignOut: () => mockSecureSignOut(),
 }));
 

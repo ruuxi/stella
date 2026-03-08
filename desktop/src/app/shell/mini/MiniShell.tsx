@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { useUiState } from "@/providers/ui-state";
+import { useUiState } from "@/context/ui-state";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";

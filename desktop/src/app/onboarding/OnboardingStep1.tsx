@@ -17,8 +17,8 @@ import {
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
 import { InlineAuth } from "../auth/InlineAuth";
-import { useTheme, useThemeControl } from "@/theme/theme-context";
-import { getPlatform } from "@/lib/platform";
+import { useTheme, useThemeControl } from "@/context/theme-context";
+import { getPlatform } from "@/platform/electron/platform";
 import "./Onboarding.css";
 import "@/app/onboarding/selfmod-demo.css";
 

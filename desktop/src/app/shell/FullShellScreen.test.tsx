@@ -39,7 +39,7 @@ vi.mock("convex/react", () => ({
 }));
 
 const mockSetView = vi.fn();
-vi.mock("@/providers/ui-state", () => ({
+vi.mock("@/context/ui-state", () => ({
   useUiState: vi.fn(() => ({
     state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
     setMode: vi.fn(),
@@ -54,7 +54,7 @@ const mockOpenPanel = vi.fn();
 const mockClosePanel = vi.fn();
 const mockSetChatWidth = vi.fn();
 const mockSetChatOpen = vi.fn();
-vi.mock("@/providers/workspace-state", () => ({
+vi.mock("@/context/workspace-state", () => ({
   useWorkspace: vi.fn(() => ({
     state: { activePanel: null, chatWidth: 480, isChatOpen: true },
     openPanel: mockOpenPanel,
@@ -64,7 +64,7 @@ vi.mock("@/providers/workspace-state", () => ({
   })),
 }));
 
-vi.mock("@/theme/theme-context", () => ({
+vi.mock("@/context/theme-context", () => ({
   useTheme: vi.fn(() => ({
     theme: { id: "default", name: "Default" },
     themeId: "default",
@@ -92,28 +92,28 @@ vi.mock("@/theme/theme-context", () => ({
   })),
 }));
 
-vi.mock("@/hooks/use-conversation-events", () => ({
+vi.mock("@/app/chat/hooks/use-conversation-events", () => ({
   useConversationEventFeed: (conversationId?: string) =>
     mockUseConversationEventFeed(conversationId),
 }));
 
-vi.mock("@/hooks/use-canvas-commands", () => ({
+vi.mock("@/app/canvas/hooks/use-canvas-commands", () => ({
   useCanvasCommands: vi.fn(),
 }));
 
-vi.mock("@/services/electron", () => ({
+vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: vi.fn(() => undefined),
 }));
 
-vi.mock("@/services/auth", () => ({
+vi.mock("@/app/auth/services/auth", () => ({
   secureSignOut: vi.fn(),
 }));
 
-vi.mock("@/services/device", () => ({
+vi.mock("@/platform/electron/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
-vi.mock("@/hooks/use-bridge-reconnect", () => ({
+vi.mock("@/app/integrations/hooks/use-bridge-reconnect", () => ({
   useBridgeAutoReconnect: vi.fn(),
 }));
 
@@ -167,7 +167,7 @@ vi.mock("@/app/shell/FloatingOrb", () => ({
   FloatingOrb: () => <div data-testid="floating-orb" />,
 }));
 
-vi.mock("@/hooks/use-orb-message", () => ({
+vi.mock("@/app/shell/hooks/use-orb-message", () => ({
   useOrbMessage: () => ({ text: null, opacity: 0 }),
 }));
 
@@ -221,7 +221,7 @@ vi.mock("@/app/onboarding/DiscoveryFlow", () => ({
   })),
 }));
 
-vi.mock("@/hooks/use-streaming-chat", () => ({
+vi.mock("@/app/chat/hooks/use-streaming-chat", () => ({
   useStreamingChat: (options: unknown) => mockUseStreamingChat(options),
 }));
 
@@ -238,8 +238,8 @@ vi.mock("@/app/shell/use-full-shell", () => ({
 }));
 
 import { FullShell } from "@/app/shell/FullShell";
-import { useUiState } from "@/providers/ui-state";
-import { getElectronApi } from "@/services/electron";
+import { useUiState } from "@/context/ui-state";
+import { getElectronApi } from "@/platform/electron/electron";
 
 // --- Tests ---
 

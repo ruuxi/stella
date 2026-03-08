@@ -19,7 +19,7 @@ vi.mock("@/convex/api", () => ({
 }));
 
 let mockElectronApi: Record<string, unknown> | undefined;
-vi.mock("@/services/electron", () => ({
+vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: () => mockElectronApi,
 }));
 

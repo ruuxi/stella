@@ -10,6 +10,9 @@ export type StellaHome = {
   statePath: string;
   logsPath: string;
   canvasPath: string;
+  workspacePath: string;
+  workspacePanelsPath: string;
+  workspaceAppsPath: string;
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -64,6 +67,9 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   const statePath = path.join(homePath, "state");
   const logsPath = path.join(homePath, "logs");
   const canvasPath = path.join(homePath, "canvas");
+  const workspacePath = path.join(homePath, "workspace");
+  const workspacePanelsPath = path.join(workspacePath, "panels");
+  const workspaceAppsPath = path.join(workspacePath, "apps");
 
   await ensureDir(homePath);
   await ensureDir(agentsPath);
@@ -71,6 +77,9 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   await ensureDir(statePath);
   await ensureDir(logsPath);
   await ensureDir(canvasPath);
+  await ensureDir(workspacePath);
+  await ensureDir(workspacePanelsPath);
+  await ensureDir(workspaceAppsPath);
 
   await seedBundledSkills(skillsPath);
   await seedBundledDir(BUNDLED_AGENTS_DIR, agentsPath);
@@ -82,5 +91,8 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
     statePath,
     logsPath,
     canvasPath,
+    workspacePath,
+    workspacePanelsPath,
+    workspaceAppsPath,
   };
 };

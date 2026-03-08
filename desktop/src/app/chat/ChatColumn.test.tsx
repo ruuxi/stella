@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
-import type { EventRecord } from "@/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
 import { ChatColumn } from "../chat/ChatColumn";
 import type { ChatColumnProps } from "../chat/ChatColumn";
 
@@ -22,7 +22,7 @@ vi.mock("@/app/chat/CommandChips", () => ({
   CommandChips: () => <div data-testid="command-chips" />,
 }));
 
-vi.mock("@/hooks/use-command-suggestions", () => ({
+vi.mock("@/app/chat/hooks/use-command-suggestions", () => ({
   useCommandSuggestions: () => [],
 }));
 

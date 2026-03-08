@@ -1,6 +1,6 @@
 import type { UiState, WindowMode } from './ui'
 import type { Theme } from '@/theme/themes/types'
-import type { AgentStreamEvent } from '@/hooks/streaming/streaming-types'
+import type { AgentStreamEvent } from '@/app/chat/streaming/streaming-types'
 import type { DiscoveryCategory } from '@/app/onboarding/use-onboarding-state'
 
 export type RadialWedge = 'capture' | 'chat' | 'full' | 'voice' | 'auto' | 'dismiss'

@@ -5,7 +5,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useConvexAuth, useAction } from "convex/react";
 import { api } from "@/convex/api";
-import { clearCachedToken } from "@/services/auth-token";
+import { clearCachedToken } from "@/app/auth/services/auth-token";
 import {
   StellaAnimation,
   type StellaAnimationHandle,

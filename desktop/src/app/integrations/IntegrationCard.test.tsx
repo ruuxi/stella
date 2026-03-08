@@ -19,7 +19,7 @@ vi.mock("@/ui/toast", () => ({
   showToast: (...args: unknown[]) => mockShowToast(...args),
 }));
 
-vi.mock("@/lib/bridge-local", () => ({
+vi.mock("@/platform/electron/bridge-local", () => ({
   deployAndStartLocalBridge: (...args: unknown[]) =>
     mockDeployAndStartLocalBridge(...args),
 }));

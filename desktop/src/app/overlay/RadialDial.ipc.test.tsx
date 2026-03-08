@@ -4,15 +4,15 @@ import { render, act } from "@testing-library/react";
 // ---------- Mocks ----------
 
 // Return a truthy value so the useEffect IPC branch runs
-vi.mock("@/services/electron", () => ({
+vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: () => ({ platform: "win32" }),
 }));
 
-vi.mock("@/providers/ui-state", () => ({
+vi.mock("@/context/ui-state", () => ({
   useUiState: () => ({ state: { isVoiceActive: false } }),
 }));
 
-vi.mock("@/theme/theme-context", () => ({
+vi.mock("@/context/theme-context", () => ({
   useTheme: () => ({
     colors: {
       interactive: "#ff0000",
@@ -428,7 +428,7 @@ describe("toRgba color conversion", () => {
     // Override useTheme to return a non-hex interactive color (e.g. oklch).
     // toRgba now always converts via cssToVec3. In jsdom (no canvas),
     // oklch can't be sampled and falls back to black.
-    const themeModule = await import("@/theme/theme-context");
+    const themeModule = await import("@/context/theme-context");
     const spy = vi.spyOn(themeModule, "useTheme").mockReturnValue({
       colors: {
         interactive: "oklch(0.7 0.2 30)",

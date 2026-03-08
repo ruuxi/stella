@@ -1,6 +1,6 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import { Spinner } from "@/ui/spinner";
-import type { TaskItem } from "@/lib/event-transforms";
+import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
 import "./indicators.css";
 

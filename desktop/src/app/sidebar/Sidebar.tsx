@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { useCurrentUser } from "@/hooks/use-current-user";
-import { secureSignOut } from "@/services/auth";
+import { useCurrentUser } from "@/app/auth/hooks/use-current-user";
+import { secureSignOut } from "@/app/auth/services/auth";
 import { ThemePicker } from "../settings/ThemePicker";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import Settings from "lucide-react/dist/esm/icons/settings";

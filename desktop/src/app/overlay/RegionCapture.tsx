@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { getElectronApi } from "@/services/electron";
+import { getElectronApi } from "@/platform/electron/electron";
 import { runVacuumEffect } from "./region-capture-vacuum";
 
 type Point = { x: number; y: number };

@@ -7,11 +7,11 @@ import { ConversationEvents } from "./ConversationEvents";
 import { OnboardingView } from "../onboarding/OnboardingOverlay";
 import { Composer } from "./Composer";
 import { CommandChips } from "@/app/chat/CommandChips";
-import { useCommandSuggestions, type CommandSuggestion } from "@/hooks/use-command-suggestions";
-import type { EventRecord } from "@/hooks/use-conversation-events";
+import { useCommandSuggestions, type CommandSuggestion } from "@/app/chat/hooks/use-command-suggestions";
+import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
 import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
 import type { ChatContext } from "@/types/electron";
-import type { SelfModAppliedData } from "@/hooks/use-streaming-chat";
+import type { SelfModAppliedData } from "@/app/chat/hooks/use-streaming-chat";
 import type { DiscoveryCategory } from "@/app/onboarding/use-onboarding-state";
 import "./full-shell.chat.css";
 

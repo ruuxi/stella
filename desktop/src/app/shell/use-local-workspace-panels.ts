@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getElectronApi } from '@/services/electron'
+import { getElectronApi } from '@/platform/electron/electron'
 import type { PersonalPage } from './types'
 
 type LocalWorkspacePanel = {

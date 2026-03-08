@@ -2,12 +2,12 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 // Mock the electron service
-vi.mock("@/services/electron", () => ({
+vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: vi.fn(() => undefined),
 }));
 
 import { useContextCapture } from "./use-context-capture";
-import { getElectronApi } from "@/services/electron";
+import { getElectronApi } from "@/platform/electron/electron";
 
 const mockGetElectronApi = getElectronApi as ReturnType<typeof vi.fn>;
 
