@@ -139,4 +139,48 @@ describe("JsonlRuntimeStore", () => {
       store.close();
     }
   });
+
+  it("archives and replaces a thread transcript without losing the prior file", () => {
+    const stellaHome = createTempHome();
+    const conversationId = "conv/archive-replace";
+    const store = new JsonlRuntimeStore(stellaHome);
+
+    try {
+      store.appendThreadMessage({
+        timestamp: 1,
+        conversationId,
+        role: "user",
+        content: "first",
+      });
+      store.appendThreadMessage({
+        timestamp: 2,
+        conversationId,
+        role: "assistant",
+        content: "second",
+      });
+
+      const archivedPath = store.archiveAndReplaceThreadMessages(conversationId, [
+        {
+          timestamp: 3,
+          conversationId,
+          role: "assistant",
+          content: "summary",
+        },
+      ]);
+
+      expect(archivedPath).toBeTruthy();
+      expect(fs.existsSync(archivedPath!)).toBe(true);
+      expect(store.loadThreadMessages(conversationId)).toEqual([
+        { role: "assistant", content: "summary" },
+      ]);
+
+      const archivedLines = fs.readFileSync(archivedPath!, "utf-8")
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { content: string });
+      expect(archivedLines.map((line) => line.content)).toEqual(["first", "second"]);
+    } finally {
+      store.close();
+    }
+  });
 });

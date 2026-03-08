@@ -209,6 +209,7 @@ const scoreMemoryMatches = (
 export class JsonlRuntimeStore {
   private readonly root: string;
   private readonly threadsDir: string;
+  private readonly threadArchiveDir: string;
   private readonly runsDir: string;
   private readonly memoryFile: string;
   private readonly sqliteFile: string;
@@ -219,12 +220,14 @@ export class JsonlRuntimeStore {
   constructor(stellaHome: string) {
     this.root = path.join(stellaHome, "state", "stella-runtime");
     this.threadsDir = path.join(this.root, "threads");
+    this.threadArchiveDir = path.join(this.threadsDir, "archive");
     this.runsDir = path.join(this.root, "runs");
     this.memoryFile = path.join(this.root, "memory.jsonl");
     this.sqliteFile = path.join(this.root, SQLITE_DB_FILE);
 
     fs.mkdirSync(this.root, { recursive: true });
     fs.mkdirSync(this.threadsDir, { recursive: true });
+    fs.mkdirSync(this.threadArchiveDir, { recursive: true });
     fs.mkdirSync(this.runsDir, { recursive: true });
 
     this.db = this.initDatabase();
@@ -592,8 +595,14 @@ export class JsonlRuntimeStore {
     }
   }
 
-  loadThreadMessages(conversationId: string, limit = 50): Array<{ role: string; content: string; toolCallId?: string }> {
-    const normalizedLimit = Math.max(1, limit);
+  loadThreadMessages(
+    conversationId: string,
+    limit?: number,
+  ): Array<{ role: string; content: string; toolCallId?: string }> {
+    const normalizedLimit =
+      typeof limit === "number" && Number.isFinite(limit)
+        ? Math.max(1, Math.floor(limit))
+        : undefined;
     if (!this.db) {
       return this.loadThreadMessagesFromJsonl(conversationId, normalizedLimit);
     }
@@ -608,17 +617,22 @@ export class JsonlRuntimeStore {
     }
 
     try {
-      const rows = this.db.prepare(`
+      const sql = `
         SELECT role, content, tool_call_id AS toolCallId
         FROM (
           SELECT id, timestamp, role, content, tool_call_id
           FROM thread_messages
           WHERE conversation_id = ?
           ORDER BY timestamp DESC, id DESC
-          LIMIT ?
+          ${normalizedLimit ? "LIMIT ?" : ""}
         ) recent
         ORDER BY timestamp ASC, id ASC
-      `).all(conversationId, normalizedLimit) as Array<{
+      `;
+      const rows = (
+        normalizedLimit
+          ? this.db.prepare(sql).all(conversationId, normalizedLimit)
+          : this.db.prepare(sql).all(conversationId)
+      ) as Array<{
         role: string;
         content: string;
         toolCallId: string | null;
@@ -636,18 +650,82 @@ export class JsonlRuntimeStore {
 
   private loadThreadMessagesFromJsonl(
     conversationId: string,
-    limit: number,
+    limit?: number,
   ): Array<{ role: string; content: string; toolCallId?: string }> {
     const filePath = path.join(this.threadsDir, `${fileSafeId(conversationId)}.jsonl`);
     const rows = readJsonlLines<JsonlThreadMessage>(filePath);
     if (rows.length === 0) return [];
 
-    const sliced = rows.slice(-Math.max(1, limit));
+    const sliced =
+      typeof limit === "number"
+        ? rows.slice(-Math.max(1, limit))
+        : rows;
     return sliced.map((row) => ({
       role: row.role,
       content: row.content,
       ...(row.toolCallId ? { toolCallId: row.toolCallId } : {}),
     }));
+  }
+
+  replaceThreadMessages(
+    conversationId: string,
+    nextMessages: JsonlThreadMessage[],
+  ): void {
+    const filePath = path.join(this.threadsDir, `${fileSafeId(conversationId)}.jsonl`);
+
+    const lines = nextMessages.map((message) => JSON.stringify(message));
+    if (lines.length > 0) {
+      ensureParentDir(filePath);
+      fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf-8");
+    } else if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    if (this.db) {
+      this.withTransaction(() => {
+        this.db!.prepare("DELETE FROM thread_messages WHERE conversation_id = ?").run(conversationId);
+        for (const message of nextMessages) {
+          this.insertThreadMessage(message);
+        }
+      });
+      this.threadNeedsResync.delete(conversationId);
+    }
+  }
+
+  archiveAndReplaceThreadMessages(
+    conversationId: string,
+    nextMessages: JsonlThreadMessage[],
+  ): string | null {
+    const archivedPath = this.archiveCurrentThread(conversationId);
+    this.replaceThreadMessages(conversationId, nextMessages);
+    return archivedPath;
+  }
+
+  archiveCurrentThread(conversationId: string): string | null {
+    const filePath = path.join(this.threadsDir, `${fileSafeId(conversationId)}.jsonl`);
+    const currentRows = readJsonlLines<unknown>(filePath)
+      .filter(isThreadMessage)
+      .filter((row) => row.conversationId === conversationId);
+
+    let archivedPath: string | null = null;
+    if (currentRows.length > 0) {
+      const conversationArchiveDir = path.join(
+        this.threadArchiveDir,
+        fileSafeId(conversationId),
+      );
+      fs.mkdirSync(conversationArchiveDir, { recursive: true });
+      archivedPath = path.join(
+        conversationArchiveDir,
+        `${Date.now()}.jsonl`,
+      );
+      if (fs.existsSync(filePath)) {
+        fs.copyFileSync(filePath, archivedPath);
+      } else {
+        const lines = currentRows.map((row) => JSON.stringify(row));
+        fs.writeFileSync(archivedPath, `${lines.join("\n")}\n`, "utf-8");
+      }
+    }
+    return archivedPath;
   }
 
   recordRunEvent(event: JsonlRunEvent): void {

@@ -12,6 +12,7 @@ import {
 } from "./preferences/index.js";
 import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./tasks/index.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
+import { buildLocalHistoryFromEvents, type LocalContextEvent } from "./local-history.js";
 import {
   runOrchestratorTurn,
   runSubagentTask,
@@ -26,8 +27,14 @@ import {
 } from "./agent-runtime.js";
 import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
 import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
+import {
+  buildRuntimeThreadKey,
+  parseThreadCheckpoint,
+} from "./thread-runtime.js";
 
 const DEFAULT_MAX_TASK_DEPTH = 8;
+const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
+const MIN_LOCAL_HISTORY_TOKENS = 8_000;
 // Minimal fallback prompts â€” real prompts live in bundled AGENT.md files
 // seeded to ~/.stella/agents/ on first startup.
 const DEFAULT_ORCHESTRATOR_PROMPT =
@@ -73,6 +80,17 @@ const DEFAULT_TOOL_ALLOWLIST = [
   "RecallMemories",
 ];
 
+const LOCAL_CONTEXT_EVENT_TYPES = new Set([
+  "user_message",
+  "assistant_message",
+  "tool_request",
+  "tool_result",
+  "task_started",
+  "task_completed",
+  "task_failed",
+  "microcompact_boundary",
+]);
+
 export type StellaHostRunnerOptions = {
   deviceId: string;
   StellaHome: string;
@@ -101,6 +119,7 @@ export type StellaHostRunnerOptions = {
   scheduleApi?: ScheduleToolApi;
   displayHtml?: (html: string) => void;
   newsHtml?: (html: string) => void;
+  listLocalChatEvents?: (conversationId: string, maxItems: number) => LocalContextEvent[];
 };
 
 type ChatPayload = {
@@ -109,6 +128,7 @@ type ChatPayload = {
   userPrompt: string;
   agentType?: string;
   storageMode?: "cloud" | "local";
+  promptOverrides?: Record<string, string>;
 };
 
 type AgentHealth = {
@@ -215,6 +235,7 @@ export const createStellaHostRunner = ({
   scheduleApi,
   displayHtml,
   newsHtml,
+  listLocalChatEvents,
 }: StellaHostRunnerOptions) => {
   const store = new JsonlRuntimeStore(StellaHome);
   const convexApi = anyApi;
@@ -235,6 +256,7 @@ export const createStellaHostRunner = ({
   let activeCallbacksRef: AgentCallbacks | null = null;
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
+  let activePromptOverrides: Record<string, string> | undefined;
   const activeRunAbortControllers = new Map<string, AbortController>();
 
   const skillsPath = path.join(StellaHome, "skills");
@@ -344,7 +366,10 @@ export const createStellaHostRunner = ({
     try {
       const client = ensureConvexClient();
       if (!client) throw new Error("Not connected to Convex. Sign in or set STELLA_CONVEX_URL.");
-      const result = await client.action(convexApi.agent.local_runtime.webSearch, { query }) as {
+      const result = await client.action(convexApi.agent.local_runtime.webSearch, {
+        query,
+        ...(activePromptOverrides ? { promptOverrides: activePromptOverrides } : {}),
+      }) as {
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
         html?: string;
@@ -373,8 +398,65 @@ export const createStellaHostRunner = ({
   }): Promise<LocalTaskManagerAgentContext> => {
     const agent = resolveAgent(args.agentType);
     const model = getConfiguredModel(args.agentType, agent);
+    const resolvedLlm = resolveLlmRoute({
+      stellaHomePath: StellaHome,
+      modelName: model,
+      agentType: args.agentType,
+      proxy: {
+        baseUrl: proxyBaseUrl,
+        getAuthToken: () => authToken?.trim(),
+      },
+    });
+    const threadKey = buildRuntimeThreadKey({
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+      runId: args.runId,
+      threadId: args.threadId,
+    });
+    const storedThreadMessages = store.loadThreadMessages(threadKey);
 
-    const threadHistory = store.loadThreadMessages(args.conversationId, 50);
+    let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
+    if (args.agentType === "orchestrator" && listLocalChatEvents) {
+      const localEvents = listLocalChatEvents(args.conversationId, 800).filter((event) =>
+        LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
+      const contextWindow =
+        typeof resolvedLlm.model.contextWindow === "number" && resolvedLlm.model.contextWindow > 0
+          ? Math.floor(resolvedLlm.model.contextWindow)
+          : 128_000;
+      const localHistoryBudget = Math.max(
+        MIN_LOCAL_HISTORY_TOKENS,
+        contextWindow - LOCAL_HISTORY_RESERVE_TOKENS,
+      );
+      const eventHistory = buildLocalHistoryFromEvents({
+        events: localEvents,
+        maxTokens: localHistoryBudget,
+        warningThresholdTokens: Math.max(
+          MIN_LOCAL_HISTORY_TOKENS,
+          Math.floor(contextWindow * 0.85),
+        ),
+      });
+      const checkpointMessage = storedThreadMessages.find((message) => {
+        if (message.role !== "assistant") return false;
+        return Boolean(parseThreadCheckpoint(message.content));
+      });
+      const checkpoint = checkpointMessage
+        ? parseThreadCheckpoint(checkpointMessage.content)
+        : null;
+      threadHistory = [
+        ...(checkpoint
+          ? [{
+              role: "assistant",
+              content: checkpoint.previousThreadFile
+                ? `${checkpoint.summary}\n\nPrevious thread file: ${checkpoint.previousThreadFile}`
+                : checkpoint.summary,
+            }]
+          : []),
+        ...eventHistory,
+      ];
+    } else {
+      threadHistory = storedThreadMessages;
+    }
+
     return {
       systemPrompt: agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
       dynamicContext:
@@ -388,7 +470,7 @@ export const createStellaHostRunner = ({
       skillIds: [],
       coreMemory: readCoreMemory(StellaHome),
       threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
-      activeThreadId: args.threadId,
+      activeThreadId: threadKey,
       generalAgentEngine: args.agentType === "general" ? getGeneralAgentEngine(StellaHome) : undefined,
       codexLocalMaxConcurrency:
         args.agentType === "general" ? getCodexLocalMaxConcurrency(StellaHome) : undefined,
@@ -544,6 +626,7 @@ export const createStellaHostRunner = ({
     disposeConvexClient();
     activeOrchestratorRunId = null;
     activeOrchestratorConversationId = null;
+    activePromptOverrides = undefined;
     for (const controller of activeRunAbortControllers.values()) {
       controller.abort();
     }
@@ -623,6 +706,7 @@ export const createStellaHostRunner = ({
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
     activeCallbacksRef = callbacks;
+    activePromptOverrides = payload.promptOverrides;
 
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
@@ -633,6 +717,7 @@ export const createStellaHostRunner = ({
         activeOrchestratorRunId = null;
         activeOrchestratorConversationId = null;
         activeCallbacksRef = null;
+        activePromptOverrides = undefined;
       }
     };
 
@@ -736,6 +821,7 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
+    activePromptOverrides = undefined;
 
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
@@ -745,6 +831,7 @@ export const createStellaHostRunner = ({
       if (activeOrchestratorRunId === runId) {
         activeOrchestratorRunId = null;
         activeOrchestratorConversationId = null;
+        activePromptOverrides = undefined;
       }
     };
 
@@ -874,6 +961,7 @@ export const createStellaHostRunner = ({
     if (activeOrchestratorRunId === runId) {
       activeOrchestratorRunId = null;
       activeOrchestratorConversationId = null;
+      activePromptOverrides = undefined;
     }
   };
 

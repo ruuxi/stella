@@ -21,6 +21,10 @@ import {
 import type { LocalTaskManagerAgentContext } from "./tasks/index.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
+import {
+  buildRuntimeThreadKey,
+  maybeCompactRuntimeThread,
+} from "./thread-runtime.js";
 
 const DEFAULT_MAX_TURNS = 40;
 const MAX_RESULT_PREVIEW = 200;
@@ -207,16 +211,6 @@ const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
   return sections.filter(Boolean).join("\n\n");
 };
 
-const buildSubagentThreadConversationId = (args: {
-  conversationId: string;
-  agentType: string;
-  runId: string;
-  threadId?: string;
-}): string => {
-  const threadKey = args.threadId?.trim() || `run:${args.runId}`;
-  return `${args.conversationId}::subagent::${args.agentType}::${threadKey}`;
-};
-
 const getRecallQuery = (args: Record<string, unknown>): string => {
   const direct = typeof args.query === "string" ? args.query : "";
   if (direct.trim()) return direct;
@@ -352,6 +346,12 @@ const createPiTools = (opts: {
 
 export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise<string> {
   const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
+  const threadKey = buildRuntimeThreadKey({
+    conversationId: opts.conversationId,
+    agentType: opts.agentType,
+    runId,
+    threadId: opts.agentContext.activeThreadId,
+  });
   let seq = 0;
   const nextSeq = () => ++seq;
   const baselineHead = opts.frontendRoot && opts.selfModMonitor
@@ -476,7 +476,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
   try {
     opts.store.appendThreadMessage({
       timestamp: now(),
-      conversationId: opts.conversationId,
+      conversationId: threadKey,
       role: "user",
       content: opts.userPrompt,
     });
@@ -502,10 +502,16 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     if (finalText.trim()) {
       opts.store.appendThreadMessage({
         timestamp: now(),
-        conversationId: opts.conversationId,
+        conversationId: threadKey,
         role: "assistant",
         content: finalText,
       });
+      await maybeCompactRuntimeThread({
+        store: opts.store,
+        threadKey,
+        resolvedLlm: opts.resolvedLlm,
+        agentType: opts.agentType,
+      }).catch(() => undefined);
     }
 
     const endSeq = nextSeq();
@@ -564,7 +570,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
 }> {
   const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
   const prompt = opts.userPrompt.trim();
-  const subagentThreadConversationId = buildSubagentThreadConversationId({
+  const subagentThreadConversationId = buildRuntimeThreadKey({
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     runId,
@@ -641,6 +647,12 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
           role: "assistant",
           content: result.text,
         });
+        await maybeCompactRuntimeThread({
+          store: opts.store,
+          threadKey: subagentThreadConversationId,
+          resolvedLlm: opts.resolvedLlm,
+          agentType: opts.agentType,
+        }).catch(() => undefined);
       }
       const endSeq = nextSeq();
       opts.store.recordRunEvent({
@@ -707,6 +719,12 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
           role: "assistant",
           content: result.text,
         });
+        await maybeCompactRuntimeThread({
+          store: opts.store,
+          threadKey: subagentThreadConversationId,
+          resolvedLlm: opts.resolvedLlm,
+          agentType: opts.agentType,
+        }).catch(() => undefined);
       }
       const endSeq = nextSeq();
       opts.store.recordRunEvent({
@@ -857,6 +875,12 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         role: "assistant",
         content: result,
       });
+      await maybeCompactRuntimeThread({
+        store: opts.store,
+        threadKey: subagentThreadConversationId,
+        resolvedLlm: opts.resolvedLlm,
+        agentType: opts.agentType,
+      }).catch(() => undefined);
     }
     const endSeq = nextSeq();
     opts.store.recordRunEvent({
