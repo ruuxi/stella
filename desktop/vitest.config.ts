@@ -7,8 +7,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    setupFiles: ['./tests/support/renderer/setup.ts'],
+    include: ['tests/renderer/**/*.{test,spec}.{ts,tsx}'],
     server: {
       deps: {
         inline: true,
@@ -20,7 +20,7 @@ export default defineConfig({
       { find: /^@\//, replacement: `${path.resolve(__dirname, './src')}/` },
       {
         find: /^@testing-library\/react$/,
-        replacement: path.resolve(__dirname, './src/test/react-testing.tsx'),
+        replacement: path.resolve(__dirname, './tests/support/renderer/react-testing.tsx'),
       },
       { find: /^react$/, replacement: path.resolve(__dirname, './node_modules/react/index.js') },
       { find: /^react\/jsx-runtime$/, replacement: path.resolve(__dirname, './node_modules/react/jsx-runtime.js') },

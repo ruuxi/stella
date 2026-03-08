@@ -68,6 +68,12 @@ interface ScreencastFrameParams {
   sessionId: number;
 }
 
+export function getNonEmptyContextPages<TPage extends { url(): string }>(
+  contexts: Array<{ pages(): TPage[] }>
+): TPage[] {
+  return contexts.flatMap((context) => context.pages()).filter((page) => page.url());
+}
+
 /**
  * Manages the Playwright browser lifecycle with multiple tabs/windows
  */
@@ -1223,7 +1229,7 @@ export class BrowserManager {
       }
 
       // Filter out pages with empty URLs, which can cause Playwright to hang
-      const allPages = contexts.flatMap((context) => context.pages()).filter((page) => page.url());
+      const allPages = getNonEmptyContextPages(contexts);
 
       if (allPages.length === 0) {
         throw new Error('No page found. Make sure the app has loaded content.');
