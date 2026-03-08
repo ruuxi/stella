@@ -126,7 +126,7 @@ const parseJsonRecord = (value: string | null): Record<string, unknown> | undefi
 }
 
 const eventTextFromPayload = (payload?: Record<string, unknown>) => {
-  const text = payload?.text
+  const text = payload?.contextText ?? payload?.text
   return typeof text === 'string' ? text.trim() : ''
 }
 

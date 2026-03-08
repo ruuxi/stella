@@ -5,16 +5,15 @@ import {
   groupEventsIntoTurns,
   getCurrentRunningTool,
   getRunningTasks,
-  getEventText,
 } from "@/app/chat/lib/event-transforms";
 import { useDepseudonymize } from "@/app/chat/hooks/use-depseudonymize";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
 import {
   type TurnViewModel,
+  getDisplayMessageText,
   getDisplayUserText,
   getAttachments,
   getChannelEnvelope,
-  getLocalTimeLabel,
 } from "./MessageTurn";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 
@@ -95,9 +94,8 @@ export function useTurnViewModels(opts: {
       const userText = getDisplayUserText(turn.userMessage);
       const userAttachments = getAttachments(turn.userMessage);
       const userChannelEnvelope = getChannelEnvelope(turn.userMessage);
-      const userLocalTimeLabel = getLocalTimeLabel(turn.userMessage);
       const assistantText = turn.assistantMessage
-        ? depseudonymize(getEventText(turn.assistantMessage))
+        ? depseudonymize(getDisplayMessageText(turn.assistantMessage))
         : "";
       const assistantMessageId = turn.assistantMessage?._id ?? null;
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
@@ -109,7 +107,6 @@ export function useTurnViewModels(opts: {
         userText,
         userAttachments,
         userChannelEnvelope,
-        userLocalTimeLabel,
         assistantText,
         assistantMessageId,
         assistantEmotesEnabled,

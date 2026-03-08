@@ -61,6 +61,7 @@ export type ChannelEnvelope = {
 // Message payload structure
 export type MessagePayload = {
   text?: string;
+  contextText?: string;
   role?: string;
   source?: string;
   agentType?: string;

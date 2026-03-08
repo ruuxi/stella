@@ -254,9 +254,23 @@ const formatTextEvent = (
   tsState: TimestampState,
 ): HistoryMessage | null => {
   const payload = asObjectRecord(event.payload);
+  const contextText =
+    typeof payload.contextText === "string" ? payload.contextText.trim() : "";
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
+  const effectiveText = contextText || text;
+  if (!effectiveText) return null;
+  if (contextText) {
+    return {
+      role: event.type === "assistant_message" ? "assistant" : "user",
+      content: truncateWithSuffix(effectiveText, MAX_TEXT_CHARS),
+    };
+  }
   if (!text) return null;
-  const { tag, dateStr } = formatMessageTimestamp(event.timestamp, tsState.prevDate, tsState.timezone);
+  const { tag, dateStr } = formatMessageTimestamp(
+    event.timestamp,
+    tsState.prevDate,
+    tsState.timezone,
+  );
   tsState.prevDate = dateStr;
   return {
     role: event.type === "assistant_message" ? "assistant" : "user",
