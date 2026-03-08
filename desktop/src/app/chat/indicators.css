@@ -21,27 +21,7 @@
   max-width: 400px;
 }
 
-/* Text shimmer sweep on working status text */
-.working-indicator .working-status {
-  background: linear-gradient(
-    90deg,
-    var(--text-strong) 0%,
-    var(--text-strong) 40%,
-    var(--text-weaker) 50%,
-    var(--text-strong) 60%,
-    var(--text-strong) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: text-shimmer-sweep 2.5s linear infinite;
-}
-
-@keyframes text-shimmer-sweep {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
+/* Working status text — shimmer handled by TextShimmer component */
 
 .working-separator {
   color: var(--text-weaker);
@@ -144,6 +124,18 @@
   }
 }
 
+/* Generic fadeUp for initial content appearance */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Streaming assistant message entrance */
 .event-item.assistant.streaming {
   animation: stream-fade-blur-in 0.45s cubic-bezier(0.34, 1.08, 0.64, 1) both;
@@ -158,6 +150,42 @@
 .event-item.assistant.streaming > *:nth-child(2) { animation-delay: 80ms; }
 .event-item.assistant.streaming > *:nth-child(3) { animation-delay: 160ms; }
 .event-item.assistant.streaming > *:nth-child(4) { animation-delay: 240ms; }
+
+/* TextReveal — mask-image wipe for streaming markdown content */
+.text-reveal {
+  mask-image: linear-gradient(
+    to bottom,
+    white 33%,
+    transparent calc(33% + 17%)
+  );
+  mask-size: 100% 300%;
+  mask-position: 0 100%;
+  animation: text-reveal-wipe 0.45s cubic-bezier(0.34, 1.08, 0.64, 1) forwards;
+}
+
+.text-reveal--slow {
+  animation-duration: 0.9s;
+}
+
+@keyframes text-reveal-wipe {
+  from {
+    mask-position: 0 100%;
+    transform: translateY(6px);
+  }
+  to {
+    mask-position: 0 0%;
+    transform: translateY(0);
+  }
+}
+
+/* fadeUp staggered children on session turns (non-streaming, initial load) */
+.session-turn.fade-up-turn {
+  animation: fade-up 0.4s ease-out both;
+}
+
+.session-turn.fade-up-turn > *:nth-child(1) { animation: fade-up 0.4s ease-out both; animation-delay: 0s; }
+.session-turn.fade-up-turn > *:nth-child(2) { animation: fade-up 0.4s ease-out both; animation-delay: 0.1s; }
+.session-turn.fade-up-turn > *:nth-child(3) { animation: fade-up 0.4s ease-out both; animation-delay: 0.2s; }
 
 /* Reasoning Section - Aura-style collapsible */
 .reasoning-section {
@@ -188,7 +216,22 @@
   margin-top: 8px;
   padding-left: 12px;
   border-left: 2px solid var(--border-base);
-  animation: stream-fade-blur-in 0.5s cubic-bezier(0.34, 1.08, 0.64, 1) both;
+  /* data-visible transition — smooth show/hide instead of mount/unmount */
+  transition: opacity 180ms ease-out, filter 180ms ease-out, transform 180ms ease-out;
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0px);
+}
+
+.reasoning-body[data-visible="false"] {
+  opacity: 0;
+  filter: blur(2px);
+  transform: translateY(1px);
+  pointer-events: none;
+  max-height: 0;
+  overflow: hidden;
+  margin-top: 0;
+  padding: 0;
 }
 
 .reasoning-section[data-streaming="true"] .reasoning-body::before {
@@ -219,19 +262,6 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-weak);
-  background: linear-gradient(
-    90deg,
-    var(--text-weak) 0%,
-    var(--text-weak) 40%,
-    var(--text-weaker) 50%,
-    var(--text-weak) 60%,
-    var(--text-weak) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: text-shimmer-sweep 3s linear infinite;
 }
 
 .reasoning-content {
@@ -249,21 +279,9 @@
   display: none;
 }
 
-/* Thinking placeholder with shimmer */
-.reasoning-placeholder {
-  background: linear-gradient(
-    90deg,
-    var(--text-weaker) 0%,
-    var(--text-weaker) 40%,
-    color-mix(in oklch, var(--text-weaker) 40%, transparent) 50%,
-    var(--text-weaker) 60%,
-    var(--text-weaker) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: text-shimmer-sweep 2s linear infinite;
+/* Thinking placeholder — styled by TextShimmer component */
+.reasoning-placeholder-shimmer {
+  color: var(--text-weaker);
 }
 
 @keyframes reasoning-tron-border {

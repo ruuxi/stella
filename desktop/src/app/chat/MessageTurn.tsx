@@ -5,6 +5,7 @@ import { TaskIndicator } from "@/app/chat/TaskIndicator";
 import { Markdown } from "@/app/chat/Markdown";
 import { ReasoningSection } from "@/app/chat/ReasoningSection";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
+import { GrowIn } from "@/app/chat/GrowIn";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
 import {
   getEventText,
@@ -287,7 +288,9 @@ export const TurnItem = memo(function TurnItem({
           {shouldShowStreamingAssistant && streaming && (
             <>
               {streaming.runningTasks.length > 0 && (
-                <TaskIndicator tasks={streaming.runningTasks} />
+                <GrowIn animate={true}>
+                  <TaskIndicator tasks={streaming.runningTasks} />
+                </GrowIn>
               )}
               {hasReasoningContent && streaming.reasoningText && (
                 <ReasoningSection
@@ -300,23 +303,29 @@ export const TurnItem = memo(function TurnItem({
               {!hasStreamingContent &&
                 !hasReasoningContent &&
                 streaming.runningTasks.length === 0 && (
-                  <WorkingIndicator
-                    isReasoning={true}
-                    toolName={streaming.runningTool}
-                  />
+                  <GrowIn animate={true}>
+                    <WorkingIndicator
+                      isReasoning={true}
+                      toolName={streaming.runningTool}
+                    />
+                  </GrowIn>
                 )}
             </>
           )}
 
           {assistantDisplayText.trim().length > 0 && (
-            <Markdown
-              text={assistantDisplayText}
-              cacheKey={assistantCacheKey}
-              isAnimating={
-                shouldShowStreamingAssistant && streaming?.isStreaming
-              }
-              enableEmotes={assistantEnableEmotes}
-            />
+            <GrowIn animate={shouldShowStreamingAssistant && Boolean(streaming?.isStreaming)}>
+              <div className={shouldShowStreamingAssistant && streaming?.isStreaming ? "text-reveal" : undefined}>
+                <Markdown
+                  text={assistantDisplayText}
+                  cacheKey={assistantCacheKey}
+                  isAnimating={
+                    shouldShowStreamingAssistant && streaming?.isStreaming
+                  }
+                  enableEmotes={assistantEnableEmotes}
+                />
+              </div>
+            </GrowIn>
           )}
 
           {turn.selfModApplied && !shouldShowStreamingAssistant && (
@@ -355,7 +364,9 @@ export const StreamingIndicator = memo(function StreamingIndicator({
     <div className="session-turn">
       <div className="event-item assistant streaming">
         {runningTasks.length > 0 && (
-          <TaskIndicator tasks={runningTasks} />
+          <GrowIn animate={true}>
+            <TaskIndicator tasks={runningTasks} />
+          </GrowIn>
         )}
         {hasReasoningContent && (
           <ReasoningSection
@@ -366,22 +377,28 @@ export const StreamingIndicator = memo(function StreamingIndicator({
         {!hasStreamingContent &&
           !hasReasoningContent &&
           runningTasks.length === 0 && (
-            <WorkingIndicator
-              isReasoning={true}
-              toolName={runningTool}
-            />
+            <GrowIn animate={true}>
+              <WorkingIndicator
+                isReasoning={true}
+                toolName={runningTool}
+              />
+            </GrowIn>
           )}
         {hasStreamingContent && streamingText && (
-          <Markdown
-            text={streamingText}
-            cacheKey={
-              pendingUserMessageId
-                ? `streaming-${pendingUserMessageId}`
-                : undefined
-            }
-            isAnimating={isStreaming}
-            enableEmotes={true}
-          />
+          <GrowIn animate={Boolean(isStreaming)}>
+            <div className={isStreaming ? "text-reveal" : undefined}>
+              <Markdown
+                text={streamingText}
+                cacheKey={
+                  pendingUserMessageId
+                    ? `streaming-${pendingUserMessageId}`
+                    : undefined
+                }
+                isAnimating={isStreaming}
+                enableEmotes={true}
+              />
+            </div>
+          </GrowIn>
         )}
       </div>
     </div>
