@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractPowerShellDeleteTargets,
   extractPythonDeleteTargets,
-} from "../../packages/stella-runtime/src/tools/deferred-delete-cli.js";
+} from "@stella/stella-runtime/tools";
 
 describe("deferred_delete_cli parsing", () => {
   it("extracts targets from PowerShell Remove-Item commands", () => {

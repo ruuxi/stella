@@ -2,5 +2,55 @@
   "name": "@stella/stella-runtime",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts"
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./agent-runtime": {
+      "types": "./dist/agent-runtime.d.ts",
+      "default": "./dist/agent-runtime.js"
+    },
+    "./agents": {
+      "types": "./dist/agents/index.d.ts",
+      "default": "./dist/agents/index.js"
+    },
+    "./integrations": {
+      "types": "./dist/integrations/index.d.ts",
+      "default": "./dist/integrations/index.js"
+    },
+    "./preferences": {
+      "types": "./dist/preferences/index.d.ts",
+      "default": "./dist/preferences/index.js"
+    },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "default": "./dist/shared/index.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/index.d.ts",
+      "default": "./dist/storage/index.js"
+    },
+    "./tasks": {
+      "types": "./dist/tasks/index.d.ts",
+      "default": "./dist/tasks/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "default": "./dist/tools/index.js"
+    },
+    "./tools/shell": {
+      "types": "./dist/tools/shell.d.ts",
+      "default": "./dist/tools/shell.js"
+    },
+    "./tools/utils": {
+      "types": "./dist/tools/utils.d.ts",
+      "default": "./dist/tools/utils.js"
+    }
+  }
 }

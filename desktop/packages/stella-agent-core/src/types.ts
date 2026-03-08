@@ -8,7 +8,7 @@ import type {
 	TextContent,
 	Tool,
 	ToolResultMessage,
-} from "../../stella-ai/src/index.js";
+} from "@stella/stella-ai";
 import type { Static, TSchema } from "@sinclair/typebox";
 
 /** Stream function - can return sync or Promise for async config lookup */

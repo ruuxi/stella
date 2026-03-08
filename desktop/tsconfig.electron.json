@@ -11,8 +11,20 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node"],
-    "composite": true
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@stella/stella-ai": ["./packages/stella-ai/src/index.ts"],
+      "@stella/stella-agent-core": ["./packages/stella-agent-core/src/index.ts"],
+      "@stella/stella-runtime": ["./packages/stella-runtime/src/index.ts"],
+      "@stella/stella-runtime/*": ["./packages/stella-runtime/src/*"]
+    }
   },
-  "include": ["electron/**/*", "packages/**/*"],
-  "exclude": ["electron/preload.ts", "**/*.test.ts"]
+  "include": ["electron/**/*"],
+  "exclude": ["electron/preload.ts", "**/*.test.ts"],
+  "references": [
+    { "path": "./packages/stella-ai" },
+    { "path": "./packages/stella-agent-core" },
+    { "path": "./packages/stella-runtime" }
+  ]
 }

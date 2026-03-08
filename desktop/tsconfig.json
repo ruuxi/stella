@@ -2,11 +2,18 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@stella/stella-ai": ["./packages/stella-ai/src/index.ts"],
+      "@stella/stella-agent-core": ["./packages/stella-agent-core/src/index.ts"],
+      "@stella/stella-runtime": ["./packages/stella-runtime/src/index.ts"],
+      "@stella/stella-runtime/*": ["./packages/stella-runtime/src/*"]
     }
   },
   "files": [],
   "references": [
+    { "path": "./packages/stella-ai" },
+    { "path": "./packages/stella-agent-core" },
+    { "path": "./packages/stella-runtime" },
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" },
     { "path": "./tsconfig.electron.json" }

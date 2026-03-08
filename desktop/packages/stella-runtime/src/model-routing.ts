@@ -1,4 +1,4 @@
-import { getModels, type Api, type Model } from "../../stella-ai/src/index.js";
+import { getModels, type Api, type Model } from "@stella/stella-ai";
 import { getLocalLlmCredential, hasLocalLlmCredential } from "./storage/llm-credentials.js";
 
 type ManagedProxyConfig = {
