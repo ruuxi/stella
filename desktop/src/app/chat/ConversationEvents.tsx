@@ -1,6 +1,6 @@
 import { memo, useRef, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { Attachment, TaskItem } from "@/app/chat/lib/event-transforms";
 import {
   TurnItem,
@@ -9,7 +9,7 @@ import {
 } from "./MessageTurn";
 import { TaskIndicator } from "@/app/chat/TaskIndicator";
 import { useTurnViewModels } from "./use-turn-view-models";
-import type { SelfModAppliedData } from "@/app/chat/hooks/use-streaming-chat";
+import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 
 type Props = {
   events: EventRecord[];

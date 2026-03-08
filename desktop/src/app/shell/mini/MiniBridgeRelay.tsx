@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
-import type { SendMessageArgs } from "@/app/chat/hooks/use-streaming-chat";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import type { SendMessageArgs } from "@/app/chat/streaming/chat-types";
 import type {
   MiniBridgeRequestEnvelope,
   MiniBridgeResponse,

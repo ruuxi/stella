@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import type { MusicServiceState, MusicMood } from "@/app/music/services/lyria-music"
+import type { MusicServiceState } from "@/app/music/services/lyria-music"
+import type { MusicMood } from "@/prompts/music"
 
 type LyriaMusicModule = typeof import("@/app/music/services/lyria-music")
 

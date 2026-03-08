@@ -1,9 +1,9 @@
 import { screen } from 'electron'
 import type { BrowserWindow } from 'electron'
-import type { ChatContext } from '../chat-context.js'
 import { RADIAL_SIZE } from '../layout-constants.js'
 import { MouseHookManager } from '../input/mouse-hook.js'
 import { calculateSelectedWedge, type RadialWedge } from '../radial-wedge.js'
+import type { ChatContext } from '../../src/shared/contracts/electron-data.js'
 
 export type RadialCaptureBridge = {
   cancelRadialContextCapture: () => void
