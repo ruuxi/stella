@@ -23,7 +23,7 @@
 }
 
 .auto-panel.sliding-out {
-  animation: auto-panel-slide-out 0.4s cubic-bezier(0.5, 0, 0.75, 0) both;
+  animation: auto-panel-slide-out 0.18s cubic-bezier(0.5, 0, 0.75, 0) both;
 }
 
 @keyframes auto-panel-slide-out {
@@ -160,28 +160,38 @@
 
 /* ─── Skeleton loader ────────────────────────────────────────────────── */
 
+.auto-panel-content:has(.auto-panel-skeleton) {
+  position: relative;
+}
+
 .auto-panel-skeleton {
+  position: absolute;
+  inset: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 4px 0;
+  justify-content: space-between;
+}
+
+.auto-panel-skeleton-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .auto-panel-skeleton-line {
-  height: 12px;
-  border-radius: 6px;
-  background: linear-gradient(
-    90deg,
-    var(--foreground-muted, rgba(255, 255, 255, 0.08)) 25%,
-    var(--background-hover, rgba(255, 255, 255, 0.14)) 50%,
-    var(--foreground-muted, rgba(255, 255, 255, 0.08)) 75%
-  );
-  background-size: 200% 100%;
-  animation: auto-panel-shimmer 1.5s ease-in-out infinite;
-  opacity: 0.3;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--border, rgba(255, 255, 255, 0.08));
+  opacity: 0.5;
+  animation: auto-panel-pulse 3s ease-in-out infinite;
 }
 
-@keyframes auto-panel-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+.auto-panel-skeleton-block:nth-child(2) .auto-panel-skeleton-line { animation-delay: 0.4s; }
+.auto-panel-skeleton-block:nth-child(3) .auto-panel-skeleton-line { animation-delay: 0.8s; }
+.auto-panel-skeleton-block:nth-child(4) .auto-panel-skeleton-line { animation-delay: 1.2s; }
+.auto-panel-skeleton-block:nth-child(5) .auto-panel-skeleton-line { animation-delay: 1.6s; }
+
+@keyframes auto-panel-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
 }

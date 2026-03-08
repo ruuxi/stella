@@ -124,6 +124,10 @@ export class RadialGestureService {
       case 'auto': {
         capture.cancelRadialContextCapture()
 
+        // Start text extraction BEFORE showing the panel so FromPoint
+        // doesn't pick up our own overlay window.
+        const textPromise = capture.captureAutoWindowText()
+
         // Position panel on the right side of the current display, 70% height, centered
         const cursorPoint = screen.getCursorScreenPoint()
         const display = screen.getDisplayNearestPoint(cursorPoint)
@@ -143,8 +147,8 @@ export class RadialGestureService {
           windowTitle: null,
         })
 
-        // Extract text content in background, then update panel
-        const windowTextResult = await capture.captureAutoWindowText()
+        // Wait for text extraction to complete
+        const windowTextResult = await textPromise
         if (!windowTextResult?.text) {
           overlay.hideAutoPanel()
           break
