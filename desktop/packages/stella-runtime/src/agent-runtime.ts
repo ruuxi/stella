@@ -1,24 +1,24 @@
 import crypto from "crypto";
 import { Type } from "@sinclair/typebox";
-import { Agent, type AgentMessage, type AgentTool } from "../../stella-agent-core/src/index.js";
-import { DEVICE_TOOL_NAMES, TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./tools/schemas.js";
+import { Agent, type AgentMessage, type AgentTool } from "@stella/stella-agent-core";
 import {
-  detectSelfModAppliedSince,
-  getGitHead,
-  type SelfModAppliedPayload,
-} from "./self-mod/git.js";
+  DEVICE_TOOL_NAMES,
+  TOOL_DESCRIPTIONS,
+  TOOL_JSON_SCHEMAS,
+  localActivateSkill,
+  localNoResponse,
+  localWebFetch,
+  type ToolContext,
+  type ToolResult,
+} from "./tools/index.js";
 import {
   isClaudeCodeModel,
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
-} from "./integrations/claude-code-session-runtime.js";
-import {
   runCodexAppServerTurn,
   shutdownCodexAppServerRuntime,
-} from "./integrations/codex-app-server-runtime.js";
-import type { LocalTaskManagerAgentContext } from "./tasks/local-task-manager.js";
-import { localActivateSkill, localNoResponse, localWebFetch } from "./tools/local-tool-overrides.js";
-import type { ToolContext, ToolResult } from "./tools/types.js";
+} from "./integrations/index.js";
+import type { LocalTaskManagerAgentContext } from "./tasks/index.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
@@ -39,6 +39,20 @@ const STELLA_LOCAL_TOOLS = [
 ] as const;
 
 const AnyToolArgsSchema = Type.Object({}, { additionalProperties: true });
+
+export type SelfModAppliedPayload = {
+  featureId: string;
+  files: string[];
+  batchIndex: number;
+};
+
+export type SelfModMonitor = {
+  getBaselineHead: (repoRoot: string) => Promise<string | null>;
+  detectAppliedSince: (args: {
+    repoRoot: string;
+    sinceHead: string | null;
+  }) => Promise<SelfModAppliedPayload | null>;
+};
 
 
 export type RuntimeStreamEvent = {
@@ -103,6 +117,7 @@ type BaseRunOptions = {
   store: JsonlRuntimeStore;
   abortSignal?: AbortSignal;
   frontendRoot?: string;
+  selfModMonitor?: SelfModMonitor | null;
   webSearch?: (query: string) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }>;
   onSearchResults?: (query: string, results: Array<{ title: string; url: string; snippet: string }>) => void;
 };
@@ -344,8 +359,8 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
   const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
   let seq = 0;
   const nextSeq = () => ++seq;
-  const baselineHead = opts.frontendRoot
-    ? await getGitHead(opts.frontendRoot).catch(() => null)
+  const baselineHead = opts.frontendRoot && opts.selfModMonitor
+    ? await opts.selfModMonitor.getBaselineHead(opts.frontendRoot).catch(() => null)
     : null;
 
   console.log(`[stella:trace] orchestrator start | runId=${runId} | agent=${opts.agentType} | model=${opts.resolvedLlm.model} | convId=${opts.conversationId}`);
@@ -483,8 +498,8 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
       .find((message) => message.role === "assistant");
     const finalText = extractAssistantText(latestAssistant);
     console.log(`[stella:trace] orchestrator end | runId=${runId} | finalText=${finalText.slice(0, 300)}`);
-    const selfModApplied = opts.frontendRoot
-      ? await detectSelfModAppliedSince({
+    const selfModApplied = opts.frontendRoot && opts.selfModMonitor
+      ? await opts.selfModMonitor.detectAppliedSince({
           repoRoot: opts.frontendRoot,
           sinceHead: baselineHead,
         }).catch(() => null)

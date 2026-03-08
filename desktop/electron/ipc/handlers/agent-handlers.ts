@@ -6,7 +6,7 @@ import {
   getLastGitFeatureId,
   listRecentGitFeatures,
   revertGitFeature,
-} from '../../../packages/stella-runtime/src/self-mod/git.js'
+} from '../../self-mod/git.js'
 import type { HmrMorphOrchestrator } from '../../self-mod/hmr-morph.js'
 
 type AgentHandlersOptions = {

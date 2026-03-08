@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "fs";
 import { spawn } from "child_process";
-import { createToolHost, type ToolContext } from "../../packages/stella-runtime/src/tools/host.js";
+import { createToolHost, type ToolContext } from "@stella/stella-runtime/tools";
 
 // Mock fs and spawn
 vi.mock("fs", () => ({

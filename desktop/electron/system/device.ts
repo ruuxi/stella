@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { createPrivateKey, generateKeyPairSync, sign } from "crypto";
-import { protectValue, unprotectValue } from "../../packages/stella-runtime/src/storage/protected-storage.js";
+import { protectValue, unprotectValue } from "@stella/stella-runtime/storage";
 
 type DeviceRecord = {
   deviceId: string;

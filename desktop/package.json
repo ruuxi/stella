@@ -1,21 +1,21 @@
 {
-  "name": "Stella",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "bun run build:packages && bunx --package typescript@5.9.3 tsc --build && vite build",
+    "build:packages": "bunx --package typescript@5.9.3 tsc --build packages/stella-ai/tsconfig.json packages/stella-agent-core/tsconfig.json packages/stella-runtime/tsconfig.json",
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:electron": "vitest run --config vitest.electron.config.ts",
+    "test:electron": "bun run build:packages && vitest run --config vitest.electron.config.ts",
     "preview": "vite preview",
     "native:build": "cd native && npm install && npm run build",
-    "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"cd ../frontend && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && wait-on file:.vite-dev-url && cross-env NODE_ENV=development electron .\"",
-    "electron:build": "npm run native:build && cd ../frontend && tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron-builder",
-    "electron:preview": "cd ../frontend && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && electron .",
+    "electron:dev": "concurrently \"cross-env NODE_ENV=development vite\" \"cd ../frontend && bun run build:packages && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && wait-on file:.vite-dev-url && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "npm run native:build && cd ../frontend && bun run build:packages && bunx --package typescript@5.9.3 tsc --build && vite build && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron-builder",
+    "electron:preview": "cd ../frontend && bun run build:packages && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron .",
     "emotes:sync": "node scripts/fetch-emotes.mjs",
     "emotes:sync:clean": "node scripts/fetch-emotes.mjs --clean",
     "emotes:label": "node scripts/label-emotes.mjs",
@@ -26,6 +26,9 @@
     "postinstall": "electron-rebuild --build-from-source -o better-sqlite3"
   },
   "dependencies": {
+    "@stella/stella-agent-core": "file:./packages/stella-agent-core",
+    "@stella/stella-ai": "file:./packages/stella-ai",
+    "@stella/stella-runtime": "file:./packages/stella-runtime",
     "@ai-sdk/amazon-bedrock": "^4.0.69",
     "@ai-sdk/anthropic": "^3.0.50",
     "@ai-sdk/openai": "^3.0.37",
@@ -160,7 +163,8 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "packages/*/dist/**/*"
     ],
     "extraResources": [
       {

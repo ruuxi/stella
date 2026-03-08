@@ -10,7 +10,7 @@ import {
 	streamSimple,
 	type ToolResultMessage,
 	validateToolArguments,
-} from "../../stella-ai/src/index.js";
+} from "@stella/stella-ai";
 import type {
 	AgentContext,
 	AgentEvent,

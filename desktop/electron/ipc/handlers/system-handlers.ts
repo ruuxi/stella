@@ -1,5 +1,5 @@
 import { app, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
-import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '../../../packages/stella-runtime/src/preferences/local-preferences.js'
+import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '@stella/stella-runtime/preferences'
 import type { StellaHostRunner } from '../../stella-host-runner.js'
 import type { AuthService } from '../../services/auth-service.js'
 import type { ExternalLinkService } from '../../services/external-link-service.js'
@@ -7,7 +7,7 @@ import {
   deleteLocalLlmCredential,
   listLocalLlmCredentials,
   saveLocalLlmCredential,
-} from '../../../packages/stella-runtime/src/storage/llm-credentials.js'
+} from '@stella/stella-runtime/storage'
 
 type SystemHandlersOptions = {
   getDeviceId: () => string | null

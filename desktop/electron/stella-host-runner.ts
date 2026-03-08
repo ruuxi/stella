@@ -1,11 +1,12 @@
 import path from "path";
-import { createStellaHostRunner as createRuntimeStellaHostRunner, type StellaHostRunnerOptions } from "../packages/stella-runtime/src/runner.js";
+import { createStellaHostRunner as createRuntimeStellaHostRunner, type StellaHostRunnerOptions } from "@stella/stella-runtime";
 import { getDevServerUrl } from "./dev-url.js";
+import { detectSelfModAppliedSince, getGitHead } from "./self-mod/git.js";
 import { createSelfModHmrController } from "./self-mod/hmr.js";
 
 type ElectronStellaHostRunnerOptions = Omit<
   StellaHostRunnerOptions,
-  "selfModHmrController" | "stellaBrowserBinPath" | "stellaUiCliPath"
+  "selfModHmrController" | "selfModMonitor" | "stellaBrowserBinPath" | "stellaUiCliPath"
 >;
 
 export type StellaHostRunner = ReturnType<typeof createRuntimeStellaHostRunner>;
@@ -19,6 +20,10 @@ export const createStellaHostRunner = (
       getDevServerUrl,
       enabled: process.env.NODE_ENV === "development",
     }),
+    selfModMonitor: {
+      getBaselineHead: getGitHead,
+      detectAppliedSince: detectSelfModAppliedSince,
+    },
     stellaBrowserBinPath: options.frontendRoot
       ? path.join(options.frontendRoot, "stella-browser", "bin", "stella-browser.js")
       : undefined,

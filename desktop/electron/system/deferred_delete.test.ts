@@ -7,7 +7,7 @@ import {
   getDeferredDeletePaths,
   purgeExpiredDeferredDeletes,
   trashPathsForDeferredDelete,
-} from "../../packages/stella-runtime/src/tools/deferred-delete.js";
+} from "@stella/stella-runtime/tools";
 
 const tmpRoots: string[] = [];
 
