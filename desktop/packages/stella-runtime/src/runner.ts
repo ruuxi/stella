@@ -342,7 +342,7 @@ export const createStellaHostRunner = ({
     try {
       const client = ensureConvexClient();
       if (!client) throw new Error("Not connected to Convex. Sign in or set STELLA_CONVEX_URL.");
-      const result = await client.action(convexApi.web_search.search, { query }) as {
+      const result = await client.action(convexApi.agent.local_runtime.webSearch, { query }) as {
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
       };
