@@ -79,14 +79,9 @@
   border: none;
 }
 
+/* Streaming state — animation handled by indicators.css */
 .event-item.streaming {
-  border-color: var(--primary);
-  animation: pulse-border 2s ease-in-out infinite;
-}
-
-@keyframes pulse-border {
-  0%, 100% { border-color: var(--border-strong); }
-  50% { border-color: var(--primary); }
+  border-color: transparent;
 }
 
 .event-type {

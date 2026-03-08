@@ -39,7 +39,14 @@ export function ReasoningSection({
       data-streaming={isStreaming}
       data-expanded={expanded}
     >
-      {/* Only show trigger button when not streaming (Aura behavior) */}
+      {/* Streaming: show animated "Thinking" heading */}
+      {isStreaming && (
+        <div className="reasoning-heading-stream">
+          <span className="reasoning-heading-text">Thinking</span>
+        </div>
+      )}
+
+      {/* Only show trigger button when not streaming */}
       {!isStreaming && (
         <button
           type="button"
@@ -61,7 +68,7 @@ export function ReasoningSection({
             {content ? (
               <Markdown text={content} isAnimating={isStreaming} />
             ) : (
-              "Thinking..."
+              <span className="reasoning-placeholder">Thinking...</span>
             )}
           </div>
         </div>
