@@ -7,7 +7,6 @@ import {
 } from "@/prompts/music"
 
 export type { MusicMood } from "@/prompts/music"
-
 export type MusicServiceState = {
   status: "idle" | "loading" | "playing" | "paused" | "error"
   mood: MusicMood

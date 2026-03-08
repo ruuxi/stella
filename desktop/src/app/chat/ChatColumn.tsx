@@ -8,10 +8,10 @@ import { OnboardingView } from "../onboarding/OnboardingOverlay";
 import { Composer } from "./Composer";
 import { CommandChips } from "@/app/chat/CommandChips";
 import { useCommandSuggestions, type CommandSuggestion } from "@/app/chat/hooks/use-command-suggestions";
-import type { EventRecord } from "@/app/chat/hooks/use-conversation-events";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
 import type { ChatContext } from "@/types/electron";
-import type { SelfModAppliedData } from "@/app/chat/hooks/use-streaming-chat";
+import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import "./full-shell.chat.css";
 
@@ -175,4 +175,3 @@ export const ChatColumn = memo(function ChatColumn({
     </div>
   );
 });
-

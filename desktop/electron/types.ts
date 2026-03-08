@@ -1,4 +1,5 @@
 import type { WindowInfo } from './window-capture.js'
+import type { ChatContext } from '../src/shared/contracts/electron-data.js'
 import type {
   UiMode,
   WindowMode,
@@ -23,7 +24,7 @@ export type RegionSelection = {
 
 export type RegionCaptureResult = {
   screenshot: ScreenshotCapture | null
-  window: import('./chat-context.js').ChatContext['window']
+  window: ChatContext['window']
 }
 
 export type CredentialRequestPayload = {
@@ -43,7 +44,7 @@ export type CredentialResponsePayload = {
 
 export const toChatContextWindow = (
   windowInfo: WindowInfo | null | undefined,
-): import('./chat-context.js').ChatContext['window'] => {
+): ChatContext['window'] => {
   if (!windowInfo || (!windowInfo.title && !windowInfo.process)) {
     return null
   }

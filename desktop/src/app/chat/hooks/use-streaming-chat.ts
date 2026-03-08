@@ -4,6 +4,7 @@ import { getPlatform } from '@/platform/electron/platform'
 import { useChatStore } from '@/context/chat-store'
 import { getOrCreateDeviceId } from '@/platform/electron/device'
 import type { AttachmentRef, SendMessageArgs } from '../streaming/chat-types'
+import type { EventRecord } from '@/app/chat/lib/event-transforms'
 import {
   buildCombinedPrompt,
   buildLocalScreenshotAttachments,
@@ -13,10 +14,6 @@ import {
   toEventId,
 } from '../streaming/streaming-event-utils'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
-import type { EventRecord } from './use-conversation-events'
-
-export type { AgentStreamEvent, SelfModAppliedData } from '../streaming/streaming-types'
-export type { AttachmentRef, SendMessageArgs } from '../streaming/chat-types'
 
 type UseStreamingChatOptions = {
   conversationId: string | null

@@ -6,7 +6,7 @@ import type {
   MiniBridgeResponse,
   MiniBridgeResponseEnvelope,
   MiniBridgeUpdate,
-} from './mini-bridge.js'
+} from '../src/shared/contracts/electron-data.js'
 
 // ---------------------------------------------------------------------------
 // IPC listener helpers — eliminate boilerplate for the 3 common patterns.
