@@ -3,6 +3,7 @@ import { computeStatus } from "./status-utils";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
 import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation";
+import { TextShimmer } from "./TextShimmer";
 import "./indicators.css";
 
 interface WorkingIndicatorProps {
@@ -43,7 +44,7 @@ export function WorkingIndicator({
           <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />
         </div>
       </div>
-      <span className="working-status">{displayStatus}</span>
+      <TextShimmer text={displayStatus} active={true} className="working-status" />
       {duration && (
         <>
           <span className="working-separator">{"\u00b7"}</span>
