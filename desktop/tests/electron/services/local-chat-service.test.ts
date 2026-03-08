@@ -133,6 +133,7 @@ describe('LocalChatService', () => {
       syncCheckpoints: {
         'conv-import': 'a-2',
       },
+      defaultConversationId: 'conv-import',
     })
 
     expect(result).toEqual({
@@ -141,6 +142,7 @@ describe('LocalChatService', () => {
       importedCheckpoints: 1,
     })
     expect(service.getSyncCheckpoint('conv-import')).toBe('a-2')
+    expect(service.getOrCreateDefaultConversationId()).toBe('conv-import')
     expect(service.listSyncMessages('conv-import', 10)).toEqual([
       {
         localMessageId: 'u-1',

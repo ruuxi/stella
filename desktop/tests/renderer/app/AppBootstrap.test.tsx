@@ -41,7 +41,7 @@ vi.mock("@/convex/api", () => ({
 
 const mockConfigurePiRuntime = vi.fn();
 const mockGetOrCreateDeviceId = vi.fn();
-const mockGetOrCreateLocalConversationId = vi.fn(() => "01KHVRH3ZAPQN48JWYNJNYDCVC");
+const mockGetOrCreateLocalConversationId = vi.fn(() => Promise.resolve("01KHVRH3ZAPQN48JWYNJNYDCVC"));
 const mockBuildLocalSyncMessages = vi.fn(() => [] as Array<{
   localMessageId: string;
   role: "user" | "assistant";

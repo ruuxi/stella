@@ -23,6 +23,13 @@ const getService = (options: LocalChatHandlersOptions) => {
 }
 
 export const registerLocalChatHandlers = (options: LocalChatHandlersOptions) => {
+  ipcMain.handle('localChat:getOrCreateDefaultConversationId', (event) => {
+    if (!options.assertPrivilegedSender(event, 'localChat:getOrCreateDefaultConversationId')) {
+      throw new Error('Blocked untrusted localChat:getOrCreateDefaultConversationId request.')
+    }
+    return getService(options).getOrCreateDefaultConversationId()
+  })
+
   ipcMain.handle('localChat:listEvents', (event, payload: {
     conversationId?: string
     maxItems?: number
@@ -120,6 +127,7 @@ export const registerLocalChatHandlers = (options: LocalChatHandlersOptions) => 
       }>
     } | null
     syncCheckpoints?: Record<string, unknown> | null
+    defaultConversationId?: unknown
   }) => {
     if (!options.assertPrivilegedSender(event, 'localChat:importLegacyData')) {
       throw new Error('Blocked untrusted localChat:importLegacyData request.')
@@ -127,8 +135,13 @@ export const registerLocalChatHandlers = (options: LocalChatHandlersOptions) => 
     const result = getService(options).importLegacyData({
       store: payload?.store,
       syncCheckpoints: payload?.syncCheckpoints,
+      defaultConversationId: payload?.defaultConversationId,
     })
-    if (result.importedConversations > 0 || result.importedCheckpoints > 0) {
+    if (
+      result.importedConversations > 0
+      || result.importedCheckpoints > 0
+      || Boolean(payload?.defaultConversationId)
+    ) {
       broadcastUpdated()
     }
     return result
