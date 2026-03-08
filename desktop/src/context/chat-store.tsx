@@ -53,7 +53,7 @@ type ChatStoreContextValue = {
   appendEvent: (args: AppendEventArgs) => Promise<AppendedEventResponse | null>
   appendAgentEvent: (args: AppendAgentEventArgs) => void
   uploadAttachments: (args: UploadAttachmentsArgs) => Promise<UploadedAttachment[]>
-  buildHistory: (conversationId: string) => LocalHistoryMessage[] | undefined
+  buildHistory: (conversationId: string) => Promise<LocalHistoryMessage[] | undefined>
 }
 
 // --- Context ---
@@ -123,7 +123,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
     async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
       // Always write to localStorage so the desktop runtime has local message
       // history available for both storage modes (thread store reads from here).
-      const localEvent = appendLocalEvent(args)
+      const localEvent = await appendLocalEvent(args)
 
       if (isLocalStorage) {
         return { _id: localEvent._id }
@@ -151,7 +151,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
     (args: AppendAgentEventArgs) => {
       // Always write to localStorage for local message history availability.
       if (args.type === 'assistant_message') {
-        appendLocalEvent({
+        void appendLocalEvent({
           conversationId: args.conversationId,
           type: 'assistant_message',
           requestId: args.userMessageId,
@@ -159,23 +159,23 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
             text: args.finalText ?? '',
             ...(args.userMessageId ? { userMessageId: args.userMessageId } : {}),
           },
-        })
+        }).catch(() => undefined)
         return
       }
 
       if (args.type === 'tool_request') {
-        appendLocalEvent({
+        void appendLocalEvent({
           conversationId: args.conversationId,
           type: 'tool_request',
           requestId: args.toolCallId,
           payload: {
             toolName: args.toolName,
           },
-        })
+        }).catch(() => undefined)
         return
       }
 
-      appendLocalEvent({
+      void appendLocalEvent({
         conversationId: args.conversationId,
         type: 'tool_result',
         requestId: args.toolCallId,
@@ -183,7 +183,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
           toolName: args.toolName,
           result: args.resultPreview,
         },
-      })
+      }).catch(() => undefined)
     },
     [],
   )
@@ -210,10 +210,10 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const buildHistory = useCallback(
-    (conversationId: string): LocalHistoryMessage[] | undefined => {
+    async (conversationId: string): Promise<LocalHistoryMessage[] | undefined> => {
       // Always build from local events — both modes write to localStorage
       // so the desktop runtime always has message history available.
-      return buildLocalHistoryMessages(conversationId)
+      return await buildLocalHistoryMessages(conversationId)
     },
     [],
   )

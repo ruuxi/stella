@@ -1,6 +1,7 @@
 import type { UiState, WindowMode } from './ui'
 import type { Theme } from '@/theme/themes/types'
 import type { AgentStreamEvent } from '@/app/chat/streaming/streaming-types'
+import type { EventRecord } from '@/app/chat/lib/event-transforms'
 import type { DiscoveryCategory } from '@/app/onboarding/use-onboarding-state'
 
 export type RadialWedge = 'capture' | 'chat' | 'full' | 'voice' | 'auto' | 'dismiss'
@@ -487,6 +488,60 @@ export type ElectronScheduleApi = {
   onUpdated: (callback: () => void) => () => void
 }
 
+export type ElectronLocalChatApi = {
+  listEvents: (payload: {
+    conversationId: string
+    maxItems?: number
+  }) => Promise<EventRecord[]>
+  getEventCount: (payload: {
+    conversationId: string
+  }) => Promise<number>
+  appendEvent: (payload: {
+    conversationId: string
+    type: string
+    payload?: unknown
+    deviceId?: string
+    requestId?: string
+    targetDeviceId?: string
+    channelEnvelope?: unknown
+    timestamp?: number
+    eventId?: string
+  }) => Promise<EventRecord>
+  listSyncMessages: (payload: {
+    conversationId: string
+    maxMessages?: number
+  }) => Promise<Array<{
+    localMessageId: string
+    role: 'user' | 'assistant'
+    text: string
+    timestamp: number
+    deviceId?: string
+  }>>
+  getSyncCheckpoint: (payload: {
+    conversationId: string
+  }) => Promise<string | null>
+  setSyncCheckpoint: (payload: {
+    conversationId: string
+    localMessageId: string
+  }) => Promise<{ ok: boolean }>
+  importLegacyData: (payload: {
+    store?: {
+      version?: number
+      conversations?: Record<string, {
+        id?: string
+        updatedAt?: number
+        events?: EventRecord[]
+      }>
+    } | null
+    syncCheckpoints?: Record<string, unknown> | null
+  }) => Promise<{
+    importedConversations: number
+    importedEvents: number
+    importedCheckpoints: number
+  }>
+  onUpdated: (callback: () => void) => () => void
+}
+
 // ---------------------------------------------------------------------------
 // Main ElectronApi — composed from namespaced sub-types
 // ---------------------------------------------------------------------------
@@ -515,6 +570,7 @@ export type ElectronApi = {
   system: ElectronSystemApi
   browser: ElectronBrowserApi
   schedule: ElectronScheduleApi
+  localChat: ElectronLocalChatApi
 }
 
 declare global {
