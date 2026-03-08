@@ -121,8 +121,8 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
 
   const appendEvent = useCallback(
     async (args: AppendEventArgs): Promise<AppendedEventResponse | null> => {
-      // Always write to localStorage so the desktop runtime has local message
-      // history available for both storage modes (thread store reads from here).
+      // Always write to the local transcript store so the desktop runtime has
+      // message history available for both storage modes.
       const localEvent = await appendLocalEvent(args)
 
       if (isLocalStorage) {
@@ -149,7 +149,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
 
   const appendAgentEvent = useCallback(
     (args: AppendAgentEventArgs) => {
-      // Always write to localStorage for local message history availability.
+      // Always write agent-visible events to the local transcript store.
       if (args.type === 'assistant_message') {
         void appendLocalEvent({
           conversationId: args.conversationId,

@@ -1,6 +1,19 @@
 import { useState, useCallback } from "react";
+import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import {
+  DISCOVERY_CATEGORIES_KEY,
+  BROWSER_SELECTION_KEY,
+  BROWSER_PROFILE_KEY,
+} from "@/shared/contracts/discovery";
 
 const ONBOARDING_KEY = "stella-onboarding-complete";
+
+export type { DiscoveryCategory } from "@/shared/contracts/discovery";
+export {
+  DISCOVERY_CATEGORIES_KEY,
+  BROWSER_SELECTION_KEY,
+  BROWSER_PROFILE_KEY,
+};
 
 export type Phase =
   | "start"
@@ -28,12 +41,6 @@ export const SPLIT_STEP_ORDER: Phase[] = [
   "browser", "memory", "creation", "voice", "theme", "personality",
 ];
 
-export type DiscoveryCategory =
-  | "browsing_bookmarks"
-  | "dev_environment"
-  | "apps_system"
-  | "messages_notes";
-
 export const DISCOVERY_CATEGORIES: {
   id: DiscoveryCategory;
   label: string;
@@ -45,10 +52,6 @@ export const DISCOVERY_CATEGORIES: {
   { id: "messages_notes", label: "Your notes and calendar", description: "What you're working on, your schedule, and how you organize your thoughts", defaultEnabled: false, requiresFDA: true },
   { id: "dev_environment", label: "Your coding setup", description: "Tools you use, projects you work on, and how your environment is configured", defaultEnabled: false, requiresFDA: false },
 ];
-
-export const DISCOVERY_CATEGORIES_KEY = "stella-discovery-categories";
-export const BROWSER_SELECTION_KEY = "stella-selected-browser";
-export const BROWSER_PROFILE_KEY = "stella-selected-browser-profile";
 
 export const BROWSERS = [
   { id: "chrome", label: "Google Chrome" },

@@ -5,15 +5,13 @@
  * and type definitions for all signal collectors.
  */
 
+import type { DiscoveryCategory } from '../../src/shared/contracts/discovery.js'
+
+export type { DiscoveryCategory }
+
 // ---------------------------------------------------------------------------
 // Discovery Categories
 // ---------------------------------------------------------------------------
-
-export type DiscoveryCategory =
-  | "browsing_bookmarks"
-  | "dev_environment"
-  | "apps_system"
-  | "messages_notes";
 
 export type DiscoveryCategoryConfig = {
   id: DiscoveryCategory;
