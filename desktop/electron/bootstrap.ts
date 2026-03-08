@@ -10,8 +10,8 @@ import { fileURLToPath } from 'url'
 import { getDevServerUrl } from './dev-url.js'
 import { registerAllIpcHandlers } from './ipc/ipc-registry.js'
 import { OverlayWindowController } from './windows/overlay-window.js'
-import type { PiHostRunner } from './pi-host-runner.js'
-import { createPiHostRunner } from './pi-runtime/runner.js'
+import type { StellaHostRunner } from './stella-host-runner.js'
+import { createStellaHostRunner } from './stella-host-runner.js'
 import { ensureLastResortRecoveryScripts } from './self-mod/recovery-script.js'
 import { cleanupSelectedTextProcess, getSelectedText, initSelectedTextProcess } from './selected-text.js'
 import { AuthService } from './services/auth-service.js'
@@ -46,7 +46,7 @@ export const bootstrapMainProcess = () => {
   let isQuitting = false
   let deviceId: string | null = null
   let stellaHomePath: string | null = null
-  let piHostRunner: PiHostRunner | null = null
+  let stellaHostRunner: StellaHostRunner | null = null
   let schedulerService: LocalSchedulerService | null = null
   let windowManager: WindowManager | null = null
   let overlayController: OverlayWindowController | null = null
@@ -97,7 +97,7 @@ export const bootstrapMainProcess = () => {
     isDev,
     projectDir: path.resolve(__dirname, '..'),
     sessionPartition: STELLA_SESSION_PARTITION,
-    getRunner: () => piHostRunner,
+    getRunner: () => stellaHostRunner,
     onAuthCallback: (url) => {
       windowManager?.showWindow('full')
       broadcastAuthCallback(url)
@@ -151,7 +151,7 @@ export const bootstrapMainProcess = () => {
     }
   }
 
-  const initializePiHostRunner = async () => {
+  const initializeStellaHostRunner = async () => {
     const stellaHome = await resolveStellaHome(app)
     stellaHomePath = stellaHome.homePath
     try {
@@ -172,12 +172,12 @@ export const bootstrapMainProcess = () => {
     if (!schedulerService) {
       schedulerService = new LocalSchedulerService({
         stellaHome: stellaHome.homePath,
-        getRunner: () => piHostRunner,
+        getRunner: () => stellaHostRunner,
       })
     } else {
       schedulerService.stop()
     }
-    piHostRunner = createPiHostRunner({
+    stellaHostRunner = createStellaHostRunner({
       deviceId,
       StellaHome: stellaHome.homePath,
       frontendRoot: path.resolve(__dirname, '..'),
@@ -218,20 +218,20 @@ export const bootstrapMainProcess = () => {
 
     const pendingConvexUrl = authService.getPendingConvexUrl()
     if (pendingConvexUrl) {
-      piHostRunner.setConvexUrl(pendingConvexUrl)
+      stellaHostRunner.setConvexUrl(pendingConvexUrl)
     }
-    piHostRunner.start()
+    stellaHostRunner.start()
     schedulerService.start()
   }
 
   const hardResetLocalState = async (): Promise<{ ok: true }> => {
-    const hadRunner = Boolean(piHostRunner)
+    const hadRunner = Boolean(stellaHostRunner)
 
     credentialService.cancelAll()
 
-    if (piHostRunner) {
-      piHostRunner.stop()
-      piHostRunner = null
+    if (stellaHostRunner) {
+      stellaHostRunner.stop()
+      stellaHostRunner = null
     }
     if (schedulerService) {
       schedulerService.stop()
@@ -262,7 +262,7 @@ export const bootstrapMainProcess = () => {
     ])
 
     if (hadRunner) {
-      await initializePiHostRunner()
+      await initializeStellaHostRunner()
     }
 
     uiStateService.broadcast()
@@ -287,7 +287,7 @@ export const bootstrapMainProcess = () => {
       setTimeout(() => { void getSelectedText() }, 250)
     }
 
-    await initializePiHostRunner()
+    await initializeStellaHostRunner()
 
     overlayController = new OverlayWindowController({
       preloadPath: path.join(__dirname, 'preload.js'),
@@ -348,7 +348,7 @@ export const bootstrapMainProcess = () => {
     startStellaUiServer({
       getWindow: () => windowManager?.getFullWindow() ?? null,
       frontendRoot: path.resolve(__dirname, '..'),
-      getProxy: () => piHostRunner?.getProxy() ?? null,
+      getProxy: () => stellaHostRunner?.getProxy() ?? null,
     })
     hmrMorphOrchestrator = createHmrMorphOrchestrator({
       getFullWindow: () => windowManager?.getFullWindow() ?? null,
@@ -378,7 +378,7 @@ export const bootstrapMainProcess = () => {
       system: {
         getDeviceId: () => deviceId,
         authService,
-        getPiHostRunner: () => piHostRunner,
+        getStellaHostRunner: () => stellaHostRunner,
         getStellaHomePath: () => stellaHomePath,
         externalLinkService,
         ensurePrivilegedActionApproval: (action, message, detail, event) =>
@@ -399,7 +399,7 @@ export const bootstrapMainProcess = () => {
           externalLinkService.assertPrivilegedSender(event, channel),
       },
       agent: {
-        getPiHostRunner: () => piHostRunner,
+        getStellaHostRunner: () => stellaHostRunner,
         isHostAuthAuthenticated: () => authService.getHostAuthAuthenticated(),
         frontendRoot: path.resolve(__dirname, '..'),
         assertPrivilegedSender: (event, channel) =>
@@ -423,7 +423,7 @@ export const bootstrapMainProcess = () => {
         broadcastUiState: () => uiStateService.broadcast(),
         scheduleResumeWakeWord: () => uiStateService.scheduleResumeWakeWord(),
         syncVoiceOverlay: () => uiStateService.syncVoiceOverlay(),
-        getPiHostRunner: () => piHostRunner,
+        getStellaHostRunner: () => stellaHostRunner,
         getOverlayController: () => overlayController,
         getConvexSiteUrl: () => authService.getConvexSiteUrl(),
         getAuthToken: () => authService.getAuthToken(),
@@ -472,8 +472,8 @@ export const bootstrapMainProcess = () => {
   app.on('before-quit', () => {
     isQuitting = true
     authService.stopAuthRefreshLoop()
-    if (piHostRunner) {
-      piHostRunner.killAllShells()
+    if (stellaHostRunner) {
+      stellaHostRunner.killAllShells()
     }
     schedulerService?.stop()
     bridgeManager.stopAll()
@@ -484,9 +484,9 @@ export const bootstrapMainProcess = () => {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll()
     radialGestureService.stop()
-    if (piHostRunner) {
-      piHostRunner.stop()
-      piHostRunner = null
+    if (stellaHostRunner) {
+      stellaHostRunner.stop()
+      stellaHostRunner = null
     }
     if (schedulerService) {
       schedulerService.stop()

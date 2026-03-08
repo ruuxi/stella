@@ -12,7 +12,7 @@ import type {
   IdentityMap,
   IdentityMappingSource,
 } from "./discovery-types.js";
-import { protectValue, unprotectValue } from "./protected-storage.js";
+import { protectValue, unprotectValue } from "../../packages/stella-runtime/src/storage/protected-storage.js";
 
 const log = (...args: unknown[]) => console.log("[identity-map]", ...args);
 const IDENTITY_NAME_SCOPE = "identity-map-real-name";
@@ -390,7 +390,7 @@ export async function addContacts(
       });
 
       log(
-        `Added mapping: ${contact.name} (${contact.identifier}) → ${alias.name} (${alias.identifier})`
+        `Added mapping: ${contact.name} (${contact.identifier}) â†’ ${alias.name} (${alias.identifier})`
       );
     }
   }
@@ -409,7 +409,7 @@ export function pseudonymize(text: string, map: IdentityMap): string {
     return text;
   }
 
-  // Build replacement pairs: real → alias
+  // Build replacement pairs: real â†’ alias
   const replacements: Array<{
     real: string;
     alias: string;
@@ -470,7 +470,7 @@ export function depseudonymize(text: string, map: IdentityMap): string {
     return text;
   }
 
-  // Build replacement pairs: alias → real
+  // Build replacement pairs: alias â†’ real
   const replacements: Array<{
     alias: string;
     real: string;

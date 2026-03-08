@@ -1,0 +1,6 @@
+{
+  "name": "@stella/stella-runtime",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts"
+}

@@ -1,18 +1,18 @@
 import { app, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
-import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '../../pi-runtime/extensions/stella/local-preferences.js'
-import type { PiHostRunner } from '../../pi-host-runner.js'
+import { getSyncMode, loadLocalPreferences, saveLocalPreferences } from '../../../packages/stella-runtime/src/extensions/stella/local-preferences.js'
+import type { StellaHostRunner } from '../../stella-host-runner.js'
 import type { AuthService } from '../../services/auth-service.js'
 import type { ExternalLinkService } from '../../services/external-link-service.js'
 import {
   deleteLocalLlmCredential,
   listLocalLlmCredentials,
   saveLocalLlmCredential,
-} from '../../system/llm-credentials.js'
+} from '../../../packages/stella-runtime/src/storage/llm-credentials.js'
 
 type SystemHandlersOptions = {
   getDeviceId: () => string | null
   authService: AuthService
-  getPiHostRunner: () => PiHostRunner | null
+  getStellaHostRunner: () => StellaHostRunner | null
   getStellaHomePath: () => string | null
   externalLinkService: ExternalLinkService
   ensurePrivilegedActionApproval: (
@@ -75,7 +75,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   })
 
   ipcMain.handle('host:setCloudSyncEnabled', (_event, payload: { enabled: boolean }) => {
-    options.getPiHostRunner()?.setCloudSyncEnabled(Boolean(payload?.enabled))
+    options.getStellaHostRunner()?.setCloudSyncEnabled(Boolean(payload?.enabled))
     return { ok: true }
   })
 
@@ -136,7 +136,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       throw new Error('Invalid port.')
     }
-    options.getPiHostRunner()?.killShellsByPort(port)
+    options.getStellaHostRunner()?.killShellsByPort(port)
   })
 
   ipcMain.handle('preferences:getSyncMode', () => {
