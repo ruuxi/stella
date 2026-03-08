@@ -1,7 +1,7 @@
 import { cn } from "@/shared/lib/utils";
-import { Spinner } from "@/ui/spinner";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
+import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation";
 import "./indicators.css";
 
 interface TaskIndicatorProps {
@@ -21,7 +21,11 @@ export function TaskIndicator({ tasks, className }: TaskIndicatorProps) {
     <div className={cn("task-indicator", className)}>
       {runningTasks.map((task) => (
         <div key={task.id} className="task-indicator-item">
-          <Spinner size="sm" />
+          <div className="indicator-stella">
+            <div className="indicator-stella-scale">
+              <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />
+            </div>
+          </div>
           <div className="task-indicator-content">
             <span className="task-indicator-label">
               {getAgentLabel(task.agentType)}

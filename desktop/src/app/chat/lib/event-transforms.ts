@@ -1,4 +1,10 @@
-import type { StepItem } from "@/ui/steps-container";
+export interface StepItem {
+  id: string;
+  tool: string;
+  title?: string;
+  subtitle?: string;
+  status: "pending" | "running" | "completed" | "error";
+}
 
 export type EventRecord = {
   _id: string;
