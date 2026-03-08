@@ -195,39 +195,6 @@
   color: var(--foreground);
 }
 
-/* QR code (bridge-based, WhatsApp) */
-.connect-qr {
-  display: flex;
-  justify-content: center;
-  padding: 4px 0;
-}
-
-.connect-qr img {
-  width: 200px;
-  height: 200px;
-  border-radius: var(--radius-md, 6px);
-  background: white;
-  padding: 8px;
-}
-
-/* Link URI (bridge-based, Signal) */
-.connect-link-uri {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.connect-link-uri-value {
-  font-family: var(--font-family-mono, "JetBrains Mono", monospace);
-  font-size: 11px;
-  color: var(--text-weak);
-  word-break: break-all;
-  padding: 6px 10px;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  border-radius: var(--radius-md, 6px);
-  border: 1px solid var(--border-weak);
-}
-
 /* Status + disconnect row */
 .connect-status-row {
   display: flex;
@@ -274,17 +241,6 @@
   height: 38px;
 }
 
-.connect-skeleton-qr {
-  width: 200px;
-  height: 200px;
-  margin: 0 auto;
-}
-
-.connect-skeleton-link {
-  width: 100%;
-  height: 32px;
-}
-
 /* Error state */
 .connect-error {
   font-size: 12px;
@@ -292,10 +248,4 @@
   background: rgba(255, 143, 143, 0.1);
   padding: 8px 12px;
   border-radius: var(--radius-md, 6px);
-}
-
-/* Bridge status text */
-.connect-bridge-status {
-  font-size: 12px;
-  color: var(--text-weak);
 }

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useBridgeAutoReconnect } from '@/app/integrations/hooks/use-bridge-reconnect'
 import { useOrbMessage } from '@/app/shell/hooks/use-orb-message'
 import { useUiState } from '@/context/ui-state'
 import { useWorkspace } from '@/context/workspace-state'
@@ -33,9 +32,6 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme()
   const isDev = import.meta.env.DEV
   const orbRef = useRef<FloatingOrbHandle>(null)
-
-  useBridgeAutoReconnect()
-
   const onboarding = useOnboardingOverlay()
   const { personalPages } = useLocalWorkspacePanels()
   const { activeDemo, demoClosing, handleDemoChange } = useDemoAnimation()

@@ -18,7 +18,7 @@ type RegistryOptions = {
   agent: Parameters<typeof registerAgentHandlers>[0]
   localChat: Parameters<typeof registerLocalChatHandlers>[0]
   miniBridge: Parameters<typeof registerMiniBridgeHandlers>[0]
-  store: Parameters<typeof registerStoreHandlers>[0]
+  store: Record<string, never>
   voice: Parameters<typeof registerVoiceHandlers>[0]
 }
 
