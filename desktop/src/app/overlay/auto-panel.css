@@ -4,10 +4,37 @@
   display: flex;
   flex-direction: column;
   background: var(--background);
-  border-radius: 14px;
+  border-radius: 14px 0 0 14px;
   border: 1px solid var(--border);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.12);
   overflow: hidden;
+  animation: auto-panel-slide-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auto-panel-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(80px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.auto-panel.sliding-out {
+  animation: auto-panel-slide-out 0.4s cubic-bezier(0.5, 0, 0.75, 0) both;
+}
+
+@keyframes auto-panel-slide-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(80px);
+  }
 }
 
 .auto-panel-header {
@@ -50,19 +77,80 @@
   color: var(--foreground);
 }
 
+/* ─── Scrollable content with hidden scrollbar + tapered fade ────────── */
+
 .auto-panel-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
-  min-height: 0;
+  scrollbar-width: none;
+
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
 }
+
+.auto-panel-content::-webkit-scrollbar {
+  display: none;
+}
+
+.auto-panel-content.at-top {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black 0px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+}
+
+.auto-panel-content.at-bottom {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black 100%
+  );
+}
+
+.auto-panel-content.at-top.at-bottom {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* ─── Content ────────────────────────────────────────────────────────── */
 
 .auto-panel-text {
   font-size: 13px;
   line-height: 1.6;
   color: var(--foreground);
-  white-space: pre-wrap;
-  word-break: break-word;
+}
+
+.auto-panel-content .markdown {
+  font-size: 13px;
 }
 
 .auto-panel-error {
@@ -70,16 +158,30 @@
   color: var(--error, #ef4444);
 }
 
-.auto-panel-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  background: var(--foreground-muted);
-  vertical-align: text-bottom;
-  margin-left: 1px;
-  animation: auto-panel-blink 1s step-end infinite;
+/* ─── Skeleton loader ────────────────────────────────────────────────── */
+
+.auto-panel-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
 }
 
-@keyframes auto-panel-blink {
-  50% { opacity: 0; }
+.auto-panel-skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--foreground-muted, rgba(255, 255, 255, 0.08)) 25%,
+    var(--background-hover, rgba(255, 255, 255, 0.14)) 50%,
+    var(--foreground-muted, rgba(255, 255, 255, 0.08)) 75%
+  );
+  background-size: 200% 100%;
+  animation: auto-panel-shimmer 1.5s ease-in-out infinite;
+  opacity: 0.3;
+}
+
+@keyframes auto-panel-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

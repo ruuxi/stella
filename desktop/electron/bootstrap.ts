@@ -132,6 +132,7 @@ export const bootstrapMainProcess = () => {
       updateRadialCursor: () => overlayController?.updateRadialCursor(),
       getRadialBounds: () => overlayController?.getRadialBounds() ?? null,
       showAutoPanel: (data) => overlayController?.showAutoPanel(data),
+      hideAutoPanel: () => overlayController?.hideAutoPanel(),
     },
     window: {
       isMiniShowing: () => windowManager?.isMiniShowing() ?? false,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { streamChatCompletion } from "@/infra/ai/llm";
+import { Markdown } from "@/app/chat/Markdown";
 import "./auto-panel.css";
 
 type AutoPanelProps = {
@@ -8,6 +9,18 @@ type AutoPanelProps = {
   onClose: () => void;
 };
 
+function SkeletonLoader() {
+  return (
+    <div className="auto-panel-skeleton">
+      <div className="auto-panel-skeleton-line" style={{ width: "90%" }} />
+      <div className="auto-panel-skeleton-line" style={{ width: "75%" }} />
+      <div className="auto-panel-skeleton-line" style={{ width: "85%" }} />
+      <div className="auto-panel-skeleton-line" style={{ width: "60%" }} />
+      <div className="auto-panel-skeleton-line" style={{ width: "80%" }} />
+    </div>
+  );
+}
+
 export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) {
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -15,7 +28,20 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
 
+  const [atTop, setAtTop] = useState(true);
+  const [atBottom, setAtBottom] = useState(true);
+
+  const updateEdges = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setAtTop(el.scrollTop <= 1);
+    setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+  }, []);
+
+  // Start LLM stream when windowText arrives (non-empty)
   useEffect(() => {
+    if (!windowText) return;
+
     abortRef.current = false;
     setStreamingText("");
     setIsStreaming(true);
@@ -58,23 +84,36 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
     };
   }, [windowText, windowTitle]);
 
-  // Auto-scroll to bottom during streaming
+  // Update fade edges as content grows
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [streamingText]);
+    updateEdges();
+  }, [streamingText, updateEdges]);
+
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onClose();
+      const el = panelRef.current;
+      if (!el) { onClose(); return; }
+      el.classList.add("sliding-out");
+      el.addEventListener("animationend", () => onClose(), { once: true });
     },
     [onClose],
   );
 
+  const isLoading = !windowText;
+
+  const scrollCls = [
+    "auto-panel-content",
+    atTop && "at-top",
+    atBottom && "at-bottom",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="auto-panel">
+    <div ref={panelRef} className="auto-panel">
       <div className="auto-panel-header">
         <span className="auto-panel-title">
           {windowTitle ?? "Auto"}
@@ -99,13 +138,16 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
         </button>
       </div>
 
-      <div ref={scrollRef} className="auto-panel-content">
-        {error ? (
+      <div ref={scrollRef} className={scrollCls} onScroll={updateEdges}>
+        {isLoading ? (
+          <SkeletonLoader />
+        ) : error ? (
           <p className="auto-panel-error">{error}</p>
+        ) : streamingText ? (
+          <Markdown text={streamingText} isAnimating={isStreaming} />
         ) : (
           <div className="auto-panel-text">
-            {streamingText || (isStreaming ? "" : "No response.")}
-            {isStreaming && <span className="auto-panel-cursor" />}
+            {isStreaming ? <SkeletonLoader /> : "No response."}
           </div>
         )}
       </div>
