@@ -9,8 +9,10 @@
  * 5. Wait for overlay to signal completion → cleanup
  */
 
-import { ipcMain, type BrowserWindow } from "electron";
-import type { OverlayWindowController } from "../windows/overlay-window.js";
+import { app, type BrowserWindow } from "electron";
+import { writeFile, unlink } from "node:fs/promises";
+import path from "node:path";
+import type { NativeOverlayController } from "../windows/native-overlay.js";
 
 const FORWARD_ANIM_MS = 800;
 const CAPTURE_SETTLE_DELAY_MS = 150;
@@ -24,30 +26,32 @@ export type HmrMorphOrchestrator = {
 
 export function createHmrMorphOrchestrator(deps: {
   getFullWindow: () => BrowserWindow | null;
-  getOverlayController: () => OverlayWindowController | null;
+  getNativeOverlay: () => NativeOverlayController | null;
 }): HmrMorphOrchestrator {
 
-  const captureWindow = async (win: BrowserWindow): Promise<string | null> => {
+  const captureToFile = async (win: BrowserWindow, label: string): Promise<string | null> => {
     try {
       const image = await win.webContents.capturePage();
-      return image.toDataURL();
+      const png = image.toPNG();
+      const filePath = path.join(app.getPath("temp"), `stella_morph_${label}_${Date.now()}.png`);
+      await writeFile(filePath, png);
+      return filePath;
     } catch {
       return null;
     }
   };
 
-  const waitForMorphDone = (): Promise<void> => {
+  const cleanupFile = (filePath: string | null) => {
+    if (filePath) void unlink(filePath).catch(() => {});
+  };
+
+  const waitForMorphDone = (overlay: NativeOverlayController): Promise<void> => {
     return new Promise((resolve) => {
-      const handler = () => {
+      const timer = setTimeout(resolve, MORPH_DONE_TIMEOUT_MS);
+      overlay.onMorphDone(() => {
         clearTimeout(timer);
         resolve();
-      };
-      const timer = setTimeout(() => {
-        ipcMain.removeListener("overlay:morphDone", handler);
-        resolve();
-      }, MORPH_DONE_TIMEOUT_MS);
-
-      ipcMain.once("overlay:morphDone", handler);
+      });
     });
   };
 
@@ -75,23 +79,23 @@ export function createHmrMorphOrchestrator(deps: {
     resumeHmr: () => Promise<void>;
   }): Promise<void> => {
     const fullWindow = deps.getFullWindow();
-    const overlayController = deps.getOverlayController();
+    const nativeOverlay = deps.getNativeOverlay();
 
-    if (!fullWindow || fullWindow.isDestroyed() || !overlayController) {
+    if (!fullWindow || fullWindow.isDestroyed() || !nativeOverlay) {
       await opts.resumeHmr();
       return;
     }
 
-    // 1. Capture old state
-    const oldScreenshot = await captureWindow(fullWindow);
+    // 1. Capture old state to temp file
+    const oldScreenshot = await captureToFile(fullWindow, "old");
     if (!oldScreenshot) {
       await opts.resumeHmr();
       return;
     }
 
-    // 2. Start forward morph on overlay
+    // 2. Start forward morph on native overlay
     const bounds = fullWindow.getBounds();
-    overlayController.startMorphForward(oldScreenshot, bounds);
+    nativeOverlay.startMorphForward(oldScreenshot, bounds);
 
     // 3. While the forward animation plays, resume HMR in parallel
     const hmrDone = (async () => {
@@ -123,23 +127,29 @@ export function createHmrMorphOrchestrator(deps: {
     await hmrDone;
 
     if (fullWindow.isDestroyed()) {
-      overlayController.endMorph();
+      nativeOverlay.endMorph();
+      cleanupFile(oldScreenshot);
       return;
     }
 
-    // 6. Capture new state
-    const newScreenshot = await captureWindow(fullWindow);
+    // 6. Capture new state to temp file
+    const newScreenshot = await captureToFile(fullWindow, "new");
     if (!newScreenshot) {
-      overlayController.endMorph();
+      nativeOverlay.endMorph();
+      cleanupFile(oldScreenshot);
       return;
     }
 
     // 7. Start reverse immediately — no pause
-    overlayController.startMorphReverse(newScreenshot);
+    nativeOverlay.startMorphReverse(newScreenshot);
 
     // 8. Wait for completion
-    await waitForMorphDone();
-    overlayController.endMorph();
+    await waitForMorphDone(nativeOverlay);
+    nativeOverlay.endMorph();
+
+    // 9. Cleanup temp files
+    cleanupFile(oldScreenshot);
+    cleanupFile(newScreenshot);
   };
 
   return { runTransition };
