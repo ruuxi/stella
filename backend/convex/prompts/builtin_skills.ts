@@ -38,7 +38,7 @@ Vite compiles the file on demand — can import any installed frontend dep (reac
 
 ### Workflow
 1. Write the component:
-   \`Write(file_path="frontend/workspace/panels/my-chart.tsx", content="...")\`
+   \`Write(file_path="desktop/.stella/workspace/panels/my-chart.tsx", content="...")\`
 2. Report the panel name so the user can find it in the workspace/home pages.
 
 ### Source Format
@@ -74,7 +74,7 @@ Write to the same file again, then report the panel name again — Vite recompil
 For multi-file apps that need their own npm dependencies, persistent state, or complex project structure.
 
 ### Workflow
-1. Scaffold: \`Bash(command="node frontend/workspace/create-app.js my-app")\`
+1. Scaffold: \`Bash(command="cd desktop && node scripts/create-workspace-app.mjs my-app")\`
 2. Add deps: \`Bash(command="cd ~/.stella/apps/my-app && bun add three @react-three/fiber")\`
 3. Edit files: Use Write/Edit on \`~/.stella/apps/my-app/src/App.tsx\` etc.
 4. Start dev server: \`Bash(command="cd ~/.stella/apps/my-app && bunx vite --port 5180", run_in_background=true)\`
@@ -191,7 +191,7 @@ const FRONTEND_ARCHITECTURE: BuiltinSkill = {
 
 ## Source Layout
 \`\`\`
-frontend/src/
+desktop/src/
 ├── main.tsx                    # Entry point, provider nesting, CSS imports
 ├── App.tsx                     # Window router (full/mini/radial/region)
 ├── app/state/
@@ -328,7 +328,7 @@ const SELF_MODIFICATION: BuiltinSkill = {
   id: "self-modification",
   name: "Self-Modification Guidelines",
   description:
-    "Guidelines for modifying Stella's own UI. Activate before making changes to frontend/src/.",
+    "Guidelines for modifying Stella's own UI. Activate before making changes to desktop/src/.",
   agentTypes: ["general"],
   tags: ["self-mod", "ui", "frontend"],
   source: "builtin",
@@ -338,7 +338,7 @@ const SELF_MODIFICATION: BuiltinSkill = {
 You can modify Stella's own interface - UI components, styles, layouts, and the slot system.
 
 ## How It Works
-- Writes go directly to disk in \`frontend/src/\`.
+- Writes go directly to disk in \`desktop/src/\`.
 - Stella's self-mod flow pauses visible HMR during active edits, then resumes updates when edits complete.
 - Feature provenance and undo are Git-based; feature commits should use \`[feature:<id>]\` tags.
 
@@ -354,7 +354,7 @@ Activate the **frontend-architecture** skill to load the full design system refe
 - Use CSS custom properties for colors - never hardcode
 - Use \`@/*\` import paths, never relative beyond one level
 - Component files are paired: \`.tsx\` + \`.css\`
-- After modifying files, run \`Bash("cd frontend && bunx tsc --noEmit --pretty 2>&1 | head -40")\` to catch type errors
+- After modifying files, run \`Bash("cd desktop && bunx tsc --noEmit --pretty 2>&1 | head -40")\` to catch type errors
 - Commit modifications with a stable \`[feature:<id>]\` tag in commit messages
 - Include dependency file updates (\`package.json\` + lockfile) in the same feature commit trail
 
