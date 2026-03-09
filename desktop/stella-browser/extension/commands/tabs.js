@@ -170,7 +170,7 @@ export async function handleTabList(command) {
   return {
     id: command.id,
     success: true,
-    data: { tabs: tabList, activeIndex },
+    data: { tabs: tabList, active: activeIndex },
   };
 }
 

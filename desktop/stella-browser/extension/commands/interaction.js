@@ -360,39 +360,43 @@ export async function handleClipboard(command) {
   const tab = await getActiveTab();
   const operation = command.operation;
   if (!operation) throw new Error('Operation is required for clipboard (copy/paste/read)');
+  const platformInfo = await chrome.runtime.getPlatformInfo();
+  const useMeta = platformInfo.os === 'mac';
+  const modifierKey = useMeta ? 'Meta' : 'Control';
+  const modifierMask = useMeta ? 4 : 2;
 
   switch (operation) {
     case 'copy': {
       await ensureDebugger(tab.id);
-      // Ctrl+C
+      // Use Command on macOS, Control elsewhere.
       await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-        type: 'rawKeyDown', key: 'Control', modifiers: 2,
+        type: 'rawKeyDown', key: modifierKey, modifiers: modifierMask,
       });
       await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-        type: 'rawKeyDown', key: 'c', modifiers: 2,
+        type: 'rawKeyDown', key: 'c', modifiers: modifierMask,
       });
       await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-        type: 'keyUp', key: 'c', modifiers: 2,
+        type: 'keyUp', key: 'c', modifiers: modifierMask,
       });
       await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-        type: 'keyUp', key: 'Control',
+        type: 'keyUp', key: modifierKey,
       });
       return { id: command.id, success: true, data: { copied: true } };
     }
     case 'paste': {
       await ensureDebugger(tab.id);
-      // Ctrl+V
+      // Use Command on macOS, Control elsewhere.
       await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-        type: 'rawKeyDown', key: 'Control', modifiers: 2,
+        type: 'rawKeyDown', key: modifierKey, modifiers: modifierMask,
       });
       await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-        type: 'rawKeyDown', key: 'v', modifiers: 2,
+        type: 'rawKeyDown', key: 'v', modifiers: modifierMask,
       });
       await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-        type: 'keyUp', key: 'v', modifiers: 2,
+        type: 'keyUp', key: 'v', modifiers: modifierMask,
       });
       await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-        type: 'keyUp', key: 'Control',
+        type: 'keyUp', key: modifierKey,
       });
       return { id: command.id, success: true, data: { pasted: true } };
     }

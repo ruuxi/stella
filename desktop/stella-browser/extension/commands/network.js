@@ -48,6 +48,50 @@ function startTracking(tabId) {
   });
 }
 
+async function ensureNetworkTracking(tabId) {
+  if (!trackedRequests.has(tabId)) {
+    await ensureDebugger(tabId);
+    await chrome.debugger.sendCommand({ tabId }, 'Network.enable');
+    startTracking(tabId);
+  }
+}
+
+function findTrackedResponse(tabId, url) {
+  const state = trackedRequests.get(tabId);
+  if (!state) return null;
+
+  for (let index = state.requests.length - 1; index >= 0; index--) {
+    const request = state.requests[index];
+    if (request.url.includes(url) && request.status != null) {
+      return request;
+    }
+  }
+
+  return null;
+}
+
+async function waitForTrackedResponse(tabId, url, timeout = 30000) {
+  const existing = findTrackedResponse(tabId, url);
+  if (existing) return existing;
+
+  return await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      offCdpEvent(tabId, 'Network.responseReceived', onResponse);
+      reject(new Error(`Timed out waiting for response matching: ${url}`));
+    }, timeout);
+
+    const onResponse = (params) => {
+      const request = findTrackedResponse(tabId, url);
+      if (!request || request.requestId !== params.requestId) return;
+      clearTimeout(timer);
+      offCdpEvent(tabId, 'Network.responseReceived', onResponse);
+      resolve(request);
+    };
+
+    onCdpEvent(tabId, 'Network.responseReceived', onResponse);
+  });
+}
+
 export async function handleRequests(command) {
   const tab = await getActiveTab();
 
@@ -57,11 +101,7 @@ export async function handleRequests(command) {
   }
 
   // Start tracking if not already
-  if (!trackedRequests.has(tab.id)) {
-    await ensureDebugger(tab.id);
-    await chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.enable');
-    startTracking(tab.id);
-  }
+  await ensureNetworkTracking(tab.id);
 
   const state = trackedRequests.get(tab.id);
   let requests = state ? state.requests : [];
@@ -95,21 +135,32 @@ export async function handleRequests(command) {
 
 export async function handleResponseBody(command) {
   const tab = await getActiveTab();
-  const requestId = command.requestId;
-  if (!requestId) throw new Error('requestId is required for responsebody');
+  if (!command.url) throw new Error('url is required for responsebody');
 
-  await ensureDebugger(tab.id);
+  await ensureNetworkTracking(tab.id);
+  const request = await waitForTrackedResponse(tab.id, command.url, command.timeout);
   const result = await chrome.debugger.sendCommand(
     { tabId: tab.id },
     'Network.getResponseBody',
-    { requestId }
+    { requestId: request.requestId }
   );
+
+  let body = result.body;
+  if (!result.base64Encoded) {
+    try {
+      body = JSON.parse(result.body);
+    } catch {
+      // Keep the plain text body when it is not JSON.
+    }
+  }
 
   return {
     id: command.id,
     success: true,
     data: {
-      body: result.body,
+      url: request.url,
+      status: request.status,
+      body,
       base64Encoded: result.base64Encoded,
     },
   };

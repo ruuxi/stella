@@ -57,6 +57,20 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             println!("{}", count);
             return;
         }
+        // Site mod toggle
+        if action == Some("site_mod_toggle") {
+            if let Some(enabled) = data.get("enabled").and_then(|v| v.as_bool()) {
+                let pattern = data.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
+                let verb = if enabled { "Enabled" } else { "Disabled" };
+                println!(
+                    "{} {} mod for {}",
+                    color::success_indicator(),
+                    verb,
+                    color::bold(pattern)
+                );
+                return;
+            }
+        }
         // Boolean results
         if let Some(visible) = data.get("visible").and_then(|v| v.as_bool()) {
             println!("{}", visible);
@@ -428,6 +442,21 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             } else {
                 println!("No mod found for {}", pattern);
             }
+            return;
+        }
+        if let Some(enabled) = data.get("enabled").and_then(|v| v.as_bool()) {
+            let pattern = data.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
+            let state = if enabled {
+                color::green("enabled")
+            } else {
+                color::yellow("disabled")
+            };
+            println!(
+                "{} Site mod {} is now {}",
+                color::success_indicator(),
+                color::bold(pattern),
+                state
+            );
             return;
         }
 

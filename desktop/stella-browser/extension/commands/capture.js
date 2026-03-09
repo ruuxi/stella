@@ -6,19 +6,93 @@ import { setRefMap, resolveSelector, buildRoleMatcherScript } from '../lib/selec
 import { executeSnapshot } from '../lib/snapshot.js';
 import { ensureDebugger } from '../lib/debugger.js';
 
+function buildElementExpression(selector, onFoundSource) {
+  const resolved = resolveSelector(selector);
+  if (resolved.isRef) {
+    const finder = buildRoleMatcherScript(resolved.role, resolved.name, resolved.nth);
+    return `(() => { const el = ${finder.trim()}; ${onFoundSource} })()`;
+  }
+  return `(() => { const el = document.querySelector(${JSON.stringify(resolved.css)}); ${onFoundSource} })()`;
+}
+
+async function evaluateExpression(tabId, expression) {
+  await ensureDebugger(tabId);
+  const result = await chrome.debugger.sendCommand(
+    { tabId },
+    'Runtime.evaluate',
+    { expression, returnByValue: true }
+  );
+
+  if (result.exceptionDetails) {
+    const msg = result.exceptionDetails.exception?.description || result.exceptionDetails.text;
+    throw new Error(msg);
+  }
+
+  return result.result?.value;
+}
+
+async function getSelectorClip(tabId, selector) {
+  const clip = await evaluateExpression(
+    tabId,
+    buildElementExpression(
+      selector,
+      `
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return {
+          x: rect.left + window.scrollX,
+          y: rect.top + window.scrollY,
+          width: rect.width,
+          height: rect.height,
+          scale: 1,
+        };
+      `
+    )
+  );
+
+  if (!clip) {
+    throw new Error(`Selector not found or not visible: ${selector}`);
+  }
+
+  return clip;
+}
+
 export async function handleScreenshot(command) {
   const tab = await getActiveTab();
+  if (command.path) {
+    throw new Error('Custom screenshot paths are not supported in extension mode');
+  }
 
-  // Use chrome.tabs.captureVisibleTab for viewport screenshot (no debugger needed)
   const format = command.format || 'jpeg';
   const quality = command.quality ?? (format === 'jpeg' ? 60 : undefined);
-  const dataUrl = await chrome.tabs.captureVisibleTab(null, {
+  /** @type {Record<string, unknown>} */
+  const params = {
     format,
-    quality,
-  });
+    captureBeyondViewport: Boolean(command.fullPage || command.selector),
+  };
+  if (format === 'jpeg') {
+    params.quality = quality;
+  }
 
-  // Strip data URL prefix to get base64
-  const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+  await ensureDebugger(tab.id);
+
+  if (command.fullPage) {
+    const metrics = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.getLayoutMetrics');
+    const contentSize = metrics.contentSize;
+    params.clip = {
+      x: 0,
+      y: 0,
+      width: contentSize.width,
+      height: contentSize.height,
+      scale: 1,
+    };
+  } else if (command.selector) {
+    params.clip = await getSelectorClip(tab.id, command.selector);
+  }
+
+  const result = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.captureScreenshot', params);
+  const base64 = result.data;
 
   return {
     id: command.id,
@@ -68,24 +142,26 @@ export async function handleSnapshot(command) {
 
 export async function handleContent(command) {
   const tab = await getActiveTab();
+  let html = '';
 
-  const [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: (selector) => {
-      if (selector) {
-        const el = document.querySelector(selector);
-        return el ? el.innerHTML : null;
-      }
-      return document.documentElement.outerHTML;
-    },
-    args: [command.selector || null],
-    world: 'MAIN',
-  });
+  if (command.selector) {
+    html =
+      (await evaluateExpression(
+        tab.id,
+        buildElementExpression(command.selector, 'return el ? el.innerHTML : null;')
+      )) || '';
+  } else {
+    html =
+      (await evaluateExpression(
+        tab.id,
+        'document.documentElement ? document.documentElement.outerHTML : ""'
+      )) || '';
+  }
 
   return {
     id: command.id,
     success: true,
-    data: { content: result?.result || '' },
+    data: { html },
   };
 }
 
@@ -95,27 +171,11 @@ export async function handleEvaluate(command) {
 
   if (!expression) throw new Error('Expression is required for evaluate');
 
-  // Use CDP Runtime.evaluate to bypass CSP restrictions on new Function/eval
-  await ensureDebugger(tab.id);
-  const result = await chrome.debugger.sendCommand(
-    { tabId: tab.id },
-    'Runtime.evaluate',
-    { expression, returnByValue: true }
-  );
-
-  if (result.exceptionDetails) {
-    const msg = result.exceptionDetails.exception?.description || result.exceptionDetails.text;
-    throw new Error(msg);
-  }
-
-  const value = result.result?.value;
+  const value = await evaluateExpression(tab.id, expression);
   return {
     id: command.id,
     success: true,
-    data: {
-      value: typeof value === 'object' ? JSON.stringify(value) : String(value ?? ''),
-      type: typeof value,
-    },
+    data: { result: value },
   };
 }
 
@@ -134,20 +194,10 @@ export async function handleGetText(command) {
     script = `(() => { const el = document.querySelector(${JSON.stringify(resolved.css)}); return el ? el.textContent.trim() : null; })()`;
   }
 
-  await ensureDebugger(tab.id);
-  const evalResult = await chrome.debugger.sendCommand(
-    { tabId: tab.id }, 'Runtime.evaluate',
-    { expression: script, returnByValue: true }
-  );
-
-  if (evalResult.exceptionDetails) {
-    throw new Error(evalResult.exceptionDetails.exception?.description || evalResult.exceptionDetails.text);
-  }
-
   return {
     id: command.id,
     success: true,
-    data: { text: evalResult.result?.value ?? '' },
+    data: { text: (await evaluateExpression(tab.id, script)) ?? '' },
   };
 }
 
@@ -168,20 +218,10 @@ export async function handleGetAttribute(command) {
     script = `(() => { const el = document.querySelector(${JSON.stringify(resolved.css)}); return el ? el.getAttribute(${JSON.stringify(attribute)}) : null; })()`;
   }
 
-  await ensureDebugger(tab.id);
-  const evalResult = await chrome.debugger.sendCommand(
-    { tabId: tab.id }, 'Runtime.evaluate',
-    { expression: script, returnByValue: true }
-  );
-
-  if (evalResult.exceptionDetails) {
-    throw new Error(evalResult.exceptionDetails.exception?.description || evalResult.exceptionDetails.text);
-  }
-
   return {
     id: command.id,
     success: true,
-    data: { value: evalResult.result?.value },
+    data: { value: await evaluateExpression(tab.id, script) },
   };
 }
 

@@ -1673,13 +1673,14 @@ async function handleClipboard(
   browser: BrowserManager
 ): Promise<Response> {
   const page = browser.getPage();
+  const shortcutModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
 
   switch (command.operation) {
     case 'copy':
-      await page.keyboard.press('Control+c');
+      await page.keyboard.press(`${shortcutModifier}+c`);
       return successResponse(command.id, { copied: true });
     case 'paste':
-      await page.keyboard.press('Control+v');
+      await page.keyboard.press(`${shortcutModifier}+v`);
       return successResponse(command.id, { pasted: true });
     case 'read': {
       const text = await page.evaluate('navigator.clipboard.readText()');
