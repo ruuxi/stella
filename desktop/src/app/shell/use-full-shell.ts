@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { animate } from "motion";
 
 const SCROLL_THRESHOLD = 100;
 const TOP_LOAD_THRESHOLD = 48;
@@ -91,13 +92,6 @@ const restoreTurnAnchor = (
   return true;
 };
 
-/** Spring-like easing: critically damped (no bounce), fast deceleration */
-function springEase(t: number): number {
-  return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
-}
-
-const SPRING_SCROLL_DURATION = 350;
-
 export function useScrollManagement({
   itemCount = 0,
   hasOlderEvents = false,
@@ -108,7 +102,7 @@ export function useScrollManagement({
   const [isNearBottom, setIsNearBottom] = useState(true);
   const isNearBottomRef = useRef(true);
   const scrollRafRef = useRef<number | null>(null);
-  const springScrollRafRef = useRef<number | null>(null);
+  const springScrollRef = useRef<ReturnType<typeof animate> | null>(null);
   const prependAnchorRef = useRef<PrependAnchorSnapshot | null>(null);
   const continueLoadingOlderRef = useRef(false);
 
@@ -125,39 +119,24 @@ export function useScrollManagement({
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    // Cancel any in-progress spring scroll
-    if (springScrollRafRef.current !== null) {
-      cancelAnimationFrame(springScrollRafRef.current);
-      springScrollRafRef.current = null;
-    }
+    springScrollRef.current?.stop();
 
     if (behavior === "instant") {
       container.scrollTo({ top: container.scrollHeight, behavior: "instant" });
       return;
     }
 
-    // Spring-based smooth scroll (matching OpenCode's FAST_SPRING)
+    // Spring scroll using motion (matching OpenCode's FAST_SPRING)
     const start = container.scrollTop;
     const target = container.scrollHeight - container.clientHeight;
-    const distance = target - start;
+    if (Math.abs(target - start) < 1) return;
 
-    if (Math.abs(distance) < 1) return;
-
-    const startTime = performance.now();
-
-    const animate = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / SPRING_SCROLL_DURATION, 1);
-      container.scrollTop = start + distance * springEase(progress);
-
-      if (progress < 1) {
-        springScrollRafRef.current = requestAnimationFrame(animate);
-      } else {
-        springScrollRafRef.current = null;
-      }
-    };
-
-    springScrollRafRef.current = requestAnimationFrame(animate);
+    springScrollRef.current = animate(start, target, {
+      type: "spring",
+      duration: 0.35,
+      bounce: 0,
+      onUpdate: (v) => { container.scrollTop = v; },
+    });
   }, []);
 
   const resetScrollState = useCallback(() => {
@@ -234,9 +213,7 @@ export function useScrollManagement({
       if (scrollRafRef.current !== null) {
         cancelAnimationFrame(scrollRafRef.current);
       }
-      if (springScrollRafRef.current !== null) {
-        cancelAnimationFrame(springScrollRafRef.current);
-      }
+      springScrollRef.current?.stop();
     };
   }, []);
 

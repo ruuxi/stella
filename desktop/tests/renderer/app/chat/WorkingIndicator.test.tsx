@@ -1,20 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { WorkingIndicator } from "../../../../src/app/chat/WorkingIndicator";
+
+/** Helper: TextShimmer wraps each char in a <span> and converts spaces to
+ *  non-breaking spaces (\u00A0), so getByText won't match.
+ *  Query .working-status textContent and normalize NBSP back to regular spaces. */
+const getStatusText = (container: HTMLElement) =>
+  (container.querySelector(".working-status")?.textContent ?? "").replace(/\u00A0/g, " ");
 
 describe("WorkingIndicator", () => {
   it("shows explicit status when provided", () => {
-    render(<WorkingIndicator status="Custom status text" />);
-    expect(screen.getByText("Custom status text")).toBeTruthy();
+    const { container } = render(<WorkingIndicator status="Custom status text" />);
+    expect(getStatusText(container)).toBe("Custom status text");
   });
 
   it("shows task agent label and description", () => {
     const tasks = [
       { id: "task-1", agentType: "general", status: "running" as const, description: "Processing data" },
     ];
-    render(<WorkingIndicator tasks={tasks} />);
-    expect(screen.getByText(/Working/)).toBeTruthy();
-    expect(screen.getByText(/Processing data/)).toBeTruthy();
+    const { container } = render(<WorkingIndicator tasks={tasks} />);
+    expect(getStatusText(container)).toContain("Working");
+    expect(getStatusText(container)).toContain("Processing data");
   });
 
   it("maps agent types to labels", () => {
@@ -28,91 +34,89 @@ describe("WorkingIndicator", () => {
 
     for (const { type, label } of agentTypes) {
       const tasks = [{ id: "t1", agentType: type, status: "running" as const, description: "" }];
-      const { unmount } = render(<WorkingIndicator tasks={tasks} />);
-      expect(screen.getByText(label)).toBeTruthy();
+      const { container, unmount } = render(<WorkingIndicator tasks={tasks} />);
+      expect(getStatusText(container)).toBe(label);
       unmount();
     }
   });
 
   it("falls back to computeStatus for toolName", () => {
-    render(<WorkingIndicator toolName="read" />);
-    expect(screen.getByText("Gathering context")).toBeTruthy();
+    const { container } = render(<WorkingIndicator toolName="read" />);
+    expect(getStatusText(container)).toBe("Gathering context");
   });
 
   it("shows Thinking for isReasoning", () => {
-    render(<WorkingIndicator isReasoning />);
-    expect(screen.getByText("Thinking")).toBeTruthy();
+    const { container } = render(<WorkingIndicator isReasoning />);
+    expect(getStatusText(container)).toBe("Thinking");
   });
 
   it("shows Responding for isResponding", () => {
-    render(<WorkingIndicator isResponding />);
-    expect(screen.getByText("Responding")).toBeTruthy();
+    const { container } = render(<WorkingIndicator isResponding />);
+    expect(getStatusText(container)).toBe("Responding");
   });
 
   it("shows duration when provided", () => {
-    render(<WorkingIndicator status="Working" duration="3s" />);
-    expect(screen.getByText("3s")).toBeTruthy();
+    const { container } = render(<WorkingIndicator status="Working" duration="3s" />);
+    const durationEl = container.querySelector(".working-duration");
+    expect(durationEl?.textContent).toBe("3s");
   });
 
   it("does not show duration when not provided", () => {
-    render(<WorkingIndicator status="Working" />);
-    expect(screen.queryByText(/\d+s/)).toBeNull();
+    const { container } = render(<WorkingIndicator status="Working" />);
+    const durationEl = container.querySelector(".working-duration");
+    expect(durationEl).toBeNull();
   });
 
   it("shows default message when no props given", () => {
-    render(<WorkingIndicator />);
-    expect(screen.getByText("Considering next steps")).toBeTruthy();
+    const { container } = render(<WorkingIndicator />);
+    expect(getStatusText(container)).toBe("Considering next steps");
   });
 
   it("prioritizes status over tasks and toolName", () => {
     const tasks = [
       { id: "t1", agentType: "general", status: "running" as const, description: "Analyzing" },
     ];
-    render(<WorkingIndicator status="Override" tasks={tasks} toolName="bash" />);
-    expect(screen.getByText("Override")).toBeTruthy();
+    const { container } = render(<WorkingIndicator status="Override" tasks={tasks} toolName="bash" />);
+    expect(getStatusText(container)).toBe("Override");
   });
 
   it("uses unknown agent type as-is for label", () => {
     const tasks = [
       { id: "t1", agentType: "custom_agent", status: "running" as const, description: "" },
     ];
-    render(<WorkingIndicator tasks={tasks} />);
-    expect(screen.getByText("custom_agent")).toBeTruthy();
+    const { container } = render(<WorkingIndicator tasks={tasks} />);
+    expect(getStatusText(container)).toBe("custom_agent");
   });
 
   it("shows task label without description when description is empty", () => {
     const tasks = [
       { id: "t1", agentType: "explore", status: "running" as const, description: "" },
     ];
-    render(<WorkingIndicator tasks={tasks} />);
-    // Should just show "Exploring" without the middle dot separator
-    const statusEl = document.querySelector(".working-status");
-    expect(statusEl?.textContent).toBe("Exploring");
+    const { container } = render(<WorkingIndicator tasks={tasks} />);
+    expect(getStatusText(container)).toBe("Exploring");
   });
 
   it("shows task label with middle dot and description", () => {
     const tasks = [
       { id: "t1", agentType: "browser", status: "running" as const, description: "Loading page" },
     ];
-    render(<WorkingIndicator tasks={tasks} />);
-    const statusEl = document.querySelector(".working-status");
-    // \u00b7 is the middle dot
-    expect(statusEl?.textContent).toContain("Browsing");
-    expect(statusEl?.textContent).toContain("Loading page");
+    const { container } = render(<WorkingIndicator tasks={tasks} />);
+    expect(getStatusText(container)).toContain("Browsing");
+    expect(getStatusText(container)).toContain("Loading page");
   });
 
   it("prioritizes tasks over toolName when both provided", () => {
     const tasks = [
       { id: "t1", agentType: "general", status: "running" as const, description: "Processing" },
     ];
-    render(<WorkingIndicator tasks={tasks} toolName="bash" />);
-    expect(screen.getByText(/Working/)).toBeTruthy();
-    expect(screen.queryByText("Running commands")).toBeNull();
+    const { container } = render(<WorkingIndicator tasks={tasks} toolName="bash" />);
+    expect(getStatusText(container)).toContain("Working");
+    expect(getStatusText(container)).not.toContain("Running commands");
   });
 
   it("falls back to computeStatus when tasks is empty array", () => {
-    render(<WorkingIndicator tasks={[]} toolName="grep" />);
-    expect(screen.getByText("Searching the codebase")).toBeTruthy();
+    const { container } = render(<WorkingIndicator tasks={[]} toolName="grep" />);
+    expect(getStatusText(container)).toBe("Searching the codebase");
   });
 
   it("applies custom className", () => {
@@ -122,10 +126,10 @@ describe("WorkingIndicator", () => {
     expect(indicator!.classList.contains("extra-class")).toBe(true);
   });
 
-  it("renders a spinner", () => {
+  it("renders the Stella animation indicator", () => {
     const { container } = render(<WorkingIndicator status="Working" />);
-    const spinner = container.querySelector("[data-component='spinner']");
-    expect(spinner).toBeTruthy();
+    const stella = container.querySelector(".indicator-stella");
+    expect(stella).toBeTruthy();
   });
 
   it("renders duration with separator element", () => {
@@ -141,9 +145,8 @@ describe("WorkingIndicator", () => {
       { id: "t1", agentType: "explore", status: "running" as const, description: "First task" },
       { id: "t2", agentType: "browser", status: "running" as const, description: "Second task" },
     ];
-    render(<WorkingIndicator tasks={tasks} />);
-    const statusEl = document.querySelector(".working-status");
-    expect(statusEl?.textContent).toContain("Exploring");
-    expect(statusEl?.textContent).toContain("First task");
+    const { container } = render(<WorkingIndicator tasks={tasks} />);
+    expect(getStatusText(container)).toContain("Exploring");
+    expect(getStatusText(container)).toContain("First task");
   });
 });

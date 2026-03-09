@@ -16,17 +16,30 @@
   pointer-events: auto;
 }
 
-/* === Default: pill-shaped single row === */
+/* === Shell: visual container with animated height + border-radius === */
+.composer-shell {
+  width: 100%;
+  max-width: min(40rem, calc(100% - 48px));
+  background: var(--background);
+  border-radius: 999px; /* CSS fallback; overridden by motion inline style */
+  box-shadow: var(--shadow-md);
+  overflow: clip;
+  transition: box-shadow 200ms ease;
+}
+
+/* Focus glow — subtle ring when textarea is focused */
+.composer-shell:focus-within {
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+/* === Form: layout only, no visual decoration === */
 .composer-form {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  max-width: min(40rem, calc(100% - 48px));
-  background: var(--background);
-  border-radius: 999px;
-  box-shadow: var(--shadow-md);
   min-height: 48px;
   padding: 8px;
 }
@@ -71,7 +84,6 @@
 .composer-form.expanded {
   flex-direction: column;
   align-items: stretch;
-  border-radius: 20px;
   padding: 0;
   min-height: auto;
 }
@@ -251,7 +263,7 @@
   display: inline-flex;
 }
 
-/* Submit button - circular */
+/* Submit button - circular, spring animation handled by motion */
 .composer-submit {
   display: inline-flex;
   align-items: center;
@@ -264,16 +276,18 @@
   border: none;
   color: var(--primary-foreground);
   cursor: default;
-  transition: opacity 0.15s ease;
-}
-
-.composer-submit:hover:not(:disabled) {
-  opacity: 0.9;
 }
 
 .composer-submit:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Reduced motion — motion library handles spring animations natively;
+   only disable the remaining box-shadow CSS transition here. */
+@media (prefers-reduced-motion: reduce) {
+  .composer-shell {
+    transition: none;
+  }
 }
 
 /* Image attachments area */
