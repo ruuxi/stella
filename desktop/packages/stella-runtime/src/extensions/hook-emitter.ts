@@ -1,5 +1,5 @@
 /**
- * Hook emitter — dispatches lifecycle events to registered hooks.
+ * Hook emitter - dispatches lifecycle events to registered hooks.
  */
 
 import type {
@@ -43,7 +43,7 @@ export class HookEmitter {
       return true;
     });
 
-    let lastResult: HookEventMap[E]["result"] | void;
+    let lastResult: HookEventMap[E]["result"] | void = undefined;
 
     for (const hook of matching) {
       try {

@@ -1,14 +1,12 @@
-/**
- * Extension system type definitions.
- *
- * Extensions are auto-discovered from the stella-agents directory:
- *   tools/*.tool.ts     — Custom tool definitions
- *   hooks/*.hook.ts     — Lifecycle hooks
- *   providers/*.provider.ts — Custom LLM providers
- *   prompts/*.prompt.md — Reusable prompt templates
- *   skills/*/SKILL.md   — Agent skills (already supported)
- *   agents/*/AGENT.md   — Agent definitions (already supported)
- */
+// Extension system type definitions.
+//
+// Extensions are auto-discovered from the stella-agents directory:
+//   tools/<name>.tool.ts       - Custom tool definitions
+//   hooks/<name>.hook.ts       - Lifecycle hooks
+//   providers/<name>.provider.ts - Custom LLM providers
+//   prompts/<name>.prompt.md   - Reusable prompt templates
+//   skills/<name>/SKILL.md     - Agent skills (already supported)
+//   agents/<name>/AGENT.md     - Agent definitions (already supported)
 
 import type { ToolContext, ToolResult } from "../tools/types.js";
 
@@ -136,7 +134,7 @@ export interface HookEventMap {
 export interface HookDefinition<E extends HookEvent = HookEvent> {
   /** Which lifecycle event to hook into. */
   event: E;
-  /** Optional filter — only trigger for matching tools or agent types. */
+  /** Optional filter - only trigger for matching tools or agent types. */
   filter?: { tool?: string; agentType?: string };
   /** Hook handler. Return a result object to modify behavior, or void to observe only. */
   handler(
