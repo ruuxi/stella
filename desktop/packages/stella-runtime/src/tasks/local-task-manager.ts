@@ -194,6 +194,9 @@ const getFsLockKey = (
   return null;
 };
 
+const isTaskCreateTool = (toolName: string): boolean =>
+  toolName === "Task" || toolName === "TaskCreate";
+
 export class LocalTaskManager implements TaskToolApi {
   private readonly maxConcurrent: number;
   private readonly opts: LocalTaskManagerOpts;
@@ -318,9 +321,13 @@ export class LocalTaskManager implements TaskToolApi {
           statusText: `Using ${ev.toolName}`,
         }),
         toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
+          if (task.storageMode === "cloud" && isTaskCreateTool(toolName) && task.cloudCreatePromise) {
+            await task.cloudCreatePromise.catch(() => undefined);
+          }
           const scopedContext: ToolContext = {
             ...toolContext,
             taskId: task.id,
+            ...(task.cloudTaskId ? { cloudTaskId: task.cloudTaskId } : {}),
             taskDepth: task.taskDepth,
             maxTaskDepth: context.maxTaskDepth,
             delegationAllowlist: context.delegationAllowlist,

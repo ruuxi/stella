@@ -7,7 +7,7 @@ const mockChatStoreAppendEvent = vi.fn(() => Promise.resolve({ _id: "event-123" 
 const mockUseChatStore = vi.fn(() => ({
   storageMode: "local",
   isLocalStorage: true,
-  cloudFeaturesEnabled: true,
+  cloudFeaturesEnabled: false,
   isAuthenticated: true,
   appendEvent: mockChatStoreAppendEvent,
   appendAgentEvent: vi.fn(),
@@ -41,7 +41,7 @@ function setCloudMode(isAuthenticated = true) {
   mockUseChatStore.mockReturnValue({
     storageMode: "local",
     isLocalStorage: true,
-    cloudFeaturesEnabled: isAuthenticated,
+    cloudFeaturesEnabled: false,
     isAuthenticated,
     appendEvent: mockChatStoreAppendEvent,
     appendAgentEvent: vi.fn(),
@@ -54,7 +54,7 @@ function setLocalMode(isAuthenticated = false) {
   mockUseChatStore.mockReturnValue({
     storageMode: "local",
     isLocalStorage: true,
-    cloudFeaturesEnabled: isAuthenticated,
+    cloudFeaturesEnabled: false,
     isAuthenticated,
     appendEvent: mockChatStoreAppendEvent,
     appendAgentEvent: vi.fn(),

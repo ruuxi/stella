@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
-import { useAccountMode } from "@/app/auth/hooks/use-account-mode";
 import { useModelCatalog } from "@/app/settings/hooks/use-model-catalog";
 import {
   getDefaultModelOptionLabel,
@@ -78,114 +77,20 @@ const TABS: { key: SettingsTab; label: string }[] = [
 function BasicTab({ onSignOut }: {
   onSignOut?: () => void;
 }) {
-  const accountMode = useAccountMode();
-  const syncMode = useQuery(
-    api.data.preferences.getSyncMode,
-    accountMode === "connected" ? {} : "skip",
-  ) as "on" | "off" | undefined;
-  const setAccountMode = useMutation(api.data.preferences.setAccountMode);
-  const setSyncMode = useMutation(api.data.preferences.setSyncMode);
-  const [isUpdatingAccountMode, setIsUpdatingAccountMode] = useState(false);
-  const [accountModeError, setAccountModeError] = useState<string | null>(null);
-  const [isUpdatingSyncMode, setIsUpdatingSyncMode] = useState(false);
-  const [syncModeError, setSyncModeError] = useState<string | null>(null);
-
-  const effectiveAccountMode = accountMode ?? "private_local";
-  const accountModeLabel =
-    effectiveAccountMode === "connected" ? "Connected mode" : "Private Local mode";
-
-  const accountModeDescription =
-    effectiveAccountMode === "connected"
-      ? "Connectors are enabled."
-      : "Connectors and cloud sync are disabled.";
-  const effectiveSyncMode = syncMode ?? "on";
-  const syncModeLabel = effectiveSyncMode === "on" ? "Sync On" : "Sync Off";
-  const syncModeDescription =
-    effectiveSyncMode === "on"
-      ? "Conversation history is persisted to cloud."
-      : "Conversation history stays on this device and is not synced to cloud.";
-
-  const handleToggleAccountMode = useCallback(async () => {
-    if (isUpdatingAccountMode) return;
-
-    setAccountModeError(null);
-    setIsUpdatingAccountMode(true);
-    const nextMode = effectiveAccountMode === "connected" ? "private_local" : "connected";
-
-    try {
-      await setAccountMode({ mode: nextMode });
-    } catch (error) {
-      setAccountModeError(error instanceof Error ? error.message : "Failed to update account mode.");
-    } finally {
-      setIsUpdatingAccountMode(false);
-    }
-  }, [effectiveAccountMode, isUpdatingAccountMode, setAccountMode]);
-
-  const handleToggleSyncMode = useCallback(async () => {
-    if (effectiveAccountMode !== "connected") return;
-    if (isUpdatingSyncMode) return;
-    setSyncModeError(null);
-    setIsUpdatingSyncMode(true);
-    const nextMode = effectiveSyncMode === "on" ? "off" : "on";
-
-    try {
-      // Write to local preferences first (source of truth for runtime)
-      if (window.electronAPI?.system.setLocalSyncMode) {
-        await window.electronAPI.system.setLocalSyncMode(nextMode);
-      }
-      await setSyncMode({ mode: nextMode });
-    } catch (error) {
-      setSyncModeError(error instanceof Error ? error.message : "Failed to update sync mode.");
-    } finally {
-      setIsUpdatingSyncMode(false);
-    }
-  }, [effectiveAccountMode, effectiveSyncMode, isUpdatingSyncMode, setSyncMode]);
-
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Account Mode</div>
+            <div className="settings-row-label">Storage</div>
             <div className="settings-row-sublabel">
-              {accountModeLabel}. {accountModeDescription}
+              Local only. Conversations stay on this device.
             </div>
-            {accountModeError ? (
-              <div className="settings-row-sublabel">{accountModeError}</div>
-            ) : null}
-          </div>
-          <div className="settings-row-control">
-            <button className="settings-btn" onClick={handleToggleAccountMode} disabled={isUpdatingAccountMode}>
-              {isUpdatingAccountMode
-                ? "Updating..."
-                : effectiveAccountMode === "connected"
-                  ? "Switch to Private Local"
-                  : "Switch to Connected"}
-            </button>
+            <div className="settings-row-sublabel">
+              Cloud sync and connected mode are not available in the app right now.
+            </div>
           </div>
         </div>
-        {effectiveAccountMode === "connected" ? (
-          <div className="settings-row">
-            <div className="settings-row-info">
-              <div className="settings-row-label">Chat Sync</div>
-              <div className="settings-row-sublabel">
-                {syncModeLabel}. {syncModeDescription}
-              </div>
-              {syncModeError ? (
-                <div className="settings-row-sublabel">{syncModeError}</div>
-              ) : null}
-            </div>
-            <div className="settings-row-control">
-              <button className="settings-btn" onClick={handleToggleSyncMode} disabled={isUpdatingSyncMode}>
-                {isUpdatingSyncMode
-                  ? "Updating..."
-                  : effectiveSyncMode === "on"
-                    ? "Turn Sync Off"
-                    : "Turn Sync On"}
-              </button>
-            </div>
-          </div>
-        ) : null}
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Sign Out</div>

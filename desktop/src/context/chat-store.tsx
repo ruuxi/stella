@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useConvexAuth } from 'convex/react'
-import { useAccountMode } from '@/app/auth/hooks/use-account-mode'
 import {
   appendLocalEvent,
   buildLocalHistoryMessages,
@@ -50,9 +49,8 @@ const ChatStoreContext = createContext<ChatStoreContextValue | null>(null)
 
 export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated } = useConvexAuth()
-  const accountMode = useAccountMode()
 
-  const cloudFeaturesEnabled = isAuthenticated && accountMode === 'connected'
+  const cloudFeaturesEnabled = false
   const storageMode: ChatStorageMode = 'local'
   const isLocalStorage = true
 

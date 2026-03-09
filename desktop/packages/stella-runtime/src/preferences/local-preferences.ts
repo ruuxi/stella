@@ -18,7 +18,7 @@ export type LocalPreferences = {
   generalAgentEngine: "default" | "codex_local" | "claude_code_local";
   /** Max concurrency for Codex local engine */
   codexLocalMaxConcurrency: number;
-  /** Sync mode: "on" | "off" */
+  /** Sync mode: "on" | "off". Defaults to off so cloud persistence is opt-in. */
   syncMode: "on" | "off";
 };
 
@@ -27,7 +27,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   expressionStyle: undefined,
   generalAgentEngine: "default",
   codexLocalMaxConcurrency: 3,
-  syncMode: "on",
+  syncMode: "off",
 };
 
 let _cached: LocalPreferences | null = null;
@@ -52,7 +52,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       expressionStyle: parsed.expressionStyle,
       generalAgentEngine: normalizeEngine(parsed.generalAgentEngine),
       codexLocalMaxConcurrency: normalizeConcurrency(parsed.codexLocalMaxConcurrency),
-      syncMode: parsed.syncMode === "off" ? "off" : "on",
+      syncMode: parsed.syncMode === "on" ? "on" : "off",
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;
