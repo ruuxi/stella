@@ -23,7 +23,7 @@ export function getStellaUiSocketPath(): string {
   if (process.platform === "win32") {
     return "\\\\.\\pipe\\stella-ui";
   }
-  return path.join(os.homedir(), ".stella", "state", "stella-ui.sock");
+  return path.join(os.homedir(), "stella", ".stella", "state", "stella-ui.sock");
 }
 
 // ---------------------------------------------------------------------------

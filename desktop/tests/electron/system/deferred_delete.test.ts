@@ -37,7 +37,7 @@ afterEach(async () => {
 describe("deferred delete", () => {
   it("moves targets to Stella trash and writes metadata", async () => {
     const root = await makeTmpRoot();
-    const stellaHome = path.join(root, ".stella");
+    const stellaHome = path.join(root, "stella", ".stella");
     const projectRoot = path.join(root, "project");
     await fs.mkdir(projectRoot, { recursive: true });
 
@@ -65,7 +65,7 @@ describe("deferred delete", () => {
 
   it("respects force=true for missing paths", async () => {
     const root = await makeTmpRoot();
-    const stellaHome = path.join(root, ".stella");
+    const stellaHome = path.join(root, "stella", ".stella");
     const projectRoot = path.join(root, "project");
     await fs.mkdir(projectRoot, { recursive: true });
 
@@ -83,7 +83,7 @@ describe("deferred delete", () => {
 
   it("purges expired trashed items", async () => {
     const root = await makeTmpRoot();
-    const stellaHome = path.join(root, ".stella");
+    const stellaHome = path.join(root, "stella", ".stella");
     const projectRoot = path.join(root, "project");
     await fs.mkdir(projectRoot, { recursive: true });
 

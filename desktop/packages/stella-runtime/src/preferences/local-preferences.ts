@@ -1,5 +1,5 @@
 /**
- * Local preferences — reads/writes ~/.stella/state/preferences.json
+ * Local preferences — reads/writes ~/stella/.stella/state/preferences.json
  *
  * Serves as the local source of truth for user preferences that were
  * previously fetched from Convex on every chat turn. The runner syncs

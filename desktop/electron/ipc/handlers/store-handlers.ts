@@ -7,7 +7,7 @@ type StoreHandlersOptions = Record<string, never>
 
 export const registerStoreHandlers = (_options: StoreHandlersOptions) => {
   ipcMain.handle('theme:listInstalled', async () => {
-    const themesDir = path.join(os.homedir(), '.stella', 'themes')
+    const themesDir = path.join(os.homedir(), 'stella', '.stella', 'themes')
     try {
       const files = await fs.readdir(themesDir)
       const themes = []

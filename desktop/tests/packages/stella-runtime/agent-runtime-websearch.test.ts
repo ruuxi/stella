@@ -194,7 +194,7 @@ describe("agent runtime WebSearch tool payloads", () => {
       agentContext: buildAgentContext(),
       toolExecutor: vi.fn().mockResolvedValue({ result: "unused" }),
       deviceId: "device-1",
-      stellaHome: "/tmp/.stella",
+      stellaHome: "/tmp/stella/.stella",
       resolvedLlm,
       store: store as unknown as JsonlRuntimeStore,
       webSearch,

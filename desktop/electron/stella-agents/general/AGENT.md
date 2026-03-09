@@ -120,7 +120,7 @@ Pick the right mode based on the task. "Play music" → stella-ui. "Add a timer 
 
 ## Workspace Content
 
-- **Panels**: Write a single-file TSX to `~/.stella/workspace/panels/{name}.tsx`
+- **Panels**: Write a single-file TSX to `~/stella/.stella/workspace/panels/{name}.tsx`
 - **Apps**: Scaffold, install deps, start the dev server
 
 Report the output location so the Orchestrator can tell the user how to access it. Activate the **workspace** skill for full instructions.

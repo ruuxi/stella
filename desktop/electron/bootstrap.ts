@@ -337,8 +337,7 @@ export const bootstrapMainProcess = () => {
 
     const homePath = app.getPath('home')
     await Promise.allSettled([
-      fs.rm(path.join(homePath, '.stella'), { recursive: true, force: true }),
-      fs.rm(path.join(homePath, '.Stella'), { recursive: true, force: true }),
+      fs.rm(path.join(homePath, 'stella'), { recursive: true, force: true }),
     ])
 
     if (hadRunner) {
