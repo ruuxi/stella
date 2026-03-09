@@ -360,12 +360,13 @@ export const createStellaHostRunner = ({
   };
 
   // WebSearch via backend Convex action (Exa API)
-  const webSearch = async (query: string): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }> => {
+  const webSearch = async (query: string, options?: { category?: string }): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }> => {
     try {
       const client = ensureConvexClient();
       if (!client) throw new Error("Not connected to Convex. Sign in or set STELLA_CONVEX_URL.");
       const result = await client.action(convexApi.agent.local_runtime.webSearch, {
         query,
+        ...(options?.category ? { category: options.category } : {}),
         ...(activePromptOverrides ? { promptOverrides: activePromptOverrides } : {}),
       }) as {
         text: string;
