@@ -77,22 +77,27 @@ export function useFullShellChat({
     onReturn: handleUserReturn,
   })
 
+  // Scroll management — ResizeObserver on content handles auto-scroll.
+  // We pass `isWorking` so the settle timer keeps auto-follow briefly after streaming stops.
   const {
-    scrollContainerRef,
     setScrollContainerElement,
+    setContentElement,
     hasScrollElement,
-    isNearBottomRef,
     showScrollButton,
     scrollToBottom,
     handleScroll,
     resetScrollState,
+    overflowAnchor,
+    thumbState,
   } = useScrollManagement({
     itemCount: events.length,
     hasOlderEvents,
     isLoadingOlder,
     onLoadOlder: loadOlder,
+    isWorking: isStreaming,
   })
 
+  // Reset scroll on conversation change
   useLayoutEffect(() => {
     resetScrollState()
     scrollToBottom('instant')
@@ -103,6 +108,7 @@ export function useFullShellChat({
     return () => cancelAnimationFrame(raf)
   }, [activeConversationId, resetScrollState, scrollToBottom])
 
+  // Reset scroll when switching to chat view
   useLayoutEffect(() => {
     if (activeView !== 'chat') return
 
@@ -115,17 +121,8 @@ export function useFullShellChat({
     return () => cancelAnimationFrame(raf)
   }, [activeView, resetScrollState, scrollToBottom])
 
-  useLayoutEffect(() => {
-    if (isNearBottomRef.current) {
-      scrollToBottom('instant')
-    }
-  }, [events.length, isNearBottomRef, scrollToBottom])
-
-  useLayoutEffect(() => {
-    if (isStreaming && isNearBottomRef.current) {
-      scrollToBottom('instant')
-    }
-  }, [isStreaming, isNearBottomRef, reasoningText, scrollToBottom, streamingText])
+  // Auto-scroll is now driven by the content ResizeObserver in useScrollManagement.
+  // No need for individual effects on events.length, streamingText, reasoningText, etc.
 
   const handleSend = useCallback(() => {
     void sendMessage({
@@ -193,12 +190,14 @@ export function useFullShellChat({
       handleCommandSelect,
     },
     scroll: {
-      scrollContainerRef,
       setScrollContainerElement,
+      setContentElement,
       hasScrollElement,
       handleScroll,
       showScrollButton,
       scrollToBottom,
+      overflowAnchor,
+      thumbState,
     },
   }
 }

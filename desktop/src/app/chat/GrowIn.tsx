@@ -1,7 +1,7 @@
 /**
- * GrowIn: OpenCode-style height animation wrapper.
+ * GrowIn: height animation wrapper.
  * Animates content height from 0 → auto using motion springs + ResizeObserver.
- * Includes edge-fade gradient during expansion and fade+blur entrance.
+ * Includes fade+blur entrance on inner content.
  */
 
 import { useRef, useEffect, useState, type ReactNode } from "react";
@@ -14,8 +14,6 @@ interface GrowInProps {
   animate?: boolean;
   /** Spring duration in ms (default 500) */
   duration?: number;
-  /** Show edge-fade gradient during expansion (default true) */
-  edgeFade?: boolean;
   className?: string;
 }
 
@@ -23,7 +21,6 @@ export function GrowIn({
   children,
   animate: shouldAnimate = true,
   duration = 500,
-  edgeFade = true,
   className,
 }: GrowInProps) {
   const outerRef = useRef<HTMLDivElement>(null);
@@ -71,12 +68,10 @@ export function GrowIn({
     return <div className={className}>{children}</div>;
   }
 
-  const showEdgeFade = edgeFade && !settled;
-
   return (
     <div
       ref={outerRef}
-      className={`grow-in ${showEdgeFade ? "grow-in--edge-fade" : ""} ${settled ? "grow-in--settled" : ""} ${className ?? ""}`}
+      className={`grow-in${className ? ` ${className}` : ""}`}
       style={{ height: "0px", overflow: settled ? undefined : "clip" }}
     >
       <div ref={innerRef} className="grow-in-inner">

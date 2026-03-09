@@ -1,4 +1,4 @@
-/* GrowIn — height expansion with edge fade */
+/* GrowIn — height expansion with fade + deblur entrance */
 
 .grow-in {
   position: relative;
@@ -21,28 +21,6 @@
   }
 }
 
-/* Soft gradient at bottom edge during expansion */
-.grow-in--edge-fade::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 24px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    var(--background, #000)
-  );
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity 0.24s ease-out;
-}
-
-.grow-in--settled::after {
-  opacity: 0;
-}
-
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .grow-in {
@@ -52,9 +30,5 @@
 
   .grow-in-inner {
     animation: none;
-  }
-
-  .grow-in--edge-fade::after {
-    display: none;
   }
 }

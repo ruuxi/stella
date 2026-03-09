@@ -273,6 +273,10 @@
   overflow-y: auto;
   scrollbar-width: none;
   white-space: pre-wrap;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 6px, black calc(100% - 6px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black 6px, black calc(100% - 6px), transparent 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
 
 .reasoning-content::-webkit-scrollbar {

@@ -233,6 +233,7 @@ vi.mock("@/app/shell/use-full-shell", () => ({
   useScrollManagement: vi.fn(() => ({
     scrollContainerRef: createRef(),
     setScrollContainerElement: vi.fn(),
+    setContentElement: vi.fn(),
     hasScrollElement: false,
     isNearBottom: true,
     isNearBottomRef: { current: true },
@@ -240,6 +241,8 @@ vi.mock("@/app/shell/use-full-shell", () => ({
     scrollToBottom: vi.fn(),
     handleScroll: vi.fn(),
     resetScrollState: vi.fn(),
+    overflowAnchor: "none",
+    thumbState: { top: 0, height: 0, visible: false },
   })),
 }));
 

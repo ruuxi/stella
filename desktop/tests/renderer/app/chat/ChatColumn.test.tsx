@@ -54,12 +54,13 @@ function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
       onSend: vi.fn(),
       ...overrides.composer,
     },
-    scrollContainerRef: React.createRef<HTMLDivElement>(),
-    setScrollContainerElement: vi.fn(),
-    canVirtualize: false,
+    setViewportElement: vi.fn(),
+    setContentElement: vi.fn(),
     onScroll: vi.fn(),
     showScrollButton: false,
     scrollToBottom: vi.fn(),
+    overflowAnchor: "none",
+    thumbState: { top: 0, height: 0, visible: false },
     onboarding: {
       done: true,
       exiting: false,
@@ -149,7 +150,7 @@ describe("ChatColumn", () => {
     expect(screen.getByLabelText("Scroll to bottom")).toBeTruthy();
   });
 
-  it('calls scrollToBottom("instant") when scroll button clicked', () => {
+  it('calls scrollToBottom("smooth") when scroll button clicked', () => {
     const scrollToBottom = vi.fn();
     const events: EventRecord[] = [
       { _id: "event-1", timestamp: 1, type: "user_message", payload: { text: "hi" } },
@@ -165,7 +166,7 @@ describe("ChatColumn", () => {
       />,
     );
     fireEvent.click(screen.getByLabelText("Scroll to bottom"));
-    expect(scrollToBottom).toHaveBeenCalledWith("instant");
+    expect(scrollToBottom).toHaveBeenCalledWith("smooth");
   });
 
   it("has class full-body-main", () => {

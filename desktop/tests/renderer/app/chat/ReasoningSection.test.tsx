@@ -20,11 +20,12 @@ describe("ReasoningSection", () => {
     expect(screen.getByText("thinking about this...")).toBeTruthy();
   });
 
-  it("shows Thinking... placeholder when streaming with no content", () => {
+  it("shows Thinking heading shimmer when streaming with no content", () => {
     const { container } = render(<ReasoningSection content="" isStreaming={true} />);
-    const shimmer = container.querySelector(".reasoning-placeholder-shimmer");
-    expect(shimmer).toBeTruthy();
-    expect(shimmer?.textContent?.replace(/\u00A0/g, " ")).toBe("Thinking...");
+    const heading = container.querySelector(".reasoning-heading-text");
+    expect(heading).toBeTruthy();
+    // No placeholder shimmer in body — heading is sufficient
+    expect(container.querySelector(".reasoning-placeholder-shimmer")).toBeNull();
   });
 
   it("shows toggle button when not streaming", () => {
