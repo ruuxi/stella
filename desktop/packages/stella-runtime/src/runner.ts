@@ -1017,6 +1017,7 @@ export const createStellaHostRunner = ({
       context: ToolContext,
     ) => toolHost.executeTool(toolName, toolArgs, context),
     agentHealthCheck,
+    webSearch,
     handleLocalChat,
     runAutomationTurn,
     cancelLocalChat,

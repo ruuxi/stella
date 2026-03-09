@@ -309,7 +309,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   WebSearch:
     "Search the web via Exa for current information.\n\n" +
     "Use natural language queries, not keywords (e.g. 'Tesla current stock performance' not 'TSLA stock price').\n" +
-    "Returns up to 10 results with title, URL, and highlighted excerpts.\n" +
+    "Returns up to 5 results with title, URL, and highlighted excerpts.\n" +
     "Search results are automatically displayed on the canvas panel.\n\n" +
     "WHEN TO SEARCH: current events, recent news, facts/stats that change over time, " +
     "product/company info, prices, people's current roles, documentation, comparisons between evolving products.\n" +

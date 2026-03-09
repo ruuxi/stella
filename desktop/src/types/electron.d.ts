@@ -170,6 +170,7 @@ export type ElectronVoiceApi = {
   onTranscript: (callback: (transcript: string) => void) => () => void
   persistTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) => void
   orchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
+  webSearch: (payload: { query: string; category?: string }) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>
   setAssistantSpeaking: (active: boolean) => Promise<{ ok: boolean }>
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>
   onRuntimeState: (callback: (state: VoiceRuntimeSnapshot) => void) => () => void

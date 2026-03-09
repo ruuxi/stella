@@ -275,6 +275,16 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
   })
 
+  ipcMain.handle('voice:webSearch', async (_event, payload: { query: string; category?: string }) => {
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (!stellaHostRunner) {
+      return { text: 'Stella runtime not initialized.', results: [] }
+    }
+    return stellaHostRunner.webSearch(payload.query, {
+      category: payload.category,
+    })
+  })
+
   ipcMain.handle('voice:setAssistantSpeaking', async (_event, active: boolean) => {
     await options.setAssistantSpeaking(Boolean(active))
     return { ok: true }

@@ -1239,6 +1239,48 @@ export class RealtimeVoiceSession {
       });
   }
 
+  private runWebSearchAsync(query: string, category?: string): void {
+    const api = window.electronAPI?.voice;
+    if (!api?.webSearch) {
+      console.warn("[realtime-voice] Cannot run web search: missing IPC");
+      return;
+    }
+
+    api
+      .webSearch({ query, category })
+      .then((result) => {
+        window.electronAPI?.voice.persistTranscript?.({
+          conversationId: this.conversationId ?? "voice-rtc",
+          role: "assistant",
+          text: `[WEB SEARCH] ${query} → ${result.results.length} results`,
+        });
+
+        // Build a concise spoken summary from the results
+        if (result.results.length === 0) {
+          this.requestNarrationResponse(
+            `I searched for "${query}" but couldn't find any results.`,
+            "spoke web search empty",
+          );
+          return;
+        }
+
+        const summary = result.results
+          .slice(0, 5)
+          .map((r) => `${r.title}: ${r.snippet}`)
+          .join("\n\n");
+        const spokenText =
+          `Here's what I found for "${query}":\n\n${summary}`;
+        this.requestNarrationResponse(spokenText, "spoke web search results");
+      })
+      .catch((err) => {
+        console.error("[realtime-voice] Web search error:", err);
+        this.requestNarrationResponse(
+          `I ran into an error searching for that: ${(err as Error).message}`,
+          "spoke web search error",
+        );
+      });
+  }
+
   private async handleFunctionCall(item: Record<string, unknown>) {
     const name = item.name as string;
     console.log("[realtime-voice] handleFunctionCall called with tool:", name);
@@ -1294,6 +1336,10 @@ export class RealtimeVoiceSession {
           window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
         }, 2000);
         return;
+      } else if (name === "web_search") {
+        const query = (args.query as string) || this.lastUserTranscript || "";
+        result = "Searching now.";
+        this.runWebSearchAsync(query, args.category as string | undefined);
       } else if (name === "perform_action") {
         // Delegate to orchestrator. Use the user's actual transcript
         // instead of the model's paraphrase for better fidelity.
@@ -1320,10 +1366,9 @@ export class RealtimeVoiceSession {
       },
     });
 
-    // For async perform_action calls, don't request a response here —
-    // runPerformActionAsync will inject the real result and trigger
-    // response.create once the orchestrator responds.
-    if (name !== "perform_action") {
+    // For async calls (perform_action, web_search), don't request a response here —
+    // the async handler will inject the real result and trigger response.create.
+    if (name !== "perform_action" && name !== "web_search") {
       this.sendEvent({ type: "response.create" });
     }
   }
