@@ -38,6 +38,26 @@ export function getModels<TProvider extends RegisteredProvider>(
 	return models ? (Array.from(models.values()) as Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[]) : [];
 }
 
+/**
+ * Register a model at runtime (e.g., from extensions).
+ * If the provider doesn't exist in the registry, it is created.
+ */
+export function registerModel(provider: string, model: Model<Api>): void {
+	let providerModels = modelRegistry.get(provider);
+	if (!providerModels) {
+		providerModels = new Map<string, Model<Api>>();
+		modelRegistry.set(provider, providerModels);
+	}
+	providerModels.set(model.id, model);
+}
+
+/**
+ * Remove all models registered under a given provider.
+ */
+export function unregisterProvider(provider: string): void {
+	modelRegistry.delete(provider);
+}
+
 export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage): Usage["cost"] {
 	usage.cost.input = (model.cost.input / 1000000) * usage.input;
 	usage.cost.output = (model.cost.output / 1000000) * usage.output;
