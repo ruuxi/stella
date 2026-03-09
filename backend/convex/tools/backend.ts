@@ -4,14 +4,14 @@ import type { ActionCtx } from "../_generated/server";
 import { generateTextWithFailover } from "../agent/model_execution";
 import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
 import {
-  buildNewsHtmlUserPrompt,
+  buildSearchHtmlUserPrompt,
 } from "../prompts/index";
 import { resolvePromptText } from "../prompts/registry";
 import type { PromptOverrideMap } from "../prompts/registry";
 import type { ToolOptions } from "./types";
 
-const MAX_WEB_SEARCH_RESULTS = 6;
-const MAX_WEB_SEARCH_TEXT_CHARS = 1000;
+const MAX_WEB_SEARCH_RESULTS = 10;
+const MAX_WEB_SEARCH_HIGHLIGHT_CHARS = 4000;
 const MAX_WEB_SEARCH_SNIPPET_CHARS = 300;
 
 /**
@@ -58,7 +58,7 @@ const formatWebSearchText = (query: string, results: SearchHit[]): string => {
   );
 };
 
-const generateNewsHtml = async (
+const generateSearchHtml = async (
   ctx: Pick<ActionCtx, "runQuery">,
   options: {
     ownerId?: string;
@@ -73,10 +73,10 @@ const generateNewsHtml = async (
     .map((result, index) => `${index + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet}`)
     .join("\n\n");
 
-  const prompt = buildNewsHtmlUserPrompt({
+  const prompt = buildSearchHtmlUserPrompt({
     query: options.query,
     resultsText,
-    promptTemplate: resolvePromptText("news_html.user", options.promptOverrides),
+    promptTemplate: resolvePromptText("search_html.user", options.promptOverrides),
   });
 
   const resolvedConfig = await resolveModelConfig(ctx, "news_generate", options.ownerId);
@@ -85,7 +85,7 @@ const generateNewsHtml = async (
     resolvedConfig,
     fallbackConfig,
     sharedArgs: {
-      system: resolvePromptText("news_html.system", options.promptOverrides),
+      system: resolvePromptText("search_html.system", options.promptOverrides),
       messages: [{ role: "user", content: prompt }],
     },
   });
@@ -101,6 +101,7 @@ export const executeWebSearch = async (
     ownerId?: string;
     includeHtml?: boolean;
     promptOverrides?: PromptOverrideMap;
+    category?: string;
   } = {},
 ): Promise<WebSearchResponse> => {
   const query = queryInput.trim();
@@ -128,10 +129,11 @@ export const executeWebSearch = async (
       },
       body: JSON.stringify({
         query,
-        type: "auto",
+        type: "fast",
         numResults: MAX_WEB_SEARCH_RESULTS,
+        ...(options.category ? { category: options.category } : {}),
         contents: {
-          text: { maxCharacters: MAX_WEB_SEARCH_TEXT_CHARS },
+          highlights: { maxCharacters: MAX_WEB_SEARCH_HIGHLIGHT_CHARS },
         },
       }),
     });
@@ -147,15 +149,21 @@ export const executeWebSearch = async (
       results?: Array<{
         title?: string;
         url?: string;
+        highlights?: string[];
         text?: string;
       }>;
     };
 
-    const results: SearchHit[] = (data.results ?? []).map((result) => ({
-      title: (result.title ?? "(no title)").trim(),
-      url: (result.url ?? "").trim(),
-      snippet: (result.text ?? "").trim().slice(0, MAX_WEB_SEARCH_SNIPPET_CHARS),
-    }));
+    const results: SearchHit[] = (data.results ?? []).map((result) => {
+      const snippet = result.highlights?.length
+        ? result.highlights.join(" … ")
+        : (result.text ?? "");
+      return {
+        title: (result.title ?? "(no title)").trim(),
+        url: (result.url ?? "").trim(),
+        snippet: snippet.trim().slice(0, MAX_WEB_SEARCH_SNIPPET_CHARS),
+      };
+    });
 
     const searchResult: WebSearchResponse = {
       text: formatWebSearchText(query, results),
@@ -164,7 +172,7 @@ export const executeWebSearch = async (
 
     if (options.includeHtml && results.length > 0) {
       try {
-        searchResult.html = await generateNewsHtml(ctx, {
+        searchResult.html = await generateSearchHtml(ctx, {
           ownerId: options.ownerId,
           query,
           results,
@@ -172,7 +180,7 @@ export const executeWebSearch = async (
         });
       } catch (error) {
         console.warn(
-          `[web-search] News HTML generation failed for "${query}": ${
+          `[web-search] Search HTML generation failed for "${query}": ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -206,18 +214,25 @@ export const createBackendTools = (
   return {
     WebSearch: tool({
       description:
-        "Search the web for current information.\n\n" +
-        "Usage:\n" +
-        "- Returns up to 6 results with title, URL, and text snippet.\n" +
-        "- Use for questions requiring up-to-date information beyond training data.\n" +
-        "- query should be a natural language search phrase.",
+        "Search the web via Exa for current information.\n\n" +
+        "Use natural language queries, not keywords (e.g. 'Tesla current stock performance' not 'TSLA stock price').\n" +
+        "Returns up to 10 results with title, URL, and highlighted excerpts.\n\n" +
+        "CATEGORIES — use sparingly, most queries should omit:\n" +
+        "- 'company': only for company research.\n" +
+        "- 'people': only for non-public figures. Never for public figures or news about someone.\n" +
+        "- 'research paper': only for academic papers.\n" +
+        "For news, sports, general facts — do NOT set a category.",
       inputSchema: z.object({
-        query: z.string().min(2).describe("Search query (natural language)"),
+        query: z.string().min(2).describe("Natural language search query — write descriptively, not as keywords"),
+        category: z.enum(["company", "people", "research paper"]).optional().describe(
+          "Optional filter. Most queries should omit this."
+        ),
       }),
       execute: async (args) => {
         const result = await executeWebSearch(ctx, args.query, {
           ownerId: options.ownerId,
           includeHtml: false,
+          category: args.category,
         });
         return result.text;
       },
