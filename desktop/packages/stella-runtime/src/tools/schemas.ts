@@ -3,10 +3,9 @@
  *
  * The PI runtime currently consumes the tool names, descriptions, and safety
  * helpers from this module.
+ *
+ * Schemas are plain JSON Schema objects — no Zod, no conversion libraries.
  */
-
-import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 
 // ─── Device Tool Names ──────────────────────────────────────────────────────
 
@@ -59,168 +58,311 @@ export function getDangerousCommandReason(command: string): string | null {
   return null;
 }
 
-// ─── Tool Schemas ───────────────────────────────────────────────────────────
-// Canonical zod schemas for device tool parameters.
-// Backend uses these directly in tool() definitions.
-// Frontend wraps them with .passthrough() and alias extensions.
+// ─── JSON Schemas (plain objects) ───────────────────────────────────────────
+// Each schema is a standard JSON Schema object passed directly to LLM tool
+// definitions. No conversion step needed.
 
-export const ReadSchema = z.object({
-  file_path: z.string().describe("Absolute path to the file to read"),
-  offset: z.number().optional().describe("Line number to start reading from (1-based)"),
-  limit: z.number().optional().describe("Max number of lines to read"),
-});
+const ReadJsonSchema = {
+  type: "object",
+  properties: {
+    file_path: { type: "string", description: "Absolute path to the file to read" },
+    offset: { type: "number", description: "Line number to start reading from (1-based)" },
+    limit: { type: "number", description: "Max number of lines to read" },
+  },
+  required: ["file_path"],
+};
 
-export const EditSchema = z.object({
-  file_path: z.string().describe("Absolute path to the file to edit"),
-  old_string: z.string().describe("Exact text to find and replace (must be unique unless replace_all=true)"),
-  new_string: z.string().describe("Replacement text"),
-  replace_all: z.boolean().optional().describe("Replace all occurrences instead of requiring uniqueness"),
-});
+const EditJsonSchema = {
+  type: "object",
+  properties: {
+    file_path: { type: "string", description: "Absolute path to the file to edit" },
+    old_string: { type: "string", description: "Exact text to find and replace (must be unique unless replace_all=true)" },
+    new_string: { type: "string", description: "Replacement text" },
+    replace_all: { type: "boolean", description: "Replace all occurrences instead of requiring uniqueness" },
+  },
+  required: ["file_path", "old_string", "new_string"],
+};
 
-export const GlobSchema = z.object({
-  pattern: z.string().describe("Glob pattern to match (e.g. \"**/*.ts\", \"src/**/*.json\")"),
-  path: z.string().optional().describe("Directory to search in (defaults to working directory)"),
-});
+const GlobJsonSchema = {
+  type: "object",
+  properties: {
+    pattern: { type: "string", description: "Glob pattern to match (e.g. \"**/*.ts\", \"src/**/*.json\")" },
+    path: { type: "string", description: "Directory to search in (defaults to working directory)" },
+  },
+  required: ["pattern"],
+};
 
-export const GrepSchema = z.object({
-  pattern: z.string().describe("Regex pattern to search for"),
-  path: z.string().optional().describe("File or directory to search in"),
-  glob: z.string().optional().describe("Filter files by glob pattern (e.g. \"*.tsx\")"),
-  type: z.string().optional().describe("Filter by file type (e.g. \"ts\", \"py\", \"json\")"),
-  output_mode: z.enum(["content", "files_with_matches", "count"]).optional().describe("What to return: matching lines, file paths, or counts"),
-  case_insensitive: z.boolean().optional().describe("Case-insensitive search"),
-  context_lines: z.number().optional().describe("Lines of context around each match (for output_mode=content)"),
-  max_results: z.number().optional().describe("Maximum number of results to return"),
-});
+const GrepJsonSchema = {
+  type: "object",
+  properties: {
+    pattern: { type: "string", description: "Regex pattern to search for" },
+    path: { type: "string", description: "File or directory to search in" },
+    glob: { type: "string", description: "Filter files by glob pattern (e.g. \"*.tsx\")" },
+    type: { type: "string", description: "Filter by file type (e.g. \"ts\", \"py\", \"json\")" },
+    output_mode: { type: "string", enum: ["content", "files_with_matches", "count"], description: "What to return: matching lines, file paths, or counts" },
+    case_insensitive: { type: "boolean", description: "Case-insensitive search" },
+    context_lines: { type: "number", description: "Lines of context around each match (for output_mode=content)" },
+    max_results: { type: "number", description: "Maximum number of results to return" },
+  },
+  required: ["pattern"],
+};
 
-export const BashSchema = z.object({
-  command: z.string().describe("The shell command to execute"),
-  description: z.string().optional().describe("Human-readable description of what this command does"),
-  timeout: z.number().optional().describe("Timeout in milliseconds (default 120000, max 600000)"),
-  working_directory: z.string().optional().describe("Working directory for the command"),
-  run_in_background: z.boolean().optional().describe("Run in background and return a shell_id immediately"),
-});
+const BashJsonSchema = {
+  type: "object",
+  properties: {
+    command: { type: "string", description: "The shell command to execute" },
+    description: { type: "string", description: "Human-readable description of what this command does" },
+    timeout: { type: "number", description: "Timeout in milliseconds (default 120000, max 600000)" },
+    working_directory: { type: "string", description: "Working directory for the command" },
+    run_in_background: { type: "boolean", description: "Run in background and return a shell_id immediately" },
+  },
+  required: ["command"],
+};
 
-export const KillShellSchema = z.object({
-  shell_id: z.string().describe("Shell ID returned by Bash with run_in_background=true"),
-});
+const KillShellJsonSchema = {
+  type: "object",
+  properties: {
+    shell_id: { type: "string", description: "Shell ID returned by Bash with run_in_background=true" },
+  },
+  required: ["shell_id"],
+};
 
-export const ShellStatusSchema = z.object({
-  shell_id: z.string().optional().describe("Shell ID to check. Omit to list all shells."),
-  tail_lines: z.number().optional().describe("Number of output lines to return from the end (default 50)"),
-});
+const ShellStatusJsonSchema = {
+  type: "object",
+  properties: {
+    shell_id: { type: "string", description: "Shell ID to check. Omit to list all shells." },
+    tail_lines: { type: "number", description: "Number of output lines to return from the end (default 50)" },
+  },
+};
 
-export const AskUserQuestionSchema = z.object({
-  questions: z.array(
-    z.object({
-      question: z.string().describe("The question to ask (end with ?)"),
-      header: z.string().describe("Short label displayed as a tag (max 12 chars)"),
-      options: z.array(
-        z.object({
-          label: z.string().describe("Option text (1-5 words)"),
-          description: z.string().describe("What this option means or what happens if chosen"),
-        }),
-      ),
-      multiSelect: z.boolean().describe("Allow selecting multiple options"),
-    }),
-  ),
-});
+const AskUserQuestionJsonSchema = {
+  type: "object",
+  properties: {
+    questions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: "The question to ask (end with ?)" },
+          header: { type: "string", description: "Short label displayed as a tag (max 12 chars)" },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string", description: "Option text (1-5 words)" },
+                description: { type: "string", description: "What this option means or what happens if chosen" },
+              },
+              required: ["label", "description"],
+            },
+          },
+          multiSelect: { type: "boolean", description: "Allow selecting multiple options" },
+        },
+        required: ["question", "header", "options", "multiSelect"],
+      },
+    },
+  },
+  required: ["questions"],
+};
 
-export const RequestCredentialSchema = z.object({
-  provider: z.string().min(1).describe("Unique key for this secret (e.g. \"github_token\")"),
-  label: z.string().optional().describe("Display name shown to the user (e.g. \"GitHub Token\")"),
-  description: z.string().optional().describe("Why this credential is needed"),
-  placeholder: z.string().optional().describe("Input placeholder text"),
-});
+const RequestCredentialJsonSchema = {
+  type: "object",
+  properties: {
+    provider: { type: "string", description: "Unique key for this secret (e.g. \"github_token\")" },
+    label: { type: "string", description: "Display name shown to the user (e.g. \"GitHub Token\")" },
+    description: { type: "string", description: "Why this credential is needed" },
+    placeholder: { type: "string", description: "Input placeholder text" },
+  },
+  required: ["provider"],
+};
 
-export const SkillBashSchema = z.object({
-  skill_id: z.string().min(1).describe("ID of the skill whose secrets to mount"),
-  command: z.string().min(1).describe("Shell command to execute"),
-  description: z.string().optional().describe("Human-readable description of what this command does"),
-  timeout: z.number().optional().describe("Timeout in milliseconds (default 120000, max 600000)"),
-  working_directory: z.string().optional().describe("Working directory for the command"),
-  run_in_background: z.boolean().optional().describe("Run in background and return a shell_id"),
-});
+const SkillBashJsonSchema = {
+  type: "object",
+  properties: {
+    skill_id: { type: "string", description: "ID of the skill whose secrets to mount" },
+    command: { type: "string", description: "Shell command to execute" },
+    description: { type: "string", description: "Human-readable description of what this command does" },
+    timeout: { type: "number", description: "Timeout in milliseconds (default 120000, max 600000)" },
+    working_directory: { type: "string", description: "Working directory for the command" },
+    run_in_background: { type: "boolean", description: "Run in background and return a shell_id" },
+  },
+  required: ["skill_id", "command"],
+};
 
-export const MediaGenerateSchema = z.object({
-  mode: z.enum(["generate", "edit"]).default("generate").describe("Create new or edit existing"),
-  media_type: z.enum(["image", "video"]).default("image").describe("Type of media to produce"),
-  prompt: z.string().describe("Description of what to generate or how to edit"),
-  source_url: z.string().optional().describe("URL of source media to edit (required for mode=edit)"),
-});
+const MediaGenerateJsonSchema = {
+  type: "object",
+  properties: {
+    mode: { type: "string", enum: ["generate", "edit"], description: "Create new or edit existing (default: generate)" },
+    media_type: { type: "string", enum: ["image", "video"], description: "Type of media to produce (default: image)" },
+    prompt: { type: "string", description: "Description of what to generate or how to edit" },
+    source_url: { type: "string", description: "URL of source media to edit (required for mode=edit)" },
+  },
+  required: ["prompt"],
+};
 
-export const WebSearchSchema = z.object({
-  query: z.string().min(2).describe("Natural language search query — write descriptively, not as keywords"),
-  category: z.enum(["company", "people", "research paper"]).optional().describe(
-    "Optional filter. 'company' for company research, 'people' for non-public figures, 'research paper' for academic papers. Omit for news, sports, general facts."
-  ),
-});
+const WebSearchJsonSchema = {
+  type: "object",
+  properties: {
+    query: { type: "string", description: "Natural language search query — write descriptively, not as keywords" },
+    category: { type: "string", enum: ["company", "people", "research paper"], description: "Optional filter. 'company' for company research, 'people' for non-public figures, 'research paper' for academic papers. Omit for news, sports, general facts." },
+  },
+  required: ["query"],
+};
 
-export const DisplaySchema = z.object({
-  html: z.string().describe(
-    "HTML content to render on the canvas panel. The container auto-styles semantic elements.\n\n" +
-    "DESIGN: refined informational display — clean, structured, editorial. Typography and whitespace do the work. Not generic cards.\n\n" +
-    "RULES:\n" +
-    "- Headlines: font-family: Georgia, serif; font-weight: 500. Use h2 for topic title (19-22px, opacity 0.92), h3 for section labels (10px, uppercase, letter-spacing 0.1em, opacity 0.35). Avoid h1.\n" +
-    "- Colors: ONLY var(--foreground) and var(--background). Opacity tiers: 0.92 (title), 0.88 (key values), 0.65 (body), 0.42 (secondary text), 0.25-0.3 (meta). Never hardcode colors.\n" +
-    "- Metric blocks: use a grid row with joined segments — background: color-mix(in oklch, var(--foreground) 3%, transparent). First segment border-radius: 8px 0 0 8px, last: 0 8px 8px 0. Large serif numbers (22px), tiny uppercase labels (10px, 0.08em spacing, 0.32 opacity).\n" +
-    "- Dividers: <div> with height: 1px, background: color-mix(in oklch, var(--foreground) 4-5%, transparent). Top accent divider can use linear-gradient(90deg, color-mix(in oklch, var(--foreground) 15%, transparent), transparent).\n" +
-    "- Left accent bars for list items: width: 3px, border-radius: 2px, background: color-mix(in oklch, var(--foreground) 10%, transparent), align-self: stretch.\n" +
-    "- Tables: subtle surface (2.5% foreground), border-radius 8px, overflow hidden. No header row — use label/value pairs. Cell borders: 1px solid color-mix(in oklch, var(--foreground) 4%, transparent).\n" +
-    "- Source/meta: <small> with font-size: 10px, opacity 0.18-0.25, letter-spacing 0.03em.\n" +
-    "- Layout: flexbox via inline styles. No <style> blocks, no class names, no scripts, no external resources.\n\n" +
-    "REFERENCE — adapt this structure to any content type:\n\n" +
-    '<div style="display: flex; flex-direction: column; gap: 0;">\n' +
-    '  <div style="margin-bottom: 6px;">\n' +
-    '    <h3 style="margin: 0 0 4px; font-size: 10px; letter-spacing: 0.12em; opacity: 0.3;">Market Overview</h3>\n' +
-    '    <h2 style="font-size: 22px; font-weight: 500; opacity: 0.92; margin: 0; font-family: Georgia, serif; letter-spacing: -0.02em;">NVIDIA Corporation</h2>\n' +
-    "  </div>\n" +
-    '  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">\n' +
-    '    <small style="font-size: 11px; opacity: 0.35; margin: 0;">NASDAQ: NVDA</small>\n' +
-    '    <small style="opacity: 0.15; margin: 0;">&middot;</small>\n' +
-    '    <small style="font-size: 11px; opacity: 0.3; margin: 0;">As of 3:42 PM EST</small>\n' +
-    "  </div>\n" +
-    '  <div style="height: 1px; background: linear-gradient(90deg, color-mix(in oklch, var(--foreground) 15%, transparent), transparent); margin-bottom: 20px;"></div>\n' +
-    '  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; margin-bottom: 20px;">\n' +
-    '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent); border-radius: 8px 0 0 8px;">\n' +
-    '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">Price</div>\n' +
-    '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">$892.40</div>\n' +
-    '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">+2.34%</div>\n' +
-    "    </div>\n" +
-    '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent);">\n' +
-    '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">Mkt Cap</div>\n' +
-    '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">$2.19T</div>\n' +
-    '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">Mega cap</div>\n' +
-    "    </div>\n" +
-    '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent); border-radius: 0 8px 8px 0;">\n' +
-    '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">P/E</div>\n' +
-    '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">64.2</div>\n' +
-    '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">TTM</div>\n' +
-    "    </div>\n" +
-    "  </div>\n" +
-    '  <div style="margin-bottom: 20px;">\n' +
-    '    <h3 style="font-size: 10px; letter-spacing: 0.1em; opacity: 0.35; margin-bottom: 10px;">Summary</h3>\n' +
-    '    <p style="font-size: 12.5px; opacity: 0.55; line-height: 1.65;">Brief analysis paragraph here.</p>\n' +
-    "  </div>\n" +
-    '  <div style="height: 1px; background: color-mix(in oklch, var(--foreground) 5%, transparent); margin-bottom: 18px;"></div>\n' +
-    '  <div style="margin-bottom: 20px;">\n' +
-    '    <h3 style="font-size: 10px; letter-spacing: 0.1em; opacity: 0.35; margin-bottom: 12px;">Key Points</h3>\n' +
-    '    <div style="display: flex; flex-direction: column; gap: 10px;">\n' +
-    '      <div style="display: flex; gap: 10px; align-items: flex-start;">\n' +
-    '        <div style="width: 3px; align-self: stretch; border-radius: 2px; background: color-mix(in oklch, var(--foreground) 10%, transparent); flex-shrink: 0; margin-top: 2px;"></div>\n' +
-    '        <div>\n' +
-    '          <p style="font-size: 12.5px; opacity: 0.65; margin-bottom: 3px; line-height: 1.45;"><strong style="opacity: 0.8;">Bold lead</strong> followed by supporting detail.</p>\n' +
-    '          <small style="font-size: 10px; opacity: 0.25;">Source &middot; Date</small>\n' +
-    "        </div>\n" +
-    "      </div>\n" +
-    "    </div>\n" +
-    "  </div>\n" +
-    '  <div style="padding-top: 8px;">\n' +
-    '    <small style="font-size: 10px; opacity: 0.18; letter-spacing: 0.03em;">Sources &middot; Timestamp</small>\n' +
-    "  </div>\n" +
-    "</div>"
-  ),
-});
+const DisplayJsonSchema = {
+  type: "object",
+  properties: {
+    html: {
+      type: "string",
+      description:
+        "HTML content to render on the canvas panel. The container auto-styles semantic elements.\n\n" +
+        "DESIGN: refined informational display — clean, structured, editorial. Typography and whitespace do the work. Not generic cards.\n\n" +
+        "RULES:\n" +
+        "- Headlines: font-family: Georgia, serif; font-weight: 500. Use h2 for topic title (19-22px, opacity 0.92), h3 for section labels (10px, uppercase, letter-spacing 0.1em, opacity 0.35). Avoid h1.\n" +
+        "- Colors: ONLY var(--foreground) and var(--background). Opacity tiers: 0.92 (title), 0.88 (key values), 0.65 (body), 0.42 (secondary text), 0.25-0.3 (meta). Never hardcode colors.\n" +
+        "- Metric blocks: use a grid row with joined segments — background: color-mix(in oklch, var(--foreground) 3%, transparent). First segment border-radius: 8px 0 0 8px, last: 0 8px 8px 0. Large serif numbers (22px), tiny uppercase labels (10px, 0.08em spacing, 0.32 opacity).\n" +
+        "- Dividers: <div> with height: 1px, background: color-mix(in oklch, var(--foreground) 4-5%, transparent). Top accent divider can use linear-gradient(90deg, color-mix(in oklch, var(--foreground) 15%, transparent), transparent).\n" +
+        "- Left accent bars for list items: width: 3px, border-radius: 2px, background: color-mix(in oklch, var(--foreground) 10%, transparent), align-self: stretch.\n" +
+        "- Tables: subtle surface (2.5% foreground), border-radius 8px, overflow hidden. No header row — use label/value pairs. Cell borders: 1px solid color-mix(in oklch, var(--foreground) 4%, transparent).\n" +
+        "- Source/meta: <small> with font-size: 10px, opacity 0.18-0.25, letter-spacing 0.03em.\n" +
+        "- Layout: flexbox via inline styles. No <style> blocks, no class names, no scripts, no external resources.\n\n" +
+        "REFERENCE — adapt this structure to any content type:\n\n" +
+        '<div style="display: flex; flex-direction: column; gap: 0;">\n' +
+        '  <div style="margin-bottom: 6px;">\n' +
+        '    <h3 style="margin: 0 0 4px; font-size: 10px; letter-spacing: 0.12em; opacity: 0.3;">Market Overview</h3>\n' +
+        '    <h2 style="font-size: 22px; font-weight: 500; opacity: 0.92; margin: 0; font-family: Georgia, serif; letter-spacing: -0.02em;">NVIDIA Corporation</h2>\n' +
+        "  </div>\n" +
+        '  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">\n' +
+        '    <small style="font-size: 11px; opacity: 0.35; margin: 0;">NASDAQ: NVDA</small>\n' +
+        '    <small style="opacity: 0.15; margin: 0;">&middot;</small>\n' +
+        '    <small style="font-size: 11px; opacity: 0.3; margin: 0;">As of 3:42 PM EST</small>\n' +
+        "  </div>\n" +
+        '  <div style="height: 1px; background: linear-gradient(90deg, color-mix(in oklch, var(--foreground) 15%, transparent), transparent); margin-bottom: 20px;"></div>\n' +
+        '  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; margin-bottom: 20px;">\n' +
+        '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent); border-radius: 8px 0 0 8px;">\n' +
+        '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">Price</div>\n' +
+        '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">$892.40</div>\n' +
+        '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">+2.34%</div>\n' +
+        "    </div>\n" +
+        '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent);">\n' +
+        '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">Mkt Cap</div>\n' +
+        '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">$2.19T</div>\n' +
+        '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">Mega cap</div>\n' +
+        "    </div>\n" +
+        '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent); border-radius: 0 8px 8px 0;">\n' +
+        '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">P/E</div>\n' +
+        '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">64.2</div>\n' +
+        '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">TTM</div>\n' +
+        "    </div>\n" +
+        "  </div>\n" +
+        '  <div style="margin-bottom: 20px;">\n' +
+        '    <h3 style="font-size: 10px; letter-spacing: 0.1em; opacity: 0.35; margin-bottom: 10px;">Summary</h3>\n' +
+        '    <p style="font-size: 12.5px; opacity: 0.55; line-height: 1.65;">Brief analysis paragraph here.</p>\n' +
+        "  </div>\n" +
+        '  <div style="height: 1px; background: color-mix(in oklch, var(--foreground) 5%, transparent); margin-bottom: 18px;"></div>\n' +
+        '  <div style="margin-bottom: 20px;">\n' +
+        '    <h3 style="font-size: 10px; letter-spacing: 0.1em; opacity: 0.35; margin-bottom: 12px;">Key Points</h3>\n' +
+        '    <div style="display: flex; flex-direction: column; gap: 10px;">\n' +
+        '      <div style="display: flex; gap: 10px; align-items: flex-start;">\n' +
+        '        <div style="width: 3px; align-self: stretch; border-radius: 2px; background: color-mix(in oklch, var(--foreground) 10%, transparent); flex-shrink: 0; margin-top: 2px;"></div>\n' +
+        '        <div>\n' +
+        '          <p style="font-size: 12.5px; opacity: 0.65; margin-bottom: 3px; line-height: 1.45;"><strong style="opacity: 0.8;">Bold lead</strong> followed by supporting detail.</p>\n' +
+        '          <small style="font-size: 10px; opacity: 0.25;">Source &middot; Date</small>\n' +
+        "        </div>\n" +
+        "      </div>\n" +
+        "    </div>\n" +
+        "  </div>\n" +
+        '  <div style="padding-top: 8px;">\n' +
+        '    <small style="font-size: 10px; opacity: 0.18; letter-spacing: 0.03em;">Sources &middot; Timestamp</small>\n' +
+        "  </div>\n" +
+        "</div>",
+    },
+  },
+  required: ["html"],
+};
+
+const TaskCreateJsonSchema = {
+  type: "object",
+  properties: {
+    description: { type: "string", description: "Short summary of the task (shown in task list)" },
+    prompt: { type: "string", description: "Detailed instructions for the subagent — this is the agent's ONLY context" },
+    subagent_type: { type: "string", enum: ["general", "explore", "app"], description: "Which agent executes the task: 'general' (code/files/shell/UI), 'explore' (read-only codebase search), 'app' (browser/desktop app automation). Default: general" },
+    thread_name: { type: "string", description: "Kebab-case thread name for persistent context across related tasks" },
+    command_id: { type: "string", description: "Command ID from a suggestion chip — system injects full instructions automatically" },
+  },
+  required: ["description", "prompt"],
+};
+
+const TaskOutputJsonSchema = {
+  type: "object",
+  properties: {
+    task_id: { type: "string", description: "Task ID returned by TaskCreate" },
+  },
+  required: ["task_id"],
+};
+
+const TaskCancelJsonSchema = {
+  type: "object",
+  properties: {
+    task_id: { type: "string", description: "Task ID to cancel" },
+    reason: { type: "string", description: "Why the task is being canceled" },
+  },
+  required: ["task_id"],
+};
+
+const TaskJsonSchema = {
+  type: "object",
+  properties: {
+    action: { type: "string", enum: ["create", "cancel", "message", "inbox"], description: "Action to perform: 'create' (new task), 'cancel' (stop task), 'message' (send to task), 'inbox' (read messages from task)" },
+    task_id: { type: "string", description: "Task ID (required for cancel, message, inbox)" },
+    description: { type: "string", description: "Task summary (for create)" },
+    prompt: { type: "string", description: "Detailed instructions (for create)" },
+    subagent_type: { type: "string", description: "Agent type (for create): general, explore, or app" },
+    message: { type: "string", description: "Message content (for action=message)" },
+    reason: { type: "string", description: "Cancellation reason (for action=cancel)" },
+  },
+  required: ["action"],
+};
+
+const WebFetchJsonSchema = {
+  type: "object",
+  properties: {
+    url: { type: "string", description: "URL to fetch (HTTP auto-upgrades to HTTPS)" },
+    prompt: { type: "string", description: "What information you want from this page" },
+  },
+  required: ["url"],
+};
+
+const SaveMemoryJsonSchema = {
+  type: "object",
+  properties: {
+    content: { type: "string", description: "Text to save as a memory entry" },
+    tags: { type: "array", items: { type: "string" }, description: "Optional tags for categorization" },
+  },
+  required: ["content"],
+};
+
+const RecallMemoriesJsonSchema = {
+  type: "object",
+  properties: {
+    query: { type: "string", description: "Search query to find relevant memories" },
+    limit: { type: "number", description: "Maximum number of memories to return" },
+  },
+  required: ["query"],
+};
+
+const ActivateSkillJsonSchema = {
+  type: "object",
+  properties: {
+    skill_id: { type: "string", description: "ID of the skill to activate" },
+  },
+  required: ["skill_id"],
+};
+
+const NoResponseJsonSchema = {
+  type: "object",
+  properties: {},
+};
 
 // ─── Tool Descriptions ──────────────────────────────────────────────────────
 
@@ -363,33 +505,85 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Permanently delete a local cron job.",
   CronRun:
     "Trigger a local cron job immediately, ignoring its next scheduled time.",
+  TaskCreate:
+    "Create a background task executed by a specialized subagent.\n\n" +
+    "Usage:\n" +
+    "- description: short summary shown in the task list.\n" +
+    "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
+    "- subagent_type: 'general' (code, files, shell, Stella UI), 'explore' (read-only codebase search), or 'app' (browser and desktop app automation).\n" +
+    "- thread_name: optional kebab-case name to persist context across related tasks.\n" +
+    "- Returns a task_id for tracking with TaskOutput or canceling with TaskCancel.",
+  TaskOutput:
+    "Check the status and output of a previously created task.\n\n" +
+    "Usage:\n" +
+    "- task_id: the ID returned by TaskCreate.\n" +
+    "- Returns the task's current status (running/completed/error) and result or error text.",
+  TaskCancel:
+    "Cancel a running task.\n\n" +
+    "Usage:\n" +
+    "- task_id: the ID of the task to cancel.\n" +
+    "- reason: optional explanation of why the task is being canceled.",
+  Task:
+    "Multi-action task tool for creating tasks, sending messages to running tasks, and reading task inbox.\n\n" +
+    "Actions:\n" +
+    "- action='create': Create a new subagent task (same as TaskCreate).\n" +
+    "- action='cancel': Cancel a running task by task_id.\n" +
+    "- action='message': Send a message to a running task's agent.\n" +
+    "- action='inbox': Read messages sent back from a task's agent.",
+  WebFetch:
+    "Fetch and read content from a URL.\n\n" +
+    "Usage:\n" +
+    "- Fetches the page, strips HTML tags, and returns plain text.\n" +
+    "- HTTP URLs are auto-upgraded to HTTPS.\n" +
+    "- prompt describes what information you want to extract.\n" +
+    "- Content is truncated to ~30,000 characters.",
+  SaveMemory:
+    "Save information worth remembering across conversations.\n\n" +
+    "Usage:\n" +
+    "- content: the text to remember (preferences, decisions, facts, personal details).\n" +
+    "- tags: optional array of strings for categorization.\n" +
+    "- The system auto-deduplicates similar entries.",
+  RecallMemories:
+    "Look up past context from saved memories.\n\n" +
+    "Usage:\n" +
+    "- query: search text to find relevant memories.\n" +
+    "- limit: optional max number of results.\n" +
+    "- Use when the user references past conversations, preferences, or you need prior context.",
+  ActivateSkill:
+    "Load a skill's full instructions and tools into the current session.\n\n" +
+    "Usage:\n" +
+    "- skill_id: ID of the skill to activate.\n" +
+    "- Skills provide specialized capabilities (browser patterns, API discovery, etc.).\n" +
+    "- Activate when you need a skill's detailed instructions for a specific task.",
+  NoResponse:
+    "Signal that you have nothing to say right now.\n\n" +
+    "Call this instead of generating a message when a system event, task result, or heartbeat check " +
+    "does not warrant a visible response. Do NOT call this for user messages — always reply to users.",
 };
 
-// ─── Schema Map ─────────────────────────────────────────────────────────────
-
-export const TOOL_SCHEMAS = {
-  Read: ReadSchema,
-  Edit: EditSchema,
-  Glob: GlobSchema,
-  Grep: GrepSchema,
-  Bash: BashSchema,
-  KillShell: KillShellSchema,
-  ShellStatus: ShellStatusSchema,
-  AskUserQuestion: AskUserQuestionSchema,
-  RequestCredential: RequestCredentialSchema,
-  SkillBash: SkillBashSchema,
-  MediaGenerate: MediaGenerateSchema,
-  WebSearch: WebSearchSchema,
-  Display: DisplaySchema,
-} as const;
-
 // ─── JSON Schema Map (for LLM tool definitions) ────────────────────────────
-// Converts the Zod schemas above into JSON Schema objects that can be sent
-// directly to LLM APIs as tool parameter definitions.
 
-export const TOOL_JSON_SCHEMAS: Record<string, object> = Object.fromEntries(
-  Object.entries(TOOL_SCHEMAS).map(([name, schema]) => [
-    name,
-    zodToJsonSchema(schema as unknown as Parameters<typeof zodToJsonSchema>[0], { target: "openApi3" }),
-  ]),
-);
+export const TOOL_JSON_SCHEMAS: Record<string, object> = {
+  Read: ReadJsonSchema,
+  Edit: EditJsonSchema,
+  Glob: GlobJsonSchema,
+  Grep: GrepJsonSchema,
+  Bash: BashJsonSchema,
+  KillShell: KillShellJsonSchema,
+  ShellStatus: ShellStatusJsonSchema,
+  AskUserQuestion: AskUserQuestionJsonSchema,
+  RequestCredential: RequestCredentialJsonSchema,
+  SkillBash: SkillBashJsonSchema,
+  MediaGenerate: MediaGenerateJsonSchema,
+  WebSearch: WebSearchJsonSchema,
+  Display: DisplayJsonSchema,
+  TaskCreate: TaskCreateJsonSchema,
+  TaskOutput: TaskOutputJsonSchema,
+  TaskCancel: TaskCancelJsonSchema,
+  Task: TaskJsonSchema,
+  WebFetch: WebFetchJsonSchema,
+  SaveMemory: SaveMemoryJsonSchema,
+  RecallMemories: RecallMemoriesJsonSchema,
+  ActivateSkill: ActivateSkillJsonSchema,
+  NoResponse: NoResponseJsonSchema,
+};
