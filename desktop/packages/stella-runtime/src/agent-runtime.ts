@@ -231,6 +231,43 @@ const extractAssistantText = (message: AgentMessage | undefined): string => {
     .join("");
 };
 
+const getLatestAssistantMessage = (messages: AgentMessage[]): AgentMessage | undefined =>
+  [...messages].reverse().find((message) => message.role === "assistant");
+
+const getAgentCompletion = (agent: Agent): { finalText: string; errorMessage?: string } => {
+  const latestAssistant = getLatestAssistantMessage(agent.state.messages);
+  const finalText = extractAssistantText(latestAssistant);
+
+  if (latestAssistant?.role === "assistant") {
+    const assistantError = latestAssistant.errorMessage?.trim();
+    if (latestAssistant.stopReason === "error" || latestAssistant.stopReason === "aborted") {
+      return {
+        finalText,
+        errorMessage:
+          assistantError ||
+          agent.state.error ||
+          (latestAssistant.stopReason === "aborted" ? "Request was aborted" : "Agent failed"),
+      };
+    }
+
+    if (assistantError) {
+      return {
+        finalText,
+        errorMessage: assistantError,
+      };
+    }
+  }
+
+  if (agent.state.error && !finalText.trim()) {
+    return {
+      finalText,
+      errorMessage: agent.state.error,
+    };
+  }
+
+  return { finalText };
+};
+
 const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
   const sections = [context.systemPrompt.trim()];
 
@@ -614,10 +651,10 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
       timestamp: now(),
     });
 
-    const latestAssistant = [...agent.state.messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
-    const finalText = extractAssistantText(latestAssistant);
+    const { finalText, errorMessage } = getAgentCompletion(agent);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
     console.log(`[stella:trace] orchestrator end | runId=${runId} | finalText=${finalText.slice(0, 300)}`);
 
     // --- agent_end hook ---
@@ -1079,10 +1116,10 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
       timestamp: now(),
     });
 
-    const latestAssistant = [...agent.state.messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
-    const result = extractAssistantText(latestAssistant);
+    const { finalText: result, errorMessage } = getAgentCompletion(agent);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
     finalText = result;
     if (result.trim()) {
       opts.store.appendThreadMessage({
