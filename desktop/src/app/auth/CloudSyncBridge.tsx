@@ -1,6 +1,4 @@
 import { useEffect } from "react";
-import { useCurrentUser } from "@/app/auth/hooks/use-current-user";
-import { useAccountMode } from "@/app/auth/hooks/use-account-mode";
 
 /**
  * Tells the Electron main process whether cloud sync should be active.
@@ -8,22 +6,11 @@ import { useAccountMode } from "@/app/auth/hooks/use-account-mode";
  * for logged-in users in private/local mode.
  */
 export const CloudSyncBridge = () => {
-  const { user, isAuthenticated } = useCurrentUser();
-  const accountMode = useAccountMode();
-
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
     if (!systemApi?.setCloudSyncEnabled) return;
-
-    // Wait until both queries have resolved before deciding.
-    if (!isAuthenticated || user === undefined || accountMode === undefined) {
-      void systemApi.setCloudSyncEnabled({ enabled: false });
-      return;
-    }
-
-    const enabled = user !== null && !user.isAnonymous && accountMode === "connected";
-    void systemApi.setCloudSyncEnabled({ enabled });
-  }, [isAuthenticated, user, accountMode]);
+    void systemApi.setCloudSyncEnabled({ enabled: false });
+  }, []);
 
   // Disable on unmount
   useEffect(() => {

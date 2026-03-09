@@ -15,21 +15,9 @@ const mockUseConvexAuth = vi.fn(() => ({
   isAuthenticated: true,
   isLoading: false,
 }));
-const mockUseQuery = vi.fn(() => "connected");
 
 vi.mock("convex/react", () => ({
   useConvexAuth: () => mockUseConvexAuth(),
-  useQuery: () => mockUseQuery(),
-}));
-
-vi.mock("@/convex/api", () => ({
-  api: {
-    data: {
-      preferences: {
-        getAccountMode: "getAccountMode",
-      },
-    },
-  },
 }));
 
 vi.mock("@/app/chat/services/local-chat-store", () => ({
@@ -51,7 +39,6 @@ describe("ChatStoreProvider", () => {
       isAuthenticated: true,
       isLoading: false,
     });
-    mockUseQuery.mockReturnValue("connected");
   });
 
   describe("storage mode", () => {
@@ -62,10 +49,10 @@ describe("ChatStoreProvider", () => {
       expect(result.current.isLocalStorage).toBe(true);
     });
 
-    it("still exposes cloud feature availability for connected accounts", () => {
+    it("keeps cloud features disabled even when authenticated", () => {
       const { result } = renderHook(() => useChatStore(), { wrapper });
 
-      expect(result.current.cloudFeaturesEnabled).toBe(true);
+      expect(result.current.cloudFeaturesEnabled).toBe(false);
       expect(result.current.isAuthenticated).toBe(true);
     });
 

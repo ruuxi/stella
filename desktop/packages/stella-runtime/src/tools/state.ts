@@ -131,13 +131,14 @@ export const handleTask = async (
   const delegationAllowlist = context.delegationAllowlist ?? [];
   const parentTaskId =
     toOptionalString(args.parentTaskId ?? args.parent_task_id) ??
+    toOptionalString(context.cloudTaskId) ??
     toOptionalString(context.taskId);
   const threadName = toOptionalString(args.threadName ?? args.thread_name);
   const commandId = toOptionalString(args.commandId ?? args.command_id);
   const systemPromptOverride = toOptionalString(
     args.systemPromptOverride ?? args.system_prompt_override,
   );
-  const storageMode = context.storageMode ?? "cloud";
+  const storageMode = context.storageMode ?? "local";
   const parentTaskDepth = Math.max(0, context.taskDepth ?? 0);
   const nextTaskDepth = parentTaskDepth + 1;
   const maxTaskDepth = context.maxTaskDepth;

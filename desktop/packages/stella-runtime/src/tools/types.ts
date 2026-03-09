@@ -17,6 +17,7 @@ export type ToolContext = {
   agentType?: string;
   storageMode?: "cloud" | "local";
   taskId?: string;
+  cloudTaskId?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
   delegationAllowlist?: string[];

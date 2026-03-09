@@ -141,7 +141,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
   ipcMain.handle('preferences:getSyncMode', () => {
     const stellaHomePath = options.getStellaHomePath()
-    if (!stellaHomePath) return 'on'
+    if (!stellaHomePath) return 'off'
     return getSyncMode(stellaHomePath)
   })
 

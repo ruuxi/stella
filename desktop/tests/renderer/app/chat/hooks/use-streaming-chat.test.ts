@@ -31,7 +31,7 @@ vi.mock("@/context/chat-store", () => ({
   useChatStore: vi.fn(() => ({
     storageMode: "local",
     isLocalStorage: true,
-    cloudFeaturesEnabled: true,
+    cloudFeaturesEnabled: false,
     appendEvent: mockAppendEvent,
     appendAgentEvent: mockAppendAgentEvent,
     uploadAttachments: mockUploadAttachments,
