@@ -101,9 +101,8 @@ function updateUsage(
 ): void {
   if (!usage) return;
   const cachedTokens = usage.prompt_tokens_details?.cached_tokens || 0;
-  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens || 0;
   const input = (usage.prompt_tokens || 0) - cachedTokens;
-  const outputTokens = (usage.completion_tokens || 0) + reasoningTokens;
+  const outputTokens = usage.completion_tokens || 0;
   output.usage = {
     input,
     output: outputTokens,
@@ -111,7 +110,7 @@ function updateUsage(
     cacheWrite: 0,
     totalTokens:
       typeof usage.total_tokens === "number"
-        ? usage.total_tokens + reasoningTokens
+        ? usage.total_tokens
         : input + outputTokens + cachedTokens,
     cost: {
       input: 0,
