@@ -398,32 +398,43 @@ async function* parseSSE(response: Response): AsyncGenerator<Record<string, unkn
 	const decoder = new TextDecoder();
 	let buffer = "";
 
+	const consumeChunk = function* (chunk: string): Generator<Record<string, unknown>> {
+		const dataLines = chunk
+			.split(/\r?\n/)
+			.filter((line) => line.startsWith("data:"))
+			.map((line) => line.slice(5).trim());
+		if (dataLines.length === 0) return;
+
+		const data = dataLines.join("\n").trim();
+		if (!data || data === "[DONE]") return;
+
+		try {
+			yield JSON.parse(data);
+		} catch {
+			// Ignore malformed partial events and keep reading.
+		}
+	};
+
 	while (true) {
 		const { done, value } = await reader.read();
 		if (done) break;
 		buffer += decoder.decode(value, { stream: true });
 
-		let idx = buffer.indexOf("\n\n");
-		while (idx !== -1) {
+		let match = buffer.match(/\r?\n\r?\n/);
+		while (match) {
+			const idx = match.index ?? -1;
+			if (idx < 0) break;
 			const chunk = buffer.slice(0, idx);
-			buffer = buffer.slice(idx + 2);
+			buffer = buffer.slice(idx + match[0].length);
 
-			const dataLines = chunk
-				.split("\n")
-				.filter((l) => l.startsWith("data:"))
-				.map((l) => l.slice(5).trim());
-			if (dataLines.length > 0) {
-				const data = dataLines.join("\n").trim();
-				if (data && data !== "[DONE]") {
-					try {
-						yield JSON.parse(data);
-					} catch {
-						continue;
-					}
-				}
-			}
-			idx = buffer.indexOf("\n\n");
+			yield* consumeChunk(chunk);
+			match = buffer.match(/\r?\n\r?\n/);
 		}
+	}
+
+	buffer += decoder.decode();
+	if (buffer.trim().length > 0) {
+		yield* consumeChunk(buffer);
 	}
 }
 
