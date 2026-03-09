@@ -16,7 +16,7 @@ if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(rawName)) {
 }
 
 const src = join(__dirname, '..', 'templates', 'workspace-app')
-const appsDir = join(homedir(), '.stella', 'workspace', 'apps')
+const appsDir = join(homedir(), 'stella', '.stella', 'workspace', 'apps')
 mkdirSync(appsDir, { recursive: true })
 const dest = join(appsDir, rawName)
 

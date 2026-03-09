@@ -58,7 +58,7 @@ const getStellaHome = (override?: string) => {
   if (fromEnv && fromEnv.trim().length > 0) {
     return fromEnv;
   }
-  return path.join(os.homedir(), ".stella");
+  return path.join(os.homedir(), "stella", ".stella");
 };
 
 export const getDeferredDeletePaths = (

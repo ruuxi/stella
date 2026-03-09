@@ -16,7 +16,7 @@ It covers two layers:
 | Layer | What it extends | Typical mechanism |
 | --- | --- | --- |
 | Pi core | Agent lifecycle, tool system, commands, UI, model/provider routing | `pi.on(...)`, `pi.registerTool(...)`, `pi.registerCommand(...)`, `pi.registerProvider(...)` |
-| Stella host | Device tools, skills/agents from `~/.stella`, self-mod workflows, local task orchestration | Tool handlers, local manifest parsing, task manager, runtime router |
+| Stella host | Device tools, skills/agents from `~/stella/.stella`, self-mod workflows, local task orchestration | Tool handlers, local manifest parsing, task manager, runtime router |
 
 Use Pi core when you need generic extension behavior.
 Use Stella host when you need Stella-specific device/runtime behavior.
@@ -217,11 +217,11 @@ Stella wraps Pi with a host runner that adds:
 - Shell lifecycle control
 - Local persistence and memory wiring
 
-### 2.2 Dynamic Skills And Agents From `~/.stella`
+### 2.2 Dynamic Skills And Agents From `~/stella/.stella`
 At startup, Stella loads:
 
-- Skills from `~/.stella/skills/*/SKILL.md`
-- Agents from `~/.stella/agents/*/AGENT.md`
+- Skills from `~/stella/.stella/skills/*/SKILL.md`
+- Agents from `~/stella/.stella/agents/*/AGENT.md`
 
 Skill parsing supports:
 

@@ -67,7 +67,7 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runSubagentTask>[0]>) =
   agentContext: buildAgentContext(),
   toolExecutor: vi.fn().mockResolvedValue({ result: "unused" }),
   deviceId: "device-1",
-  stellaHome: "/tmp/.stella",
+      stellaHome: "/tmp/stella/.stella",
   resolvedLlm: {
     model: {
       id: "openai/gpt-4.1-mini",
