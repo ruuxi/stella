@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import type { AgentStreamEvent } from "../../../../../src/app/chat/streaming/streaming-types";
 
 // Mock external deps before importing the hook
 vi.mock("convex/react", () => ({
@@ -23,7 +24,8 @@ const mockUploadAttachments = vi.fn(() => Promise.resolve([]));
 const mockBuildHistory = vi.fn(() => undefined);
 const mockAgentHealthCheck = vi.fn(() => Promise.resolve({ ready: true }));
 const mockAgentStartChat = vi.fn(() => Promise.resolve({ runId: "run-1" }));
-const mockAgentOnStream = vi.fn(() => vi.fn());
+type AgentOnStreamHandler = (callback: (event: AgentStreamEvent) => void) => () => void;
+const mockAgentOnStream = vi.fn<AgentOnStreamHandler>(() => vi.fn());
 
 vi.mock("@/context/chat-store", () => ({
   useChatStore: vi.fn(() => ({
@@ -359,6 +361,81 @@ describe("useStreamingChat", () => {
       });
 
       expect(getOrCreateDeviceId).toHaveBeenCalled();
+    });
+
+    it("persists WebSearch HTML from streamed tool-end events", async () => {
+      mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
+
+      const { result } = renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
+      );
+
+      let unsubscribeCalled = false;
+      mockAgentOnStream.mockImplementation((_callback: (event: {
+        type: string;
+        runId: string;
+        seq: number;
+        toolCallId?: string;
+        toolName?: string;
+        resultPreview?: string;
+        html?: string;
+        agentType?: string;
+      }) => void) => {
+        return () => {
+          unsubscribeCalled = true;
+        };
+      });
+
+      await act(async () => {
+        await result.current.sendMessage({
+          text: "search for news",
+          selectedText: null,
+          chatContext: null,
+          onClear: vi.fn(),
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const callback = mockAgentOnStream.mock.calls[0]?.[0] as
+        | ((event: {
+            type: string;
+            runId: string;
+            seq: number;
+            toolCallId?: string;
+            toolName?: string;
+            resultPreview?: string;
+            html?: string;
+            agentType?: string;
+          }) => void)
+        | undefined;
+
+      expect(callback).toBeTypeOf("function");
+
+      act(() => {
+        callback?.({
+          type: "tool-end",
+          runId: "run-1",
+          agentType: "orchestrator",
+          seq: 1,
+          toolCallId: "tool-1",
+          toolName: "WebSearch",
+          resultPreview: "HTML search briefing ready.",
+          html: "<section><h3>Briefing</h3></section>",
+        });
+      });
+
+      expect(mockAppendAgentEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "tool_result",
+          toolCallId: "tool-1",
+          toolName: "WebSearch",
+          resultPreview: "HTML search briefing ready.",
+          html: "<section><h3>Briefing</h3></section>",
+        }),
+      );
+      expect(unsubscribeCalled).toBe(false);
     });
   });
 });
