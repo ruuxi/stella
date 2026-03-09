@@ -4,12 +4,8 @@ import * as fs from "fs";
 const source = fs.readFileSync("convex/data/skills.ts", "utf-8");
 
 describe("skills module structure", () => {
-  test("uses BUILTIN_SKILLS from prompts", () => {
-    expect(source).toContain("BUILTIN_SKILLS");
-  });
-
-  test("uses BUILTIN_OWNER_ID for builtin skills", () => {
-    expect(source).toContain("BUILTIN_OWNER_ID");
+  test("does not depend on backend builtin skill seeding", () => {
+    expect(source).not.toContain("BUILTIN_SKILLS");
   });
 
   test("defines skill import validator", () => {

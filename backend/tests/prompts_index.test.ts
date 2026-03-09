@@ -4,7 +4,6 @@ import {
   buildWelcomeMessagePrompt,
   buildWelcomeSuggestionsPrompt,
   buildSkillMetadataUserMessage,
-  BUILTIN_SKILLS,
   buildSkillSelectionUserMessage,
   buildPersonalizedDashboardPageUserMessage,
   OFFLINE_RESPONDER_SYSTEM_PROMPT,
@@ -19,7 +18,6 @@ describe("prompts/index re-exports", () => {
 
   test("exports skill-related items", () => {
     expect(typeof buildSkillMetadataUserMessage).toBe("function");
-    expect(Array.isArray(BUILTIN_SKILLS)).toBe(true);
     expect(typeof buildSkillSelectionUserMessage).toBe("function");
   });
 

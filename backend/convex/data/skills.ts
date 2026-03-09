@@ -7,9 +7,7 @@ import {
 } from "../_generated/server";
 import { v } from "convex/values";
 import { secretMountsValidator } from "../shared_validators";
-import { BUILTIN_SKILLS } from "../prompts/index";
 import { requireUserId } from "../auth";
-import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
 import { coerceStringArray } from "../lib/coerce";
 
 
@@ -216,7 +214,7 @@ export const upsertManyInternal = internalMutation({
     skills: v.array(skillImportValidator),
   },
   handler: async (ctx, args) => {
-    const ownerId = args.ownerId ?? BUILTIN_OWNER_ID;
+    const ownerId = args.ownerId ?? await requireUserId(ctx);
     return await upsertManyHandler(ctx, args, ownerId);
   },
 });
@@ -228,41 +226,18 @@ const listEnabledSkillsHandler = async (
   ctx: QueryCtx,
   args: { agentType: string; ownerId?: string },
 ) => {
-  const [builtinEnabled, ownerScoped] = await Promise.all([
-    ctx.db
-      .query("skills")
-      .withIndex("by_ownerId_and_enabled", (q) =>
-        q.eq("ownerId", BUILTIN_OWNER_ID).eq("enabled", true),
-      )
-      .take(400),
-    args.ownerId
-      ? ctx.db
-          .query("skills")
-          .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId!))
-          .order("desc")
-          .take(400)
-      : Promise.resolve([]),
-  ]);
-
-  const merged = new Map<string, (typeof builtinEnabled)[number]>();
-
-  for (const skill of builtinEnabled) {
-    if (supportsAgentType(skill.agentTypes, args.agentType)) {
-      merged.set(skill.id, skill);
-    }
+  if (!args.ownerId) {
+    return [];
   }
 
-  for (const skill of ownerScoped) {
-    const skillEnabled = skill.enabled !== false;
-    const skillSupportsAgent = supportsAgentType(skill.agentTypes, args.agentType);
-    if (!skillEnabled || !skillSupportsAgent) {
-      merged.delete(skill.id);
-      continue;
-    }
-    merged.set(skill.id, skill);
-  }
+  const ownerScoped = await ctx.db
+    .query("skills")
+    .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId!))
+    .order("desc")
+    .take(400);
 
-  return Array.from(merged.values());
+  return ownerScoped.filter((skill) =>
+    skill.enabled !== false && supportsAgentType(skill.agentTypes, args.agentType));
 };
 
 export const listEnabledSkills = internalQuery({
@@ -289,29 +264,16 @@ const getSkillByIdHandler = async (
   ctx: QueryCtx,
   args: { skillId: string; ownerId?: string },
 ) => {
-  if (args.ownerId) {
-    const ownerSkill = await ctx.db
-      .query("skills")
-      .withIndex("by_ownerId_and_id", (q) =>
-        q.eq("ownerId", args.ownerId!).eq("id", args.skillId),
-      )
-      .first();
-    if (ownerSkill) {
-      return ownerSkill;
-    }
+  if (!args.ownerId) {
+    return null;
   }
 
-  const builtinSkill = await ctx.db
+  return await ctx.db
     .query("skills")
     .withIndex("by_ownerId_and_id", (q) =>
-      q.eq("ownerId", BUILTIN_OWNER_ID).eq("id", args.skillId),
+      q.eq("ownerId", args.ownerId!).eq("id", args.skillId),
     )
-    .unique();
-  if (builtinSkill) {
-    return builtinSkill;
-  }
-
-  return null;
+    .first();
 };
 
 export const getSkillById = internalQuery({
@@ -338,24 +300,11 @@ export const listSkills = internalQuery({
   args: {},
   handler: async (ctx) => {
     const ownerId = await requireUserId(ctx);
-    const [builtinSkills, ownerSkills] = await Promise.all([
-      ctx.db
-        .query("skills")
-        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
-        .order("desc")
-        .take(400),
-      ctx.db
-        .query("skills")
-        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
-        .order("desc")
-        .take(400),
-    ]);
-
-    const merged = new Map<string, (typeof ownerSkills)[number]>();
-    for (const skill of builtinSkills) merged.set(skill.id, skill);
-    for (const skill of ownerSkills) merged.set(skill.id, skill);
-
-    return Array.from(merged.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+    return await ctx.db
+      .query("skills")
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
+      .order("desc")
+      .take(400);
   },
 });
 
@@ -368,38 +317,18 @@ export const listAllSkillsForSelection = internalQuery({
     ownerId: v.string(),
   },
   handler: async (ctx, args) => {
-    const [builtinSkills, ownerSkills] = await Promise.all([
-      ctx.db
-        .query("skills")
-        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
-        .order("desc")
-        .take(400),
-      ctx.db
-        .query("skills")
-        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
-        .order("desc")
-        .take(400),
-    ]);
+    const ownerSkills = await ctx.db
+      .query("skills")
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
+      .order("desc")
+      .take(400);
 
-    const merged = new Map<string, { id: string; name: string; description: string; tags?: string[] }>();
-    for (const skill of builtinSkills) {
-      merged.set(skill.id, {
-        id: skill.id,
-        name: skill.name,
-        description: skill.description,
-        tags: skill.tags,
-      });
-    }
-    for (const skill of ownerSkills) {
-      merged.set(skill.id, {
-        id: skill.id,
-        name: skill.name,
-        description: skill.description,
-        tags: skill.tags,
-      });
-    }
-
-    return Array.from(merged.values());
+    return ownerSkills.map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      tags: skill.tags,
+    }));
   },
 });
 
@@ -414,110 +343,24 @@ export const enableSelectedSkills = internalMutation({
     let disabled = 0;
     const selectedSet = new Set(args.skillIds);
 
-    const [ownerSkills, builtinSkills] = await Promise.all([
-      ctx.db
-        .query("skills")
-        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
-        .order("desc")
-        .take(400),
-      ctx.db
-        .query("skills")
-        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
-        .order("desc")
-        .take(400),
-    ]);
+    const ownerSkills = await ctx.db
+      .query("skills")
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
+      .order("desc")
+      .take(400);
 
     const ownerById = new Map(ownerSkills.map((skill) => [skill.id, skill]));
-    const builtinById = new Map(builtinSkills.map((skill) => [skill.id, skill]));
 
-    // Enable selected skills by creating/enabling owner-scoped rows.
     for (const skillId of selectedSet) {
       const ownerSkill = ownerById.get(skillId);
-      if (ownerSkill) {
-        if (!ownerSkill.enabled) {
-          await ctx.db.patch(ownerSkill._id, { enabled: true, updatedAt: now });
-        }
-        enabled += 1;
-        continue;
+      if (!ownerSkill) continue;
+      if (!ownerSkill.enabled) {
+        await ctx.db.patch(ownerSkill._id, { enabled: true, updatedAt: now });
       }
-
-      const builtinSkill = builtinById.get(skillId);
-      if (!builtinSkill) continue;
-
-      const insertedId = await ctx.db.insert("skills", {
-        ownerId: args.ownerId,
-        id: builtinSkill.id,
-        name: builtinSkill.name,
-        description: builtinSkill.description,
-        markdown: builtinSkill.markdown,
-        agentTypes: builtinSkill.agentTypes,
-        toolsAllowlist: builtinSkill.toolsAllowlist,
-        tags: builtinSkill.tags,
-        execution: builtinSkill.execution,
-        requiresSecrets: builtinSkill.requiresSecrets,
-        publicIntegration: builtinSkill.publicIntegration,
-        secretMounts: builtinSkill.secretMounts,
-        version: builtinSkill.version,
-        source: builtinSkill.source,
-        enabled: true,
-        updatedAt: now,
-      });
-
-      ownerById.set(skillId, {
-        ...builtinSkill,
-        _id: insertedId,
-        ownerId: args.ownerId,
-        enabled: true,
-        updatedAt: now,
-      });
       enabled += 1;
     }
 
-    // Disable unselected builtin skills by creating/enforcing disabled owner overrides.
-    for (const builtinSkill of builtinById.values()) {
-      if (selectedSet.has(builtinSkill.id)) continue;
-
-      const ownerOverride = ownerById.get(builtinSkill.id);
-      if (ownerOverride) {
-        if (ownerOverride.enabled) {
-          await ctx.db.patch(ownerOverride._id, { enabled: false, updatedAt: now });
-          disabled += 1;
-        }
-        continue;
-      }
-
-      const insertedId = await ctx.db.insert("skills", {
-        ownerId: args.ownerId,
-        id: builtinSkill.id,
-        name: builtinSkill.name,
-        description: builtinSkill.description,
-        markdown: builtinSkill.markdown,
-        agentTypes: builtinSkill.agentTypes,
-        toolsAllowlist: builtinSkill.toolsAllowlist,
-        tags: builtinSkill.tags,
-        execution: builtinSkill.execution,
-        requiresSecrets: builtinSkill.requiresSecrets,
-        publicIntegration: builtinSkill.publicIntegration,
-        secretMounts: builtinSkill.secretMounts,
-        version: builtinSkill.version,
-        source: builtinSkill.source,
-        enabled: false,
-        updatedAt: now,
-      });
-
-      ownerById.set(builtinSkill.id, {
-        ...builtinSkill,
-        _id: insertedId,
-        ownerId: args.ownerId,
-        enabled: false,
-        updatedAt: now,
-      });
-      disabled += 1;
-    }
-
-    // Disable owner-only skills that were not selected.
     for (const ownerSkill of ownerById.values()) {
-      if (builtinById.has(ownerSkill.id)) continue;
       if (selectedSet.has(ownerSkill.id)) continue;
       if (!ownerSkill.enabled) continue;
 
@@ -526,20 +369,6 @@ export const enableSelectedSkills = internalMutation({
     }
 
     return { enabled, disabled };
-  },
-});
-
-export const ensureBuiltinSkills = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    for (const skill of BUILTIN_SKILLS) {
-      await upsertSkill(ctx, BUILTIN_OWNER_ID, {
-        ...skill,
-        version: 1,
-        updatedAt: Date.now(),
-      });
-    }
-    return { ok: true };
   },
 });
 

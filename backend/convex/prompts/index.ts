@@ -8,7 +8,6 @@ export {
 } from "./synthesis";
 export type { WelcomeSuggestion } from "./synthesis";
 export { buildSkillMetadataUserMessage } from "./skill_metadata";
-export { BUILTIN_SKILLS } from "./builtin_skills";
 export { buildSkillSelectionUserMessage } from "./skill_selection";
 export {
   buildPersonalizedDashboardPageUserMessage,
