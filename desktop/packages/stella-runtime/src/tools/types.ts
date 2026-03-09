@@ -112,6 +112,7 @@ export type ToolHostOptions = {
   stellaUiCliPath?: string;
   taskApi?: TaskToolApi;
   scheduleApi?: ScheduleToolApi;
+  extensionTools?: import("../extensions/types.js").ToolDefinition[];
   displayHtml?: (html: string) => void;
   requestCredential?: (payload: {
     provider: string;

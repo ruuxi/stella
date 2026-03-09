@@ -11,6 +11,7 @@ import {
   type ToolContext,
   type ToolResult,
 } from "./tools/index.js";
+import type { HookEmitter } from "./extensions/index.js";
 import {
   isClaudeCodeModel,
   runClaudeCodeTurn,
@@ -134,6 +135,7 @@ type BaseRunOptions = {
       searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
     },
   ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
+  hookEmitter?: HookEmitter;
 };
 
 type OrchestratorRunOptions = BaseRunOptions & {
@@ -282,6 +284,7 @@ const createPiTools = (opts: {
       searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
     },
   ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
+  hookEmitter?: HookEmitter;
 }): AgentTool[] => {
   const requested = Array.isArray(opts.toolsAllowlist) && opts.toolsAllowlist.length > 0
     ? opts.toolsAllowlist
@@ -369,7 +372,39 @@ const createPiTools = (opts: {
         storageMode: "local",
       };
 
-      const toolResult = await opts.toolExecutor(toolName, args, context);
+      // --- before_tool hook ---
+      let effectiveArgs = args;
+      if (opts.hookEmitter) {
+        const hookResult = await opts.hookEmitter.emit(
+          "before_tool",
+          { tool: toolName, args, context },
+          { tool: toolName, agentType: opts.agentType },
+        );
+        if (hookResult?.cancel) {
+          return {
+            content: [{ type: "text", text: `Tool blocked: ${hookResult.reason ?? "blocked by hook"}` }],
+            details: { blocked: true },
+          };
+        }
+        if (hookResult?.args) {
+          effectiveArgs = hookResult.args;
+        }
+      }
+
+      let toolResult = await opts.toolExecutor(toolName, effectiveArgs, context);
+
+      // --- after_tool hook ---
+      if (opts.hookEmitter) {
+        const hookResult = await opts.hookEmitter.emit(
+          "after_tool",
+          { tool: toolName, args: effectiveArgs, result: toolResult, context },
+          { tool: toolName, agentType: opts.agentType },
+        );
+        if (hookResult?.result) {
+          toolResult = hookResult.result;
+        }
+      }
+
       const formatted = formatToolResult(toolResult);
       return {
         content: [{ type: "text", text: formatted.text }],
@@ -398,6 +433,23 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
   console.log(`[stella:trace] orchestrator start | runId=${runId} | agent=${opts.agentType} | model=${opts.resolvedLlm.model.id} | convId=${opts.conversationId}`);
   console.log(`[stella:trace] user prompt: ${opts.userPrompt.slice(0, 300)}`);
 
+  // --- before_agent_start hook ---
+  let effectiveSystemPrompt = buildSystemPrompt(opts.agentContext);
+  if (opts.hookEmitter) {
+    const hookResult = await opts.hookEmitter.emit(
+      "before_agent_start",
+      { agentType: opts.agentType, systemPrompt: effectiveSystemPrompt },
+      { agentType: opts.agentType },
+    );
+    if (hookResult) {
+      if (hookResult.systemPromptReplace) {
+        effectiveSystemPrompt = hookResult.systemPromptReplace;
+      } else if (hookResult.systemPromptAppend) {
+        effectiveSystemPrompt += "\n" + hookResult.systemPromptAppend;
+      }
+    }
+  }
+
   opts.store.recordRunEvent({
     timestamp: now(),
     runId,
@@ -423,6 +475,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     store: opts.store,
     toolExecutor: opts.toolExecutor,
     webSearch: opts.webSearch,
+    hookEmitter: opts.hookEmitter,
   });
 
   console.log(`[stella:trace] tools for ${opts.agentType}:`, tools.map(t => ({
@@ -433,7 +486,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
 
   const agent = new Agent({
     initialState: {
-      systemPrompt: buildSystemPrompt(opts.agentContext),
+      systemPrompt: effectiveSystemPrompt,
       model: opts.resolvedLlm.model,
       thinkingLevel: "medium",
       tools,
@@ -516,6 +569,25 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
         resultPreview: preview,
       });
     }
+
+    // --- turn_start / turn_end hooks ---
+    if (event.type === "turn_start" && opts.hookEmitter) {
+      void opts.hookEmitter.emit(
+        "turn_start",
+        { agentType: opts.agentType, messageCount: agent.state.messages.length },
+        { agentType: opts.agentType },
+      ).catch(() => undefined);
+    }
+    if (event.type === "turn_end" && opts.hookEmitter) {
+      const turnText = event.message?.role === "assistant"
+        ? extractAssistantText(event.message)
+        : "";
+      void opts.hookEmitter.emit(
+        "turn_end",
+        { agentType: opts.agentType, assistantText: turnText },
+        { agentType: opts.agentType },
+      ).catch(() => undefined);
+    }
   });
 
   try {
@@ -537,6 +609,16 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
       .find((message) => message.role === "assistant");
     const finalText = extractAssistantText(latestAssistant);
     console.log(`[stella:trace] orchestrator end | runId=${runId} | finalText=${finalText.slice(0, 300)}`);
+
+    // --- agent_end hook ---
+    if (opts.hookEmitter) {
+      await opts.hookEmitter.emit(
+        "agent_end",
+        { agentType: opts.agentType, finalText },
+        { agentType: opts.agentType },
+      ).catch(() => undefined);
+    }
+
     const selfModApplied = opts.frontendRoot && opts.selfModMonitor
       ? await opts.selfModMonitor.detectAppliedSince({
           repoRoot: opts.frontendRoot,
@@ -551,12 +633,27 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
         role: "assistant",
         content: finalText,
       });
-      await maybeCompactRuntimeThread({
-        store: opts.store,
-        threadKey,
-        resolvedLlm: opts.resolvedLlm,
-        agentType: opts.agentType,
-      }).catch(() => undefined);
+
+      // --- before_compact hook ---
+      let shouldCompact = true;
+      if (opts.hookEmitter) {
+        const hookResult = await opts.hookEmitter.emit(
+          "before_compact",
+          { agentType: opts.agentType, messageCount: agent.state.messages.length },
+          { agentType: opts.agentType },
+        ).catch(() => undefined);
+        if (hookResult?.cancel) {
+          shouldCompact = false;
+        }
+      }
+      if (shouldCompact) {
+        await maybeCompactRuntimeThread({
+          store: opts.store,
+          threadKey,
+          resolvedLlm: opts.resolvedLlm,
+          agentType: opts.agentType,
+        }).catch(() => undefined);
+      }
     }
 
     const endSeq = nextSeq();
@@ -858,6 +955,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
     store: opts.store,
     toolExecutor: opts.toolExecutor,
     webSearch: opts.webSearch,
+    hookEmitter: opts.hookEmitter,
   });
 
   const contextHistory =
