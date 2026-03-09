@@ -1,4 +1,4 @@
-import { NEWS_HTML_SYSTEM_PROMPT, NEWS_HTML_USER_PROMPT_TEMPLATE } from "./news_html";
+import { SEARCH_HTML_SYSTEM_PROMPT, SEARCH_HTML_USER_PROMPT_TEMPLATE } from "./search_html";
 import { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "./offline_responder";
 import {
   PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
@@ -17,8 +17,8 @@ import { VOICE_ORCHESTRATOR_PROMPT } from "./voice_orchestrator";
 
 export type PromptId =
   | "offline_responder.system"
-  | "news_html.system"
-  | "news_html.user"
+  | "search_html.system"
+  | "search_html.user"
   | "voice_orchestrator.base"
   | "synthesis.core_memory.system"
   | "synthesis.core_memory.user"
@@ -36,8 +36,8 @@ export type PromptOverrideMap = Partial<Record<PromptId, string>>;
 
 export const EDITABLE_PROMPT_DEFAULTS: Record<PromptId, string> = {
   "offline_responder.system": OFFLINE_RESPONDER_SYSTEM_PROMPT,
-  "news_html.system": NEWS_HTML_SYSTEM_PROMPT,
-  "news_html.user": NEWS_HTML_USER_PROMPT_TEMPLATE,
+  "search_html.system": SEARCH_HTML_SYSTEM_PROMPT,
+  "search_html.user": SEARCH_HTML_USER_PROMPT_TEMPLATE,
   "voice_orchestrator.base": VOICE_ORCHESTRATOR_PROMPT,
   "synthesis.core_memory.system": CORE_MEMORY_SYNTHESIS_PROMPT,
   "synthesis.core_memory.user": CORE_MEMORY_SYNTHESIS_USER_PROMPT_TEMPLATE,

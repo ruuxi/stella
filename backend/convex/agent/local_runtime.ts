@@ -81,6 +81,7 @@ export const executeTool = action({
 export const webSearch = action({
   args: {
     query: v.string(),
+    category: v.optional(v.string()),
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
     promptOverrides: v.optional(jsonValueValidator),
@@ -106,6 +107,7 @@ export const webSearch = action({
       ownerId,
       includeHtml: true,
       promptOverrides,
+      category: args.category,
     });
   },
 });
