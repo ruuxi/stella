@@ -536,7 +536,7 @@ export const createStellaHostRunner = ({
   };
 
   localTaskManager = new LocalTaskManager({
-    maxConcurrent: 3,
+    maxConcurrent: 16,
     onTaskEvent: (event) => {
       conversationCallbacks.get(event.conversationId)?.onTaskEvent?.(event);
     },
