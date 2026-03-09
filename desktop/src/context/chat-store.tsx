@@ -22,6 +22,7 @@ type AppendAgentEventArgs = {
   toolCallId?: string
   toolName?: string
   resultPreview?: string
+  html?: string
   finalText?: string
 }
 
@@ -94,7 +95,9 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
         requestId: args.toolCallId,
         payload: {
           toolName: args.toolName,
-          result: args.resultPreview,
+          result: args.html ?? args.resultPreview,
+          ...(args.resultPreview ? { resultPreview: args.resultPreview } : {}),
+          ...(args.html ? { html: args.html } : {}),
         },
       }).catch(() => undefined)
     },
