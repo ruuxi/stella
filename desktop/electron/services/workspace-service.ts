@@ -43,7 +43,7 @@ export class WorkspaceService {
     if (!stellaHomePath) {
       return null
     }
-    return path.join(stellaHomePath, 'workspace', 'panels')
+    return path.resolve(stellaHomePath, '..', 'workspace', 'panels')
   }
 
   async listWorkspacePanels(): Promise<WorkspacePanel[]> {

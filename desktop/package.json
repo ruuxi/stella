@@ -191,6 +191,11 @@
         "filter": ["**/*"]
       },
       {
+        "from": ".stella/extensions",
+        "to": "extensions",
+        "filter": ["**/*"]
+      },
+      {
         "from": "resources/bundled-commands",
         "to": "bundled-commands",
         "filter": ["**/*"]

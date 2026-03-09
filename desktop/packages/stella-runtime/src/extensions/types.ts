@@ -1,12 +1,14 @@
 // Extension system type definitions.
 //
-// Extensions are auto-discovered from the agents directory:
+// Extensions are auto-discovered from the extensions directory:
 //   tools/<name>.tool.ts       - Custom tool definitions
 //   hooks/<name>.hook.ts       - Lifecycle hooks
 //   providers/<name>.provider.ts - Custom LLM providers
 //   prompts/<name>.prompt.md   - Reusable prompt templates
-//   skills/<name>/SKILL.md     - Agent skills (already supported)
-//   agents/<name>/AGENT.md     - Agent definitions (already supported)
+//
+// Agent skills and agent definitions are loaded separately from:
+//   ../skills/<name>/SKILL.md
+//   ../agents/<name>/AGENT.md
 
 import type { ToolContext, ToolResult } from "../tools/types.js";
 
