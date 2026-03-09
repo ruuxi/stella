@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
-import { ToastProvider, useToast } from "../../../src/ui/toast";
+import { ToastProvider, showToast, useToast } from "../../../src/ui/toast";
 import type { ReactNode } from "react";
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -55,12 +55,23 @@ describe("ToastProvider + useToast", () => {
 
     expect(screen.getByText("Test Toast")).toBeTruthy();
 
-    // Default duration is 5000ms
+    // Default duration is 4000ms
     act(() => {
-      vi.advanceTimersByTime(6000);
+      vi.advanceTimersByTime(5000);
     });
 
     expect(screen.queryByText("Test Toast")).toBeNull();
+  });
+
+  it("supports imperative showToast calls while mounted", () => {
+    render(<div>Host</div>, { wrapper });
+
+    act(() => {
+      showToast({ title: "Imperative Toast", description: "Triggered externally" });
+    });
+
+    expect(screen.getByText("Imperative Toast")).toBeTruthy();
+    expect(screen.getByText("Triggered externally")).toBeTruthy();
   });
 });
 
