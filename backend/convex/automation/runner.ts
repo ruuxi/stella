@@ -49,7 +49,6 @@ const ensureBuiltins = async (ctx: ActionCtx) => {
   if (!builtinEnsurePromise) {
     builtinEnsurePromise = (async () => {
       await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
-      await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
       builtinEnsureSucceededAt = Date.now();
     })().finally(() => {
       builtinEnsurePromise = null;

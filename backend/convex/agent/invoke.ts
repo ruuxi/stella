@@ -54,7 +54,6 @@ export const invoke = internalAction({
   },
   handler: async (ctx, args): Promise<AgentInvokeResult> => {
     await ctx.runMutation(internal.agent.agents.ensureBuiltins, {});
-    await ctx.runMutation(internal.data.skills.ensureBuiltinSkills, {});
 
     let ownerId: string | undefined = undefined;
     if (args.conversationId) {
