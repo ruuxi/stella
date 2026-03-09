@@ -3,6 +3,7 @@ import type { AssistantMessageEventStream } from "./utils/event-stream.js";
 export type { AssistantMessageEventStream } from "./utils/event-stream.js";
 
 export type KnownApi =
+	| "stella-managed"
 	| "openai-completions"
 	| "openai-responses"
 	| "azure-openai-responses"
@@ -37,7 +38,8 @@ export type KnownProvider =
 	| "minimax-cn"
 	| "huggingface"
 	| "opencode"
-	| "kimi-coding";
+	| "kimi-coding"
+	| "stella-managed";
 export type Provider = KnownProvider | string;
 
 export type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -262,6 +264,11 @@ export interface OpenAIResponsesCompat {
 	// Reserved for future use
 }
 
+/** Configuration for Stella-managed backend execution. */
+export interface StellaManagedCompat {
+	agentType: string;
+}
+
 /**
  * OpenRouter provider routing preferences.
  * Controls which upstream providers OpenRouter routes requests to.
@@ -309,5 +316,7 @@ export interface Model<TApi extends Api> {
 		? OpenAICompletionsCompat
 		: TApi extends "openai-responses"
 			? OpenAIResponsesCompat
+			: TApi extends "stella-managed"
+				? StellaManagedCompat
 			: never;
 }

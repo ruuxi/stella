@@ -89,8 +89,6 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
       : windowText;
 
     void streamChatCompletion({
-      provider: "inception",
-      model: "inception/mercury-2",
       agentType: "auto",
       messages: [
         {
