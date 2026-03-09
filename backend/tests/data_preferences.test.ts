@@ -8,6 +8,7 @@ import {
   PREFERRED_BROWSER_KEY,
   normalizeGeneralAgentEngine,
   normalizeCodexLocalMaxConcurrency,
+  normalizeSyncMode,
 } from "../convex/data/preferences";
 
 describe("preference key constants", () => {
@@ -76,5 +77,20 @@ describe("normalizeCodexLocalMaxConcurrency", () => {
 
   test("returns default for non-numeric", () => {
     expect(normalizeCodexLocalMaxConcurrency("abc")).toBe(DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY);
+  });
+});
+
+describe("normalizeSyncMode", () => {
+  test("returns on only when explicitly set to on", () => {
+    expect(normalizeSyncMode("on")).toBe("on");
+  });
+
+  test("defaults missing values to off", () => {
+    expect(normalizeSyncMode(undefined)).toBe("off");
+    expect(normalizeSyncMode(null)).toBe("off");
+  });
+
+  test("defaults unknown values to off", () => {
+    expect(normalizeSyncMode("unexpected")).toBe("off");
   });
 });
