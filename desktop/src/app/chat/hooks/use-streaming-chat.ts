@@ -40,7 +40,6 @@ export function useStreamingChat({
       toolCallId?: string
       toolName?: string
       resultPreview?: string
-      html?: string
       finalText?: string
     }) => {
       if (!activeConversationId) return

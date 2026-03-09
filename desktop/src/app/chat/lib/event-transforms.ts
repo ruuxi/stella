@@ -28,8 +28,6 @@ export type ToolRequestPayload = {
 export type ToolResultPayload = {
   toolName: string;
   result?: unknown;
-  resultPreview?: string;
-  html?: string;
   error?: string;
   requestId?: string;
 };

@@ -18,7 +18,6 @@ export type AgentStreamEvent = {
   toolCallId?: string;
   toolName?: string;
   resultPreview?: string;
-  html?: string;
   error?: string;
   fatal?: boolean;
   finalText?: string;
