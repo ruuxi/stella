@@ -45,7 +45,7 @@ describe("security regressions", () => {
   });
 
   test("ai proxy consumes anon allowance atomically", () => {
-    const source = readBackendFile("convex/ai_proxy.ts");
+    const source = readBackendFile("convex/managed_execution.ts");
     expect(source).toMatch(/consumeDeviceAllowance/);
     expect(source).not.toMatch(/runQuery\(internal\.ai_proxy_data\.getDeviceUsage/);
     expect(source).not.toMatch(/runMutation\(internal\.ai_proxy_data\.incrementDeviceUsage/);

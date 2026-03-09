@@ -2,7 +2,7 @@
  * Shared BYOK (Bring Your Own Key) resolution utilities.
  *
  * Used by both model_resolver.ts (AI SDK model instances) and
- * ai_proxy.ts (transparent HTTP proxy) to resolve API keys through
+ * managed_execution.ts (managed execution endpoint) to resolve API keys through
  * a unified lookup chain: user key → OpenRouter → env var.
  */
 

@@ -13,8 +13,8 @@ describe("execution core regressions", () => {
     const invokeSource = readBackendFile("convex/agent/invoke.ts");
 
     expect(automationRunner).toContain('from "../agent/model_execution"');
-    // http.ts no longer imports model_execution directly — it delegates through ai_proxy
-    expect(httpSource).toContain('from "./ai_proxy"');
+    // http.ts no longer imports model_execution directly — it delegates through managed_execution
+    expect(httpSource).toContain('from "./managed_execution"');
     // invoke.ts now directly uses model_execution (execution.ts wrapper was removed)
     expect(invokeSource).toContain('from "./model_execution"');
     expect(invokeSource).toContain('from "./model_resolver"');
