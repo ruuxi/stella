@@ -1,7 +1,7 @@
 /**
  * Shared HTTP request utilities.
  *
- * Extracted from ai_proxy.ts and http.ts to eliminate duplication.
+ * Extracted from managed_execution.ts and http.ts to eliminate duplication.
  */
 
 export const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;

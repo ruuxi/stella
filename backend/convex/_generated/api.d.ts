@@ -87,6 +87,7 @@ import type * as lib_text_utils from "../lib/text_utils.js";
 import type * as lib_thread_compaction from "../lib/thread_compaction.js";
 import type * as lib_tool_call_utils from "../lib/tool_call_utils.js";
 import type * as lib_validator from "../lib/validator.js";
+import type * as managed_execution from "../managed_execution.js";
 import type * as personalized_dashboard from "../personalized_dashboard.js";
 import type * as prompts_builtin_skills from "../prompts/builtin_skills.js";
 import type * as prompts_discovery_facts from "../prompts/discovery_facts.js";
@@ -208,6 +209,7 @@ declare const fullApi: ApiFromModules<{
   "lib/thread_compaction": typeof lib_thread_compaction;
   "lib/tool_call_utils": typeof lib_tool_call_utils;
   "lib/validator": typeof lib_validator;
+  managed_execution: typeof managed_execution;
   personalized_dashboard: typeof personalized_dashboard;
   "prompts/builtin_skills": typeof prompts_builtin_skills;
   "prompts/discovery_facts": typeof prompts_discovery_facts;

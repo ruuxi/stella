@@ -13,13 +13,13 @@ export type ModelConfig = {
 };
 
 const DEFAULT_MODEL: ModelConfig = {
-  model: "moonshotai/kimi-k2-0905:exacto",
+  model: "anthropic/claude-sonnet-4-6",
   fallback: "anthropic/claude-opus-4.5",
   temperature: 1.0,
   maxOutputTokens: 16192,
   providerOptions: {
     gateway: {
-      order: ["groq"],
+      order: ["amazon-bedrock, fireworks"],
     },
   },
 };
@@ -38,6 +38,13 @@ const COMPACTION_MODEL: ModelConfig = {
 
 const AGENT_MODELS: Record<string, ModelConfig> = {
   offline_responder: DEFAULT_MODEL,
+
+  orchestrator: {
+    model: "anthropic/claude-sonnet-4-6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+  },
 
   general: DEFAULT_MODEL,
 
@@ -63,6 +70,33 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         order: ["amazon-bedrock, fireworks"],
       },
     },
+  },
+
+  // "app" is the frontend agent type name for browser/app automation
+  app: {
+    model: "anthropic/claude-sonnet-4-6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["amazon-bedrock, fireworks"],
+      },
+    },
+  },
+
+  auto: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 4096,
+  },
+
+  "panel-generate": {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
   },
 
   synthesis: {

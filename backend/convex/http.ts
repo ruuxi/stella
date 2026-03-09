@@ -12,7 +12,7 @@ import { registerMusicRoutes } from "./http_routes/music";
 import { registerVoiceRoutes } from "./http_routes/voice";
 
 // Managed AI endpoint
-import { managedAi } from "./ai_proxy";
+import { managedExecution } from "./managed_execution";
 
 const http = httpRouter();
 
@@ -34,7 +34,7 @@ registerMusicRoutes(http);
 registerVoiceRoutes(http);
 
 // ---------------------------------------------------------------------------
-// Stella managed AI proxy for desktop runtime and managed frontend requests
+// Stella managed AI endpoint for desktop runtime and managed frontend requests
 // ---------------------------------------------------------------------------
 
 const proxyOptionsHandler = httpAction(async (_ctx, request) =>
@@ -42,9 +42,7 @@ const proxyOptionsHandler = httpAction(async (_ctx, request) =>
 );
 
 // Managed model inference API
-http.route({ path: "/api/ai/v1", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ path: "/api/ai/v1", method: "POST", handler: managedAi });
-http.route({ pathPrefix: "/api/ai/v1/", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ pathPrefix: "/api/ai/v1/", method: "POST", handler: managedAi });
+http.route({ path: "/api/managed-ai/chat/completions", method: "OPTIONS", handler: proxyOptionsHandler });
+http.route({ path: "/api/managed-ai/chat/completions", method: "POST", handler: managedExecution });
 
 export default http;
