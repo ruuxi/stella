@@ -125,10 +125,12 @@ export const managedExecution = httpAction(async (ctx, request) => {
     return managedExecutionErrorResponse(400, "Managed AI request body must be valid JSON", request);
   }
 
-  const agentType =
+  const headerAgentType = request.headers.get("X-Stella-Agent-Type")?.trim();
+  const bodyAgentType =
     typeof requestJson.agentType === "string" && requestJson.agentType.trim().length > 0
       ? requestJson.agentType.trim()
-      : "general";
+      : undefined;
+  const agentType = headerAgentType || bodyAgentType || "general";
   const serverModelConfig = await resolveManagedModelConfig(ctx, ownerId, agentType);
   const modelId = serverModelConfig.model;
   const gatewayUpstream = `${MANAGED_GATEWAY.baseURL}${MANAGED_CHAT_COMPLETIONS_PATH}`;
