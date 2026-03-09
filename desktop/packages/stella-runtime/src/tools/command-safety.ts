@@ -53,7 +53,7 @@ const BLOCKED_PATH_PREFIXES: string[] = (() => {
   ];
 
   // Windows system directories — normalized with forward slashes
-  if (process.platform === "win32") {
+  if (typeof process !== "undefined" && process.platform === "win32") {
     prefixes.push(
       "c:/windows/",
       "c:/windows",
