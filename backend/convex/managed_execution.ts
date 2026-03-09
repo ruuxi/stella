@@ -11,7 +11,7 @@
 import type { ActionCtx } from "./_generated/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { AGENT_MODELS, DEFAULT_MODEL } from "./agent/model";
+import { AGENT_MODELS, DEFAULT_MODEL, MANAGED_GATEWAY } from "./agent/model";
 import { getClientAddressKey } from "./lib/http_utils";
 import {
   isAnonDeviceHashSaltMissingError,
@@ -22,13 +22,6 @@ import { errorResponse, getCorsHeaders } from "./http_shared/cors";
 const MAX_ANON_REQUESTS = 50_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
 export const MANAGED_CHAT_COMPLETIONS_PATH = "/chat/completions";
-// 1 = Vercel AI Gateway, 2 = OpenRouter
-const GATEWAY = 2;
-
-const GATEWAY_BASE_URL =
-  GATEWAY === 2
-    ? "https://openrouter.ai/api/v1"
-    : (process.env.AI_GATEWAY_BASE_URL ?? "https://ai-gateway.vercel.sh/v1");
 
 function managedExecutionErrorResponse(
   status: number,
@@ -118,7 +111,7 @@ export const managedExecution = httpAction(async (ctx, request) => {
     }
   }
 
-  const gatewayKey = (GATEWAY === 2 ? process.env.OPENROUTER_API_KEY : process.env.AI_GATEWAY_API_KEY)?.trim();
+  const gatewayKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar]?.trim();
   if (!gatewayKey) {
     return managedExecutionErrorResponse(
       503,
@@ -138,7 +131,7 @@ export const managedExecution = httpAction(async (ctx, request) => {
       : "general";
   const serverModelConfig = await resolveManagedModelConfig(ctx, ownerId, agentType);
   const modelId = serverModelConfig.model;
-  const gatewayUpstream = `${GATEWAY_BASE_URL}${MANAGED_CHAT_COMPLETIONS_PATH}`;
+  const gatewayUpstream = `${MANAGED_GATEWAY.baseURL}${MANAGED_CHAT_COMPLETIONS_PATH}`;
 
   console.log(
     `[managed-execution] agent=${agentType} | resolvedModel=${modelId} | fallback=${serverModelConfig.fallback || "(none)"}`,

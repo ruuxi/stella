@@ -1,8 +1,35 @@
 /**
  * Centralized model configuration for all AI requests.
- * Update this file to switch models or providers per agent type.
+ *
+ * ALL model selections and the managed gateway config live here.
+ * Update this file to switch models, providers, or the gateway URL.
  */
+import { createOpenAI } from "@ai-sdk/openai";
+import type { LanguageModel } from "ai";
 import type { JSONValue } from "@ai-sdk/provider";
+
+// ─── Managed Gateway ────────────────────────────────────────────────────────
+
+/**
+ * Managed AI gateway configuration.
+ * Change `baseURL` and `apiKeyEnvVar` to point to any OpenAI-compatible gateway.
+ */
+export const MANAGED_GATEWAY = {
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKeyEnvVar: "OPENROUTER_API_KEY",
+} as const;
+
+/**
+ * Create an AI SDK LanguageModel routed through the managed gateway.
+ * Used by backend HTTP routes that call the AI SDK directly.
+ */
+export function createManagedModel(modelId: string): LanguageModel {
+  const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar]?.trim() ?? "";
+  const provider = createOpenAI({ apiKey, baseURL: MANAGED_GATEWAY.baseURL });
+  return provider(modelId);
+}
+
+// ─── Model Config ───────────────────────────────────────────────────────────
 
 export type ModelConfig = {
   model: string;
@@ -13,11 +40,14 @@ export type ModelConfig = {
 };
 
 const DEFAULT_MODEL: ModelConfig = {
-  model: "anthropic/claude-sonnet-4-6",
+  model: "claude-sonnet-4-6",
   fallback: "anthropic/claude-opus-4.5",
   temperature: 1.0,
   maxOutputTokens: 16192,
   providerOptions: {
+    openai: {
+      reasoningEffort: "low",
+    },
     gateway: {
       order: ["amazon-bedrock, fireworks"],
     },
@@ -90,6 +120,11 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
     maxOutputTokens: 4096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+    },
   },
 
   "panel-generate": {
@@ -100,7 +135,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   synthesis: {
-    model: "openai/gpt-5.4",
+    model: "inception/mercury-2",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 9500,
@@ -109,7 +144,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         order: ["fireworks", "cerebras"],
       },
       openai: {
-        reasoningEffort: "low",
+        reasoningEffort: "high",
       },
     },
   },
@@ -155,6 +190,41 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     providerOptions: {
       gateway: {
         order: ["cerebras"],
+      },
+    },
+  },
+
+  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
+
+  skill_metadata: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+      },
+    },
+  },
+
+  skill_selection: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 3000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+      },
+    },
+  },
+
+  search_html: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
       },
     },
   },

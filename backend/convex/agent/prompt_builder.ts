@@ -4,7 +4,7 @@ import { ConvexError, Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
-import { getModelConfig } from "./model";
+import { getModelConfig, MANAGED_GATEWAY } from "./model";
 import {
   GENERAL_AGENT_ENGINE_KEY,
   CODEX_LOCAL_MAX_CONCURRENCY_KEY,
@@ -253,7 +253,7 @@ const fetchAgentContextForOwner = async (
     skillIds: promptBuild.skillIds,
     threadHistory,
     activeThreadId,
-    gatewayApiKey: process.env.AI_GATEWAY_API_KEY,
+    gatewayApiKey: process.env[MANAGED_GATEWAY.apiKeyEnvVar],
     generalAgentEngine,
     codexLocalMaxConcurrency,
   };
@@ -346,7 +346,7 @@ export const fetchLocalAgentContextForRuntime = action({
       skillIds: promptBuild.skillIds,
       threadHistory: undefined,
       activeThreadId: undefined,
-      gatewayApiKey: process.env.AI_GATEWAY_API_KEY,
+      gatewayApiKey: process.env[MANAGED_GATEWAY.apiKeyEnvVar],
       generalAgentEngine,
       codexLocalMaxConcurrency,
     };
@@ -357,9 +357,9 @@ export const getGatewayApiKey = internalAction({
   args: {},
   returns: v.string(),
   handler: async () => {
-    const key = process.env.AI_GATEWAY_API_KEY;
+    const key = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
     if (!key) {
-      throw new ConvexError("AI_GATEWAY_API_KEY is not configured");
+      throw new ConvexError(`${MANAGED_GATEWAY.apiKeyEnvVar} is not configured`);
     }
     return key;
   },

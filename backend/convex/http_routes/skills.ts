@@ -1,7 +1,8 @@
 import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { generateText, createGateway } from "ai";
+import { generateText } from "ai";
+import { getModelConfig, createManagedModel, MANAGED_GATEWAY } from "../agent/model";
 import { buildSkillSelectionUserMessage } from "../prompts/index";
 import {
   errorResponse,
@@ -100,23 +101,22 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           return errorResponse(400, "systemPrompt and userPrompt are required", origin);
         }
 
-        const apiKey = process.env.AI_GATEWAY_API_KEY;
+        const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
         if (!apiKey) {
           console.error(
-            "[generate-skill-metadata] Missing AI_GATEWAY_API_KEY environment variable",
+            `[generate-skill-metadata] Missing ${MANAGED_GATEWAY.apiKeyEnvVar} environment variable`,
           );
           return errorResponse(500, "Server configuration error", origin);
         }
 
-        const gateway = createGateway({ apiKey });
-
         try {
+          const skillMetadataConfig = getModelConfig("skill_metadata");
           const result = await generateText({
-            model: gateway("openai/gpt-4o-mini"),
+            model: createManagedModel(skillMetadataConfig.model),
             system: systemPrompt,
             messages: [{ role: "user", content: userPrompt }],
-            maxOutputTokens: 200,
-            temperature: 0.3,
+            maxOutputTokens: skillMetadataConfig.maxOutputTokens,
+            temperature: skillMetadataConfig.temperature,
           });
 
           const text = result.text?.trim() || "";
@@ -206,9 +206,9 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           return errorResponse(400, "systemPrompt and userPromptTemplate are required", origin);
         }
 
-        const apiKey = process.env.AI_GATEWAY_API_KEY;
+        const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
         if (!apiKey) {
-          console.error("[select-default-skills] Missing AI_GATEWAY_API_KEY");
+          console.error(`[select-default-skills] Missing ${MANAGED_GATEWAY.apiKeyEnvVar}`);
           return errorResponse(500, "Server configuration error", origin);
         }
 
@@ -224,7 +224,7 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           }
 
           // 2. Call LLM to select relevant skills
-          const gateway = createGateway({ apiKey });
+          const skillSelectionConfig = getModelConfig("skill_selection");
           const userMessage = buildSkillSelectionUserMessage(
             body.userProfile,
             catalog,
@@ -232,11 +232,11 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           );
 
           const result = await generateText({
-            model: gateway("openai/gpt-4o-mini"),
+            model: createManagedModel(skillSelectionConfig.model),
             system: systemPrompt,
             messages: [{ role: "user", content: userMessage }],
-            maxOutputTokens: 300,
-            temperature: 0.3,
+            maxOutputTokens: skillSelectionConfig.maxOutputTokens,
+            temperature: skillSelectionConfig.temperature,
           });
 
           const text = (result.text ?? "").trim();
