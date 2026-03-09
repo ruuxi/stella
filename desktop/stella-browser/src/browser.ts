@@ -1279,13 +1279,7 @@ export class BrowserManager {
     });
 
     page.on('close', () => {
-      const index = this.pages.indexOf(page);
-      if (index !== -1) {
-        this.pages.splice(index, 1);
-        if (this.activePageIndex >= this.pages.length) {
-          this.activePageIndex = Math.max(0, this.pages.length - 1);
-        }
-      }
+      this.removeTrackedPage(page);
     });
 
     // Auto-apply persistent site mods on navigation
@@ -1377,6 +1371,26 @@ export class BrowserManager {
     }
   }
 
+  private removeTrackedPage(page: Page): void {
+    const index = this.pages.indexOf(page);
+    if (index === -1) {
+      return;
+    }
+
+    this.pages.splice(index, 1);
+
+    if (this.pages.length === 0) {
+      this.activePageIndex = 0;
+      return;
+    }
+
+    if (this.activePageIndex > index) {
+      this.activePageIndex--;
+    } else if (this.activePageIndex >= this.pages.length) {
+      this.activePageIndex = this.pages.length - 1;
+    }
+  }
+
   /**
    * Switch to a specific tab/page by index
    */
@@ -1421,14 +1435,6 @@ export class BrowserManager {
 
     const page = this.pages[targetIndex];
     await page.close();
-    this.pages.splice(targetIndex, 1);
-
-    // Adjust active index if needed
-    if (this.activePageIndex >= this.pages.length) {
-      this.activePageIndex = this.pages.length - 1;
-    } else if (this.activePageIndex > targetIndex) {
-      this.activePageIndex--;
-    }
 
     return { closed: targetIndex, remaining: this.pages.length };
   }
