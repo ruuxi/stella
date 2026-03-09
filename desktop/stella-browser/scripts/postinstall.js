@@ -205,7 +205,8 @@ async function fixWindowsShims() {
   }
 
   // Path to native binary relative to npm prefix
-  const relativeBinaryPath = 'node_modules\\stella-browser\\bin\\stella-browser-win32-x64.exe';
+  const archKey = arch();
+  const relativeBinaryPath = `node_modules\\stella-browser\\bin\\stella-browser-win32-${archKey}.exe`;
 
   try {
     // Overwrite .cmd shim
