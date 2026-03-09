@@ -54,13 +54,13 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   browser: {
-    model: "openai/gpt-5.4",
-    fallback: "anthropic/claude-sonnet-4-6",
+    model: "anthropic/claude-sonnet-4-6",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
-        order: ["fireworks"],
+        order: ["amazon-bedrock, fireworks"],
       },
     },
   },
@@ -68,7 +68,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   synthesis: {
     model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
-    temperature: 0.8,
+    temperature: 1.0,
     maxOutputTokens: 9500,
     providerOptions: {
       gateway: {
