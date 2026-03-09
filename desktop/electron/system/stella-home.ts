@@ -24,9 +24,9 @@ const ensureDir = async (dirPath: string) => {
 
 // In dev mode, __dirname is dist-electron/electron/system/ (compiled output).
 // Bundled .md files live in the source tree, not the compiled output.
-// Go up to frontend/, then into electron/bundled-*.
+// Go up to frontend/, then into electron/bundled-* or stella-*.
 const BUNDLED_SKILLS_DIR = path.resolve(__dirname, "..", "..", "electron", "bundled-skills");
-const BUNDLED_AGENTS_DIR = path.resolve(__dirname, "..", "..", "electron", "bundled-agents");
+const BUNDLED_AGENTS_DIR = path.resolve(__dirname, "..", "..", "electron", "stella-agents");
 
 /**
  * Copy bundled directories into a target path.
