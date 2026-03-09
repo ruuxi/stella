@@ -25,6 +25,7 @@ type AgentEventPayload = {
   toolCallId?: string
   toolName?: string
   resultPreview?: string
+  html?: string
   error?: string
   fatal?: boolean
   finalText?: string

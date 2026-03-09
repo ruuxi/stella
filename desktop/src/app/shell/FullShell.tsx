@@ -249,7 +249,6 @@ export const FullShell = () => {
                 ref={orbRef}
                 visible={isOrbVisible}
                 bubbleText={orbMessage.text}
-                bubbleOpacity={orbMessage.opacity}
                 isStreaming={chat.conversation.isStreaming}
                 onSend={chat.conversation.sendContextlessMessage}
               />

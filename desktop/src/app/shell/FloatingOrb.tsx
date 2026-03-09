@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { StellaAnimation, type StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
 import "./floating-orb.css";
 
@@ -27,12 +28,11 @@ export interface FloatingOrbHandle {
 interface FloatingOrbProps {
   visible: boolean;
   bubbleText: string | null;
-  bubbleOpacity: number;
   isStreaming: boolean;
   onSend: (text: string) => void;
 }
 
-export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(function FloatingOrb({ visible, bubbleText, bubbleOpacity, isStreaming, onSend }, ref) {
+export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(function FloatingOrb({ visible, bubbleText, isStreaming, onSend }, ref) {
   const [position, setPosition] = useState(loadPosition);
   const [isDragging, setIsDragging] = useState(false);
   const [isInputOpen, setIsInputOpen] = useState(false);
@@ -156,14 +156,24 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
         bottom: `${position.bottom}px`,
       }}
     >
-      {bubbleText && (
-        <div
-          className="orb-bubble"
-          style={{ opacity: bubbleOpacity, transition: "opacity 1s ease" }}
-        >
-          {bubbleText}
-        </div>
-      )}
+      <AnimatePresence>
+        {bubbleText && (
+          <motion.div
+            key="orb-bubble"
+            className="orb-bubble"
+            initial={{ opacity: 0, filter: "blur(2px)", y: 6 }}
+            animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+            exit={{ opacity: 0, filter: "blur(2px)", y: 6 }}
+            transition={{
+              type: "spring",
+              duration: 0.45,
+              bounce: 0,
+            }}
+          >
+            {bubbleText}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {isInputOpen && (
         <form className="orb-input-form" onSubmit={handleSubmit}>

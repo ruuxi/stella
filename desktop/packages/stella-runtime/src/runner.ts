@@ -118,7 +118,6 @@ export type StellaHostRunnerOptions = {
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   scheduleApi?: ScheduleToolApi;
   displayHtml?: (html: string) => void;
-  newsHtml?: (html: string) => void;
   listLocalChatEvents?: (conversationId: string, maxItems: number) => LocalContextEvent[];
 };
 
@@ -234,7 +233,6 @@ export const createStellaHostRunner = ({
   requestCredential,
   scheduleApi,
   displayHtml,
-  newsHtml,
   listLocalChatEvents,
 }: StellaHostRunnerOptions) => {
   const store = new JsonlRuntimeStore(StellaHome);
@@ -374,10 +372,15 @@ export const createStellaHostRunner = ({
         results: Array<{ title: string; url: string; snippet: string }>;
         html?: string;
       };
-      if (result.html && newsHtml) {
-        newsHtml(result.html);
+      if (result.html && displayHtml) {
+        displayHtml(result.html);
       }
-      return result;
+      return {
+        ...result,
+        text: result.html?.trim()
+          ? result.html
+          : "WebSearch returned no HTML response.",
+      };
     } catch (error) {
       return { text: `WebSearch failed: ${(error as Error).message}`, results: [] };
     }
