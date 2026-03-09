@@ -10,7 +10,7 @@ Usage:
     # Multiple servers
     python scripts/with_server.py \
       --server "cd backend && python server.py" --port 3000 \
-      --server "cd frontend && npm run dev" --port 5173 \
+      --server "cd desktop && npm run dev" --port 5173 \
       -- python test.py
 """
 

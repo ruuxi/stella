@@ -502,7 +502,7 @@ If no commands are relevant, return: []`,
 
 CONTENT PRINCIPLES (highest priority):
 - Every element must earn its space. No filler, no vanity metrics, no decoration for its own sake.
-- Show actionable, time-sensitive information. "5 new commits on stella/frontend since yesterday" beats "Total commits: 1,247".
+- Show actionable, time-sensitive information. "5 new commits on stella/desktop since yesterday" beats "Total commits: 1,247".
 - Data must be FRESH. Fetch at runtime from public APIs. Stale hardcoded content is a failure.
 - Write in plain, direct language. No marketing voice, no superlatives, no "Stay ahead of the curve!" copy.
 - Prefer showing 3 excellent items over 10 mediocre ones. Curate aggressively.

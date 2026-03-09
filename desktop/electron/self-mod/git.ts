@@ -1,7 +1,6 @@
 import { promises as fs } from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import os from "os";
 import path from "path";
 
 const execFileAsync = promisify(execFile);
@@ -13,8 +12,7 @@ const DEFAULT_LOG_SCAN_LIMIT = 500;
 const DEFAULT_RECENT_FEATURE_LIMIT = 8;
 
 const FEATURES_INDEX_PATH = path.join(
-  os.homedir(),
-  "stella",
+  process.cwd(),
   ".stella",
   "mods",
   "features.json",

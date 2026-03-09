@@ -1,5 +1,4 @@
 import fs from "fs"
-import os from "os"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
@@ -10,8 +9,7 @@ const SELF_MOD_HMR_STATE_FILE = path.resolve(__dirname, '.stella-hmr-state.json'
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
 const SELF_MOD_HMR_STALE_MS = 30_000
 const STELLA_WORKSPACE_PANELS_DIR = path.resolve(
-  os.homedir(),
-  'stella',
+  __dirname,
   '.stella',
   'workspace',
   'panels',
@@ -54,7 +52,7 @@ const toViteFsPath = (filePath: string) => `/@fs/${filePath.replace(/\\/g, '/')}
 
 /**
  * Serves workspace panel .tsx files through Vite's transform pipeline.
- * Path containment: only files inside ~/stella/.stella/workspace/panels/ are served.
+ * Path containment: only files inside desktop/.stella/workspace/panels/ are served.
  * Filename validation: must match PANEL_FILE_PATTERN.
  */
 function workspacePanelServer(): Plugin {
@@ -81,7 +79,7 @@ function workspacePanelServer(): Plugin {
           return
         }
 
-        // Resolve and contain path within ~/stella/.stella/workspace/panels/
+        // Resolve and contain path within desktop/.stella/workspace/panels/
         const panelsDir = STELLA_WORKSPACE_PANELS_DIR
         const resolved = path.resolve(panelsDir, filename)
         const relative = path.relative(panelsDir, resolved)

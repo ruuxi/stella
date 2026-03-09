@@ -2,7 +2,6 @@
 import { cpSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { dirname, join, resolve, sep } from 'path'
 import { fileURLToPath } from 'url'
-import { homedir } from 'os'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const rawName = process.argv[2]?.trim()
@@ -16,7 +15,7 @@ if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(rawName)) {
 }
 
 const src = join(__dirname, '..', 'templates', 'workspace-app')
-const appsDir = join(homedir(), 'stella', '.stella', 'workspace', 'apps')
+const appsDir = join(__dirname, '..', '.stella', 'workspace', 'apps')
 mkdirSync(appsDir, { recursive: true })
 const dest = join(appsDir, rawName)
 
