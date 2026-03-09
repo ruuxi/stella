@@ -40,7 +40,6 @@ describe("TaskCreate delegation controls", () => {
       taskDepth: 2,
       maxTaskDepth: 2,
       parentTaskId: "parent-task",
-      threadId: undefined,
       threadName: undefined,
       commandId: undefined,
       systemPromptOverride: undefined,

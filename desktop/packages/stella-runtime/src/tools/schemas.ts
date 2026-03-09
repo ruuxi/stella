@@ -287,7 +287,7 @@ const TaskCreateJsonSchema = {
     description: { type: "string", description: "Short summary of the task (shown in task list)" },
     prompt: { type: "string", description: "Detailed instructions for the subagent — this is the agent's ONLY context" },
     subagent_type: { type: "string", enum: ["general", "explore", "app"], description: "Which agent executes the task: 'general' (code/files/shell/UI), 'explore' (read-only codebase search), 'app' (browser/desktop app automation). Default: general" },
-    thread_name: { type: "string", description: "Kebab-case thread name for persistent context across related tasks" },
+    thread_name: { type: "string", description: "Existing thread name to continue. Omit to start fresh and the runtime will assign a short name automatically." },
     command_id: { type: "string", description: "Command ID from a suggestion chip — system injects full instructions automatically" },
   },
   required: ["description", "prompt"],
@@ -511,7 +511,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
     "- subagent_type: 'general' (code, files, shell, Stella UI), 'explore' (read-only codebase search), or 'app' (browser and desktop app automation).\n" +
-    "- thread_name: optional kebab-case name to persist context across related tasks.\n" +
+    "- thread_name: optional active thread name to continue. Omit it to start fresh and the runtime will assign a short Greek/Roman name automatically.\n" +
     "- Returns a task_id for tracking with TaskOutput or canceling with TaskCancel.",
   TaskOutput:
     "Check the status and output of a previously created task.\n\n" +

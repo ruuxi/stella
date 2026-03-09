@@ -33,6 +33,7 @@ import {
   buildRuntimeThreadKey,
   parseThreadCheckpoint,
 } from "./thread-runtime.js";
+import { buildActiveThreadsPrompt } from "./runtime-threads.js";
 
 const DEFAULT_MAX_TASK_DEPTH = 8;
 const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
@@ -514,12 +515,29 @@ export const createStellaHostRunner = ({
       threadHistory = storedThreadMessages;
     }
 
+    const activeThreadsPrompt =
+      args.agentType === "orchestrator"
+        ? buildActiveThreadsPrompt(store.listActiveThreads(args.conversationId))
+        : "";
+    const dynamicContextSections = [
+      args.agentType === "orchestrator" && frontendRoot
+        ? buildPanelInventory(frontendRoot)
+        : "",
+      activeThreadsPrompt,
+    ].filter((section) => section.trim().length > 0);
+    const reminderState =
+      args.agentType === "orchestrator" && activeThreadsPrompt
+        ? store.getOrchestratorReminderState(args.conversationId)
+        : {
+            shouldInjectDynamicReminder: false,
+            reminderTokensSinceLastInjection: 0,
+          };
+
     return {
       systemPrompt: agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
-      dynamicContext:
-        args.agentType === "orchestrator" && frontendRoot
-          ? buildPanelInventory(frontendRoot)
-          : "",
+      dynamicContext: dynamicContextSections.join("\n\n"),
+      orchestratorReminderText: activeThreadsPrompt || undefined,
+      shouldInjectDynamicReminder: reminderState.shouldInjectDynamicReminder,
       toolsAllowlist: resolveToolsAllowlist(args.agentType, agent?.toolsAllowlist),
       delegationAllowlist: agent?.delegationAllowlist,
       model,
@@ -537,6 +555,16 @@ export const createStellaHostRunner = ({
 
   localTaskManager = new LocalTaskManager({
     maxConcurrent: 16,
+    resolveTaskThread: ({ conversationId, agentType, threadName }) => {
+      if (agentType !== "general") {
+        return null;
+      }
+      return store.resolveOrCreateActiveThread({
+        conversationId,
+        agentType,
+        threadName,
+      });
+    },
     onTaskEvent: (event) => {
       conversationCallbacks.get(event.conversationId)?.onTaskEvent?.(event);
     },

@@ -26,6 +26,7 @@ import {
   buildRuntimeThreadKey,
   maybeCompactRuntimeThread,
 } from "./thread-runtime.js";
+import { estimateRuntimeTokens } from "./runtime-threads.js";
 
 const DEFAULT_MAX_TURNS = 40;
 const MAX_RESULT_PREVIEW = 200;
@@ -83,6 +84,7 @@ export type RuntimeToolEndEvent = {
   toolCallId: string;
   toolName: string;
   resultPreview: string;
+  html?: string;
 };
 
 export type RuntimeErrorEvent = {
@@ -281,6 +283,44 @@ const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
   }
 
   return sections.filter(Boolean).join("\n\n");
+};
+
+const buildOrchestratorUserPrompt = (context: LocalTaskManagerAgentContext, userPrompt: string): string => {
+  const reminder = context.orchestratorReminderText?.trim();
+  if (!context.shouldInjectDynamicReminder || !reminder) {
+    return userPrompt;
+  }
+  return `${userPrompt}\n\n<system-context>\n${reminder}\n</system-context>`;
+};
+
+const updateOrchestratorReminderState = (
+  store: JsonlRuntimeStore,
+  args: { conversationId: string; shouldInjectDynamicReminder?: boolean; finalText: string },
+): void => {
+  const runtimeStore = store as JsonlRuntimeStore & {
+    updateOrchestratorReminderCounter?: (args: {
+      conversationId: string;
+      resetTo?: number;
+      incrementBy?: number;
+    }) => void;
+  };
+  if (typeof runtimeStore.updateOrchestratorReminderCounter !== "function") {
+    return;
+  }
+  if (args.shouldInjectDynamicReminder) {
+    runtimeStore.updateOrchestratorReminderCounter({
+      conversationId: args.conversationId,
+      resetTo: 0,
+    });
+    return;
+  }
+  const outputTokens = estimateRuntimeTokens(args.finalText);
+  if (outputTokens > 0) {
+    runtimeStore.updateOrchestratorReminderCounter({
+      conversationId: args.conversationId,
+      incrementBy: outputTokens,
+    });
+  }
 };
 
 const getRecallQuery = (args: Record<string, unknown>): string =>
@@ -606,6 +646,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
 
     if (event.type === "tool_execution_end") {
       const preview = getToolResultPreview(event.toolName, event.result);
+      const html = getToolResultHtml(event.toolName, event.result);
       console.log(`[stella:trace] tool exec end   | ${event.toolName} | callId=${event.toolCallId} | result=${preview.slice(0, 200)}`);
       const s = nextSeq();
       opts.callbacks.onToolEnd({
@@ -615,6 +656,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
+        ...(html ? { html } : {}),
       });
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -650,6 +692,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
   });
 
   try {
+    const promptText = buildOrchestratorUserPrompt(opts.agentContext, opts.userPrompt);
     opts.store.appendThreadMessage({
       timestamp: now(),
       conversationId: threadKey,
@@ -659,7 +702,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
 
     await agent.prompt({
       role: "user",
-      content: [{ type: "text", text: opts.userPrompt }],
+      content: [{ type: "text", text: promptText }],
       timestamp: now(),
     });
 
@@ -734,6 +777,11 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
       finalText,
       persisted: true,
       ...(selfModApplied ? { selfModApplied } : {}),
+    });
+    updateOrchestratorReminderState(opts.store, {
+      conversationId: opts.conversationId,
+      shouldInjectDynamicReminder: opts.agentContext.shouldInjectDynamicReminder,
+      finalText,
     });
 
     return runId;
@@ -1101,6 +1149,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
 
     if (event.type === "tool_execution_end") {
       const preview = getToolResultPreview(event.toolName, event.result);
+      const html = getToolResultHtml(event.toolName, event.result);
       const s = nextSeq();
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -1120,6 +1169,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
+        ...(html ? { html } : {}),
       });
     }
   });
