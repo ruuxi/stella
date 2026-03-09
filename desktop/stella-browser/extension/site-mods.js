@@ -46,7 +46,7 @@ function injectCSS(css, pattern) {
 function injectJS(js, pattern) {
   const script = document.createElement('script');
   script.setAttribute('data-stella-mod', pattern);
-  script.textContent = js;
+  script.textContent = `try{${js}}catch(e){console.warn("[stella-mod] Error in mod \\""+${JSON.stringify(pattern)}+"\\":",e)}`;
   (document.head || document.documentElement).appendChild(script);
   script.remove();
 }

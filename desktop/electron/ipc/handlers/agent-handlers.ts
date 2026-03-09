@@ -24,6 +24,7 @@ type AgentEventPayload = {
   chunk?: string
   toolCallId?: string
   toolName?: string
+  args?: Record<string, unknown>
   resultPreview?: string
   error?: string
   fatal?: boolean

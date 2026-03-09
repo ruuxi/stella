@@ -73,6 +73,7 @@ export type RuntimeToolStartEvent = {
   seq: number;
   toolCallId: string;
   toolName: string;
+  args: Record<string, unknown>;
 };
 
 export type RuntimeToolEndEvent = {
@@ -539,6 +540,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
         seq: s,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
+        args: (event.args as Record<string, unknown>) ?? {},
       });
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -1040,6 +1042,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         seq: s,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
+        args: (event.args as Record<string, unknown>) ?? {},
       });
       return;
     }

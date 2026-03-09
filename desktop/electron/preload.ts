@@ -199,6 +199,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           chunk?: string;
           toolCallId?: string;
           toolName?: string;
+          args?: Record<string, unknown>;
           resultPreview?: string;
           error?: string;
           fatal?: boolean;
@@ -221,6 +222,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       chunk?: string;
       toolCallId?: string;
       toolName?: string;
+      args?: Record<string, unknown>;
       resultPreview?: string;
       error?: string;
       fatal?: boolean;

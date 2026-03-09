@@ -63,6 +63,7 @@ type FsLock = {
 
 export type TaskLifecycleEvent = {
   type: "task-started" | "task-completed" | "task-failed" | "task-progress";
+  conversationId: string;
   taskId: string;
   agentType: string;
   description?: string;
@@ -202,6 +203,7 @@ export class LocalTaskManager implements TaskToolApi {
       task.status = "running";
       this.opts.onTaskEvent?.({
         type: "task-started",
+        conversationId: task.conversationId,
         taskId: task.id,
         agentType: task.agentType,
         description: task.description,
@@ -285,6 +287,7 @@ export class LocalTaskManager implements TaskToolApi {
         },
         onToolStart: (ev) => this.opts.onTaskEvent?.({
           type: "task-progress",
+          conversationId: task.conversationId,
           taskId: task.id,
           agentType: task.agentType,
           statusText: `Using ${ev.toolName}`,
@@ -333,6 +336,7 @@ export class LocalTaskManager implements TaskToolApi {
     if (task.status === "completed") {
       this.opts.onTaskEvent?.({
         type: "task-completed",
+        conversationId: task.conversationId,
         taskId: task.id,
         agentType: task.agentType,
         result: task.result ? truncate(task.result, 500) : undefined,
@@ -340,6 +344,7 @@ export class LocalTaskManager implements TaskToolApi {
     } else if (task.status === "error" || task.status === "canceled") {
       this.opts.onTaskEvent?.({
         type: "task-failed",
+        conversationId: task.conversationId,
         taskId: task.id,
         agentType: task.agentType,
         error: task.error,

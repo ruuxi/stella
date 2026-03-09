@@ -550,11 +550,11 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- limit: optional max number of results.\n" +
     "- Use when the user references past conversations, preferences, or you need prior context.",
   ActivateSkill:
-    "Load a skill's full instructions and tools into the current session.\n\n" +
+    "Load an installed skill's full instructions into the current session.\n\n" +
     "Usage:\n" +
-    "- skill_id: ID of the skill to activate.\n" +
-    "- Skills provide specialized capabilities (browser patterns, API discovery, etc.).\n" +
-    "- Activate when you need a skill's detailed instructions for a specific task.",
+    "- skill_id: exact ID of an installed skill (e.g. 'electron').\n" +
+    "- Only use skill IDs listed in your agent config (defaultSkills) or that you have confirmed exist.\n" +
+    "- Do NOT guess or invent skill IDs — if the skill doesn't exist, it will fail.",
   NoResponse:
     "Signal that you have nothing to say right now.\n\n" +
     "Call this instead of generating a message when a system event, task result, or heartbeat check " +
