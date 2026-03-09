@@ -6,7 +6,6 @@ import { anyApi } from "convex/server";
 import { createToolHost, type ScheduleToolApi, type ToolContext } from "./tools/index.js";
 import { loadAgentsFromHome, loadSkillsFromHome } from "./agents/index.js";
 import { loadExtensions, HookEmitter } from "./extensions/index.js";
-import { registerApiProvider } from "@stella/stella-ai";
 import {
   getCodexLocalMaxConcurrency,
   getGeneralAgentEngine,
@@ -652,28 +651,9 @@ export const createStellaHostRunner = ({
           // Register extension tools on the tool host
           toolHost.registerExtensionTools(extensions.tools);
 
-          // Register extension providers
-          for (const provider of extensions.providers) {
-            try {
-              registerApiProvider(provider.name, {
-                name: provider.name,
-                baseUrl: provider.baseUrl,
-                api: provider.api as any,
-                models: provider.models.map((m) => ({
-                  id: m.id,
-                  name: m.name,
-                  provider: provider.name,
-                  api: provider.api as any,
-                  contextWindow: m.contextWindow,
-                  maxTokens: m.maxTokens,
-                  reasoning: m.reasoning ?? false,
-                  input: (m.input ?? ["text"]) as any,
-                  cost: m.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                })),
-              });
-            } catch (error) {
-              console.error(`[stella:extensions] Failed to register provider ${provider.name}:`, (error as Error).message);
-            }
+          // TODO: Register extension providers once adapter from ProviderDefinition -> ApiProvider is implemented
+          if (extensions.providers.length > 0) {
+            console.warn(`[stella:extensions] ${extensions.providers.length} provider(s) loaded but provider registration not yet supported`);
           }
 
           // Store loaded prompts for access

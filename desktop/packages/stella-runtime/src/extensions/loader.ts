@@ -1,5 +1,5 @@
 /**
- * Extension loader — auto-discovers tools, hooks, providers, and prompts
+ * Extension loader - auto-discovers tools, hooks, providers, and prompts
  * from the stella-agents directory structure.
  */
 
@@ -36,7 +36,7 @@ async function importModules<T>(dir: string, suffix: string): Promise<T[]> {
     try {
       // Use file:// URL for cross-platform ESM import compatibility
       const fileUrl = `file:///${filePath.replace(/\\/g, "/")}`;
-      const mod = await import(fileUrl);
+      const mod = await import(/* @vite-ignore */ fileUrl);
       const definition = mod.default ?? mod;
       if (definition && typeof definition === "object") {
         results.push(definition as T);
