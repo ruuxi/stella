@@ -100,28 +100,32 @@ export function transformMessages<TApi extends Api>(
 	const result: Message[] = [];
 	let pendingToolCalls: ToolCall[] = [];
 	let existingToolResultIds = new Set<string>();
+	const flushPendingToolResults = () => {
+		if (pendingToolCalls.length === 0) return;
+
+		for (const tc of pendingToolCalls) {
+			if (!existingToolResultIds.has(tc.id)) {
+				result.push({
+					role: "toolResult",
+					toolCallId: tc.id,
+					toolName: tc.name,
+					content: [{ type: "text", text: "No result provided" }],
+					isError: true,
+					timestamp: Date.now(),
+				} as ToolResultMessage);
+			}
+		}
+
+		pendingToolCalls = [];
+		existingToolResultIds = new Set();
+	};
 
 	for (let i = 0; i < transformed.length; i++) {
 		const msg = transformed[i];
 
 		if (msg.role === "assistant") {
 			// If we have pending orphaned tool calls from a previous assistant, insert synthetic results now
-			if (pendingToolCalls.length > 0) {
-				for (const tc of pendingToolCalls) {
-					if (!existingToolResultIds.has(tc.id)) {
-						result.push({
-							role: "toolResult",
-							toolCallId: tc.id,
-							toolName: tc.name,
-							content: [{ type: "text", text: "No result provided" }],
-							isError: true,
-							timestamp: Date.now(),
-						} as ToolResultMessage);
-					}
-				}
-				pendingToolCalls = [];
-				existingToolResultIds = new Set();
-			}
+			flushPendingToolResults();
 
 			// Skip errored/aborted assistant messages entirely.
 			// These are incomplete turns that shouldn't be replayed:
@@ -146,27 +150,14 @@ export function transformMessages<TApi extends Api>(
 			result.push(msg);
 		} else if (msg.role === "user") {
 			// User message interrupts tool flow - insert synthetic results for orphaned calls
-			if (pendingToolCalls.length > 0) {
-				for (const tc of pendingToolCalls) {
-					if (!existingToolResultIds.has(tc.id)) {
-						result.push({
-							role: "toolResult",
-							toolCallId: tc.id,
-							toolName: tc.name,
-							content: [{ type: "text", text: "No result provided" }],
-							isError: true,
-							timestamp: Date.now(),
-						} as ToolResultMessage);
-					}
-				}
-				pendingToolCalls = [];
-				existingToolResultIds = new Set();
-			}
+			flushPendingToolResults();
 			result.push(msg);
 		} else {
 			result.push(msg);
 		}
 	}
+
+	flushPendingToolResults();
 
 	return result;
 }
