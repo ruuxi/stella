@@ -1,4 +1,5 @@
-import { createGateway, generateText, tool, ToolSet } from "ai";
+import { generateText, tool, ToolSet } from "ai";
+import { getModelConfig, createManagedModel } from "../agent/model";
 import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
 import {
@@ -59,12 +60,8 @@ const formatWebSearchText = (query: string, results: SearchHit[]): string => {
   );
 };
 
-const SEARCH_HTML_MODEL = (() => {
-  const gateway = createGateway({
-    apiKey: process.env.AI_GATEWAY_API_KEY ?? "",
-  });
-  return gateway("inception/mercury-2");
-})();
+const SEARCH_HTML_CONFIG = getModelConfig("search_html");
+const SEARCH_HTML_MODEL = createManagedModel(SEARCH_HTML_CONFIG.model);
 
 const generateSearchHtml = async (
   options: {
@@ -93,8 +90,8 @@ const generateSearchHtml = async (
 
   const result = await generateText({
     model: SEARCH_HTML_MODEL,
-    temperature: 1.0,
-    maxOutputTokens: 16096,
+    temperature: SEARCH_HTML_CONFIG.temperature,
+    maxOutputTokens: SEARCH_HTML_CONFIG.maxOutputTokens,
     system: options.promptConfig.systemPrompt,
     messages: [{ role: "user", content: prompt }],
   });
