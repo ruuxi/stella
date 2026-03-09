@@ -101,13 +101,6 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     fallback: "moonshotai/kimi-k2.5",
   },
 
-  news_generate: {
-    model: "inception/mercury-2",
-    fallback: "moonshotai/kimi-k2.5",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-  },
-
   suggestions: {
     model: "moonshotai/kimi-k2.5",
     fallback: "zai/glm-4.7",

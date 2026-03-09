@@ -16,9 +16,28 @@ export function getVoiceToolSchemas(): VoiceToolSchema[] {
   return [
     {
       type: "function",
+      name: "web_search",
+      description:
+        "Search the web for current information. Use natural language queries, not keywords. " +
+        "Call this for any question needing up-to-date facts: news, prices, current events, people's roles, product info. " +
+        "Results are displayed on the canvas panel. Speak a concise summary of the key findings.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Natural language search query.",
+          },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      type: "function",
       name: "perform_action",
       description:
-        "Execute an action on behalf of the user. Call this for ANY request that involves doing something: searching, opening/closing the dashboard, creating content, managing files, running tasks, setting reminders, browsing the web, or anything beyond casual conversation.",
+        "Execute an action on behalf of the user. Call this for ANY request that involves doing something beyond casual conversation or web search: " +
+        "opening/closing the dashboard, creating content, managing files, running tasks, setting reminders, browsing specific URLs, or complex multi-step operations.",
       parameters: {
         type: "object",
         properties: {},

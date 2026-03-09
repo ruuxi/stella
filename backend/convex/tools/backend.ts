@@ -1,8 +1,6 @@
-import { tool, ToolSet } from "ai";
+import { createGateway, generateText, tool, ToolSet } from "ai";
 import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
-import { generateTextWithFailover } from "../agent/model_execution";
-import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
 import {
   buildSearchHtmlUserPrompt,
 } from "../prompts/index";
@@ -10,8 +8,8 @@ import { resolvePromptText } from "../prompts/registry";
 import type { PromptOverrideMap } from "../prompts/registry";
 import type { ToolOptions } from "./types";
 
-const MAX_WEB_SEARCH_RESULTS = 10;
-const MAX_WEB_SEARCH_HIGHLIGHT_CHARS = 4000;
+const MAX_WEB_SEARCH_RESULTS = 5;
+const MAX_WEB_SEARCH_HIGHLIGHT_CHARS = 400;
 const MAX_WEB_SEARCH_SNIPPET_CHARS = 300;
 
 /**
@@ -58,10 +56,15 @@ const formatWebSearchText = (query: string, results: SearchHit[]): string => {
   );
 };
 
+const SEARCH_HTML_MODEL = (() => {
+  const gateway = createGateway({
+    apiKey: process.env.AI_GATEWAY_API_KEY ?? "",
+  });
+  return gateway("inception/mercury-2");
+})();
+
 const generateSearchHtml = async (
-  ctx: Pick<ActionCtx, "runQuery">,
   options: {
-    ownerId?: string;
     query: string;
     results: SearchHit[];
     promptOverrides?: PromptOverrideMap;
@@ -79,15 +82,12 @@ const generateSearchHtml = async (
     promptTemplate: resolvePromptText("search_html.user", options.promptOverrides),
   });
 
-  const resolvedConfig = await resolveModelConfig(ctx, "news_generate", options.ownerId);
-  const fallbackConfig = await resolveFallbackConfig(ctx, "news_generate", options.ownerId);
-  const result = await generateTextWithFailover({
-    resolvedConfig,
-    fallbackConfig,
-    sharedArgs: {
-      system: resolvePromptText("search_html.system", options.promptOverrides),
-      messages: [{ role: "user", content: prompt }],
-    },
+  const result = await generateText({
+    model: SEARCH_HTML_MODEL,
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    system: resolvePromptText("search_html.system", options.promptOverrides),
+    messages: [{ role: "user", content: prompt }],
   });
 
   const html = sanitizeGeneratedHtml(result.text ?? "");
@@ -129,7 +129,7 @@ export const executeWebSearch = async (
       },
       body: JSON.stringify({
         query,
-        type: "fast",
+        type: "instant",
         numResults: MAX_WEB_SEARCH_RESULTS,
         ...(options.category ? { category: options.category } : {}),
         contents: {
@@ -172,8 +172,7 @@ export const executeWebSearch = async (
 
     if (options.includeHtml && results.length > 0) {
       try {
-        searchResult.html = await generateSearchHtml(ctx, {
-          ownerId: options.ownerId,
+        searchResult.html = await generateSearchHtml({
           query,
           results,
           promptOverrides: options.promptOverrides,
@@ -216,7 +215,7 @@ export const createBackendTools = (
       description:
         "Search the web via Exa for current information.\n\n" +
         "Use natural language queries, not keywords (e.g. 'Tesla current stock performance' not 'TSLA stock price').\n" +
-        "Returns up to 10 results with title, URL, and highlighted excerpts.\n\n" +
+        "Returns up to 5 results with title, URL, and highlighted excerpts.\n\n" +
         "CATEGORIES — use sparingly, most queries should omit:\n" +
         "- 'company': only for company research.\n" +
         "- 'people': only for non-public figures. Never for public figures or news about someone.\n" +
