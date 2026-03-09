@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import * as React from "react";
 import { TextField } from "../../../src/ui/text-field";
 
 describe("TextField", () => {
@@ -40,5 +41,34 @@ describe("TextField", () => {
     render(<TextField label="Field" onChange={onChange} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "test" } });
     expect(onChange).toHaveBeenCalled();
+  });
+
+  it("forwards shared props to textarea in multiline mode", () => {
+    const onChange = vi.fn();
+    render(
+      <TextField
+        label="Bio"
+        multiline
+        name="bio"
+        placeholder="Tell us more"
+        value="hello"
+        onChange={onChange}
+      />,
+    );
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea.getAttribute("name")).toBe("bio");
+    expect(textarea.getAttribute("placeholder")).toBe("Tell us more");
+    expect((textarea as HTMLTextAreaElement).value).toBe("hello");
+
+    fireEvent.change(textarea, { target: { value: "updated" } });
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it("forwards refs to textarea in multiline mode", () => {
+    const ref = React.createRef<HTMLTextAreaElement>();
+    render(<TextField label="Bio" multiline ref={ref} />);
+
+    expect(ref.current).toBeInstanceOf(HTMLTextAreaElement);
   });
 });
