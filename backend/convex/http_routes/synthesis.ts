@@ -1,7 +1,8 @@
 import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { createGateway, generateText } from "ai";
+import { generateText } from "ai";
+import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
 import { resolveModelConfig } from "../agent/model_resolver";
 import {
   buildCoreSynthesisUserMessage,
@@ -88,13 +89,11 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           return errorResponse(400, "Missing synthesis prompt payload", origin);
         }
 
-        const apiKey = process.env.AI_GATEWAY_API_KEY;
+        const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
         if (!apiKey) {
-          console.error("[synthesize] Missing AI_GATEWAY_API_KEY environment variable");
+          console.error(`[synthesize] Missing ${MANAGED_GATEWAY.apiKeyEnvVar} environment variable`);
           return errorResponse(500, "Server configuration error", origin);
         }
-
-        const gateway = createGateway({ apiKey });
 
         try {
           if (!identity && anonDeviceId) {
@@ -126,7 +125,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId);
           const synthesisModel =
             typeof synthesisConfig.model === "string"
-              ? gateway(synthesisConfig.model)
+              ? createManagedModel(synthesisConfig.model)
               : synthesisConfig.model;
 
           const synthesisResult = await generateText({
@@ -152,7 +151,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId);
           const welcomeModel =
             typeof welcomeConfig.model === "string"
-              ? gateway(welcomeConfig.model)
+              ? createManagedModel(welcomeConfig.model)
               : welcomeConfig.model;
 
           const [welcomeResult, suggestionsResult] = await Promise.all([
