@@ -245,8 +245,11 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 				options?.headers,
 				copilotDynamicHeaders,
 			);
-			const params = buildParams(model, context, isOAuthToken, options);
-			options?.onPayload?.(params);
+			let params = buildParams(model, context, isOAuthToken, options);
+			const nextParams = await options?.onPayload?.(params, model);
+			if (nextParams !== undefined) {
+				params = nextParams as typeof params;
+			}
 			const anthropicStream = client.messages.stream({ ...params, stream: true }, { signal: options?.signal });
 			stream.push({ type: "start", partial: output });
 

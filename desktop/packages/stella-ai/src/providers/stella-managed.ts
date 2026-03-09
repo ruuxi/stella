@@ -260,13 +260,18 @@ function streamManaged(
 		const output = createAssistantMessageShell(model);
 
 		try {
+			let requestBody: Record<string, unknown> = buildRequestBody(model, context, {
+				...options,
+				stream: true,
+			});
+			const nextBody = await options?.onPayload?.(requestBody, model);
+			if (nextBody !== undefined) {
+				requestBody = nextBody as typeof requestBody;
+			}
 			const response = await fetch(model.baseUrl, {
 				method: "POST",
 				headers: buildHeaders(model, options),
-				body: JSON.stringify(buildRequestBody(model, context, {
-					...options,
-					stream: true,
-				})),
+				body: JSON.stringify(requestBody),
 				signal: options?.signal,
 			});
 
