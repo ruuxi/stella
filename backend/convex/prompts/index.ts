@@ -29,10 +29,10 @@ export {
 } from "./personalized_dashboard";
 export type { PersonalizedDashboardPageAssignment } from "./personalized_dashboard";
 export {
-  NEWS_HTML_SYSTEM_PROMPT,
-  NEWS_HTML_USER_PROMPT_TEMPLATE,
-  buildNewsHtmlUserPrompt,
-} from "./news_html";
+  SEARCH_HTML_SYSTEM_PROMPT,
+  SEARCH_HTML_USER_PROMPT_TEMPLATE,
+  buildSearchHtmlUserPrompt,
+} from "./search_html";
 export {
   EDITABLE_PROMPT_DEFAULTS,
   normalizePromptOverrides,
