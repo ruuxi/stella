@@ -26,6 +26,7 @@ type AgentEventPayload = {
   toolName?: string
   args?: Record<string, unknown>
   resultPreview?: string
+  html?: string
   error?: string
   fatal?: boolean
   finalText?: string
