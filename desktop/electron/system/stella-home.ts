@@ -23,10 +23,8 @@ const ensureDir = async (dirPath: string) => {
 };
 
 // In dev mode, __dirname is dist-electron/electron/system/ (compiled output).
-// Bundled .md files live in the source tree, not the compiled output.
-// Go up to frontend/, then into electron/bundled-* or stella-*.
-const BUNDLED_SKILLS_DIR = path.resolve(__dirname, "..", "..", "electron", "bundled-skills");
-const BUNDLED_AGENTS_DIR = path.resolve(__dirname, "..", "..", "electron", "stella-agents");
+// Go up three levels to frontend/, then into the source tree.
+const BUNDLED_SKILLS_DIR = path.resolve(__dirname, "..", "..", "..", "electron", "bundled-skills");
 
 /**
  * Copy bundled directories into a target path.
@@ -82,7 +80,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   await ensureDir(workspaceAppsPath);
 
   await seedBundledSkills(skillsPath);
-  await seedBundledDir(BUNDLED_AGENTS_DIR, agentsPath);
 
   return {
     homePath,

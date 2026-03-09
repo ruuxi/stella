@@ -94,17 +94,34 @@ export function subscribeTrace(listener: Listener): () => void {
 
 // --- Helpers for recording common events ---
 
-export function traceToolStart(toolName: string, toolCallId: string | undefined, runId?: string) {
+const summarizeArgs = (args?: Record<string, unknown>): string => {
+  if (!args || Object.keys(args).length === 0) return "";
+  try {
+    const json = JSON.stringify(args);
+    return json.length > 120 ? `${json.slice(0, 117)}...` : json;
+  } catch {
+    return "[unserializable args]";
+  }
+};
+
+export function traceToolStart(
+  toolName: string,
+  toolCallId: string | undefined,
+  runId?: string,
+  args?: Record<string, unknown>,
+) {
   const key = toolCallId ?? `${runId}:${toolName}`;
   toolStartTimes.set(key, Date.now());
 
   const agent = runId ? runIdToAgent.get(runId) : undefined;
+  const argsSummary = summarizeArgs(args);
 
-  addTrace("tool", "tool-start", `${toolName}`, {
+  addTrace("tool", "tool-start", argsSummary ? `${toolName} ${argsSummary}` : `${toolName}`, {
     toolName,
     toolCallId,
     runId,
     agent,
+    data: args && Object.keys(args).length > 0 ? { args } : undefined,
   });
 }
 

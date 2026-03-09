@@ -123,7 +123,20 @@ export const localActivateSkill = async (args: {
     try {
       return fs.readFileSync(altFile, "utf-8");
     } catch {
-      return `Skill '${skillId}' not found. Check available skills with the skills list in the system prompt.`;
+      // List available skills so the agent knows what exists
+      const skillsDir = path.join(stellaHome, "skills");
+      let available: string[] = [];
+      try {
+        available = fs.readdirSync(skillsDir, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name);
+      } catch {
+        // ignore
+      }
+      const listing = available.length > 0
+        ? `Available skills: ${available.join(", ")}`
+        : "No skills are currently installed.";
+      return `Skill '${skillId}' not found. ${listing}`;
     }
   }
 };

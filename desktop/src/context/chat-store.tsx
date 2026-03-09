@@ -22,6 +22,7 @@ type AppendAgentEventArgs = {
   userMessageId?: string
   toolCallId?: string
   toolName?: string
+  args?: Record<string, unknown>
   resultPreview?: string
   html?: string
   finalText?: string
@@ -85,6 +86,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
           requestId: args.toolCallId,
           payload: {
             toolName: args.toolName,
+            ...(args.args ? { args: args.args } : {}),
             ...(args.agentType ? { agentType: args.agentType } : {}),
           },
         }).catch(() => undefined)

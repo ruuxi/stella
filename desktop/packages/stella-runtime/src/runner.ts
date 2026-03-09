@@ -40,31 +40,18 @@ const MIN_LOCAL_HISTORY_TOKENS = 8_000;
 // Minimal fallback prompts â€” real prompts live in bundled AGENT.md files
 // seeded to ~/.stella/agents/ on first startup.
 const DEFAULT_ORCHESTRATOR_PROMPT =
-  "You are Stella's orchestrator. Delegate specialized work with TaskCreate/Task, monitor with TaskOutput, and keep work non-blocking by default. " +
-  "For bi-directional coordination, send messages to sub-agents with Task action='message' and task_id, and read incoming agent messages via Task action='inbox'. " +
+  "You are Stella's orchestrator. Coordinate specialized work and keep work non-blocking by default. " +
   "For user-facing output, prefer Display for most substantive, structured, or multi-item responses and keep plain text mainly for acknowledgments, brief confirmations, and short replies. " +
   "After using Display, keep any chat text to one short sentence unless the user explicitly asks for detailed text. " +
   "You can interact with Stella's desktop UI via `stella-ui snapshot`, `stella-ui click @ref`, `stella-ui fill @ref \"text\"` in Bash.";
 const DEFAULT_SUBAGENT_PROMPT =
-  "You are a Stella sub-agent. Execute delegated work, provide concise progress, and run tools safely. " +
-  "Use Task action='inbox' to read orchestrator messages and Task action='message' to report important updates back. " +
+  "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely. " +
   "When creating or modifying UI components, add data-stella-label, data-stella-state, and data-stella-action attributes.";
 
-const DEFAULT_TOOL_ALLOWLIST = [
-  "Read",
-  "Edit",
-  "Glob",
-  "Grep",
-  "Bash",
-  "KillShell",
-  "ShellStatus",
+const DEFAULT_ORCHESTRATOR_TOOL_ALLOWLIST = [
   "AskUserQuestion",
-  "RequestCredential",
-  "SkillBash",
-  "Task",
   "TaskCreate",
   "TaskCancel",
-  "TaskOutput",
   "WebFetch",
   "WebSearch",
   "HeartbeatGet",
@@ -75,12 +62,33 @@ const DEFAULT_TOOL_ALLOWLIST = [
   "CronUpdate",
   "CronRemove",
   "CronRun",
-  "ActivateSkill",
   "Display",
   "NoResponse",
   "SaveMemory",
   "RecallMemories",
 ];
+
+const DEFAULT_SUBAGENT_TOOL_ALLOWLIST = [
+  "Read",
+  "Edit",
+  "Glob",
+  "Grep",
+  "Bash",
+  "KillShell",
+  "ShellStatus",
+  "AskUserQuestion",
+  "RequestCredential",
+  "SkillBash",
+  "WebFetch",
+  "WebSearch",
+  "ActivateSkill",
+  "NoResponse",
+  "SaveMemory",
+  "RecallMemories",
+];
+
+const ORCHESTRATOR_TOOL_SET = new Set(DEFAULT_ORCHESTRATOR_TOOL_ALLOWLIST);
+const SUBAGENT_TOOL_SET = new Set(DEFAULT_SUBAGENT_TOOL_ALLOWLIST);
 
 const LOCAL_CONTEXT_EVENT_TYPES = new Set([
   "user_message",
@@ -168,6 +176,28 @@ type ParsedAgentLike = {
 const defaultPromptForAgentType = (agentType: string): string => {
   if (agentType === "orchestrator") return DEFAULT_ORCHESTRATOR_PROMPT;
   return DEFAULT_SUBAGENT_PROMPT;
+};
+
+const resolveToolsAllowlist = (
+  agentType: string,
+  requestedTools?: string[],
+): string[] => {
+  const defaultTools =
+    agentType === "orchestrator"
+      ? DEFAULT_ORCHESTRATOR_TOOL_ALLOWLIST
+      : DEFAULT_SUBAGENT_TOOL_ALLOWLIST;
+  const allowedTools =
+    agentType === "orchestrator"
+      ? ORCHESTRATOR_TOOL_SET
+      : SUBAGENT_TOOL_SET;
+
+  const requested =
+    Array.isArray(requestedTools) && requestedTools.length > 0
+      ? requestedTools
+      : defaultTools;
+
+  const filtered = requested.filter((toolName) => allowedTools.has(toolName));
+  return filtered.length > 0 ? Array.from(new Set(filtered)) : [...defaultTools];
 };
 
 const sanitizeConvexDeploymentUrl = (value: string | null): string | null => {
@@ -263,6 +293,7 @@ export const createStellaHostRunner = ({
   let activeOrchestratorConversationId: string | null = null;
   let activeSearchHtmlPrompts: SearchHtmlPromptConfig | undefined;
   const activeRunAbortControllers = new Map<string, AbortController>();
+  const conversationCallbacks = new Map<string, AgentCallbacks>();
 
   const skillsPath = path.join(StellaHome, "skills");
   const agentsPath = path.join(StellaHome, "agents");
@@ -486,7 +517,7 @@ export const createStellaHostRunner = ({
         args.agentType === "orchestrator" && frontendRoot
           ? buildPanelInventory(frontendRoot)
           : "",
-      toolsAllowlist: agent?.toolsAllowlist?.length ? agent.toolsAllowlist : DEFAULT_TOOL_ALLOWLIST,
+      toolsAllowlist: resolveToolsAllowlist(args.agentType, agent?.toolsAllowlist),
       model,
       maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
       defaultSkills: agent?.defaultSkills ?? [],
@@ -503,7 +534,7 @@ export const createStellaHostRunner = ({
   localTaskManager = new LocalTaskManager({
     maxConcurrent: 3,
     onTaskEvent: (event) => {
-      activeCallbacksRef?.onTaskEvent?.(event);
+      conversationCallbacks.get(event.conversationId)?.onTaskEvent?.(event);
     },
     fetchAgentContext: buildAgentContext,
     runSubagent: async ({
@@ -536,6 +567,7 @@ export const createStellaHostRunner = ({
           getAuthToken: () => authToken?.trim(),
         },
       });
+      const taskCallbacks = conversationCallbacks.get(conversationId) ?? null;
       try {
         return await runSubagentTask({
           conversationId,
@@ -552,12 +584,12 @@ export const createStellaHostRunner = ({
           abortSignal,
           selfModMonitor,
           onProgress,
-          callbacks: activeCallbacksRef ? {
-            onStream: (ev) => activeCallbacksRef?.onStream?.(ev),
-            onToolStart: (ev) => activeCallbacksRef?.onToolStart?.(ev),
-            onToolEnd: (ev) => activeCallbacksRef?.onToolEnd?.(ev),
-            onError: (ev) => activeCallbacksRef?.onError?.(ev),
-            onEnd: (ev) => activeCallbacksRef?.onEnd?.(ev),
+          callbacks: taskCallbacks ? {
+            onStream: (ev) => taskCallbacks.onStream(ev),
+            onToolStart: (ev) => taskCallbacks.onToolStart(ev),
+            onToolEnd: (ev) => taskCallbacks.onToolEnd(ev),
+            onError: (ev) => taskCallbacks.onError(ev),
+            onEnd: (ev) => taskCallbacks.onEnd(ev),
           } : undefined,
           webSearch,
           hookEmitter,
@@ -635,9 +667,19 @@ export const createStellaHostRunner = ({
         // Skills are optional at startup.
       });
 
-    void loadAgentsFromHome(agentsPath)
-      .then((agents) => {
-        loadedAgents = agents;
+    // Load agents directly from source (electron/stella-agents/) with
+    // ~/.stella/agents/ as an override layer for user-custom agents.
+    const agentSources = stellaAgentsPath ? [stellaAgentsPath, agentsPath] : [agentsPath];
+    void Promise.all(agentSources.map((p) => loadAgentsFromHome(p).catch(() => [] as ParsedAgentLike[])))
+      .then((results) => {
+        const merged = new Map<string, ParsedAgentLike>();
+        for (const agents of results) {
+          for (const agent of agents) {
+            // Later sources (user custom) override earlier (bundled)
+            for (const at of agent.agentTypes) merged.set(at, agent);
+          }
+        }
+        loadedAgents = [...merged.values()];
       })
       .catch(() => {
         loadedAgents = [];
@@ -700,6 +742,7 @@ export const createStellaHostRunner = ({
       controller.abort();
     }
     activeRunAbortControllers.clear();
+    conversationCallbacks.clear();
     void selfModHmrController?.forceResumeAll();
     toolHost.killAllShells();
     shutdownSubagentRuntimes();
@@ -775,6 +818,7 @@ export const createStellaHostRunner = ({
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
     activeCallbacksRef = callbacks;
+    conversationCallbacks.set(conversationId, callbacks);
     activeSearchHtmlPrompts = payload.searchHtmlPrompts;
 
     const abortController = new AbortController();
