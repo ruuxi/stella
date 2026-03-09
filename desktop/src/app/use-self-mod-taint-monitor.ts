@@ -71,7 +71,7 @@ export const useSelfModTaintMonitor = () => {
           title: 'External UI edits detected',
           description: `${buildTaintPreview(tainted)} changed outside Stella. Keep changes to adopt them, or use Undo to discard.`,
           variant: 'loading',
-          duration: 9_000,
+          duration: 4_000,
         })
       } catch {
         // Best effort only.
