@@ -5,6 +5,8 @@ import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { createToolHost, type ScheduleToolApi, type ToolContext } from "./tools/index.js";
 import { loadAgentsFromHome, loadSkillsFromHome } from "./agents/index.js";
+import { loadExtensions, HookEmitter } from "./extensions/index.js";
+import { registerApiProvider } from "@stella/stella-ai";
 import {
   getCodexLocalMaxConcurrency,
   getGeneralAgentEngine,
@@ -264,8 +266,11 @@ export const createStellaHostRunner = ({
 
   const skillsPath = path.join(StellaHome, "skills");
   const agentsPath = path.join(StellaHome, "agents");
+  const stellaAgentsPath = frontendRoot ? path.join(frontendRoot, "electron", "stella-agents") : null;
+  const hookEmitter = new HookEmitter();
 
   let loadedAgents: ParsedAgentLike[] = [];
+  let loadedPrompts: import("./extensions/types.js").PromptTemplate[] = [];
 
   const disposeConvexClient = () => {
     const client = convexClient;
@@ -555,6 +560,7 @@ export const createStellaHostRunner = ({
             onEnd: (ev) => activeCallbacksRef?.onEnd?.(ev),
           } : undefined,
           webSearch,
+          hookEmitter,
         });
       } finally {
         if (shouldControlHmr && selfModHmrController) {
@@ -636,6 +642,49 @@ export const createStellaHostRunner = ({
       .catch(() => {
         loadedAgents = [];
       });
+
+    if (stellaAgentsPath) {
+      void loadExtensions(stellaAgentsPath)
+        .then((extensions) => {
+          // Register extension hooks
+          hookEmitter.registerAll(extensions.hooks);
+
+          // Register extension tools on the tool host
+          toolHost.registerExtensionTools(extensions.tools);
+
+          // Register extension providers
+          for (const provider of extensions.providers) {
+            try {
+              registerApiProvider(provider.name, {
+                name: provider.name,
+                baseUrl: provider.baseUrl,
+                api: provider.api as any,
+                models: provider.models.map((m) => ({
+                  id: m.id,
+                  name: m.name,
+                  provider: provider.name,
+                  api: provider.api as any,
+                  contextWindow: m.contextWindow,
+                  maxTokens: m.maxTokens,
+                  reasoning: m.reasoning ?? false,
+                  input: (m.input ?? ["text"]) as any,
+                  cost: m.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                })),
+              });
+            } catch (error) {
+              console.error(`[stella:extensions] Failed to register provider ${provider.name}:`, (error as Error).message);
+            }
+          }
+
+          // Store loaded prompts for access
+          loadedPrompts = extensions.prompts;
+
+          console.log(`[stella:extensions] Ready: ${extensions.tools.length} tools, ${extensions.hooks.length} hooks, ${extensions.providers.length} providers, ${extensions.prompts.length} prompts`);
+        })
+        .catch((error) => {
+          console.error("[stella:extensions] Failed to load extensions:", (error as Error).message);
+        });
+    }
   };
 
   const stop = () => {
@@ -772,6 +821,7 @@ export const createStellaHostRunner = ({
       frontendRoot,
       selfModMonitor,
       webSearch,
+      hookEmitter,
     }).catch((error) => {
       cleanupRun();
       callbacks.onError({
@@ -887,6 +937,7 @@ export const createStellaHostRunner = ({
         frontendRoot,
         selfModMonitor,
         webSearch,
+        hookEmitter,
       });
       if (fatalError) {
         return { status: "error", finalText: "", error: fatalError };
@@ -1000,6 +1051,7 @@ export const createStellaHostRunner = ({
 
   return {
     deviceId,
+    hookEmitter,
     setConvexUrl,
     setAuthToken,
     setCloudSyncEnabled,

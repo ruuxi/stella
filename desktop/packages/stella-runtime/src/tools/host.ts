@@ -59,6 +59,8 @@ import {
   handleHeartbeatUpsert,
 } from "./schedule.js";
 
+import type { ToolDefinition } from "../extensions/types.js";
+
 // Re-export types for external consumers
 export type { ToolContext, ToolResult };
 
@@ -71,6 +73,7 @@ export const createToolHost = ({
   resolveSecret,
   taskApi,
   scheduleApi,
+  extensionTools,
   displayHtml,
 }: ToolHostOptions) => {
   const stateRoot = path.join(StellaHome, "state");
@@ -208,6 +211,13 @@ export const createToolHost = ({
 
   };
 
+  // Register extension tools
+  if (extensionTools) {
+    for (const tool of extensionTools) {
+      handlers[tool.name] = (args, context) => tool.execute(args, context);
+    }
+  }
+
   const executeTool = async (
     toolName: string,
     toolArgs: Record<string, unknown>,
@@ -267,9 +277,15 @@ export const createToolHost = ({
 
   return {
     executeTool,
+    getHandlerNames: () => Object.keys(handlers),
     getShells: () => Array.from(shellState.shells.values()),
     killAllShells,
     killShellsByPort,
     setSkills,
+    registerExtensionTools: (tools: ToolDefinition[]) => {
+      for (const tool of tools) {
+        handlers[tool.name] = (args, context) => tool.execute(args, context);
+      }
+    },
   };
 };
