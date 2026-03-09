@@ -2,11 +2,7 @@ import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { generateText, createGateway } from "ai";
-import {
-  buildSkillMetadataUserMessage,
-  buildSkillSelectionUserMessage,
-} from "../prompts/index";
-import { normalizePromptOverrides, resolvePromptText } from "../prompts/registry";
+import { buildSkillSelectionUserMessage } from "../prompts/index";
 import {
   errorResponse,
   jsonResponse,
@@ -26,7 +22,8 @@ const SKILL_RATE_WINDOW_MS = 60_000;
 type SkillMetadataRequest = {
   markdown: string;
   skillDirName: string;
-  promptOverrides?: unknown;
+  systemPrompt?: string;
+  userPrompt?: string;
 };
 
 type SkillMetadataResponse = {
@@ -36,6 +33,12 @@ type SkillMetadataResponse = {
     description: string;
     agentTypes: string[];
   };
+};
+
+type SkillSelectionRequest = {
+  userProfile?: string;
+  systemPrompt?: string;
+  userPromptTemplate?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -91,7 +94,11 @@ export const registerSkillRoutes = (http: HttpRouter) => {
             origin,
           );
         }
-        const promptOverrides = normalizePromptOverrides(body.promptOverrides);
+        const systemPrompt = body.systemPrompt?.trim();
+        const userPrompt = body.userPrompt?.trim();
+        if (!systemPrompt || !userPrompt) {
+          return errorResponse(400, "systemPrompt and userPrompt are required", origin);
+        }
 
         const apiKey = process.env.AI_GATEWAY_API_KEY;
         if (!apiKey) {
@@ -104,16 +111,10 @@ export const registerSkillRoutes = (http: HttpRouter) => {
         const gateway = createGateway({ apiKey });
 
         try {
-          const userMessage = buildSkillMetadataUserMessage(
-            body.skillDirName,
-            body.markdown,
-            resolvePromptText("skill_metadata.user", promptOverrides),
-          );
-
           const result = await generateText({
             model: gateway("openai/gpt-4o-mini"),
-            system: resolvePromptText("skill_metadata.system", promptOverrides),
-            messages: [{ role: "user", content: userMessage }],
+            system: systemPrompt,
+            messages: [{ role: "user", content: userPrompt }],
             maxOutputTokens: 200,
             temperature: 0.3,
           });
@@ -189,9 +190,9 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
-        let body: { userProfile?: string; promptOverrides?: unknown } | null = null;
+        let body: SkillSelectionRequest | null = null;
         try {
-          body = (await request.json()) as { userProfile?: string };
+          body = (await request.json()) as SkillSelectionRequest;
         } catch {
           return errorResponse(400, "Invalid JSON body", origin);
         }
@@ -199,7 +200,11 @@ export const registerSkillRoutes = (http: HttpRouter) => {
         if (!body?.userProfile) {
           return errorResponse(400, "userProfile is required", origin);
         }
-        const promptOverrides = normalizePromptOverrides(body.promptOverrides);
+        const systemPrompt = body.systemPrompt?.trim();
+        const userPromptTemplate = body.userPromptTemplate?.trim();
+        if (!systemPrompt || !userPromptTemplate) {
+          return errorResponse(400, "systemPrompt and userPromptTemplate are required", origin);
+        }
 
         const apiKey = process.env.AI_GATEWAY_API_KEY;
         if (!apiKey) {
@@ -223,12 +228,12 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           const userMessage = buildSkillSelectionUserMessage(
             body.userProfile,
             catalog,
-            resolvePromptText("skill_selection.user", promptOverrides),
+            userPromptTemplate,
           );
 
           const result = await generateText({
             model: gateway("openai/gpt-4o-mini"),
-            system: resolvePromptText("skill_selection.system", promptOverrides),
+            system: systemPrompt,
             messages: [{ role: "user", content: userMessage }],
             maxOutputTokens: 300,
             temperature: 0.3,

@@ -2,43 +2,19 @@ export { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "./offline_responder";
 export { buildSuggestionUserMessage } from "./suggestions";
 export { SUGGESTIONS_USER_PROMPT_TEMPLATE } from "./suggestions";
 export {
-  CORE_MEMORY_SYNTHESIS_PROMPT,
-  CORE_MEMORY_SYNTHESIS_USER_PROMPT_TEMPLATE,
-  WELCOME_MESSAGE_PROMPT_TEMPLATE,
-  WELCOME_SUGGESTIONS_PROMPT_TEMPLATE,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
   buildWelcomeSuggestionsPrompt,
 } from "./synthesis";
 export type { WelcomeSuggestion } from "./synthesis";
-export {
-  SKILL_METADATA_PROMPT,
-  SKILL_METADATA_USER_PROMPT_TEMPLATE,
-  buildSkillMetadataUserMessage,
-} from "./skill_metadata";
+export { buildSkillMetadataUserMessage } from "./skill_metadata";
 export { BUILTIN_SKILLS } from "./builtin_skills";
+export { buildSkillSelectionUserMessage } from "./skill_selection";
 export {
-  SKILL_SELECTION_PROMPT,
-  SKILL_SELECTION_USER_PROMPT_TEMPLATE,
-  buildSkillSelectionUserMessage,
-} from "./skill_selection";
-export {
-  PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
-  PERSONALIZED_DASHBOARD_PAGE_USER_PROMPT_TEMPLATE,
   buildPersonalizedDashboardPageUserMessage,
 } from "./personalized_dashboard";
 export type { PersonalizedDashboardPageAssignment } from "./personalized_dashboard";
-export {
-  SEARCH_HTML_SYSTEM_PROMPT,
-  SEARCH_HTML_USER_PROMPT_TEMPLATE,
-  buildSearchHtmlUserPrompt,
-} from "./search_html";
-export {
-  EDITABLE_PROMPT_DEFAULTS,
-  normalizePromptOverrides,
-  resolvePromptText,
-} from "./registry";
-export type { PromptId, PromptOverrideMap } from "./registry";
+export { buildSearchHtmlUserPrompt } from "./search_html";
 export {
   THREAD_COMPACTION_SYSTEM_PROMPT,
   THREAD_COMPACTION_PROMPT,

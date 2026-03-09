@@ -9,7 +9,6 @@ import {
   buildWelcomeSuggestionsPrompt,
 } from "../prompts/index";
 import type { WelcomeSuggestion } from "../prompts/index";
-import { normalizePromptOverrides, resolvePromptText } from "../prompts/registry";
 import {
   corsPreflightHandler,
   errorResponse,
@@ -25,7 +24,10 @@ import { getClientAddressKey } from "../lib/http_utils";
 
 type SynthesizeRequest = {
   formattedSignals: string;
-  promptOverrides?: unknown;
+  coreMemorySystemPrompt?: string;
+  coreMemoryUserPromptTemplate?: string;
+  welcomeMessagePromptTemplate?: string;
+  welcomeSuggestionsPromptTemplate?: string;
 };
 
 type SynthesizeResponse = {
@@ -73,7 +75,18 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
         if (!body?.formattedSignals) {
           return errorResponse(400, "formattedSignals is required", origin);
         }
-        const promptOverrides = normalizePromptOverrides(body.promptOverrides);
+        const coreMemorySystemPrompt = body.coreMemorySystemPrompt?.trim();
+        const coreMemoryUserPromptTemplate = body.coreMemoryUserPromptTemplate?.trim();
+        const welcomeMessagePromptTemplate = body.welcomeMessagePromptTemplate?.trim();
+        const welcomeSuggestionsPromptTemplate = body.welcomeSuggestionsPromptTemplate?.trim();
+        if (
+          !coreMemorySystemPrompt ||
+          !coreMemoryUserPromptTemplate ||
+          !welcomeMessagePromptTemplate ||
+          !welcomeSuggestionsPromptTemplate
+        ) {
+          return errorResponse(400, "Missing synthesis prompt payload", origin);
+        }
 
         const apiKey = process.env.AI_GATEWAY_API_KEY;
         if (!apiKey) {
@@ -118,12 +131,12 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
           const synthesisResult = await generateText({
             model: synthesisModel,
-            system: resolvePromptText("synthesis.core_memory.system", promptOverrides),
+            system: coreMemorySystemPrompt,
             messages: [{
               role: "user",
               content: buildCoreSynthesisUserMessage(
                 body.formattedSignals,
-                resolvePromptText("synthesis.core_memory.user", promptOverrides),
+                coreMemoryUserPromptTemplate,
               ),
             }],
             maxOutputTokens: synthesisConfig.maxOutputTokens,
@@ -149,7 +162,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                 role: "user",
                 content: buildWelcomeMessagePrompt(
                   coreMemory,
-                  resolvePromptText("synthesis.welcome_message.user", promptOverrides),
+                  welcomeMessagePromptTemplate,
                 ),
               }],
               maxOutputTokens: welcomeConfig.maxOutputTokens,
@@ -162,7 +175,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                 role: "user",
                 content: buildWelcomeSuggestionsPrompt(
                   coreMemory,
-                  resolvePromptText("synthesis.welcome_suggestions.user", promptOverrides),
+                  welcomeSuggestionsPromptTemplate,
                 ),
               }],
               maxOutputTokens: 1024,
