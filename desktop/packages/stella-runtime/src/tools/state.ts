@@ -128,7 +128,10 @@ export const handleTask = async (
   const agentType =
     toOptionalString(args.subagentType ?? args.subagent_type ?? args.agentType) ??
     "general";
-  const parentTaskId = toOptionalString(args.parentTaskId ?? args.parent_task_id);
+  const delegationAllowlist = context.delegationAllowlist ?? [];
+  const parentTaskId =
+    toOptionalString(args.parentTaskId ?? args.parent_task_id) ??
+    toOptionalString(context.taskId);
   const threadId = toOptionalString(args.threadId ?? args.thread_id);
   const threadName = toOptionalString(args.threadName ?? args.thread_name);
   const commandId = toOptionalString(args.commandId ?? args.command_id);
@@ -136,6 +139,27 @@ export const handleTask = async (
     args.systemPromptOverride ?? args.system_prompt_override,
   );
   const storageMode = context.storageMode ?? "cloud";
+  const parentTaskDepth = Math.max(0, context.taskDepth ?? 0);
+  const nextTaskDepth = parentTaskDepth + 1;
+  const maxTaskDepth = context.maxTaskDepth;
+
+  if (delegationAllowlist.length === 0) {
+    return {
+      error: "This agent cannot create subtasks.",
+    };
+  }
+
+  if (!delegationAllowlist.includes(agentType)) {
+    return {
+      error: `This agent can only create these subtask types: ${delegationAllowlist.join(", ")}.`,
+    };
+  }
+
+  if (typeof maxTaskDepth === "number" && nextTaskDepth > maxTaskDepth) {
+    return {
+      error: `Task depth limit reached (${maxTaskDepth}). Complete work in the current task instead of creating another subtask.`,
+    };
+  }
 
   if (ctx.taskApi) {
     const created = await ctx.taskApi.createTask({
@@ -143,6 +167,8 @@ export const handleTask = async (
       description,
       prompt,
       agentType,
+      taskDepth: nextTaskDepth,
+      ...(typeof maxTaskDepth === "number" ? { maxTaskDepth } : {}),
       parentTaskId,
       threadId,
       threadName,
