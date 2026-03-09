@@ -647,9 +647,11 @@ async function handleChain(
     }
   }
 
-  return successResponse(command.id, {
-    ...data,
-  });
+  return {
+    id: command.id,
+    success: results.every((result) => result.success),
+    data,
+  } as Response<ChainData>;
 }
 
 async function handleClick(command: ClickCommand, browser: BrowserManager): Promise<Response> {
