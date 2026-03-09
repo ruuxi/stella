@@ -17,6 +17,9 @@ export type ToolContext = {
   agentType?: string;
   storageMode?: "cloud" | "local";
   taskId?: string;
+  taskDepth?: number;
+  maxTaskDepth?: number;
+  delegationAllowlist?: string[];
 };
 
 export type ToolResult = {
@@ -70,6 +73,8 @@ export type TaskToolRequest = {
   description: string;
   prompt: string;
   agentType: string;
+  taskDepth?: number;
+  maxTaskDepth?: number;
   parentTaskId?: string;
   threadId?: string;
   threadName?: string;
