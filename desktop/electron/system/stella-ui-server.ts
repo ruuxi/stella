@@ -14,7 +14,7 @@ import os from "os";
 import type { BrowserWindow } from "electron";
 import {
   streamManagedChatCompletion,
-} from "../../src/shared/ai/chat-completions.js";
+} from "@stella/stella-runtime";
 
 let server: http.Server | null = null;
 
