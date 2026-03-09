@@ -14,9 +14,9 @@ const interpolateTemplate = (
   replacements: Record<string, string>,
 ): string => template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => replacements[key] ?? "")
 
-const renderNewsHtmlUser = (
+const renderSearchHtmlUser = (
   template: string,
-  values: PromptTemplateValues["news_html.user"],
+  values: PromptTemplateValues["search_html.user"],
 ): string => interpolateTemplate(template, values)
 
 const renderCoreMemoryUser = (
@@ -127,27 +127,27 @@ If the user asks for something that requires their machine, say that you'll hand
 - Never expose model names, provider details, or internal infrastructure`,
     render: renderStatic,
   },
-  "news_html.system": {
-    id: "news_html.system",
-    module: "news_html",
-    title: "News HTML System Prompt",
+  "search_html.system": {
+    id: "search_html.system",
+    module: "search_html",
+    title: "Search HTML System Prompt",
     defaultText:
-      "You generate clean, self-contained HTML for a news panel embedded in a desktop app. No markdown fences. No explanation. Just HTML.\n\n" +
-      "DESIGN DIRECTION: editorial broadsheet — not generic cards. The lead story gets presence, secondary stories are a compact scannable stack. Typography and whitespace do the work, not boxes.\n\n" +
+      "You generate clean, self-contained HTML for a canvas panel embedded in a desktop app. No markdown fences. No explanation. Just HTML.\n\n" +
+      "DESIGN DIRECTION: editorial broadsheet — not generic cards. The lead result gets presence, secondary results are a compact scannable stack. Typography and whitespace do the work, not boxes.\n\n" +
       "STYLING RULES — the container auto-styles semantic elements:\n" +
       "- Base font: 13px, line-height 1.55. Do NOT set font-family on the root.\n" +
       "- Headlines: use font-family: Georgia, serif for an editorial feel. font-weight: 500.\n" +
       "- Colors: ONLY var(--foreground) and var(--background). Use opacity for hierarchy — five tiers: 0.92 (lead headline), 0.78 (secondary headlines), 0.5 (lead body), 0.42 (secondary body), 0.25-0.3 (meta/timestamps). Never hardcode colors.\n" +
       "- Dividers: use <div> with height: 1px and background: color-mix(in oklch, var(--foreground) 4-5%, transparent). The top divider under the header can use a gradient: linear-gradient(90deg, color-mix(in oklch, var(--foreground) 20%, transparent), transparent).\n" +
-      "- Left accent bars on secondary stories: width: 3px, border-radius: 2px, background: color-mix(in oklch, var(--foreground) 8%, transparent), using align-self: stretch.\n" +
+      "- Left accent bars on secondary items: width: 3px, border-radius: 2px, background: color-mix(in oklch, var(--foreground) 8%, transparent), using align-self: stretch.\n" +
       "- Source names: <small> with font-size: 10px, text-transform: uppercase, letter-spacing: 0.04-0.08em, opacity: 0.3-0.4.\n" +
       "- Timestamps: <small> with font-size: 10px, opacity: 0.25. Use short format (2h, 4h, 12h).\n" +
-      "- Layout: flexbox via inline styles. No cards, no boxes, no background surfaces on stories. Use whitespace and dividers.\n" +
+      "- Layout: flexbox via inline styles. No cards, no boxes, no background surfaces on items. Use whitespace and dividers.\n" +
       "- No <style> blocks, no class names, no scripts, no external resources.\n\n" +
       "REFERENCE EXAMPLE — follow this structure and style closely, adapting content to actual search results:\n\n" +
       '<div style="display: flex; flex-direction: column; gap: 0;">\n' +
       '  <div style="padding: 0 0 14px; display: flex; align-items: baseline; justify-content: space-between;">\n' +
-      '    <h3 style="margin: 0; font-size: 10px; letter-spacing: 0.12em; opacity: 0.35;">Your Briefing</h3>\n' +
+      '    <h3 style="margin: 0; font-size: 10px; letter-spacing: 0.12em; opacity: 0.35;">Search Results</h3>\n' +
       '    <small style="font-size: 10px; opacity: 0.28; letter-spacing: 0.03em;">Mar 8, 2026</small>\n' +
       "  </div>\n" +
       '  <div style="height: 1px; background: linear-gradient(90deg, color-mix(in oklch, var(--foreground) 20%, transparent), transparent); margin-bottom: 16px;"></div>\n' +
@@ -177,30 +177,30 @@ If the user asks for something that requires their machine, say that you'll hand
       "      </div>\n" +
       "    </div>\n" +
       '    <div style="height: 1px; background: color-mix(in oklch, var(--foreground) 4%, transparent);"></div>\n' +
-      "    <!-- Repeat the secondary story pattern for each additional result -->\n" +
+      "    <!-- Repeat the secondary pattern for each additional result -->\n" +
       "  </div>\n" +
       '  <div style="margin-top: 18px; padding-top: 12px; border-top: 1px solid color-mix(in oklch, var(--foreground) 4%, transparent);">\n' +
-      '    <small style="font-size: 10px; opacity: 0.2; letter-spacing: 0.04em;">5 stories &middot; Last updated 2:14 PM</small>\n' +
+      '    <small style="font-size: 10px; opacity: 0.2; letter-spacing: 0.04em;">5 results &middot; Last updated 2:14 PM</small>\n' +
       "  </div>\n" +
       "</div>",
     render: renderStatic,
   },
-  "news_html.user": {
-    id: "news_html.user",
-    module: "news_html",
-    title: "News HTML User Prompt",
-    defaultText: `Generate a visual HTML news briefing for the search query: "{{query}}"
+  "search_html.user": {
+    id: "search_html.user",
+    module: "search_html",
+    title: "Search HTML User Prompt",
+    defaultText: `Generate a visual HTML summary for the search query: "{{query}}"
 
 Search results:
 {{resultsText}}
 
-Output self-contained HTML that visually presents these results as an editorial news briefing.
+Output self-contained HTML that visually presents these search results on the canvas panel.
 Follow the reference example in the system prompt exactly — same structure, same opacity tiers, same element patterns.
-The first/most important result gets the lead story treatment (larger serif headline, description, read link).
+The first/most important result gets the lead treatment (larger serif headline, description, read link).
 Remaining results use the compact secondary pattern (left accent bar, smaller headline, brief summary, source + time).
 Use today's date in the header. Use short relative timestamps (2h, 4h, etc.).
 No scripts. No markdown fences. No <style> blocks. No class names.`,
-    render: renderNewsHtmlUser,
+    render: renderSearchHtmlUser,
   },
   "voice_orchestrator.base": {
     id: "voice_orchestrator.base",

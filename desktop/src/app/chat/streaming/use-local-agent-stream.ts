@@ -208,7 +208,7 @@ export function useLocalAgentStream({
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
           storageMode,
-          ...getPromptOverridesPayload(["news_html.system", "news_html.user"]),
+          ...getPromptOverridesPayload(["search_html.system", "search_html.user"]),
         })
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return
