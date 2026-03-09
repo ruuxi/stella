@@ -78,7 +78,6 @@ export type RuntimeToolEndEvent = {
   toolCallId: string;
   toolName: string;
   resultPreview: string;
-  html?: string;
 };
 
 export type RuntimeErrorEvent = {
@@ -123,7 +122,13 @@ type BaseRunOptions = {
   abortSignal?: AbortSignal;
   frontendRoot?: string;
   selfModMonitor?: SelfModMonitor | null;
-  webSearch?: (query: string, options?: { category?: string }) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
+  webSearch?: (
+    query: string,
+    options?: {
+      category?: string;
+      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
+    },
+  ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
 };
 
 type OrchestratorRunOptions = BaseRunOptions & {
@@ -265,7 +270,13 @@ const createPiTools = (opts: {
     args: Record<string, unknown>,
     context: ToolContext,
   ) => Promise<ToolResult>;
-  webSearch?: (query: string, options?: { category?: string }) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
+  webSearch?: (
+    query: string,
+    options?: {
+      category?: string;
+      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
+    },
+  ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
 }): AgentTool[] => {
   const requested = Array.isArray(opts.toolsAllowlist) && opts.toolsAllowlist.length > 0
     ? opts.toolsAllowlist
@@ -471,7 +482,6 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
 
     if (event.type === "tool_execution_end") {
       const preview = getToolResultPreview(event.toolName, event.result);
-      const html = getToolResultHtml(event.toolName, event.result);
       console.log(`[stella:trace] tool exec end   | ${event.toolName} | callId=${event.toolCallId} | result=${preview.slice(0, 200)}`);
       const s = nextSeq();
       opts.callbacks.onToolEnd({
@@ -480,7 +490,6 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
-        ...(html ? { html } : {}),
       });
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -858,7 +867,6 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
 
     if (event.type === "tool_execution_end") {
       const preview = getToolResultPreview(event.toolName, event.result);
-      const html = getToolResultHtml(event.toolName, event.result);
       const s = nextSeq();
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -877,7 +885,6 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
-        ...(html ? { html } : {}),
       });
     }
   });

@@ -2,6 +2,7 @@ import type { UiState, WindowMode } from './ui'
 import type { Theme } from '@/theme/themes/types'
 import type { AgentStreamEvent } from '@/app/chat/streaming/streaming-types'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
+import type { SearchHtmlPromptConfig } from '@/prompts'
 import type {
   RadialWedge as SharedRadialWedge,
   ChatContext as SharedChatContext,
@@ -170,7 +171,7 @@ export type ElectronVoiceApi = {
   onTranscript: (callback: (transcript: string) => void) => () => void
   persistTranscript: (payload: { conversationId: string; role: 'user' | 'assistant'; text: string }) => void
   orchestratorChat: (payload: { conversationId: string; message: string }) => Promise<string>
-  webSearch: (payload: { query: string; category?: string }) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>
+  webSearch: (payload: { query: string; category?: string; searchHtmlPrompts?: SearchHtmlPromptConfig }) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>
   setAssistantSpeaking: (active: boolean) => Promise<{ ok: boolean }>
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>
   onRuntimeState: (callback: (state: VoiceRuntimeSnapshot) => void) => () => void
@@ -189,7 +190,7 @@ export type ElectronAgentApi = {
     userPrompt: string
     agentType?: string
     storageMode?: "cloud" | "local"
-    promptOverrides?: Record<string, string>
+    searchHtmlPrompts?: SearchHtmlPromptConfig
   }) => Promise<{ runId: string }>
   cancelChat: (runId: string) => void
   resumeStream: (payload: {
