@@ -26,6 +26,7 @@ import {
   type RuntimeToolEndEvent,
   type RuntimeToolStartEvent,
 } from "./agent-runtime.js";
+import { registerModel, type Api, type Model } from "@stella/stella-ai";
 import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
 import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
 import {
@@ -651,9 +652,30 @@ export const createStellaHostRunner = ({
           // Register extension tools on the tool host
           toolHost.registerExtensionTools(extensions.tools);
 
-          // TODO: Register extension providers once adapter from ProviderDefinition -> ApiProvider is implemented
-          if (extensions.providers.length > 0) {
-            console.warn(`[stella:extensions] ${extensions.providers.length} provider(s) loaded but provider registration not yet supported`);
+          // Register extension provider models in the model registry
+          for (const providerDef of extensions.providers) {
+            for (const modelDef of providerDef.models) {
+              const model: Model<Api> = {
+                id: modelDef.id,
+                name: modelDef.name,
+                api: providerDef.api as Api,
+                provider: providerDef.name,
+                baseUrl: providerDef.baseUrl,
+                reasoning: modelDef.reasoning ?? false,
+                input: (modelDef.input ?? ["text"]) as ("text" | "image")[],
+                cost: {
+                  input: modelDef.cost?.input ?? 0,
+                  output: modelDef.cost?.output ?? 0,
+                  cacheRead: modelDef.cost?.cacheRead ?? 0,
+                  cacheWrite: modelDef.cost?.cacheWrite ?? 0,
+                },
+                contextWindow: modelDef.contextWindow,
+                maxTokens: modelDef.maxTokens,
+                headers: providerDef.headers,
+              };
+              registerModel(providerDef.name, model);
+            }
+            console.log(`[stella:extensions] Registered provider "${providerDef.name}" with ${providerDef.models.length} model(s)`);
           }
 
           // Store loaded prompts for access

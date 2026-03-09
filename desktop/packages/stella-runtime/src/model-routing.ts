@@ -93,8 +93,21 @@ const getDirectProviderCandidates = (
           modelId.replace(/\./g, "-"),
         ]),
       };
-    default:
+    default: {
+      // Extension providers: check if models exist in the registry under this provider name
+      const extensionModels = getModels(provider as never) as Model<Api>[];
+      if (extensionModels.length > 0) {
+        return {
+          credentialProvider: provider,
+          registryProvider: provider,
+          candidates: unique([
+            modelId,
+            modelId.replace(/\./g, "-"),
+          ]),
+        };
+      }
       return null;
+    }
   }
 };
 
@@ -169,6 +182,19 @@ export const resolveLlmRoute = (args: {
             model: directModel,
             route: "direct-provider",
             getApiKey: () => directKey,
+          };
+        }
+      }
+
+      // Extension providers may not require an API key (e.g., local models like Ollama).
+      // If a model has a baseUrl, allow it through without a stored credential.
+      if (!directKey) {
+        const directModel = findRegistryModel(directProvider.registryProvider, directProvider.candidates);
+        if (directModel?.baseUrl) {
+          return {
+            model: directModel,
+            route: "direct-provider",
+            getApiKey: () => "",
           };
         }
       }
