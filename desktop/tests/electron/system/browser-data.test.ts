@@ -299,7 +299,7 @@ describe("Browser Data Collection - Integration Test", () => {
 /**
  * To run a quick manual test from the command line:
  *
- * cd frontend
+ * cd desktop
  * bun run electron/system/browser-data.test.ts
  *
  * Or run the integration test:

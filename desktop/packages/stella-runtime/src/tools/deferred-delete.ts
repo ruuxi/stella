@@ -1,5 +1,4 @@
 import { promises as fs } from "fs";
-import os from "os";
 import path from "path";
 
 export const DEFERRED_DELETE_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -58,7 +57,7 @@ const getStellaHome = (override?: string) => {
   if (fromEnv && fromEnv.trim().length > 0) {
     return fromEnv;
   }
-  return path.join(os.homedir(), "stella", ".stella");
+  return path.resolve(process.cwd(), ".stella");
 };
 
 export const getDeferredDeletePaths = (

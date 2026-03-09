@@ -39,7 +39,7 @@ const DEFAULT_MAX_TASK_DEPTH = 8;
 const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
 const MIN_LOCAL_HISTORY_TOKENS = 8_000;
 // Minimal fallback prompts â€” real prompts live in bundled AGENT.md files
-// seeded to ~/stella/.stella/agents/ on first startup.
+// The active agent definitions live in desktop/.stella/agents.
 const DEFAULT_ORCHESTRATOR_PROMPT =
   "You are Stella's orchestrator. Coordinate specialized work and keep work non-blocking by default. " +
   "For user-facing output, prefer Display for most substantive, structured, or multi-item responses and keep plain text mainly for acknowledgments, brief confirmations, and short replies. " +
@@ -48,48 +48,6 @@ const DEFAULT_ORCHESTRATOR_PROMPT =
 const DEFAULT_SUBAGENT_PROMPT =
   "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely. " +
   "When creating or modifying UI components, add data-stella-label, data-stella-state, and data-stella-action attributes.";
-
-const DEFAULT_ORCHESTRATOR_TOOL_ALLOWLIST = [
-  "AskUserQuestion",
-  "TaskCreate",
-  "TaskCancel",
-  "WebFetch",
-  "WebSearch",
-  "HeartbeatGet",
-  "HeartbeatUpsert",
-  "HeartbeatRun",
-  "CronList",
-  "CronAdd",
-  "CronUpdate",
-  "CronRemove",
-  "CronRun",
-  "Display",
-  "NoResponse",
-  "SaveMemory",
-  "RecallMemories",
-];
-
-const DEFAULT_SUBAGENT_TOOL_ALLOWLIST = [
-  "Read",
-  "Edit",
-  "Glob",
-  "Grep",
-  "Bash",
-  "KillShell",
-  "ShellStatus",
-  "AskUserQuestion",
-  "RequestCredential",
-  "SkillBash",
-  "WebFetch",
-  "WebSearch",
-  "ActivateSkill",
-  "NoResponse",
-  "SaveMemory",
-  "RecallMemories",
-];
-
-const ORCHESTRATOR_TOOL_SET = new Set(DEFAULT_ORCHESTRATOR_TOOL_ALLOWLIST);
-const SUBAGENT_TOOL_SET = new Set(DEFAULT_SUBAGENT_TOOL_ALLOWLIST);
 
 const LOCAL_CONTEXT_EVENT_TYPES = new Set([
   "user_message",
@@ -178,28 +136,6 @@ type ParsedAgentLike = {
 const defaultPromptForAgentType = (agentType: string): string => {
   if (agentType === "orchestrator") return DEFAULT_ORCHESTRATOR_PROMPT;
   return DEFAULT_SUBAGENT_PROMPT;
-};
-
-const resolveToolsAllowlist = (
-  agentType: string,
-  requestedTools?: string[],
-): string[] => {
-  const defaultTools =
-    agentType === "orchestrator"
-      ? DEFAULT_ORCHESTRATOR_TOOL_ALLOWLIST
-      : DEFAULT_SUBAGENT_TOOL_ALLOWLIST;
-  const allowedTools =
-    agentType === "orchestrator"
-      ? ORCHESTRATOR_TOOL_SET
-      : SUBAGENT_TOOL_SET;
-
-  const requested =
-    Array.isArray(requestedTools) && requestedTools.length > 0
-      ? requestedTools
-      : defaultTools;
-
-  const filtered = requested.filter((toolName) => allowedTools.has(toolName));
-  return filtered.length > 0 ? Array.from(new Set(filtered)) : [...defaultTools];
 };
 
 const sanitizeConvexDeploymentUrl = (value: string | null): string | null => {
@@ -299,7 +235,6 @@ export const createStellaHostRunner = ({
 
   const skillsPath = path.join(StellaHome, "skills");
   const agentsPath = path.join(StellaHome, "agents");
-  const stellaAgentsPath = frontendRoot ? path.join(frontendRoot, "electron", "stella-agents") : null;
   const hookEmitter = new HookEmitter();
 
   let loadedAgents: ParsedAgentLike[] = [];
@@ -538,7 +473,7 @@ export const createStellaHostRunner = ({
       dynamicContext: dynamicContextSections.join("\n\n"),
       orchestratorReminderText: activeThreadsPrompt || undefined,
       shouldInjectDynamicReminder: reminderState.shouldInjectDynamicReminder,
-      toolsAllowlist: resolveToolsAllowlist(args.agentType, agent?.toolsAllowlist),
+      toolsAllowlist: agent?.toolsAllowlist,
       delegationAllowlist: agent?.delegationAllowlist,
       model,
       maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
@@ -699,68 +634,56 @@ export const createStellaHostRunner = ({
         // Skills are optional at startup.
       });
 
-    // Load agents directly from source (electron/stella-agents/) with
-    // ~/stella/.stella/agents/ as an override layer for user-custom agents.
-    const agentSources = stellaAgentsPath ? [stellaAgentsPath, agentsPath] : [agentsPath];
-    void Promise.all(agentSources.map((p) => loadAgentsFromHome(p).catch(() => [] as ParsedAgentLike[])))
-      .then((results) => {
-        const merged = new Map<string, ParsedAgentLike>();
-        for (const agents of results) {
-          for (const agent of agents) {
-            // Later sources (user custom) override earlier (bundled)
-            for (const at of agent.agentTypes) merged.set(at, agent);
-          }
-        }
-        loadedAgents = [...merged.values()];
+    void loadAgentsFromHome(agentsPath)
+      .then((agents) => {
+        loadedAgents = agents;
       })
       .catch(() => {
         loadedAgents = [];
       });
 
-    if (stellaAgentsPath) {
-      void loadExtensions(stellaAgentsPath)
-        .then((extensions) => {
-          // Register extension hooks
-          hookEmitter.registerAll(extensions.hooks);
+    void loadExtensions(agentsPath)
+      .then((extensions) => {
+        // Register extension hooks
+        hookEmitter.registerAll(extensions.hooks);
 
-          // Register extension tools on the tool host
-          toolHost.registerExtensionTools(extensions.tools);
+        // Register extension tools on the tool host
+        toolHost.registerExtensionTools(extensions.tools);
 
-          // Register extension provider models in the model registry
-          for (const providerDef of extensions.providers) {
-            for (const modelDef of providerDef.models) {
-              const model: Model<Api> = {
-                id: modelDef.id,
-                name: modelDef.name,
-                api: providerDef.api as Api,
-                provider: providerDef.name,
-                baseUrl: providerDef.baseUrl,
-                reasoning: modelDef.reasoning ?? false,
-                input: (modelDef.input ?? ["text"]) as ("text" | "image")[],
-                cost: {
-                  input: modelDef.cost?.input ?? 0,
-                  output: modelDef.cost?.output ?? 0,
-                  cacheRead: modelDef.cost?.cacheRead ?? 0,
-                  cacheWrite: modelDef.cost?.cacheWrite ?? 0,
-                },
-                contextWindow: modelDef.contextWindow,
-                maxTokens: modelDef.maxTokens,
-                headers: providerDef.headers,
-              };
-              registerModel(providerDef.name, model);
-            }
-            console.log(`[stella:extensions] Registered provider "${providerDef.name}" with ${providerDef.models.length} model(s)`);
+        // Register extension provider models in the model registry
+        for (const providerDef of extensions.providers) {
+          for (const modelDef of providerDef.models) {
+            const model: Model<Api> = {
+              id: modelDef.id,
+              name: modelDef.name,
+              api: providerDef.api as Api,
+              provider: providerDef.name,
+              baseUrl: providerDef.baseUrl,
+              reasoning: modelDef.reasoning ?? false,
+              input: (modelDef.input ?? ["text"]) as ("text" | "image")[],
+              cost: {
+                input: modelDef.cost?.input ?? 0,
+                output: modelDef.cost?.output ?? 0,
+                cacheRead: modelDef.cost?.cacheRead ?? 0,
+                cacheWrite: modelDef.cost?.cacheWrite ?? 0,
+              },
+              contextWindow: modelDef.contextWindow,
+              maxTokens: modelDef.maxTokens,
+              headers: providerDef.headers,
+            };
+            registerModel(providerDef.name, model);
           }
+          console.log(`[stella:extensions] Registered provider "${providerDef.name}" with ${providerDef.models.length} model(s)`);
+        }
 
-          // Store loaded prompts for access
-          loadedPrompts = extensions.prompts;
+        // Store loaded prompts for access
+        loadedPrompts = extensions.prompts;
 
-          console.log(`[stella:extensions] Ready: ${extensions.tools.length} tools, ${extensions.hooks.length} hooks, ${extensions.providers.length} providers, ${extensions.prompts.length} prompts`);
-        })
-        .catch((error) => {
-          console.error("[stella:extensions] Failed to load extensions:", (error as Error).message);
-        });
-    }
+        console.log(`[stella:extensions] Ready: ${extensions.tools.length} tools, ${extensions.hooks.length} hooks, ${extensions.providers.length} providers, ${extensions.prompts.length} prompts`);
+      })
+      .catch((error) => {
+        console.error("[stella:extensions] Failed to load extensions:", (error as Error).message);
+      });
   };
 
   const stop = () => {

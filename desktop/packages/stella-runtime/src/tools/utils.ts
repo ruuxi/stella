@@ -362,7 +362,7 @@ const tightenWindowsAcl = async (resolvedPath: string) => {
   });
 };
 
-const DEFAULT_SECRET_STATE_ROOT = path.join(os.homedir(), "stella", ".stella", "state");
+const DEFAULT_SECRET_STATE_ROOT = path.resolve(process.cwd(), ".stella", "state");
 
 const getSecretMountRecordsDir = (stateRoot?: string) =>
   path.join(stateRoot ?? DEFAULT_SECRET_STATE_ROOT, "secret_mounts", "records");

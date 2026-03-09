@@ -10,7 +10,6 @@
 import fs from "fs";
 import path from "path";
 import http from "http";
-import os from "os";
 import type { BrowserWindow } from "electron";
 import {
   streamManagedChatCompletion,
@@ -23,7 +22,7 @@ export function getStellaUiSocketPath(): string {
   if (process.platform === "win32") {
     return "\\\\.\\pipe\\stella-ui";
   }
-  return path.join(os.homedir(), "stella", ".stella", "state", "stella-ui.sock");
+  return path.resolve(process.cwd(), ".stella", "state", "stella-ui.sock");
 }
 
 // ---------------------------------------------------------------------------
