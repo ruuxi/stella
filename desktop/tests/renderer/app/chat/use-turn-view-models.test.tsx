@@ -100,5 +100,40 @@ describe("useTurnViewModels", () => {
     expect(result.current.showStandaloneStreaming).toBe(true);
     expect(result.current.processedStreamingText).toBe("draft");
   });
+
+  it("attaches WebSearch HTML to the turn view model for badge rendering", () => {
+    const events: EventRecord[] = [
+      {
+        _id: "user-1",
+        timestamp: 1,
+        type: "user_message",
+        payload: { text: "what's happening?" },
+      },
+      {
+        _id: "tool-1",
+        timestamp: 2,
+        type: "tool_result",
+        payload: {
+          toolName: "WebSearch",
+          html: "<section><h3>Top story</h3></section>",
+          result: "<section><h3>Top story</h3></section>",
+        },
+      },
+      {
+        _id: "assistant-1",
+        timestamp: 3,
+        type: "assistant_message",
+        payload: { text: "Here's the briefing." },
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useTurnViewModels({ events }),
+    );
+
+    expect(result.current.turns[0].webSearchBadgeHtml).toBe(
+      "<section><h3>Top story</h3></section>",
+    );
+  });
 });
 
