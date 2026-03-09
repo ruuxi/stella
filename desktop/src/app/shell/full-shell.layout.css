@@ -147,6 +147,8 @@
   position: relative;
   overflow: hidden;
   padding-top: 32px;
+  border-left: 1px solid var(--border-weak);
+  border-top-left-radius: 12px;
 }
 
 .content-area .workspace-content.workspace-content--full {
