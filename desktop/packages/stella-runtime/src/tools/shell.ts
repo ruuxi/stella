@@ -42,13 +42,17 @@ export const createShellState = (
 });
 
 const deferredDeleteHelperPath = (() => {
-  const jsPath = fileURLToPath(new URL("./deferred-delete-cli.js", import.meta.url));
-  if (existsSync(jsPath)) {
-    return jsPath;
-  }
-  const tsPath = fileURLToPath(new URL("./deferred-delete-cli.ts", import.meta.url));
-  if (existsSync(tsPath)) {
-    return tsPath;
+  try {
+    const jsPath = fileURLToPath(new URL("./deferred-delete-cli.js", import.meta.url));
+    if (existsSync(jsPath)) {
+      return jsPath;
+    }
+    const tsPath = fileURLToPath(new URL("./deferred-delete-cli.ts", import.meta.url));
+    if (existsSync(tsPath)) {
+      return tsPath;
+    }
+  } catch {
+    // import.meta.url may not be a file:// URL in non-Node environments (e.g. Vite renderer)
   }
   return "";
 })();

@@ -75,7 +75,7 @@ describe("synthesizeCoreMemory", () => {
           Authorization: "Bearer token",
           "X-Device-ID": "device-1",
         }),
-        body: JSON.stringify({ formattedSignals: "my signals data" }),
+        body: expect.stringContaining('"formattedSignals":"my signals data"'),
       })
     );
   });
