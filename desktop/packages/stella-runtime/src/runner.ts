@@ -430,7 +430,9 @@ export const createStellaHostRunner = ({
         ...result,
         text: result.html?.trim()
           ? result.html
-          : "WebSearch returned no HTML response.",
+          : result.text?.trim()
+            ? result.text
+            : "WebSearch returned no response.",
       };
     } catch (error) {
       return { text: `WebSearch failed: ${(error as Error).message}`, results: [] };
